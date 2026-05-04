@@ -48,6 +48,12 @@ describe('HarnessState', () => {
       evidenceCount: 2,
       blockerCount: 1,
       toolEventCount: 1,
+      diagnostics: expect.objectContaining({
+        outcome: 'blocked',
+        failureCategory: 'blocker',
+        blockerCount: 1,
+        evidenceCount: 2,
+      }),
     });
 
     expect(harness.toJSON()).toEqual(expect.objectContaining({
@@ -99,7 +105,47 @@ describe('HarnessState', () => {
         evidenceCount: 1,
         blockerCount: 1,
         toolEventCount: 1,
+        diagnostics: expect.objectContaining({
+          outcome: 'blocked',
+          failureCategory: 'blocker',
+        }),
       }),
+    });
+  });
+
+  test('summarizes diagnostics for failed evidence and tool events', () => {
+    const harness = new HarnessState({
+      runId: 'run-789',
+      evidence: [
+        { summary: 'Primary route completed', passed: true },
+        { summary: 'Screenshot contrast check failed', passed: false },
+      ],
+      toolEvents: [
+        {
+          type: 'llm-call',
+          status: 'completed',
+          usage: { total_tokens: 321 },
+        },
+        {
+          type: 'tool-call',
+          name: 'web-fetch',
+          status: 'failed',
+          retryCount: 2,
+          metadata: { tokenUsage: { totalTokens: 12 } },
+        },
+      ],
+    });
+
+    expect(harness.getDiagnostics()).toEqual({
+      outcome: 'failed',
+      failureCategory: 'tool-event',
+      blockerCount: 0,
+      evidenceCount: 2,
+      failedEvidenceCount: 1,
+      failedToolEventCount: 1,
+      failedStepTypes: ['web-fetch'],
+      retryCount: 2,
+      tokenCount: 333,
     });
   });
 });

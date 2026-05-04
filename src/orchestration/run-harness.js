@@ -71,6 +71,57 @@ class HarnessState {
     return normalized;
   }
 
+  getDiagnostics() {
+    const failedEvidence = this.evidence.filter((entry) => entry.passed === false);
+    const failedToolEvents = this.toolEvents.filter((event = {}) => {
+      const status = String(event.status || event.outcome || '').toLowerCase();
+      return ['blocked', 'error', 'failed', 'timeout'].includes(status);
+    });
+    const retryCount = this.toolEvents.reduce((total, event = {}) => {
+      const retries = Number(event.retryCount ?? event.retries ?? 0);
+      return total + (Number.isFinite(retries) ? retries : 0);
+    }, 0);
+    const tokenCount = this.toolEvents.reduce((total, event = {}) => {
+      const usage = event.usage || event.tokenUsage || event.metadata?.usage || event.metadata?.tokenUsage || {};
+      const tokens = Number(
+        usage.total_tokens
+          ?? usage.totalTokens
+          ?? usage.tokens
+          ?? event.tokens
+          ?? event.metadata?.tokens
+          ?? 0,
+      );
+      return total + (Number.isFinite(tokens) ? tokens : 0);
+    }, 0);
+
+    let outcome = 'passed';
+    let failureCategory = null;
+    if (this.blockers.length > 0) {
+      outcome = 'blocked';
+      failureCategory = 'blocker';
+    } else if (failedToolEvents.length > 0) {
+      outcome = 'failed';
+      failureCategory = 'tool-event';
+    } else if (failedEvidence.length > 0) {
+      outcome = 'failed';
+      failureCategory = 'evidence';
+    }
+
+    return {
+      outcome,
+      failureCategory,
+      blockerCount: this.blockers.length,
+      evidenceCount: this.evidence.length,
+      failedEvidenceCount: failedEvidence.length,
+      failedToolEventCount: failedToolEvents.length,
+      failedStepTypes: [...new Set(failedToolEvents.map((event = {}) => (
+        event.stepType || event.toolType || event.name || event.type || 'tool-event'
+      )))],
+      retryCount,
+      tokenCount,
+    };
+  }
+
   toTraceMetadata() {
     return {
       workflowName: this.workflowName,
@@ -80,6 +131,7 @@ class HarnessState {
       evidenceCount: this.evidence.length,
       blockerCount: this.blockers.length,
       toolEventCount: this.toolEvents.length,
+      diagnostics: this.getDiagnostics(),
     };
   }
 
