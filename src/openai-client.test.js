@@ -714,6 +714,18 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(normalized.code).toBe('provider_starting_up');
     });
 
+    test('labels generic provider transport errors before surfacing them to chat routes', () => {
+        const connection = __testUtils.normalizeProviderTransportError(new Error('Connection error.'));
+        expect(connection.message).toContain('Model gateway connection failed');
+        expect(connection.code).toBe('provider_connection_error');
+        expect(connection.statusCode).toBe(502);
+
+        const timeout = __testUtils.normalizeProviderTransportError(new Error('Request timed out.'));
+        expect(timeout.message).toContain('Model gateway request timed out');
+        expect(timeout.code).toBe('provider_gateway_timeout');
+        expect(timeout.statusCode).toBe(504);
+    });
+
     test('retries generic provider warmup errors before succeeding', async () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
         const operation = jest.fn()
@@ -3172,5 +3184,59 @@ describe('openai-client automatic tool orchestration helpers', () => {
                 }),
             }),
         ]);
+    });
+
+    test('waits for trailing streamed chat usage before completing', async () => {
+        async function* streamChunks() {
+            yield {
+                id: 'chatcmpl-usage-1',
+                object: 'chat.completion.chunk',
+                created: 1710000000,
+                model: 'codex-latest',
+                choices: [{
+                    index: 0,
+                    delta: { content: 'Done' },
+                    finish_reason: null,
+                }],
+            };
+            yield {
+                id: 'chatcmpl-usage-1',
+                object: 'chat.completion.chunk',
+                created: 1710000000,
+                model: 'codex-latest',
+                choices: [{
+                    index: 0,
+                    delta: {},
+                    finish_reason: 'stop',
+                }],
+            };
+            yield {
+                id: 'chatcmpl-usage-1',
+                object: 'chat.completion.chunk',
+                created: 1710000000,
+                model: 'codex-latest',
+                choices: [],
+                usage: {
+                    prompt_tokens: 11,
+                    completion_tokens: 4,
+                    total_tokens: 15,
+                },
+            };
+        }
+
+        const events = [];
+        for await (const event of __testUtils.normalizeChatCompletionsStream(streamChunks())) {
+            events.push(event);
+        }
+
+        const completed = events.find((event) => event.type === 'response.completed');
+        expect(completed.response.metadata.usage).toEqual({
+            promptTokens: 11,
+            inputTokens: 11,
+            completionTokens: 4,
+            outputTokens: 4,
+            totalTokens: 15,
+            modelCalls: 1,
+        });
     });
 });

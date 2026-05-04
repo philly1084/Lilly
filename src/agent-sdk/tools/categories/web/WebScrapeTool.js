@@ -324,7 +324,23 @@ class WebScrapeTool extends ToolBase {
     let headings = [];
     let browserData = null;
     
-    if (browser || javascript) {
+    const fetchTool = this.resolveFetchTool(context);
+    const internalArtifactPreview = fetchTool
+      ? this.parseInternalArtifactPreviewUrl(fetchTool, url)
+      : null;
+
+    if (internalArtifactPreview) {
+      const fetchResult = await fetchTool.execute({
+        url,
+        timeout,
+        cache: false,
+      }, context);
+      if (!fetchResult.success) {
+        throw new Error(`Failed to fetch internal artifact preview: ${fetchResult.error}`);
+      }
+      html = fetchResult.data.body;
+      finalUrl = fetchResult.data.url;
+    } else if (browser || javascript) {
       browserData = await browsePage(url, {
         timeout,
         waitForSelector,
@@ -345,7 +361,6 @@ class WebScrapeTool extends ToolBase {
       headings = Array.isArray(browserData.headings) ? browserData.headings : [];
     } else {
       // Static fetch
-      const fetchTool = this.resolveFetchTool(context);
       if (!fetchTool) {
         throw new Error('WebFetchTool not available');
       }
@@ -391,7 +406,7 @@ class WebScrapeTool extends ToolBase {
     }
 
     let extractedData = {};
-    let method = browserData ? `${browserData.engine}-rendered` : 'static';
+    let method = internalArtifactPreview ? 'internal-artifact-preview' : (browserData ? `${browserData.engine}-rendered` : 'static');
 
     // CSS Selector extraction
     if (selectors) {
@@ -400,7 +415,7 @@ class WebScrapeTool extends ToolBase {
         : await this.extractWithSelectors(html, selectors);
       method = browserData
         ? `${browserData.engine}-css-selectors`
-        : (browser || javascript ? 'browser-css-selectors' : 'css-selectors');
+        : (internalArtifactPreview ? 'internal-artifact-preview-css-selectors' : (browser || javascript ? 'browser-css-selectors' : 'css-selectors'));
     }
 
     // XPath extraction (if implemented)
@@ -562,6 +577,25 @@ class WebScrapeTool extends ToolBase {
     try {
       const { WebFetchTool } = require('./WebFetchTool');
       return new WebFetchTool();
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  parseInternalArtifactPreviewUrl(fetchTool, url = '') {
+    if (!fetchTool || typeof fetchTool.normalizeUrl !== 'function') {
+      return null;
+    }
+
+    try {
+      const normalizedUrl = fetchTool.normalizeUrl(url);
+      const parsed = new URL(normalizedUrl);
+      const match = parsed.pathname.match(
+        /^\/api\/artifacts\/([a-f0-9-]+)\/(?:preview|sandbox|preview-access|sandbox-access)(?:\/|$)/i,
+      );
+      return match?.[1]
+        ? { artifactId: match[1], url: normalizedUrl }
+        : null;
     } catch (_error) {
       return null;
     }

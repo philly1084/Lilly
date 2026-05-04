@@ -5,6 +5,14 @@
 const { ToolBase } = require('../../ToolBase');
 const { artifactService } = require('../../../../artifacts/artifact-service');
 const { getApiBaseUrl, resolveInternalUrl } = require('./internal-url');
+const {
+  getArtifactFrontendBundle,
+  getFrontendBundleFile,
+  injectBundleBaseHref,
+  resolveArtifactFrontendBundleFile,
+  resolveFrontendBundleContentType,
+  rewriteRootRelativeFrontendPaths,
+} = require('../../../../frontend-bundles');
 
 class WebFetchTool extends ToolBase {
   constructor() {
@@ -107,7 +115,7 @@ class WebFetchTool extends ToolBase {
     } = params;
 
     const normalizedUrl = this.normalizeUrl(url);
-    const internalArtifactRequest = this.parseInternalArtifactDownload(normalizedUrl);
+    const internalArtifactRequest = this.parseInternalArtifactRequest(normalizedUrl);
 
     if (internalArtifactRequest) {
       const startTime = Date.now();
@@ -116,13 +124,15 @@ class WebFetchTool extends ToolBase {
         throw new Error(`Artifact not found for ${normalizedUrl}`);
       }
 
+      const resolvedArtifact = this.resolveInternalArtifactContent(artifact, internalArtifactRequest);
+
       const result = {
         status: 200,
         statusText: 'OK',
         headers: {
-          'content-type': artifact.mimeType || 'application/octet-stream',
+          'content-type': resolvedArtifact.mimeType || artifact.mimeType || 'application/octet-stream',
         },
-        body: this.serializeArtifactBody(artifact.contentBuffer, artifact.mimeType),
+        body: this.serializeArtifactBody(resolvedArtifact.contentBuffer, resolvedArtifact.mimeType || artifact.mimeType),
         url: normalizedUrl,
         duration: Date.now() - startTime,
         cached: false,
@@ -131,7 +141,8 @@ class WebFetchTool extends ToolBase {
       tracker.recordNetworkCall(normalizedUrl, method, {
         status: 200,
         internalArtifact: true,
-        contentType: artifact.mimeType || 'application/octet-stream',
+        artifactRoute: internalArtifactRequest.route,
+        contentType: resolvedArtifact.mimeType || artifact.mimeType || 'application/octet-stream',
       });
 
       return result;
@@ -215,14 +226,79 @@ class WebFetchTool extends ToolBase {
     throw lastError || new Error(`Failed to fetch ${url} after ${retries} attempts`);
   }
 
-  parseInternalArtifactDownload(url) {
+  parseInternalArtifactRequest(url) {
     try {
       const parsed = new URL(String(url || ''));
-      const match = parsed.pathname.match(/^\/api\/artifacts\/([a-f0-9-]+)\/download$/i);
-      return match?.[1] ? { artifactId: match[1] } : null;
+      const match = parsed.pathname.match(
+        /^\/api\/artifacts\/([a-f0-9-]+)\/(download|preview|sandbox|preview-access|sandbox-access)(?:\/([^/]+))?(?:\/(.*))?$/i,
+      );
+      if (!match?.[1]) {
+        return null;
+      }
+
+      const route = String(match[2] || '').toLowerCase();
+      const requestedPath = ['preview-access', 'sandbox-access'].includes(route)
+        ? String(match[4] || '')
+        : String(match[3] || match[4] || '');
+
+      return {
+        artifactId: match[1],
+        route,
+        requestedPath,
+      };
     } catch (_error) {
       return null;
     }
+  }
+
+  resolveInternalArtifactContent(artifact, request = {}) {
+    if (!request || request.route === 'download') {
+      return {
+        contentBuffer: artifact.contentBuffer,
+        mimeType: artifact.mimeType || 'application/octet-stream',
+      };
+    }
+
+    const requestedPath = String(request.requestedPath || '').trim();
+    const previewBasePath = `/api/artifacts/${encodeURIComponent(artifact.id)}/preview/`;
+    const zipPreview = resolveArtifactFrontendBundleFile(artifact, requestedPath, {
+      previewBasePath,
+    });
+    if (zipPreview) {
+      return {
+        contentBuffer: zipPreview.contentBuffer,
+        mimeType: zipPreview.contentType,
+      };
+    }
+
+    const bundleFile = getFrontendBundleFile(getArtifactFrontendBundle(artifact), requestedPath);
+    if (bundleFile?.content != null) {
+      const filePath = String(bundleFile.path || requestedPath || 'index.html');
+      const contentType = resolveFrontendBundleContentType(filePath);
+      const rawContent = Buffer.isBuffer(bundleFile.contentBuffer)
+        ? bundleFile.contentBuffer.toString('utf8')
+        : String(bundleFile.content || '');
+      const content = /\.html?$/i.test(filePath)
+        ? injectBundleBaseHref(rewriteRootRelativeFrontendPaths(rawContent, previewBasePath), previewBasePath)
+        : rawContent;
+      return {
+        contentBuffer: Buffer.from(content, 'utf8'),
+        mimeType: contentType,
+      };
+    }
+
+    const previewHtml = String(artifact.previewHtml || '').trim();
+    if (previewHtml) {
+      return {
+        contentBuffer: Buffer.from(previewHtml, 'utf8'),
+        mimeType: 'text/html; charset=utf-8',
+      };
+    }
+
+    return {
+      contentBuffer: artifact.contentBuffer,
+      mimeType: artifact.mimeType || 'application/octet-stream',
+    };
   }
 
   serializeArtifactBody(contentBuffer, mimeType = '') {

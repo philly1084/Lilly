@@ -54,18 +54,57 @@ class DashboardController {
       : (hasExplicitUsage ? 0 : this.estimateTokens(input));
     const completionTokens = hasCompletionTokens
       ? normalizedUsage.completionTokens
-      : ((Number.isFinite(explicitCompletion) && explicitCompletion > 0)
+      : (hasTotalTokens && !hasPromptTokens
+        ? normalizedUsage.totalTokens
+        : (Number.isFinite(explicitCompletion) && explicitCompletion > 0)
         ? explicitCompletion
         : (hasExplicitUsage ? 0 : this.estimateTokens(output)));
     const totalTokens = hasTotalTokens
       ? normalizedUsage.totalTokens
       : (hasExplicitUsage ? (promptTokens + completionTokens) : (promptTokens + completionTokens));
 
-    return {
+    const usage = {
       promptTokens,
       completionTokens,
       totalTokens,
       inferred: !hasExplicitUsage,
+    };
+
+    ['reasoningTokens', 'cachedTokens', 'modelCalls'].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(normalizedUsage, key)) {
+        usage[key] = normalizedUsage[key];
+      }
+    });
+
+    return usage;
+  }
+
+  deriveLogTokenUsage(log = {}) {
+    const normalizedUsage = normalizeUsageMetadata({
+      promptTokens: log.promptTokens,
+      completionTokens: log.completionTokens,
+      totalTokens: log.tokens,
+      reasoningTokens: log.reasoningTokens,
+      cachedTokens: log.cachedTokens,
+      modelCalls: log.modelCalls,
+    }) || {};
+
+    const hasPromptTokens = Object.prototype.hasOwnProperty.call(normalizedUsage, 'promptTokens');
+    const hasCompletionTokens = Object.prototype.hasOwnProperty.call(normalizedUsage, 'completionTokens');
+    const hasTotalTokens = Object.prototype.hasOwnProperty.call(normalizedUsage, 'totalTokens');
+    const totalTokens = hasTotalTokens
+      ? normalizedUsage.totalTokens
+      : (hasPromptTokens ? normalizedUsage.promptTokens : 0) + (hasCompletionTokens ? normalizedUsage.completionTokens : 0);
+    const promptTokens = hasPromptTokens ? normalizedUsage.promptTokens : 0;
+    const completionTokens = hasCompletionTokens
+      ? normalizedUsage.completionTokens
+      : Math.max(0, totalTokens - promptTokens);
+
+    return {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      inferred: log.tokenUsageInferred === true,
     };
   }
 
@@ -694,10 +733,14 @@ class DashboardController {
       tokens: tokenUsage.totalTokens,
       promptTokens: tokenUsage.promptTokens,
       completionTokens: tokenUsage.completionTokens,
+      reasoningTokens: tokenUsage.reasoningTokens,
+      cachedTokens: tokenUsage.cachedTokens,
+      modelCalls: tokenUsage.modelCalls,
       tokenUsageInferred: tokenUsage.inferred,
       latency: Number(duration || 0),
       status: 'success',
       message: `${task.mode} request completed`,
+      taskId,
       route: task.mode,
       transport: task.transport,
       sessionId: task.sessionId,
@@ -784,10 +827,14 @@ class DashboardController {
       tokens: tokenUsage.totalTokens,
       promptTokens: tokenUsage.promptTokens,
       completionTokens: tokenUsage.completionTokens,
+      reasoningTokens: tokenUsage.reasoningTokens,
+      cachedTokens: tokenUsage.cachedTokens,
+      modelCalls: tokenUsage.modelCalls,
       tokenUsageInferred: tokenUsage.inferred,
       latency: Number(duration || 0),
       status: 'error',
       message: task.error,
+      taskId,
       route: task.mode,
       transport: task.transport,
       sessionId: task.sessionId,
@@ -991,6 +1038,28 @@ class DashboardController {
   }
 
   buildTokenSummary() {
+    const successLogs = (logsController.logs || [])
+      .filter((log) => log.status !== 'error' && Number.isFinite(Number(log.tokens)));
+
+    if (successLogs.length > 0) {
+      return successLogs.reduce((summary, log) => {
+        const usage = this.deriveLogTokenUsage(log);
+        summary.total += usage.totalTokens;
+        summary.prompt += usage.promptTokens;
+        summary.completion += usage.completionTokens;
+        summary.inferredRequests += usage.inferred ? 1 : 0;
+        summary.requests += 1;
+        return summary;
+      }, {
+        total: 0,
+        prompt: 0,
+        completion: 0,
+        inferredRequests: 0,
+        requests: 0,
+        source: 'logs',
+      });
+    }
+
     const completedTasks = Array.from(this.taskStore.values())
       .filter((task) => task.status === 'completed');
 
@@ -1000,12 +1069,15 @@ class DashboardController {
       summary.prompt += usage.promptTokens;
       summary.completion += usage.completionTokens;
       summary.inferredRequests += usage.inferred ? 1 : 0;
+      summary.requests += 1;
       return summary;
     }, {
       total: 0,
       prompt: 0,
       completion: 0,
       inferredRequests: 0,
+      requests: 0,
+      source: 'runtime',
     });
   }
 }

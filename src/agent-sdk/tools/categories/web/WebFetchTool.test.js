@@ -98,4 +98,34 @@ describe('WebFetchTool', () => {
       }),
     );
   });
+
+  test('reads internal artifact sandbox previews from stored preview content', async () => {
+    const tool = new WebFetchTool();
+    const tracker = { recordNetworkCall: jest.fn() };
+    const artifactId = '3ee64601-2cb4-43e1-b56b-973bc2856419';
+
+    artifactService.getArtifact.mockResolvedValue({
+      id: artifactId,
+      mimeType: 'application/zip',
+      contentBuffer: Buffer.from('zip-bytes'),
+      previewHtml: '<!doctype html><html><body><h1>Playable Game</h1></body></html>',
+      metadata: {},
+    });
+
+    const result = await tool.handler({
+      url: `/api/artifacts/${artifactId}/sandbox`,
+    }, {}, tracker);
+
+    expect(artifactService.getArtifact).toHaveBeenCalledWith(artifactId, { includeContent: true });
+    expect(result.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(result.body).toContain('Playable Game');
+    expect(tracker.recordNetworkCall).toHaveBeenCalledWith(
+      `http://localhost:3000/api/artifacts/${artifactId}/sandbox`,
+      'GET',
+      expect.objectContaining({
+        internalArtifact: true,
+        artifactRoute: 'sandbox',
+      }),
+    );
+  });
 });

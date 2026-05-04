@@ -290,6 +290,32 @@
 
                         <div class="card">
                             <div class="card-header">
+                                <h3>Token Usage</h3>
+                                <span class="status-badge neutral" id="tokenUsageSource">Runtime</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="token-overview">
+                                    <div class="token-overview-total">
+                                        <span class="token-overview-value" id="overviewTokenTotal">0</span>
+                                        <span class="token-overview-label">total tokens</span>
+                                    </div>
+                                    <div class="token-overview-split">
+                                        <div>
+                                            <span class="token-overview-label">Prompt</span>
+                                            <strong id="overviewTokenPrompt">0</strong>
+                                        </div>
+                                        <div>
+                                            <span class="token-overview-label">Completion</span>
+                                            <strong id="overviewTokenCompletion">0</strong>
+                                        </div>
+                                    </div>
+                                    <div class="token-overview-meta" id="overviewTokenMeta">No completed requests yet.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
                                 <h3>System Health</h3>
                                 <span class="status-badge healthy" id="systemHealthStatus">Healthy</span>
                             </div>

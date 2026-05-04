@@ -140,6 +140,44 @@ describe('WebScrapeTool content extraction', () => {
         expect(result.stats.headingsCaptured).toBe(1);
     });
 
+    test('uses direct artifact preview lookup instead of browser auth for internal sandbox urls', async () => {
+        const artifactId = '3ee64601-2cb4-43e1-b56b-973bc2856419';
+        const fetchTool = {
+            normalizeUrl: jest.fn((url) => `http://localhost:3000${url}`),
+            execute: jest.fn().mockResolvedValue({
+                success: true,
+                data: {
+                    url: `http://localhost:3000/api/artifacts/${artifactId}/sandbox`,
+                    body: '<!doctype html><html><head><title>Star Garden</title></head><body><main><h1>Playable Game</h1><p>Collect stars.</p></main></body></html>',
+                },
+            }),
+        };
+        const tool = new WebScrapeTool();
+        const tracker = {
+            recordRead: jest.fn(),
+        };
+
+        const result = await tool.handler({
+            url: `/api/artifacts/${artifactId}/sandbox`,
+            browser: true,
+            captureScreenshot: true,
+        }, {
+            tools: {
+                get: jest.fn().mockReturnValue(fetchTool),
+            },
+        }, tracker);
+
+        expect(fetchTool.execute).toHaveBeenCalledWith({
+            url: `/api/artifacts/${artifactId}/sandbox`,
+            timeout: 30000,
+            cache: false,
+        }, expect.any(Object));
+        expect(browsePage).not.toHaveBeenCalled();
+        expect(result.title).toBe('Star Garden');
+        expect(result.content).toContain('Playable Game Collect stars.');
+        expect(result.method).toBe('internal-artifact-preview');
+    });
+
     test('normalizes array selector params before execute validation', async () => {
         browsePage.mockResolvedValue({
             engine: 'playwright',

@@ -34,15 +34,90 @@ function normalizeUsageMetadata(usage = {}) {
         return null;
     }
 
-    const promptPaths = ['promptTokens', 'prompt_tokens', 'inputTokens', 'input_tokens'];
-    const completionPaths = ['completionTokens', 'completion_tokens', 'outputTokens', 'output_tokens'];
-    const totalPaths = ['totalTokens', 'total_tokens', 'tokensUsed', 'tokens_used'];
+    const promptPaths = [
+        'promptTokens',
+        'prompt_tokens',
+        'inputTokens',
+        'input_tokens',
+        'input',
+        'prompt',
+        'prompt_eval_count',
+        'tokens.input',
+        'tokens.prompt',
+        'usage.promptTokens',
+        'usage.prompt_tokens',
+        'usage.inputTokens',
+        'usage.input_tokens',
+        'usage_metadata.prompt_tokens',
+        'usage_metadata.input_tokens',
+        'usageMetadata.promptTokens',
+        'usageMetadata.inputTokens',
+        'tokenUsage.promptTokens',
+        'tokenUsage.inputTokens',
+        'token_usage.prompt_tokens',
+        'token_usage.input_tokens',
+        'total_token_usage.prompt_tokens',
+        'total_token_usage.input_tokens',
+        'totalTokenUsage.promptTokens',
+        'totalTokenUsage.inputTokens',
+    ];
+    const completionPaths = [
+        'completionTokens',
+        'completion_tokens',
+        'outputTokens',
+        'output_tokens',
+        'output',
+        'completion',
+        'eval_count',
+        'tokens.output',
+        'tokens.completion',
+        'usage.completionTokens',
+        'usage.completion_tokens',
+        'usage.outputTokens',
+        'usage.output_tokens',
+        'usage_metadata.completion_tokens',
+        'usage_metadata.output_tokens',
+        'usageMetadata.completionTokens',
+        'usageMetadata.outputTokens',
+        'tokenUsage.completionTokens',
+        'tokenUsage.outputTokens',
+        'token_usage.completion_tokens',
+        'token_usage.output_tokens',
+        'total_token_usage.completion_tokens',
+        'total_token_usage.output_tokens',
+        'totalTokenUsage.completionTokens',
+        'totalTokenUsage.outputTokens',
+    ];
+    const totalPaths = [
+        'totalTokens',
+        'total_tokens',
+        'tokensUsed',
+        'tokens_used',
+        'total',
+        'token_count',
+        'tokenCount',
+        'tokens.total',
+        'usage.totalTokens',
+        'usage.total_tokens',
+        'usage.tokensUsed',
+        'usage_metadata.total_tokens',
+        'usageMetadata.totalTokens',
+        'tokenUsage.totalTokens',
+        'token_usage.total_tokens',
+        'total_token_usage.total_tokens',
+        'totalTokenUsage.totalTokens',
+    ];
     const reasoningPaths = [
         'reasoningTokens',
         'reasoning_tokens',
         'outputTokenDetails.reasoningTokens',
         'output_tokens_details.reasoning_tokens',
         'completion_tokens_details.reasoning_tokens',
+        'usage.output_tokens_details.reasoning_tokens',
+        'usage.completion_tokens_details.reasoning_tokens',
+        'usageMetadata.outputTokenDetails.reasoningTokens',
+        'tokenUsage.reasoningTokens',
+        'total_token_usage.reasoning_tokens',
     ];
     const cachedPaths = [
         'cachedTokens',
@@ -50,8 +125,22 @@ function normalizeUsageMetadata(usage = {}) {
         'inputTokenDetails.cachedTokens',
         'input_tokens_details.cached_tokens',
         'prompt_tokens_details.cached_tokens',
+        'usage.input_tokens_details.cached_tokens',
+        'usage.prompt_tokens_details.cached_tokens',
+        'usageMetadata.inputTokenDetails.cachedTokens',
+        'tokenUsage.cachedTokens',
+        'total_token_usage.cached_tokens',
     ];
-    const modelCallPaths = ['modelCalls', 'model_calls'];
+    const modelCallPaths = [
+        'modelCalls',
+        'model_calls',
+        'usage.modelCalls',
+        'usage.model_calls',
+        'tokenUsage.modelCalls',
+        'token_usage.model_calls',
+        'total_token_usage.model_calls',
+        'totalTokenUsage.modelCalls',
+    ];
 
     const promptTokens = firstFiniteValue(usage, promptPaths);
     const completionTokens = firstFiniteValue(usage, completionPaths);

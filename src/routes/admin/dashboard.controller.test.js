@@ -24,6 +24,7 @@ const logsController = require('./logs.controller');
 describe('DashboardController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    logsController.logs = undefined;
   });
 
   test('includes execution trace steps in the admin timeline', () => {
@@ -228,6 +229,46 @@ describe('DashboardController', () => {
     });
   });
 
+  test('preserves gateway total-only usage without zeroing the counted tokens', () => {
+    const controller = new DashboardController(null);
+    const task = controller.recordRuntimeTaskStart({
+      sessionId: 'session-total-only',
+      input: 'Gateway reported only total token usage.',
+      model: 'gateway-model',
+      mode: 'chat',
+      transport: 'http',
+      metadata: {},
+    });
+
+    controller.recordRuntimeTaskComplete(task.id, {
+      responseId: 'resp-total-only',
+      output: 'Done.',
+      model: 'gateway-model',
+      duration: 500,
+      metadata: {
+        usage: {
+          total_token_usage: {
+            total_tokens: 77,
+          },
+        },
+      },
+    });
+
+    const completedTask = controller.taskStore.get(task.id);
+    expect(completedTask.result.tokenUsage).toEqual({
+      promptTokens: 0,
+      completionTokens: 77,
+      totalTokens: 77,
+      inferred: false,
+    });
+    expect(logsController.addLog).toHaveBeenCalledWith(expect.objectContaining({
+      tokens: 77,
+      promptTokens: 0,
+      completionTokens: 77,
+      tokenUsageInferred: false,
+    }));
+  });
+
   test('keeps explicit zero-token runs at zero for tool-only responses', () => {
     const controller = new DashboardController(null);
     const task = controller.recordRuntimeTaskStart({
@@ -259,7 +300,43 @@ describe('DashboardController', () => {
       promptTokens: 0,
       completionTokens: 0,
       totalTokens: 0,
+      modelCalls: 0,
       inferred: false,
+    });
+  });
+
+  test('builds token summary from persisted admin logs', () => {
+    logsController.logs = [
+      {
+        status: 'success',
+        tokens: 30,
+        promptTokens: 10,
+        completionTokens: 20,
+        tokenUsageInferred: false,
+      },
+      {
+        status: 'success',
+        tokens: 12,
+        promptTokens: 0,
+        completionTokens: 12,
+        tokenUsageInferred: true,
+      },
+      {
+        status: 'error',
+        tokens: 999,
+        promptTokens: 999,
+        completionTokens: 0,
+      },
+    ];
+    const controller = new DashboardController(null);
+
+    expect(controller.buildTokenSummary()).toEqual({
+      total: 42,
+      prompt: 10,
+      completion: 32,
+      inferredRequests: 1,
+      requests: 2,
+      source: 'logs',
     });
   });
 

@@ -1,5 +1,6 @@
 const {
     extractUsageMetadataFromTrace,
+    normalizeUsageMetadata,
 } = require('./token-usage');
 
 describe('token usage utilities', () => {
@@ -41,6 +42,35 @@ describe('token usage utilities', () => {
             completionTokens: 8,
             outputTokens: 8,
             totalTokens: 25,
+        });
+    });
+
+    test('normalizes gateway token usage wrapper dialects', () => {
+        expect(normalizeUsageMetadata({
+            total_token_usage: {
+                input_tokens: 21,
+                output_tokens: 13,
+                total_tokens: 34,
+            },
+        })).toEqual({
+            promptTokens: 21,
+            inputTokens: 21,
+            completionTokens: 13,
+            outputTokens: 13,
+            totalTokens: 34,
+        });
+    });
+
+    test('normalizes Ollama-style gateway eval counts', () => {
+        expect(normalizeUsageMetadata({
+            prompt_eval_count: 8,
+            eval_count: 5,
+        })).toEqual({
+            promptTokens: 8,
+            inputTokens: 8,
+            completionTokens: 5,
+            outputTokens: 5,
+            totalTokens: 13,
         });
     });
 });

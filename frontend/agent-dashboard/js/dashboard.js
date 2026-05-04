@@ -746,6 +746,7 @@ class Dashboard {
             document.getElementById('successRate').textContent = `${stats.successRate}%`;
             document.getElementById('activeSessions').textContent = stats.activeSessions;
             document.getElementById('skillsLearned').textContent = stats.skillsLearned;
+            this.renderOverviewTokenUsage(stats);
             this.renderRequestChart(stats.requestChart);
             
         } catch (error) {
@@ -2960,12 +2961,43 @@ class Dashboard {
             tokensTotal: Number(tokens.total || 0),
             tokensPrompt: Number(tokens.prompt || 0),
             tokensCompletion: Number(tokens.completion || 0),
+            tokensRequests: Number(tokens.requests || 0),
+            tokensInferredRequests: Number(tokens.inferredRequests || 0),
+            tokensSource: String(tokens.source || 'runtime'),
             requestChart: {
                 range: requestChart.range || '24h',
                 labels: Array.isArray(requestChart.labels) ? requestChart.labels : [],
                 values: Array.isArray(requestChart.values) ? requestChart.values : [],
             },
         };
+    }
+
+    renderOverviewTokenUsage(stats = {}) {
+        const total = Number(stats.tokensTotal || 0);
+        const prompt = Number(stats.tokensPrompt || 0);
+        const completion = Number(stats.tokensCompletion || 0);
+        const requests = Number(stats.tokensRequests || 0);
+        const inferred = Number(stats.tokensInferredRequests || 0);
+        const source = String(stats.tokensSource || 'runtime');
+
+        const totalElement = document.getElementById('overviewTokenTotal');
+        const promptElement = document.getElementById('overviewTokenPrompt');
+        const completionElement = document.getElementById('overviewTokenCompletion');
+        const metaElement = document.getElementById('overviewTokenMeta');
+        const sourceElement = document.getElementById('tokenUsageSource');
+
+        if (totalElement) totalElement.textContent = this.formatCompactNumber(total);
+        if (promptElement) promptElement.textContent = prompt.toLocaleString();
+        if (completionElement) completionElement.textContent = completion.toLocaleString();
+        if (sourceElement) {
+            sourceElement.textContent = source === 'logs' ? 'Persisted logs' : 'Runtime';
+            sourceElement.className = `status-badge ${inferred > 0 ? 'warning' : 'neutral'}`;
+        }
+        if (metaElement) {
+            metaElement.textContent = requests > 0
+                ? `${requests.toLocaleString()} completed requests${inferred > 0 ? `, ${inferred.toLocaleString()} estimated` : ', exact gateway usage'}`
+                : 'No completed requests yet.';
+        }
     }
 
     normalizeAdminWorkload(workload = {}) {

@@ -249,6 +249,48 @@ describe('openai-client response threading', () => {
         expect(response.metadata.tokenUsage).toEqual(response.metadata.usage);
     });
 
+    test('asks chat-completions streams to include usage for gateway token accounting', async () => {
+        process.env.OPENAI_API_MODE = 'chat';
+        jest.resetModules();
+        jest.doMock('./routes/admin/settings.controller', () => ({
+            getSettings: jest.fn(() => ({})),
+        }));
+        const OpenAI = require('openai');
+        async function* streamChunks() {
+            yield {
+                id: 'chatcmpl-stream-usage',
+                model: 'gpt-test',
+                choices: [{ delta: { content: 'ok' }, finish_reason: null }],
+            };
+            yield {
+                id: 'chatcmpl-stream-usage',
+                model: 'gpt-test',
+                choices: [{ delta: {}, finish_reason: 'stop' }],
+            };
+        }
+        OpenAI.mockImplementation(() => ({
+            responses: { create: jest.fn() },
+            chat: {
+                completions: {
+                    create: jest.fn(async () => streamChunks()),
+                },
+            },
+        }));
+
+        const { createResponse } = require('./openai-client');
+        await createResponse({
+            input: 'Stream with usage.',
+            stream: true,
+        });
+
+        const client = OpenAI.mock.results[0].value;
+        const [[requestParams]] = client.chat.completions.create.mock.calls;
+        expect(requestParams).toEqual(expect.objectContaining({
+            stream: true,
+            stream_options: { include_usage: true },
+        }));
+    });
+
     test('logs request summaries without dumping prompt content', async () => {
         const { createResponse } = require('./openai-client');
         const secretPrompt = `confidential podcast research ${'source excerpt '.repeat(300)}`;

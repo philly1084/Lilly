@@ -1208,6 +1208,54 @@ select.form-control,
     padding: var(--space-lg);
 }
 
+.token-overview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.token-overview-total {
+    padding: var(--space-md);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-tertiary);
+}
+
+.token-overview-value {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--accent-secondary);
+}
+
+.token-overview-label,
+.token-overview-meta {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.token-overview-split {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-sm);
+}
+
+.token-overview-split > div {
+    min-width: 0;
+    padding: var(--space-sm);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.token-overview-split strong {
+    display: block;
+    margin-top: var(--space-xs);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    overflow-wrap: anywhere;
+}
+
 /* Health Metrics */
 .health-metrics {
     display: flex;

@@ -3811,6 +3811,35 @@ function normalizeProviderWarmupError(error = null) {
     return error;
 }
 
+function normalizeProviderTransportError(error = null) {
+    if (!error) {
+        return error;
+    }
+
+    const message = String(error.message || '').trim();
+    const lowerMessage = message.toLowerCase();
+    if (!message) {
+        return error;
+    }
+
+    if (lowerMessage === 'connection error.' || lowerMessage === 'connection error') {
+        error.message = 'Model gateway connection failed while contacting the provider. Please retry the request.';
+        error.code = error.code || 'provider_connection_error';
+        error.statusCode = Number.isFinite(error.statusCode) ? error.statusCode : 502;
+        error.status = Number.isFinite(error.status) ? error.status : error.statusCode;
+        return error;
+    }
+
+    if (lowerMessage === 'request timed out.' || lowerMessage === 'request timed out' || /\brequest\b[\s\S]{0,24}\btimed out\b/.test(lowerMessage)) {
+        error.message = 'Model gateway request timed out while waiting for the provider. Please retry or use a smaller prompt.';
+        error.code = error.code || 'provider_gateway_timeout';
+        error.statusCode = Number.isFinite(error.statusCode) ? error.statusCode : 504;
+        error.status = Number.isFinite(error.status) ? error.status : error.statusCode;
+    }
+
+    return error;
+}
+
 async function retryProviderWarmupRequest(operation, {
     model = null,
     label = 'model request',
@@ -5333,6 +5362,7 @@ async function* normalizeChatCompletionsStream(stream, metadata = {}) {
     let usageMetadata = null;
     let sawCompletion = false;
     let sawToolCalls = false;
+    let terminalFinishReason = null;
 
     for await (const chunk of stream) {
         if (!responseId && chunk.id) {
@@ -5390,32 +5420,11 @@ async function* normalizeChatCompletionsStream(stream, metadata = {}) {
 
         if (isTerminalFinishReason(finishReason)) {
             sawCompletion = true;
-            const finalMetadata = usageMetadata
-                ? {
-                    ...metadata,
-                    usage: usageMetadata,
-                    tokenUsage: usageMetadata,
-                }
-                : metadata;
-            yield {
-                type: 'response.completed',
-                response: normalizeChatResponse(attachKimibuiltMetadata({
-                    id: responseId,
-                    created,
-                    model,
-                    choices: [{
-                        message: {
-                            role: 'assistant',
-                            content: outputText,
-                        },
-                        finish_reason: finishReason,
-                    }],
-                }, finalMetadata)),
-            };
+            terminalFinishReason = finishReason;
         }
     }
 
-    if (!sawCompletion && (outputText || sawToolCalls)) {
+    if (sawCompletion || outputText || sawToolCalls) {
         const finalMetadata = usageMetadata
             ? {
                 ...metadata,
@@ -5434,7 +5443,7 @@ async function* normalizeChatCompletionsStream(stream, metadata = {}) {
                         role: 'assistant',
                         content: outputText,
                     },
-                    finish_reason: sawToolCalls ? 'tool_calls' : 'stop',
+                    finish_reason: terminalFinishReason || (sawToolCalls ? 'tool_calls' : 'stop'),
                 }],
             }, finalMetadata)),
         };
@@ -5786,6 +5795,9 @@ async function createResponse({
             })),
             stream,
         };
+        if (stream) {
+            chatParams.stream_options = { include_usage: true };
+        }
         if (normalizedReasoningEffort && shouldSendReasoningEffort({
             model: params.model,
             api: 'chat',
@@ -5807,10 +5819,11 @@ async function createResponse({
         }
         return normalizeChatResponse(response);
     } catch (error) {
-        console.error('[OpenAI] Error creating response:', error.message);
-        console.error('[OpenAI] Error type:', error.type);
-        console.error('[OpenAI] Error code:', error.code);
-        throw error;
+        const normalizedError = normalizeProviderTransportError(error);
+        console.error('[OpenAI] Error creating response:', normalizedError.message);
+        console.error('[OpenAI] Error type:', normalizedError.type);
+        console.error('[OpenAI] Error code:', normalizedError.code);
+        throw normalizedError;
     }
 }
 
@@ -6360,6 +6373,7 @@ module.exports = {
         shouldUseResponsesAPI,
         isRetryableProviderWarmupError,
         normalizeProviderWarmupError,
+        normalizeProviderTransportError,
         retryProviderWarmupRequest,
         promptHasExplicitSshIntent,
         hasExplicitPodcastIntent,
