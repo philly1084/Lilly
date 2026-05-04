@@ -10775,8 +10775,16 @@ class ConversationOrchestrator extends EventEmitter {
     }
 
     isPlannerStepAllowed(step = {}, { toolPolicy = {}, toolEvents = [] } = {}) {
-        if (!step?.tool || !isJudgmentV2Enabled()) {
+        if (!step?.tool) {
             return Boolean(step?.tool);
+        }
+
+        if (step.tool === 'web-scrape' && hasBlankPlanUrlParam(step.params)) {
+            return false;
+        }
+
+        if (!isJudgmentV2Enabled()) {
+            return true;
         }
 
         const classification = toolPolicy?.classification || {};
@@ -10801,10 +10809,6 @@ class ConversationOrchestrator extends EventEmitter {
 
         if (step.tool === 'file-write'
             && (!String(step?.params?.path || '').trim() || !String(step?.params?.content || '').trim())) {
-            return false;
-        }
-
-        if (step.tool === 'web-scrape' && hasBlankPlanUrlParam(step.params)) {
             return false;
         }
 
@@ -10926,10 +10930,13 @@ class ConversationOrchestrator extends EventEmitter {
             }];
         }
 
-        if (toolPolicy.candidateToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID) && hasDocumentWorkflowIntentText(prompt)) {
+        if (toolPolicy.candidateToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)
+            && (hasDocumentWorkflowIntentText(prompt) || hasWebsiteBuildIntent(prompt))) {
             return [{
                 tool: DOCUMENT_WORKFLOW_TOOL_ID,
-                reason: 'Deterministic fallback for explicit document or slide generation.',
+                reason: hasWebsiteBuildIntent(prompt)
+                    ? 'Deterministic fallback for previewable sandbox website, app, or game generation.'
+                    : 'Deterministic fallback for explicit document or slide generation.',
                 params: buildDocumentWorkflowGenerateParams({
                     objective: prompt,
                     toolEvents,

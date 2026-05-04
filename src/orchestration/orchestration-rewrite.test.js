@@ -171,7 +171,27 @@ describe('orchestration rewrite policy', () => {
     ]));
   });
 
-  test('planner drops web-scrape QA steps with blank urls before execution', async () => {
+  test('rejects web-scrape steps without a url even when no schema contract is present', () => {
+    const invalid = validatePlanStep({
+      tool: 'web-scrape',
+      params: {
+        browser: true,
+        captureScreenshot: true,
+      },
+    }, {
+      candidateToolIds: ['web-scrape'],
+    });
+
+    expect(invalid.ok).toBe(false);
+    expect(invalid.rejections).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'missing_required_params',
+        missing: ['url'],
+      }),
+    ]));
+  });
+
+  test('planner replaces blank web-scrape QA for sandboxed games with a sandbox build fallback', async () => {
     const llmClient = {
       createResponse: jest.fn(),
       complete: jest.fn().mockResolvedValue(JSON.stringify({
@@ -225,7 +245,32 @@ describe('orchestration rewrite policy', () => {
       },
     });
 
-    expect(plan).toEqual([]);
+    expect(plan).toEqual([expect.objectContaining({
+      tool: 'document-workflow',
+      reason: expect.stringContaining('sandbox'),
+      params: expect.objectContaining({
+        action: 'generate-suite',
+        formats: ['html'],
+        buildMode: 'sandbox',
+        useSandbox: true,
+      }),
+    })]);
+  });
+
+  test('classifies sparse sandboxed game requests as sandbox website builds', () => {
+    const pipeline = inferAgentRolePipeline({
+      objective: 'lets make a quick sandboxed game for sophia. easy with mouse, keyboard, or phone in a webapp',
+      executionProfile: 'default',
+    });
+
+    expect(pipeline).toEqual(expect.objectContaining({
+      requiresSandbox: true,
+      strategy: 'research-design-sandbox-build',
+    }));
+    expect(pipeline.roles.map((role) => role.id)).toEqual(expect.arrayContaining([
+      ROLE_IDS.BUILDER,
+      ROLE_IDS.QA,
+    ]));
   });
 
   test('orchestrator policy exposes typed rewrite metadata without changing public APIs', () => withRewriteFlag('true', () => {

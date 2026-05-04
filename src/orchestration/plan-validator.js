@@ -25,6 +25,43 @@ function validateRequired(schema = {}, params = {}) {
   return missing;
 }
 
+function validateBuiltInRequiredParams(normalized = {}) {
+  const params = isPlainObject(normalized?.params) ? normalized.params : {};
+  const missing = [];
+
+  if (['web-fetch', 'web-scrape'].includes(normalized?.tool)) {
+    const url = params.url;
+    if (!Object.prototype.hasOwnProperty.call(params, 'url')
+      || url === undefined
+      || url === null
+      || (typeof url === 'string' && url.trim() === '')) {
+      missing.push('url');
+    }
+  }
+
+  if (normalized?.tool === 'document-workflow') {
+    const action = params.action;
+    if (!Object.prototype.hasOwnProperty.call(params, 'action')
+      || action === undefined
+      || action === null
+      || (typeof action === 'string' && action.trim() === '')) {
+      missing.push('action');
+    }
+  }
+
+  if (normalized?.tool === 'code-sandbox') {
+    const language = params.language;
+    if (!Object.prototype.hasOwnProperty.call(params, 'language')
+      || language === undefined
+      || language === null
+      || (typeof language === 'string' && language.trim() === '')) {
+      missing.push('language');
+    }
+  }
+
+  return missing;
+}
+
 function validateEnum(schema = {}, params = {}) {
   const invalid = [];
   const properties = isPlainObject(schema.properties) ? schema.properties : {};
@@ -93,11 +130,21 @@ function validatePlanStep(step = {}, {
     rejections.push({ code: 'confirmation_required', message: `Tool ${normalized.tool} requires confirmation.` });
   }
 
+  const builtInMissing = validateBuiltInRequiredParams(normalized);
+  if (builtInMissing.length > 0) {
+    rejections.push({
+      code: 'missing_required_params',
+      message: `Missing required params: ${builtInMissing.join(', ')}`,
+      missing: builtInMissing,
+    });
+  }
+
   const schema = contract?.inputSchema || tool?.inputSchema || tool?.schema || null;
   if (schema) {
     const missing = validateRequired(schema, normalized.params);
-    if (missing.length > 0) {
-      rejections.push({ code: 'missing_required_params', message: `Missing required params: ${missing.join(', ')}`, missing });
+    const schemaMissing = missing.filter((key) => !builtInMissing.includes(key));
+    if (schemaMissing.length > 0) {
+      rejections.push({ code: 'missing_required_params', message: `Missing required params: ${schemaMissing.join(', ')}`, missing: schemaMissing });
     }
 
     const invalidEnums = validateEnum(schema, normalized.params);
