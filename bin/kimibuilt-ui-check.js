@@ -108,7 +108,182 @@ function normalizeUrl(value = '') {
   if (!normalized) {
     return '';
   }
+  if (normalized.startsWith('/')) {
+    return `${resolveApiBaseUrl()}${normalized}`;
+  }
+
+  if (/^https?:\/\/api(?:\/|$)/i.test(normalized)) {
+    return normalized.replace(/^https?:\/\/api(?=\/|$)/i, resolveApiBaseUrl());
+  }
+
   return /^[a-z][a-z0-9+.-]*:/i.test(normalized) ? normalized : `https://${normalized}`;
+}
+
+function normalizeOrigin(value = '') {
+  try {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+      return '';
+    }
+    const withProtocol = /^[a-z][a-z0-9+.-]*:/i.test(normalized)
+      ? normalized
+      : `https://${normalized}`;
+    return new URL(withProtocol).origin;
+  } catch (_error) {
+    return '';
+  }
+}
+
+function resolveApiBaseUrl() {
+  return normalizeOrigin(
+    process.env.API_BASE_URL
+    || process.env.KIMIBUILT_API_BASE_URL
+    || process.env.PUBLIC_API_BASE_URL
+    || process.env.PUBLIC_URL
+    || process.env.PUBLIC_HOST
+    || '',
+  ) || 'http://localhost:3000';
+}
+
+function getAuthCandidateOrigins() {
+  const origins = [
+    resolveApiBaseUrl(),
+    normalizeOrigin(process.env.PUBLIC_URL || ''),
+    normalizeOrigin(process.env.PUBLIC_HOST || ''),
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://[::1]:3000',
+  ].filter(Boolean);
+
+  return new Set(origins);
+}
+
+function isInternalPreviewApiUrl(value = '') {
+  try {
+    const parsed = new URL(value);
+    const hostname = String(parsed.hostname || '').toLowerCase();
+    const localHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+    const previewApiPath = /^\/api\/(?:artifacts|sandbox-workspaces)\//i.test(parsed.pathname);
+    if (!previewApiPath) {
+      return false;
+    }
+    return localHost || getAuthCandidateOrigins().has(parsed.origin);
+  } catch (_error) {
+    return false;
+  }
+}
+
+function resolveUiCheckAuthToken() {
+  return normalizeText(
+    process.env.KIMIBUILT_UI_CHECK_TOKEN
+    || process.env.KIMIBUILT_UI_CHECK_AUTH_TOKEN
+    || process.env.KIMIBUILT_FRONTEND_API_KEY
+    || process.env.FRONTEND_API_KEY
+    || process.env.OPENCODE_GATEWAY_API_KEY
+    || '',
+  );
+}
+
+function buildAuthHeaders(url = '') {
+  const token = resolveUiCheckAuthToken();
+  if (!token || !isInternalPreviewApiUrl(url)) {
+    return {};
+  }
+
+  return {
+    authorization: `Bearer ${token}`,
+    'x-api-key': token,
+  };
+}
+
+function rewritePreviewUrlWithToken(url = '', previewToken = '') {
+  const token = normalizeText(previewToken);
+  if (!token) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (/\/api\/artifacts\/[^/]+\/sandbox\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/sandbox\/?$/i, `/sandbox-access/${encodeURIComponent(token)}`);
+      return parsed.toString();
+    }
+    if (/\/api\/artifacts\/[^/]+\/preview\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/preview\/?$/i, `/preview-access/${encodeURIComponent(token)}/`);
+      return parsed.toString();
+    }
+    if (/\/api\/sandbox-workspaces\/[^/]+\/sandbox\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/sandbox\/?$/i, `/sandbox-access/${encodeURIComponent(token)}`);
+      return parsed.toString();
+    }
+    if (/\/api\/sandbox-workspaces\/[^/]+\/preview\/?$/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/\/preview\/?$/i, `/preview-access/${encodeURIComponent(token)}/`);
+      return parsed.toString();
+    }
+  } catch (_error) {
+    return url;
+  }
+
+  return url;
+}
+
+async function resolveAuthenticatedPreviewUrl(url = '') {
+  const authHeaders = buildAuthHeaders(url);
+  if (Object.keys(authHeaders).length === 0) {
+    return { url, authHeaders: {} };
+  }
+
+  try {
+    const parsed = new URL(url);
+    const response = await fetch(`${parsed.origin}/api/auth/ws-token`, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+        ...authHeaders,
+      },
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      return { url, authHeaders };
+    }
+
+    const data = await response.json().catch(() => ({}));
+    const previewToken = normalizeText(data?.token || '');
+    return {
+      url: rewritePreviewUrlWithToken(url, previewToken),
+      authHeaders,
+    };
+  } catch (_error) {
+    return { url, authHeaders };
+  }
+}
+
+function redactSensitiveUrl(value = '') {
+  const normalized = String(value || '');
+  return normalized
+    .replace(/(\/(?:sandbox-access|preview-access)\/)[^/?#]+/gi, '$1[redacted]')
+    .replace(/([?&](?:access_token|api_key|token)=)[^&#]+/gi, '$1[redacted]');
+}
+
+function isAuthWallMetrics(metrics = {}) {
+  const text = normalizeText([
+    metrics.title || '',
+    metrics.bodyTextPreview || '',
+    ...(Array.isArray(metrics.headings) ? metrics.headings : []),
+  ].join(' '));
+
+  return /\bAuthentication required\b/i.test(text) && /\bmissing_token\b/i.test(text);
+}
+
+function hasCorsConsoleError(consoleMessages = []) {
+  return consoleMessages.some((message) => /cors|cross-origin/i.test(String(message?.text || '')));
+}
+
+function redactConsoleMessages(consoleMessages = []) {
+  return consoleMessages.slice(0, 20).map((message) => ({
+    ...message,
+    text: redactSensitiveUrl(message.text || ''),
+  }));
 }
 
 async function fileExists(filePath = '') {
@@ -370,6 +545,8 @@ async function collectUiMetrics(page) {
         renderedHeight: Math.round(element.getBoundingClientRect().height),
       }));
 
+    const bodyText = normalize(document.body?.innerText || '');
+
     return {
       title: normalize(document.title),
       url: window.location.href,
@@ -381,7 +558,8 @@ async function collectUiMetrics(page) {
       scrollHeight,
       horizontalOverflow: scrollWidth > viewportWidth + 2,
       overflowingElements: overflowing,
-      bodyTextLength: normalize(document.body?.innerText || '').length,
+      bodyTextLength: bodyText.length,
+      bodyTextPreview: bodyText.slice(0, 500),
       headings: Array.from(document.querySelectorAll('h1, h2, h3'))
         .map((element) => normalize(element.innerText || element.textContent || ''))
         .filter(Boolean)
@@ -408,6 +586,8 @@ async function run() {
     process.exit(args.help ? 0 : 2);
   }
 
+  const target = await resolveAuthenticatedPreviewUrl(args.url);
+
   const { chromium, moduleName } = loadPlaywright();
   const executablePath = await resolveBrowserExecutable();
   if (!executablePath && moduleName === 'playwright-core') {
@@ -431,6 +611,7 @@ async function run() {
       const failedRequests = [];
       const context = await browser.newContext({
         ignoreHTTPSErrors: true,
+        ...(Object.keys(target.authHeaders || {}).length > 0 ? { extraHTTPHeaders: target.authHeaders } : {}),
         viewport: {
           width: viewport.width,
           height: viewport.height,
@@ -459,7 +640,7 @@ async function run() {
       });
 
       try {
-        await page.goto(args.url, {
+        await page.goto(target.url, {
           waitUntil: 'domcontentloaded',
           timeout: args.timeout,
         });
@@ -482,15 +663,23 @@ async function run() {
           fullPage: args.fullPage,
         });
 
+        const authWall = isAuthWallMetrics(metrics);
+        const corsErrors = hasCorsConsoleError(consoleMessages);
+
         checks.push({
           viewport,
-          ok: true,
+          ok: !authWall && !corsErrors,
           screenshotPath,
           metrics,
-          consoleMessages: consoleMessages.slice(0, 20),
+          consoleMessages: redactConsoleMessages(consoleMessages),
           pageErrors: pageErrors.slice(0, 20),
-          failedRequests: failedRequests.slice(0, 20),
+          failedRequests: failedRequests.slice(0, 20).map((request) => ({
+            ...request,
+            url: redactSensitiveUrl(request.url),
+          })),
           issues: [
+            ...(authWall ? ['auth-wall'] : []),
+            ...(corsErrors ? ['cors-errors'] : []),
             ...(metrics.horizontalOverflow ? ['horizontal-overflow'] : []),
             ...(metrics.bodyTextLength === 0 ? ['empty-body-text'] : []),
             ...(metrics.textContrast?.lowContrastCount > 0 ? ['low-contrast-text'] : []),
@@ -503,9 +692,12 @@ async function run() {
           viewport,
           ok: false,
           error: error.message,
-          consoleMessages: consoleMessages.slice(0, 20),
+          consoleMessages: redactConsoleMessages(consoleMessages),
           pageErrors: pageErrors.slice(0, 20),
-          failedRequests: failedRequests.slice(0, 20),
+          failedRequests: failedRequests.slice(0, 20).map((request) => ({
+            ...request,
+            url: redactSensitiveUrl(request.url),
+          })),
           issues: ['check-failed'],
         });
       } finally {
@@ -519,7 +711,9 @@ async function run() {
 
   const report = {
     tool: 'kimibuilt-ui-check',
-    url: args.url,
+    url: redactSensitiveUrl(target.url),
+    originalUrl: redactSensitiveUrl(args.url),
+    authenticated: Object.keys(target.authHeaders || {}).length > 0,
     generatedAt: new Date().toISOString(),
     playwrightModule: moduleName,
     browserExecutable: executablePath || '',
@@ -541,7 +735,18 @@ async function run() {
   console.log(`KIMIBUILT_UI_CHECK_RESULT=${JSON.stringify(report.summary)}`);
 }
 
-run().catch((error) => {
-  console.error(`[kimibuilt-ui-check] ${error.message}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  run().catch((error) => {
+    console.error(`[kimibuilt-ui-check] ${error.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  buildAuthHeaders,
+  hasCorsConsoleError,
+  isAuthWallMetrics,
+  normalizeUrl,
+  redactSensitiveUrl,
+  rewritePreviewUrlWithToken,
+};

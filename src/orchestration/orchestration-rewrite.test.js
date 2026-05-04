@@ -139,6 +139,95 @@ describe('orchestration rewrite policy', () => {
     expect(managedApp.rejected[0].rejections.map((rejection) => rejection.code)).toContain('unsupported_tool');
   });
 
+  test('treats whitespace-only required params as missing', () => {
+    const invalid = validatePlanStep({
+      tool: 'web-scrape',
+      params: {
+        url: '   ',
+        browser: true,
+        captureScreenshot: true,
+      },
+    }, {
+      candidateToolIds: ['web-scrape'],
+      contracts: {
+        'web-scrape': {
+          inputSchema: {
+            type: 'object',
+            required: ['url'],
+            properties: {
+              url: { type: 'string' },
+            },
+          },
+        },
+      },
+    });
+
+    expect(invalid.ok).toBe(false);
+    expect(invalid.rejections).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'missing_required_params',
+        missing: ['url'],
+      }),
+    ]));
+  });
+
+  test('planner drops web-scrape QA steps with blank urls before execution', async () => {
+    const llmClient = {
+      createResponse: jest.fn(),
+      complete: jest.fn().mockResolvedValue(JSON.stringify({
+        steps: [{
+          tool: 'web-scrape',
+          reason: 'Verify the generated sandbox preview renders.',
+          params: {
+            url: '   ',
+            browser: true,
+            captureScreenshot: true,
+          },
+        }],
+      })),
+    };
+    const orchestrator = new ConversationOrchestrator({
+      llmClient,
+      toolManager: buildToolManager(['web-scrape', 'document-workflow']),
+    });
+    const objective = 'lets make a quick sandboxed game for sophia';
+    const toolPolicy = {
+      allowedToolIds: ['web-scrape', 'document-workflow'],
+      candidateToolIds: ['web-scrape', 'document-workflow'],
+      toolContracts: {
+        'web-scrape': {
+          inputSchema: {
+            type: 'object',
+            required: ['url'],
+            properties: {
+              url: { type: 'string' },
+            },
+          },
+        },
+        'document-workflow': {
+          inputSchema: {
+            type: 'object',
+            required: ['action'],
+            properties: {
+              action: { type: 'string' },
+            },
+          },
+        },
+      },
+    };
+
+    const plan = await orchestrator.planToolUse({
+      objective,
+      executionProfile: 'default',
+      toolPolicy,
+      toolContext: {
+        clientSurface: 'web-chat',
+      },
+    });
+
+    expect(plan).toEqual([]);
+  });
+
   test('orchestrator policy exposes typed rewrite metadata without changing public APIs', () => withRewriteFlag('true', () => {
     const orchestrator = new ConversationOrchestrator({});
     const toolManager = buildToolManager(['managed-app', 'agent-workload', 'agent-delegate', 'remote-command']);

@@ -51,9 +51,11 @@ const {
     USER_GLOBAL_MEMORY_NAMESPACE,
 } = require('./session-scope');
 const {
+    createEstimatedUsageMetadata,
     createZeroUsageMetadata,
     extractResponseUsageMetadata,
     extractUsageMetadataFromTrace,
+    hasMeasuredTokenCounts,
 } = require('./utils/token-usage');
 const {
     hasExplicitPodcastIntent,
@@ -6098,6 +6100,15 @@ function findUnresolvedUrlTemplates(value, keyPath = [], found = []) {
     return found;
 }
 
+function hasBlankPlanUrlParam(params = {}) {
+    if (!params || typeof params !== 'object' || !Object.prototype.hasOwnProperty.call(params, 'url')) {
+        return true;
+    }
+    return typeof params.url === 'string'
+        ? params.url.trim() === ''
+        : params.url === undefined || params.url === null;
+}
+
 function toIsoTimestamp(value, fallback = null) {
     if (!value) {
         return fallback;
@@ -6808,13 +6819,22 @@ function appendModelResponseTrace(executionTrace = [], response = null, {
     startedAt = null,
     phase = 'final-response',
     toolEvents = [],
+    inputText = '',
 } = {}) {
     if (!Array.isArray(executionTrace) || !response) {
         return;
     }
 
     const endedAt = new Date().toISOString();
-    const usage = extractResponseUsageMetadata(response);
+    const outputText = extractResponseText(response);
+    const providerUsage = extractResponseUsageMetadata(response);
+    const usage = hasMeasuredTokenCounts(providerUsage)
+        ? providerUsage
+        : createEstimatedUsageMetadata({
+            input: inputText,
+            output: outputText,
+            modelCalls: providerUsage?.modelCalls || 1,
+        }) || providerUsage;
     const imageDiagnostics = extractImageDiagnosticsFromToolEvents(toolEvents);
     executionTrace.push(createExecutionTraceEntry({
         type: 'model_call',
@@ -6824,7 +6844,7 @@ function appendModelResponseTrace(executionTrace = [], response = null, {
         details: {
             phase,
             responseId: response.id || null,
-            outputPreview: truncateText(extractResponseText(response), 200),
+            outputPreview: truncateText(outputText, 200),
             ...(imageDiagnostics ? { diagnostics: imageDiagnostics.diagnostics } : {}),
             ...(imageDiagnostics ? { diagnosticSummary: imageDiagnostics.summary } : {}),
             ...(imageDiagnostics ? { diagnosticSourceTool: imageDiagnostics.toolId } : {}),
@@ -7687,6 +7707,39 @@ function normalizeModelResponseShape(response = null) {
         metadata: {
             ...(response?.metadata && typeof response.metadata === 'object' ? response.metadata : {}),
             ...(normalized.metadata || {}),
+        },
+    };
+}
+
+function attachEstimatedUsageMetadata(response = null, inputText = '') {
+    if (!response || typeof response !== 'object') {
+        return response;
+    }
+
+    const existingUsage = extractResponseUsageMetadata(response);
+    if (hasMeasuredTokenCounts(existingUsage)) {
+        return response;
+    }
+
+    const estimatedUsage = createEstimatedUsageMetadata({
+        input: inputText,
+        output: extractResponseText(response),
+        modelCalls: existingUsage?.modelCalls || 1,
+    });
+    if (!estimatedUsage) {
+        return response;
+    }
+
+    const existingMetadata = response.metadata && typeof response.metadata === 'object'
+        ? response.metadata
+        : {};
+    return {
+        ...response,
+        metadata: {
+            ...existingMetadata,
+            ...(existingUsage ? { providerUsage: existingUsage } : {}),
+            usage: estimatedUsage,
+            tokenUsage: estimatedUsage,
         },
     };
 }
@@ -10751,6 +10804,10 @@ class ConversationOrchestrator extends EventEmitter {
             return false;
         }
 
+        if (step.tool === 'web-scrape' && hasBlankPlanUrlParam(step.params)) {
+            return false;
+        }
+
         if (step.tool === 'agent-delegate'
             && (!Array.isArray(step?.params?.tasks) || step.params.tasks.length === 0)) {
             return false;
@@ -11121,7 +11178,7 @@ class ConversationOrchestrator extends EventEmitter {
             'For sandbox website/dashboard/front-end/game artifacts, require the builder to follow the Impressive Frontend Websites and Sandbox Vite Games standards: request-matched visual direction, relevant imagery/assets, real controls and states, game loop or workflow state machine when needed, pause/restart/reset, stable responsive layout, readable opened dropdown/menu/popover/dialog states, and a refinement pass after initial screenshot for non-trivial pages.',
             'Use `document-workflow generate-suite` for requested output packages such as PDF + PPTX + HTML, or when web-chat needs an HTML preview companion for PDF/PPTX/XLSX deliverables.',
             'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus previewable files. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
-            'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
+            'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
             'When the user wants a research-backed deliverable, prefer `web-search` and `web-fetch` first, then use `web-scrape` only when a page needs rendered or structured extraction before `document-workflow` with grounded `sources` derived from the verified tool results.',
             'Set `document-workflow.params.includeContent` to `true` only when a later step needs the full textual body for `file-write`; otherwise prefer the stored document download URL.',
             'Use `deep-research-presentation` when the user wants a research-backed deck handled as one ordered plan -> research -> images -> presentation workflow.',
@@ -12561,12 +12618,15 @@ class ConversationOrchestrator extends EventEmitter {
             try {
                 if (typeof this.llmClient?.complete === 'function') {
                     const completion = await this.llmClient.complete(prompt, attemptOptions);
-                    const normalizedResponse = completion && typeof completion === 'object' && !Array.isArray(completion)
-                        ? normalizeModelResponseShape(completion)
-                        : buildSyntheticResponse({
+                    const normalizedResponse = attachEstimatedUsageMetadata(
+                        completion && typeof completion === 'object' && !Array.isArray(completion)
+                            ? normalizeModelResponseShape(completion)
+                            : buildSyntheticResponse({
                             output: String(completion || ''),
                             model: attemptOptions.model || null,
-                        });
+                            }),
+                        prompt,
+                    );
 
                     if (typeof onModelResponse === 'function') {
                         onModelResponse(normalizedResponse);
@@ -12606,10 +12666,16 @@ class ConversationOrchestrator extends EventEmitter {
         } = params || {};
         let response;
         if (typeof this.llmClient?.createResponse === 'function') {
-            response = normalizeModelResponseShape(await this.llmClient.createResponse(requestParams));
+            response = attachEstimatedUsageMetadata(
+                normalizeModelResponseShape(await this.llmClient.createResponse(requestParams)),
+                requestParams.input,
+            );
         } else {
             console.warn('[ConversationOrchestrator] llmClient.createResponse is unavailable; falling back to openai-client.createResponse');
-            response = normalizeModelResponseShape(await createResponse(requestParams));
+            response = attachEstimatedUsageMetadata(
+                normalizeModelResponseShape(await createResponse(requestParams)),
+                requestParams.input,
+            );
         }
 
         if (typeof onModelResponse === 'function') {

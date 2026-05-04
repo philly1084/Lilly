@@ -185,6 +185,12 @@ function normalizeUsageMetadata(usage = {}) {
     if (modelCalls !== null) {
         normalized.modelCalls = modelCalls;
     }
+    if (usage.estimated === true) {
+        normalized.estimated = true;
+    }
+    if (typeof usage.source === 'string' && usage.source.trim()) {
+        normalized.source = usage.source.trim();
+    }
 
     return normalized;
 }
@@ -208,6 +214,8 @@ function mergeUsageMetadata(...entries) {
     let hasReasoning = false;
     let hasCached = false;
     let hasModelCalls = false;
+    let hasEstimated = false;
+    const sources = new Set();
 
     for (const entry of flattened) {
         const normalized = normalizeUsageMetadata(entry);
@@ -243,6 +251,12 @@ function mergeUsageMetadata(...entries) {
             totals.modelCalls += normalized.modelCalls;
             hasModelCalls = true;
         }
+        if (normalized.estimated === true) {
+            hasEstimated = true;
+        }
+        if (typeof normalized.source === 'string' && normalized.source.trim()) {
+            sources.add(normalized.source.trim());
+        }
     }
 
     if (!hasUsage) {
@@ -272,6 +286,12 @@ function mergeUsageMetadata(...entries) {
     if (hasModelCalls) {
         normalizedTotals.modelCalls = totals.modelCalls;
     }
+    if (hasEstimated) {
+        normalizedTotals.estimated = true;
+    }
+    if (sources.size > 0) {
+        normalizedTotals.source = Array.from(sources).join('+');
+    }
 
     return normalizedTotals;
 }
@@ -289,6 +309,55 @@ function withDefaultModelCallCount(usage = {}, defaultModelCalls = 1) {
     return {
         ...normalized,
         modelCalls: defaultModelCalls,
+    };
+}
+
+function hasMeasuredTokenCounts(usage = {}) {
+    const normalized = normalizeUsageMetadata(usage);
+    if (!normalized) {
+        return false;
+    }
+
+    return [
+        normalized.promptTokens,
+        normalized.completionTokens,
+        normalized.totalTokens,
+        normalized.inputTokens,
+        normalized.outputTokens,
+    ].some((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+}
+
+function estimateTokensFromText(value = '') {
+    const text = String(value || '').trim();
+    if (!text) {
+        return 0;
+    }
+
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const chars = text.length;
+    return Math.max(1, Math.ceil(Math.max(chars / 4, words * 1.33)));
+}
+
+function createEstimatedUsageMetadata({
+    input = '',
+    output = '',
+    modelCalls = 1,
+} = {}) {
+    const promptTokens = estimateTokensFromText(input);
+    const completionTokens = estimateTokensFromText(output);
+    if (promptTokens <= 0 && completionTokens <= 0) {
+        return null;
+    }
+
+    return {
+        promptTokens,
+        inputTokens: promptTokens,
+        completionTokens,
+        outputTokens: completionTokens,
+        totalTokens: promptTokens + completionTokens,
+        modelCalls,
+        estimated: true,
+        source: 'local-estimate',
     };
 }
 
@@ -347,8 +416,10 @@ function createZeroUsageMetadata() {
 
 module.exports = {
     createZeroUsageMetadata,
+    createEstimatedUsageMetadata,
     extractResponseUsageMetadata,
     extractUsageMetadataFromTrace,
+    hasMeasuredTokenCounts,
     mergeUsageMetadata,
     normalizeUsageMetadata,
 };

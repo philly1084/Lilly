@@ -1,5 +1,7 @@
 const {
+    createEstimatedUsageMetadata,
     extractUsageMetadataFromTrace,
+    hasMeasuredTokenCounts,
     normalizeUsageMetadata,
 } = require('./token-usage');
 
@@ -72,5 +74,34 @@ describe('token usage utilities', () => {
             outputTokens: 5,
             totalTokens: 13,
         });
+    });
+
+    test('distinguishes zeroed provider usage from measured token counts', () => {
+        const zeroed = normalizeUsageMetadata({
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        });
+
+        expect(hasMeasuredTokenCounts(zeroed)).toBe(false);
+        expect(hasMeasuredTokenCounts({
+            prompt_tokens: 1,
+            completion_tokens: 0,
+            total_tokens: 1,
+        })).toBe(true);
+    });
+
+    test('creates marked local usage estimates when gateway usage is missing or zeroed', () => {
+        expect(createEstimatedUsageMetadata({
+            input: 'Explain the sandbox preview verification result.',
+            output: 'The preview rendered.',
+        })).toEqual(expect.objectContaining({
+            promptTokens: expect.any(Number),
+            completionTokens: expect.any(Number),
+            totalTokens: expect.any(Number),
+            modelCalls: 1,
+            estimated: true,
+            source: 'local-estimate',
+        }));
     });
 });

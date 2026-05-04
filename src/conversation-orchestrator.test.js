@@ -6150,6 +6150,65 @@ describe('ConversationOrchestrator', () => {
         expect(result.trace.finalizationMode).toBe('direct-response');
     });
 
+    test('estimates trace usage when gateway returns explicit zero token counts for a real model call', async () => {
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue({
+                id: 'chatcmpl-zero-usage',
+                model: 'gpt-5.5',
+                choices: [{
+                    message: {
+                        role: 'assistant',
+                        content: 'The sandbox game is ready to play.',
+                    },
+                    finish_reason: 'stop',
+                }],
+                usage: {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                },
+            }),
+            complete: jest.fn(),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({ id: 'session-zero-usage', metadata: {} }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue({ contextMessages: [], trace: null }),
+            rememberResponse: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: { getTool: jest.fn(() => null) },
+            sessionStore,
+            memoryService,
+        });
+
+        const result = await orchestrator.executeConversation({
+            input: 'lets make a quick sandboxed game for sophia',
+            sessionId: 'session-zero-usage',
+            stream: false,
+        });
+
+        const modelTrace = result.response.metadata.executionTrace.find((entry) => entry.type === 'model_call');
+        expect(modelTrace.details.responseId).toBe('chatcmpl-zero-usage');
+        expect(modelTrace.details.usage).toEqual(expect.objectContaining({
+            promptTokens: expect.any(Number),
+            completionTokens: expect.any(Number),
+            estimated: true,
+            source: 'local-estimate',
+        }));
+        expect(modelTrace.details.usage.totalTokens).toBeGreaterThan(0);
+        expect(result.response.metadata.usage).toEqual(expect.objectContaining({
+            totalTokens: expect.any(Number),
+            estimated: true,
+        }));
+    });
+
     test('judgment v2 records a post-round review entry after grounded search execution', async () => {
         config.config.runtime.judgmentV2Enabled = true;
 

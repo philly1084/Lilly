@@ -6432,18 +6432,25 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return null;
         }
 
-        const artifactId = image.artifactId || image.artifact_id || '';
+        const artifactId = image.artifactId || image.artifact_id || image.id || '';
         const fallbackDownloadPath = artifactId ? `/api/artifacts/${encodeURIComponent(artifactId)}/download` : '';
         const rawDownloadUrl = image.downloadPath
             || image.downloadUrl
+            || image.download_url
             || image.absoluteUrl
+            || image.inlinePath
+            || image.inlineUrl
+            || image.absoluteInlineUrl
             || fallbackDownloadPath
             || '';
         const rawInlineUrl = image.inlinePath
             || image.inlineUrl
             || image.absoluteInlineUrl
+            || image.thumbnailUrl
+            || image.thumbUrl
             || image.downloadPath
             || image.downloadUrl
+            || image.download_url
             || image.absoluteUrl
             || fallbackDownloadPath
             || '';
@@ -6458,8 +6465,17 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 : `data:image/png;base64,${image.b64_json}`)
             : '';
         const directUrl = this.buildArtifactUrl(
-            image.url || image.imageUrl || image.image_url || image.absoluteUrl || '',
-        ) || image.url || image.imageUrl || image.image_url || image.absoluteUrl || '';
+            image.url
+            || image.imageUrl
+            || image.image_url
+            || image.thumbnailUrl
+            || image.thumbUrl
+            || image.inlinePath
+            || image.inlineUrl
+            || image.absoluteInlineUrl
+            || image.absoluteUrl
+            || '',
+        ) || image.url || image.imageUrl || image.image_url || image.thumbnailUrl || image.thumbUrl || image.absoluteUrl || '';
         let imageUrl = inlineUrl || base64Image || directUrl;
 
         if (!imageUrl) {
@@ -6478,6 +6494,67 @@ curl -fsSIL --max-time 20 "https://$host"`;
             filename: image.filename || '',
             source: 'generated',
         };
+    }
+
+    buildGeneratedImageArtifactSelectionMessage(parentMessageId, artifacts = [], options = {}) {
+        const normalizedParentId = String(parentMessageId || '').trim();
+        const files = (Array.isArray(artifacts) ? artifacts : [])
+            .slice(0, 4)
+            .map((artifact) => this.normalizeGeneratedImage(
+                artifact,
+                options.prompt || '',
+                options.model || '',
+            ))
+            .filter(Boolean);
+
+        if (!normalizedParentId || files.length < 2) {
+            return null;
+        }
+
+        const prompt = String(options.prompt || '').trim();
+        return {
+            id: `${normalizedParentId}-image-artifacts`,
+            parentMessageId: normalizedParentId,
+            role: 'assistant',
+            type: 'image-selection',
+            content: `Generated image options${prompt ? ` for "${prompt}"` : ''}`,
+            prompt,
+            model: options.model || '',
+            results: files,
+            sourceKind: 'generated',
+            artifacts: (Array.isArray(artifacts) ? artifacts : []).filter((artifact) => artifact?.id),
+            excludeFromTranscript: true,
+            timestamp: new Date().toISOString(),
+        };
+    }
+
+    appendGeneratedImageArtifactSelection(parentMessageId, artifacts = [], options = {}) {
+        const sessionId = String(options.sessionId || sessionManager.currentSessionId || '').trim();
+        if (!sessionId || !parentMessageId || !Array.isArray(artifacts) || artifacts.length < 2) {
+            return null;
+        }
+
+        const messages = sessionManager.getMessages(sessionId);
+        const alreadyHasImageSelection = messages.some((message) => (
+            message?.parentMessageId === parentMessageId
+            && message?.type === 'image-selection'
+            && message?.sourceKind !== 'artifact'
+        ));
+        if (alreadyHasImageSelection) {
+            return null;
+        }
+
+        const selectionMessage = this.buildGeneratedImageArtifactSelectionMessage(parentMessageId, artifacts, options);
+        if (!selectionMessage) {
+            return null;
+        }
+
+        const savedMessage = this.upsertSessionMessage(sessionId, selectionMessage);
+        if (savedMessage && this.isVisibleSession(sessionId)) {
+            this.renderOrReplaceMessage(savedMessage);
+            uiHelpers.scrollToBottom(false);
+        }
+        return savedMessage || selectionMessage;
     }
 
     getImageDiagnosticSummary(response) {
@@ -7492,6 +7569,25 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
         if (Array.isArray(chunk.toolEvents) && chunk.toolEvents.length > 0) {
             this.appendToolSelectionMessages(parentMessageId, chunk.toolEvents, { sessionId });
+        }
+
+        if (Array.isArray(chunk.artifacts) && chunk.artifacts.length > 1) {
+            const prompt = String(
+                persistedAssistantMessage?.prompt
+                || persistedAssistantMessage?.metadata?.prompt
+                || '',
+            ).trim();
+            const model = String(
+                persistedAssistantMessage?.model
+                || persistedAssistantMessage?.metadata?.model
+                || chunk.assistantMetadata?.model
+                || '',
+            ).trim();
+            this.appendGeneratedImageArtifactSelection(parentMessageId, chunk.artifacts, {
+                sessionId,
+                prompt,
+                model,
+            });
         }
 
         if (this.hasSurveyToolEvent(chunk.toolEvents) && !hasVisibleSurveyMessage) {

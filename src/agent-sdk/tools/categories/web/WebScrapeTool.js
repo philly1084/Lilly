@@ -159,6 +159,12 @@ class WebScrapeTool extends ToolBase {
   }
 
   validateInputs(params) {
+    if (params && typeof params === 'object' && Object.prototype.hasOwnProperty.call(params, 'url')) {
+      params.url = typeof params.url === 'string' ? params.url.trim() : params.url;
+      if (params.url === '') {
+        delete params.url;
+      }
+    }
     this.normalizeSelectorParams(params);
     super.validateInputs(params);
   }

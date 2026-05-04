@@ -16,7 +16,9 @@ function normalizePlanStep(step = {}) {
 function validateRequired(schema = {}, params = {}) {
   const missing = [];
   for (const key of Array.isArray(schema.required) ? schema.required : []) {
-    if (!Object.prototype.hasOwnProperty.call(params, key) || params[key] === undefined || params[key] === null || params[key] === '') {
+    const value = params[key];
+    const isBlankString = typeof value === 'string' && value.trim() === '';
+    if (!Object.prototype.hasOwnProperty.call(params, key) || value === undefined || value === null || isBlankString) {
       missing.push(key);
     }
   }

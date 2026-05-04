@@ -231,6 +231,20 @@ describe('WebScrapeTool content extraction', () => {
         expect(result.data.data.headline).toBe('Breaking News');
     });
 
+    test('rejects blank browser QA urls before invoking the browser runtime', async () => {
+        const tool = new WebScrapeTool();
+
+        const result = await tool.execute({
+            url: '   ',
+            browser: true,
+            captureScreenshot: true,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Missing required parameter: url');
+        expect(browsePage).not.toHaveBeenCalled();
+    });
+
     test('normalizes string-valued selector maps before static extraction', async () => {
         const tool = new WebScrapeTool();
         const fetchTool = {
