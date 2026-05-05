@@ -4,6 +4,48 @@ const { getRuntimeSupport } = require('./runtime-support');
 
 const TOOL_DOCS_DIR = path.join(__dirname);
 
+function buildHttpsAvailabilityProbeCommand() {
+  return [
+    'kimibuilt_insecure_tls=false',
+    'if strict_tls_output=$(curl -fsSIL --max-time 20 "https://$host" 2>&1); then',
+    '  printf "%s\\n" "$strict_tls_output"',
+    '  echo "__KIMIBUILT_TLS_TRUSTED__=true"',
+    '  echo "__KIMIBUILT_PUBLIC_HTTPS__=true"',
+    'else',
+    '  strict_tls_status=$?',
+    '  echo "__KIMIBUILT_TLS_TRUSTED__=false"',
+    '  echo "__KIMIBUILT_STRICT_HTTPS_EXIT__=${strict_tls_status}"',
+    '  echo "__KIMIBUILT_STRICT_HTTPS_ERROR__=$(printf "%s" "$strict_tls_output" | tr "\\n" " " | sed "s/[[:space:]][[:space:]]*/ /g" | cut -c1-500)"',
+    '  if [ "$strict_tls_status" -ne 60 ]; then exit "$strict_tls_status"; fi',
+    '  echo "Strict HTTPS certificate verification failed; retrying with --insecure to verify route and UI reachability only."',
+    '  if insecure_tls_output=$(curl -k -fsSIL --max-time 20 "https://$host" 2>&1); then',
+    '    printf "%s\\n" "$insecure_tls_output"',
+    '    echo "__KIMIBUILT_PUBLIC_HTTPS__=insecure"',
+    '    kimibuilt_insecure_tls=true',
+    '  else',
+    '    insecure_tls_status=$?',
+    '    echo "__KIMIBUILT_INSECURE_HTTPS_EXIT__=${insecure_tls_status}"',
+    '    echo "__KIMIBUILT_INSECURE_HTTPS_ERROR__=$(printf "%s" "$insecure_tls_output" | tr "\\n" " " | sed "s/[[:space:]][[:space:]]*/ /g" | cut -c1-500)"',
+    '    exit "$insecure_tls_status"',
+    '  fi',
+    'fi',
+    'body_file="$(mktemp)"',
+    'trap \'rm -f "$body_file"\' EXIT',
+    'body_curl_args="-fsSL"',
+    'if [ "$kimibuilt_insecure_tls" = "true" ]; then body_curl_args="-k -fsSL"; fi',
+    'if body_output=$(curl $body_curl_args --max-time 20 "https://$host" -o "$body_file" 2>&1); then',
+    '  body_bytes=$(wc -c < "$body_file" | tr -d " ")',
+    '  echo "__KIMIBUILT_UI_BODY_BYTES__=${body_bytes}"',
+    '  echo "__KIMIBUILT_UI_BODY_PREVIEW__=$(head -c 300 "$body_file" | tr "\\n" " " | sed "s/[[:space:]][[:space:]]*/ /g")"',
+    '  test "${body_bytes:-0}" -gt 0',
+    'else',
+    '  body_status=$?',
+    '  echo "__KIMIBUILT_UI_BODY_ERROR__=$(printf "%s" "$body_output" | tr "\\n" " " | sed "s/[[:space:]][[:space:]]*/ /g" | cut -c1-500)"',
+    '  exit "$body_status"',
+    'fi',
+  ].join('\n');
+}
+
 const REMOTE_CLI_COMMAND_CATALOG = Object.freeze([
   {
     id: 'baseline',
@@ -136,14 +178,14 @@ const REMOTE_CLI_COMMAND_CATALOG = Object.freeze([
     label: 'HTTPS verify',
     profile: 'inspect',
     description: 'Verify DNS and public HTTPS for the deployed domain.',
-    command: 'host=demoserver2.buzz; getent ahosts "$host" || true; curl -fsSIL --max-time 20 "https://$host"',
+    command: `host=demoserver2.buzz; getent ahosts "$host" || true; ${buildHttpsAvailabilityProbeCommand()}`,
   },
   {
     id: 'deploy-verify',
     label: 'Deploy verify',
     profile: 'deploy',
     description: 'Verify rollout, service, ingress, TLS certificate objects, DNS, and public HTTPS for a deployed app.',
-    command: 'set -e; ns="${NAMESPACE:-kimibuilt}"; app="${DEPLOYMENT:-backend}"; host="${PUBLIC_HOST:-demoserver2.buzz}"; export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; kubectl rollout status deployment/"$app" -n "$ns" --timeout=180s; kubectl wait --for=condition=available deployment/"$app" -n "$ns" --timeout=180s; kubectl get deploy,svc,ingress,certificate -n "$ns" -o wide || true; getent ahosts "$host" || true; curl -fsSIL --max-time 20 "https://$host"',
+    command: `set -e; ns="\${NAMESPACE:-kimibuilt}"; app="\${DEPLOYMENT:-backend}"; host="\${PUBLIC_HOST:-demoserver2.buzz}"; export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; kubectl rollout status deployment/"$app" -n "$ns" --timeout=180s; kubectl wait --for=condition=available deployment/"$app" -n "$ns" --timeout=180s; kubectl get deploy,svc,ingress,certificate -n "$ns" -o wide || true; getent ahosts "$host" || true; ${buildHttpsAvailabilityProbeCommand()}`,
   },
   {
     id: 'ui-visual-check',

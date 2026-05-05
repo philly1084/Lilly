@@ -103,6 +103,30 @@ describe('RemoteWorkbenchTool', () => {
     expect(params.command).toContain('kubectl rollout status deployment/"$app"');
   });
 
+  test('deploy-verify retries self-signed TLS with an explicit availability probe', async () => {
+    const { tool, remoteCommand } = buildTool();
+
+    await tool.handler({
+      action: 'deploy-verify',
+      namespace: 'web',
+      deployment: 'game',
+      publicHost: 'game.example.com',
+    }, {}, { recordExecution: jest.fn() });
+
+    const params = remoteCommand.handler.mock.calls[0][0];
+    expect(params.profile).toBe('deploy');
+    expect(params.environment).toEqual(expect.objectContaining({
+      NAMESPACE: 'web',
+      DEPLOYMENT: 'game',
+      PUBLIC_HOST: 'game.example.com',
+    }));
+    expect(params.command).toContain('set -e');
+    expect(params.command).toContain('curl -fsSIL --max-time 20 "https://$host"');
+    expect(params.command).toContain('curl -k -fsSIL --max-time 20 "https://$host"');
+    expect(params.command).toContain('__KIMIBUILT_TLS_TRUSTED__=false');
+    expect(params.command).toContain('__KIMIBUILT_UI_BODY_BYTES__');
+  });
+
   test('maps ui-visual-check to the Playwright helper with public URL environment', async () => {
     const { tool, remoteCommand } = buildTool();
 

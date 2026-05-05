@@ -4,7 +4,7 @@ const settingsController = require('./routes/admin/settings.controller');
 const { getSessionControlState } = require('./runtime-control-state');
 const { resolvePreferredWritableFile } = require('./runtime-state-paths');
 
-const REMOTE_TOOL_IDS = new Set(['k3s-deploy', 'remote-command', 'ssh-execute']);
+const REMOTE_TOOL_IDS = new Set(['k3s-deploy', 'remote-command', 'ssh-execute', 'remote-workbench']);
 const STORAGE_PATH = resolvePreferredWritableFile(
     path.join(process.cwd(), 'data', 'cluster-state-registry.json'),
     ['cluster-state-registry.json'],
@@ -1052,15 +1052,17 @@ class ClusterStateRegistry {
     }) {
         const deployDefaults = this.getEffectiveDeployDefaults();
         const command = normalizeText(params.command);
-        const workflowAction = normalizeLowerText(params.workflowAction || params.workflow_action);
+        const workflowAction = normalizeLowerText(params.workflowAction || params.workflow_action || (toolId === 'remote-workbench' ? params.action : ''));
         const rawNamespace = normalizeText(params.namespace || extractNamespaceFromCommand(command));
         const rawDeployment = normalizeText(params.deployment || extractDeploymentFromCommand(command));
         const rawPublicDomain = normalizeText(
             params.publicDomain
+            || params.publicHost
             || extractExpectedHostFromCommand(command)
             || extractDomains(`${objective}\n${command}\n${result.stdout || ''}\n${result.stderr || ''}`)[0]
         );
         const hasDeploymentContext = workflowAction === 'verify-deployment'
+            || workflowAction === 'deploy-verify'
             || workflowAction === 'inspect-remote-state'
             || Boolean(rawNamespace)
             || Boolean(rawDeployment)
@@ -1081,7 +1083,7 @@ class ClusterStateRegistry {
                 result.stderr,
             ]);
             targetEntry.lastStatus = success ? 'succeeded' : 'failed';
-            if (workflowAction === 'verify-deployment' || workflowAction === 'inspect-remote-state') {
+            if (workflowAction === 'verify-deployment' || workflowAction === 'deploy-verify' || workflowAction === 'inspect-remote-state') {
                 targetEntry.lastInspectionAt = timestamp;
             }
         }
@@ -1147,21 +1149,26 @@ class ClusterStateRegistry {
             entry.lastStatus = 'succeeded';
             entry.lastSuccessAt = timestamp;
             entry.lastError = '';
+            const verificationOutput = `${result.stdout || ''}\n${result.stderr || ''}`;
+            const tlsExplicitlyUntrusted = /__KIMIBUILT_TLS_TRUSTED__=false/i.test(verificationOutput);
+            const publicHttpsTrusted = /__KIMIBUILT_PUBLIC_HTTPS__=true/i.test(verificationOutput);
 
             if (/kubectl rollout status/i.test(command) || /successfully rolled out/i.test(result.stdout || '')) {
                 entry.verification.rollout = true;
                 entry.verification.lastRolloutAt = timestamp;
             }
-            if (/kubectl get svc,ingress/i.test(command) || /--- ingress hosts ---|ingress\.networking\.k8s\.io/i.test(`${result.stdout || ''}\n${result.stderr || ''}`)) {
+            if (/kubectl get svc,ingress/i.test(command) || /--- ingress hosts ---|ingress\.networking\.k8s\.io/i.test(verificationOutput)) {
                 entry.verification.ingress = true;
             }
-            if (/tls_secret=|kubectl get secret/i.test(command) && !/No TLS secret/i.test(`${result.stdout || ''}\n${result.stderr || ''}`)) {
+            if (/tls_secret=|kubectl get secret/i.test(command) && !/No TLS secret/i.test(verificationOutput)) {
                 entry.verification.tls = true;
             }
-            if (/curl -fsSIL/i.test(command) && /HTTP\/\d(?:\.\d)?\s+2\d\d/i.test(`${result.stdout || ''}\n${result.stderr || ''}`)) {
+            if ((publicHttpsTrusted || /curl -fsSIL/i.test(command))
+                && !tlsExplicitlyUntrusted
+                && /HTTP\/\d(?:\.\d)?\s+2\d\d/i.test(verificationOutput)) {
                 entry.verification.https = true;
             }
-            if (workflowAction === 'verify-deployment') {
+            if (workflowAction === 'verify-deployment' || workflowAction === 'deploy-verify') {
                 entry.lastVerificationAt = timestamp;
                 entry.verification.lastVerifiedAt = timestamp;
             }

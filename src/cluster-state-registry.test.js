@@ -151,6 +151,57 @@ describe('ClusterStateRegistry', () => {
     }));
   });
 
+  test('does not mark HTTPS as trusted when verification only passed with insecure TLS', () => {
+    registry.recordToolEvents({
+      objective: 'Verify the game deployment after a self-signed certificate error.',
+      controlState: {
+        lastSshTarget: {
+          host: 'ubuntu-32gb-fsn1-2',
+          username: 'ubuntu',
+          port: 22,
+        },
+      },
+      toolEvents: [
+        {
+          toolCall: {
+            function: {
+              name: 'remote-workbench',
+              arguments: JSON.stringify({
+                action: 'deploy-verify',
+                namespace: 'web',
+                deployment: 'site',
+                publicHost: 'game.demoserver2.buzz',
+              }),
+            },
+          },
+          result: {
+            success: true,
+            toolId: 'remote-workbench',
+            timestamp: '2026-04-18T12:08:00.000Z',
+            data: {
+              stdout: [
+                'deployment "site" successfully rolled out',
+                'ingress.networking.k8s.io/site web game.demoserver2.buzz',
+                '__KIMIBUILT_TLS_TRUSTED__=false',
+                '__KIMIBUILT_PUBLIC_HTTPS__=insecure',
+                'HTTP/2 200',
+                '__KIMIBUILT_UI_BODY_BYTES__=4096',
+              ].join('\n'),
+            },
+          },
+          reason: 'Verify rollout, route, and UI body availability.',
+        },
+      ],
+    });
+
+    const deployments = registry.listDeployments();
+    expect(deployments[0].verification).toEqual(expect.objectContaining({
+      rollout: true,
+      ingress: true,
+      https: false,
+    }));
+  });
+
   test('stores remote target baseline context so later agents can reuse it', () => {
     const state = registry.getState();
     registry.recordTargetContext(state, {

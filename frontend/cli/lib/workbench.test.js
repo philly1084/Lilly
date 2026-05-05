@@ -95,6 +95,8 @@ describe('CLI workbench command planning', () => {
       profile: 'inspect',
     }));
     expect(steps[2].command).toContain("host='app.example.com'");
+    expect(steps[2].command).toContain('curl -k -fsSIL --max-time 20 "https://$host"');
+    expect(steps[2].command).toContain('__KIMIBUILT_UI_BODY_BYTES__');
   });
 
   test('resolves remote cwd from config before runner default', () => {
