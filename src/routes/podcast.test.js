@@ -35,6 +35,14 @@ jest.mock('../audio/audio-processing-service', () => ({
 }));
 
 jest.mock('../podcast/podcast-service', () => ({
+  getPodcastScriptDesignOptions: jest.fn(() => ([
+    {
+      id: 'classic-explainer',
+      label: 'Classic Explainer',
+      summary: 'Hook, context, three clear learning beats, practical wrap-up.',
+      guidance: 'Use a clean teaching arc.',
+    },
+  ])),
   podcastService: {
     createPodcast: jest.fn(),
   },
@@ -85,6 +93,12 @@ describe('/api/podcast', () => {
         provider: 'ffmpeg',
         supportsMp4: true,
       }),
+      scriptDesigns: [
+        expect.objectContaining({
+          id: 'classic-explainer',
+          label: 'Classic Explainer',
+        }),
+      ],
     });
   });
 
@@ -113,6 +127,9 @@ describe('/api/podcast', () => {
         sessionId: 'session-1',
         exportMp3: true,
         model: 'gpt-4o',
+        detailLevel: 'rich',
+        scriptDesign: 'documentary-narrative',
+        scriptDesignExample: 'Cold open, then evidence beats, then a practical closing takeaway.',
       });
 
     expect(response.status).toBe(200);
@@ -121,6 +138,9 @@ describe('/api/podcast', () => {
       topic: 'How batteries work',
       exportMp3: true,
       model: 'gpt-4o',
+      detailLevel: 'rich',
+      scriptDesign: 'documentary-narrative',
+      scriptDesignExample: 'Cold open, then evidence beats, then a practical closing takeaway.',
     }), expect.objectContaining({
       sessionId: 'session-1',
       clientSurface: 'podcast',

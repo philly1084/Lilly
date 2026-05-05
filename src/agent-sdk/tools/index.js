@@ -3910,7 +3910,7 @@ class ToolManager {
         id: 'podcast',
         name: 'Podcast',
         category: 'system',
-        description: 'Research a topic, script a user-aligned podcast episode, synthesize the host voices with local TTS, stitch the final podcast audio into a saved artifact, and optionally render an MP4 podcast video. Preserve the full creative brief separately from the topic, including solo-vs-two-host format, required angle, facts, title, and exclusions. Visual podcast requests should use storyboard mode with content-matched infographic scenes; waveform-card is the simple audio visualizer fallback.',
+        description: 'Research a topic, script a user-aligned podcast episode, synthesize the host voices with local TTS, stitch the final podcast audio into a saved artifact, and optionally render an MP4 podcast video. Preserve the full creative brief separately from the topic, including solo-vs-two-host format, required angle, facts, title, exclusions, and any selected scriptDesign/scriptDesignExample. Prefer proper full scripts over short generic exchanges. Avoid repeated self-referential process language about dissecting, unpacking, cadence, or why the hosts sound human. Visual podcast requests should use storyboard mode with content-matched infographic scenes; waveform-card is the simple audio visualizer fallback.',
         backend: {
           handler: async (params = {}, context = {}) => {
             const service = resolvePodcastService(context);
@@ -3977,6 +3977,22 @@ class ToolManager {
             timeout: { type: 'integer', minimum: 30000, maximum: 3600000 },
             audience: { type: 'string' },
             tone: { type: 'string' },
+            detailLevel: {
+              type: 'string',
+              enum: ['rich'],
+              description: 'Use rich when the user asks for a proper, full, longer, detailed, in-depth, comprehensive, or non-short podcast.',
+            },
+            scriptDesign: {
+              type: 'string',
+              description: 'Optional podcast presentation design id, such as classic-explainer, investigative-thread, debate-with-receipts, field-guide, documentary-narrative, technical-deep-dive, case-study, or human-impact. Use this to shape a proper full script instead of a short generic exchange.',
+            },
+            scriptStyle: { type: 'string' },
+            presentationDesign: { type: 'string' },
+            scriptDesignExample: {
+              type: 'string',
+              description: 'Optional example of the desired script presentation shape. Use as structural inspiration only; do not copy its facts or repeated wording.',
+            },
+            presentationExample: { type: 'string' },
             hostAName: { type: 'string' },
             hostARole: { type: 'string' },
             hostAPersona: { type: 'string' },

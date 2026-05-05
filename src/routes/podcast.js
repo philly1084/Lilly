@@ -5,7 +5,7 @@ const { buildScopedSessionMetadata, resolveClientSurface } = require('../session
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const { ttsService } = require('../tts/tts-service');
 const { audioProcessingService } = require('../audio/audio-processing-service');
-const { podcastService } = require('../podcast/podcast-service');
+const { getPodcastScriptDesignOptions, podcastService } = require('../podcast/podcast-service');
 const {
   hasExplicitPodcastIntent,
   hasExplicitPodcastVideoIntent,
@@ -32,6 +32,12 @@ const generateSchema = {
   durationMinutes: { required: false, type: 'number' },
   audience: { required: false, type: 'string' },
   tone: { required: false, type: 'string' },
+  detailLevel: { required: false, type: 'string' },
+  scriptDesign: { required: false, type: 'string' },
+  scriptStyle: { required: false, type: 'string' },
+  presentationDesign: { required: false, type: 'string' },
+  scriptDesignExample: { required: false, type: 'string' },
+  presentationExample: { required: false, type: 'string' },
   hostAName: { required: false, type: 'string' },
   hostARole: { required: false, type: 'string' },
   hostAPersona: { required: false, type: 'string' },
@@ -286,6 +292,7 @@ router.get('/runtime', (_req, res) => {
     tts: ttsService.getPublicConfig(),
     audioProcessing: audioProcessingService.getPublicConfig(),
     video: podcastVideoService.getPublicConfig(),
+    scriptDesigns: getPodcastScriptDesignOptions(),
   });
 });
 

@@ -26,6 +26,36 @@ function extractRequestedPodcastDurationMinutes(text = '') {
   return Math.max(3, Math.min(30, Math.round(minutes)));
 }
 
+function inferQualitativePodcastDurationMinutes(text = '') {
+  const normalized = String(text || '').toLowerCase();
+  if (!normalized.trim()) {
+    return null;
+  }
+
+  if (/\b(?:not|non)[- ]short\b/.test(normalized)
+    || /\b(?:do not|don't)\s+(?:make|keep)\s+it\s+short\b/.test(normalized)
+    || /\b(?:longer|full[- ]length|proper|complete|deep[- ]dive|in[- ]depth|comprehensive|detailed|rich(?:er)?)\b/.test(normalized)) {
+    return 12;
+  }
+
+  return null;
+}
+
+function inferPodcastDetailLevel(text = '') {
+  const normalized = String(text || '').toLowerCase();
+  if (!normalized.trim()) {
+    return null;
+  }
+
+  if (/\b(?:not|non)[- ]short\b/.test(normalized)
+    || /\b(?:do not|don't)\s+(?:make|keep)\s+it\s+short\b/.test(normalized)
+    || /\b(?:detailed|rich(?:er)?|in[- ]depth|deep[- ]dive|comprehensive|thorough|complete|proper|full)\b/.test(normalized)) {
+    return 'rich';
+  }
+
+  return null;
+}
+
 function shouldUseDirectPodcastChat(text = '') {
   return hasExplicitPodcastIntent(text);
 }
@@ -44,9 +74,11 @@ function buildDirectPodcastParams({
   const selectedArtifactIds = (Array.isArray(artifactIds) ? artifactIds : [])
     .map((artifactId) => String(artifactId || '').trim())
     .filter(Boolean);
-  const durationMinutes = extractRequestedPodcastDurationMinutes(text);
+  const durationMinutes = extractRequestedPodcastDurationMinutes(text)
+    || inferQualitativePodcastDurationMinutes(text);
   const requestBrief = extractPodcastRequestBrief(text);
   const hostCount = inferPodcastHostCount(text);
+  const detailLevel = inferPodcastDetailLevel(text);
   const videoOptions = hasExplicitPodcastVideoIntent(text)
     ? inferPodcastVideoOptions(text)
     : {};
@@ -57,6 +89,7 @@ function buildDirectPodcastParams({
     ...(hostCount ? { hostCount } : {}),
     ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
     ...(durationMinutes ? { durationMinutes } : {}),
+    ...(detailLevel ? { detailLevel } : {}),
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...videoOptions,

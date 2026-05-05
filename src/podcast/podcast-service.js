@@ -16,6 +16,10 @@ const {
 } = require('../audio/wav-utils');
 const { chunkText, normalizeWhitespace, stripHtml, stripNullCharacters } = require('../utils/text');
 const { parseLenientJson } = require('../utils/lenient-json');
+const {
+  getPodcastScriptDesignOptions,
+  resolvePodcastScriptDesign,
+} = require('./script-designs');
 
 const DEFAULT_DURATION_MINUTES = 10;
 const DEFAULT_TARGET_WPM = 145;
@@ -1113,6 +1117,9 @@ function buildResearchPrompt({
   requestBrief,
   audience,
   tone,
+  detailLevel = '',
+  scriptDesign = null,
+  scriptDesignExample = '',
   durationMinutes,
   hosts,
   sources,
@@ -1131,6 +1138,20 @@ function buildResearchPrompt({
   const exampleTurns = hostList.map((host) => (
     `    { "speaker": "${sanitizePodcastText(host.name)}", "text": "string" }`
   )).join(',\n');
+  const design = scriptDesign && typeof scriptDesign === 'object' ? scriptDesign : null;
+  const designSection = design ? [
+    'Script presentation design:',
+    `- selected: ${sanitizePodcastText(design.label || design.id || 'Custom')}`,
+    `- shape: ${sanitizePodcastText(design.summary || '')}`,
+    `- guidance: ${sanitizePodcastText(design.guidance || '')}`,
+  ].filter(Boolean).join('\n') : '';
+  const exampleSection = scriptDesignExample
+    ? [
+      'User-provided presentation example:',
+      sanitizePodcastText(scriptDesignExample, { preserveNewlines: true }),
+      'Use this as structural inspiration only. Do not copy its topic, facts, names, or repeated phrasing unless the user explicitly asked for that content.',
+    ].join('\n')
+    : '';
 
   const sourceText = sources.map((source, index) => [
     `Source ${index + 1}: ${sanitizePodcastText(source.title || 'Untitled source')}`,
@@ -1149,6 +1170,9 @@ Topic: ${sanitizePodcastText(topic)}
 ${requestBrief ? `User request brief: ${sanitizePodcastText(requestBrief, { preserveNewlines: true })}` : ''}
 Audience: ${sanitizePodcastText(audience)}
 Tone: ${sanitizePodcastText(tone)}
+${detailLevel ? `Detail level: ${sanitizePodcastText(detailLevel)}` : ''}
+${designSection}
+${exampleSection}
 Target duration minutes: ${durationMinutes}
 Approximate total word budget: ${wordBudget}
 Target turn count: ${turnCount}
@@ -1169,6 +1193,10 @@ ${videoFormat ? 'Structure the episode like a YouTube information show: cold ope
 Write for speech delivery, not for reading: use contractions, shorter sentences, and natural hand-offs.
 Avoid stacked statistics, semicolons, parenthetical asides, and phrasing that sounds like a report being read aloud.
 Spell out or rephrase awkward abbreviations and symbols so local TTS can read them smoothly.
+Do not overuse self-referential process language. Avoid repeated phrases about dissecting, unpacking, breaking down, zooming out, weaving together, cadence, human rhythm, or why the hosts are talking a certain way.
+Do not make the hosts explain their own conversational design, emotional stress point, or presentation strategy. Let the structure feel natural through the content.
+Avoid repeating the same framing idea across multiple turns with only slightly different wording. Every turn must add a new fact, implication, question, contrast, or example.
+Prefer proper full scripts over short outline-like exchanges: write enough complete turns to meet the word budget and make the episode feel finished.
 
 Return exactly this JSON shape:
 {
@@ -1386,6 +1414,9 @@ class PodcastService {
     requestBrief,
     audience,
     tone,
+    detailLevel,
+    scriptDesign,
+    scriptDesignExample,
     durationMinutes,
     hosts,
     sources,
@@ -1400,6 +1431,9 @@ class PodcastService {
       requestBrief,
       audience,
       tone,
+      detailLevel,
+      scriptDesign,
+      scriptDesignExample,
       durationMinutes,
       hosts,
       sources,
@@ -1714,6 +1748,12 @@ class PodcastService {
     const durationMinutes = clampNumber(params.durationMinutes, 3, 30, DEFAULT_DURATION_MINUTES);
     const audience = sanitizePodcastText(params.audience || 'general') || 'general';
     const tone = sanitizePodcastText(params.tone || 'informative, conversational') || 'informative, conversational';
+    const detailLevel = sanitizePodcastText(params.detailLevel || '') || '';
+    const scriptDesign = resolvePodcastScriptDesign(params.scriptDesign || params.scriptStyle || params.presentationDesign);
+    const scriptDesignExample = sanitizePodcastText(
+      params.scriptDesignExample || params.presentationExample || '',
+      { preserveNewlines: true },
+    );
     const maxSources = clampNumber(params.maxSources, 2, 6, DEFAULT_MAX_SOURCES);
     const voiceConfig = this.ttsService.getPublicConfig();
     const synthesisProvider = String(voiceConfig.provider || 'tts').trim() || 'tts';
@@ -1755,6 +1795,9 @@ class PodcastService {
       requestBrief,
       audience,
       tone,
+      detailLevel,
+      scriptDesign,
+      scriptDesignExample,
       durationMinutes,
       hosts,
       sources,
@@ -1874,6 +1917,10 @@ class PodcastService {
         durationMinutes,
         audience,
         tone,
+        detailLevel,
+        scriptDesign: scriptDesign ? scriptDesign.id : null,
+        scriptDesignLabel: scriptDesign ? scriptDesign.label : null,
+        scriptDesignExample,
         requestBrief,
         turnVoices: turnVoicePlan.plans.map((turn) => ({
           speaker: turn.speaker,
@@ -1955,6 +2002,10 @@ class PodcastService {
           durationMinutes,
           audience,
           tone,
+          detailLevel,
+          scriptDesign: scriptDesign ? scriptDesign.id : null,
+          scriptDesignLabel: scriptDesign ? scriptDesign.label : null,
+          scriptDesignExample,
           requestBrief,
           turnVoices: turnVoicePlan.plans.map((turn) => ({
             speaker: turn.speaker,
@@ -2016,6 +2067,11 @@ class PodcastService {
         summary: script.summary,
         turns: script.turns,
         transcript,
+        design: scriptDesign ? {
+          id: scriptDesign.id,
+          label: scriptDesign.label,
+          summary: scriptDesign.summary,
+        } : null,
       },
       processing: {
         voiceOnlyAudio,
@@ -2045,5 +2101,6 @@ const podcastService = new PodcastService();
 
 module.exports = {
   PodcastService,
+  getPodcastScriptDesignOptions,
   podcastService,
 };

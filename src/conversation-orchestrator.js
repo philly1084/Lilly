@@ -12124,6 +12124,8 @@ class ConversationOrchestrator extends EventEmitter {
         if (allowedToolIds.includes('podcast')) {
             parts.push('Use `podcast` when the user wants a researched podcast episode, two-host script, voice synthesis, or final stitched podcast audio.');
             parts.push('When the user asks for a video podcast or podcast video, call `podcast` with `includeVideo: true`, `videoRenderMode: "storyboard"`, `videoImageMode: "mixed"`, and `videoGenerateImages: true` unless the user explicitly asks for waveform-only or no generated imagery. Use waveform-card for plain MP4/audio-visualizer requests.');
+            parts.push('When the user asks for a proper, full, longer, detailed, or non-short podcast script, preserve that in the podcast tool parameters with a longer `durationMinutes` and, when appropriate, a `scriptDesign` or `scriptDesignExample`; do not answer with a short single exchange in chat.');
+            parts.push('Podcast hosts should not repeatedly explain their own presentation method. Avoid self-referential lines about dissecting, unpacking, cadence, human rhythm, or why they are talking a certain way unless the user explicitly asks for meta commentary.');
             parts.push('Do not treat podcast generation as plain chat writing. Prefer the `podcast` tool over separate `web-search` plus ad hoc scripting when the user is asking for the actual podcast deliverable.');
         }
 

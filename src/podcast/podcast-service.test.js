@@ -81,7 +81,7 @@ const { audioProcessingService } = require('../audio/audio-processing-service');
 const { artifactService } = require('../artifacts/artifact-service');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseWavBuffer, writeWavBuffer } = require('../audio/wav-utils');
-const { PodcastService } = require('./podcast-service');
+const { PodcastService, getPodcastScriptDesignOptions } = require('./podcast-service');
 
 function createTestWav(bytes) {
   return writeWavBuffer({
@@ -138,6 +138,18 @@ describe('PodcastService', () => {
 
   afterEach(() => {
     settingsController.settings.models = originalModelSettings;
+  });
+
+  test('exposes twenty podcast script presentation design examples', () => {
+    const designs = getPodcastScriptDesignOptions();
+
+    expect(designs).toHaveLength(20);
+    expect(designs.map((design) => design.id)).toEqual(expect.arrayContaining([
+      'classic-explainer',
+      'documentary-narrative',
+      'technical-deep-dive',
+      'human-impact',
+    ]));
   });
 
   test('creates a researched two-host podcast and persists the final audio', async () => {
@@ -266,6 +278,65 @@ describe('PodcastService', () => {
     expect(prompt).not.toContain('Host 2:');
     expect(result.hosts).toHaveLength(1);
     expect(new Set(result.script.turns.map((turn) => turn.speaker))).toEqual(new Set(['Maya']));
+  });
+
+  test('applies selected script presentation designs and anti-meta-language guardrails', async () => {
+    const service = new PodcastService();
+    const executeTool = jest.fn(async (toolId) => {
+      if (toolId === 'web-search') {
+        return {
+          success: true,
+          data: {
+            results: [
+              { title: 'Grid battery guide', url: 'https://example.com/batteries', snippet: 'Battery storage helps balance power systems.' },
+            ],
+          },
+        };
+      }
+
+      if (toolId === 'web-fetch') {
+        return {
+          success: true,
+          data: {
+            headers: { 'content-type': 'text/html' },
+            body: '<article><p>Battery systems absorb excess power and discharge it later.</p></article>',
+          },
+        };
+      }
+
+      throw new Error(`Unexpected tool: ${toolId}`);
+    });
+
+    const result = await service.createPodcast({
+      topic: 'How grid batteries work',
+      detailLevel: 'rich',
+      scriptDesign: 'documentary-narrative',
+      scriptDesignExample: 'Cold open, then stakes, then sourced evidence, then a concise takeaway.',
+    }, {
+      sessionId: 'session-1',
+      clientSurface: 'chat',
+      toolManager: { executeTool },
+    });
+
+    const prompt = createResponse.mock.calls[0][0].input;
+    expect(prompt).toContain('Script presentation design:');
+    expect(prompt).toContain('Detail level: rich');
+    expect(prompt).toContain('- selected: Documentary Narrative');
+    expect(prompt).toContain('User-provided presentation example:');
+    expect(prompt).toContain('Do not overuse self-referential process language');
+    expect(prompt).toContain('Prefer proper full scripts over short outline-like exchanges');
+    expect(result.script.design).toEqual(expect.objectContaining({
+      id: 'documentary-narrative',
+      label: 'Documentary Narrative',
+    }));
+    expect(persistGeneratedAudio).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({
+        scriptDesign: 'documentary-narrative',
+        scriptDesignLabel: 'Documentary Narrative',
+        detailLevel: 'rich',
+        scriptDesignExample: 'Cold open, then stakes, then sourced evidence, then a concise takeaway.',
+      }),
+    }));
   });
 
   test('annotates and logs the failing podcast stage', async () => {
