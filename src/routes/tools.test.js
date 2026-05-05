@@ -15,22 +15,29 @@ describe('/api/tools routes', () => {
         remoteRunnerService.runners.clear();
     });
 
-    function buildApp() {
+    function buildApp(options = {}) {
         const app = express();
+        if (options.managedAppService) {
+            app.locals.managedAppService = options.managedAppService;
+        }
         app.use(express.json());
         app.use('/api/tools', toolsRouter);
         return app;
     }
 
-    test('includeAll keeps managed-app out of the tool catalog', async () => {
-        const app = buildApp();
+    test('includeAll exposes managed-app with GitLab runtime context', async () => {
+        const app = buildApp({
+            managedAppService: {
+                isAvailable: () => true,
+            },
+        });
 
         const response = await request(app).get('/api/tools/available?includeAll=true');
 
         expect(response.status).toBe(200);
         expect(response.body.meta.includeAllTools).toBe(true);
-        expect(response.body.data.map((tool) => tool.id)).not.toContain('managed-app');
-        expect(response.body.meta.runtime.managedApps).toBeUndefined();
+        expect(response.body.data.map((tool) => tool.id)).toContain('managed-app');
+        expect(response.body.meta.runtime.managedApps).toBeDefined();
         expect(response.body.meta.runtime.remoteRunner).toBeDefined();
     });
 
@@ -213,7 +220,10 @@ describe('/api/tools routes', () => {
         expect(response.status).toBe(200);
         const remoteAgent = response.body.data.find((tool) => tool.id === 'remote-cli-agent');
         const k3sDeploy = response.body.data.find((tool) => tool.id === 'k3s-deploy');
+        const managedApp = response.body.data.find((tool) => tool.id === 'managed-app');
 
+        expect(managedApp).toBeDefined();
+        expect(managedApp.runtime.observability).toBe('gitlab-repo-pipeline-build-events');
         expect(remoteAgent).toBeDefined();
         expect(k3sDeploy).toBeDefined();
         expect(remoteAgent.runtime.runnerAvailable).toBe(true);
@@ -266,17 +276,12 @@ describe('/api/tools routes', () => {
         ]));
     });
 
-    test('managed-app details and invocation are disabled', async () => {
+    test('managed-app details are available for the GitLab control plane', async () => {
         const app = buildApp();
 
         const details = await request(app).get('/api/tools/managed-app');
-        expect(details.status).toBe(404);
-        expect(details.body.error).toContain('managed-app is disabled');
-
-        const invoke = await request(app)
-            .post('/api/tools/invoke')
-            .send({ tool: 'managed-app', params: { action: 'list' } });
-        expect(invoke.status).toBe(400);
-        expect(invoke.body.error).toContain('git-backed remote authoring');
+        expect(details.status).toBe(200);
+        expect(details.body.data.id).toBe('managed-app');
+        expect(details.body.data.runtime.observability).toBe('gitlab-repo-pipeline-build-events');
     });
 });

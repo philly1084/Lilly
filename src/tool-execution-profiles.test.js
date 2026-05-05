@@ -42,10 +42,11 @@ describe('tool execution profiles', () => {
         expect(toolIds).not.toContain('ssh-execute');
     });
 
-    test('remote-build profile exposes the remote CLI lane without opencode', () => {
+    test('remote-build profile exposes GitLab managed-app and remote fallback lanes without opencode', () => {
         const toolIds = getAllowedToolIdsForProfile(REMOTE_BUILD_EXECUTION_PROFILE);
 
         expect(toolIds).toContain('remote-command');
+        expect(toolIds).toContain('managed-app');
         expect(toolIds).toContain('remote-cli-agent');
         expect(toolIds).toContain('k3s-deploy');
         expect(toolIds).toContain('git-safe');
@@ -55,7 +56,6 @@ describe('tool execution profiles', () => {
         expect(toolIds).toContain('web-scrape');
         expect(toolIds).toContain('design-resource-search');
         expect(toolIds).toContain('code-sandbox');
-        expect(toolIds).not.toContain('managed-app');
         expect(toolIds).not.toContain('opencode-run');
         expect(toolIds).not.toContain('code-execute');
         expect(HIDDEN_FRONTEND_TOOL_IDS).toContain('code-execute');

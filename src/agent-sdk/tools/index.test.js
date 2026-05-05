@@ -145,7 +145,7 @@ describe('ToolManager image tools', () => {
 
     expect(toolManager.getTool('git-safe')).toBeTruthy();
     expect(toolManager.getTool('k3s-deploy')).toBeTruthy();
-    expect(toolManager.getTool('managed-app')).toBeFalsy();
+    expect(toolManager.getTool('managed-app')).toBeTruthy();
     expect(toolManager.getTool('opencode-run')).toBeFalsy();
     expect(toolManager.getTool('agent-delegate')).toBeTruthy();
     expect(toolManager.getTool('podcast')).toBeTruthy();

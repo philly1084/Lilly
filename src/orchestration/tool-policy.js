@@ -8,8 +8,7 @@ function isOrchestrationRewriteEnabled() {
 function removeUnsupportedAutonomousTools(toolIds = []) {
   return Array.from(new Set((Array.isArray(toolIds) ? toolIds : [])
     .map((toolId) => String(toolId || '').trim())
-    .filter(Boolean)
-    .filter((toolId) => toolId !== 'managed-app')));
+    .filter(Boolean)));
 }
 
 function selectCandidatesForAgencyMode({

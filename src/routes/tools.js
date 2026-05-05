@@ -36,8 +36,8 @@ const {
 } = require('../tool-execution-profiles');
 
 const registry = getUnifiedRegistry();
-const DISABLED_TOOL_IDS = new Set(['managed-app']);
-const DISABLED_TOOL_MESSAGE = 'managed-app is disabled. Use remote-cli-agent or remote-workbench for git-backed remote authoring, prefer configured GitLab repos for k3s apps, and use k3s-deploy only after changes are committed.';
+const DISABLED_TOOL_IDS = new Set([]);
+const DISABLED_TOOL_MESSAGE = 'Tool is disabled.';
 
 function getRequestOwnerId(req) {
   return String(req.user?.username || '').trim() || null;
@@ -120,6 +120,19 @@ function buildRuntimeSummary(toolManager, options = {}) {
       registryHost: gitea.registryHost || '',
       hasWebhookSecret: Boolean(gitea.webhookSecret),
     },
+    managedApps: options.managedAppService
+      ? {
+        configured: Boolean(gitea.enabled !== false && gitea.baseURL && gitea.token),
+        persistenceAvailable: typeof options.managedAppService.isAvailable === 'function'
+          ? options.managedAppService.isAvailable()
+          : null,
+        gitlab: {
+          baseURL: gitea.baseURL || '',
+          org: gitea.org || '',
+          registryHost: gitea.registryHost || '',
+        },
+      }
+      : null,
     clusterRegistry: clusterStateRegistry.getRuntimeSummary(),
     remoteRunner: {
       enabled: config.remoteRunner.enabled !== false,
@@ -248,6 +261,32 @@ function buildToolRuntime(toolId, options = {}) {
       cliTools: runnerDetails?.cliTools || [],
       availableCliTools: runnerDetails?.availableCliTools || [],
       k3sFeedback: buildK3sFeedbackReadiness(runner),
+    };
+  }
+
+  if (toolId === 'managed-app') {
+    const gitProvider = typeof settingsController.getEffectiveGitProviderConfig === 'function'
+      ? settingsController.getEffectiveGitProviderConfig()
+      : {};
+    const managedApps = typeof settingsController.getEffectiveManagedAppsConfig === 'function'
+      ? settingsController.getEffectiveManagedAppsConfig()
+      : {};
+    return {
+      configured: Boolean(gitProvider.enabled !== false && gitProvider.baseURL && gitProvider.token),
+      provider: gitProvider.provider || 'gitlab',
+      baseURL: gitProvider.baseURL || '',
+      org: gitProvider.org || '',
+      registryHost: gitProvider.registryHost || '',
+      hasToken: Boolean(gitProvider.token),
+      hasWebhookSecret: Boolean(gitProvider.webhookSecret),
+      persistenceAvailable: typeof options.managedAppService?.isAvailable === 'function'
+        ? options.managedAppService.isAvailable()
+        : null,
+      deployTarget: managedApps.deployTarget || '',
+      platformNamespace: managedApps.platformNamespace || '',
+      appBaseDomain: managedApps.appBaseDomain || '',
+      webhookEndpointPath: managedApps.webhookEndpointPath || '',
+      observability: 'gitlab-repo-pipeline-build-events',
     };
   }
 
@@ -513,8 +552,7 @@ async function buildFrontendToolCatalog({ req, category = null, sessionId = null
 
   const manifestTools = (includeAllTools ? registry.getAllManifests() : registry.getFrontendTools())
     .filter((tool) => !HIDDEN_FRONTEND_TOOL_IDS.includes(tool.id))
-    .filter((tool) => tool.id !== 'ssh-execute')
-    .filter((tool) => tool.id !== 'managed-app');
+    .filter((tool) => tool.id !== 'ssh-execute');
 
   const enrichedTools = await Promise.all(manifestTools.map(async (tool) => {
     const docMetadata = await getToolDocMetadata(tool.id);

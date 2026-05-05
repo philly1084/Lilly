@@ -5512,7 +5512,7 @@ describe('ConversationOrchestrator', () => {
         });
     });
 
-    test.skip('managed-app remote-build authoring route was deleted from orchestration', () => {
+    test('routes GitLab-observable remote-build authoring through managed-app', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
             host: '10.0.0.5',
@@ -5537,7 +5537,7 @@ describe('ConversationOrchestrator', () => {
             },
         });
 
-        const objective = 'Build and deploy a website called hello-stack on the remote server using Gitea and the k3s cluster with DNS and TLS.';
+        const objective = 'Build and deploy a website called hello-stack on the remote server using GitLab and the k3s cluster with DNS and TLS.';
         const toolPolicy = orchestrator.buildToolPolicy({
             objective,
             executionProfile: 'remote-build',
@@ -5558,7 +5558,7 @@ describe('ConversationOrchestrator', () => {
                 sourcePrompt: objective,
                 requestedAction: 'deploy',
                 slug: 'hello-stack',
-                deployTarget: 'ssh',
+                deployTarget: 'runner',
             },
         });
     });

@@ -78,6 +78,14 @@ const DEFAULT_DEEP_RESEARCH_PAGES_PER_PASS = Math.min(
 );
 const MAX_DEEP_RESEARCH_PAGES_PER_PASS = 8;
 const DEFAULT_DEEP_RESEARCH_IMAGE_LIMIT = 4;
+
+function resolveManagedAppService(context = {}) {
+  if (context.managedAppService) {
+    return context.managedAppService;
+  }
+  const { ManagedAppService } = require('../../managed-apps/service');
+  return new ManagedAppService();
+}
 const MAX_DEEP_RESEARCH_IMAGE_LIMIT = 6;
 const DEFAULT_IMAGE_SETTLE_DELAY_MS = 1500;
 const DEFAULT_DEEP_RESEARCH_RECALL_TOP_K = 4;
@@ -4860,6 +4868,84 @@ class ToolManager {
     ];
 
     const skillTools = [
+      {
+        id: 'managed-app',
+        name: 'Managed App',
+        category: 'deployment',
+        description: 'Create, update, inspect, reconcile, and deploy GitLab-backed managed apps with visible repository, pipeline, registry, and build-event state.',
+        backend: {
+          handler: async (params = {}, context = {}) => {
+            const service = resolveManagedAppService(context);
+            const action = String(params.action || 'inspect').trim().toLowerCase();
+            const ownerId = context.userId || null;
+            const input = {
+              ...params,
+              sessionId: params.sessionId || context.sessionId || null,
+            };
+
+            switch (action) {
+              case 'create':
+                return service.createApp(input, ownerId, context);
+              case 'update':
+                return service.updateApp(params.appRef || params.ref || params.slug || params.id, input, ownerId, context);
+              case 'deploy':
+                return service.deployApp(params.appRef || params.ref || params.slug || params.id, input, ownerId, context);
+              case 'inspect':
+              case 'status':
+                return service.inspectApp(params.appRef || params.ref || params.slug || params.id, ownerId, context);
+              case 'doctor':
+              case 'diagnose':
+              case 'diagnostic':
+              case 'diagnostics':
+                return service.doctorPlatform(input, ownerId, context);
+              case 'reconcile':
+              case 'repair':
+              case 'repair-runner':
+                return service.reconcilePlatform(input, ownerId, context);
+              case 'list':
+                return service.listApps(ownerId, input.limit || 50);
+              default:
+                throw new Error(`Unsupported managed-app action: ${action}`);
+            }
+          },
+          sideEffects: ['write', 'execute'],
+          timeout: 600000,
+        },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['create', 'update', 'deploy', 'inspect', 'status', 'doctor', 'diagnose', 'diagnostic', 'diagnostics', 'reconcile', 'repair', 'repair-runner', 'list'] },
+            appRef: { type: 'string' },
+            ref: { type: 'string' },
+            id: { type: 'string' },
+            slug: { type: 'string' },
+            name: { type: 'string' },
+            prompt: { type: 'string' },
+            sourcePrompt: { type: 'string' },
+            requestedAction: { type: 'string' },
+            deployTarget: { type: 'string' },
+            deploymentTarget: { type: 'string' },
+            publicHost: { type: 'string' },
+            namespace: { type: 'string' },
+            imageTag: { type: 'string' },
+            runnerToken: { type: 'string' },
+            runnerLabels: { type: 'string' },
+            runnerReplicas: { type: 'number' },
+            platformNamespace: { type: 'string' },
+            sessionId: { type: 'string' },
+          },
+          additionalProperties: true,
+        },
+        skill: {
+          triggerPatterns: ['managed app', 'gitlab managed app', 'gitlab ci build', 'gitlab runner', 'build events webhook', 'gitlab observable deploy'],
+          requiresConfirmation: true,
+        },
+        frontend: {
+          exposeToFrontend: true,
+          icon: 'git-branch',
+          requiresSetup: true,
+        },
+      },
       {
         id: 'skill-list',
         name: 'Skill List',

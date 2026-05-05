@@ -1,6 +1,6 @@
-# Direct CLI Build Runner
+# Direct CLI Build Runner Fallback
 
-This path bypasses GitLab CI. KimiBuilt agents can use `remote-command` for one-off runner jobs, and `remote-cli-agent` for full remote author -> build -> deploy -> verify loops. The runner uses BuildKit to build and push images, then in-cluster `kubectl` to deploy to k3s.
+This path bypasses GitLab CI. Use it as a fallback for one-off inspection, recovery, or explicitly approved direct builds. For normal observable app delivery, use the GitLab-backed managed-app lane so the repo, commits, pipelines, registry image, build-event webhook, and deployment are visible from GitLab/KimiBuilt.
 
 ## Components
 
@@ -37,8 +37,8 @@ Edit `k8s/direct-cli-build-runner.yaml`:
 
 - Set `KIMIBUILT_BACKEND_URL` to the public URL of the KimiBuilt backend.
 - Set `KIMIBUILT_REMOTE_RUNNER_TOKEN` to the backend runner token.
-- Set `kimibuilt-direct-registry-auth` to a registry account that can push images.
-- Set `DIRECT_CLI_IMAGE_PREFIX` to the image prefix agents should push to, for example `ghcr.io/philly1084`.
+- Set `kimibuilt-direct-registry-auth` to a registry account that can push images, preferably the GitLab registry account.
+- Set `DIRECT_CLI_IMAGE_PREFIX` to the image prefix agents should push to, for example `registry.gitlab.demoserver2.buzz/agent-apps`.
 
 Apply it to the remote k3s cluster:
 
@@ -84,9 +84,11 @@ kubectl -n agent-platform rollout restart deployment/kimibuilt-direct-runner
 ## Build and Deploy Flow
 
 For most app/site/service deployment requests, route the task through
-`remote-cli-agent` with `adminMode: true` so the remote coding agent owns the
-full loop. Use direct `remote-command` runner jobs when you need a narrow
-inspection, repair, or verification command.
+`managed-app` so GitLab owns the observable repo/build layer. Use
+`remote-cli-agent` with `adminMode: true` only when the work requires bespoke
+remote coding or when the GitLab control plane reports a concrete blocker. Use
+direct `remote-command` runner jobs when you need a narrow inspection, repair,
+or verification command.
 
 Agents should work in `/workspace`:
 
@@ -115,7 +117,7 @@ Deploy or update the workload:
 
 ```bash
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-image="ghcr.io/philly1084/app:replace-with-built-tag"
+image="registry.gitlab.demoserver2.buzz/agent-apps/app:replace-with-built-tag"
 kubectl create namespace app --dry-run=client -o yaml | kubectl apply -f -
 kubectl create deployment app --image="$image" -n app --dry-run=client -o yaml | kubectl apply -f -
 kubectl expose deployment app --name app --port 80 --target-port 3000 -n app --dry-run=client -o yaml | kubectl apply -f -

@@ -1,6 +1,8 @@
-# Direct CLI build runner for the remote k3s cluster.
+# Direct CLI build runner fallback for the remote k3s cluster.
 #
-# This manifest bypasses GitLab CI entirely:
+# This manifest bypasses GitLab CI entirely and should be treated as a
+# break-glass/fallback lane when GitLab repository or pipeline automation is
+# unavailable:
 # - KimiBuilt agents send remote-command jobs to this runner.
 # - The runner executes planned CLI work in /workspace.
 # - BuildKit builds and pushes images.
@@ -8,8 +10,8 @@
 #
 # Before applying:
 # 1. Replace KIMIBUILT_BACKEND_URL and KIMIBUILT_REMOTE_RUNNER_TOKEN.
-# 2. Replace the registry auth JSON with credentials for GHCR, Docker Hub,
-#    a private registry, or your Rancher-managed registry.
+# 2. Replace the registry auth JSON with credentials for the GitLab registry
+#    or an explicitly approved fallback registry.
 # 3. Build/push the KimiBuilt image after the Dockerfile buildctl change.
 ---
 apiVersion: v1
@@ -37,7 +39,7 @@ stringData:
   .dockerconfigjson: |
     {
       "auths": {
-        "ghcr.io": {
+        "registry.gitlab.demoserver2.buzz": {
           "username": "REPLACE_WITH_REGISTRY_USERNAME",
           "password": "REPLACE_WITH_REGISTRY_TOKEN_OR_PASSWORD"
         }
@@ -68,7 +70,7 @@ data:
   BUILDKIT_HOST: "tcp://kimibuilt-buildkitd.agent-platform.svc.cluster.local:1234"
   DOCKER_CONFIG: "/home/kimibuilt/.docker"
   DIRECT_CLI_WORKSPACE: "/workspace"
-  DIRECT_CLI_IMAGE_PREFIX: "ghcr.io/philly1084"
+  DIRECT_CLI_IMAGE_PREFIX: "registry.gitlab.demoserver2.buzz/agent-apps"
 ---
 apiVersion: v1
 kind: ConfigMap

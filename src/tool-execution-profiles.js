@@ -99,6 +99,7 @@ const PROFILE_TOOL_ALLOWLISTS = Object.freeze({
         'tool-doc-read',
     ]),
     [REMOTE_BUILD_EXECUTION_PROFILE]: Object.freeze([
+        'managed-app',
         'remote-command',
         'remote-workbench',
         'remote-cli-agent',
