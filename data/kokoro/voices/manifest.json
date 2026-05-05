@@ -8,29 +8,13 @@
   {
     "id": "af_bella",
     "label": "Bella Expressive",
-    "description": "Expressive American English female Kokoro voice for energetic host segments.",
+    "description": "Highest-quality expressive American English female Kokoro voice for natural narration, dialogue, and energetic host segments.",
     "aliases": ["ljspeech-high"]
-  },
-  {
-    "id": "am_adam",
-    "label": "Adam Narrator",
-    "description": "High-quality American English male Kokoro voice for grounded podcast narration.",
-    "aliases": ["ryan-high"]
-  },
-  {
-    "id": "am_michael",
-    "label": "Michael Casual",
-    "description": "Natural American English male Kokoro voice for conversational co-host replies."
   },
   {
     "id": "bf_emma",
     "label": "Emma Editorial",
     "description": "Polished British English female Kokoro voice for editorial or documentary-style podcasts.",
     "aliases": ["cori-high"]
-  },
-  {
-    "id": "bm_george",
-    "label": "George Classic",
-    "description": "Resonant British English male Kokoro voice for documentary-style narration."
   }
 ]

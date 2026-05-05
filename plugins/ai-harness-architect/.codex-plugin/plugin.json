@@ -1,0 +1,48 @@
+{
+  "name": "ai-harness-architect",
+  "version": "0.1.0",
+  "description": "Research-grounded AI harness design, optimization, sandbox loops, and regression decision workflows.",
+  "author": {
+    "name": "KimiBuilt",
+    "email": "philly1084@gmail.com",
+    "url": "https://demoserver2.buzz"
+  },
+  "homepage": "https://demoserver2.buzz",
+  "repository": "https://demoserver2.buzz",
+  "license": "MIT",
+  "keywords": [
+    "ai-harness",
+    "architecture",
+    "design",
+    "optimization",
+    "research",
+    "regression",
+    "sandbox"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AI Harness Architect",
+    "shortDescription": "Designs and optimizes AI harnesses with repo-aware research loops.",
+    "longDescription": "Builds a grounded map of the harness repository before recommending architecture changes, uses current research and sandbox prototypes when helpful, weighs regression risks explicitly, and keeps working toward an end-to-end goal with evidence instead of stopping at a one-time check.",
+    "developerName": "KimiBuilt",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Research",
+      "Architecture",
+      "Workflow Guidance",
+      "Testing",
+      "Sandbox Design",
+      "Regression Analysis"
+    ],
+    "websiteURL": "https://demoserver2.buzz",
+    "privacyPolicyURL": "https://demoserver2.buzz/privacy",
+    "termsOfServiceURL": "https://demoserver2.buzz/terms",
+    "defaultPrompt": [
+      "Design a smarter AI harness loop for this repo.",
+      "Map this harness before proposing architecture changes.",
+      "Run a sandbox-backed harness optimization pass."
+    ],
+    "brandColor": "#0F766E",
+    "screenshots": []
+  }
+}

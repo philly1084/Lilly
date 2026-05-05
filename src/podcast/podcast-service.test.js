@@ -1367,10 +1367,80 @@ describe('PodcastService', () => {
     expect(new Set(usedVoiceIds).size).toBeGreaterThanOrEqual(2);
     usedVoiceIds.forEach((voiceId) => {
       expect([
-        'af_heart',
         'af_bella',
-        'am_adam',
+        'af_heart',
         'bf_emma',
+      ]).toContain(voiceId);
+    });
+  });
+
+  test('filters male voices out of default and explicit podcast host pools', async () => {
+    const executeTool = jest.fn(async (toolId) => {
+      if (toolId === 'web-search') {
+        return {
+          success: true,
+          data: {
+            results: [
+              { title: 'Voice defaults', url: 'https://example.com/voices', snippet: 'Podcast voices should stay consistent.' },
+            ],
+          },
+        };
+      }
+
+      if (toolId === 'web-fetch') {
+        return {
+          success: true,
+          data: {
+            headers: { 'content-type': 'text/html' },
+            body: '<p>Clear voices help listeners follow the episode.</p>',
+          },
+        };
+      }
+
+      throw new Error(`Unexpected tool: ${toolId}`);
+    });
+
+    createResponse.mockResolvedValueOnce({
+      output_text: JSON.stringify({
+        title: 'Female Voice Defaults',
+        summary: 'A short conversation on podcast voice selection.',
+        turns: [
+          { speaker: 'Maya', text: 'The default host voice should stay warm and natural.' },
+          { speaker: 'June', text: 'And the co-host should stay clear without using the old male voice pool.' },
+          { speaker: 'Maya', text: 'That keeps the selection focused and predictable.' },
+          { speaker: 'June', text: 'Exactly, all configured fallbacks should stay in the female set.' },
+        ],
+      }),
+    });
+
+    const service = new PodcastService();
+    const result = await service.createPodcast({
+      topic: 'podcast voice selection',
+      hostBVoiceIds: ['am_adam', 'ryan-high', 'bf_emma'],
+      cycleHostVoices: true,
+    }, {
+      sessionId: 'session-1',
+      clientSurface: 'chat',
+      toolManager: { executeTool },
+    });
+
+    const usedVoiceIds = ttsService.synthesize.mock.calls.map(([call]) => call.voiceId);
+    expect(result.hosts.map((host) => host.name)).not.toContain('Ryan');
+    expect(usedVoiceIds).not.toEqual(expect.arrayContaining(['am_adam', 'am_michael', 'bm_george', 'ryan-high', 'ryan-direct']));
+    usedVoiceIds.forEach((voiceId) => {
+      expect([
+        'af_bella',
+        'af_heart',
+        'bf_emma',
+        'ljspeech-high',
+        'lessac-high',
+        'cori-high',
+        'hfc-female-rich',
+        'amy-broadcast',
+        'amy-expressive',
+        'hfc-female-medium',
+        'kathleen-low',
+        'amy-medium',
       ]).toContain(voiceId);
     });
   });

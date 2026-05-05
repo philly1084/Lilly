@@ -48,10 +48,32 @@ const DEFAULT_PODCAST_TTS_CONCURRENCY = Math.max(
 const MAX_PODCAST_RESEARCH_CONCURRENCY = 12;
 const MAX_PODCAST_TTS_CONCURRENCY = 24;
 const PODCAST_HIGH_QUALITY_VOICE_IDS = Object.freeze([
-  'af_heart',
   'af_bella',
-  'am_adam',
+  'af_heart',
   'bf_emma',
+  'ljspeech-high',
+  'lessac-high',
+  'cori-high',
+  'hfc-female-rich',
+  'amy-broadcast',
+  'amy-expressive',
+  'hfc-female-medium',
+  'kathleen-low',
+  'amy-medium',
+]);
+const PODCAST_FEMALE_VOICE_IDS = new Set([
+  ...PODCAST_HIGH_QUALITY_VOICE_IDS,
+  'af_alloy',
+  'af_aoede',
+  'af_jessica',
+  'af_kore',
+  'af_nicole',
+  'af_nova',
+  'af_river',
+  'af_sarah',
+  'af_sky',
+  'bf_alice',
+  'bf_isabella',
 ]);
 const DEFAULT_MAX_VOICE_FALLBACK_ATTEMPTS = 2;
 const MAX_PODCAST_TTS_SPLIT_DEPTH = 3;
@@ -83,14 +105,14 @@ const DEFAULT_HOST_ROSTER = Object.freeze([
     name: 'Maya',
     role: 'Lead host',
     persona: 'Warm, curious, and good at guiding the listener through the big picture.',
-    preferredVoiceIds: ['af_heart', 'af_bella'],
+    preferredVoiceIds: ['af_bella', 'af_heart'],
   },
   {
     key: 'hostB',
-    name: 'Ryan',
+    name: 'June',
     role: 'Co-host',
     persona: 'Grounded, calm, and precise when unpacking details, tradeoffs, and practical consequences.',
-    preferredVoiceIds: ['am_adam', 'bf_emma'],
+    preferredVoiceIds: ['bf_emma', 'af_heart'],
   },
   {
     key: 'hostC',
@@ -101,10 +123,10 @@ const DEFAULT_HOST_ROSTER = Object.freeze([
   },
   {
     key: 'hostD',
-    name: 'Elliot',
+    name: 'Claire',
     role: 'Lead host',
     persona: 'Measured, thoughtful, and good at turning technical material into clear narrative beats.',
-    preferredVoiceIds: ['am_adam', 'af_bella'],
+    preferredVoiceIds: ['af_bella', 'af_heart'],
   },
 ]);
 const LEGACY_DEFAULT_HOSTS = Object.freeze([
@@ -113,19 +135,44 @@ const LEGACY_DEFAULT_HOSTS = Object.freeze([
     name: 'Maya',
     role: 'Lead host',
     persona: 'Warm, curious, and good at guiding the listener through the big picture.',
-    preferredVoiceIds: ['af_heart', 'af_bella', 'lessac-high', 'ljspeech-high'],
+    preferredVoiceIds: ['af_bella', 'af_heart', 'ljspeech-high', 'lessac-high'],
   },
   {
     key: 'hostB',
     name: 'June',
     role: 'Co-host',
     persona: 'Sharper, more analytical, and slightly playful when unpacking details and tradeoffs.',
-    preferredVoiceIds: ['bf_emma', 'am_adam', 'cori-high', 'ryan-high'],
+    preferredVoiceIds: ['bf_emma', 'af_heart', 'cori-high', 'lessac-high'],
   },
 ]);
 
+function isPodcastFemaleVoiceId(value = '') {
+  const voiceId = String(value || '').trim();
+  if (!voiceId) {
+    return false;
+  }
+  if (/^(?:af|bf)_/i.test(voiceId)) {
+    return true;
+  }
+  if (/^(?:am|bm)_/i.test(voiceId)) {
+    return false;
+  }
+  return PODCAST_FEMALE_VOICE_IDS.has(voiceId);
+}
+
+function isPodcastFemaleVoice(voice = {}) {
+  const voiceId = String(voice?.id || voice?.voiceId || '').trim();
+  if (isPodcastFemaleVoiceId(voiceId)) {
+    return true;
+  }
+
+  return Array.isArray(voice?.aliases)
+    && voice.aliases.some((alias) => isPodcastFemaleVoiceId(alias));
+}
+
 function resolveHighQualityVoicePool(availableVoiceIds = new Set(), preferredVoiceIds = []) {
   const preferred = uniqueOrdered(preferredVoiceIds)
+    .filter((voiceId) => isPodcastFemaleVoiceId(voiceId))
     .filter((voiceId) => availableVoiceIds.has(voiceId));
 
   if (preferred.length > 0) {
@@ -140,7 +187,8 @@ function resolveHighQualityVoicePool(availableVoiceIds = new Set(), preferredVoi
     return curated;
   }
 
-  return uniqueOrdered(Array.from(availableVoiceIds));
+  return uniqueOrdered(Array.from(availableVoiceIds))
+    .filter((voiceId) => isPodcastFemaleVoiceId(voiceId));
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -332,6 +380,7 @@ function selectDefaultHostTemplates(params = {}) {
 function buildHostVoicePool(availableVoices = [], preferredVoiceIds = [], explicitVoiceIds = [], forcedVoiceId = '') {
   const availableVoiceIds = new Set(
     (Array.isArray(availableVoices) ? availableVoices : [])
+      .filter((voice) => isPodcastFemaleVoice(voice))
       .map((voice) => (voice && typeof voice === 'object' ? String(voice.id || '').trim() : ''))
       .filter(Boolean),
   );
@@ -348,7 +397,9 @@ function buildHostVoicePool(availableVoices = [], preferredVoiceIds = [], explic
     ...preferred,
   ]).filter(Boolean);
 
-  const validRequested = requested.filter((voiceId) => availableVoiceIds.has(voiceId));
+  const validRequested = requested
+    .filter((voiceId) => isPodcastFemaleVoiceId(voiceId))
+    .filter((voiceId) => availableVoiceIds.has(voiceId));
   if (validRequested.length > 0) {
     return validRequested;
   }
@@ -973,7 +1024,9 @@ function resolveHosts(params = {}, voiceConfig = {}) {
         String(providedVoiceId || '').trim(),
         String(voiceConfig?.defaultVoiceId || '').trim(),
       ] : []),
-    ]).filter(Boolean);
+    ])
+      .filter(Boolean)
+      .filter((voiceId) => isPodcastFemaleVoiceId(voiceId));
     const voiceId = pickPrimaryHostVoice(configuredVoiceIds, usedVoiceIds);
 
     const fullVoicePool = uniqueOrdered(

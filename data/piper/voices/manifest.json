@@ -99,28 +99,6 @@
     "sentenceSilence": 0.28
   },
   {
-    "id": "ryan-high",
-    "label": "Ryan Deep",
-    "description": "High-quality U.S. English male voice with fuller body and steady delivery for co-host roles.",
-    "modelPath": "data/piper/voices/en_US-ryan-high.onnx",
-    "configPath": "data/piper/voices/en_US-ryan-high.onnx.json",
-    "lengthScale": 1.02,
-    "noiseScale": 0.35,
-    "noiseW": 0.7,
-    "sentenceSilence": 0.29
-  },
-  {
-    "id": "ryan-direct",
-    "label": "Ryan Direct",
-    "description": "Tighter Ryan variant tuned for faster analytical passages and cleaner punch-in responses.",
-    "modelPath": "data/piper/voices/en_US-ryan-high.onnx",
-    "configPath": "data/piper/voices/en_US-ryan-high.onnx.json",
-    "lengthScale": 0.98,
-    "noiseScale": 0.39,
-    "noiseW": 0.74,
-    "sentenceSilence": 0.24
-  },
-  {
     "id": "cori-high",
     "label": "Cori British",
     "description": "High-quality British English voice with clean presence for premium editorial or documentary-style podcasts.",

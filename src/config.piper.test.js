@@ -35,8 +35,12 @@ describe('config bundled TTS defaults', () => {
         expect(config.tts.kokoro.voices).toEqual(expect.arrayContaining([
             expect.objectContaining({ id: 'af_heart', aliases: expect.arrayContaining(['lessac-high']) }),
             expect.objectContaining({ id: 'af_bella', aliases: expect.arrayContaining(['ljspeech-high']) }),
-            expect.objectContaining({ id: 'am_adam', aliases: expect.arrayContaining(['ryan-high']) }),
             expect.objectContaining({ id: 'bf_emma', aliases: expect.arrayContaining(['cori-high']) }),
+        ]));
+        expect(config.tts.kokoro.voices.map((voice) => voice.id)).not.toEqual(expect.arrayContaining([
+            'am_adam',
+            'am_michael',
+            'bm_george',
         ]));
         expect(config.tts.kokoro.defaultVoiceId).toBe('af_heart');
         expect(
@@ -48,6 +52,10 @@ describe('config bundled TTS defaults', () => {
             expect.objectContaining({ id: 'amy-medium' }),
             expect.objectContaining({ id: 'amy-broadcast' }),
             expect.objectContaining({ id: 'hfc-female-rich' }),
+        ]));
+        expect(config.tts.piper.voices.map((voice) => voice.id)).not.toEqual(expect.arrayContaining([
+            'ryan-high',
+            'ryan-direct',
         ]));
         expect(config.tts.piper.defaultVoiceId).toBe('hfc-female-rich');
     });

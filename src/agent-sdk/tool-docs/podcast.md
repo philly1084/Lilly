@@ -54,7 +54,7 @@ Notes:
 - For "video podcast" or "podcast video" requests, pass `includeVideo: true`, `videoRenderMode: "storyboard"`, `videoImageMode: "mixed"`, and `videoGenerateImages: true` unless the user explicitly asks for waveform-only or no generated imagery. Use waveform-card for plain MP4/audio-visualizer requests.
 - Research quality depends on `web-search` availability and source accessibility.
 - Speech stitching is native PCM WAV concatenation, so the selected TTS voices must emit compatible WAV output.
-- Podcast renders use the curated high-quality Kokoro `af_heart`, `af_bella`, `am_adam`, and `bf_emma` voice pool by default, with legacy Piper aliases mapped during rollout.
+- Podcast renders use the curated high-quality female voice pool by default: Kokoro `af_bella`, `af_heart`, and `bf_emma`, with female Piper fallback aliases such as `ljspeech-high`, `lessac-high`, and `cori-high` mapped during rollout.
 - Long-form episodes use podcast-specific TTS chunking and timeout controls; override them with `ttsChunkMaxChars` or `ttsTimeoutMs` if a machine is unusually slow.
 - Each host keeps a stable primary voice unless you set `cycleHostVoices: true` or request a video podcast; when a TTS render fails, the tool falls through to the next voice in that host's pool by default.
 - Source verification still uses bounded parallelism by default. Podcast TTS concurrency is conservative by default; only raise `ttsConcurrency` if you need speed more than render stability.
@@ -66,4 +66,4 @@ Notes:
 - Long video renders use adaptive ffmpeg budgets. Override with `videoFfmpegTimeoutMs`, `videoSegmentTimeoutMs`, or `videoMuxTimeoutMs` only when the host is known to need more time.
 - Only use music beds you are licensed to use. Provide a legal audio file path or upload; do not source copyrighted music without permission.
 - Check `/api/tts/voices` for the exact `hostA` / `hostB` voice IDs supported in your current deployment before passing custom `hostAVoiceIds` and `hostBVoiceIds`.
-- Example: `hostAVoiceIds: ["af_heart", "af_bella"]` and `hostBVoiceIds: ["am_adam", "bf_emma"]` lets the same host cycle through the highest-quality bundled Kokoro voices per turn.
+- Example: `hostAVoiceIds: ["af_bella", "af_heart"]` and `hostBVoiceIds: ["bf_emma", "af_heart"]` lets the same host cycle through the highest-quality bundled female Kokoro voices per turn.

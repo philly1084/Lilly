@@ -84,12 +84,6 @@ RUN mkdir -p /app/data/piper/voices && \
     "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx.json" \
     --output /app/data/piper/voices/en_US-ljspeech-high.onnx.json && \
   curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/ryan/high/en_US-ryan-high.onnx" \
-    --output /app/data/piper/voices/en_US-ryan-high.onnx && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/ryan/high/en_US-ryan-high.onnx.json" \
-    --output /app/data/piper/voices/en_US-ryan-high.onnx.json && \
-  curl --fail --show-error --silent --location --retry 3 \
     "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_GB/cori/high/en_GB-cori-high.onnx" \
     --output /app/data/piper/voices/en_GB-cori-high.onnx && \
   curl --fail --show-error --silent --location --retry 3 \
