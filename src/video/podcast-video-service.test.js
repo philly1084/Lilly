@@ -454,6 +454,84 @@ describe('PodcastVideoService', () => {
     }));
   });
 
+  test('prefers generated images for four out of five mixed storyboard scenes', async () => {
+    const generatedSlide = ppmDataUrl(16, 16, Array.from({ length: 16 * 16 * 3 }, (_value, index) => (
+      [20, 90, 160, 230, 210, 120][index % 6]
+    )));
+    const executeTool = jest.fn(async () => ({
+      data: {
+        results: [{ title: 'Stock page', url: 'https://example.com/stock' }],
+      },
+    }));
+    const generateImageBatch = jest.fn(async () => ({
+      data: [{ url: generatedSlide, revised_prompt: 'generated storyboard slide' }],
+    }));
+    const searchImages = jest.fn();
+    const service = new PodcastVideoService({
+      isUnsplashConfigured: () => true,
+      searchImages,
+      generateImageBatch,
+    });
+
+    const image = await service.resolveSceneImage({
+      id: 'scene-01',
+      summary: 'Grid batteries',
+      visualPrompt: 'grid battery infographic',
+    }, {
+      imageMode: 'mixed',
+      generateImages: true,
+      generatedImageRatio: 4,
+      toolManager: { executeTool },
+      toolContext: { sessionId: 'session-1' },
+    });
+
+    expect(generateImageBatch).toHaveBeenCalledTimes(1);
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(searchImages).not.toHaveBeenCalled();
+    expect(image).toEqual(expect.objectContaining({
+      source: 'generated',
+      revisedPrompt: 'generated storyboard slide',
+    }));
+  });
+
+  test('keeps one mixed storyboard slot for web or Unsplash variety', async () => {
+    const stockSlide = ppmDataUrl(16, 16, Array.from({ length: 16 * 16 * 3 }, (_value, index) => (
+      [230, 220, 180, 40, 120, 170][index % 6]
+    )));
+    const generateImageBatch = jest.fn();
+    const searchImages = jest.fn(async () => ({
+      results: [{
+        urls: { regular: stockSlide },
+        author: { name: 'Example Photographer', username: 'example', link: 'https://unsplash.example/u/example' },
+        links: { html: 'https://unsplash.example/photo' },
+      }],
+    }));
+    const service = new PodcastVideoService({
+      isUnsplashConfigured: () => true,
+      searchImages,
+      generateImageBatch,
+    });
+
+    const image = await service.resolveSceneImage({
+      id: 'scene-05',
+      summary: 'Grid batteries',
+      visualQuery: 'grid battery storage',
+    }, {
+      imageMode: 'mixed',
+      generateImages: true,
+      generatedImageRatio: 4,
+    });
+
+    expect(searchImages).toHaveBeenCalledWith('grid battery storage', expect.objectContaining({
+      perPage: 1,
+    }));
+    expect(generateImageBatch).not.toHaveBeenCalled();
+    expect(image).toEqual(expect.objectContaining({
+      source: 'unsplash',
+      url: stockSlide,
+    }));
+  });
+
   test('retries generated scene images that look like solid blue or pink placeholders', async () => {
     const badPink = ppmDataUrl(16, 16, Array.from({ length: 16 * 16 * 3 }, (_value, index) => (
       [255, 80, 210][index % 3]

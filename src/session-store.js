@@ -1502,17 +1502,66 @@ class SessionStore {
         if (!this.usePostgres) {
             this.sessionMessages.delete(id);
             const deleted = this.sessions.delete(id);
+            if (deleted) {
+                for (const [ownerId, state] of this.userSessionState.entries()) {
+                    const scopedActiveSessionIds = Object.fromEntries(
+                        Object.entries(state.scopedActiveSessionIds || {})
+                            .filter(([, sessionId]) => sessionId !== id),
+                    );
+                    this.userSessionState.set(ownerId, this.normalizeUserSessionState({
+                        ...state,
+                        activeSessionId: state.activeSessionId === id ? null : state.activeSessionId,
+                        scopedActiveSessionIds,
+                        updatedAt: new Date().toISOString(),
+                    }));
+                }
+            }
             await this.persistFallbackState();
             return deleted;
         }
 
         try {
             const result = await postgres.query('DELETE FROM sessions WHERE id = $1', [id]);
+            if (result.rowCount > 0) {
+                await postgres.query(
+                    `
+                        UPDATE user_session_state
+                        SET active_session_id = CASE
+                                WHEN active_session_id = $1 THEN NULL
+                                ELSE active_session_id
+                            END,
+                            scoped_active_session_ids = COALESCE(
+                                (
+                                    SELECT jsonb_object_agg(entry.key, entry.value)
+                                    FROM jsonb_each_text(user_session_state.scoped_active_session_ids) AS entry(key, value)
+                                    WHERE entry.value <> $1
+                                ),
+                                '{}'::jsonb
+                            ),
+                            updated_at = NOW()
+                    `,
+                    [id],
+                );
+            }
             return result.rowCount > 0;
         } catch (error) {
             if (await this.switchToFallbackStorage(error)) {
                 this.sessionMessages.delete(id);
                 const deleted = this.sessions.delete(id);
+                if (deleted) {
+                    for (const [ownerId, state] of this.userSessionState.entries()) {
+                        const scopedActiveSessionIds = Object.fromEntries(
+                            Object.entries(state.scopedActiveSessionIds || {})
+                                .filter(([, sessionId]) => sessionId !== id),
+                        );
+                        this.userSessionState.set(ownerId, this.normalizeUserSessionState({
+                            ...state,
+                            activeSessionId: state.activeSessionId === id ? null : state.activeSessionId,
+                            scopedActiveSessionIds,
+                            updatedAt: new Date().toISOString(),
+                        }));
+                    }
+                }
                 await this.persistFallbackState();
                 return deleted;
             }

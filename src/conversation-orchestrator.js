@@ -12257,6 +12257,7 @@ class ConversationOrchestrator extends EventEmitter {
             ? toolPolicy.harness
             : (metadata?.harness && typeof metadata.harness === 'object' ? metadata.harness : null);
         const intelligenceSummary = scorePerceivedIntelligence({
+            objective,
             memoryTrace,
             executionTrace,
             toolEvents,

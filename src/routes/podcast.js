@@ -81,6 +81,7 @@ const generateSchema = {
   videoVisualEffects: { required: false, type: 'boolean' },
   visualEffects: { required: false, type: 'boolean' },
   videoSceneCount: { required: false, type: 'number' },
+  videoGeneratedImageRatio: { required: false, type: 'number' },
   videoRenderMode: { required: false, type: 'string' },
   renderMode: { required: false, type: 'string' },
   videoVisualStyle: { required: false, type: 'string' },
@@ -129,6 +130,16 @@ function resolveBooleanOption(...values) {
   return undefined;
 }
 
+function resolveNumberOption(...values) {
+  for (const value of values) {
+    if (value != null && value !== '') {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : undefined;
+    }
+  }
+  return undefined;
+}
+
 function buildPodcastVideoOptions(input = {}, context = {}) {
   const nested = input.video && typeof input.video === 'object' ? input.video : {};
   const imageMode = input.videoImageMode || input.imageMode || nested.imageMode || 'mixed';
@@ -141,6 +152,7 @@ function buildPodcastVideoOptions(input = {}, context = {}) {
     enhanceAudio: resolveBooleanOption(input.videoEnhanceAudio, input.enhanceAudio, nested.enhanceAudio),
     visualEffects: resolveBooleanOption(input.videoVisualEffects, input.visualEffects, nested.visualEffects),
     sceneCount: Number(input.videoSceneCount || input.sceneCount || nested.sceneCount) || undefined,
+    generatedImageRatio: resolveNumberOption(input.videoGeneratedImageRatio, input.generatedImageRatio, nested.generatedImageRatio),
     renderMode: input.videoRenderMode || input.renderMode || nested.renderMode || undefined,
     visualStyle: input.videoVisualStyle || input.visualStyle || nested.visualStyle || '',
     imageModel: input.videoImageModel || input.imageModel || nested.imageModel || null,

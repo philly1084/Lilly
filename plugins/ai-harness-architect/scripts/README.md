@@ -7,3 +7,9 @@ Scans a repository and emits a compact JSON baseline for AI harness architecture
 ```powershell
 node plugins/ai-harness-architect/scripts/collect-harness-context.js --root .
 ```
+
+Generate a readable architecture brief:
+
+```powershell
+node plugins/ai-harness-architect/scripts/collect-harness-context.js --root . --format markdown
+```

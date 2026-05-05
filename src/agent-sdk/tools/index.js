@@ -554,6 +554,15 @@ function buildPodcastVideoOptions(params = {}, context = {}) {
     }
     return undefined;
   };
+  const resolveNumberOption = (...values) => {
+    for (const value of values) {
+      if (value != null && value !== '') {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : undefined;
+      }
+    }
+    return undefined;
+  };
 
   return {
     topic: params.topic || params.prompt || params.subject || nested.topic || '',
@@ -563,6 +572,7 @@ function buildPodcastVideoOptions(params = {}, context = {}) {
     enhanceAudio: resolveBooleanOption(params.videoEnhanceAudio, params.enhanceAudio, nested.enhanceAudio),
     visualEffects: resolveBooleanOption(params.videoVisualEffects, params.visualEffects, nested.visualEffects),
     sceneCount: Number(params.videoSceneCount || params.sceneCount || nested.sceneCount) || undefined,
+    generatedImageRatio: resolveNumberOption(params.videoGeneratedImageRatio, params.generatedImageRatio, nested.generatedImageRatio),
     renderMode: params.videoRenderMode || params.renderMode || nested.renderMode || undefined,
     visualStyle: params.videoVisualStyle || params.visualStyle || nested.visualStyle || '',
     imageModel: params.videoImageModel || params.imageModel || nested.imageModel || null,
@@ -4051,14 +4061,15 @@ class ToolManager {
                 enhanceAudio: { type: 'boolean' },
                 visualEffects: { type: 'boolean' },
                 sceneCount: { type: 'integer', minimum: 1, maximum: 36 },
+                generatedImageRatio: { type: 'integer', minimum: 0, maximum: 20 },
                 renderMode: { type: 'string', enum: ['waveform-card', 'static-card', 'storyboard'] },
                 visualStyle: { type: 'string' },
                 imageModel: { type: 'string' },
                 model: { type: 'string' },
                 reasoningEffort: { type: 'string' },
-                ffmpegTimeoutMs: { type: 'integer', minimum: 30000, maximum: 1800000 },
-                segmentTimeoutMs: { type: 'integer', minimum: 30000, maximum: 1800000 },
-                muxTimeoutMs: { type: 'integer', minimum: 60000, maximum: 1800000 },
+                ffmpegTimeoutMs: { type: 'integer', minimum: 30000, maximum: 2700000 },
+                segmentTimeoutMs: { type: 'integer', minimum: 30000, maximum: 2700000 },
+                muxTimeoutMs: { type: 'integer', minimum: 60000, maximum: 2700000 },
               },
               additionalProperties: false,
             },
@@ -4069,15 +4080,16 @@ class ToolManager {
             videoVisualEffects: { type: 'boolean' },
             visualEffects: { type: 'boolean' },
             videoSceneCount: { type: 'integer', minimum: 1, maximum: 36 },
+            videoGeneratedImageRatio: { type: 'integer', minimum: 0, maximum: 20 },
             videoRenderMode: { type: 'string', enum: ['waveform-card', 'static-card', 'storyboard'] },
             renderMode: { type: 'string', enum: ['waveform-card', 'static-card', 'storyboard'] },
             videoVisualStyle: { type: 'string' },
             videoImageModel: { type: 'string' },
             videoModel: { type: 'string' },
             videoReasoningEffort: { type: 'string' },
-            videoFfmpegTimeoutMs: { type: 'integer', minimum: 30000, maximum: 1800000 },
-            videoSegmentTimeoutMs: { type: 'integer', minimum: 30000, maximum: 1800000 },
-            videoMuxTimeoutMs: { type: 'integer', minimum: 60000, maximum: 1800000 },
+            videoFfmpegTimeoutMs: { type: 'integer', minimum: 30000, maximum: 2700000 },
+            videoSegmentTimeoutMs: { type: 'integer', minimum: 30000, maximum: 2700000 },
+            videoMuxTimeoutMs: { type: 'integer', minimum: 60000, maximum: 2700000 },
           },
           additionalProperties: false,
         },

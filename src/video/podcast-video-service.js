@@ -40,6 +40,7 @@ const MAX_SCENES = 36;
 const DEFAULT_SEGMENT_TIMEOUT_MS = 240000;
 const DEFAULT_MUX_TIMEOUT_MS = 900000;
 const DEFAULT_MAX_FFMPEG_TIMEOUT_MS = 1800000;
+const DEFAULT_MIXED_GENERATED_IMAGE_RATIO = 4;
 const DEFAULT_X264_PRESET = 'veryfast';
 const DEFAULT_X264_CRF = 23;
 const DEFAULT_RENDER_MODE = 'waveform-card';
@@ -293,6 +294,50 @@ function normalizeBooleanOption(value, fallback = false) {
   }
 
   return fallback;
+}
+
+function normalizeGeneratedImageRatio(value, fallback = DEFAULT_MIXED_GENERATED_IMAGE_RATIO) {
+  if (typeof value === 'string') {
+    const ratioMatch = value.trim().match(/^(\d+(?:\.\d+)?)\s*:\s*1$/);
+    if (ratioMatch) {
+      return clampNumber(ratioMatch[1], 0, 20, fallback);
+    }
+  }
+
+  return clampNumber(value, 0, 20, fallback);
+}
+
+function resolveMixedGeneratedImageRatio(options = {}) {
+  return normalizeGeneratedImageRatio(
+    options.generatedImageRatio
+      ?? options.generatedImageWeight
+      ?? config.podcastVideo?.generatedImageRatio,
+    DEFAULT_MIXED_GENERATED_IMAGE_RATIO,
+  );
+}
+
+function resolveSceneIndex(scene = {}, fallback = 0) {
+  const numericIndex = Number(scene.index);
+  if (Number.isFinite(numericIndex) && numericIndex >= 0) {
+    return Math.floor(numericIndex);
+  }
+
+  const idMatch = String(scene.id || '').match(/(\d+)/);
+  if (idMatch) {
+    return Math.max(0, Number(idMatch[1]) - 1);
+  }
+
+  return Math.max(0, Math.floor(Number(fallback) || 0));
+}
+
+function shouldPreferGeneratedInMixedMode(scene = {}, options = {}) {
+  const ratio = resolveMixedGeneratedImageRatio(options);
+  if (ratio <= 0) {
+    return false;
+  }
+
+  const cycle = ratio + 1;
+  return resolveSceneIndex(scene) % cycle < ratio;
 }
 
 function normalizeVideoAudioRepair(value) {
@@ -1065,6 +1110,7 @@ class PodcastVideoService {
         sceneCount: resolveDefaultStoryboardSceneCount(),
         maxScenes: MAX_SCENES,
         renderMode: runtime.renderMode,
+        mixedGeneratedImageRatio: resolveMixedGeneratedImageRatio(),
         audioRepairEnabled: config.podcastVideo?.audioRepairEnabled === true,
         visualEffectsEnabled: config.podcastVideo?.visualEffectsEnabled !== false,
       },
@@ -1459,16 +1505,20 @@ class PodcastVideoService {
       }
     }
 
-    const allowWebSearch = ['mixed', 'web'].includes(imageMode);
-    if (allowWebSearch) {
-      const webImage = await this.resolveWebSearchImage(scene, options);
-      if (isUsableSceneImage(webImage)) {
-        return webImage;
+    const resolveWebOrStockImage = async () => {
+      const allowWebSearch = ['mixed', 'web'].includes(imageMode);
+      if (allowWebSearch) {
+        const webImage = await this.resolveWebSearchImage(scene, options);
+        if (isUsableSceneImage(webImage)) {
+          return webImage;
+        }
       }
-    }
 
-    const allowUnsplash = ['mixed', 'unsplash'].includes(imageMode);
-    if (allowUnsplash && this.isUnsplashConfigured()) {
+      const allowUnsplash = ['mixed', 'unsplash'].includes(imageMode);
+      if (!allowUnsplash || !this.isUnsplashConfigured()) {
+        return null;
+      }
+
       try {
         const results = await this.searchImages(scene.visualQuery || scene.summary, {
           page: 1,
@@ -1495,10 +1545,16 @@ class PodcastVideoService {
       } catch (error) {
         console.warn(`[PodcastVideo] Unsplash image lookup failed for scene ${scene.id}: ${error.message}`);
       }
-    }
 
-    const allowGenerated = ['mixed', 'generated'].includes(imageMode) && options.generateImages === true;
-    if (allowGenerated) {
+      return null;
+    };
+
+    const resolveGeneratedImage = async () => {
+      const allowGenerated = ['mixed', 'generated'].includes(imageMode) && options.generateImages === true;
+      if (!allowGenerated) {
+        return null;
+      }
+
       try {
         const maxAttempts = Math.max(1, Math.min(3, Number(options.imageRetryAttempts) || 3));
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -1528,6 +1584,29 @@ class PodcastVideoService {
         }
       } catch (error) {
         console.warn(`[PodcastVideo] Generated image failed for scene ${scene.id}: ${error.message}`);
+      }
+
+      return null;
+    };
+
+    const preferGenerated = imageMode === 'generated'
+      || (imageMode === 'mixed' && options.generateImages === true && shouldPreferGeneratedInMixedMode(scene, options));
+    if (preferGenerated) {
+      const generatedImage = await resolveGeneratedImage();
+      if (isUsableSceneImage(generatedImage)) {
+        return generatedImage;
+      }
+    }
+
+    const webOrStockImage = await resolveWebOrStockImage();
+    if (isUsableSceneImage(webOrStockImage)) {
+      return webOrStockImage;
+    }
+
+    if (!preferGenerated) {
+      const generatedImage = await resolveGeneratedImage();
+      if (isUsableSceneImage(generatedImage)) {
+        return generatedImage;
       }
     }
 
@@ -1630,6 +1709,7 @@ class PodcastVideoService {
     imageMode = 'mixed',
     generateImages = false,
     imageModel = null,
+    generatedImageRatio = null,
     enhanceAudio = false,
     visualEffects = true,
     runtime,
@@ -1650,6 +1730,7 @@ class PodcastVideoService {
       imageMode,
       generateImages,
       imageModel,
+      generatedImageRatio,
       toolManager,
       toolContext,
     });
@@ -1772,6 +1853,7 @@ class PodcastVideoService {
     imageMode = 'mixed',
     generateImages = false,
     imageModel = null,
+    generatedImageRatio = null,
     ffmpegTimeoutMs = null,
     segmentTimeoutMs = null,
     muxTimeoutMs = null,
@@ -1855,6 +1937,7 @@ class PodcastVideoService {
           imageMode,
           generateImages,
           imageModel,
+          generatedImageRatio,
           enhanceAudio,
           visualEffects: normalizeVisualEffects(visualEffects),
           runtime,
@@ -1884,6 +1967,7 @@ class PodcastVideoService {
         imageMode,
         generateImages,
         imageModel,
+        generatedImageRatio,
         toolManager,
         toolContext,
       });
@@ -2114,6 +2198,7 @@ class PodcastVideoService {
       imageMode,
       generateImages,
       imageModel: options.imageModel || null,
+      generatedImageRatio: options.generatedImageRatio,
       ffmpegTimeoutMs: options.ffmpegTimeoutMs || options.videoFfmpegTimeoutMs || options.timeoutMs || null,
       segmentTimeoutMs: options.segmentTimeoutMs || options.videoSegmentTimeoutMs || null,
       muxTimeoutMs: options.muxTimeoutMs || options.videoMuxTimeoutMs || null,
@@ -2145,6 +2230,7 @@ class PodcastVideoService {
         audioWaveformOverlayEnabled: rendered.audioWaveformOverlayEnabled === true,
         imageMode,
         generatedImagesEnabled: generateImages,
+        mixedGeneratedImageRatio: imageMode === 'mixed' && generateImages ? resolveMixedGeneratedImageRatio(options) : null,
       },
     });
 

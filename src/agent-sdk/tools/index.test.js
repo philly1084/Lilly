@@ -342,6 +342,7 @@ describe('ToolManager image tools', () => {
       videoAspectRatio: '9:16',
       videoImageMode: 'generated',
       videoGenerateImages: true,
+      videoGeneratedImageRatio: 4,
       model: 'gpt-4o-mini',
     }, {
       sessionId: 'session-1',
@@ -362,6 +363,7 @@ describe('ToolManager image tools', () => {
           aspectRatio: '9:16',
           imageMode: 'generated',
           generateImages: true,
+          generatedImageRatio: 4,
           model: 'gpt-4o',
         }),
       }),

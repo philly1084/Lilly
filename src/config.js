@@ -422,21 +422,21 @@ const normalizedKokoroPodcastChunkChars = Math.max(
 );
 const normalizedPodcastVideoSegmentTimeoutMs = Math.max(
     30000,
-    parseInt(process.env.PODCAST_VIDEO_SEGMENT_TIMEOUT_MS, 10) || 240000,
+    parseInt(process.env.PODCAST_VIDEO_SEGMENT_TIMEOUT_MS, 10) || 360000,
 );
 const normalizedPodcastVideoMuxTimeoutMs = Math.max(
     60000,
     parseInt(process.env.PODCAST_VIDEO_MUX_TIMEOUT_MS, 10)
         || parseInt(process.env.PODCAST_VIDEO_RENDER_TIMEOUT_MS, 10)
-        || 900000,
+        || 1200000,
 );
 const normalizedPodcastVideoMaxFfmpegTimeoutMs = Math.max(
     normalizedPodcastVideoMuxTimeoutMs,
-    parseInt(process.env.PODCAST_VIDEO_MAX_FFMPEG_TIMEOUT_MS, 10) || 1800000,
+    parseInt(process.env.PODCAST_VIDEO_MAX_FFMPEG_TIMEOUT_MS, 10) || 2700000,
 );
 const normalizedPodcastToolTimeoutMs = Math.max(
     900000,
-    parseInt(process.env.PODCAST_TOOL_TIMEOUT_MS, 10) || 2700000,
+    parseInt(process.env.PODCAST_TOOL_TIMEOUT_MS, 10) || 3600000,
 );
 const allowedPodcastVideoX264Presets = new Set([
     'ultrafast',
@@ -460,6 +460,10 @@ const normalizedPodcastVideoX264Crf = Math.max(
 const normalizedPodcastVideoDefaultSceneCount = Math.max(
     1,
     Math.min(36, parseOptionalInteger(process.env.PODCAST_VIDEO_DEFAULT_SCENE_COUNT) ?? 14),
+);
+const normalizedPodcastVideoGeneratedImageRatio = Math.max(
+    0,
+    Math.min(20, parseOptionalInteger(process.env.PODCAST_VIDEO_GENERATED_IMAGE_RATIO) ?? 4),
 );
 const allowedPodcastVideoRenderModes = new Set(['waveform-card', 'static-card', 'storyboard']);
 const requestedPodcastVideoRenderMode = String(process.env.PODCAST_VIDEO_RENDER_MODE || '').trim().toLowerCase();
@@ -665,6 +669,7 @@ const config = {
         codecTag: 'avc1',
         renderMode: normalizedPodcastVideoRenderMode,
         defaultSceneCount: normalizedPodcastVideoDefaultSceneCount,
+        generatedImageRatio: normalizedPodcastVideoGeneratedImageRatio,
         audioRepairEnabled: process.env.PODCAST_VIDEO_AUDIO_REPAIR_ENABLED === 'true',
         visualEffectsEnabled: process.env.PODCAST_VIDEO_VISUAL_EFFECTS_ENABLED !== 'false',
     },

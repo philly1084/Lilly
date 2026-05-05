@@ -2767,8 +2767,12 @@ class Dashboard {
             const metaParts = [
                 record.sessionId,
                 record.ownerId ? `owner ${record.ownerId}` : '',
+                record.scopeKey ? `scope ${record.scopeKey}` : '',
+                Number(record.messageCount || 0) ? `${Number(record.messageCount || 0).toLocaleString()} messages` : '',
                 record.mimeType || record.format || '',
             ].filter(Boolean);
+            const isChatSession = record.category === 'chatSessions';
+            const deleteLabel = isChatSession ? 'Delete Chat' : 'Delete';
 
             return `
                 <tr>
@@ -2789,7 +2793,7 @@ class Dashboard {
                                 class="btn btn-ghost btn-sm storage-delete-file"
                                 data-category="${this.escapeHtml(record.category)}"
                                 data-id="${this.escapeHtml(record.id)}"
-                            >Delete</button>
+                            >${deleteLabel}</button>
                         </div>
                     </td>
                 </tr>
@@ -2831,18 +2835,22 @@ class Dashboard {
     }
 
     async deleteStorageRecord(category, id) {
-        if (!category || !id || !confirm('Delete this managed artifact?')) {
+        const isChatSession = category === 'chatSessions';
+        const message = isChatSession
+            ? 'Permanently delete this old chat, its messages, stored artifacts, and memory references?'
+            : 'Delete this managed artifact?';
+        if (!category || !id || !confirm(message)) {
             return;
         }
 
         try {
             const response = await apiClient.delete(`/api/admin/storage/${encodeURIComponent(category)}/${encodeURIComponent(id)}`);
             const result = this.unwrapApiPayload(response, {});
-            this.showToast(`Deleted ${this.formatBytes(result.deletedBytes || 0)}`, 'success');
+            this.showToast(isChatSession ? 'Deleted old chat permanently' : `Deleted ${this.formatBytes(result.deletedBytes || 0)}`, 'success');
             await this.loadStorage();
         } catch (error) {
-            console.error('Error deleting managed artifact:', error);
-            this.showToast('Failed to delete managed artifact', 'error');
+            console.error('Error deleting managed item:', error);
+            this.showToast(isChatSession ? 'Failed to delete old chat' : 'Failed to delete managed artifact', 'error');
         }
     }
     

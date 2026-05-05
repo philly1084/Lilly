@@ -3,8 +3,14 @@ const path = require('path');
 const { getStateDirectory } = require('../../runtime-state-paths');
 const { artifactService } = require('../../artifacts/artifact-service');
 const { artifactStore } = require('../../artifacts/artifact-store');
+const { sessionStore } = require('../../session-store');
+const { memoryService } = require('../../memory/memory-service');
 
 const CATEGORIES = {
+  chatSessions: {
+    label: 'Old chats',
+    storage: 'sessions',
+  },
   storedArtifacts: {
     label: 'Stored documents',
     storage: 'postgres',
@@ -97,6 +103,10 @@ async function findContentPath(directory, id, entries) {
 
 async function scanCategory(category) {
   const definition = CATEGORIES[category];
+  if (definition.storage === 'sessions') {
+    return scanChatSessionsCategory(category, definition);
+  }
+
   if (definition.storage === 'postgres') {
     return scanStoredArtifactsCategory(category, definition);
   }
@@ -192,6 +202,53 @@ async function scanCategory(category) {
     directory,
     count: records.length,
     totalBytes,
+    records,
+  };
+}
+
+async function scanChatSessionsCategory(category, definition) {
+  const sessions = await sessionStore.list();
+  const records = sessions.map((session) => {
+    const metadata = session.metadata || {};
+    const ownerId = String(metadata.ownerId || metadata.userId || metadata.username || '').trim();
+    const recentMessages = Array.isArray(metadata.recentMessages) ? metadata.recentMessages : [];
+    const latestUserMessage = [...recentMessages].reverse()
+      .find((message) => message?.role === 'user' && String(message.content || '').trim());
+    const fallbackTitle = latestUserMessage?.content || metadata.title || metadata.name || session.id;
+    const filename = String(fallbackTitle || session.id).replace(/\s+/g, ' ').trim();
+    const metadataBytes = Buffer.byteLength(JSON.stringify(metadata || {}), 'utf8');
+
+    return {
+      id: session.id,
+      category,
+      label: definition.label,
+      filename: filename.length > 90 ? `${filename.slice(0, 87)}...` : filename,
+      sessionId: session.id,
+      ownerId: ownerId || null,
+      mimeType: 'application/vnd.kimibuilt.chat-session',
+      format: 'chat',
+      createdAt: normalizeDate(session.createdAt, null),
+      updatedAt: normalizeDate(session.updatedAt, session.createdAt),
+      sizeBytes: metadataBytes,
+      diskBytes: metadataBytes,
+      contentBytes: 0,
+      metadataBytes,
+      messageCount: safeNumber(session.messageCount, 0),
+      scopeKey: session.scopeKey || metadata.memoryScope || null,
+      files: [],
+      storage: sessionStore.isPersistent() ? 'postgres' : 'file-backed',
+      downloadUrl: null,
+      previewUrl: null,
+    };
+  });
+
+  records.sort((a, b) => Date.parse(b.updatedAt || '') - Date.parse(a.updatedAt || ''));
+  return {
+    category,
+    label: definition.label,
+    directory: sessionStore.isPersistent() ? 'Postgres sessions table' : 'File-backed sessions state',
+    count: records.length,
+    totalBytes: records.reduce((sum, record) => sum + record.diskBytes, 0),
     records,
   };
 }
@@ -340,7 +397,9 @@ async function remove(req, res, next) {
       return res.status(404).json({ success: false, error: 'Stored file not found.' });
     }
 
-    if (category === 'storedArtifacts') {
+    if (category === 'chatSessions') {
+      await deleteChatSession(record.id);
+    } else if (category === 'storedArtifacts') {
       const deleted = await artifactService.deleteArtifact(id);
       if (!deleted) {
         return res.status(404).json({ success: false, error: 'Stored artifact not found.' });
@@ -361,6 +420,7 @@ async function remove(req, res, next) {
           category: record.category,
           filename: record.filename,
           diskBytes: record.diskBytes,
+          sessionId: record.sessionId || null,
         },
       },
     });
@@ -386,7 +446,9 @@ async function cleanup(req, res, next) {
       });
 
       for (const record of expired) {
-        if (!dryRun && currentCategory === 'storedArtifacts') {
+        if (!dryRun && currentCategory === 'chatSessions') {
+          await deleteChatSession(record.id);
+        } else if (!dryRun && currentCategory === 'storedArtifacts') {
           await artifactService.deleteArtifact(record.id);
         } else if (!dryRun) {
           for (const filePath of record.files) {
@@ -420,11 +482,35 @@ async function cleanup(req, res, next) {
   }
 }
 
+async function deleteChatSession(sessionId) {
+  if (typeof sessionStore.isPersistent === 'function' && sessionStore.isPersistent()) {
+    try {
+      await artifactService.deleteArtifactsForSession(sessionId);
+    } catch (error) {
+      console.warn(`[AdminStorage] Failed to delete artifacts for chat session ${sessionId}:`, error.message);
+    }
+  }
+
+  const deleted = await sessionStore.delete(sessionId);
+  if (!deleted) {
+    const error = new Error('Chat session not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  void memoryService.forget(sessionId).catch((error) => {
+    console.warn(`[AdminStorage] Failed to forget memory for deleted chat session ${sessionId}:`, error.message);
+  });
+
+  return true;
+}
+
 module.exports = {
   cleanup,
   list,
   remove,
   _private: {
+    deleteChatSession,
     scanCategory,
   },
 };

@@ -163,11 +163,118 @@ function buildInitiativeReview({ executionTrace = [], toolEvents = [], harness =
     };
 }
 
+function getToolIdFromEvent(event = {}) {
+    return String(event?.result?.toolId || event?.toolCall?.function?.name || event?.tool || '').trim();
+}
+
+function isSuccessfulToolEvent(event = {}) {
+    return event?.result?.success !== false;
+}
+
+function getHarnessObjectiveText({ objective = '', harness = null } = {}) {
+    const criteriaText = Array.isArray(harness?.completionCriteria)
+        ? harness.completionCriteria.join(' ')
+        : '';
+    const structuredCriteriaText = Array.isArray(harness?.completion?.criteria)
+        ? harness.completion.criteria.map((entry) => entry?.text || entry).join(' ')
+        : '';
+    return [
+        objective,
+        harness?.currentObjective,
+        harness?.objective,
+        criteriaText,
+        structuredCriteriaText,
+    ].map((value) => String(value || '').trim()).filter(Boolean).join(' ');
+}
+
+function hasResearchRequirement(text = '') {
+    return /\b(research|current|latest|today|news|source|sources|citation|citations|cite|verify|verified|evidence|web|search|browse|fetch|compare|pricing)\b/i.test(text);
+}
+
+function hasSandboxVerificationRequirement(text = '') {
+    return /\b(sandbox|preview|browser|screenshot|ui check|ui-check|visual|frontend|front-end|html|website|web page|webpage|dashboard|canvas|design|responsive|contrast|overflow)\b/i.test(text);
+}
+
+function hasVerifiedSourceEvidence(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => {
+        const toolId = getToolIdFromEvent(event);
+        return isSuccessfulToolEvent(event) && ['web-fetch', 'web-scrape', 'research-bucket-read'].includes(toolId);
+    });
+}
+
+function hasSearchEvidence(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => {
+        const toolId = getToolIdFromEvent(event);
+        return isSuccessfulToolEvent(event) && ['web-search', 'design-resource-search'].includes(toolId);
+    });
+}
+
+function hasSandboxProducingEvidence(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => {
+        const toolId = getToolIdFromEvent(event);
+        const data = event?.result?.data || {};
+        return isSuccessfulToolEvent(event) && (
+            ['code-sandbox', 'document-workflow'].includes(toolId)
+            || Boolean(data?.sandboxUrl || data?.previewUrl || data?.artifact?.sandboxUrl || data?.artifact?.previewUrl)
+            || (Array.isArray(data?.artifacts) && data.artifacts.some((artifact) => artifact?.sandboxUrl || artifact?.previewUrl || artifact?.kind === 'html'))
+        );
+    });
+}
+
+function hasVisualVerificationEvidence(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => {
+        const toolId = getToolIdFromEvent(event);
+        const data = event?.result?.data || {};
+        return isSuccessfulToolEvent(event) && (
+            ['kimibuilt-ui-check', 'ui-check', 'playwright', 'browser', 'web-scrape'].includes(toolId)
+            || Boolean(data?.uiCheck || data?.screenshot || data?.screenshotPath || data?.screenshots || data?.captureScreenshot)
+        );
+    });
+}
+
+function assessGroundingAndVerification({ objective = '', harness = null, toolEvents = [], initiativeReview = null } = {}) {
+    const objectiveText = getHarnessObjectiveText({ objective, harness });
+    const researchRequired = hasResearchRequirement(objectiveText);
+    const sandboxVerificationRequired = hasSandboxVerificationRequirement(objectiveText)
+        || hasSandboxProducingEvidence(toolEvents);
+    const searchEvidence = hasSearchEvidence(toolEvents);
+    const verifiedSourceEvidence = hasVerifiedSourceEvidence(toolEvents);
+    const visualVerificationEvidence = hasVisualVerificationEvidence(toolEvents);
+    const synthesized = initiativeReview?.lastDecision === 'synthesize'
+        || initiativeReview?.completionStatus === 'complete';
+    const failureTags = [];
+
+    if (synthesized && researchRequired && !searchEvidence && !verifiedSourceEvidence) {
+        failureTags.push('missing_grounded_research');
+    } else if (synthesized && researchRequired && searchEvidence && !verifiedSourceEvidence) {
+        failureTags.push('unverified_research_sources');
+    }
+
+    if (synthesized && sandboxVerificationRequired && !visualVerificationEvidence) {
+        failureTags.push('missing_sandbox_verification');
+    }
+
+    return {
+        requirements: {
+            researchRequired,
+            sandboxVerificationRequired,
+        },
+        evidence: {
+            searchEvidence,
+            verifiedSourceEvidence,
+            sandboxProducingEvidence: hasSandboxProducingEvidence(toolEvents),
+            visualVerificationEvidence,
+        },
+        failureTags,
+    };
+}
+
 function clampScore(value = 0) {
     return Math.max(0, Math.min(1, Number(value || 0)));
 }
 
 function scorePerceivedIntelligence({
+    objective = '',
     memoryTrace = null,
     executionTrace = [],
     toolEvents = [],
@@ -177,10 +284,17 @@ function scorePerceivedIntelligence({
 } = {}) {
     const memoryReadSetSummary = summarizeMemoryReadSet(memoryTrace, { projectKey, clientSurface });
     const initiativeReview = buildInitiativeReview({ executionTrace, toolEvents, harness });
+    const groundingAndVerification = assessGroundingAndVerification({
+        objective,
+        harness,
+        toolEvents,
+        initiativeReview,
+    });
     const failureTags = [
         ...(memoryReadSetSummary.foreignProjectEntries.length > 0 ? ['cross_project_recall'] : []),
         ...(memoryReadSetSummary.foreignSurfaceEntries.length > 0 ? ['cross_surface_recall'] : []),
         ...initiativeReview.failureTags,
+        ...groundingAndVerification.failureTags,
     ];
     const perceivedIntelligenceScores = {
         continuity: clampScore(1 - (initiativeReview.totalRounds > 0 && initiativeReview.productiveRounds === 0 ? 0.35 : 0)),
@@ -205,6 +319,11 @@ function scorePerceivedIntelligence({
             ? 0.9
             : (initiativeReview.unmetCriteriaCount > 0 ? 0.68 : 0.86)),
         groundedness: clampScore(Array.isArray(toolEvents) && toolEvents.length > 0 && toolEvents.some((event) => event?.result?.success === false) ? 0.78 : 0.92),
+        sourceDiscipline: clampScore(0.92
+            - (groundingAndVerification.failureTags.includes('missing_grounded_research') ? 0.42 : 0)
+            - (groundingAndVerification.failureTags.includes('unverified_research_sources') ? 0.22 : 0)),
+        sandboxDiscipline: clampScore(0.92
+            - (groundingAndVerification.failureTags.includes('missing_sandbox_verification') ? 0.36 : 0)),
         isolation: clampScore(1 - (memoryReadSetSummary.foreignProjectEntries.length > 0 ? 0.9 : 0) - (memoryReadSetSummary.foreignSurfaceEntries.length > 0 ? 0.45 : 0)),
         surfaceDiscipline: clampScore(memoryReadSetSummary.foreignSurfaceEntries.length > 0 ? 0.55 : 0.92),
     };
@@ -216,6 +335,7 @@ function scorePerceivedIntelligence({
             userGlobalCount: memoryReadSetSummary.userGlobalCount,
         },
         memoryReadSetSummary,
+        groundingAndVerification,
         initiativeReview,
         perceivedIntelligenceScores,
         failureTags: Array.from(new Set(failureTags)),
@@ -223,6 +343,7 @@ function scorePerceivedIntelligence({
 }
 
 module.exports = {
+    assessGroundingAndVerification,
     buildInitiativeReview,
     inferSurfaceFinisher,
     normalizeFixture,

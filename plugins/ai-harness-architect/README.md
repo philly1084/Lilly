@@ -15,4 +15,10 @@ It is intentionally different from a one-time review plugin. The skill requires 
 node plugins/ai-harness-architect/scripts/collect-harness-context.js --root .
 ```
 
+Generate a Markdown architecture brief when the agent needs a readable decision starter:
+
+```powershell
+node plugins/ai-harness-architect/scripts/collect-harness-context.js --root . --format markdown
+```
+
 Then use the generated context to drive architecture decisions, sandbox prototypes, focused tests, and follow-up plans.

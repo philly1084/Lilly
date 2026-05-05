@@ -1,4 +1,5 @@
 const {
+    assessGroundingAndVerification,
     normalizeFixture,
     inferSurfaceFinisher,
     scorePerceivedIntelligence,
@@ -212,5 +213,159 @@ describe('perceived intelligence harness', () => {
         expect(resumeable.failureTags).toContain('resume_available_with_unmet_criteria');
         expect(resumeable.perceivedIntelligenceScores.resumeContinuity).toBeGreaterThan(0.85);
         expect(resumeable.perceivedIntelligenceScores.autonomyDepth).toBeGreaterThan(premature.perceivedIntelligenceScores.autonomyDepth);
+    });
+
+    test('flags research synthesis that searched but did not verify source pages', () => {
+        const summary = scorePerceivedIntelligence({
+            objective: 'Research current AI harness design patterns and build a cited recommendation.',
+            executionTrace: [
+                {
+                    type: 'review',
+                    name: 'Round review 1',
+                    details: {
+                        harnessDecision: 'synthesize',
+                        completionStatus: 'complete',
+                    },
+                },
+            ],
+            toolEvents: [
+                {
+                    result: {
+                        success: true,
+                        toolId: 'web-search',
+                        data: {
+                            results: [{ url: 'https://example.com/harness-design' }],
+                        },
+                    },
+                },
+            ],
+        });
+
+        expect(summary.groundingAndVerification.requirements.researchRequired).toBe(true);
+        expect(summary.failureTags).toContain('unverified_research_sources');
+        expect(summary.perceivedIntelligenceScores.sourceDiscipline).toBeLessThan(0.8);
+    });
+
+    test('rewards verified research source evidence', () => {
+        const summary = scorePerceivedIntelligence({
+            objective: 'Research current AI harness design patterns and build a cited recommendation.',
+            executionTrace: [
+                {
+                    type: 'review',
+                    name: 'Round review 1',
+                    details: {
+                        harnessDecision: 'synthesize',
+                        completionStatus: 'complete',
+                    },
+                },
+            ],
+            toolEvents: [
+                {
+                    result: {
+                        success: true,
+                        toolId: 'web-search',
+                        data: { results: [{ url: 'https://example.com/harness-design' }] },
+                    },
+                },
+                {
+                    result: {
+                        success: true,
+                        toolId: 'web-fetch',
+                        data: { url: 'https://example.com/harness-design', body: 'Verified source body.' },
+                    },
+                },
+            ],
+        });
+
+        expect(summary.groundingAndVerification.evidence.verifiedSourceEvidence).toBe(true);
+        expect(summary.failureTags).not.toContain('unverified_research_sources');
+        expect(summary.perceivedIntelligenceScores.sourceDiscipline).toBeGreaterThan(0.9);
+    });
+
+    test('flags sandbox-producing runs that synthesize without visual verification', () => {
+        const summary = scorePerceivedIntelligence({
+            objective: 'Build a sandbox HTML dashboard and verify the preview visually.',
+            executionTrace: [
+                {
+                    type: 'review',
+                    name: 'Round review 1',
+                    details: {
+                        harnessDecision: 'synthesize',
+                        completionStatus: 'complete',
+                    },
+                },
+            ],
+            toolEvents: [
+                {
+                    result: {
+                        success: true,
+                        toolId: 'code-sandbox',
+                        data: {
+                            sandboxUrl: '/api/sandbox-workspaces/demo/preview',
+                        },
+                    },
+                },
+            ],
+        });
+
+        expect(summary.groundingAndVerification.requirements.sandboxVerificationRequired).toBe(true);
+        expect(summary.failureTags).toContain('missing_sandbox_verification');
+        expect(summary.perceivedIntelligenceScores.sandboxDiscipline).toBeLessThan(0.7);
+    });
+
+    test('recognizes UI check evidence for sandbox verification', () => {
+        const summary = scorePerceivedIntelligence({
+            objective: 'Build a sandbox HTML dashboard and verify the preview visually.',
+            executionTrace: [
+                {
+                    type: 'review',
+                    name: 'Round review 1',
+                    details: {
+                        harnessDecision: 'synthesize',
+                        completionStatus: 'complete',
+                    },
+                },
+            ],
+            toolEvents: [
+                {
+                    result: {
+                        success: true,
+                        toolId: 'code-sandbox',
+                        data: { sandboxUrl: '/api/sandbox-workspaces/demo/preview' },
+                    },
+                },
+                {
+                    result: {
+                        success: true,
+                        toolId: 'kimibuilt-ui-check',
+                        data: { uiCheck: { errors: [] } },
+                    },
+                },
+            ],
+        });
+
+        expect(summary.groundingAndVerification.evidence.visualVerificationEvidence).toBe(true);
+        expect(summary.failureTags).not.toContain('missing_sandbox_verification');
+        expect(summary.perceivedIntelligenceScores.sandboxDiscipline).toBeGreaterThan(0.9);
+    });
+
+    test('exposes grounding and verification assessment for report builders', () => {
+        const assessment = assessGroundingAndVerification({
+            objective: 'Research sources and create a browser preview.',
+            initiativeReview: {
+                lastDecision: 'synthesize',
+                completionStatus: 'complete',
+            },
+            toolEvents: [],
+        });
+
+        expect(assessment.requirements).toEqual({
+            researchRequired: true,
+            sandboxVerificationRequired: true,
+        });
+        expect(assessment.failureTags).toEqual(expect.arrayContaining([
+            'missing_grounded_research',
+            'missing_sandbox_verification',
+        ]));
     });
 });

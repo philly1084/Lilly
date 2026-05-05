@@ -27,6 +27,8 @@ const { setDashboardController } = require('../../admin/runtime-monitor');
 const settingsController = require('./settings.controller');
 const { artifactService } = require('../../artifacts/artifact-service');
 const { artifactStore } = require('../../artifacts/artifact-store');
+const { sessionStore } = require('../../session-store');
+const { memoryService } = require('../../memory/memory-service');
 const adminRouter = require('./index');
 
 describe('/api/admin workload routes', () => {
@@ -269,6 +271,50 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('lists old chat sessions from the admin dashboard', async () => {
+        const listSpy = jest.spyOn(sessionStore, 'list').mockResolvedValue([
+            {
+                id: 'chat-session-1',
+                createdAt: '2026-05-01T00:00:00.000Z',
+                updatedAt: '2026-05-02T00:00:00.000Z',
+                messageCount: 4,
+                scopeKey: 'web-chat',
+                metadata: {
+                    ownerId: 'owner-1',
+                    recentMessages: [
+                        { role: 'user', content: 'Build a dashboard for the shop' },
+                    ],
+                },
+            },
+        ]);
+        const persistentSpy = jest.spyOn(sessionStore, 'isPersistent').mockReturnValue(true);
+        const app = buildApp({ isAvailable: jest.fn(() => true) });
+
+        try {
+            const response = await request(app).get('/api/admin/storage');
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            const chatCategory = response.body.data.categories.find((item) => item.category === 'chatSessions');
+            expect(chatCategory).toEqual(expect.objectContaining({
+                count: 1,
+                label: 'Old chats',
+            }));
+            expect(chatCategory.records[0]).toEqual(expect.objectContaining({
+                id: 'chat-session-1',
+                filename: 'Build a dashboard for the shop',
+                sessionId: 'chat-session-1',
+                ownerId: 'owner-1',
+                scopeKey: 'web-chat',
+                messageCount: 4,
+                storage: 'postgres',
+            }));
+        } finally {
+            persistentSpy.mockRestore();
+            listSpy.mockRestore();
+        }
+    });
+
     test('deletes one generated storage record from the admin dashboard', async () => {
         const previousDataDir = process.env.KIMIBUILT_DATA_DIR;
         const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kimibuilt-admin-storage-delete-'));
@@ -338,6 +384,46 @@ describe('/api/admin workload routes', () => {
             deleteSpy.mockRestore();
             listSpy.mockRestore();
             isEnabledSpy.mockRestore();
+        }
+    });
+
+    test('permanently deletes an old chat session through the admin dashboard', async () => {
+        const listSpy = jest.spyOn(sessionStore, 'list').mockResolvedValue([
+            {
+                id: 'chat-session-delete',
+                createdAt: '2026-05-01T00:00:00.000Z',
+                updatedAt: '2026-05-02T00:00:00.000Z',
+                messageCount: 2,
+                scopeKey: 'web-chat',
+                metadata: {
+                    ownerId: 'owner-1',
+                    recentMessages: [
+                        { role: 'user', content: 'Old chat to remove' },
+                    ],
+                },
+            },
+        ]);
+        const persistentSpy = jest.spyOn(sessionStore, 'isPersistent').mockReturnValue(true);
+        const deleteSpy = jest.spyOn(sessionStore, 'delete').mockResolvedValue(true);
+        const deleteArtifactsSpy = jest.spyOn(artifactService, 'deleteArtifactsForSession').mockResolvedValue(undefined);
+        const forgetSpy = jest.spyOn(memoryService, 'forget').mockResolvedValue(undefined);
+        const app = buildApp({ isAvailable: jest.fn(() => true) });
+
+        try {
+            const response = await request(app).delete('/api/admin/storage/chatSessions/chat-session-delete');
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.data.deleted).toBe(1);
+            expect(deleteArtifactsSpy).toHaveBeenCalledWith('chat-session-delete');
+            expect(deleteSpy).toHaveBeenCalledWith('chat-session-delete');
+            expect(forgetSpy).toHaveBeenCalledWith('chat-session-delete');
+        } finally {
+            forgetSpy.mockRestore();
+            deleteArtifactsSpy.mockRestore();
+            deleteSpy.mockRestore();
+            persistentSpy.mockRestore();
+            listSpy.mockRestore();
         }
     });
 });

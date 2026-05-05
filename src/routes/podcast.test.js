@@ -228,6 +228,7 @@ describe('/api/podcast', () => {
         videoAspectRatio: '9:16',
         videoImageMode: 'mixed',
         videoGenerateImages: true,
+        videoGeneratedImageRatio: 4,
         model: 'gpt-4o',
         videoModel: 'gpt-4o-mini',
       });
@@ -241,6 +242,7 @@ describe('/api/podcast', () => {
         aspectRatio: '9:16',
         imageMode: 'mixed',
         generateImages: true,
+        generatedImageRatio: 4,
         model: 'gpt-4o',
       }),
     }));
