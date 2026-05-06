@@ -575,7 +575,7 @@ function buildPodcastVideoOptions(params = {}, context = {}) {
   return {
     topic: params.topic || params.prompt || params.subject || nested.topic || '',
     aspectRatio: params.videoAspectRatio || params.aspectRatio || nested.aspectRatio || '16:9',
-    imageMode: params.videoImageMode || params.imageMode || nested.imageMode || 'mixed',
+    imageMode: params.videoImageMode || params.imageMode || nested.imageMode || 'generated',
     generateImages: resolveBooleanOption(params.videoGenerateImages, params.generateImages, nested.generateImages),
     enhanceAudio: resolveBooleanOption(params.videoEnhanceAudio, params.enhanceAudio, nested.enhanceAudio),
     visualEffects: resolveBooleanOption(params.videoVisualEffects, params.visualEffects, nested.visualEffects),

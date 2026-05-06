@@ -787,30 +787,36 @@ body {
 /* Resize Handle */
 .resize-handle {
     width: 8px;
-    background-color: var(--color-bg-secondary);
-    border-left: 1px solid var(--color-border);
-    border-right: 1px solid var(--color-border);
+    background:
+        linear-gradient(90deg, transparent 0 3px, var(--color-border) 3px 4px, transparent 4px 100%),
+        var(--color-bg-secondary);
+    border-left: 0;
+    border-right: 0;
     cursor: col-resize;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color var(--transition-fast);
+    transition: background var(--transition-fast), box-shadow var(--transition-fast);
     flex-shrink: 0;
     outline: none;
 }
 
 .resize-handle:focus-visible {
-    background-color: var(--color-accent-soft);
-    outline: 2px solid var(--color-accent);
-    outline-offset: -2px;
+    background:
+        linear-gradient(90deg, transparent 0 3px, var(--color-accent) 3px 4px, transparent 4px 100%),
+        var(--color-accent-soft);
+    box-shadow: inset 0 0 0 2px var(--color-accent);
 }
 
-.resize-handle:hover {
-    background-color: var(--color-accent-soft);
+.resize-handle:hover,
+.resize-handle.resizing {
+    background:
+        linear-gradient(90deg, transparent 0 3px, var(--color-accent) 3px 4px, transparent 4px 100%),
+        var(--color-accent-soft);
 }
 
 .resize-handle:active {
-    background-color: var(--color-accent);
+    background-color: var(--color-accent-soft);
 }
 
 .handle-indicator {

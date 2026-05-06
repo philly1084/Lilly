@@ -575,6 +575,7 @@ function shouldUsePodcastMusicBed(params = {}, audioProcessingConfig = null) {
     && (
       Boolean(String(params.musicBedPath || '').trim())
       || audioProcessingConfig?.defaults?.musicBedPathConfigured === true
+      || audioProcessingConfig?.configured === true
     );
 }
 

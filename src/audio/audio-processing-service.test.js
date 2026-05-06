@@ -65,7 +65,7 @@ describe('AudioProcessingService', () => {
     expect(mixArgs).not.toEqual(expect.arrayContaining(['-stream_loop', '-1']));
   });
 
-  test('does not synthesize a fallback music bed when no bed asset is configured', async () => {
+  test('synthesizes a fallback music bed when requested and no bed asset is configured', async () => {
     const speechWavBuffer = createTestWav();
     const service = new AudioProcessingService({
       enabled: true,
@@ -84,7 +84,15 @@ describe('AudioProcessingService', () => {
     });
 
     expect(result).toEqual(speechWavBuffer);
-    expect(runFfmpeg).not.toHaveBeenCalled();
+    expect(runFfmpeg).toHaveBeenCalledTimes(2);
+    expect(runFfmpeg.mock.calls[0][0]).toEqual(expect.arrayContaining([
+      '-f',
+      'lavfi',
+      expect.stringContaining('sine=frequency=220'),
+    ]));
+    const mixArgs = runFfmpeg.mock.calls[1][0];
+    const filterIndex = mixArgs.indexOf('-filter_complex') + 1;
+    expect(mixArgs[filterIndex]).toContain('[bed][speech]amix=inputs=2:duration=shortest');
   });
 
   test('allows explicit podcast mastering when default mastering is disabled', async () => {

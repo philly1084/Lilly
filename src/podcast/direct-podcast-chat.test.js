@@ -79,4 +79,17 @@ describe('direct podcast chat intent', () => {
       includeMusicBed: false,
     }));
   });
+
+  test('defaults video podcast backdrops to generated images', () => {
+    const params = buildDirectPodcastParams({
+      text: 'make a video podcast about grid batteries',
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      includeVideo: true,
+      videoRenderMode: 'storyboard',
+      videoImageMode: 'generated',
+      videoGenerateImages: true,
+    }));
+  });
 });

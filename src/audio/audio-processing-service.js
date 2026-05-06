@@ -377,6 +377,7 @@ class AudioProcessingService {
     const mixedSpeechPath = path.join(tempDir, 'speech-mixed.wav');
     const finalPath = path.join(tempDir, 'podcast-final.wav');
     const masteredPath = path.join(tempDir, 'podcast-mastered.wav');
+    const generatedBedPath = path.join(tempDir, 'generated-music-bed.wav');
 
     try {
       await fs.writeFile(speechPath, speechWavBuffer);
@@ -385,11 +386,24 @@ class AudioProcessingService {
       const bytesPerSample = Math.max(1, Math.floor(format.bitsPerSample / 8));
       const durationSeconds = format.data.length / Math.max(1, sampleRate * format.numChannels * bytesPerSample);
       if (includeMusicBed || Boolean(String(musicBedPath || '').trim())) {
-        resolvedBedPath = this.resolveAssetPath(
-          musicBedPath,
-          this.audioProcessingConfig.podcastMusicBedPath,
-          'Podcast music bed audio',
-        );
+        const requestedBedPath = String(musicBedPath || '').trim();
+        const configuredBedPath = String(this.audioProcessingConfig.podcastMusicBedPath || '').trim();
+        resolvedBedPath = requestedBedPath || configuredBedPath
+          ? this.resolveAssetPath(
+            requestedBedPath,
+            configuredBedPath,
+            'Podcast music bed audio',
+          )
+          : '';
+        if (!resolvedBedPath && includeMusicBed) {
+          await this.generateCalmMusicBed({
+            outputPath: generatedBedPath,
+            durationSeconds,
+            sampleRate,
+            channelLayout,
+          });
+          resolvedBedPath = generatedBedPath;
+        }
       }
 
       if (resolvedBedPath) {

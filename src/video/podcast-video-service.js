@@ -404,6 +404,46 @@ function normalizeScene(scene = {}, index = 0) {
   };
 }
 
+function retimeScenesToDuration(scenes = [], durationSeconds = 0) {
+  const normalizedScenes = (Array.isArray(scenes) ? scenes : [])
+    .map((scene, index) => normalizeScene(scene, index));
+  const targetDuration = Math.max(0, Number(durationSeconds) || 0);
+  if (normalizedScenes.length === 0 || targetDuration <= 0) {
+    return normalizedScenes;
+  }
+
+  const minimumDuration = normalizedScenes.length * MIN_SCENE_SECONDS;
+  const resolvedDuration = Math.max(targetDuration, minimumDuration);
+  const sourceDuration = normalizedScenes.reduce(
+    (sum, scene) => sum + Math.max(MIN_SCENE_SECONDS, Number(scene.duration) || 0),
+    0,
+  ) || minimumDuration;
+  let cursor = 0;
+
+  return normalizedScenes.map((scene, index) => {
+    const remainingScenes = normalizedScenes.length - index - 1;
+    const remainingMinimum = remainingScenes * MIN_SCENE_SECONDS;
+    const scaledDuration = index === normalizedScenes.length - 1
+      ? Math.max(MIN_SCENE_SECONDS, resolvedDuration - cursor)
+      : Math.max(MIN_SCENE_SECONDS, (Math.max(MIN_SCENE_SECONDS, scene.duration) / sourceDuration) * resolvedDuration);
+    const duration = index === normalizedScenes.length - 1
+      ? scaledDuration
+      : Math.min(scaledDuration, Math.max(MIN_SCENE_SECONDS, resolvedDuration - cursor - remainingMinimum));
+    const start = cursor;
+    const end = index === normalizedScenes.length - 1
+      ? resolvedDuration
+      : Math.min(resolvedDuration, start + duration);
+    cursor = end;
+
+    return {
+      ...scene,
+      start,
+      end,
+      duration: Math.max(MIN_SCENE_SECONDS, end - start),
+    };
+  });
+}
+
 function buildFallbackStoryboard({ title = '', transcript = '', turns = [], durationSeconds = 0, sceneCount = null } = {}) {
   const normalizedTurns = (Array.isArray(turns) ? turns : [])
     .map((turn) => ({
@@ -595,7 +635,8 @@ function buildStoryboardPrompt({
     '- Each visual should feel like a designed long-form sandbox infographic page compressed into a video slide, not a single background picture.',
     '- visualQuery should be short and useful for Unsplash search.',
     '- visualPrompt should be specific enough for image generation and should describe the infographic structure, icons, charts, and visual hierarchy.',
-    '- Generated images may include abstract labels or placeholder glyphs, but must avoid small unreadable paragraphs, logos, watermarks, and distorted typography.',
+    '- Generated images should use very little text: a few large short labels or abstract glyphs at most. Prefer visual symbols, charts, diagrams, and layout over written words.',
+    '- Generated images must avoid small unreadable paragraphs, logos, watermarks, and distorted typography.',
     '- Captions should be concise excerpts aligned to the audio segment.',
     '',
     'Transcript:',
@@ -733,7 +774,7 @@ function buildSceneImagePrompt(scene = {}, options = {}) {
     'Compose it like a long-form sandbox infographic page translated into one cinematic video frame: clear information architecture, section bands, figure/callout areas, chart space, and a strong content hierarchy.',
     'Style: documentary explainer, high-end editorial infographic, cinematic lighting, crisp vector-like shapes blended with subtle photographic depth, readable composition at YouTube size.',
     'Use strong contrast, restrained color, generous margins, no brand logos, no watermarks, no tiny paragraphs, no malformed text.',
-    'If text appears, keep it as large abstract headline glyphs or short placeholder labels only.',
+    'Keep the image mostly visual: use very little text, at most a few large short labels or abstract headline glyphs; prefer icons, charts, shapes, and spatial layout over written words.',
     `Topic moment: ${summary}.`,
     caption ? `Audio-aligned context: ${caption}.` : '',
     keyFacts.length ? `Facts to visually encode: ${keyFacts.join(' | ')}.` : '',
@@ -1321,7 +1362,10 @@ class PodcastVideoService {
       return {
         title,
         durationSeconds,
-        scenes: buildFallbackStoryboard({ title, transcript, turns, durationSeconds, sceneCount }),
+        scenes: retimeScenesToDuration(
+          buildFallbackStoryboard({ title, transcript, turns, durationSeconds, sceneCount }),
+          durationSeconds,
+        ),
         planning: {
           provider: 'local',
           model: null,
@@ -1356,7 +1400,7 @@ class PodcastVideoService {
         return {
           title: sanitizeText(parsed?.title || title) || title,
           durationSeconds,
-          scenes,
+          scenes: retimeScenesToDuration(scenes, durationSeconds),
           planning: {
             provider: 'model',
             model: response?.model || params.model || null,
@@ -1370,7 +1414,10 @@ class PodcastVideoService {
     return {
       title,
       durationSeconds,
-      scenes: buildFallbackStoryboard({ title, transcript, turns, durationSeconds, sceneCount }),
+      scenes: retimeScenesToDuration(
+        buildFallbackStoryboard({ title, transcript, turns, durationSeconds, sceneCount }),
+        durationSeconds,
+      ),
       planning: {
         provider: 'local-fallback',
         model: null,
@@ -2151,7 +2198,7 @@ class PodcastVideoService {
       || 0;
     const imageMode = requestedRenderMode === 'waveform-card'
       ? 'fallback'
-      : normalizeImageMode(options.imageMode || 'mixed');
+      : normalizeImageMode(options.imageMode || 'generated');
     const generateImages = requestedRenderMode === 'waveform-card'
       ? false
       : normalizeBooleanOption(
@@ -2162,7 +2209,7 @@ class PodcastVideoService {
       ? {
         title: sanitizeText(title) || 'Podcast video',
         durationSeconds,
-        scenes: options.scenes.map((scene, index) => normalizeScene(scene, index)),
+        scenes: retimeScenesToDuration(options.scenes, durationSeconds),
         planning: { provider: 'provided', model: null },
       }
       : requestedRenderMode === 'waveform-card'
@@ -2343,4 +2390,5 @@ module.exports = {
   buildFallbackStoryboard,
   buildSceneImagePrompt,
   normalizeScene,
+  retimeScenesToDuration,
 };

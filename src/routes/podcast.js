@@ -152,7 +152,7 @@ function resolveNumberOption(...values) {
 
 function buildPodcastVideoOptions(input = {}, context = {}) {
   const nested = input.video && typeof input.video === 'object' ? input.video : {};
-  const imageMode = input.videoImageMode || input.imageMode || nested.imageMode || 'mixed';
+  const imageMode = input.videoImageMode || input.imageMode || nested.imageMode || 'generated';
   const contextModel = String(context?.model || context?.toolContext?.model || '').trim();
   return {
     topic: input.topic || input.prompt || input.subject || nested.topic || '',

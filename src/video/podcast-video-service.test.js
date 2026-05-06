@@ -5,6 +5,7 @@ const {
   PodcastVideoService,
   buildFallbackStoryboard,
   buildSceneImagePrompt,
+  retimeScenesToDuration,
 } = require('./podcast-video-service');
 
 describe('PodcastVideoService', () => {
@@ -94,7 +95,20 @@ describe('PodcastVideoService', () => {
     expect(prompt).toContain('Heat pumps lower winter electricity costs');
     expect(prompt).toContain('Facts to visually encode');
     expect(prompt).toContain('Content to write into the slide');
+    expect(prompt).toContain('use very little text');
     expect(prompt).toContain('no watermarks');
+  });
+
+  test('retimes storyboard scenes to the full audio duration so muxing does not cut off speech', () => {
+    const scenes = retimeScenesToDuration([
+      { start: 0, end: 8, summary: 'Hook' },
+      { start: 8, end: 16, summary: 'Evidence' },
+    ], 45);
+
+    expect(scenes).toHaveLength(2);
+    expect(scenes[0].start).toBe(0);
+    expect(scenes[1].end).toBeCloseTo(45);
+    expect(scenes.reduce((sum, scene) => sum + scene.duration, 0)).toBeCloseTo(45);
   });
 
   test('uses adaptive ffmpeg timeouts and fast x264 settings when rendering', async () => {

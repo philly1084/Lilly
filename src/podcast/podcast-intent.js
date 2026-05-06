@@ -57,7 +57,7 @@ function inferPodcastVideoImageMode(text = '') {
     if (/\b(?:fallback only|simple frames?|placeholder frames?)\b/.test(normalized)) {
         return 'fallback';
     }
-    return 'mixed';
+    return 'generated';
 }
 
 function inferPodcastVideoSceneCount(text = '') {

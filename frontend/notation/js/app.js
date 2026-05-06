@@ -986,6 +986,7 @@
                 isResizing = true;
                 startX = e.clientX;
                 startWidth = this.elements.inputPane.offsetWidth;
+                this.elements.resizeHandle.classList.add('resizing');
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';
             });
@@ -1008,6 +1009,7 @@
             document.addEventListener('mouseup', () => {
                 if (isResizing) {
                     isResizing = false;
+                    this.elements.resizeHandle.classList.remove('resizing');
                     document.body.style.cursor = '';
                     document.body.style.userSelect = '';
                 }

@@ -1,0 +1,252 @@
+/* KimiBuilt cross-frontend interface polish layer.
+   Keep this file conservative: it smooths joins, focus, and motion without
+   replacing each surface's existing visual direction. */
+
+[data-ui-surface] {
+    --kb-radius-shell: 18px;
+    --kb-radius-panel: 12px;
+    --kb-radius-control: 9px;
+    --kb-radius-small: 6px;
+    --kb-border-alpha: rgba(148, 163, 184, 0.18);
+    --kb-border-strong: rgba(148, 163, 184, 0.28);
+    --kb-focus: rgba(88, 166, 255, 0.28);
+    --kb-lift-shadow: 0 16px 38px rgba(2, 6, 23, 0.18);
+    --kb-panel-shadow: 0 24px 70px rgba(2, 6, 23, 0.22);
+    --kb-motion-fast: 150ms cubic-bezier(0.2, 0, 0.2, 1);
+    --kb-motion: 220ms cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+[data-ui-surface] :where(button, .btn, .icon-btn, select, input, textarea, [role="button"]) {
+    transition:
+        border-color var(--kb-motion-fast),
+        background var(--kb-motion-fast),
+        color var(--kb-motion-fast),
+        box-shadow var(--kb-motion-fast),
+        transform var(--kb-motion-fast),
+        opacity var(--kb-motion-fast);
+}
+
+[data-ui-surface] :where(button, .btn, .icon-btn, [role="button"]):where(:hover, :focus-visible):not(:disabled) {
+    transform: translateY(-1px);
+}
+
+[data-ui-surface] :where(button, .btn, .icon-btn, select, input, textarea, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--kb-focus);
+}
+
+[data-ui-surface] :where(.sidebar, .app-header, .top-bar, .header, .control-panel, .preview-panel, .card, .panel, .pane, .toolbar, .properties-panel, .main-panel, .sidebar-panel, .model-selector, .canvas-actions, .drop-zone, .status-card) {
+    border-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="web-chat"] .main-shell,
+[data-ui-surface="web-chat"] .sidebar-panel {
+    border-radius: var(--kb-radius-shell);
+    border-color: var(--kb-border-alpha);
+    overflow: hidden;
+}
+
+[data-ui-surface="web-chat"] .chat-header-shell {
+    border-radius: calc(var(--kb-radius-shell) - 2px) calc(var(--kb-radius-shell) - 2px) 0 0;
+    border-bottom-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="web-chat"] .composer-frame {
+    border-radius: var(--kb-radius-shell);
+    border-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="web-chat"] #composer-shell {
+    border-radius: var(--kb-radius-panel) !important;
+}
+
+[data-ui-surface="web-chat"] .message-content {
+    transition: transform var(--kb-motion), border-color var(--kb-motion-fast), box-shadow var(--kb-motion-fast);
+}
+
+[data-ui-surface="web-chat"] .message-content:hover {
+    transform: translateY(-1px);
+}
+
+[data-ui-surface="web-chat"] .model-selector-dropdown-content {
+    border-radius: var(--kb-radius-shell);
+    border-color: var(--kb-border-alpha);
+    box-shadow: var(--kb-panel-shadow);
+}
+
+[data-ui-surface="web-cli"] .header,
+[data-ui-surface="web-cli"] .input-container {
+    border-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="web-cli"] .input-wrapper,
+[data-ui-surface="web-cli"] .line-input,
+[data-ui-surface="web-cli"] .response-block,
+[data-ui-surface="web-cli"] .tool-result,
+[data-ui-surface="web-cli"] .artifact-card {
+    border-radius: var(--kb-radius-control);
+    border-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="web-cli"] .voxel-toolbelt {
+    scroll-padding-inline: 12px;
+}
+
+[data-ui-surface="notes"] .sidebar {
+    border-right-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="notes"] .main-content {
+    background:
+        linear-gradient(180deg, rgba(148, 163, 184, 0.035), transparent 22%),
+        var(--bg-primary);
+}
+
+[data-ui-surface="notes"] :where(.sidebar-outline-section, .new-page-btn, .page-tree-item, .block, .slash-menu, .selection-toolbar, .inline-toolbar, .block-context-menu) {
+    border-radius: var(--kb-radius-control);
+}
+
+[data-ui-surface="notes"] .block {
+    transition: background var(--kb-motion-fast), box-shadow var(--kb-motion-fast), transform var(--kb-motion-fast);
+}
+
+[data-ui-surface="notes"] .block:hover,
+[data-ui-surface="notes"] .block:focus-within {
+    transform: translateY(-1px);
+}
+
+[data-ui-surface="canvas"] .top-bar,
+[data-ui-surface="canvas"] .toolbar,
+[data-ui-surface="canvas"] .properties-panel,
+[data-ui-surface="canvas"] .bottom-controls,
+[data-ui-surface="canvas"] .canvas-actions,
+[data-ui-surface="canvas"] .model-selector {
+    border-color: var(--kb-border-alpha);
+    box-shadow: var(--kb-lift-shadow);
+}
+
+[data-ui-surface="canvas"] .top-bar {
+    border-radius: var(--kb-radius-shell);
+}
+
+[data-ui-surface="canvas"] .toolbar,
+[data-ui-surface="canvas"] .properties-panel {
+    border-radius: var(--kb-radius-panel);
+    overflow: hidden;
+}
+
+[data-ui-surface="canvas"] :where(.tool-btn, .action-btn, .canvas-actions button, .top-bar-right button, .dropdown-item) {
+    border-radius: var(--kb-radius-control);
+}
+
+[data-ui-surface="canvas"] :where(.tool-btn, .action-btn, .canvas-actions button, .top-bar-right button):hover {
+    box-shadow: 0 10px 22px rgba(2, 6, 23, 0.12);
+}
+
+[data-ui-surface="notation"] .app-container {
+    background:
+        linear-gradient(180deg, rgba(88, 166, 255, 0.04), transparent 24%),
+        var(--color-bg-primary);
+}
+
+[data-ui-surface="notation"] .sidebar {
+    border-right-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="notation"] .dual-pane {
+    gap: 1px;
+    padding: 1px;
+    background: var(--kb-border-alpha);
+    border-radius: var(--kb-radius-shell);
+    overflow: hidden;
+}
+
+[data-ui-surface="notation"] .pane {
+    border: 0;
+    border-radius: 0;
+}
+
+[data-ui-surface="notation"] .pane:first-child {
+    border-radius: calc(var(--kb-radius-shell) - 1px) 0 0 calc(var(--kb-radius-shell) - 1px);
+}
+
+[data-ui-surface="notation"] .pane:last-child {
+    border-radius: 0 calc(var(--kb-radius-shell) - 1px) calc(var(--kb-radius-shell) - 1px) 0;
+}
+
+[data-ui-surface="notation"] :where(.mode-selector, .reasoning-select, .sidebar-tab, .suggestions-panel, .annotations-panel) {
+    border-radius: var(--kb-radius-control);
+}
+
+[data-ui-surface="admin"] .sidebar {
+    border-right-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="admin"] .header {
+    border-bottom-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="admin"] :where(.card, .stat-card, .model-card, .skill-card, .tool-card, .main-panel, .sidebar-panel, .traces-list-panel, .settings-sidebar, .tool-detail-card, .modal-content) {
+    border-radius: var(--kb-radius-panel);
+    border-color: var(--kb-border-alpha);
+}
+
+[data-ui-surface="admin"] :where(.card, .stat-card, .model-card, .skill-card, .tool-card):hover {
+    transform: translateY(-2px);
+    box-shadow: var(--kb-lift-shadow);
+}
+
+[data-ui-surface="podcast-video"] .layout {
+    gap: 20px;
+}
+
+[data-ui-surface="podcast-video"] .control-panel,
+[data-ui-surface="podcast-video"] .preview-panel {
+    border-radius: var(--kb-radius-shell);
+    border-color: var(--kb-border-alpha);
+    box-shadow: var(--kb-panel-shadow);
+    overflow: hidden;
+}
+
+[data-ui-surface="podcast-video"] :where(.back-link, .runtime, .field input, .field select, .field textarea, .check-field, .drop-zone, .primary-action, .secondary-action, .status-card, .result) {
+    border-radius: var(--kb-radius-control);
+}
+
+[data-ui-surface="podcast-video"] .drop-zone:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent-blue) 74%, var(--border));
+}
+
+@media (max-width: 760px) {
+    [data-ui-surface] {
+        --kb-radius-shell: 14px;
+        --kb-radius-panel: 10px;
+    }
+
+    [data-ui-surface="notation"] .dual-pane {
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+    }
+
+    [data-ui-surface="notation"] .pane,
+    [data-ui-surface="notation"] .pane:first-child,
+    [data-ui-surface="notation"] .pane:last-child {
+        border-radius: var(--kb-radius-panel);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-ui-surface] *,
+    [data-ui-surface] *::before,
+    [data-ui-surface] *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+    }
+
+    [data-ui-surface] :where(button, .btn, .icon-btn, [role="button"], .block, .message-content):where(:hover, :focus-visible) {
+        transform: none !important;
+    }
+}
