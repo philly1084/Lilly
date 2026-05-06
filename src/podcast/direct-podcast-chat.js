@@ -4,6 +4,7 @@ const {
   hasExplicitPodcastIntent,
   hasExplicitPodcastVideoIntent,
   inferPodcastHostCount,
+  inferPodcastAudioAssetOptions,
   inferPodcastVideoOptions,
 } = require('./podcast-intent');
 
@@ -82,6 +83,7 @@ function buildDirectPodcastParams({
   const videoOptions = hasExplicitPodcastVideoIntent(text)
     ? inferPodcastVideoOptions(text)
     : {};
+  const audioAssetOptions = inferPodcastAudioAssetOptions(text);
 
   return {
     topic,
@@ -92,6 +94,7 @@ function buildDirectPodcastParams({
     ...(detailLevel ? { detailLevel } : {}),
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...audioAssetOptions,
     ...videoOptions,
   };
 }

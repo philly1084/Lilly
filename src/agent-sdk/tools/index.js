@@ -3918,7 +3918,7 @@ class ToolManager {
         id: 'podcast',
         name: 'Podcast',
         category: 'system',
-        description: 'Research a topic, script a user-aligned podcast episode, synthesize the host voices with local TTS, stitch the final podcast audio into a saved artifact, and optionally render an MP4 podcast video. Preserve the full creative brief separately from the topic, including solo-vs-two-host format, required angle, facts, title, exclusions, and any selected scriptDesign/scriptDesignExample. Prefer proper full scripts over short generic exchanges. Avoid repeated self-referential process language about dissecting, unpacking, cadence, or why the hosts sound human. Visual podcast requests should use storyboard mode with content-matched infographic scenes; waveform-card is the simple audio visualizer fallback.',
+        description: 'Research a topic, script a user-aligned podcast episode, synthesize the host voices with local TTS, stitch the final podcast audio into a saved artifact, and optionally render an MP4 podcast video. Podcast audio is speaker-only by default; when the user asks to use admin, uploaded, saved, or configured podcast audio sources, set voiceOnlyAudio:false and includeIntro/includeOutro/includeMusicBed as requested so those admin assets are mixed before video rendering. Preserve the full creative brief separately from the topic, including solo-vs-two-host format, required angle, facts, title, exclusions, and any selected scriptDesign/scriptDesignExample. Prefer proper full scripts over short generic exchanges. Avoid repeated self-referential process language about dissecting, unpacking, cadence, or why the hosts sound human. Visual podcast requests should use storyboard mode with content-matched infographic scenes; waveform-card is the simple audio visualizer fallback.',
         backend: {
           handler: async (params = {}, context = {}) => {
             const service = resolvePodcastService(context);
@@ -4053,6 +4053,12 @@ class ToolManager {
             },
             maxSources: { type: 'integer', minimum: 2, maximum: 6 },
             pauseMs: { type: 'integer', minimum: 100, maximum: 1200 },
+            voiceOnlyAudio: {
+              type: 'boolean',
+              description: 'Defaults to true. Set false only when the user requests admin audio sources, intro/outro, music bed, background music, or other mixed podcast audio.',
+            },
+            speakerOnlyAudio: { type: 'boolean' },
+            voiceOnly: { type: 'boolean' },
             includeIntro: { type: 'boolean' },
             includeOutro: { type: 'boolean' },
             includeMusicBed: { type: 'boolean' },

@@ -106,8 +106,49 @@ function inferPodcastVideoOptions(text = '') {
     };
 }
 
+function inferPodcastAudioAssetOptions(text = '') {
+    const normalized = String(text || '').toLowerCase();
+    if (!normalized.trim()) {
+        return {};
+    }
+
+    const explicitCleanAudio = /\b(?:speaker[- ]only|voice[- ]only|clean audio|no music|without music|no intro|without intro|no outro|without outro|no admin audio|without admin audio|no audio sources|without audio sources)\b/i
+        .test(normalized);
+    if (explicitCleanAudio) {
+        return {
+            voiceOnlyAudio: true,
+            includeIntro: false,
+            includeOutro: false,
+            includeMusicBed: false,
+        };
+    }
+
+    const useAllAdminAudio = /\b(?:admin|uploaded|saved|configured)\s+(?:podcast\s+)?(?:audio|audio sources|audio assets|tracks)\b/i.test(normalized)
+        || /\b(?:use|add|include|with)\b[\s\S]{0,40}\b(?:podcast\s+)?(?:audio sources|audio assets|admin audio|uploaded audio|saved audio|configured audio)\b/i.test(normalized);
+    const includeIntro = useAllAdminAudio
+        || /\b(?:use|add|include|with)\b[\s\S]{0,30}\b(?:intro|opening bumper|opener)\b/i.test(normalized);
+    const includeOutro = useAllAdminAudio
+        || /\b(?:use|add|include|with)\b[\s\S]{0,30}\b(?:outro|closing bumper|closer)\b/i.test(normalized);
+    const includeMusicBed = useAllAdminAudio
+        || /\b(?:use|add|include|with)\b[\s\S]{0,40}\b(?:music bed|background music|bed music|theme music|backing track)\b/i.test(normalized);
+
+    if (!includeIntro && !includeOutro && !includeMusicBed) {
+        return {};
+    }
+
+    return {
+        voiceOnlyAudio: false,
+        ...(includeIntro ? { includeIntro: true } : {}),
+        ...(includeOutro ? { includeOutro: true } : {}),
+        ...(includeMusicBed ? { includeMusicBed: true } : {}),
+    };
+}
+
 function cleanExtractedPodcastTopic(value = '') {
     return String(value || '')
+        .replace(/\b(?:with|using|use|include|add)\s+(?:the\s+)?(?:admin|uploaded|saved|configured)\s+(?:podcast\s+)?(?:audio|audio sources|audio assets|tracks)\b[\s\S]*$/i, '')
+        .replace(/\b(?:with|using|use|include|add)\s+(?:an?\s+)?(?:intro|outro|music bed|background music|opening bumper|closing bumper|theme music|backing track)\b[\s\S]*$/i, '')
+        .replace(/\b(?:speaker[- ]only|voice[- ]only|clean audio|no music|without music|no admin audio|without admin audio|no audio sources|without audio sources)\b[\s\S]*$/i, '')
         .replace(/\bwith\s+(?:generated|ai|custom|scene|cover)\s+(?:images?|visuals?|art|artwork)\b[\s\S]*$/i, '')
         .replace(/\bwith\s+(?:visuals?|scene images?|cover art|an? image|images?)\b[\s\S]*$/i, '')
         .replace(/\b(?:as|for)\s+(?:an?\s+)?(?:video\s+podcast|podcast\s+video|mp4)\b[\s\S]*$/i, '')
@@ -179,6 +220,7 @@ module.exports = {
     hasExplicitPodcastIntent,
     hasExplicitPodcastVideoIntent,
     inferPodcastVideoOptions,
+    inferPodcastAudioAssetOptions,
     extractExplicitPodcastTopic,
     extractPodcastRequestBrief,
     inferPodcastHostCount,

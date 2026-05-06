@@ -49,4 +49,34 @@ describe('direct podcast chat intent', () => {
       detailLevel: 'rich',
     }));
   });
+
+  test('turns requested admin audio sources on for video podcast generation', () => {
+    const params = buildDirectPodcastParams({
+      text: 'make a vertical video podcast about grid batteries with generated images and use the admin audio sources',
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      topic: 'grid batteries',
+      includeVideo: true,
+      videoAspectRatio: '9:16',
+      voiceOnlyAudio: false,
+      includeIntro: true,
+      includeOutro: true,
+      includeMusicBed: true,
+    }));
+  });
+
+  test('keeps explicitly clean video podcast audio speaker-only', () => {
+    const params = buildDirectPodcastParams({
+      text: 'make a video podcast about grid batteries with clean audio and no music',
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      includeVideo: true,
+      voiceOnlyAudio: true,
+      includeIntro: false,
+      includeOutro: false,
+      includeMusicBed: false,
+    }));
+  });
 });

@@ -12,6 +12,7 @@ const {
   extractExplicitPodcastTopic,
   extractPodcastRequestBrief,
   inferPodcastHostCount,
+  inferPodcastAudioAssetOptions,
   inferPodcastVideoOptions,
 } = require('../podcast/podcast-intent');
 const { podcastVideoService } = require('../video/podcast-video-service');
@@ -57,6 +58,9 @@ const generateSchema = {
   searchDomains: { required: false, type: 'array', items: { type: 'string' } },
   maxSources: { required: false, type: 'number' },
   pauseMs: { required: false, type: 'number' },
+  voiceOnlyAudio: { required: false, type: 'boolean' },
+  speakerOnlyAudio: { required: false, type: 'boolean' },
+  voiceOnly: { required: false, type: 'boolean' },
   includeIntro: { required: false, type: 'boolean' },
   includeOutro: { required: false, type: 'boolean' },
   includeMusicBed: { required: false, type: 'boolean' },
@@ -228,6 +232,12 @@ function normalizePodcastGenerateRequest(req, _res, next) {
       if (req.body[key] == null) {
         req.body[key] = value;
       }
+    }
+  }
+  const inferredAudioAssetOptions = inferPodcastAudioAssetOptions(requestText);
+  for (const [key, value] of Object.entries(inferredAudioAssetOptions)) {
+    if (req.body[key] == null) {
+      req.body[key] = value;
     }
   }
 

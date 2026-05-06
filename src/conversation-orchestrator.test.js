@@ -784,7 +784,9 @@ describe('ConversationOrchestrator', () => {
             runId: 'harness_saved_1',
             currentObjective: expect.stringContaining('Deploy the app'),
             completion: expect.objectContaining({
-                unmetCriteria: [expect.objectContaining({ text: 'Deployment verified' })],
+                unmetCriteria: expect.arrayContaining([
+                    expect.objectContaining({ text: 'Deployment verified' }),
+                ]),
             }),
         }));
     });
@@ -5316,6 +5318,50 @@ describe('ConversationOrchestrator', () => {
             params: {
                 topic: 'Kentville gym options',
                 durationMinutes: 10,
+                includeVideo: true,
+                videoAspectRatio: '9:16',
+                videoRenderMode: 'storyboard',
+                videoImageMode: 'generated',
+                videoGenerateImages: true,
+            },
+        });
+    });
+
+    test('passes requested admin audio sources into video podcast workflow calls', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['podcast', 'web-search'].includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Make a vertical video podcast about Kentville gym options with generated images and use the admin audio sources.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+        });
+
+        expect(directAction).toEqual({
+            tool: 'podcast',
+            reason: 'Explicit video podcast request should use the podcast workflow with MP4 rendering.',
+            params: {
+                topic: 'Kentville gym options',
+                voiceOnlyAudio: false,
+                includeIntro: true,
+                includeOutro: true,
+                includeMusicBed: true,
                 includeVideo: true,
                 videoAspectRatio: '9:16',
                 videoRenderMode: 'storyboard',

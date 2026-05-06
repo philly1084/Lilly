@@ -164,6 +164,8 @@ function hasDeployIntent(text = '') {
         return false;
     }
 
+    const documentationIntent = /\b(docs?|documentation|tool help|how to use)\b/.test(normalized);
+    const inspectionOnlyVerb = /\b(inspect|check|show|status|health|verify|logs?|diagnose|debug|look at)\b/.test(normalized);
     const deployAction = /\b(deploy|redeploy|rollout|release|publish|ship live|put live|push live|apply|sync)\b/.test(normalized)
         || /\b(sync and apply|sync-and-apply|apply manifests|rollout status)\b/.test(normalized)
         || /\b(add|install|put)\b[\s\S]{0,40}\b(to|on|into|in)\b[\s\S]{0,20}\b(k3s|k8s|kubernetes|cluster)\b/.test(normalized);
@@ -173,12 +175,15 @@ function hasDeployIntent(text = '') {
             /\b(k3s|k8s|kubernetes|cluster|server|host|deploy|live|production)\b/.test(normalized)
             || /\b[a-z0-9-]+(?:\.[a-z0-9-]+){1,}\b/.test(normalized)
         );
+    if (documentationIntent) {
+        return false;
+    }
 
     return [
         deployAction && deployArtifact,
         /\b(sync and apply|sync-and-apply|apply manifests|rollout status)\b/.test(normalized),
         /\b(add|install|put)\b[\s\S]{0,40}\b(to|on|into|in)\b[\s\S]{0,20}\b(k3s|k8s|kubernetes|cluster)\b/.test(normalized),
-        infrastructureDeployIntent,
+        infrastructureDeployIntent && !inspectionOnlyVerb,
     ].some(Boolean);
 }
 
@@ -746,7 +751,7 @@ function inferEndToEndBuilderWorkflow({
         return null;
     }
 
-    return normalizeWorkflowState({
+    const workflow = normalizeWorkflowState({
         kind: END_TO_END_WORKFLOW_KIND,
         version: 1,
         objective: normalizeText(objective),
@@ -779,6 +784,15 @@ function inferEndToEndBuilderWorkflow({
     }, {
         deployDefaults,
     });
+
+    if (workflow?.lane === 'deploy-only' && !hasResolvedDeployTarget(workflow)) {
+        return buildBlockedWorkflowState(
+            workflow,
+            'This deploy request does not identify a specific remote workload or the configured KimiBuilt deploy lane. Refusing to assume `kimibuilt/backend` for an unrelated app.',
+        );
+    }
+
+    return workflow;
 }
 
 function parseToolArguments(rawArguments = '{}') {
