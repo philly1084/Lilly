@@ -5645,9 +5645,8 @@ body.layout-minimal #input-meta-row {
 
 .agent-survey-card__options {
     display: grid;
-    gap: 0;
+    gap: 0.32rem;
     margin: 0.45rem 0 0.55rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
     counter-reset: survey-option;
 }
 
@@ -5655,13 +5654,12 @@ body.layout-minimal #input-meta-row {
     counter-increment: survey-option;
     width: 100%;
     text-align: left;
-    padding: 0.48rem 0.2rem 0.48rem 1.65rem;
-    border: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 0;
-    background: transparent;
+    padding: 0.44rem 0.56rem 0.44rem 2.15rem;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.025);
     color: var(--text-primary);
-    transition: color var(--transition-fast), background var(--transition-fast), padding-left var(--transition-fast);
+    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
     display: grid;
     gap: 0.16rem;
     position: relative;
@@ -5672,14 +5670,26 @@ body.layout-minimal #input-meta-row {
 .agent-survey-option::before {
     content: counter(survey-option);
     position: absolute;
-    left: 0.25rem;
-    top: 0.48rem;
-    width: 1rem;
+    left: 0.58rem;
+    top: 0.5rem;
+    width: 0.82rem;
     color: var(--text-tertiary);
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
     line-height: 1.3;
     text-align: right;
+}
+
+.agent-survey-option__marker {
+    position: absolute;
+    left: 1.55rem;
+    top: 0.55rem;
+    width: 0.44rem;
+    height: 0.44rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: transparent;
+    transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .agent-survey-option:nth-child(1) { animation-delay: 40ms; }
@@ -5689,21 +5699,34 @@ body.layout-minimal #input-meta-row {
 .agent-survey-option:nth-child(5) { animation-delay: 200ms; }
 
 .agent-survey-option:hover:not(:disabled) {
-    padding-left: 1.9rem;
     color: var(--accent);
-    background: rgba(88, 166, 255, 0.045);
+    background: rgba(88, 166, 255, 0.055);
+    border-color: rgba(88, 166, 255, 0.28);
+    transform: translateY(-1px);
+}
+
+.agent-survey-option:focus-visible {
+    outline: none;
+    border-color: rgba(88, 166, 255, 0.62);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.16);
 }
 
 .agent-survey-option.is-selected {
-    padding-left: 1.9rem;
     color: var(--accent);
-    background: rgba(88, 166, 255, 0.07);
-    box-shadow: inset 3px 0 0 var(--accent);
+    background: rgba(88, 166, 255, 0.11);
+    border-color: rgba(88, 166, 255, 0.45);
+    box-shadow: inset 3px 0 0 var(--accent), 0 8px 24px rgba(5, 14, 27, 0.16);
 }
 
 .agent-survey-option:hover:not(:disabled)::before,
 .agent-survey-option.is-selected::before {
     color: var(--accent);
+}
+
+.agent-survey-option.is-selected .agent-survey-option__marker {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.18);
 }
 
 .agent-survey-option:disabled {
@@ -5875,13 +5898,18 @@ body.layout-minimal #input-meta-row {
 }
 
 [data-theme="light"] .agent-survey-option {
-    background: transparent;
-    border-bottom-color: rgba(215, 226, 239, 0.86);
+    background: rgba(248, 251, 255, 0.92);
+    border-color: rgba(215, 226, 239, 0.96);
 }
 
 [data-theme="light"] .agent-survey-option:hover:not(:disabled),
 [data-theme="light"] .agent-survey-option.is-selected {
-    background: rgba(61, 141, 255, 0.07);
+    background: rgba(61, 141, 255, 0.09);
+    border-color: rgba(61, 141, 255, 0.38);
+}
+
+[data-theme="light"] .agent-survey-option__marker {
+    border-color: rgba(79, 98, 123, 0.32);
 }
 
 [data-theme="light"] .agent-survey-card__input,

@@ -545,6 +545,56 @@ class ChatApp {
                 this.handleInputSlashCommand(value);
             }
         });
+
+        this.messagesContainer?.addEventListener('click', (event) => {
+            const option = event.target?.closest?.('.agent-survey-option');
+            if (option) {
+                event.preventDefault();
+                uiHelpers.toggleSurveyOption(option);
+                return;
+            }
+
+            const submit = event.target?.closest?.('.agent-survey-card__submit');
+            if (submit) {
+                event.preventDefault();
+                void this.submitAgentSurvey(submit);
+                return;
+            }
+
+            const previous = event.target?.closest?.('.agent-survey-card__secondary');
+            if (previous) {
+                event.preventDefault();
+                this.goToPreviousSurveyStep(previous);
+            }
+        });
+
+        this.messagesContainer?.addEventListener('keydown', (event) => {
+            const option = event.target?.closest?.('.agent-survey-option');
+            if (option && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                uiHelpers.toggleSurveyOption(option);
+                return;
+            }
+
+            const submit = event.target?.closest?.('.agent-survey-card__submit');
+            if (submit && event.key === 'Enter') {
+                event.preventDefault();
+                void this.submitAgentSurvey(submit);
+            }
+        });
+
+        this.messagesContainer?.addEventListener('input', (event) => {
+            const notes = event.target?.closest?.('.agent-survey-card__notes');
+            if (notes) {
+                uiHelpers.syncSurveyFreeText(notes);
+                return;
+            }
+
+            const input = event.target?.closest?.('.agent-survey-card__input');
+            if (input) {
+                uiHelpers.syncSurveyInputValue(input);
+            }
+        });
         
         // New chat button
         document.getElementById('new-chat-btn')?.addEventListener('click', () => {

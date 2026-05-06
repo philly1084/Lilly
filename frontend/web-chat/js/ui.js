@@ -2217,15 +2217,18 @@ class UIHelpers {
         if (inputType === 'choice' || inputType === 'multi-choice') {
             const selectedOptionIds = new Set(Array.isArray(stepAnswer?.selectedOptionIds) ? stepAnswer.selectedOptionIds : []);
             const renderedOptions = this.buildRenderedSurveyOptions(step);
+            const optionRole = inputType === 'multi-choice' ? 'checkbox' : 'radio';
             const optionsHtml = renderedOptions.map((option) => {
                 const selected = selectedOptionIds.has(option.id);
                 return [
                     `<button type="button" class="agent-survey-option ${selected ? 'is-selected' : ''}"`,
                     ` data-option-id="${this.escapeHtmlAttr(option.id)}"`,
                     ` data-option-label="${this.escapeHtmlAttr(option.label)}"`,
-                    ' onclick="uiHelpers.toggleSurveyOption(this)"',
+                    ` role="${optionRole}"`,
+                    ' tabindex="0"',
                     isAnswered ? ' disabled' : '',
                     ` aria-checked="${selected ? 'true' : 'false'}">`,
+                    '<span class="agent-survey-option__marker" aria-hidden="true"></span>',
                     `<span class="agent-survey-option__title">${this.escapeHtml(option.label)}</span>`,
                     option.description ? `<span class="agent-survey-option__description">${this.escapeHtml(option.description)}</span>` : '',
                     '</button>',
@@ -2233,7 +2236,7 @@ class UIHelpers {
             }).join('');
 
             return [
-                `<div class="agent-survey-card__options">${optionsHtml}</div>`,
+                `<div class="agent-survey-card__options" role="${inputType === 'multi-choice' ? 'group' : 'radiogroup'}">${optionsHtml}</div>`,
                 step.allowFreeText
                     ? [
                         '<label class="agent-survey-card__notes-label">',
@@ -2387,9 +2390,9 @@ class UIHelpers {
                 : [
                     '<div class="agent-survey-card__actions">',
                     currentStepIndex > 0
-                        ? '<button type="button" class="agent-survey-card__secondary" onclick="window.chatApp.goToPreviousSurveyStep(this)">Back</button>'
+                        ? '<button type="button" class="agent-survey-card__secondary">Back</button>'
                         : '',
-                    `<button type="button" class="agent-survey-card__submit" onclick="window.chatApp.submitAgentSurvey(this)" ${canSubmitCurrentStep ? '' : 'disabled'}>${this.escapeHtml(submitLabel)}</button>`,
+                    `<button type="button" class="agent-survey-card__submit" ${canSubmitCurrentStep ? '' : 'disabled'}>${this.escapeHtml(submitLabel)}</button>`,
                     '<span class="agent-survey-card__hint">The agent will continue once you answer.</span>',
                     '</div>',
                 ].join(''),
@@ -2493,7 +2496,7 @@ class UIHelpers {
                 'data-message-id', 'data-survey-id', 'data-allow-multiple', 'data-max-selections',
                 'data-step-id', 'data-step-input-type', 'data-step-required', 'data-step-allow-multiple', 'data-step-max-selections',
                 'data-current-step-index', 'data-option-id', 'data-option-label', 'data-submitted',
-                'placeholder', 'rows', 'maxlength', 'role', 'value', 'style'
+                'placeholder', 'rows', 'maxlength', 'role', 'tabindex', 'value', 'style'
             ],
             ALLOW_DATA_ATTR: false,
         });

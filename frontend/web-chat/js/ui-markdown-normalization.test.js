@@ -132,6 +132,32 @@ The strongest watchlist for tonight and Monday:
         }));
     });
 
+    test('renders survey choices as keyboard-selectable list options without inline click handlers', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.expandedReasoningMessageIds = new Set();
+        const html = helper.renderSurveyBlock({
+            id: 'checkpoint-1',
+            title: 'Quick choice',
+            steps: [{
+                id: 'step-1',
+                inputType: 'choice',
+                question: 'Pick one',
+                options: [
+                    { id: 'a', label: 'A' },
+                    { id: 'b', label: 'B' },
+                ],
+            }],
+        }, { id: 'message-1' });
+
+        expect(html).toContain('role="radiogroup"');
+        expect(html).toContain('role="radio"');
+        expect(html).toContain('tabindex="0"');
+        expect(html).toContain('agent-survey-option__marker');
+        expect(html).toContain('class="agent-survey-card__submit"');
+        expect(html).not.toContain('toggleSurveyOption');
+        expect(html).not.toContain('submitAgentSurvey');
+    });
+
     test('renders progress as one live reasoning block with completed task styling', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAssistantRenderPlan({
