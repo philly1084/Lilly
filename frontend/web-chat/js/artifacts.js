@@ -1678,7 +1678,7 @@
 
         openArtifactPreview: async (id) => {
             const artifact = state.artifacts.find((entry) => entry.id === id) || state.lastDone?.artifacts?.find((entry) => entry.id === id);
-            const previewUrl = getArtifactPreviewUrl(artifact, { sandbox: true });
+            const previewUrl = getArtifactPreviewUrl(artifact);
             if (!previewUrl) {
                 if (window.uiHelpers?.showToast) {
                     uiHelpers.showToast('Preview is not available for this file yet.', 'warning');

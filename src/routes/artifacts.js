@@ -52,6 +52,7 @@ const DEPLOYABLE_TEXT_EXTENSIONS = new Set([
 ]);
 
 function applyPreviewResponseHeaders(res) {
+    removeFrameBlockingHeaders(res);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Access-Control-Allow-Origin', '*');
     // Generated previews are commonly embedded in sandboxed iframes, which
@@ -83,6 +84,7 @@ function applyPreviewResponseHeaders(res) {
 }
 
 function applySandboxShellHeaders(res) {
+    removeFrameBlockingHeaders(res);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -102,6 +104,13 @@ function applySandboxShellHeaders(res) {
             "form-action 'none'",
         ].join('; '),
     );
+}
+
+function removeFrameBlockingHeaders(res) {
+    // The preview document is nested inside a sandboxed shell iframe. Helmet's
+    // default X-Frame-Options: SAMEORIGIN treats that opaque shell as not
+    // same-origin, so the browser refuses to render the inner preview.
+    res.removeHeader('X-Frame-Options');
 }
 
 function escapeHtmlAttribute(value = '') {

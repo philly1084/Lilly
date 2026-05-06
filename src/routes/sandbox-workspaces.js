@@ -20,6 +20,7 @@ function escapeHtmlAttribute(value = '') {
 }
 
 function applyPreviewHeaders(res, contentType) {
+  removeFrameBlockingHeaders(res);
   res.setHeader('Content-Type', contentType);
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -47,6 +48,7 @@ function applyPreviewHeaders(res, contentType) {
 }
 
 function applyShellHeaders(res) {
+  removeFrameBlockingHeaders(res);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -65,6 +67,13 @@ function applyShellHeaders(res) {
       "form-action 'none'",
     ].join('; '),
   );
+}
+
+function removeFrameBlockingHeaders(res) {
+  // Workspace previews are loaded through a sandboxed wrapper iframe. A
+  // inherited X-Frame-Options: SAMEORIGIN header blocks the nested preview
+  // because the wrapper has an opaque sandbox origin.
+  res.removeHeader('X-Frame-Options');
 }
 
 function normalizeWorkspaceId(value = '') {

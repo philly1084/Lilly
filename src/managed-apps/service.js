@@ -2574,6 +2574,12 @@ class ManagedAppService {
 
     async createApp(input = {}, ownerId = null, context = {}) {
         await this.store.ensureAvailable();
+        const normalizedOwnerId = normalizeText(ownerId);
+        if (!normalizedOwnerId) {
+            const error = new Error('Managed app creation requires an authenticated owner context.');
+            error.statusCode = 401;
+            throw error;
+        }
         if (!this.giteaClient.isConfigured()) {
             const error = new Error('Managed app creation requires integrations.gitlab to be configured.');
             error.statusCode = 503;
@@ -2582,8 +2588,8 @@ class ManagedAppService {
         const sessionId = normalizeText(context.sessionId || input.sessionId || '') || null;
         const requestedAction = normalizeRequestedAction(input.requestedAction || input.action || 'build');
         const deployRequested = inferDeployRequested(requestedAction, input.deployRequested === true);
-        const blueprint = this.buildAppBlueprint(input, ownerId, sessionId, context);
-        const resolved = await this.resolveAppForMutation(input, blueprint, ownerId);
+        const blueprint = this.buildAppBlueprint(input, normalizedOwnerId, sessionId, context);
+        const resolved = await this.resolveAppForMutation(input, blueprint, normalizedOwnerId);
         const existing = resolved.app ? this.normalizeAppRecord(resolved.app) : null;
         const mergedState = existing
             ? this.mergeBlueprintWithExisting(existing, blueprint, input, sessionId)
@@ -2612,7 +2618,7 @@ class ManagedAppService {
         });
 
         const app = existing
-            ? await this.store.updateApp(existing.id, ownerId, {
+            ? await this.store.updateApp(existing.id, normalizedOwnerId, {
                 ...mergedState,
                 metadata: provisioningMetadata,
                 status: 'provisioning',
@@ -2629,7 +2635,7 @@ class ManagedAppService {
             ...mergedState,
             metadata: provisioningMetadata,
             status: 'provisioning',
-        }, ownerId);
+        }, normalizedOwnerId);
         const normalizedPersistedApp = this.normalizeAppRecord(persistedApp);
 
         let repository = {
@@ -2675,7 +2681,7 @@ class ManagedAppService {
             : (existing
                 ? ((normalizeText(existing.status) === 'draft' || normalizeText(existing.status) === 'provisioning') ? 'repo_ready' : existing.status)
                 : 'repo_ready');
-        const updatedApp = await this.store.updateApp(persistedApp.id, ownerId, {
+        const updatedApp = await this.store.updateApp(persistedApp.id, normalizedOwnerId, {
             repoOwner: effectiveRepoOwner,
             repoName: effectiveRepoName,
             repoUrl: normalizeText(repository.clone_url || repository.html_url || normalizedPersistedApp.repoUrl),
@@ -2725,7 +2731,7 @@ class ManagedAppService {
         const finalPersistedApp = (hasPersistedAppId(updatedApp) ? updatedApp : null)
             || (hasPersistedAppId(persistedApp) ? persistedApp : null)
             || await this.store.getAppByRepo(effectiveRepoOwner, effectiveRepoName)
-            || await this.store.getAppBySlug(blueprint.slug, ownerId);
+            || await this.store.getAppBySlug(blueprint.slug, normalizedOwnerId);
         const persistedAppId = normalizeText(finalPersistedApp?.id);
         if (commitSha && !persistedAppId) {
             const error = new Error(`Managed app build run creation requires a persisted app id for ${effectiveRepoOwner}/${effectiveRepoName || blueprint.slug}.`);
@@ -2736,7 +2742,7 @@ class ManagedAppService {
         const buildRun = commitSha
             ? await this.store.createBuildRun({
                 appId: persistedAppId,
-                ownerId: finalPersistedApp?.ownerId || updatedApp?.ownerId || persistedApp.ownerId || ownerId,
+                ownerId: finalPersistedApp?.ownerId || updatedApp?.ownerId || persistedApp.ownerId || normalizedOwnerId,
                 sessionId: finalPersistedApp?.sessionId || updatedApp?.sessionId || persistedApp.sessionId || sessionId,
                 source: 'managed-app-service',
                 requestedAction,
@@ -2755,7 +2761,7 @@ class ManagedAppService {
 
         let finalApp = this.normalizeAppRecord(finalPersistedApp || updatedApp || persistedApp);
         if (buildRun) {
-            const lifecycleUpdatedApp = await this.store.updateApp(finalApp.id, ownerId, {
+            const lifecycleUpdatedApp = await this.store.updateApp(finalApp.id, normalizedOwnerId, {
                 metadata: this.buildLifecycleMetadata(finalApp, {
                     input,
                     buildRun,

@@ -53,6 +53,11 @@ describe('HarnessState', () => {
         failureCategory: 'blocker',
         blockerCount: 1,
         evidenceCount: 2,
+        evidenceQuality: expect.objectContaining({
+          sourcedCount: 2,
+          unsourcedCount: 0,
+          sourceCoverage: 1,
+        }),
       }),
     });
 
@@ -143,9 +148,46 @@ describe('HarnessState', () => {
       evidenceCount: 2,
       failedEvidenceCount: 1,
       failedToolEventCount: 1,
+      evidenceQuality: {
+        sourcedCount: 0,
+        unsourcedCount: 2,
+        verifiedCount: 1,
+        staleCount: 0,
+        sourceCoverage: 0,
+        averageScore: null,
+      },
       failedStepTypes: ['web-fetch'],
       retryCount: 2,
       tokenCount: 333,
+    });
+  });
+
+  test('summarizes evidence source discipline for trace grading', () => {
+    const harness = new HarnessState({
+      runId: 'run-sources',
+      evidence: [
+        {
+          summary: 'Official tracing guide reviewed',
+          source: 'https://openai.github.io/openai-agents-js/guides/tracing/',
+          score: 0.9,
+          passed: true,
+        },
+        {
+          summary: 'Screenshot check still needs rerun',
+          metadata: { status: 'stale' },
+          score: 0.3,
+          passed: false,
+        },
+      ],
+    });
+
+    expect(harness.getDiagnostics().evidenceQuality).toEqual({
+      sourcedCount: 1,
+      unsourcedCount: 1,
+      verifiedCount: 1,
+      staleCount: 1,
+      sourceCoverage: 0.5,
+      averageScore: 0.6,
     });
   });
 });

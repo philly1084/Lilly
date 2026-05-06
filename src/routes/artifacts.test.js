@@ -45,7 +45,7 @@ const {
 const artifactsRouter = require('./artifacts');
 
 describe('/api/artifacts route', () => {
-    function buildApp() {
+    function buildApp(options = {}) {
         const app = express();
         app.use(express.json());
         app.locals.managedAppService = {
@@ -67,6 +67,12 @@ describe('/api/artifacts route', () => {
             req.user = { username: 'phill' };
             next();
         });
+        if (options.frameOptions) {
+            app.use((_req, res, next) => {
+                res.setHeader('X-Frame-Options', options.frameOptions);
+                next();
+            });
+        }
         app.use('/api/artifacts', artifactsRouter);
         return app;
     }
@@ -219,6 +225,31 @@ describe('/api/artifacts route', () => {
         expect(response.status).toBe(200);
         expect(response.text).toContain('src="/api/artifacts/artifact-site-1/preview-access/preview-token"');
         expect(response.text).toContain('sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"');
+    });
+
+    test('removes frame-blocking headers from sandbox and preview responses', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-site-1',
+            sessionId: 'session-1',
+            filename: 'interactive.html',
+            extension: 'html',
+            previewHtml: '<!DOCTYPE html><html><body><h1>Preview</h1></body></html>',
+            contentBuffer: Buffer.from('<!DOCTYPE html><html><body><h1>Preview</h1></body></html>'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp({ frameOptions: 'SAMEORIGIN' });
+        const sandboxResponse = await request(app).get('/api/artifacts/artifact-site-1/sandbox-access/preview-token');
+        const previewResponse = await request(app).get('/api/artifacts/artifact-site-1/preview-access/preview-token');
+
+        expect(sandboxResponse.status).toBe(200);
+        expect(previewResponse.status).toBe(200);
+        expect(sandboxResponse.headers['x-frame-options']).toBeUndefined();
+        expect(previewResponse.headers['x-frame-options']).toBeUndefined();
     });
 
     test('serves bundled html artifact previews from the server', async () => {

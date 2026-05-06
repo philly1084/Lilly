@@ -4883,7 +4883,7 @@ class ToolManager {
           handler: async (params = {}, context = {}) => {
             const service = resolveManagedAppService(context);
             const action = String(params.action || 'inspect').trim().toLowerCase();
-            const ownerId = context.userId || null;
+            const ownerId = context.ownerId || context.userId || null;
             const input = {
               ...params,
               sessionId: params.sessionId || context.sessionId || null,

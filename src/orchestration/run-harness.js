@@ -73,6 +73,20 @@ class HarnessState {
 
   getDiagnostics() {
     const failedEvidence = this.evidence.filter((entry) => entry.passed === false);
+    const scoredEvidence = this.evidence.filter((entry) => (
+      entry.score !== null && entry.score !== undefined && Number.isFinite(Number(entry.score))
+    ));
+    const sourcedEvidence = this.evidence.filter((entry) => Boolean(entry.source));
+    const verifiedEvidence = this.evidence.filter((entry) => (
+      entry.passed === true
+      || entry.metadata?.verified === true
+      || entry.metadata?.verification?.ok === true
+    ));
+    const staleEvidence = this.evidence.filter((entry) => (
+      entry.metadata?.stale === true
+      || entry.metadata?.status === 'stale'
+      || entry.metadata?.verification?.stale === true
+    ));
     const failedToolEvents = this.toolEvents.filter((event = {}) => {
       const status = String(event.status || event.outcome || '').toLowerCase();
       return ['blocked', 'error', 'failed', 'timeout'].includes(status);
@@ -114,6 +128,16 @@ class HarnessState {
       evidenceCount: this.evidence.length,
       failedEvidenceCount: failedEvidence.length,
       failedToolEventCount: failedToolEvents.length,
+      evidenceQuality: {
+        sourcedCount: sourcedEvidence.length,
+        unsourcedCount: this.evidence.length - sourcedEvidence.length,
+        verifiedCount: verifiedEvidence.length,
+        staleCount: staleEvidence.length,
+        sourceCoverage: this.evidence.length > 0 ? sourcedEvidence.length / this.evidence.length : 0,
+        averageScore: scoredEvidence.length > 0
+          ? scoredEvidence.reduce((total, entry) => total + Number(entry.score), 0) / scoredEvidence.length
+          : null,
+      },
       failedStepTypes: [...new Set(failedToolEvents.map((event = {}) => (
         event.stepType || event.toolType || event.name || event.type || 'tool-event'
       )))],

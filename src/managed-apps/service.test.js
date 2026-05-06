@@ -722,6 +722,30 @@ describe('ManagedAppService', () => {
         })).resolves.toContain('create the first one directly');
     });
 
+    test('createApp rejects missing owner context before writing managed app records', async () => {
+        const store = {
+            ensureAvailable: jest.fn(async () => {}),
+            createApp: jest.fn(),
+        };
+        const service = new ManagedAppService({
+            store,
+            giteaClient: {
+                isConfigured: () => true,
+            },
+        });
+
+        await expect(service.createApp({
+            slug: 'upload-test',
+            prompt: 'Create a managed app upload test.',
+        }, null, {
+            sessionId: 'session-1',
+        })).rejects.toMatchObject({
+            message: 'Managed app creation requires an authenticated owner context.',
+            statusCode: 401,
+        });
+        expect(store.createApp).not.toHaveBeenCalled();
+    });
+
     test('resolveApp accepts owner and repo references', async () => {
         const getAppByRepo = jest.fn(async () => ({
             id: 'app-1',

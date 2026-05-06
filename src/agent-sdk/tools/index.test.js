@@ -2180,6 +2180,38 @@ describe('ToolManager image tools', () => {
     expect(result.data.message).toContain('Every day at 11:05 PM');
   });
 
+  test('passes ownerId context into managed-app actions', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+
+    const createApp = jest.fn(async () => ({
+      app: { id: 'app-1', slug: 'upload-test' },
+      message: 'Queued build.',
+    }));
+
+    const result = await toolManager.executeTool('managed-app', {
+      action: 'create',
+      slug: 'upload-test',
+      prompt: 'Create a managed app upload test.',
+    }, {
+      ownerId: 'user-1',
+      sessionId: 'session-1',
+      managedAppService: {
+        isAvailable: () => true,
+        createApp,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(createApp).toHaveBeenCalledWith(expect.objectContaining({
+      slug: 'upload-test',
+      sessionId: 'session-1',
+    }), 'user-1', expect.objectContaining({
+      ownerId: 'user-1',
+      sessionId: 'session-1',
+    }));
+  });
+
   test('routes sub-agent spawning through the workload service with the caller model', async () => {
     const toolManager = new ToolManager();
     await toolManager.initialize();
