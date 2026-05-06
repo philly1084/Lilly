@@ -1526,8 +1526,9 @@ function buildMessages({
         });
     }
 
-    if (recentMessages.length > 0) {
-        messages.push(...recentMessages
+    const promptRecentMessages = filterRecentMessagesForPrompt(recentMessages, input);
+    if (promptRecentMessages.length > 0) {
+        messages.push(...promptRecentMessages
             .filter((entry) => ['user', 'assistant', 'system', 'tool'].includes(entry?.role))
             .map((entry) => ({
                 role: entry.role,
@@ -1548,6 +1549,59 @@ function buildMessages({
     }
 
     return messages;
+}
+
+function normalizePromptText(value = '') {
+    return normalizeMessageContent(value)
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getInputUserTexts(input) {
+    if (typeof input === 'string') {
+        return [normalizePromptText(input)].filter(Boolean);
+    }
+
+    if (Array.isArray(input)) {
+        return input
+            .filter((entry) => entry?.role === 'user')
+            .map((entry) => normalizePromptText(entry.content))
+            .filter(Boolean);
+    }
+
+    if (input?.role === 'user') {
+        return [normalizePromptText(input.content)].filter(Boolean);
+    }
+
+    return [];
+}
+
+function filterRecentMessagesForPrompt(recentMessages = [], input = '') {
+    const normalizedRecentMessages = Array.isArray(recentMessages) ? recentMessages : [];
+    const inputUserTexts = new Set(getInputUserTexts(input));
+    if (inputUserTexts.size === 0) {
+        return normalizedRecentMessages;
+    }
+
+    return normalizedRecentMessages.filter((entry, index) => {
+        if (entry?.role !== 'user') {
+            return true;
+        }
+
+        const content = normalizePromptText(entry.content);
+        if (!content || !inputUserTexts.has(content)) {
+            return true;
+        }
+
+        const hasLaterNonCurrentUserMessage = normalizedRecentMessages
+            .slice(index + 1)
+            .some((candidate) => (
+                candidate?.role === 'user'
+                && !inputUserTexts.has(normalizePromptText(candidate.content))
+            ));
+
+        return hasLaterNonCurrentUserMessage;
+    });
 }
 
 function getLastUserText(messages = []) {
@@ -6358,6 +6412,7 @@ module.exports = {
         normalizeModelResponse,
         normalizeStreamResponse,
         normalizeToolResultForModel,
+        filterRecentMessagesForPrompt,
         inferProviderFamily,
         parseToolArguments,
         resolveOpenAIApiMode,

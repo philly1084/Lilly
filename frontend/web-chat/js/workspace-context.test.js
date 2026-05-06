@@ -28,17 +28,17 @@ describe('workspace-context', () => {
             workspaceId: 'web-chat-workspace-3',
             projectScope: 'web-chat-workspace-3',
             memoryScope: 'web-chat-workspace-3',
-            sessionIsolation: false,
+            sessionIsolation: true,
         }));
     });
 
-    test('keeps durable memory enabled for all workspace metadata', () => {
+    test('keeps persistent local session memory enabled for all workspace metadata', () => {
         expect(buildWorkspaceScopeMetadata(
             { clientSurface: 'web-chat', taskType: 'chat' },
             createWorkspaceContext({ key: 'workspace-1' }),
         )).toEqual(expect.objectContaining({
             memoryScope: 'web-chat',
-            sessionIsolation: false,
+            sessionIsolation: true,
         }));
         expect(createWorkspaceContext({ key: 'workspace-4' })).toEqual(expect.objectContaining({
             scopeKey: 'web-chat-workspace-4',

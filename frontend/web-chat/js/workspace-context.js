@@ -133,7 +133,7 @@
             workspaceId: context.scopeKey,
             projectScope: context.scopeKey,
             memoryScope: context.scopeKey,
-            sessionIsolation: false,
+            sessionIsolation: true,
         };
     }
 

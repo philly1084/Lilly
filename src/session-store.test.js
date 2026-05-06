@@ -353,8 +353,8 @@ describe('SessionStore recent message continuity', () => {
         expect(listed).toHaveLength(30);
         expect(listed[0]).toEqual(expect.objectContaining({ content: 'message-1' }));
         expect(listed[29]).toEqual(expect.objectContaining({ content: 'message-30' }));
-        expect(recent).toHaveLength(30);
-        expect(recent[0]).toEqual(expect.objectContaining({ content: 'message-1' }));
+        expect(recent).toHaveLength(8);
+        expect(recent[0]).toEqual(expect.objectContaining({ content: 'message-23' }));
     });
 
     test('getRecentMessages skips transcript content already covered by session compaction', async () => {
@@ -416,11 +416,13 @@ describe('SessionStore recent message continuity', () => {
         });
 
         expect(updated.metadata.sessionCompaction).toEqual(expect.objectContaining({
-            compactedMessageCount: 6,
+            compactedMessageCount: 4,
             trigger: 'workflow-completed',
         }));
         expect(updated.metadata.sessionCompaction.summary).toContain('Waiting on DNS propagation');
         expect(updated.metadata.recentMessages.map((entry) => entry.content)).toEqual([
+            'message-5 about the deployment workflow',
+            'message-6 about the deployment workflow',
             'message-7 about the deployment workflow',
             'message-8 about the deployment workflow',
             'message-9 about the deployment workflow',
@@ -430,7 +432,32 @@ describe('SessionStore recent message continuity', () => {
         ]);
     });
 
-    test('preserves long html content in transcript persistence while trimming only recent continuity', async () => {
+    test('maybeCompactSession compacts oversized transcripts while retaining eight recent messages', async () => {
+        const store = new SessionStore();
+        store.initialized = true;
+        store.usePostgres = false;
+        const session = await store.create({ mode: 'chat' });
+        const largeSegment = 'Detailed project context '.repeat(420);
+        const transcript = Array.from({ length: 10 }, (_, index) => ({
+            role: index % 2 === 0 ? 'user' : 'assistant',
+            content: `message-${index + 1} ${largeSegment}`,
+            timestamp: new Date(Date.UTC(2026, 0, 1, 0, index, 0)).toISOString(),
+        }));
+
+        await store.appendMessages(session.id, transcript);
+        const updated = await store.maybeCompactSession(session.id);
+
+        expect(updated.metadata.sessionCompaction).toEqual(expect.objectContaining({
+            compactedMessageCount: 2,
+            trigger: 'transcript-growth',
+        }));
+        expect(updated.metadata.recentMessages).toHaveLength(8);
+        expect(updated.metadata.recentMessages[0]).toEqual(expect.objectContaining({
+            content: expect.stringContaining('message-3'),
+        }));
+    });
+
+    test('preserves long html content in transcript persistence and recent agent continuity', async () => {
         const store = new SessionStore();
         store.initialized = true;
         store.usePostgres = false;
@@ -445,8 +472,8 @@ describe('SessionStore recent message continuity', () => {
         const recent = await store.getRecentMessages(session.id, 10);
 
         expect(listed[0].content).toBe(html);
-        expect(recent[0].content.length).toBeLessThan(html.length);
-        expect(recent[0].content).toContain('[truncated');
+        expect(recent[0].content).toBe(html);
+        expect(recent[0].content).not.toContain('[truncated');
     });
 
     test('persists fallback sessions and messages to disk across store instances', async () => {

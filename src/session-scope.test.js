@@ -24,17 +24,19 @@ describe('session scope memory routing', () => {
     })).toBe('');
   });
 
-  test('routes artifact memory into project-shared namespace when a project key exists', () => {
+  test('routes web-chat artifact memory into session-local namespace even when a project key exists', () => {
     expect(buildScopedMemoryMetadata({
       ownerId: 'phill',
       memoryScope: 'acme-platform',
       sourceSurface: 'web-chat',
+      clientSurface: 'web-chat',
       memoryClass: 'artifact',
       sessionIsolation: false,
     })).toEqual(expect.objectContaining({
       projectKey: 'acme-platform',
-      memoryNamespace: PROJECT_SHARED_MEMORY_NAMESPACE,
+      memoryNamespace: SESSION_LOCAL_MEMORY_NAMESPACE,
       shareAcrossSurfaces: true,
+      sessionIsolation: true,
     }));
   });
 
@@ -56,14 +58,29 @@ describe('session scope memory routing', () => {
       ownerId: 'phill',
       memoryScope: 'web-chat-workspace-3',
       sourceSurface: 'web-chat',
+      clientSurface: 'web-chat',
       memoryClass: 'conversation',
       sessionIsolation: false,
     })).toEqual(expect.objectContaining({
       memoryScope: 'web-chat-workspace-3',
       projectKey: 'web-chat-workspace-3',
-      memoryNamespace: SURFACE_LOCAL_MEMORY_NAMESPACE,
+      memoryNamespace: SESSION_LOCAL_MEMORY_NAMESPACE,
       shareAcrossSurfaces: false,
+      sessionIsolation: true,
+    }));
+  });
+
+  test('forces web-chat isolation even when workspace metadata tries to disable it', () => {
+    expect(buildScopedMemoryMetadata({
+      ownerId: 'phill',
+      memoryScope: 'web-chat-workspace-2',
+      sourceSurface: 'web-chat',
+      clientSurface: 'web-chat',
+      memoryClass: 'conversation',
       sessionIsolation: false,
+    })).toEqual(expect.objectContaining({
+      memoryNamespace: SESSION_LOCAL_MEMORY_NAMESPACE,
+      sessionIsolation: true,
     }));
   });
 
@@ -148,12 +165,14 @@ describe('session scope memory routing', () => {
       ownerId: 'phill',
       memoryScope: 'workspace-2',
       sourceSurface: 'web-chat',
+      clientSurface: 'web-chat',
       memoryClass: 'conversation',
       sessionIsolation: false,
     })).toEqual(expect.objectContaining({
       memoryScope: 'web-chat-workspace-2',
       projectKey: 'web-chat-workspace-2',
-      memoryNamespace: SURFACE_LOCAL_MEMORY_NAMESPACE,
+      memoryNamespace: SESSION_LOCAL_MEMORY_NAMESPACE,
+      sessionIsolation: true,
     }));
   });
 

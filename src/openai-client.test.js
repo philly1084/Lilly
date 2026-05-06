@@ -2824,6 +2824,24 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
+    test('does not duplicate the active user prompt when it is already in recent transcript', () => {
+        const messages = __testUtils.buildMessages({
+            input: 'Generate a dashboard for the sales report.',
+            instructions: 'You are a helpful AI assistant.',
+            recentMessages: [
+                { role: 'user', content: 'Earlier context' },
+                { role: 'assistant', content: 'I have that context.' },
+                { role: 'user', content: 'Generate a dashboard for the sales report.' },
+            ],
+        });
+
+        expect(messages.filter((entry) => (
+            entry.role === 'user'
+            && entry.content === 'Generate a dashboard for the sales report.'
+        ))).toHaveLength(1);
+        expect(messages.map((entry) => entry.content)).toContain('Earlier context');
+    });
+
     test('normalizes multimodal content for Responses and Chat Completions APIs', () => {
         const content = [
             { type: 'input_text', text: 'Describe this image.' },

@@ -4,9 +4,10 @@ const {
 } = require('./conversation-continuity');
 
 const COMPACTION_TRIGGER_MESSAGE_COUNT = 28;
+const COMPACTION_TRIGGER_CHAR_COUNT = 60000;
 const COMPACTION_COMPLETION_MIN_MESSAGES = 12;
 const COMPACTION_MIN_NEW_MESSAGES = 10;
-const COMPACTION_RETAIN_RECENT_MESSAGES = 6;
+const COMPACTION_RETAIN_RECENT_MESSAGES = 8;
 const COMPACTION_UNRULY_ACTIVE_MESSAGE_COUNT = 80;
 const COMPACTION_UNRULY_ACTIVE_MIN_NEW_MESSAGES = 24;
 const MAX_COMPLETION_REPORT_CHARS = 1400;
@@ -258,6 +259,7 @@ function shouldCompactSession({
     const activeWorkflow = workflowStatus === 'active';
     const nextCompactedMessageCount = Math.max(0, transcriptMessages.length - COMPACTION_RETAIN_RECENT_MESSAGES);
     const newlyCompactedMessages = nextCompactedMessageCount - existing.compactedMessageCount;
+    const transcriptChars = transcriptMessages.reduce((sum, entry) => sum + String(entry.content || '').length, 0);
 
     if (nextCompactedMessageCount <= existing.compactedMessageCount) {
         return false;
@@ -270,6 +272,10 @@ function shouldCompactSession({
     if (activeWorkflow) {
         return transcriptMessages.length >= COMPACTION_UNRULY_ACTIVE_MESSAGE_COUNT
             && newlyCompactedMessages >= COMPACTION_UNRULY_ACTIVE_MIN_NEW_MESSAGES;
+    }
+
+    if (transcriptChars >= COMPACTION_TRIGGER_CHAR_COUNT) {
+        return newlyCompactedMessages > 0;
     }
 
     return transcriptMessages.length >= COMPACTION_TRIGGER_MESSAGE_COUNT

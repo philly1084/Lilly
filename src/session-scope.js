@@ -86,6 +86,11 @@ function resolveSessionIsolation(value = {}, session = null, fallback = null) {
   const source = getPlainObject(value);
   const nested = getPlainObject(source.metadata);
   const sessionMetadata = getPlainObject(session?.metadata);
+  const clientSurface = resolveClientSurface(source, session, source.sourceSurface || source.source_surface || '');
+
+  if (clientSurface === 'web-chat') {
+    return true;
+  }
 
   const candidates = [
     source.sessionIsolation,

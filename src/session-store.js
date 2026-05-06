@@ -146,7 +146,7 @@ class SessionStore {
             return '';
         }
 
-        if (value.length <= MAX_RECENT_MESSAGE_LENGTH) {
+        if (config.memory.recentMessageCharLimit === 0 || value.length <= MAX_RECENT_MESSAGE_LENGTH) {
             return value;
         }
 
@@ -173,7 +173,7 @@ class SessionStore {
         return this.normalizeTranscriptMessages(messages)
             .map((entry) => ({
                 ...entry,
-                content: this.trimRecentMessageContent(entry.content || ''),
+                content: stripNullCharacters(entry.content || '').trim(),
             }))
             .slice(-normalizedLimit);
     }
@@ -194,7 +194,7 @@ class SessionStore {
         return visibleMessages
             .map((entry) => ({
                 ...entry,
-                content: this.trimRecentMessageContent(entry.content || ''),
+                content: stripNullCharacters(entry.content || '').trim(),
             }))
             .slice(-normalizedLimit);
     }

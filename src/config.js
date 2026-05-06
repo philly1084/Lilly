@@ -76,6 +76,15 @@ function parseIntegerWithDefault(value, fallback, { min = 0 } = {}) {
     return Math.max(min, parsed);
 }
 
+function parseRecentMessageCharLimit(value) {
+    const parsed = parseOptionalInteger(value);
+    if (parsed == null || parsed === 0) {
+        return 0;
+    }
+
+    return Math.max(500, parsed);
+}
+
 function resolveAvailableParallelism() {
     try {
         if (typeof os.availableParallelism === 'function') {
@@ -753,16 +762,13 @@ const config = {
         ),
         recentMessageWindow: Math.max(
             1,
-            parseInt(process.env.MEMORY_RECENT_MESSAGE_WINDOW, 10) || 40,
+            parseInt(process.env.MEMORY_RECENT_MESSAGE_WINDOW, 10) || 8,
         ),
         recentTranscriptLimit: Math.max(
             1,
-            parseInt(process.env.MEMORY_RECENT_TRANSCRIPT_LIMIT, 10) || 20,
+            parseInt(process.env.MEMORY_RECENT_TRANSCRIPT_LIMIT, 10) || 8,
         ),
-        recentMessageCharLimit: Math.max(
-            500,
-            parseInt(process.env.MEMORY_RECENT_MESSAGE_CHAR_LIMIT, 10) || 6000,
-        ),
+        recentMessageCharLimit: parseRecentMessageCharLimit(process.env.MEMORY_RECENT_MESSAGE_CHAR_LIMIT),
         recallTopK: Math.max(
             1,
             parseInt(process.env.MEMORY_RECALL_TOP_K, 10) || 12,

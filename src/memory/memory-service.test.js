@@ -91,6 +91,32 @@ describe('MemoryService recall profiles', () => {
         }));
     });
 
+    test('process keeps web-chat workspace recall locked to the current session even if isolation is false', async () => {
+        const service = new MemoryService();
+        const recallSpy = jest.spyOn(service, 'recall').mockResolvedValue(['ctx']);
+        const rememberSpy = jest.spyOn(service, 'remember').mockResolvedValue('point-1');
+
+        await service.process('session-1', 'workspace follow-up', {
+            ownerId: 'phill',
+            memoryScope: 'web-chat-workspace-2',
+            sourceSurface: 'web-chat',
+            clientSurface: 'web-chat',
+            sessionIsolation: false,
+            profile: DEFAULT_RECALL_PROFILE,
+        });
+
+        expect(rememberSpy).toHaveBeenCalledWith('session-1', 'workspace follow-up', 'user', expect.objectContaining({
+            memoryNamespace: SESSION_LOCAL_MEMORY_NAMESPACE,
+            sessionIsolation: true,
+        }));
+        expect(recallSpy).toHaveBeenCalledWith('workspace follow-up', expect.objectContaining({
+            sessionId: 'session-1',
+            ownerId: null,
+            memoryScope: 'web-chat-workspace-2',
+            sessionIsolation: true,
+        }));
+    });
+
     test('recall keeps keyword matches isolated to the current frontend scope', async () => {
         const service = new MemoryService();
         jest.spyOn(service.store, 'search').mockResolvedValue([]);
