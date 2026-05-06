@@ -23,4 +23,27 @@ describe('agent role frontend sandbox detection', () => {
       'vite-preview',
     ]));
   });
+
+  test('treats natural concept-to-prototype requests as sandbox build journeys', () => {
+    expect(hasWebsiteBuildIntent('I have an app idea, sandbox it locally before we deploy it with the remote CLI agent')).toBe(true);
+
+    const pipeline = inferAgentRolePipeline({
+      objective: 'Come up with a software idea, make a local sandbox prototype, then later deploy it through the remote CLI agent and save the repo work.',
+    });
+
+    expect(pipeline).toEqual(expect.objectContaining({
+      strategy: 'concept-design-sandbox-build',
+      requiresDesign: true,
+      requiresBuild: true,
+      requiresSandbox: true,
+    }));
+    expect(pipeline.roles).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Builder Agent',
+        outputContract: expect.objectContaining({
+          format: 'sandbox-project',
+        }),
+      }),
+    ]));
+  });
 });

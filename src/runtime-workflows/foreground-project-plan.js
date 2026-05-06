@@ -112,6 +112,19 @@ function isPlanningOnlyObjective(text = '') {
     return planningIntent && !implementationIntent;
 }
 
+function hasConceptToBuildLifecycleIntent(text = '') {
+    const normalized = normalizeText(text).toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const conceptCue = /\b(idea|concept|product idea|app idea|mvp|prototype|proof of concept|poc|normal|natural)\b/.test(normalized);
+    const softwareCue = /\b(software|development|app|application|site|website|web app|dashboard|frontend|tool|product|feature|page|repo|repository)\b/.test(normalized);
+    const journeyCue = /\b(sandbox|local|locally|remote cli|remote-cli|deploy|publish|ship|git|github|gitlab|repo work|repository work|many sessions|over many sessions|next round|flow|flows)\b/.test(normalized);
+
+    return conceptCue && softwareCue && journeyCue;
+}
+
 function deriveProjectTitle(objective = '') {
     const normalized = normalizeText(objective)
         .replace(/\s+/g, ' ');
@@ -179,6 +192,16 @@ function buildMilestonesFromObjective(objective = '') {
             createMilestone('gather-context', 'Gather context and constraints', 'in_progress'),
             createMilestone('deliver-work', 'Deliver the requested work'),
             createMilestone('validate-result', 'Validate the result'),
+        ];
+    }
+
+    if (hasConceptToBuildLifecycleIntent(normalized)) {
+        return [
+            createMilestone('shape-build-idea', 'Shape the idea into a compact build brief', 'in_progress'),
+            createMilestone('sandbox-local-prototype', 'Build and review a local sandbox prototype'),
+            createMilestone('promote-remote-cli', 'Promote the prototype through the remote CLI agent'),
+            createMilestone('deploy-and-verify', 'Deploy and verify the remote result'),
+            createMilestone('save-git-and-continue-repo', 'Save Git state and continue repo work'),
         ];
     }
 

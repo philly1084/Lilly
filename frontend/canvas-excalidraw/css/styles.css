@@ -304,7 +304,7 @@ html, body {
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
-    z-index: 100;
+    z-index: 300;
     box-shadow: var(--shadow-sm);
 }
 
@@ -2664,6 +2664,7 @@ body.drag-over::after {
 
 .top-bar-right .dropdown {
     position: relative;
+    z-index: 220;
 }
 
 .top-bar-right .dropdown-menu {
@@ -2678,6 +2679,7 @@ body.drag-over::after {
     min-width: 180px;
     display: none;
     overflow: hidden;
+    z-index: 240;
 }
 
 .top-bar-right .dropdown.active .dropdown-menu {

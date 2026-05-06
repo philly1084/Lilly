@@ -1,0 +1,201 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3000/canvas/",
+  "originalUrl": "http://127.0.0.1:3000/canvas/",
+  "authenticated": false,
+  "generatedAt": "2026-05-06T22:36:18.302Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-polish\\lilly-canvas-desktop.png",
+      "metrics": {
+        "title": "Lilly Canvas",
+        "url": "http://127.0.0.1:3000/canvas/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 487,
+        "bodyTextPreview": "Lilly Canvas 100% − + V BASIC R O D 📌 LINES L A DRAW P E CONTENT X F I AI ✨ G Z PROPERTIES Snap to Grid STROKE Choose Stroke Color ✓ ✓ ✓ ✓ ✓ ✓ Custom Color BACKGROUND Choose Fill Style ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ Custom Color STROKE WIDTH STROKE STYLE OPACITY 100% FONT SIZE S M L XL FONT Sans Serif Mono Display Script TEXT ALIGN TEXT STYLE TEXT TRANSFORM Aa AA aa Aa LETTER SPACING 0PX LINE HEIGHT 1.4 TEXT SHADOW Delete Duplicate Bring to Front Send to Back",
+        "headings": [
+          "Layers",
+          "PROPERTIES",
+          "Stickers & Icons",
+          "Templates",
+          "AI Assistant",
+          "Export",
+          "Import",
+          "Exporting...",
+          "Keyboard Shortcuts",
+          "Drop files to import"
+        ],
+        "interactiveControls": 276,
+        "textContrast": {
+          "checked": 142,
+          "lowContrastCount": 5,
+          "lowContrast": [
+            {
+              "tag": "button",
+              "id": "",
+              "className": "color-btn active",
+              "text": "✓",
+              "contrast": 1,
+              "required": 4.5,
+              "color": "#000000",
+              "background": "#000000",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 294,
+              "left": 1138
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "color-btn",
+              "text": "✓",
+              "contrast": 4.18,
+              "required": 4.5,
+              "color": "#000000",
+              "background": "#1971c2",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 294,
+              "left": 1246
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "color-btn",
+              "text": "✓",
+              "contrast": 3.61,
+              "required": 4.5,
+              "color": "#000000",
+              "background": "#9c36b5",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 294,
+              "left": 1318
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "color-btn",
+              "text": "✓",
+              "contrast": 1.36,
+              "required": 4.5,
+              "color": "#000000",
+              "background": "#212529",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 574,
+              "left": 1357
+            },
+            {
+              "tag": "button",
+              "id": "deleteBtn",
+              "className": "action-btn danger",
+              "text": "Delete",
+              "contrast": 2.66,
+              "required": 4.5,
+              "color": "#ff6b6b",
+              "background": "#fcfaf6",
+              "fontSize": 13,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 1454,
+              "left": 1125
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Access to script at 'https://unpkg.com/openai@4.82.0/dist/index.browser.js' from origin 'http://127.0.0.1:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [
+        "JSZip is not defined"
+      ],
+      "failedRequests": [
+        {
+          "url": "https://unpkg.com/perfect-freehand@1.2.0/dist/perfect-freehand.umd.js",
+          "failure": "net::ERR_BLOCKED_BY_ORB"
+        },
+        {
+          "url": "https://unpkg.com/openai@4.82.0/dist/index.browser.js",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "low-contrast-text",
+        "page-errors",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3000/canvas/\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:3000/canvas/\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:3000/canvas/",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        }
+      ],
+      "issues": [
+        "check-failed"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-polish\\lilly-canvas-desktop.png"
+    ],
+    "issues": [
+      "cors-errors",
+      "low-contrast-text",
+      "page-errors",
+      "failed-requests",
+      "check-failed"
+    ]
+  }
+}

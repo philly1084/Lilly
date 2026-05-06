@@ -1,0 +1,499 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3000/notation/",
+  "originalUrl": "http://127.0.0.1:3000/notation/",
+  "authenticated": false,
+  "generatedAt": "2026-05-06T22:37:41.528Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notation-polish\\notation-helper-lillybuilt-ai-desktop.png",
+      "metrics": {
+        "title": "Notation Helper | LillyBuilt AI",
+        "url": "http://127.0.0.1:3000/notation/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 563,
+        "bodyTextPreview": "Notation Helper Expand Explain Validate Reasoning: Default Reasoning: Low Reasoning: Medium Reasoning: High Reasoning: XHigh Error Templates History Notation Templates All System Flow Data API Add Context (Optional) Add context (optional) to help the AI understand your notation better... Upload File No file output HTML PDF XML Mermaid XLSX Power Query Notation Input 0 chars 1 line Process Ctrl+Enter With Context Ctrl+Shift+Enter Result EXPAND 0 Ready to Process Enter notation in the left panel a",
+        "headings": [
+          "Notation Templates",
+          "Recent Sessions",
+          "Ready to Process",
+          "Keyboard Shortcuts"
+        ],
+        "interactiveControls": 32,
+        "textContrast": {
+          "checked": 50,
+          "lowContrastCount": 10,
+          "lowContrast": [
+            {
+              "tag": "button",
+              "id": "",
+              "className": "mode-btn",
+              "text": "Explain",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 12.3,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 8,
+              "left": 379
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "Explain",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 12.3,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 22,
+              "left": 413
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "mode-btn",
+              "text": "Validate",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 12.3,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 8,
+              "left": 473
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "Validate",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 12.3,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 22,
+              "left": 506
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "status-text",
+              "text": "Error",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 10.5,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 22,
+              "left": 1388
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "context-placeholder",
+              "text": "Add context (optional) to help the AI understand your notation better...",
+              "contrast": 2.09,
+              "required": 4.5,
+              "color": "#484f58",
+              "background": "#161b22",
+              "fontSize": 11.4,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 75,
+              "left": 1050
+            },
+            {
+              "tag": "span",
+              "id": "charCount",
+              "className": "char-count",
+              "text": "0 chars",
+              "contrast": 2.09,
+              "required": 4.5,
+              "color": "#484f58",
+              "background": "#161b22",
+              "fontSize": 10.5,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 922,
+              "left": 295
+            },
+            {
+              "tag": "span",
+              "id": "lineCount",
+              "className": "line-count",
+              "text": "1 line",
+              "contrast": 2.09,
+              "required": 4.5,
+              "color": "#484f58",
+              "background": "#161b22",
+              "fontSize": 10.5,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 922,
+              "left": 346
+            },
+            {
+              "tag": "p",
+              "id": "",
+              "className": "",
+              "text": "Enter notation in the left panel and click 'Process' to see results",
+              "contrast": 1.71,
+              "required": 4.5,
+              "color": "#484f58",
+              "background": "#252b34",
+              "fontSize": 12.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 628,
+              "left": 1005
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "Start by typing in the editor",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 11.4,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 693,
+              "left": 1090
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/health",
+          "failure": "net::ERR_ABORTED"
+        }
+      ],
+      "issues": [
+        "low-contrast-text",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notation-polish\\notation-helper-lillybuilt-ai-mobile.png",
+      "metrics": {
+        "title": "Notation Helper | LillyBuilt AI",
+        "url": "http://127.0.0.1:3000/notation/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "Templates History Notation Templates All System Flow Data API",
+            "left": -280,
+            "right": 0,
+            "width": 280
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-tabs",
+            "text": "Templates History",
+            "left": -280,
+            "right": -1,
+            "width": 279
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "sidebar-tab active",
+            "text": "Templates",
+            "left": -280,
+            "right": -140,
+            "width": 140
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "fas fa-th-large",
+            "text": "",
+            "left": -250,
+            "right": -238,
+            "width": 12
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "",
+            "text": "Templates",
+            "left": -231,
+            "right": -170,
+            "width": 61
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "sidebar-tab",
+            "text": "History",
+            "left": -140,
+            "right": -1,
+            "width": 140
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "fas fa-history",
+            "text": "",
+            "left": -101,
+            "right": -89,
+            "width": 12
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "",
+            "text": "History",
+            "left": -82,
+            "right": -40,
+            "width": 42
+          },
+          {
+            "tag": "div",
+            "id": "templatesPanel",
+            "className": "sidebar-panel active",
+            "text": "Notation Templates All System Flow Data API",
+            "left": -280,
+            "right": -1,
+            "width": 279
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "panel-header",
+            "text": "Notation Templates All System Flow Data API",
+            "left": -280,
+            "right": -1,
+            "width": 279
+          },
+          {
+            "tag": "h3",
+            "id": "",
+            "className": "",
+            "text": "Notation Templates",
+            "left": -266,
+            "right": -15,
+            "width": 251
+          },
+          {
+            "tag": "div",
+            "id": "templateCategories",
+            "className": "template-categories",
+            "text": "All System Flow Data API",
+            "left": -266,
+            "right": -15,
+            "width": 251
+          }
+        ],
+        "bodyTextLength": 337,
+        "bodyTextPreview": "Error Templates History Notation Templates All System Flow Data API Add Context (Optional) Upload File No file output HTML PDF XML Mermaid XLSX Power Query Notation Input 0 chars 1 line Process With Context Result EXPAND 0 Ready to Process Enter notation in the left panel and click 'Process' to see results Start by typing in the editor",
+        "headings": [
+          "Notation Templates",
+          "Recent Sessions",
+          "Ready to Process",
+          "Keyboard Shortcuts"
+        ],
+        "interactiveControls": 32,
+        "textContrast": {
+          "checked": 42,
+          "lowContrastCount": 7,
+          "lowContrast": [
+            {
+              "tag": "button",
+              "id": "",
+              "className": "mode-btn",
+              "text": "Explain",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 12.3,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 8,
+              "left": 123
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "mode-btn",
+              "text": "Validate",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 12.3,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 8,
+              "left": 153
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "status-text",
+              "text": "Error",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 10.5,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 22,
+              "left": 345
+            },
+            {
+              "tag": "span",
+              "id": "charCount",
+              "className": "char-count",
+              "text": "0 chars",
+              "contrast": 2.09,
+              "required": 4.5,
+              "color": "#484f58",
+              "background": "#161b22",
+              "fontSize": 10.5,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 463,
+              "left": 14
+            },
+            {
+              "tag": "span",
+              "id": "lineCount",
+              "className": "line-count",
+              "text": "1 line",
+              "contrast": 2.09,
+              "required": 4.5,
+              "color": "#484f58",
+              "background": "#161b22",
+              "fontSize": 10.5,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 463,
+              "left": 65
+            },
+            {
+              "tag": "p",
+              "id": "",
+              "className": "",
+              "text": "Enter notation in the left panel and click 'Process' to see results",
+              "contrast": 2.28,
+              "required": 4.5,
+              "color": "#484f58",
+              "background": "#0d1117",
+              "fontSize": 12.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 727,
+              "left": 45
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "Start by typing in the editor",
+              "contrast": 4.08,
+              "required": 4.5,
+              "color": "#7d8590",
+              "background": "#21262d",
+              "fontSize": 11.4,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 792,
+              "left": 130
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/health",
+          "failure": "net::ERR_ABORTED"
+        }
+      ],
+      "issues": [
+        "low-contrast-text",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notation-polish\\notation-helper-lillybuilt-ai-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notation-polish\\notation-helper-lillybuilt-ai-mobile.png"
+    ],
+    "issues": [
+      "low-contrast-text",
+      "failed-requests"
+    ]
+  }
+}

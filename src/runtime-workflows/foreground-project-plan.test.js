@@ -49,6 +49,44 @@ describe('foreground project plan', () => {
         }));
     });
 
+    test('creates a multi-session concept to remote build lifecycle plan', () => {
+        const plan = inferForegroundProjectPlan({
+            objective: 'I want natural software development where we start with an idea, sandbox it local, deploy it with the remote CLI agent, update the page, use git, and continue repo work over many sessions.',
+        });
+
+        expect(plan).toEqual(expect.objectContaining({
+            kind: FOREGROUND_PROJECT_PLAN_KIND,
+            status: ACTIVE_PROJECT_PLAN_STATUS,
+            milestones: [
+                expect.objectContaining({
+                    id: 'shape-build-idea',
+                    title: 'Shape the idea into a compact build brief',
+                    status: 'in_progress',
+                }),
+                expect.objectContaining({
+                    id: 'sandbox-local-prototype',
+                    title: 'Build and review a local sandbox prototype',
+                    status: 'planned',
+                }),
+                expect.objectContaining({
+                    id: 'promote-remote-cli',
+                    title: 'Promote the prototype through the remote CLI agent',
+                    status: 'planned',
+                }),
+                expect.objectContaining({
+                    id: 'deploy-and-verify',
+                    title: 'Deploy and verify the remote result',
+                    status: 'planned',
+                }),
+                expect.objectContaining({
+                    id: 'save-git-and-continue-repo',
+                    title: 'Save Git state and continue repo work',
+                    status: 'planned',
+                }),
+            ],
+        }));
+    });
+
     test('reuses and updates a stored foreground plan on skip instructions', () => {
         const stored = normalizeForegroundProjectPlan({
             kind: FOREGROUND_PROJECT_PLAN_KIND,

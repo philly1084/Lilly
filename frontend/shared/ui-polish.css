@@ -236,6 +236,36 @@
     }
 }
 
+@media (max-width: 1024px) {
+    [data-ui-surface="canvas"] .layers-panel.active {
+        right: min(240px, 42vw);
+    }
+
+    [data-ui-surface="canvas"] .properties-panel {
+        box-shadow: var(--kb-panel-shadow);
+    }
+
+    [data-ui-surface="canvas"] .canvas-container {
+        transition: right var(--kb-motion), left var(--kb-motion), bottom var(--kb-motion);
+    }
+}
+
+@media (max-width: 768px) {
+    [data-ui-surface="canvas"] .layers-panel.active {
+        right: 0;
+        max-width: min(320px, 92vw);
+    }
+
+    [data-ui-surface="canvas"] .properties-panel.active {
+        max-width: min(340px, 92vw);
+    }
+
+    [data-ui-surface="canvas"] .toolbar.active {
+        border-radius: var(--kb-radius-shell) var(--kb-radius-shell) 0 0;
+        box-shadow: 0 -18px 46px rgba(2, 6, 23, 0.18);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     [data-ui-surface] *,
     [data-ui-surface] *::before,

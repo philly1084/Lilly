@@ -50,7 +50,20 @@ function hasWebsiteBuildIntent(text = '') {
   const buildVerb = /\b(create|make|generate|build|draft|design|prototype|ship|assemble|produce|turn)\b/.test(normalized);
   const webTarget = /\b(website|web site|site|webpage|web page|landing page|microsite|product page|dashboard|frontend|front end|webapp|web app|html page|html document|browser game|web game|sandboxed game|game prototype|playable game|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
     || (/\bgame\b/.test(normalized) && /\b(sandbox|sandboxed|browser|webapp|web app|phone|mobile|keyboard|mouse|touch)\b/.test(normalized));
-  return buildVerb && webTarget;
+  return (buildVerb && webTarget) || hasConceptPrototypeIntent(normalized);
+}
+
+function hasConceptPrototypeIntent(text = '') {
+  const normalized = normalizeLowerText(text);
+  if (!normalized) {
+    return false;
+  }
+
+  const conceptCue = /\b(idea|concept|product idea|app idea|prototype|mockup|mvp|proof of concept|poc|sandbox it|sandboxed|local sandbox|try it locally)\b/.test(normalized);
+  const softwareTarget = /\b(app|application|software|tool|product|feature|workflow|website|web site|site|webpage|web page|landing page|dashboard|frontend|front end|webapp|web app|html|browser game|game|service)\b/.test(normalized);
+  const buildJourney = /\b(build|make|create|prototype|mock up|sandbox|try|test|ship|deploy|publish|remote cli|repo|repository|git|github|gitlab)\b/.test(normalized);
+
+  return conceptCue && softwareTarget && buildJourney;
 }
 
 function hasDocumentBuildIntent(text = '') {
@@ -93,7 +106,8 @@ function inferAgentRolePipeline({
     return null;
   }
 
-  const websiteBuild = hasWebsiteBuildIntent(normalized);
+  const conceptPrototype = hasConceptPrototypeIntent(normalized);
+  const websiteBuild = hasWebsiteBuildIntent(normalized) || conceptPrototype;
   const documentBuild = hasDocumentBuildIntent(normalized);
   const researchNeeded = hasResearchIntent(normalized)
     || classification?.groundingRequirement === 'required'
@@ -192,7 +206,7 @@ function inferAgentRolePipeline({
     type: 'AgentRolePipeline',
     version: 1,
     strategy: websiteBuild
-      ? 'research-design-sandbox-build'
+      ? (conceptPrototype ? 'concept-design-sandbox-build' : 'research-design-sandbox-build')
       : (documentBuild ? 'research-design-document-build' : 'research-design-synthesis'),
     executionProfile,
     requiresResearch: researchNeeded,
@@ -248,6 +262,7 @@ module.exports = {
   IMPRESSIVE_FRONTEND_QUALITY_BAR,
   formatAgentRolePipelineForPrompt,
   hasDocumentBuildIntent,
+  hasConceptPrototypeIntent,
   hasResearchIntent,
   hasRole,
   hasWebsiteBuildIntent,

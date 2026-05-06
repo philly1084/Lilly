@@ -1,0 +1,629 @@
+[
+  {
+    "name": "web-chat-desktop",
+    "url": "http://127.0.0.1:3000/web-chat/app.html",
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "initialHealth": {
+      "title": "Lilly Workspace",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 4449
+    },
+    "actionResults": [
+      {
+        "label": "Open assistant settings",
+        "ok": true,
+        "selector": "#model-selector-btn",
+        "expectVisible": "#model-selector-dropdown:not(.hidden)",
+        "visible": true,
+        "health": {
+          "title": "Lilly Workspace",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 2031
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-01-model-settings.png"
+      },
+      {
+        "label": "Expand model list",
+        "ok": true,
+        "selector": "#model-list-toggle",
+        "expectVisible": "#model-list:not(.hidden)",
+        "visible": true,
+        "health": {
+          "title": "Lilly Workspace",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 2052
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-02-model-list.png"
+      },
+      {
+        "label": "Close assistant settings",
+        "ok": false,
+        "selector": "#model-selector-dropdown .btn-icon",
+        "expectVisible": "#model-selector-dropdown.hidden",
+        "visible": false,
+        "health": {
+          "title": "Lilly Workspace",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 963
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-03-model-close.png"
+      },
+      {
+        "label": "Open workloads panel",
+        "ok": true,
+        "selector": "#workloads-btn",
+        "expectVisible": "#workloads-panel:not(.hidden)",
+        "visible": true,
+        "health": {
+          "title": "Lilly Workspace",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 1103
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-04-workloads.png"
+      },
+      {
+        "label": "Open export modal",
+        "ok": false,
+        "selector": "#export-chat-btn",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#export-chat-btn').first()\u001b[22m\n\u001b[2m    - locator resolved to <button id=\"export-chat-btn\" title=\"Export conversation\" aria-label=\"Export conversation\" onclick=\"uiHelpers.openExportModal()\" class=\"btn-icon p-2 rounded-lg hidden sm:flex full-shell-control\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × "
+      },
+      {
+        "label": "Close export modal",
+        "ok": false,
+        "selector": "#export-modal .btn-icon",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#export-modal .btn-icon').first()\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"btn-icon\" aria-label=\"Close export modal\" onclick=\"uiHelpers.closeExportModal()\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visib"
+      },
+      {
+        "label": "Open theme gallery",
+        "ok": true,
+        "selector": "#theme-toggle",
+        "expectVisible": "#theme-gallery-modal:not(.hidden)",
+        "visible": true,
+        "health": {
+          "title": "Lilly Workspace",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 4449
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-07-theme-gallery.png"
+      }
+    ],
+    "consoleMessages": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-01-model-settings.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-02-model-list.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-03-model-close.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-04-workloads.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-desktop-07-theme-gallery.png"
+    ]
+  },
+  {
+    "name": "web-chat-mobile",
+    "url": "http://127.0.0.1:3000/web-chat/app.html",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "initialHealth": {
+      "title": "Lilly Workspace",
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 509
+    },
+    "actionResults": [
+      {
+        "label": "Open mobile chat menu",
+        "ok": true,
+        "selector": "#mobile-chat-menu-btn",
+        "expectVisible": "#mobile-chat-menu:not(.hidden)",
+        "visible": true,
+        "health": {
+          "title": "Lilly Workspace",
+          "scrollWidth": 390,
+          "innerWidth": 390,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 509
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-mobile-01-chat-menu.png"
+      },
+      {
+        "label": "Open mobile sidebar",
+        "ok": false,
+        "selector": "#sidebar-toggle",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#sidebar-toggle').first()\u001b[22m\n\u001b[2m    - locator resolved to <button id=\"sidebar-toggle\" aria-label=\"Toggle sidebar\" class=\"mobile-header-btn mobile-only\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b["
+      }
+    ],
+    "consoleMessages": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-mobile-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\web-chat-mobile-01-chat-menu.png"
+    ]
+  },
+  {
+    "name": "canvas-desktop",
+    "url": "http://127.0.0.1:3000/canvas/",
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "initialHealth": {
+      "title": "Lilly Canvas",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 509
+    },
+    "actionResults": [
+      {
+        "label": "Open theme dropdown",
+        "ok": false,
+        "selector": "#themePickerBtn",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#themePickerBtn').first()\u001b[22m\n\u001b[2m    - locator resolved to <button id=\"themePickerBtn\" data-tooltip=\"Theme\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - "
+      },
+      {
+        "label": "Open export dropdown",
+        "ok": true,
+        "selector": "#exportBtn",
+        "expectVisible": "#exportDropdown.active .dropdown-menu",
+        "visible": true,
+        "health": {
+          "title": "Lilly Canvas",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 583
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-desktop-02-export-dropdown.png"
+      },
+      {
+        "label": "Toggle basic tool group",
+        "ok": true,
+        "selector": ".tool-category-header",
+        "expectVisible": ".tool-category",
+        "visible": true,
+        "health": {
+          "title": "Lilly Canvas",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 494
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-desktop-03-tool-group.png"
+      },
+      {
+        "label": "Open import dialog",
+        "ok": false,
+        "selector": "#importBtn",
+        "expectVisible": "#importModal:not(.hidden), .modal:not(.hidden)",
+        "visible": false,
+        "health": {
+          "title": "Lilly Canvas",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 509
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-desktop-04-import-dialog.png"
+      }
+    ],
+    "consoleMessages": [
+      {
+        "type": "error",
+        "text": "Access to script at 'https://unpkg.com/openai@4.82.0/dist/index.browser.js' from origin 'http://127.0.0.1:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_FAILED"
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      }
+    ],
+    "pageErrors": [
+      "JSZip is not defined"
+    ],
+    "failedRequests": [
+      {
+        "url": "https://unpkg.com/perfect-freehand@1.2.0/dist/perfect-freehand.umd.js",
+        "failure": "net::ERR_BLOCKED_BY_ORB"
+      },
+      {
+        "url": "https://unpkg.com/openai@4.82.0/dist/index.browser.js",
+        "failure": "net::ERR_FAILED"
+      }
+    ],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-desktop-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-desktop-02-export-dropdown.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-desktop-03-tool-group.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-desktop-04-import-dialog.png"
+    ]
+  },
+  {
+    "name": "canvas-mobile",
+    "url": "http://127.0.0.1:3000/canvas/",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "initialHealth": {
+      "title": "Lilly Canvas",
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 481
+    },
+    "actionResults": [
+      {
+        "label": "Open mobile toolbar",
+        "ok": true,
+        "selector": "#mobileToolbarToggle",
+        "expectVisible": "#toolbar.active",
+        "visible": true,
+        "health": {
+          "title": "Lilly Canvas",
+          "scrollWidth": 390,
+          "innerWidth": 390,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 481
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-mobile-01-toolbar.png"
+      }
+    ],
+    "consoleMessages": [
+      {
+        "type": "error",
+        "text": "Access to script at 'https://unpkg.com/openai@4.82.0/dist/index.browser.js' from origin 'http://127.0.0.1:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: net::ERR_FAILED"
+      }
+    ],
+    "pageErrors": [
+      "JSZip is not defined"
+    ],
+    "failedRequests": [
+      {
+        "url": "https://unpkg.com/perfect-freehand@1.2.0/dist/perfect-freehand.umd.js",
+        "failure": "net::ERR_BLOCKED_BY_ORB"
+      },
+      {
+        "url": "https://unpkg.com/openai@4.82.0/dist/index.browser.js",
+        "failure": "net::ERR_FAILED"
+      }
+    ],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-mobile-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\canvas-mobile-01-toolbar.png"
+    ]
+  },
+  {
+    "name": "notation-desktop",
+    "url": "http://127.0.0.1:3000/notation/",
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "initialHealth": {
+      "title": "Notation Helper | LillyBuilt AI",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 772
+    },
+    "actionResults": [
+      {
+        "label": "Open shortcuts modal",
+        "ok": true,
+        "selector": "#keyboardShortcutsBtn",
+        "expectVisible": "#keyboardShortcutsModal:not(.hidden), .modal:not(.hidden)",
+        "visible": true,
+        "health": {
+          "title": "Notation Helper | LillyBuilt AI",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 776
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notation-desktop-01-shortcuts.png"
+      },
+      {
+        "label": "Toggle theme",
+        "ok": false,
+        "selector": "#themeToggle",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#themeToggle').first()\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"icon-btn\" id=\"themeToggle\" title=\"Toggle theme\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrollin"
+      },
+      {
+        "label": "Switch history tab",
+        "ok": false,
+        "selector": ".sidebar-tab[data-panel=\"history\"]",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-tab[data-panel=\"history\"]').first()\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"sidebar-tab\" data-panel=\"history\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - "
+      },
+      {
+        "label": "Switch templates tab",
+        "ok": false,
+        "selector": ".sidebar-tab[data-panel=\"templates\"]",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-tab[data-panel=\"templates\"]').first()\u001b[22m\n\u001b[2m    - locator resolved to <button data-panel=\"templates\" class=\"sidebar-tab active\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b"
+      }
+    ],
+    "consoleMessages": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://localhost:3000/health",
+        "failure": "net::ERR_ABORTED"
+      }
+    ],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notation-desktop-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notation-desktop-01-shortcuts.png"
+    ]
+  },
+  {
+    "name": "notes-desktop",
+    "url": "http://127.0.0.1:3000/notes/",
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "initialHealth": {
+      "title": "Welcome to Notes - Notes",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 1041
+    },
+    "actionResults": [
+      {
+        "label": "Collapse sidebar",
+        "ok": false,
+        "selector": "#sidebar-toggle",
+        "expectVisible": "#sidebar.collapsed",
+        "visible": false,
+        "health": {
+          "title": "Notes - Lilly Style",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 155
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notes-desktop-01-sidebar-collapse.png"
+      },
+      {
+        "label": "Reopen sidebar handle",
+        "ok": false,
+        "selector": ".sidebar-handle",
+        "error": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.sidebar-handle').first()\u001b[22m\n\u001b[2m    - locator resolved to <div tabindex=\"0\" role=\"button\" title=\"Show sidebar\" class=\"sidebar-handle\" aria-label=\"Show sidebar\" onclick=\"Sidebar.toggle()\">…</div>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      "
+      },
+      {
+        "label": "Toggle outline",
+        "ok": true,
+        "selector": "#sidebar-outline-toggle",
+        "health": {
+          "title": "Welcome to Notes - Notes",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 859
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notes-desktop-03-outline.png"
+      },
+      {
+        "label": "Open import modal",
+        "ok": false,
+        "selector": "#import-btn",
+        "expectVisible": "#import-modal:not(.hidden), .modal:not(.hidden)",
+        "visible": false,
+        "health": {
+          "title": "Welcome to Notes - Notes",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 1041
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notes-desktop-04-import.png"
+      }
+    ],
+    "consoleMessages": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notes-desktop-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notes-desktop-01-sidebar-collapse.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notes-desktop-03-outline.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\notes-desktop-04-import.png"
+    ]
+  },
+  {
+    "name": "admin-desktop",
+    "url": "http://127.0.0.1:3000/admin/",
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "initialHealth": {
+      "title": "Agent SDK Admin Dashboard",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 1150
+    },
+    "actionResults": [
+      {
+        "label": "Open prompts view",
+        "ok": true,
+        "selector": ".nav-item[data-view=\"prompts\"]",
+        "expectVisible": "#prompts-view.active, .view.active",
+        "visible": true,
+        "health": {
+          "title": "Agent SDK Admin Dashboard",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 667
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\admin-desktop-01-prompts.png"
+      },
+      {
+        "label": "Open tools view",
+        "ok": false,
+        "reason": "selector not found",
+        "selector": ".nav-item[data-view=\"tools\"]"
+      },
+      {
+        "label": "Open settings view",
+        "ok": true,
+        "selector": ".nav-item[data-view=\"settings\"]",
+        "expectVisible": "#settings-view.active, .view.active",
+        "visible": true,
+        "health": {
+          "title": "Agent SDK Admin Dashboard",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 1276
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\admin-desktop-03-settings.png"
+      },
+      {
+        "label": "Collapse admin sidebar",
+        "ok": true,
+        "selector": "#sidebarToggle",
+        "expectVisible": "#sidebar.collapsed",
+        "visible": true,
+        "health": {
+          "title": "Agent SDK Admin Dashboard",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 1150
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\admin-desktop-04-sidebar-collapse.png"
+      }
+    ],
+    "consoleMessages": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\admin-desktop-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\admin-desktop-01-prompts.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\admin-desktop-03-settings.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\admin-desktop-04-sidebar-collapse.png"
+    ]
+  },
+  {
+    "name": "podcast-desktop",
+    "url": "http://127.0.0.1:3000/podcast-video/",
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "initialHealth": {
+      "title": "Podcast Wave - Lilly",
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "overflowingElements": [],
+      "bodyTextLength": 239
+    },
+    "actionResults": [
+      {
+        "label": "Focus title field",
+        "ok": true,
+        "selector": "input[name=\"title\"]",
+        "health": {
+          "title": "Podcast Wave - Lilly",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 239
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\podcast-desktop-01-title-focus.png"
+      },
+      {
+        "label": "Toggle audio repair",
+        "ok": true,
+        "selector": "input[name=\"enhanceAudio\"]",
+        "health": {
+          "title": "Podcast Wave - Lilly",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 239
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\podcast-desktop-02-audio-repair.png"
+      },
+      {
+        "label": "Open aspect selector",
+        "ok": true,
+        "selector": "select[name=\"aspectRatio\"]",
+        "health": {
+          "title": "Podcast Wave - Lilly",
+          "scrollWidth": 1440,
+          "innerWidth": 1440,
+          "horizontalOverflow": false,
+          "overflowingElements": [],
+          "bodyTextLength": 239
+        },
+        "screenshot": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\podcast-desktop-03-aspect.png"
+      }
+    ],
+    "consoleMessages": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshots": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\podcast-desktop-00-load.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\podcast-desktop-01-title-focus.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\podcast-desktop-02-audio-repair.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\submenu-polish\\podcast-desktop-03-aspect.png"
+    ]
+  }
+]
