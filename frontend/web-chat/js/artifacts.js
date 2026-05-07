@@ -9,7 +9,7 @@
         ? 'http://localhost:3000'
         : `${window.location.protocol}//${window.location.host}`;
     const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};
-    const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'gpt-5.4-mini';
+    const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
     const REMOTE_BUILD_AUTONOMY_STORAGE_KEY = 'kimibuilt_remote_build_autonomy';
 
     function isRemoteBuildAutonomyApproved() {

@@ -4,7 +4,8 @@
  */
 
 const webChatGatewayHelpers = window.KimiBuiltGatewaySSE || {};
-const WEB_CHAT_DEFAULT_MODEL = webChatGatewayHelpers.DEFAULT_CODEX_MODEL_ID || 'gpt-5.4-mini';
+const WEB_CHAT_DEFAULT_MODEL = webChatGatewayHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
+const WEB_CHAT_LEGACY_DEFAULT_MODELS = new Set(['gpt-5.4-mini', 'gpt-4o', 'openrouter/auto']);
 const webChatFilterChatModels = webChatGatewayHelpers.filterChatModels || ((models = []) => (
     Array.isArray(models) ? models.filter((model) => Boolean(String(model?.id || '').trim())) : []
 ));
@@ -603,6 +604,9 @@ const WEB_CHAT_THEME_PRESET_MAP = WEB_CHAT_SHARED_THEMES.map || new Map(WEB_CHAT
 function webChatSelectPreferredModel(models = [], preferredModel = '') {
     const availableModels = webChatFilterChatModels(models);
     const preferredId = String(preferredModel || '').trim();
+    if (preferredId === WEB_CHAT_DEFAULT_MODEL) {
+        return WEB_CHAT_DEFAULT_MODEL;
+    }
     if (preferredId && webChatIsChatModel(preferredId) && availableModels.some((model) => String(model?.id || '').trim() === preferredId)) {
         return preferredId;
     }
@@ -645,7 +649,7 @@ class UIHelpers {
         const savedReasoningEffort = window.sessionManager?.safeStorageGet?.('kimibuilt_reasoning_effort');
         const savedRemoteAutonomy = window.sessionManager?.safeStorageGet?.('kimibuilt_remote_build_autonomy');
         this.currentThemePresetId = WEB_CHAT_THEME_DEFAULTS.dark;
-        this.currentModel = String(savedModel || WEB_CHAT_DEFAULT_MODEL).trim() || WEB_CHAT_DEFAULT_MODEL;
+        this.currentModel = this.normalizeDefaultModelPreference(savedModel);
         this.currentReasoningEffort = this.normalizeReasoningEffort(savedReasoningEffort);
         this.remoteBuildAutonomyApproved = this.parseRemoteBuildAutonomyPreference(savedRemoteAutonomy);
         this.soundManager = window.WebChatSoundManager
@@ -5293,9 +5297,12 @@ class UIHelpers {
             
             const response = await apiClient.getModels(true);
             const models = Array.isArray(response?.data) ? response.data : [];
-            this.availableModels = typeof apiClient.filterChatModels === 'function'
+            const chatModels = typeof apiClient.filterChatModels === 'function'
                 ? apiClient.filterChatModels(models)
                 : models;
+            this.availableModels = chatModels.some((model) => model?.id === WEB_CHAT_DEFAULT_MODEL)
+                ? chatModels
+                : [{ id: WEB_CHAT_DEFAULT_MODEL, owned_by: 'router' }, ...chatModels];
             const preferredModel = webChatSelectPreferredModel(this.availableModels, this.currentModel);
             if (preferredModel !== this.currentModel) {
                 this.currentModel = preferredModel;
@@ -5489,6 +5496,7 @@ class UIHelpers {
         // Convert model ID to readable name
         const id = model.id;
         const names = {
+            'auto': 'Auto',
             'gpt-5.4-mini': 'GPT-5.4 Mini',
             'gpt-5.4': 'GPT-5.4',
             'gpt-5.3-instant': 'GPT-5.3 Instant',
@@ -5511,6 +5519,7 @@ class UIHelpers {
 
     getModelDescription(model) {
         const descriptions = {
+            'auto': 'Let the internal model router choose',
             'gpt-5.4-mini': 'Recommended Codex-backed streaming model',
             'gpt-5.4': 'High-capability Codex-backed model',
             'gpt-5.3-instant': 'Fast Codex-backed model',
@@ -5530,6 +5539,9 @@ class UIHelpers {
 
     getSelectableModels() {
         const models = Array.isArray(this.availableModels) ? [...this.availableModels] : [];
+        if (!models.some((model) => model?.id === WEB_CHAT_DEFAULT_MODEL)) {
+            models.unshift({ id: WEB_CHAT_DEFAULT_MODEL, owned_by: 'router' });
+        }
         if (this.currentModel && !models.some((model) => model?.id === this.currentModel)) {
             models.unshift({ id: this.currentModel, owned_by: '' });
         }
@@ -5606,6 +5618,14 @@ class UIHelpers {
         this.updateMobileActionSheetUI();
     }
 
+    normalizeDefaultModelPreference(modelId = '') {
+        const normalized = String(modelId || '').trim();
+        if (!normalized || WEB_CHAT_LEGACY_DEFAULT_MODELS.has(normalized)) {
+            return WEB_CHAT_DEFAULT_MODEL;
+        }
+        return normalized;
+    }
+
     normalizeReasoningEffort(value) {
         const normalized = String(value || '').trim().toLowerCase();
         return ['low', 'medium', 'high', 'xhigh'].includes(normalized) ? normalized : '';
@@ -5678,7 +5698,7 @@ class UIHelpers {
     rehydrateStoredPreferences(options = {}) {
         const appInstance = options.appInstance || window.chatApp || null;
 
-        const savedModel = String(this.storageGet('kimibuilt_default_model') || WEB_CHAT_DEFAULT_MODEL).trim() || WEB_CHAT_DEFAULT_MODEL;
+        const savedModel = this.normalizeDefaultModelPreference(this.storageGet('kimibuilt_default_model'));
         const savedReasoningEffort = this.normalizeReasoningEffort(this.storageGet('kimibuilt_reasoning_effort'));
         const savedRemoteAutonomy = this.parseRemoteBuildAutonomyPreference(this.storageGet('kimibuilt_remote_build_autonomy'));
 

@@ -8,7 +8,7 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const DEFAULT_CONFIG = {
   apiBaseUrl: process.env.KIMIBUILT_API_URL || 'http://localhost:3000/v1',
   defaultMode: 'chat',
-  defaultModel: 'gpt-5.4-mini',
+  defaultModel: 'auto',
   theme: 'default',
   autoSave: true,
   showTimestamps: false,
@@ -29,6 +29,7 @@ const VALID_MODES = ['chat', 'canvas', 'notation'];
 const VALID_THEMES = ['default', 'minimal', 'colorful', 'dark'];
 
 const DEFAULT_MODELS = [
+  { id: 'auto', name: 'Auto', provider: 'KimiBuilt Router' },
   { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'OpenAI' },
   { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'OpenAI' },
   { id: 'gpt-5.3-instant', name: 'GPT-5.3 Instant', provider: 'OpenAI' },

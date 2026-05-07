@@ -3361,13 +3361,16 @@ The AI will generate appropriate Mermaid syntax. If AI is unavailable, a templat
             if (models.length === 0) {
                 throw new Error('No models returned');
             }
-            this.modelSelect.innerHTML = models.map(m => 
+            const selectableModels = models.some((model) => model.id === 'auto')
+                ? models
+                : [{ id: 'auto' }, ...models];
+            this.modelSelect.innerHTML = selectableModels.map(m =>
                 `<option value="${m.id}" ${m.id === api.currentModel ? 'selected' : ''}>${m.id}</option>`
             ).join('');
             this.updateModelInfo();
         } catch (error) {
-            this.modelSelect.innerHTML = '<option value="gpt-4o">gpt-4o</option>';
-            api.setModel('gpt-4o');
+            this.modelSelect.innerHTML = '<option value="auto">auto</option>';
+            api.setModel('auto');
             this.updateModelInfo();
         }
     }
@@ -3409,7 +3412,7 @@ The AI will generate appropriate Mermaid syntax. If AI is unavailable, a templat
 
     
     updateModelInfo() {
-        const model = api.currentModel || 'gpt-4o';
+        const model = api.currentModel || 'auto';
         
         // Update the select dropdown to match current model
         if (this.modelSelect) {

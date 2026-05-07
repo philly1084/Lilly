@@ -19,7 +19,7 @@ const USER_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const REMOTE_BUILD_AUTONOMY_STORAGE_KEY = 'kimibuilt_remote_build_autonomy';
 const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};
 const workspaceApiHelpers = window.KimiBuiltWebChatWorkspace || null;
-const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'gpt-5.4-mini';
+const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
 const buildGatewayHeaders = gatewayStreamHelpers.buildGatewayHeaders || ((headers = {}) => ({
     ...headers,
     Authorization: 'Bearer any-key',
@@ -107,8 +107,16 @@ const resolvePreferredChatModelForWebChat = gatewayStreamHelpers.resolvePreferre
         const fallbackId = String(fallbackModel || '').trim() || DEFAULT_CHAT_MODEL;
         const preferredIsChat = preferredId && filterChatModelsForWebChat([{ id: preferredId }]).length > 0;
 
+        if (preferredId === DEFAULT_CHAT_MODEL) {
+            return DEFAULT_CHAT_MODEL;
+        }
+
         if (preferredIsChat && (availableIds.size === 0 || availableIds.has(preferredId))) {
             return preferredId;
+        }
+
+        if (fallbackId === DEFAULT_CHAT_MODEL) {
+            return DEFAULT_CHAT_MODEL;
         }
 
         if (fallbackId && availableIds.has(fallbackId)) {
@@ -1722,7 +1730,7 @@ class OpenAIAPIClient extends EventTarget {
         return {
             object: 'list',
             data: [
-                { id: 'gpt-5.4-mini', object: 'model', created: Date.now(), owned_by: 'openai' },
+                { id: DEFAULT_CHAT_MODEL, object: 'model', created: Date.now(), owned_by: 'router' },
                 { id: 'gpt-5.4', object: 'model', created: Date.now(), owned_by: 'openai' },
                 { id: 'gpt-5.3-instant', object: 'model', created: Date.now(), owned_by: 'openai' },
                 { id: 'gpt-5.3', object: 'model', created: Date.now(), owned_by: 'openai' },

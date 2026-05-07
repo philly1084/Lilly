@@ -382,7 +382,7 @@ describe('openai-sse helpers', () => {
       'codex-mini-latest',
     ]);
     expect(selectPreferredCodexModel(models, 'claude-3-sonnet')).toBe('gpt-5.4-mini');
-    expect(selectPreferredCodexModel([], '')).toBe(DEFAULT_CODEX_MODEL_ID);
+    expect(selectPreferredCodexModel([], '')).toBe('auto');
   });
 
   test('preserves non-Codex chat models when explicitly selected', () => {
@@ -394,7 +394,7 @@ describe('openai-sse helpers', () => {
 
     expect(resolvePreferredChatModel(models, 'claude-3-sonnet')).toBe('claude-3-sonnet');
     expect(resolvePreferredChatModel([], 'claude-3-sonnet')).toBe('claude-3-sonnet');
-    expect(resolvePreferredChatModel(models, 'missing-model')).toBe(DEFAULT_CODEX_MODEL_ID);
+    expect(resolvePreferredChatModel(models, 'missing-model')).toBe('auto');
   });
 
   test('excludes image models from chat selection and stale preferences', () => {
@@ -408,6 +408,19 @@ describe('openai-sse helpers', () => {
 
     expect(isChatModel(models[0])).toBe(false);
     expect(filterChatModels(models).map((model) => model.id)).toEqual(['gpt-5.4-mini', 'gpt-5.5-tools']);
-    expect(resolvePreferredChatModel(models, 'gpt-image-2')).toBe(DEFAULT_CODEX_MODEL_ID);
+    expect(resolvePreferredChatModel(models, 'gpt-image-2')).toBe('auto');
+  });
+
+  test('keeps plain auto as a valid chat-model selection even when the catalog omits it', () => {
+    const models = [
+      { id: 'gpt-5.4-mini', capabilities: ['chat'] },
+      { id: 'openrouter/auto', capabilities: ['chat'] },
+    ];
+
+    expect(DEFAULT_CODEX_MODEL_ID).toBe('auto');
+    expect(isChatModel('auto')).toBe(true);
+    expect(resolvePreferredChatModel(models, 'auto')).toBe('auto');
+    expect(resolvePreferredChatModel(models, '')).toBe('auto');
+    expect(resolvePreferredChatModel(models, 'openrouter/auto')).toBe('openrouter/auto');
   });
 });

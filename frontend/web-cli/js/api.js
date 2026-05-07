@@ -21,6 +21,7 @@ const WEB_CLI_REMOTE_BUILD_AUTONOMY_APPROVED = true;
 const WEB_CLI_SESSION_ISOLATION = true;
 const WEB_CLI_ACTIVE_SESSION_KEY = 'codecli-active-session-id';
 const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};
+const WEB_CLI_DEFAULT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
 const buildGatewayHeaders = gatewayStreamHelpers.buildGatewayHeaders || ((headers = {}) => ({
     ...headers,
     Authorization: 'Bearer any-key',
@@ -130,7 +131,7 @@ function buildWebCliNaturalContext({ message = '', mode = 'chat', conversationHi
 class WebCLIAPI {
     constructor() {
         this.sessionId = localStorage.getItem(WEB_CLI_ACTIVE_SESSION_KEY) || null;
-        this.currentModel = null;
+        this.currentModel = WEB_CLI_DEFAULT_MODEL;
         this.models = [];
         this.connectionStatus = 'unknown';
         this.lastHealthCheck = null;
@@ -526,9 +527,10 @@ class WebCLIAPI {
                 const data = await response.json();
                 this.models = data.data || [];
                 if (this.models.length > 0) {
-                    const modelExists = this.currentModel && this.models.some((model) => model.id === this.currentModel);
+                    const modelExists = this.currentModel === WEB_CLI_DEFAULT_MODEL
+                        || (this.currentModel && this.models.some((model) => model.id === this.currentModel));
                     if (!modelExists) {
-                        this.currentModel = this.models[0].id;
+                        this.currentModel = WEB_CLI_DEFAULT_MODEL;
                     }
                 }
                 return this.models;
@@ -539,13 +541,14 @@ class WebCLIAPI {
         
         // Fallback models
         this.models = [
+            { id: WEB_CLI_DEFAULT_MODEL, name: 'Auto', description: 'Let the internal model router choose' },
             { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable multimodal model' },
             { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and cost-effective' },
             { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'High capability model' },
             { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and efficient' },
         ];
         if (!this.currentModel) {
-            this.currentModel = this.models[0].id;
+            this.currentModel = WEB_CLI_DEFAULT_MODEL;
         }
         return this.models;
     }

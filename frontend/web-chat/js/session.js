@@ -26,7 +26,7 @@ const WEB_CHAT_SYNCED_STORAGE_KEYS = new Set([
     'kimibuilt_sidebar_collapsed',
 ]);
 const sessionGatewayHelpers = window.KimiBuiltGatewaySSE || {};
-const SESSION_DEFAULT_MODEL = sessionGatewayHelpers.DEFAULT_CODEX_MODEL_ID || 'gpt-5.4-mini';
+const SESSION_DEFAULT_MODEL = sessionGatewayHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
 const buildSessionGatewayHeaders = sessionGatewayHelpers.buildGatewayHeaders || ((headers) => headers);
 const sessionWorkspaceHelpers = window.KimiBuiltWebChatWorkspace || null;
 const resolveSessionPreferredModel = sessionGatewayHelpers.resolvePreferredChatModel
@@ -40,8 +40,16 @@ const resolveSessionPreferredModel = sessionGatewayHelpers.resolvePreferredChatM
         const preferredId = String(preferredModel || '').trim();
         const fallbackId = String(fallbackModel || '').trim() || SESSION_DEFAULT_MODEL;
 
+        if (preferredId === SESSION_DEFAULT_MODEL) {
+            return SESSION_DEFAULT_MODEL;
+        }
+
         if (preferredId && (availableIds.size === 0 || availableIds.has(preferredId))) {
             return preferredId;
+        }
+
+        if (fallbackId === SESSION_DEFAULT_MODEL) {
+            return SESSION_DEFAULT_MODEL;
         }
 
         if (fallbackId && availableIds.has(fallbackId)) {

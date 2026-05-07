@@ -57,7 +57,7 @@
     ...headers,
     Authorization: 'Bearer any-key',
   }));
-  const resolvePreferredChatModel = gatewayHelpers.resolvePreferredChatModel || ((_models, preferredModel = '', fallbackModel = 'gpt-5.4-mini') => (
+  const resolvePreferredChatModel = gatewayHelpers.resolvePreferredChatModel || ((_models, preferredModel = '', fallbackModel = 'auto') => (
     String(preferredModel || '').trim() || fallbackModel
   ));
   
@@ -81,7 +81,7 @@
       // Create LLM client using existing OpenAI SDK integration
       const llmClient = {
         complete: async (prompt, options = {}) => {
-          const model = resolvePreferredChatModel([], options.model || window.ChatAPI?.getSelectedModel?.(), 'gpt-5.4-mini');
+          const model = resolvePreferredChatModel([], options.model || window.ChatAPI?.getSelectedModel?.(), 'auto');
           
           const messages = [
             { role: 'system', content: this.getSystemPrompt() },
@@ -114,7 +114,7 @@
         },
         
         completeStream: async (prompt, options = {}) => {
-          const model = resolvePreferredChatModel([], options.model || window.ChatAPI?.getSelectedModel?.(), 'gpt-5.4-mini');
+          const model = resolvePreferredChatModel([], options.model || window.ChatAPI?.getSelectedModel?.(), 'auto');
           
           const messages = [
             { role: 'system', content: this.getSystemPrompt() },

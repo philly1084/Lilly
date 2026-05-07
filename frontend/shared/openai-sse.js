@@ -10,6 +10,7 @@
 
   const DEFAULT_GATEWAY_AUTH_TOKEN = 'any-key';
   const DEFAULT_CODEX_MODEL_IDS = [
+    'auto',
     'gpt-5.4-mini',
     'gpt-5.4',
     'gpt-5.3-instant',
@@ -122,6 +123,9 @@
     if (!normalizedId) {
       return false;
     }
+    if (normalizedId === DEFAULT_CODEX_MODEL_ID) {
+      return true;
+    }
 
     const capabilities = modelOrId && typeof modelOrId === 'object'
       ? getModelCapabilities(modelOrId)
@@ -217,8 +221,16 @@
     const preferredId = normalizeModelId(preferredModel);
     const fallbackId = normalizeModelId(fallbackModel) || DEFAULT_CODEX_MODEL_ID;
 
+    if (preferredId === DEFAULT_CODEX_MODEL_ID) {
+      return DEFAULT_CODEX_MODEL_ID;
+    }
+
     if (preferredId && isChatModel(preferredId) && (availableIds.size === 0 || availableIds.has(preferredId))) {
       return preferredId;
+    }
+
+    if (fallbackId === DEFAULT_CODEX_MODEL_ID) {
+      return DEFAULT_CODEX_MODEL_ID;
     }
 
     if (fallbackId && availableIds.has(fallbackId)) {

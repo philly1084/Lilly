@@ -307,10 +307,13 @@ async function fetchModels() {
   
   // Load default model from config
   const savedModel = config.getDefaultModel();
-  if (savedModel && availableModels.some((model) => model.id === savedModel)) {
+  if (['gpt-5.4-mini', 'gpt-4o', 'openrouter/auto'].includes(savedModel)) {
+    currentModel = config.DEFAULT_CONFIG.defaultModel;
+    config.setDefaultModel(currentModel);
+  } else if (savedModel === 'auto' || (savedModel && availableModels.some((model) => model.id === savedModel))) {
     currentModel = savedModel;
   } else {
-    currentModel = availableModels[0]?.id || config.DEFAULT_MODELS[0]?.id || currentModel;
+    currentModel = config.DEFAULT_CONFIG.defaultModel || availableModels[0]?.id || config.DEFAULT_MODELS[0]?.id || currentModel;
     if (currentModel) {
       config.setDefaultModel(currentModel);
     }
