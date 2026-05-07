@@ -105,6 +105,12 @@ jest.mock('../../postgres', () => ({
   },
 }));
 
+jest.mock('../../audio/audio-processing-service', () => ({
+  audioProcessingService: {
+    updateConfig: jest.fn(),
+  },
+}));
+
 describe('settings.controller personality support', () => {
   let controller;
   let fsPromises;
@@ -274,6 +280,32 @@ describe('settings.controller personality support', () => {
           fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
         }),
       }),
+    }));
+  });
+
+  test('applies updated podcast audio asset paths to the live mixer runtime', async () => {
+    const { audioProcessingService } = require('../../audio/audio-processing-service');
+    const req = {
+      body: {
+        audioProcessing: {
+          podcastIntroPath: 'C:/audio/intro.wav',
+          podcastMusicBedPath: 'C:/audio/music.wav',
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    await controller.update(req, res);
+
+    expect(audioProcessingService.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      podcastIntroPath: 'C:/audio/intro.wav',
+      podcastMusicBedPath: 'C:/audio/music.wav',
+    }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
     }));
   });
 

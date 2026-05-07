@@ -74,6 +74,24 @@ const EventEmitter = require('events');
 const adminEvents = new EventEmitter();
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
 
+function getPodcastRequestOptions(metadata = {}) {
+    const source = metadata && typeof metadata === 'object' ? metadata : {};
+    const options = source.podcastOptions || source.podcastProduction || null;
+    return options && typeof options === 'object' ? options : null;
+}
+
+function hasStructuredPodcastRequest(metadata = {}) {
+    const options = getPodcastRequestOptions(metadata);
+    if (!options) {
+        return false;
+    }
+
+    return options.enabled === true
+        || options.includeVideo === true
+        || options.productionType === 'podcast'
+        || options.productionType === 'video-podcast';
+}
+
 function isNotesSurfaceValue(value = '') {
     const normalized = String(value || '').trim().toLowerCase();
     return [
@@ -416,12 +434,14 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
     try {
         const runtimeToolManager = toolManager || await ensureRuntimeToolManager(ws.app);
 
-        if (shouldUseDirectPodcastChat(message)) {
+        const podcastRequestOptions = getPodcastRequestOptions(effectiveRequestMetadata);
+        if (shouldUseDirectPodcastChat(message) || hasStructuredPodcastRequest(effectiveRequestMetadata)) {
             const podcastParams = buildDirectPodcastParams({
                 text: message,
                 artifactIds: effectiveArtifactIds,
                 model,
                 reasoningEffort,
+                podcastOptions: podcastRequestOptions,
             });
             if (podcastParams) {
                 sendWsProgressPayload(ws, session.id, {

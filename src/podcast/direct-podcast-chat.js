@@ -75,6 +75,8 @@ function normalizePodcastOptions(options = {}) {
     'includeOutro',
     'includeMusicBed',
     'videoGenerateImages',
+    'cycleHostVoices',
+    'allowVoiceFallback',
   ].forEach((key) => {
     const value = normalizeBooleanOption(source[key]);
     if (value !== null) {

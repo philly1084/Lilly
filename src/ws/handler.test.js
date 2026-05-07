@@ -144,6 +144,7 @@ jest.mock('../realtime-hub', () => ({
 
 const { WebSocket } = require('ws');
 const { sessionStore } = require('../session-store');
+const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const { executeConversationRuntime } = require('../runtime-execution');
 const {
     generateOutputArtifactFromPrompt,
@@ -225,5 +226,76 @@ describe('websocket chat handler', () => {
         expect(donePayload.type).toBe('done');
         expect(generateOutputArtifactFromPrompt).not.toHaveBeenCalled();
         expect(executeConversationRuntime).toHaveBeenCalled();
+    });
+
+    test('passes structured web-chat podcast menu options through the direct podcast path', async () => {
+        const toolManager = {
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                data: {
+                    title: 'Grid Battery Show',
+                    summary: 'A produced video podcast.',
+                    artifacts: [{
+                        id: 'artifact-podcast-1',
+                        filename: 'grid-battery-show.wav',
+                        mimeType: 'audio/wav',
+                    }],
+                },
+            }),
+            getTool: jest.fn(),
+        };
+        ensureRuntimeToolManager.mockResolvedValue(toolManager);
+
+        const donePayload = await new Promise((resolve) => {
+            const wss = new EventEmitter();
+            setupWebSocket(wss, { locals: {} });
+            const ws = createFakeSocket(resolve);
+            wss.emit('connection', ws, {});
+            ws.emit('message', Buffer.from(JSON.stringify({
+                type: 'chat',
+                sessionId: 'session-1',
+                payload: {
+                    message: 'Create a video podcast about grid batteries',
+                    model: 'gpt-5.5',
+                    metadata: {
+                        clientSurface: 'web-chat',
+                        podcastOptions: {
+                            enabled: true,
+                            productionType: 'video-podcast',
+                            includeVideo: true,
+                            voiceOnlyAudio: false,
+                            includeIntro: true,
+                            includeMusicBed: true,
+                            cycleHostVoices: false,
+                            allowVoiceFallback: false,
+                            videoAspectRatio: '16:9',
+                            videoRenderMode: 'storyboard',
+                            videoImageMode: 'generated',
+                            videoGenerateImages: true,
+                        },
+                    },
+                },
+            })));
+        });
+
+        expect(donePayload.type).toBe('done');
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'podcast',
+            expect.objectContaining({
+                topic: 'grid batteries',
+                model: 'gpt-5.5',
+                includeVideo: true,
+                voiceOnlyAudio: false,
+                includeIntro: true,
+                includeMusicBed: true,
+                cycleHostVoices: false,
+                allowVoiceFallback: false,
+                videoRenderMode: 'storyboard',
+            }),
+            expect.objectContaining({
+                executionProfile: 'podcast-video',
+            }),
+        );
+        expect(executeConversationRuntime).not.toHaveBeenCalled();
     });
 });

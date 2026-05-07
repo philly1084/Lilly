@@ -5298,6 +5298,8 @@ class UIHelpers {
                     includeMusicBed,
                     includeIntro,
                     includeOutro,
+                    cycleHostVoices: false,
+                    allowVoiceFallback: false,
                     videoAspectRatio: aspectSelect?.value || '16:9',
                     videoRenderMode: includeVideo ? 'storyboard' : undefined,
                     videoImageMode: unsplashToggle?.checked === true ? 'unsplash' : 'generated',

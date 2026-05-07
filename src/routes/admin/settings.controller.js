@@ -221,6 +221,7 @@ class SettingsController {
 
       // Save to file (optional persistence)
       await this.saveSettings();
+      this.applyAudioProcessingSettingsToRuntime();
 
       res.json({
         success: true,

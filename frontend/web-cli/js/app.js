@@ -1986,6 +1986,19 @@ Session Statistics:
             return;
         }
 
+        const finalPhase = String(options.phase || 'ready').trim().toLowerCase();
+        const removeOnComplete = options.removeOnComplete !== false && finalPhase !== 'blocked';
+        if (removeOnComplete) {
+            const line = existing || this.terminalOutput.querySelector('.line-output.agent-progress-card-line');
+            if (line) {
+                line.remove();
+            }
+            this.liveProgressState = null;
+            this.liveReasoningSummary = '';
+            this.liveToolEvents = [];
+            return;
+        }
+
         if (this.liveProgressState) {
             this.liveProgressState = this.normalizeProgressState({
                 ...this.liveProgressState,
