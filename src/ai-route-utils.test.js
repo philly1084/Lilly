@@ -150,6 +150,18 @@ describe('ai-route-utils', () => {
         });
     });
 
+    test('resolveDeferredWorkloadPreflight does not schedule from tomorrow alone', () => {
+        expect(resolveDeferredWorkloadPreflight({
+            text: 'tomorrow works for me',
+            timezone: 'UTC',
+            now: '2026-04-03T14:47:00.000Z',
+        })).toMatchObject({
+            timing: 'now',
+            shouldSchedule: false,
+            scenario: null,
+        });
+    });
+
     test('generateOutputArtifactFromPrompt requires a user prompt', async () => {
         await expect(generateOutputArtifactFromPrompt({
             sessionId: 'session-1',

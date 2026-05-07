@@ -4894,6 +4894,15 @@ class ToolManager {
                 return service.createApp(input, ownerId, context);
               case 'update':
                 return service.updateApp(params.appRef || params.ref || params.slug || params.id, input, ownerId, context);
+              case 'iterate':
+              case 'iteration':
+              case 'edit':
+              case 'build':
+              case 'verify':
+                return service.iterateApp(params.appRef || params.ref || params.slug || params.id, {
+                  ...input,
+                  action: params.iterationAction || (action === 'iterate' || action === 'iteration' ? (params.requestedAction || 'edit') : action),
+                }, ownerId, context);
               case 'deploy':
                 return service.deployApp(params.appRef || params.ref || params.slug || params.id, input, ownerId, context);
               case 'inspect':
@@ -4920,7 +4929,7 @@ class ToolManager {
         inputSchema: {
           type: 'object',
           properties: {
-            action: { type: 'string', enum: ['create', 'update', 'deploy', 'inspect', 'status', 'doctor', 'diagnose', 'diagnostic', 'diagnostics', 'reconcile', 'repair', 'repair-runner', 'list'] },
+            action: { type: 'string', enum: ['create', 'update', 'iterate', 'iteration', 'edit', 'build', 'deploy', 'verify', 'inspect', 'status', 'doctor', 'diagnose', 'diagnostic', 'diagnostics', 'reconcile', 'repair', 'repair-runner', 'list'] },
             appRef: { type: 'string' },
             ref: { type: 'string' },
             id: { type: 'string' },
@@ -4929,6 +4938,16 @@ class ToolManager {
             prompt: { type: 'string' },
             sourcePrompt: { type: 'string' },
             requestedAction: { type: 'string' },
+            iterationAction: { type: 'string', enum: ['edit', 'build', 'deploy', 'verify'] },
+            executor: { type: 'string', enum: ['managed-app-backend', 'remote-cli-agent', 'backend-cli-agent'] },
+            useRemoteCliAgent: { type: 'boolean' },
+            backendCliAgent: { type: 'boolean' },
+            remoteCliAgent: { type: 'boolean' },
+            remoteCliTargetId: { type: 'string' },
+            remoteCliCwd: { type: 'string' },
+            remoteCliSessionId: { type: 'string' },
+            waitMs: { type: 'number' },
+            maxTurns: { type: 'number' },
             deployTarget: { type: 'string' },
             deploymentTarget: { type: 'string' },
             publicHost: { type: 'string' },

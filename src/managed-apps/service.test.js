@@ -71,6 +71,238 @@ describe('ManagedAppService', () => {
         expect(blueprint.metadata.deploymentTarget).toBe('ssh');
     });
 
+    test('iterateApp records stage and GitLab evidence metadata for edit runs', async () => {
+        const appRecord = {
+            id: 'app-1',
+            ownerId: 'user-1',
+            sessionId: 'session-1',
+            slug: 'arcade-demo',
+            appName: 'Arcade Demo',
+            repoOwner: 'agent-apps',
+            repoName: 'arcade-demo',
+            repoUrl: 'https://gitlab.demoserver2.buzz/agent-apps/arcade-demo.git',
+            repoCloneUrl: 'https://gitlab.demoserver2.buzz/agent-apps/arcade-demo.git',
+            defaultBranch: 'main',
+            imageRepo: 'registry.gitlab.demoserver2.buzz/agent-apps/arcade-demo',
+            namespace: 'app-arcade-demo',
+            publicHost: 'arcade-demo.demoserver2.buzz',
+            sourcePrompt: 'Build an arcade demo.',
+            status: 'building',
+            metadata: {},
+        };
+        const buildRun = {
+            id: 'run-1',
+            appId: 'app-1',
+            ownerId: 'user-1',
+            sessionId: 'session-1',
+            commitSha: 'abcdef1234567890',
+            imageTag: 'sha-abcdef123456',
+            buildStatus: 'queued',
+            deployRequested: true,
+            deployStatus: 'pending',
+            verificationStatus: 'pending',
+            externalRunUrl: 'https://gitlab.demoserver2.buzz/agent-apps/arcade-demo/-/pipelines/12',
+            metadata: {},
+        };
+        let persistedBuildRun = null;
+        const store = {
+            ensureAvailable: jest.fn(async () => {}),
+            getAppById: jest.fn(async () => appRecord),
+            getAppBySlug: jest.fn(async () => null),
+            updateBuildRun: jest.fn(async (_id, updates) => {
+                persistedBuildRun = {
+                    ...buildRun,
+                    ...updates,
+                };
+                return persistedBuildRun;
+            }),
+        };
+        const service = new ManagedAppService({ store });
+        service.updateApp = jest.fn(async () => ({
+            app: appRecord,
+            buildRun,
+            committedPaths: ['public/index.html', 'public/styles.css'],
+            message: 'Queued a GitLab-backed edit iteration.',
+        }));
+
+        const result = await service.iterateApp('app-1', {
+            action: 'edit',
+            prompt: 'Make the arcade controls clearer.',
+            deployRequested: true,
+        }, 'user-1', {
+            sessionId: 'session-1',
+        });
+
+        expect(service.updateApp).toHaveBeenCalledWith('app-1', expect.objectContaining({
+            requestedAction: 'deploy',
+            sourcePrompt: 'Make the arcade controls clearer.',
+        }), 'user-1', expect.objectContaining({
+            sessionId: 'session-1',
+        }));
+        expect(store.updateBuildRun).toHaveBeenCalledWith('run-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                iteration: expect.objectContaining({
+                    action: 'edit',
+                    sourceOfTruth: 'gitlab',
+                    executor: 'managed-app-backend',
+                    committedPaths: ['public/index.html', 'public/styles.css'],
+                    commitSha: 'abcdef1234567890',
+                    pipelineUrl: 'https://gitlab.demoserver2.buzz/agent-apps/arcade-demo/-/pipelines/12',
+                    stages: expect.arrayContaining([
+                        expect.objectContaining({ id: 'understand', status: 'completed' }),
+                        expect.objectContaining({ id: 'commit', status: 'completed' }),
+                        expect.objectContaining({ id: 'pipeline', status: 'in_progress' }),
+                    ]),
+                }),
+            }),
+        }));
+        expect(result.iteration.evidence.requiredProof).toEqual(expect.objectContaining({
+            sourceChanged: true,
+            gitlabPipelineObserved: true,
+            imageAvailable: true,
+            deploymentObserved: true,
+        }));
+        expect(result.progress.steps).toEqual(persistedBuildRun.metadata.iteration.stages);
+    });
+
+    test('iterateApp can orchestrate remote-cli-agent as a managed backend CLI worker', async () => {
+        const appRecord = {
+            id: 'app-remote',
+            ownerId: 'user-1',
+            sessionId: 'session-1',
+            slug: 'remote-demo',
+            appName: 'Remote Demo',
+            repoOwner: 'agent-apps',
+            repoName: 'remote-demo',
+            repoUrl: 'https://gitlab.demoserver2.buzz/agent-apps/remote-demo.git',
+            repoCloneUrl: 'https://gitlab.demoserver2.buzz/agent-apps/remote-demo.git',
+            defaultBranch: 'main',
+            imageRepo: 'registry.gitlab.demoserver2.buzz/agent-apps/remote-demo',
+            namespace: 'app-remote-demo',
+            publicHost: 'remote-demo.demoserver2.buzz',
+            sourcePrompt: 'Build a remote demo.',
+            status: 'building',
+            metadata: {},
+        };
+        const remoteCliAgentRunner = {
+            getPublicConfig: jest.fn(() => ({
+                configured: true,
+                defaultTargetId: 'prod',
+                defaultCwd: '/srv/agent-apps/remote-demo',
+            })),
+            run: jest.fn(async () => ({
+                finalOutput: [
+                    'Implemented the requested managed app edit.',
+                    'GIT_REPO=https://gitlab.demoserver2.buzz/agent-apps/remote-demo.git',
+                    'GIT_COMMIT=1234567890abcdef',
+                    'CHANGED_FILES=public/index.html,public/styles.css',
+                    'DEPLOYMENT=app-remote-demo/remote-demo',
+                    'PUBLIC_HOST=remote-demo.demoserver2.buzz',
+                    'UI_CHECK_REPORT=ui-checks/remote-demo/report.json',
+                    'UI_SCREENSHOTS=ui-checks/remote-demo/desktop.png,ui-checks/remote-demo/mobile.png',
+                ].join('\n'),
+                mcpSessionId: 'mcp-1',
+                sessionId: 'remote-session-1',
+                remoteCodeSessionId: 'remote-session-1',
+                targetId: 'prod',
+                cwd: '/srv/agent-apps/remote-demo',
+                gitRepo: 'https://gitlab.demoserver2.buzz/agent-apps/remote-demo.git',
+                gitCommit: '1234567890abcdef',
+                deployment: 'app-remote-demo/remote-demo',
+                publicHost: 'remote-demo.demoserver2.buzz',
+                uiCheckReport: 'ui-checks/remote-demo/report.json',
+                uiScreenshots: ['ui-checks/remote-demo/desktop.png', 'ui-checks/remote-demo/mobile.png'],
+            })),
+        };
+        let updatedBuildRun = null;
+        const store = {
+            ensureAvailable: jest.fn(async () => {}),
+            getAppById: jest.fn(async () => appRecord),
+            getAppBySlug: jest.fn(async () => null),
+            updateApp: jest.fn(async (_id, _ownerId, updates) => ({
+                ...appRecord,
+                ...updates,
+            })),
+            createBuildRun: jest.fn(async (input) => ({
+                id: 'run-remote',
+                appId: input.appId,
+                ownerId: input.ownerId,
+                sessionId: input.sessionId,
+                source: input.source,
+                requestedAction: input.requestedAction,
+                commitSha: input.commitSha,
+                imageTag: input.imageTag,
+                buildStatus: input.buildStatus,
+                deployRequested: input.deployRequested,
+                deployStatus: input.deployStatus,
+                verificationStatus: input.verificationStatus,
+                externalRunUrl: input.externalRunUrl,
+                metadata: input.metadata,
+            })),
+            updateBuildRun: jest.fn(async (_id, updates) => {
+                updatedBuildRun = {
+                    id: 'run-remote',
+                    appId: 'app-remote',
+                    ownerId: 'user-1',
+                    sessionId: 'session-1',
+                    source: 'remote-cli-agent',
+                    requestedAction: 'deploy',
+                    commitSha: '1234567890abcdef',
+                    imageTag: 'sha-1234567890ab',
+                    buildStatus: 'queued',
+                    deployRequested: true,
+                    deployStatus: 'pending',
+                    verificationStatus: 'pending',
+                    externalRunUrl: '',
+                    metadata: updates.metadata,
+                };
+                return updatedBuildRun;
+            }),
+        };
+        const service = new ManagedAppService({ store, remoteCliAgentRunner });
+
+        const result = await service.iterateApp('app-remote', {
+            action: 'edit',
+            prompt: 'Use the backend CLI to make the status screen clearer.',
+            deployRequested: true,
+            executor: 'remote-cli-agent',
+        }, 'user-1', {
+            sessionId: 'session-1',
+        });
+
+        expect(remoteCliAgentRunner.run).toHaveBeenCalledWith(expect.objectContaining({
+            adminMode: true,
+            targetId: 'prod',
+            cwd: '/srv/agent-apps/remote-demo',
+            agentName: 'Managed app backend CLI worker',
+            task: expect.stringContaining('Managed-app backend CLI iteration.'),
+        }));
+        expect(store.createBuildRun).toHaveBeenCalledWith(expect.objectContaining({
+            source: 'remote-cli-agent',
+            requestedAction: 'deploy',
+            commitSha: '1234567890abcdef',
+            imageTag: 'sha-1234567890ab',
+            deployRequested: true,
+        }));
+        expect(updatedBuildRun.metadata.iteration).toEqual(expect.objectContaining({
+            executor: 'remote-cli-agent',
+            sourceOfTruth: 'gitlab',
+            commitSha: '1234567890abcdef',
+            committedPaths: ['public/index.html', 'public/styles.css'],
+            remoteCli: expect.objectContaining({
+                sessionId: 'remote-session-1',
+                gitRepo: 'https://gitlab.demoserver2.buzz/agent-apps/remote-demo.git',
+                uiCheckReport: 'ui-checks/remote-demo/report.json',
+            }),
+        }));
+        expect(result.iteration.executor).toBe('remote-cli-agent');
+        expect(result.iteration.evidence.remoteCli.uiScreenshots).toEqual([
+            'ui-checks/remote-demo/desktop.png',
+            'ui-checks/remote-demo/mobile.png',
+        ]);
+        expect(result.iteration.evidence.requiredProof.sourceChanged).toBe(true);
+    });
+
     test('builds a managed app blueprint from the explicit app name in the prompt', () => {
         const service = new ManagedAppService();
 

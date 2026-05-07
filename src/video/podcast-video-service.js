@@ -542,13 +542,13 @@ function buildFallbackStoryboard({ title = '', transcript = '', turns = [], dura
         `Transcript segment ${index + 1}`,
       ],
       contentWrites: [
-        'Show the main idea as a designed infographic, not a generic photo.',
-        'Use one visual structure that matches this segment.',
+        'Show the main idea as a cinematic editorial picture, not a text slide.',
+        'Use people, places, objects, atmosphere, and visual metaphor to match this segment.',
       ],
       visualPrompt: [
-        'Premium editorial podcast slide, documentary explainer infographic, high production value.',
-        `Use a ${slideType} structure with charts, diagrams, icons, evidence cards, or timeline structure when helpful.`,
-        'Avoid logos, watermarks, tiny paragraphs, and distorted typography.',
+        'Premium cinematic editorial still for a video podcast backdrop, high production value.',
+        'Normal picture quality: realistic materials, natural depth, expressive lighting, believable environment, detailed subject, strong photographic composition.',
+        'No readable text, no labels, no charts, no UI, no logos, no watermarks, no typography.',
         `Topic: ${sanitizeText(title) || 'Podcast episode'}.`,
         `Moment: ${summary || narration.slice(0, 120)}.`,
       ].join(' '),
@@ -585,10 +585,10 @@ function buildShowCardScene({
     visualQuery: `${normalizedTitle} science news explainer show studio`,
     visualPrompt: [
       'Single static key visual for a polished YouTube science news information show.',
-      'Modern editorial studio card, presenter desk, monitor wall, clean data graphics, cinematic lighting, high production value.',
-      'Compose it like a premium episode cover: large focal shape, readable hierarchy, metric tiles, abstract chart details, and generous margins.',
+      'Modern cinematic editorial studio still, presenter desk, monitor wall with abstract shapes only, cinematic lighting, high production value.',
+      'Compose it like premium cover photography: clear subject, natural depth of field, realistic surfaces, strong foreground and background separation, generous margins.',
       'Use one stable composition suitable for a full podcast episode background.',
-      'No logos, no watermarks, no tiny paragraphs, no distorted typography.',
+      'No readable text, no logos, no watermarks, no paragraphs, no distorted typography.',
       `Topic: ${normalizedTitle}.`,
       showBeats ? `Episode beats: ${showBeats}.` : '',
     ].filter(Boolean).join(' '),
@@ -622,7 +622,7 @@ function buildStoryboardPrompt({
     `Title: ${sanitizeText(title) || 'Podcast episode'}`,
     `Duration seconds: ${Math.max(0, Number(durationSeconds) || 0) || 'unknown'}`,
     `Target scenes: ${targetSceneCount}`,
-    `Visual style: ${sanitizeText(visualStyle) || 'YouTube science/news explainer show, polished editorial pacing, strong hook, evidence beats, viewer takeaway, minimal on-screen text'}`,
+    `Visual style: ${sanitizeText(visualStyle) || 'cinematic editorial photo backdrops for a YouTube science/news explainer show, polished pacing, strong hook, evidence beats, viewer takeaway, no readable text in images'}`,
     '',
     'Return valid JSON only with this shape:',
     '{"scenes":[{"start":0,"end":8,"summary":"...","caption":"...","slideType":"hook-card|timeline|comparison|process-flow|risk-map|evidence-dashboard|myth-vs-fact|takeaway","keyFacts":["..."],"contentReads":["..."],"contentWrites":["..."],"visualQuery":"...","visualPrompt":"..."}]}',
@@ -630,13 +630,12 @@ function buildStoryboardPrompt({
     'Rules:',
     '- Scene times must cover the whole episode in order without overlaps.',
     '- Treat scenes as show segments: hook, context, evidence, stakes, implications, and takeaway.',
-    '- Mix visual formats across the episode: one strong hook image, timeline, comparison, process flow, risk/impact map, evidence dashboard, myth-vs-fact panel, and takeaway card when the transcript supports them.',
-    '- For each scene, read the transcript/source beats into contentReads, then write the slide payload into contentWrites: headline idea, chart/diagram structure, labels, metric tiles, evidence cards, and viewer takeaway.',
-    '- Each visual should feel like a designed long-form sandbox infographic page compressed into a video slide, not a single background picture.',
+    '- Mix picture concepts across the episode: people, places, objects, close-ups, environmental detail, symbolic scenes, cinematic studio moments, documentary-style stills, and atmospheric cover images.',
+    '- For each scene, read the transcript/source beats into contentReads, then write the visual payload into contentWrites: subject, setting, mood, foreground object, background environment, camera angle, light, and color.',
+    '- Each visual should feel like a finished cinematic photograph or premium editorial image, not a diagram, not a text slide, and not a basic abstract background.',
     '- visualQuery should be short and useful for Unsplash search.',
-    '- visualPrompt should be specific enough for image generation and should describe the infographic structure, icons, charts, and visual hierarchy.',
-    '- Generated images should use very little text: a few large short labels or abstract glyphs at most. Prefer visual symbols, charts, diagrams, and layout over written words.',
-    '- Generated images must avoid small unreadable paragraphs, logos, watermarks, and distorted typography.',
+    '- visualPrompt should be specific enough for image generation and should describe picture qualities: subject, setting, lens/camera feel, lighting, materials, atmosphere, realism, color palette, and composition.',
+    '- Generated images should contain no readable text. Avoid labels, numbers, UI, charts, slides, captions, small paragraphs, logos, watermarks, and typography.',
     '- Captions should be concise excerpts aligned to the audio segment.',
     '',
     'Transcript:',
@@ -759,27 +758,27 @@ function buildSceneImagePrompt(scene = {}, options = {}) {
   const keyFacts = uniqueOrdered(scene.keyFacts || []).slice(0, 4);
   const contentReads = uniqueOrdered(scene.contentReads || []).slice(0, 3);
   const contentWrites = uniqueOrdered(scene.contentWrites || []).slice(0, 4);
-  const infographicBriefs = {
-    timeline: 'a cinematic timeline with four milestone nodes, connecting arcs, subtle date chips, and one emphasized turning point',
-    comparison: 'a split-screen comparison board with two evidence columns, icon badges, simple bar indicators, and a clear contrast zone',
-    flow: 'a process-flow infographic with layered cards, arrows, cause-and-effect connectors, and one highlighted decision point',
-    matrix: 'a 2x2 priority matrix with quadrant cards, small icons, plotted dots, and a highlighted opportunity area',
-    radar: 'a radial impact map with concentric rings, spoke labels as abstract glyphs, icon clusters, and a central insight',
-    metrics: 'an editorial dashboard with large number tiles, mini charts, trend lines, and source-card styling',
+  const pictureBriefs = {
+    timeline: 'a documentary-style scene that suggests time passing through layered objects, archival textures, changing light, and a clear visual journey',
+    comparison: 'a cinematic contrast scene with two clearly different environments or objects in natural space, divided by composition rather than text',
+    flow: 'a realistic process scene with visible cause-and-effect through action, tools, hands, materials, paths, or machinery',
+    matrix: 'a premium editorial still with several meaningful objects arranged in depth, showing tradeoffs through placement, scale, and lighting',
+    radar: 'an atmospheric impact scene with a central subject and surrounding environmental cues that imply pressure, reach, or consequence',
+    metrics: 'a polished photo-real editorial scene with strong subject focus, premium lighting, subtle abstract data shapes only in the background, and no readable text',
   };
 
   return [
-    `Create a premium ${orientation} image slide for a video podcast.`,
-    `Use ${infographicBriefs[kind] || infographicBriefs.metrics}.`,
-    'Compose it like a long-form sandbox infographic page translated into one cinematic video frame: clear information architecture, section bands, figure/callout areas, chart space, and a strong content hierarchy.',
-    'Style: documentary explainer, high-end editorial infographic, cinematic lighting, crisp vector-like shapes blended with subtle photographic depth, readable composition at YouTube size.',
-    'Use strong contrast, restrained color, generous margins, no brand logos, no watermarks, no tiny paragraphs, no malformed text.',
-    'Keep the image mostly visual: use very little text, at most a few large short labels or abstract headline glyphs; prefer icons, charts, shapes, and spatial layout over written words.',
+    `Create a premium ${orientation} cinematic image backdrop for a video podcast.`,
+    `Use ${pictureBriefs[kind] || pictureBriefs.metrics}.`,
+    'Normal picture qualities: realistic subject, believable environment, strong photographic composition, natural depth of field, expressive cinematic light, rich texture, clean color grading, high-resolution detail.',
+    'Style: documentary editorial photography, premium magazine cover still, tasteful cinematic realism, subject-specific visual metaphor, polished but natural.',
+    'Avoid basic abstract backgrounds. Avoid flat cards, UI panels, slide layouts, diagrams, charts, labels, numbers, readable text, logos, watermarks, and malformed typography.',
+    'The image should be almost entirely visual; if the model tries to add words, replace them with objects, lighting, color, symbols, or environmental detail.',
     `Topic moment: ${summary}.`,
     caption ? `Audio-aligned context: ${caption}.` : '',
-    keyFacts.length ? `Facts to visually encode: ${keyFacts.join(' | ')}.` : '',
-    contentReads.length ? `Content reads used: ${contentReads.join(' | ')}.` : '',
-    contentWrites.length ? `Content to write into the slide: ${contentWrites.join(' | ')}.` : '',
+    keyFacts.length ? `Facts to imply visually without text: ${keyFacts.join(' | ')}.` : '',
+    contentReads.length ? `Context used for the scene: ${contentReads.join(' | ')}.` : '',
+    contentWrites.length ? `Picture direction, not words in the image: ${contentWrites.join(' | ')}.` : '',
     `Original visual direction: ${requested}.`,
   ].filter(Boolean).join(' ');
 }
@@ -1669,6 +1668,7 @@ class PodcastVideoService {
 
   async prepareSceneImages(scenes = [], options = {}) {
     const assets = [];
+    let lastUsableAsset = null;
     for (let index = 0; index < scenes.length; index += 1) {
       const scene = scenes[index];
       const image = await this.resolveSceneImage(scene, options);
@@ -1679,6 +1679,16 @@ class PodcastVideoService {
         ...options,
         index,
       });
+      if ((!usableVisual.usable || image.source === 'fallback') && lastUsableAsset) {
+        assets.push({
+          ...lastUsableAsset,
+          source: lastUsableAsset.source === 'fallback' ? 'fallback' : `${lastUsableAsset.source || 'visual'}-reused`,
+          reusedFromScene: lastUsableAsset.sceneId || null,
+          replacedSource: image.source || 'unknown',
+        });
+        continue;
+      }
+
       if (!usableVisual.usable) {
         const fallbackImage = {
           buffer: buildPlaceholderFrameBuffer(options.width, options.height, scene.visualPrompt || scene.summary),
@@ -1702,6 +1712,13 @@ class PodcastVideoService {
         ...image,
         path: filePath,
       });
+      if (image.source !== 'fallback') {
+        lastUsableAsset = {
+          ...image,
+          path: filePath,
+          sceneId: scene.id || null,
+        };
+      }
     }
     return assets;
   }

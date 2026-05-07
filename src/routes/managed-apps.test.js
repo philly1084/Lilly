@@ -84,6 +84,45 @@ describe('/api managed app routes', () => {
         );
     });
 
+    test('starts a managed app iteration', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+            iterateApp: jest.fn(async () => ({
+                app: { id: 'app-1', slug: 'arcade-demo' },
+                iteration: {
+                    action: 'edit',
+                    stages: [
+                        { id: 'understand', title: 'Understand request', status: 'completed' },
+                    ],
+                    evidence: {
+                        commitSha: 'abcdef1234567890',
+                    },
+                },
+            })),
+        };
+        const app = buildApp(service);
+
+        const response = await request(app)
+            .post('/api/managed-apps/arcade-demo/iterations')
+            .send({
+                action: 'edit',
+                prompt: 'Make the hero clearer.',
+                sessionId: 'session-1',
+            });
+
+        expect(response.status).toBe(202);
+        expect(service.iterateApp).toHaveBeenCalledWith(
+            'arcade-demo',
+            expect.objectContaining({
+                action: 'edit',
+                prompt: 'Make the hero clearer.',
+            }),
+            null,
+            expect.objectContaining({ sessionId: 'session-1' }),
+        );
+        expect(response.body.iteration.evidence.commitSha).toBe('abcdef1234567890');
+    });
+
     test('returns canonical managed app progress', async () => {
         const service = {
             isAvailable: jest.fn(() => true),

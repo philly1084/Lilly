@@ -182,7 +182,7 @@ function resolveDeferredWorkloadPreflight({
     let bestScore = Number.NEGATIVE_INFINITY;
 
     candidates.forEach((candidate) => {
-        if (!hasExplicitDeferredTimingCue(candidate)) {
+        if (!hasExplicitDeferredTimingCue(candidate) || !hasWorkloadIntent(candidate)) {
             return;
         }
 

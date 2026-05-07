@@ -140,6 +140,15 @@ describe('workload request builder', () => {
         })).toBeNull();
     });
 
+    test('does not create a canonical workload from tomorrow as a standalone timing word', () => {
+        expect(buildCanonicalWorkloadAction({
+            request: 'Tomorrow sounds good.',
+        }, {
+            now: '2026-04-02T09:31:00.000Z',
+            timezone: 'UTC',
+        })).toBeNull();
+    });
+
     test('does not treat abstract workload discussion as a canonical scheduled workload', () => {
         const canonical = buildCanonicalWorkloadAction({
             request: 'I keep getting cron calls too quickly and every message turns into a workload. I want a planning agent to decide when something should become a job.',

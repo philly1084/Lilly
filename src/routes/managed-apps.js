@@ -112,6 +112,26 @@ router.patch('/managed-apps/:ref', async (req, res, next) => {
     }
 });
 
+router.post('/managed-apps/:ref/iterations', async (req, res, next) => {
+    try {
+        const service = getService(req);
+        if (!service?.isAvailable()) {
+            return handleUnavailable(res);
+        }
+
+        const result = await service.iterateApp(req.params.ref, req.body || {}, getOwnerId(req), {
+            sessionId: req.body?.sessionId || null,
+        });
+        if (!result) {
+            return res.status(404).json({ error: { message: 'Managed app not found' } });
+        }
+
+        res.status(202).json(result);
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.post('/managed-apps/:ref/deploy', async (req, res, next) => {
     try {
         const service = getService(req);

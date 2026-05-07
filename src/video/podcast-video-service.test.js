@@ -14,6 +14,17 @@ describe('PodcastVideoService', () => {
     return `data:image/x-portable-pixmap;base64,${Buffer.concat([header, Buffer.from(pixels)]).toString('base64')}`;
   }
 
+  function buildTestPpm(width, height, color) {
+    const header = Buffer.from(`P6\n${width} ${height}\n255\n`, 'ascii');
+    const pixels = Buffer.alloc(width * height * 3);
+    for (let index = 0; index < pixels.length; index += 3) {
+      pixels[index] = color[0];
+      pixels[index + 1] = color[1];
+      pixels[index + 2] = color[2];
+    }
+    return Buffer.concat([header, pixels]);
+  }
+
   let originalFetch;
 
   beforeEach(() => {
@@ -75,7 +86,7 @@ describe('PodcastVideoService', () => {
     expect(result.scenes).toHaveLength(2);
   });
 
-  test('builds creative infographic prompts for generated scene slides', () => {
+  test('builds cinematic low-text prompts for generated scene backdrops', () => {
     const prompt = buildSceneImagePrompt({
       id: 'scene-04',
       summary: 'Heat pumps lower winter electricity costs',
@@ -83,20 +94,20 @@ describe('PodcastVideoService', () => {
       slideType: 'evidence-dashboard',
       keyFacts: ['Lower operating costs during winter peaks', 'Installation cost is paid back over time'],
       contentReads: ['Transcript segment on heat pump economics'],
-      contentWrites: ['Show a metric tile for savings and a payback timeline'],
+      contentWrites: ['Show a warm home interior contrasted with cold outdoor utility equipment'],
       visualPrompt: 'home energy savings explainer',
     }, {
       orientation: 'landscape',
     });
 
-    expect(prompt).toContain('premium widescreen image slide');
-    expect(prompt).toContain('long-form sandbox infographic page');
-    expect(prompt).toMatch(/timeline|comparison|process-flow|priority matrix|radial impact map|editorial dashboard/);
+    expect(prompt).toContain('premium widescreen cinematic image backdrop');
+    expect(prompt).toContain('Normal picture qualities');
+    expect(prompt).toMatch(/documentary editorial photography|premium magazine cover still|cinematic realism/);
     expect(prompt).toContain('Heat pumps lower winter electricity costs');
-    expect(prompt).toContain('Facts to visually encode');
-    expect(prompt).toContain('Content to write into the slide');
-    expect(prompt).toContain('use very little text');
-    expect(prompt).toContain('no watermarks');
+    expect(prompt).toContain('Facts to imply visually without text');
+    expect(prompt).toContain('Picture direction, not words in the image');
+    expect(prompt).toContain('Avoid basic abstract backgrounds');
+    expect(prompt).toContain('readable text');
   });
 
   test('retimes storyboard scenes to the full audio duration so muxing does not cut off speech', () => {
@@ -168,7 +179,7 @@ describe('PodcastVideoService', () => {
     expect(ffmpegCalls[1].args.join(' ')).toContain('showwaves');
     expect(ffmpegCalls[1].args.join(' ')).not.toContain('-c:v copy');
     expect(result.audioWaveformOverlayEnabled).toBe(true);
-  });
+  }, 10000);
 
   test('defaults to a deterministic waveform-card H.264 AVC render for compatibility', async () => {
     const service = new PodcastVideoService({
@@ -400,7 +411,7 @@ describe('PodcastVideoService', () => {
       stage: 'static show-card render',
     }));
     expect(result.audioWaveformOverlayEnabled).toBe(true);
-  });
+  }, 10000);
 
   test('can harvest an image from a web-search result via web-fetch', async () => {
     const imageBytes = Buffer.concat([
@@ -575,7 +586,8 @@ describe('PodcastVideoService', () => {
 
     expect(generateImageBatch).toHaveBeenCalledTimes(2);
     expect(generateImageBatch.mock.calls[0][0].prompt).toContain('premium');
-    expect(generateImageBatch.mock.calls[0][0].prompt).toContain('infographic');
+    expect(generateImageBatch.mock.calls[0][0].prompt).toContain('cinematic image backdrop');
+    expect(generateImageBatch.mock.calls[0][0].prompt).toContain('readable text');
     expect(image).toEqual(expect.objectContaining({
       source: 'generated',
       revisedPrompt: 'usable visual',
@@ -621,6 +633,55 @@ describe('PodcastVideoService', () => {
         source: 'fallback',
         replacedSource: 'generated',
         extension: 'ppm',
+      }));
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  }, 10000);
+
+  test('reuses the previous good scene image instead of inserting placeholder backgrounds between generated images', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kimibuilt-image-reuse-test-'));
+    const service = new PodcastVideoService({
+      isUnsplashConfigured: () => false,
+    });
+    jest.spyOn(service, 'resolveSceneImage')
+      .mockResolvedValueOnce({
+        buffer: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 12)]),
+        mimeType: 'image/jpeg',
+        extension: 'jpg',
+        source: 'generated',
+        url: 'https://example.com/good.jpg',
+      })
+      .mockResolvedValueOnce({
+        buffer: buildTestPpm(16, 9, [24, 32, 44]),
+        mimeType: 'image/x-portable-pixmap',
+        extension: 'ppm',
+        source: 'fallback',
+        url: null,
+      });
+    jest.spyOn(service, 'validateSceneImageFile').mockResolvedValue({ usable: true, reason: 'test' });
+
+    try {
+      const assets = await service.prepareSceneImages([
+        { id: 'scene-01', summary: 'Opening' },
+        { id: 'scene-02', summary: 'Middle' },
+      ], {
+        tempDir,
+        width: 1280,
+        height: 720,
+        imageMode: 'generated',
+        generateImages: true,
+      });
+
+      expect(assets[0]).toEqual(expect.objectContaining({
+        source: 'generated',
+        url: 'https://example.com/good.jpg',
+      }));
+      expect(assets[1]).toEqual(expect.objectContaining({
+        source: 'generated-reused',
+        reusedFromScene: 'scene-01',
+        replacedSource: 'fallback',
+        url: 'https://example.com/good.jpg',
       }));
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });

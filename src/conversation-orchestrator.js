@@ -5296,10 +5296,13 @@ function buildManagedAppDirectAction(objective = '', options = {}) {
     if (hasDeployIntent && !hasCreateIntent && !hasUpdateIntent && reference && !recoveryCreate) {
         return {
             tool: 'managed-app',
-            reason: 'Managed app deployment requests should use the dedicated control-plane tool.',
+            reason: 'Managed app deployment follow-ups should use the backend-owned iteration loop with GitLab and deployment evidence.',
             params: applyManagedAppDeploymentTargetDefaults({
-                action: 'deploy',
+                action: 'iterate',
+                requestedAction: 'deploy',
+                iterationAction: 'deploy',
                 appRef: reference,
+                prompt: effectivePrompt,
             }, {
                 objective: normalized,
                 executionProfile,
@@ -5310,13 +5313,14 @@ function buildManagedAppDirectAction(objective = '', options = {}) {
     if (((hasUpdateIntent && reference) || (hasAuthoringWorkflow && reference && !hasCreateIntent)) && !recoveryCreate) {
         return {
             tool: 'managed-app',
-            reason: 'Managed app update requests should use the dedicated control-plane tool.',
+            reason: 'Managed app update requests should use the backend-owned iteration loop instead of remote-cli handoff.',
             params: applyManagedAppDeploymentTargetDefaults({
-                action: 'update',
+                action: 'iterate',
+                requestedAction: workflowRequestedAction,
+                iterationAction: hasDeployIntent ? 'deploy' : 'edit',
                 appRef: reference,
                 prompt: effectivePrompt,
                 sourcePrompt: effectivePrompt,
-                requestedAction: workflowRequestedAction,
             }, {
                 objective: normalized,
                 executionProfile,
@@ -11204,7 +11208,8 @@ class ConversationOrchestrator extends EventEmitter {
             'Every `agent-workload` step must use the deferred workload schema only: `{"tool":"agent-workload","reason":"why","params":{"action":"create_from_scenario","request":"the full original user request","timezone":"IANA/Zone"}}`.',
             'Do not parse the schedule, cron, or remote command yourself for `agent-workload`; pass the full original request and let the runtime canonicalize it.',
             'Do not use `command`, `name`, `schedule`, or remote-command style fields inside `agent-workload` params.',
-            'If the user asks for a cron job, recurring schedule, reminder, or future run, prefer `agent-workload` instead of `remote-command` even when an SSH target is already available.',
+            'Before planning `agent-workload`, classify the latest user turn as one-time future run, recurring workload, reminder/follow-up, host crontab management, or no scheduled work. Timing words such as "tomorrow" are not enough by themselves.',
+            'If that classification shows the user actually asks for a cron job, recurring schedule, reminder, or future run, prefer `agent-workload` instead of `remote-command` even when an SSH target is already available.',
             'If the user asks for multiple jobs or automations, split them into one `agent-workload` step per distinct task instead of combining everything into one workload.',
             'Every `agent-delegate` step must use `params.action` set to `spawn`, `status`, or `list`.',
             'For `agent-delegate spawn`, pass `params.tasks` as an array of 1 to 3 task objects. Each task needs a clear `title` and either a `prompt` or structured `execution` object.',

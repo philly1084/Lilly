@@ -140,6 +140,11 @@ describe('workload natural language parsing', () => {
         expect(hasWorkloadIntent('Make the news for today.')).toBe(false);
     });
 
+    test('does not treat standalone tomorrow phrasing as workload intent', () => {
+        expect(hasWorkloadIntent('Tomorrow works for me.')).toBe(false);
+        expect(hasWorkloadIntent('We can talk about it tomorrow.')).toBe(false);
+    });
+
     test('still treats today as a schedule when attached to an executable task', () => {
         const result = parseWorkloadScenario('Run `date` on the server today at 8 PM.', {
             timezone: 'UTC',

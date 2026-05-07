@@ -5163,6 +5163,74 @@ body.layout-minimal #input-meta-row {
     gap: 0.35rem;
 }
 
+.assistant-progress-card__evidence {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.55rem 0.65rem;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.assistant-progress-card__evidence summary {
+    cursor: pointer;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.assistant-progress-card__evidence-grid {
+    display: grid;
+    gap: 0.42rem;
+    margin-top: 0.55rem;
+}
+
+.assistant-progress-card__evidence-grid div {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 0.55rem;
+    align-items: baseline;
+    font-size: 0.78rem;
+}
+
+.assistant-progress-card__evidence-grid span {
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+
+.assistant-progress-card__evidence-grid strong,
+.assistant-progress-card__evidence-grid a {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.assistant-progress-card__proof {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+}
+
+.assistant-progress-card__proof span {
+    border-radius: 999px;
+    padding: 0.18rem 0.45rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.assistant-progress-card__proof .is-ok {
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.12);
+}
+
+.assistant-progress-card__proof .is-missing {
+    color: var(--text-tertiary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
 .assistant-progress-card__open-list {
     margin: 0;
     padding-left: 1rem;

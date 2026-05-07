@@ -56,7 +56,7 @@ const TENS_NUMBER_WORD_FRAGMENT = 'twenty|thirty|forty|fifty|sixty';
 const RELATIVE_DELAY_AMOUNT_FRAGMENT = `(?:\\d+|${SIMPLE_NUMBER_WORD_FRAGMENT}|${TENS_NUMBER_WORD_FRAGMENT}(?:[-\\s](?:${ONES_NUMBER_WORD_FRAGMENT}))?)`;
 const TODAY_SCHEDULE_FRAGMENT = 'today\\b(?![\'’]s)';
 
-const SCHEDULE_TASK_VERB_FRAGMENT = '(?:run|check|review|summarize|follow\\s+up|watch|remind|collect|gather|send|monitor|audit|scan|call|ping)';
+const SCHEDULE_TASK_VERB_FRAGMENT = '(?:run|do|check|review|research|summarize|follow\\s+up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan|call|ping)';
 const SCHEDULING_SETUP_VERB_FRAGMENT = '(?:set\\s+up|setup|schedule|queue|save|remind)';
 
 function hasImmediateOrNoDeferCue(text = '') {
@@ -693,6 +693,7 @@ function hasWorkloadIntent(text = '') {
     }
 
     const scheduleIntentFragment = `(?:every|daily|hourly|weekdays?|tomorrow|later today|once|at\\s+(?:1[0-2]|0?\\d)(?::[0-5]\\d)?\\s*(?:am|pm)|at\\s+(?:[01]?\\d|2[0-3]):[0-5]\\d|(?:(?:in|after)\\s+${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)(?:\\s+from\\s+now)?|${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)\\s+from\\s+now))`;
+    const timedTaskScheduleIntentFragment = `(?:every\\s+(?:day|weekday|workday|hour)|each\\s+(?:day|weekday|workday)|hourly|weekdays?|tomorrow|later today|once|at\\s+(?:1[0-2]|0?\\d)(?::[0-5]\\d)?\\s*(?:am|pm)|at\\s+(?:[01]?\\d|2[0-3]):[0-5]\\d|(?:(?:in|after)\\s+${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)(?:\\s+from\\s+now)?|${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)\\s+from\\s+now))`;
 
     const hasExplicitWorkloadSetup = [
         /\b(set up|setup|schedule|create|make|add|queue|save)\b[\s\S]{0,24}\b(?:an?\s+|the\s+)?(?:automation|workloads?|follow-?ups?|reminders?|cron(?:\s+jobs?)?|scheduled\s+jobs?|scheduled\s+tasks?|recurring\s+jobs?|recurring\s+tasks?)\b/,
@@ -700,8 +701,8 @@ function hasWorkloadIntent(text = '') {
     ].some((pattern) => pattern.test(normalized));
 
     const hasTimedTaskRequest = [
-        new RegExp(`\\b(run|check|review|summarize|follow up|watch|remind|collect|gather|send|report|monitor|audit|scan)\\b[\\s\\S]{0,40}\\b${scheduleIntentFragment}\\b`),
-        new RegExp(`\\b${scheduleIntentFragment}\\b[\\s\\S]{0,60}\\b(run|check|review|summarize|follow up|watch|remind|collect|gather|send|report|monitor|audit|scan)\\b`),
+        new RegExp(`\\b(run|do|check|review|research|summarize|follow up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan)\\b[\\s\\S]{0,40}\\b${timedTaskScheduleIntentFragment}\\b`),
+        new RegExp(`\\b${timedTaskScheduleIntentFragment}\\b[\\s\\S]{0,60}\\b(run|do|check|review|research|summarize|follow up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan)\\b`),
     ].some((pattern) => pattern.test(normalized));
 
     return hasSchedulingCue(normalized) && (hasExplicitWorkloadSetup || hasTimedTaskRequest);

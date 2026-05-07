@@ -2408,6 +2408,30 @@ class OpenAIAPIClient extends EventTarget {
         return response.json();
     }
 
+    async iterateManagedApp(appRef, payload = {}) {
+        const normalizedAppRef = String(appRef || '').trim();
+        if (!normalizedAppRef) {
+            throw new Error('Managed app reference is required.');
+        }
+
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/managed-apps/${encodeURIComponent(normalizedAppRef)}/iterations`, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const error = await this.parseErrorPayload(response);
+            throw new Error(error?.error?.message || `Failed to start managed app iteration: HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
     async createSessionWorkload(sessionId, payload = {}) {
         const response = await fetch(`${BASE_URL_WITHOUT_API}/api/sessions/${encodeURIComponent(sessionId)}/workloads`, {
             method: 'POST',

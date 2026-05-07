@@ -5,6 +5,7 @@ const { extractStructuredExecution } = require('./execution-extractor');
 const {
     deriveWorkloadTitle,
     hasImmediateOrNoDeferCue,
+    hasWorkloadIntent,
     inferWorkloadPolicy,
     parseWorkloadScenario,
     stripBrutalBuilderDirectiveText,
@@ -482,6 +483,10 @@ function buildCanonicalWorkloadPayloadForSource(params = {}, options = {}, scena
         || !explicitPolicy
         || (!explicitExecution && hasRemoteExecutionShape(params))
     )) {
+        if (!hasWorkloadIntent(scenarioSource)) {
+            return null;
+        }
+
         scenario = parseWorkloadScenario(scenarioSource, {
             ...(timezone ? { timezone } : {}),
             ...(now ? { now } : {}),

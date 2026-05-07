@@ -3361,6 +3361,35 @@ class UIHelpers {
         const tlsStatus = this.extractDisplayText(rawProgress.tlsStatus, { maxLength: 120 });
         const httpsStatus = this.extractDisplayText(rawProgress.httpsStatus, { maxLength: 120 });
         const appProbeStatus = this.extractDisplayText(rawProgress.appProbeStatus, { maxLength: 120 });
+        const evidenceSource = rawProgress.evidence && typeof rawProgress.evidence === 'object'
+            ? rawProgress.evidence
+            : {};
+        const requiredProof = evidenceSource.requiredProof && typeof evidenceSource.requiredProof === 'object'
+            ? evidenceSource.requiredProof
+            : {};
+        const evidence = {
+            repository: this.extractDisplayText(evidenceSource.repository, { maxLength: 120 }),
+            repoUrl: this.extractDisplayText(evidenceSource.repoUrl, { maxLength: 220 }),
+            commitSha: this.extractDisplayText(evidenceSource.commitSha, { maxLength: 48 }),
+            pipelineUrl: this.extractDisplayText(evidenceSource.pipelineUrl, { maxLength: 220 }),
+            pipelineStatus: this.extractDisplayText(evidenceSource.pipelineStatus, { maxLength: 80 }),
+            imageTag: this.extractDisplayText(evidenceSource.imageTag, { maxLength: 80 }),
+            deployStatus: this.extractDisplayText(evidenceSource.deployStatus, { maxLength: 80 }),
+            verificationStatus: this.extractDisplayText(evidenceSource.verificationStatus, { maxLength: 80 }),
+            publicUrl: this.extractDisplayText(evidenceSource.publicUrl, { maxLength: 220 }),
+            verifiedAt: this.extractDisplayText(evidenceSource.verifiedAt, { maxLength: 80 }),
+            requiredProof: {
+                sourceChanged: requiredProof.sourceChanged === true,
+                gitlabPipelineObserved: requiredProof.gitlabPipelineObserved === true,
+                imageAvailable: requiredProof.imageAvailable === true,
+                deploymentObserved: requiredProof.deploymentObserved === true,
+                publicVerificationObserved: requiredProof.publicVerificationObserved === true,
+            },
+        };
+        const nextActions = (Array.isArray(rawProgress.nextActions) ? rawProgress.nextActions : [])
+            .map((item) => this.extractDisplayText(item, { maxLength: 40 }))
+            .filter(Boolean)
+            .slice(0, 4);
         const openItems = (Array.isArray(rawProgress.openItems) ? rawProgress.openItems : [])
             .map((item) => this.extractDisplayText(item, { maxLength: 160 }))
             .filter(Boolean)
@@ -3385,6 +3414,8 @@ class UIHelpers {
             tlsStatus,
             httpsStatus,
             appProbeStatus,
+            evidence,
+            nextActions,
             openItems,
             terminal,
             live,
@@ -3504,6 +3535,44 @@ class UIHelpers {
         const appProbeStatusMarkup = progressState.appProbeStatus
             ? `<div class="assistant-progress-card__status-line"><span class="assistant-progress-card__status-label">App Probe</span><span class="assistant-progress-card__status-value">${this.escapeHtml(progressState.appProbeStatus)}</span></div>`
             : '';
+        const evidenceRows = [
+            ['Repo', progressState.evidence?.repository, progressState.evidence?.repoUrl],
+            ['Commit', progressState.evidence?.commitSha, ''],
+            ['Pipeline', progressState.evidence?.pipelineStatus || progressState.evidence?.pipelineUrl, progressState.evidence?.pipelineUrl],
+            ['Image', progressState.evidence?.imageTag, ''],
+            ['Deploy', progressState.evidence?.deployStatus, ''],
+            ['Verify', progressState.evidence?.verificationStatus || progressState.evidence?.verifiedAt, progressState.evidence?.publicUrl],
+        ].filter(([, value]) => value);
+        const proof = progressState.evidence?.requiredProof || {};
+        const proofLabels = [
+            ['Source', proof.sourceChanged],
+            ['GitLab', proof.gitlabPipelineObserved],
+            ['Image', proof.imageAvailable],
+            ['Deploy', proof.deploymentObserved],
+            ['Public', proof.publicVerificationObserved],
+        ];
+        const evidenceMarkup = evidenceRows.length > 0
+            ? `
+                <details class="assistant-progress-card__evidence">
+                    <summary>Evidence</summary>
+                    <div class="assistant-progress-card__evidence-grid">
+                        ${evidenceRows.map(([label, value, href]) => {
+                            const safeValue = this.escapeHtml(value);
+                            const valueMarkup = href && /^https?:\/\//i.test(href)
+                                ? `<a href="${this.escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer">${safeValue}</a>`
+                                : safeValue;
+                            return `<div><span>${this.escapeHtml(label)}</span><strong>${valueMarkup}</strong></div>`;
+                        }).join('')}
+                    </div>
+                    <div class="assistant-progress-card__proof">
+                        ${proofLabels.map(([label, ok]) => `<span class="${ok ? 'is-ok' : 'is-missing'}">${this.escapeHtml(label)}</span>`).join('')}
+                    </div>
+                </details>
+            `
+            : '';
+        const nextActionsMarkup = progressState.nextActions?.length
+            ? `<div class="assistant-progress-card__status-line"><span class="assistant-progress-card__status-label">Actions</span><span class="assistant-progress-card__status-value">${this.escapeHtml(progressState.nextActions.join(', '))}</span></div>`
+            : '';
         const nextStepText = String(
             progressState.nextStep
             || message?.metadata?.nextStep
@@ -3593,6 +3662,7 @@ class UIHelpers {
                     ${tlsStatusMarkup}
                     ${httpsStatusMarkup}
                     ${appProbeStatusMarkup}
+                    ${nextActionsMarkup}
                     ${pausedMarkup}
                     ${resumeMarkup}
                     ${nextStepMarkup}
@@ -3600,6 +3670,7 @@ class UIHelpers {
                         <span style="width:${progressState.percent}%"></span>
                     </div>
                     <ol class="assistant-progress-card__steps">${stepsHtml}</ol>
+                    ${evidenceMarkup}
                     ${openItemsMarkup}
                     ${checkpointMarkup}
                     <div class="assistant-progress-card__note">${this.escapeHtml(noteText)}</div>

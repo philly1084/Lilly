@@ -86,6 +86,13 @@ describe('orchestration rewrite policy', () => {
     expect(inferTaskIntent({ objective: 'Spawn three sub-agents to investigate these areas in parallel.' }).mode).toBe(AGENCY_MODES.DELEGATE);
   });
 
+  test('does not classify tomorrow as scheduled work without task intent', () => {
+    const intent = inferTaskIntent({ objective: 'Tomorrow works for me.' });
+
+    expect(intent.mode).toBe(AGENCY_MODES.RESPOND);
+    expect(intent.schedulingIntent).toBe(false);
+  });
+
   test('removes managed-app from autonomous allowlists and candidates', () => {
     expect(removeUnsupportedAutonomousTools(['managed-app', 'remote-command', 'agent-workload'])).toEqual([
       'remote-command',

@@ -13,6 +13,7 @@ const { sessionStore } = require('../session-store');
 const { managedAppStore } = require('./store');
 const { GitLabClient } = require('./gitlab-client');
 const { KubernetesClient } = require('./kubernetes-client');
+const { remoteCliAgentsSdkRunner } = require('../remote-cli/agents-sdk-runner');
 const {
     buildDefaultScaffoldFiles,
     buildManagedAppAuthoringPrompt,
@@ -60,6 +61,7 @@ const MAX_MANAGED_APP_SLUG_LENGTH = 63;
 const MAX_KUBERNETES_NAME_LENGTH = 63;
 const DEFAULT_GITLAB_RUNNER_TAGS = 'kimibuilt,buildkit';
 const DEFAULT_MANAGED_APP_SLUG_PREFIX = 'managed-app';
+const MANAGED_APP_ITERATION_ACTIONS = new Set(['edit', 'build', 'deploy', 'verify']);
 const PROMPT_NAME_STOPWORDS = new Set([
     'a', 'an', 'and', 'app', 'application', 'build', 'built', 'called', 'can', 'could', 'create', 'deploy',
     'deployment', 'for', 'from', 'generate', 'help', 'host', 'hosting', 'i', 'in', 'into', 'it', 'just',
@@ -343,6 +345,23 @@ function selectMostRelevantManagedAppWorkflowRun(runs = [], buildRun = {}) {
 function normalizeRequestedAction(value = '') {
     const normalized = normalizeText(value).toLowerCase();
     return normalized || 'build';
+}
+
+function normalizeIterationAction(value = '') {
+    const normalized = normalizeText(value).toLowerCase();
+    if (!normalized) {
+        return 'edit';
+    }
+    if (['update', 'change', 'patch'].includes(normalized)) {
+        return 'edit';
+    }
+    if (['publish', 'release', 'live', 'launch'].includes(normalized)) {
+        return 'deploy';
+    }
+    if (['check', 'status', 'inspect'].includes(normalized)) {
+        return 'verify';
+    }
+    return MANAGED_APP_ITERATION_ACTIONS.has(normalized) ? normalized : '';
 }
 
 function inferDeployRequested(value = '', fallback = false) {
@@ -988,6 +1007,228 @@ function buildManagedAppPhaseLabel(phase = '') {
     }
 }
 
+function normalizeIterationStepStatus(value = '') {
+    const normalized = normalizeText(value).toLowerCase().replace(/[\s-]+/g, '_');
+    if (['completed', 'done', 'success', 'succeeded'].includes(normalized)) {
+        return 'completed';
+    }
+    if (['in_progress', 'running', 'queued', 'pending'].includes(normalized)) {
+        return normalized === 'pending' ? 'pending' : 'in_progress';
+    }
+    if (['failed', 'failure', 'error'].includes(normalized)) {
+        return 'failed';
+    }
+    if (normalized === 'skipped') {
+        return 'skipped';
+    }
+    return 'pending';
+}
+
+function normalizeIterationExecutor(input = {}) {
+    const explicit = normalizeText(
+        input.executor
+        || input.executionMode
+        || input.iterationExecutor
+        || input.agentExecutor,
+    ).toLowerCase();
+    if (['remote-cli-agent', 'remote_cli_agent', 'backend-cli-agent', 'backend_cli_agent', 'remote-cli', 'backend-cli'].includes(explicit)) {
+        return 'remote-cli-agent';
+    }
+    if (input.useRemoteCliAgent === true || input.backendCliAgent === true || input.remoteCliAgent === true) {
+        return 'remote-cli-agent';
+    }
+    return 'managed-app-backend';
+}
+
+function extractRemoteCliChangedPaths(finalOutput = '') {
+    const lines = String(finalOutput || '').split(/\r?\n/);
+    const values = [];
+    for (const line of lines) {
+        const match = line.match(/^\s*(?:[-*]\s*)?(?:CHANGED_FILES|CHANGED_FILE|COMMITTED_PATHS|COMMITTED_PATH)\s*[:=]\s*(.+?)\s*$/i);
+        if (match?.[1]) {
+            values.push(...String(match[1]).split(','));
+        }
+    }
+    return normalizeStringArray(values.map((value) => value.replace(/^`+|`+$/g, '').replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '')), 20);
+}
+
+function buildManagedAppIterationEvidence(app = null, buildRun = null, details = {}) {
+    const normalizedApp = app && typeof app === 'object' ? app : {};
+    const run = buildRun && typeof buildRun === 'object' ? buildRun : {};
+    const metadata = run.metadata && typeof run.metadata === 'object' ? run.metadata : {};
+    const iteration = metadata.iteration && typeof metadata.iteration === 'object' ? metadata.iteration : {};
+    const committedPaths = normalizeStringArray(
+        details.committedPaths
+        || iteration.committedPaths
+        || metadata.committedPaths,
+        20,
+    );
+    const commitSha = normalizeText(
+        details.commitSha
+        || iteration.commitSha
+        || run.commitSha
+        || normalizedApp.metadata?.repoState?.lastCommitSha,
+    );
+    const pipelineUrl = normalizeText(
+        details.pipelineUrl
+        || iteration.pipelineUrl
+        || run.externalRunUrl
+        || metadata.gitlabPipeline?.htmlUrl
+        || metadata.gitlabPipeline?.runUrl,
+    );
+    const imageTag = normalizeText(
+        details.imageTag
+        || iteration.imageTag
+        || run.imageTag
+        || buildImageTagFromCommit(commitSha),
+    );
+    const imageDigest = normalizeText(details.imageDigest || run.imageDigest);
+    const publicHost = normalizeText(normalizedApp.publicHost);
+    const liveDeploy = normalizedApp.metadata?.liveDeploy && typeof normalizedApp.metadata.liveDeploy === 'object'
+        ? normalizedApp.metadata.liveDeploy
+        : {};
+    const remoteCli = details.remoteCli && typeof details.remoteCli === 'object'
+        ? details.remoteCli
+        : (iteration.remoteCli && typeof iteration.remoteCli === 'object' ? iteration.remoteCli : {});
+
+    return {
+        repository: normalizeText(normalizedApp.repoOwner) && normalizeText(normalizedApp.repoName)
+            ? `${normalizeText(normalizedApp.repoOwner)}/${normalizeText(normalizedApp.repoName)}`
+            : '',
+        repoUrl: normalizeText(normalizedApp.repoUrl),
+        commitSha,
+        committedPaths,
+        pipelineUrl,
+        pipelineStatus: normalizeText(run.buildStatus || metadata.gitlabPipeline?.status),
+        imageTag,
+        imageDigest,
+        deployStatus: normalizeText(run.deployStatus || liveDeploy.lastStatus),
+        verificationStatus: normalizeText(run.verificationStatus || liveDeploy.lastVerificationStatus),
+        publicUrl: publicHost ? `https://${publicHost}` : '',
+        verifiedAt: normalizeText(liveDeploy.lastVerifiedAt || liveDeploy.lastDeployAt),
+        remoteCli: {
+            sessionId: normalizeText(remoteCli.sessionId || remoteCli.remoteCodeSessionId),
+            mcpSessionId: normalizeText(remoteCli.mcpSessionId),
+            targetId: normalizeText(remoteCli.targetId),
+            cwd: normalizeText(remoteCli.cwd),
+            gitRepo: normalizeText(remoteCli.gitRepo),
+            deployment: normalizeText(remoteCli.deployment),
+            publicHost: normalizeText(remoteCli.publicHost),
+            uiCheckReport: normalizeText(remoteCli.uiCheckReport),
+            uiScreenshots: normalizeStringArray(remoteCli.uiScreenshots || [], 10),
+        },
+        requiredProof: {
+            sourceChanged: Boolean(commitSha && committedPaths.length > 0),
+            gitlabPipelineObserved: Boolean(pipelineUrl || run.externalRunId || metadata.gitlabPipeline),
+            imageAvailable: Boolean(imageTag || imageDigest),
+            deploymentObserved: Boolean(run.deployStatus && run.deployStatus !== 'not_requested'),
+            publicVerificationObserved: Boolean(
+                normalizeText(run.verificationStatus).toLowerCase() === 'success'
+                || normalizeText(normalizedApp.status).toLowerCase() === 'live'
+                || liveDeploy.lastStatus === 'succeeded'
+            ),
+        },
+    };
+}
+
+function buildManagedAppIterationStages({ action = 'edit', app = null, buildRun = null, phase = '', details = {} } = {}) {
+    const evidence = buildManagedAppIterationEvidence(app, buildRun, details);
+    const normalizedAction = normalizeIterationAction(action) || 'edit';
+    const buildStatus = normalizeBuildStatus(buildRun?.buildStatus);
+    const deployStatus = normalizeText(buildRun?.deployStatus).toLowerCase();
+    const verificationStatus = normalizeText(buildRun?.verificationStatus).toLowerCase();
+    const appStatus = normalizeText(app?.status).toLowerCase();
+    const committed = Boolean(evidence.commitSha);
+    const hasPatch = evidence.committedPaths.length > 0;
+    const pipelineObserved = Boolean(evidence.pipelineUrl || buildRun?.externalRunId || buildRun?.metadata?.gitlabPipeline);
+    const buildSucceeded = isSuccessfulBuildStatus(buildStatus);
+    const buildFailed = isFailedBuildStatus(buildStatus);
+    const deployRequested = buildRun?.deployRequested === true || ['deploy', 'verify'].includes(normalizedAction);
+    const deploySucceeded = ['success', 'succeeded', 'deployed', 'live'].includes(deployStatus) || ['live', 'deployed'].includes(appStatus);
+    const deployFailed = ['failed', 'failure'].includes(deployStatus);
+    const verified = verificationStatus === 'success' || appStatus === 'live';
+    const verificationFailed = ['failed', 'failure'].includes(verificationStatus);
+
+    const stages = [
+        { id: 'understand', title: 'Understand request', status: 'completed' },
+        {
+            id: 'patch',
+            title: 'Patch source',
+            status: ['deploy', 'verify'].includes(normalizedAction)
+                ? 'skipped'
+                : (hasPatch ? 'completed' : (committed ? 'completed' : 'in_progress')),
+        },
+        {
+            id: 'test',
+            title: 'Run focused checks',
+            status: normalizeIterationStepStatus(details.testStatus || buildRun?.metadata?.iteration?.testStatus || 'skipped'),
+        },
+        {
+            id: 'commit',
+            title: 'Commit to GitLab',
+            status: committed
+                ? 'completed'
+                : (['deploy', 'verify'].includes(normalizedAction) ? 'skipped' : 'in_progress'),
+        },
+        {
+            id: 'pipeline',
+            title: 'Observe GitLab pipeline',
+            status: buildSucceeded || pipelineObserved
+                ? (buildFailed ? 'failed' : (buildSucceeded ? 'completed' : 'in_progress'))
+                : (committed ? 'in_progress' : 'pending'),
+        },
+        {
+            id: 'deploy',
+            title: 'Deploy to k3s',
+            status: deploySucceeded
+                ? 'completed'
+                : (deployFailed ? 'failed' : (deployRequested ? 'in_progress' : 'pending')),
+        },
+        {
+            id: 'verify',
+            title: 'Verify public endpoint',
+            status: verified
+                ? 'completed'
+                : (verificationFailed ? 'failed' : (deployRequested || normalizedAction === 'verify' ? 'in_progress' : 'pending')),
+        },
+    ];
+
+    if (['build_failed'].includes(normalizeText(phase).toLowerCase()) || buildFailed) {
+        stages.find((stage) => stage.id === 'pipeline').status = 'failed';
+        stages.find((stage) => stage.id === 'deploy').status = 'skipped';
+        stages.find((stage) => stage.id === 'verify').status = 'skipped';
+    }
+
+    return stages;
+}
+
+function buildManagedAppIterationNextActions({ action = 'edit', app = null, buildRun = null } = {}) {
+    const normalizedAction = normalizeIterationAction(action) || 'edit';
+    const appStatus = normalizeText(app?.status).toLowerCase();
+    const buildStatus = normalizeBuildStatus(buildRun?.buildStatus);
+    const deployStatus = normalizeText(buildRun?.deployStatus).toLowerCase();
+    const verificationStatus = normalizeText(buildRun?.verificationStatus).toLowerCase();
+    const actions = [];
+
+    if (!buildRun || ['edit', 'build'].includes(normalizedAction)) {
+        actions.push('edit');
+    }
+    if (isSuccessfulBuildStatus(buildStatus) && !['succeeded', 'success', 'deployed'].includes(deployStatus)) {
+        actions.push('deploy');
+    }
+    if (['succeeded', 'success', 'deployed'].includes(deployStatus) || ['deployed', 'live'].includes(appStatus)) {
+        actions.push('verify');
+    }
+    if (isPendingBuildStatus(buildStatus)) {
+        actions.push('verify');
+    }
+    if (verificationStatus === 'success' || appStatus === 'live') {
+        actions.unshift('edit');
+    }
+
+    return Array.from(new Set(actions.filter(Boolean)));
+}
+
 function buildManagedAppProgressState(app = null, buildRun = null, phase = '', details = {}) {
     const normalizedPhase = normalizeText(phase).toLowerCase()
         || normalizeText(app?.status).toLowerCase()
@@ -1009,7 +1250,19 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
         || details?.deployment?.https?.error
         || '',
     );
-    const steps = [
+    const iterationMetadata = buildRun?.metadata?.iteration && typeof buildRun.metadata.iteration === 'object'
+        ? buildRun.metadata.iteration
+        : null;
+    const iterationStages = Array.isArray(details.iterationStages)
+        ? details.iterationStages
+        : (Array.isArray(iterationMetadata?.stages) ? iterationMetadata.stages : []);
+    const steps = iterationStages.length > 0
+        ? iterationStages.map((stage) => ({
+            id: normalizeText(stage?.id),
+            title: normalizeText(stage?.title || stage?.label),
+            status: normalizeIterationStepStatus(stage?.status),
+        })).filter((stage) => stage.id && stage.title)
+        : [
         { id: 'prepare', title: 'Prepare app record', status: 'pending' },
         { id: 'build', title: 'Build and publish image', status: 'pending' },
         { id: 'deploy', title: 'Roll out deployment', status: 'pending' },
@@ -1022,8 +1275,9 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
         }
     };
 
-    let detail = '';
-    switch (normalizedPhase) {
+    let detail = normalizeText(iterationMetadata?.summary);
+    if (iterationStages.length === 0) {
+        switch (normalizedPhase) {
         case 'created':
         case 'updated':
             mark('prepare', 'completed');
@@ -1073,6 +1327,7 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
             mark('prepare', 'in_progress');
             detail = summary;
             break;
+        }
     }
 
     const terminal = ['live', 'build_failed', 'deploy_failed'].includes(normalizedPhase);
@@ -1110,6 +1365,12 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
         tlsStatus: normalizeText(deployDiagnostics.tlsStatus),
         httpsStatus: normalizeText(deployDiagnostics.httpsStatus),
         appProbeStatus: normalizeText(deployDiagnostics.appProbeStatus),
+        evidence: buildManagedAppIterationEvidence(app, buildRun, details),
+        nextActions: buildManagedAppIterationNextActions({
+            action: iterationMetadata?.action || details.action || '',
+            app,
+            buildRun,
+        }),
         live: terminal !== true,
         terminal,
         totalSteps: steps.length,
@@ -1474,6 +1735,7 @@ class ManagedAppService {
         this.kubernetesClient = options.kubernetesClient || new KubernetesClient();
         this.llmClient = options.llmClient || createManagedAppLlmClient();
         this.sessionStore = options.sessionStore || sessionStore;
+        this.remoteCliAgentRunner = options.remoteCliAgentRunner || remoteCliAgentsSdkRunner;
     }
 
     isAvailable() {
@@ -2197,6 +2459,403 @@ class ManagedAppService {
             progress: project?.progress || null,
             summary: normalizeText(project?.summary || normalizedApp.metadata?.project?.summary || buildManagedAppStatusSummary(normalizedApp, latestBuildRun, normalizedApp.status || 'updated')),
         };
+    }
+
+    async persistIterationState(app = null, buildRun = null, {
+        input = {},
+        action = 'edit',
+        phase = '',
+        committedPaths = [],
+        deployment = null,
+        summary = '',
+        failureCategory = '',
+        executor = 'managed-app-backend',
+        remoteCli = null,
+        pipelineUrl = '',
+    } = {}) {
+        const normalizedApp = this.normalizeAppRecord(app);
+        if (!normalizedApp || !buildRun?.id || !this.store?.updateBuildRun) {
+            return buildRun;
+        }
+
+        const evidence = buildManagedAppIterationEvidence(normalizedApp, buildRun, {
+            committedPaths,
+            pipelineUrl: pipelineUrl || buildRun.externalRunUrl,
+            remoteCli,
+        });
+        const stages = buildManagedAppIterationStages({
+            action,
+            app: normalizedApp,
+            buildRun,
+            phase,
+            details: {
+                committedPaths,
+                remoteCli,
+            },
+        });
+        const iterationSummary = normalizeText(summary)
+            || buildManagedAppStatusSummary(normalizedApp, buildRun, phase, deployment);
+        const previousMetadata = buildRun.metadata && typeof buildRun.metadata === 'object'
+            ? buildRun.metadata
+            : {};
+
+        return this.store.updateBuildRun(buildRun.id, {
+            metadata: {
+                ...previousMetadata,
+                iteration: {
+                    ...(previousMetadata.iteration || {}),
+                    action,
+                    prompt: normalizeText(input.prompt || input.sourcePrompt),
+                    deployRequested: buildRun.deployRequested === true,
+                    summary: iterationSummary,
+                    phase: normalizeText(phase),
+                    stages,
+                    evidence,
+                    committedPaths: evidence.committedPaths,
+                    commitSha: evidence.commitSha,
+                    pipelineUrl: evidence.pipelineUrl,
+                    imageTag: evidence.imageTag,
+                    failureCategory: normalizeText(failureCategory),
+                    remoteCli: evidence.remoteCli,
+                    productSignals: {
+                        failedIteration: stages.some((stage) => stage.status === 'failed'),
+                        missingGitLabMovement: Boolean(evidence.commitSha && !evidence.requiredProof.gitlabPipelineObserved),
+                        staleDeployProof: Boolean(evidence.deployStatus && !evidence.requiredProof.publicVerificationObserved),
+                        repeatedCorrection: /(?:again|still|didn'?t|nothing changed|not what i asked|same problem)/i.test(normalizeText(input.prompt || input.sourcePrompt)),
+                    },
+                    sourceOfTruth: 'gitlab',
+                    executor: normalizeText(executor) || 'managed-app-backend',
+                    updatedAt: new Date().toISOString(),
+                },
+            },
+        });
+    }
+
+    buildIterationResponse(app = null, buildRun = null, {
+        action = 'edit',
+        phase = '',
+        summary = '',
+        committedPaths = [],
+        deployment = null,
+        message = '',
+        executor = 'managed-app-backend',
+        remoteCli = null,
+        pipelineUrl = '',
+    } = {}) {
+        const normalizedApp = this.normalizeAppRecord(app);
+        const evidence = buildManagedAppIterationEvidence(normalizedApp, buildRun, {
+            committedPaths,
+            pipelineUrl: pipelineUrl || buildRun?.externalRunUrl,
+            remoteCli,
+        });
+        const stages = buildManagedAppIterationStages({
+            action,
+            app: normalizedApp,
+            buildRun,
+            phase,
+            details: {
+                committedPaths,
+                remoteCli,
+            },
+        });
+        const project = this.buildAppProjectView(normalizedApp, buildRun, {
+            phase,
+            summary,
+            deployment,
+            action,
+            iterationStages: stages,
+        });
+
+        return {
+            app: normalizedApp,
+            buildRun,
+            iteration: {
+                action,
+                stage: normalizeText(phase),
+                stages,
+                evidence,
+                nextActions: buildManagedAppIterationNextActions({ action, app: normalizedApp, buildRun }),
+                previewUrl: evidence.publicUrl,
+                summary: normalizeText(summary || project?.summary || message),
+                executor: normalizeText(executor) || 'managed-app-backend',
+            },
+            project,
+            progress: project?.progress || null,
+            publicUrl: evidence.publicUrl,
+            repository: {
+                owner: normalizeText(normalizedApp?.repoOwner),
+                name: normalizeText(normalizedApp?.repoName),
+                url: normalizeText(normalizedApp?.repoUrl),
+                cloneUrl: normalizeText(normalizedApp?.repoCloneUrl),
+            },
+            message: normalizeText(message || summary || project?.summary),
+        };
+    }
+
+    buildRemoteCliIterationTask(app = {}, input = {}, action = 'edit') {
+        const prompt = normalizeText(input.prompt || input.sourcePrompt || app.sourcePrompt);
+        const desiredDeploy = app.metadata?.desiredDeploy && typeof app.metadata.desiredDeploy === 'object'
+            ? app.metadata.desiredDeploy
+            : {};
+        const publicHost = normalizeText(input.publicHost || app.publicHost || desiredDeploy.publicHost);
+        const namespace = normalizeText(input.namespace || app.namespace || desiredDeploy.namespace);
+        const repoUrl = normalizeText(app.repoCloneUrl || app.repoUrl || app.repoSshUrl);
+        const deployRequested = input.deployRequested === true;
+
+        return [
+            'Managed-app backend CLI iteration.',
+            '',
+            `Action: ${action}`,
+            `App: ${normalizeText(app.appName || app.slug)}`,
+            `Managed app id: ${normalizeText(app.id)}`,
+            `Repository: ${normalizeText(app.repoOwner)}/${normalizeText(app.repoName)}`,
+            repoUrl ? `Git remote: ${repoUrl}` : '',
+            `Default branch: ${normalizeText(app.defaultBranch || desiredDeploy.defaultBranch || 'main')}`,
+            namespace ? `Namespace: ${namespace}` : '',
+            publicHost ? `Public host: ${publicHost}` : '',
+            `Deploy requested: ${deployRequested ? 'yes' : 'no'}`,
+            '',
+            'User iteration prompt:',
+            prompt,
+            '',
+            'Use the backend CLI/remote workbench tools to inspect the repo, patch source, run focused checks, commit, and push to the configured GitLab source of truth.',
+            'Do not treat a successful shell command or a healthy pod as completion by itself. Completion evidence must come back as source-to-public proof where available.',
+            'If this is an edit or build action, finish with a pushed commit. Include final marker lines: GIT_REPO=<origin>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated paths>, and any known DEPLOYMENT/PUBLIC_HOST/UI_CHECK_REPORT/UI_SCREENSHOTS markers.',
+            'If credentials, runner access, destructive replacement, or an ambiguous target blocks the work, emit USER_INPUT_REQUIRED=<concise decision needed> instead of guessing.',
+        ].filter(Boolean).join('\n');
+    }
+
+    async runRemoteCliIteration(app = {}, input = {}, ownerId = null, context = {}, action = 'edit') {
+        if (!this.remoteCliAgentRunner || typeof this.remoteCliAgentRunner.run !== 'function') {
+            const error = new Error('Managed app remote CLI iterations require a configured remote-cli-agent runner.');
+            error.statusCode = 503;
+            throw error;
+        }
+
+        const runnerConfig = typeof this.remoteCliAgentRunner.getPublicConfig === 'function'
+            ? this.remoteCliAgentRunner.getPublicConfig()
+            : {};
+        if (runnerConfig && runnerConfig.configured === false) {
+            const error = new Error('Managed app remote CLI iterations require REMOTE_CLI_MCP_URL and credentials.');
+            error.statusCode = 503;
+            throw error;
+        }
+
+        const task = this.buildRemoteCliIterationTask(app, input, action);
+        const remoteResult = await this.remoteCliAgentRunner.run({
+            task,
+            targetId: input.remoteCliTargetId || input.targetId || runnerConfig.defaultTargetId || 'prod',
+            cwd: input.remoteCliCwd || input.cwd || runnerConfig.defaultCwd || '',
+            sessionId: input.remoteCliSessionId || input.remoteSessionId || input.sessionId || context.remoteCliSessionId || '',
+            waitMs: input.waitMs || input.remoteCliWaitMs || 120000,
+            maxTurns: input.maxTurns || input.remoteCliMaxTurns || 30,
+            adminMode: true,
+            agentName: 'Managed app backend CLI worker',
+            instructions: [
+                'This run is controlled by the KimiBuilt managed-app iteration loop.',
+                'Do not ask for routine names, hosts, branches, namespaces, or deployment shape; use the managed-app facts in the task.',
+                'Prefer GitLab-backed source, commit, pipeline/build event, image/deploy evidence, and public verification markers over conversational status.',
+            ].join('\n'),
+        });
+
+        const commitSha = normalizeText(remoteResult.gitCommit || remoteResult.commitSha);
+        const changedPaths = normalizeStringArray(
+            input.committedPaths?.length
+                ? input.committedPaths
+                : extractRemoteCliChangedPaths(remoteResult.finalOutput),
+            20,
+        );
+        const userInputRequired = normalizeText(String(remoteResult.finalOutput || '').match(/^\s*USER_INPUT_REQUIRED\s*[:=]\s*(.+?)\s*$/im)?.[1] || '');
+        if (userInputRequired) {
+            const error = new Error(userInputRequired);
+            error.statusCode = 409;
+            error.code = 'MANAGED_APP_ITERATION_USER_INPUT_REQUIRED';
+            error.remoteCli = remoteResult;
+            throw error;
+        }
+        if (!commitSha) {
+            const error = new Error('remote-cli-agent finished without a GIT_COMMIT marker, so the managed-app loop cannot record GitLab-backed source evidence.');
+            error.statusCode = 502;
+            error.code = 'MANAGED_APP_ITERATION_MISSING_COMMIT';
+            error.remoteCli = remoteResult;
+            throw error;
+        }
+
+        const metadata = buildManagedAppMetadata(app.metadata || {}, app, {
+            deployConfig: this.getEffectiveDeployConfig(),
+            managedAppsConfig: this.getEffectiveManagedAppsConfig(),
+            project: {
+                summary: `Remote backend CLI iteration pushed ${commitSha.slice(0, 12)} for ${app.appName || app.slug}.`,
+                currentObjective: normalizeText(input.prompt || input.sourcePrompt || app.sourcePrompt),
+                nextStep: input.deployRequested === true
+                    ? 'Observe the GitLab pipeline and continue deployment through managed-app verification.'
+                    : 'Observe the GitLab pipeline, then deploy or verify through the managed-app workbench.',
+                lastUserIntent: normalizeText(input.prompt || input.sourcePrompt || app.sourcePrompt),
+                lastActivityAt: new Date().toISOString(),
+            },
+            repoState: {
+                initialized: true,
+                lastSeededPaths: changedPaths.length > 0 ? changedPaths : app.metadata?.repoState?.lastSeededPaths,
+                lastCommitSha: commitSha,
+                lastCommitAt: new Date().toISOString(),
+            },
+        });
+        const updatedApp = this.store?.updateApp
+            ? this.normalizeAppRecord(await this.store.updateApp(app.id, app.ownerId || ownerId, {
+                status: 'building',
+                sourcePrompt: normalizeText(input.prompt || input.sourcePrompt || app.sourcePrompt),
+                metadata,
+            }))
+            : app;
+        const buildRun = await this.store.createBuildRun({
+            appId: updatedApp.id,
+            ownerId: updatedApp.ownerId || ownerId,
+            sessionId: input.sessionId || context.sessionId || updatedApp.sessionId || null,
+            source: 'remote-cli-agent',
+            requestedAction: input.deployRequested === true ? 'deploy' : 'build',
+            commitSha,
+            imageTag: buildImageTagFromCommit(commitSha),
+            buildStatus: 'queued',
+            deployRequested: input.deployRequested === true,
+            deployStatus: input.deployRequested === true ? 'pending' : 'not_requested',
+            verificationStatus: 'pending',
+            externalRunId: normalizeText(remoteResult.pipelineId || ''),
+            externalRunUrl: normalizeText(input.pipelineUrl || remoteResult.pipelineUrl || ''),
+            metadata: {
+                remoteCli: remoteResult,
+                committedPaths: changedPaths,
+            },
+        });
+        const persistedBuildRun = await this.persistIterationState(updatedApp, buildRun, {
+            input,
+            action,
+            phase: updatedApp.status || 'building',
+            committedPaths: changedPaths,
+            summary: `remote-cli-agent pushed ${commitSha.slice(0, 12)} and queued GitLab evidence tracking.`,
+            executor: 'remote-cli-agent',
+            remoteCli: remoteResult,
+        });
+
+        return this.buildIterationResponse(updatedApp, persistedBuildRun || buildRun, {
+            action,
+            phase: updatedApp.status || 'building',
+            committedPaths: changedPaths,
+            summary: `remote-cli-agent pushed ${commitSha.slice(0, 12)} and queued GitLab evidence tracking.`,
+            message: `remote-cli-agent pushed ${commitSha.slice(0, 12)} and queued GitLab evidence tracking.`,
+            executor: 'remote-cli-agent',
+            remoteCli: remoteResult,
+        });
+    }
+
+    async iterateApp(appRef = '', input = {}, ownerId = null, context = {}) {
+        await this.store.ensureAvailable();
+        const action = normalizeIterationAction(input.action || input.requestedAction || 'edit');
+        if (!action) {
+            const error = new Error('Managed app iterations support action values: edit, build, deploy, or verify.');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const app = await this.resolveApp(appRef, ownerId);
+        if (!app) {
+            return null;
+        }
+
+        const normalizedInput = {
+            ...input,
+            sessionId: input.sessionId || context.sessionId || app.sessionId || null,
+        };
+
+        if (action === 'deploy') {
+            const deployed = await this.deployApp(app.id, {
+                ...normalizedInput,
+                requestedAction: 'deploy',
+                deployRequested: true,
+            }, ownerId, context);
+            if (!deployed) {
+                return null;
+            }
+            const buildRun = deployed.buildRun
+                ? await this.persistIterationState(deployed.app, deployed.buildRun, {
+                    input: normalizedInput,
+                    action,
+                    phase: deployed.app?.status || 'deployed',
+                    deployment: deployed.deployment || null,
+                    summary: deployed.message,
+                })
+                : deployed.buildRun;
+            return this.buildIterationResponse(deployed.app, buildRun || deployed.buildRun, {
+                action,
+                phase: deployed.app?.status || 'deployed',
+                deployment: deployed.deployment || null,
+                summary: deployed.message,
+                message: deployed.message,
+            });
+        }
+
+        if (action === 'verify') {
+            const inspected = await this.inspectApp(app.id, ownerId);
+            if (!inspected) {
+                return null;
+            }
+            const latestBuildRun = inspected.buildRuns?.[0] || inspected.latestBuildRun || null;
+            const phase = inspected.app?.status || latestBuildRun?.verificationStatus || 'verify';
+            const buildRun = latestBuildRun
+                ? await this.persistIterationState(inspected.app, latestBuildRun, {
+                    input: normalizedInput,
+                    action,
+                    phase,
+                    summary: inspected.summary,
+                })
+                : latestBuildRun;
+            return this.buildIterationResponse(inspected.app, buildRun || latestBuildRun, {
+                action,
+                phase,
+                summary: inspected.summary,
+                message: inspected.summary,
+            });
+        }
+
+        if (action === 'edit' && !normalizeText(normalizedInput.prompt || normalizedInput.sourcePrompt) && normalizeFilesInput(normalizedInput.files).length === 0) {
+            const error = new Error('Managed app edit iterations require a prompt or explicit files.');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (normalizeIterationExecutor(normalizedInput) === 'remote-cli-agent') {
+            return this.runRemoteCliIteration(app, normalizedInput, ownerId, context, action);
+        }
+
+        const deployRequested = normalizedInput.deployRequested === true
+            || (action !== 'build' && inferDeployRequested(normalizedInput.requestedAction || normalizedInput.action, false));
+        const updated = await this.updateApp(app.id, {
+            ...normalizedInput,
+            action: deployRequested ? 'deploy' : 'build',
+            requestedAction: deployRequested ? 'deploy' : 'build',
+            deployRequested,
+            sourcePrompt: normalizeText(normalizedInput.sourcePrompt || normalizedInput.prompt || app.sourcePrompt),
+        }, ownerId, context);
+        if (!updated) {
+            return null;
+        }
+
+        const phase = updated.app?.status || 'updated';
+        const buildRun = updated.buildRun
+            ? await this.persistIterationState(updated.app, updated.buildRun, {
+                input: normalizedInput,
+                action,
+                phase,
+                committedPaths: updated.committedPaths || [],
+                summary: updated.message,
+            })
+            : updated.buildRun;
+        return this.buildIterationResponse(updated.app, buildRun || updated.buildRun, {
+            action,
+            phase,
+            committedPaths: updated.committedPaths || [],
+            summary: updated.message,
+            message: updated.message,
+        });
     }
 
     async doctorPlatform(input = {}, ownerId = null, context = {}) {

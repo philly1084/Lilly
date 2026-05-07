@@ -1,3 +1,5 @@
+const { hasWorkloadIntent } = require('../workloads/natural-language');
+
 const AGENCY_MODES = Object.freeze({
   RESPOND: 'respond',
   SINGLE_STEP: 'single-step',
@@ -16,7 +18,7 @@ function hasExplicitDelegationIntent(text = '') {
 }
 
 function hasSchedulingIntent(text = '') {
-  return /\b(schedule|remind|reminder|follow up|later|tomorrow|tonight|next week|recurring|every (?:day|weekday|week|month|hour)|cron(?:\s+job)?|daily|weekly|monthly)\b/i.test(text);
+  return hasWorkloadIntent(text);
 }
 
 function hasMultipleSchedulingIntent(text = '') {
