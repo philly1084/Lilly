@@ -1952,6 +1952,42 @@ function inferPerplexityResearchModeFromText(text = '') {
     return 'search';
 }
 
+function inferWebSearchLocaleParamsFromText(text = '', query = '') {
+    const source = `${text || ''} ${query || ''}`.toLowerCase();
+    if (!source.trim()) {
+        return {};
+    }
+
+    const isWeatherRequest = /\b(weather|forecast|temperature|conditions|warnings?)\b/.test(source);
+    const mentionsNovaScotia = /\b(nova scotia|ns|halifax|dartmouth|bedford|sackville|truro|sydney|cape breton|yarmouth)\b/.test(source);
+    const mentionsCanada = /\b(canada|canadian|environment canada|eccc|environment and climate change canada)\b/.test(source);
+
+    if (!isWeatherRequest || (!mentionsNovaScotia && !mentionsCanada)) {
+        return {};
+    }
+
+    const city = /\bhalifax\b/.test(source)
+        ? 'Halifax'
+        : /\bdartmouth\b/.test(source)
+            ? 'Dartmouth'
+            : '';
+    const rawQuery = String(query || text || '').trim();
+    const needsCanadaQualifier = rawQuery && !/\b(canada|canadian|nova scotia|environment canada|eccc|environment and climate change canada)\b/i.test(rawQuery);
+
+    return {
+        ...(rawQuery
+            ? { query: needsCanadaQualifier ? `${rawQuery} Nova Scotia Environment Canada weather` : rawQuery }
+            : {}),
+        region: 'ca-en',
+        domains: ['weather.gc.ca'],
+        userLocation: {
+            country: 'CA',
+            region: mentionsNovaScotia ? 'NS' : '',
+            city,
+        },
+    };
+}
+
 function extractExplicitWebResearchQuery(text = '') {
     const prompt = String(text || '').trim();
     if (!prompt) {
@@ -10645,20 +10681,23 @@ class ConversationOrchestrator extends EventEmitter {
         if (toolPolicy.executionProfile !== REMOTE_BUILD_EXECUTION_PROFILE
             && toolPolicy.candidateToolIds.includes('web-search')
             && searchQuery) {
+            const localeParams = inferWebSearchLocaleParamsFromText(objective, searchQuery);
             return finalizeAction({
                 tool: 'web-search',
                 reason: researchQuery
                     ? 'Explicit research request should start with Perplexity-backed web search.'
                     : 'Current-information request should start with Perplexity-backed web search.',
                 params: {
-                    query: searchQuery,
+                    query: localeParams.query || searchQuery,
                     engine: 'perplexity',
                     researchMode: inferPerplexityResearchModeFromText(objective),
                     limit: normalizeResearchSearchResultCount(),
-                    region: 'us-en',
+                    region: localeParams.region || 'us-en',
                     timeRange: inferResearchTimeRangeFromText(objective),
                     includeSnippets: true,
                     includeUrls: true,
+                    ...(localeParams.domains ? { domains: localeParams.domains } : {}),
+                    ...(localeParams.userLocation ? { userLocation: localeParams.userLocation } : {}),
                 },
             });
         }
@@ -10923,18 +10962,21 @@ class ConversationOrchestrator extends EventEmitter {
 
         if (toolPolicy.candidateToolIds.includes('web-search') && hasExplicitWebResearchIntentText(prompt)) {
             const query = extractExplicitWebResearchQuery(prompt) || prompt;
+            const localeParams = inferWebSearchLocaleParamsFromText(prompt, query);
             return [{
                 tool: 'web-search',
                 reason: 'Fallback for explicit research intent.',
                 params: {
-                    query,
+                    query: localeParams.query || query,
                     engine: 'perplexity',
                     researchMode: inferPerplexityResearchModeFromText(prompt),
                     limit: normalizeResearchSearchResultCount(),
-                    region: 'us-en',
+                    region: localeParams.region || 'us-en',
                     timeRange: 'all',
                     includeSnippets: true,
                     includeUrls: true,
+                    ...(localeParams.domains ? { domains: localeParams.domains } : {}),
+                    ...(localeParams.userLocation ? { userLocation: localeParams.userLocation } : {}),
                 },
             }];
         }

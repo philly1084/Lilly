@@ -5821,9 +5821,16 @@ describe('ConversationOrchestrator', () => {
             reason: 'Current-information request should start with Perplexity-backed web search.',
             params: expect.objectContaining({
                 engine: 'perplexity',
-                query: 'What is the weather in Halifax today',
+                query: 'What is the weather in Halifax today Nova Scotia Environment Canada weather',
                 researchMode: 'search',
+                region: 'ca-en',
                 timeRange: 'day',
+                domains: ['weather.gc.ca'],
+                userLocation: {
+                    country: 'CA',
+                    region: 'NS',
+                    city: 'Halifax',
+                },
             }),
         });
     });
