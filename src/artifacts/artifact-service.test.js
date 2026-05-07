@@ -685,6 +685,82 @@ describe('ArtifactService', () => {
         }));
     });
 
+    test('treats plain video game requests as playable frontend bundle work', async () => {
+        createResponse.mockResolvedValueOnce({
+            id: 'resp-video-game-1',
+            output: [{
+                type: 'message',
+                content: [{
+                    text: JSON.stringify({
+                        content: '<!DOCTYPE html><html><head><title>Block Runner</title><link rel="stylesheet" href="./styles.css"></head><body><canvas id="game"></canvas><script type="module" src="./game.js"></script></body></html>',
+                        metadata: {
+                            title: 'Block Runner',
+                            frameworkTarget: 'vite',
+                            bundle: {
+                                entry: 'index.html',
+                                files: [
+                                    {
+                                        path: 'index.html',
+                                        language: 'html',
+                                        purpose: 'Playable game entry point',
+                                        content: '<!DOCTYPE html><html><head><title>Block Runner</title><link rel="stylesheet" href="./styles.css"></head><body><canvas id="game"></canvas><script type="module" src="./game.js"></script></body></html>',
+                                    },
+                                    {
+                                        path: 'styles.css',
+                                        language: 'css',
+                                        purpose: 'Game layout styles',
+                                        content: 'html, body { margin: 0; min-height: 100%; background: #101827; color: white; } canvas { display: block; width: 100vw; height: 100vh; }',
+                                    },
+                                    {
+                                        path: 'game.js',
+                                        language: 'javascript',
+                                        purpose: 'Game loop and controls',
+                                        content: 'let score = 0; function loop(){ score += 1; requestAnimationFrame(loop); } loop();',
+                                    },
+                                ],
+                            },
+                        },
+                    }),
+                }],
+            }],
+        });
+
+        await artifactService.generateArtifact({
+            session: { previousResponseId: 'prev-video-game', metadata: {} },
+            sessionId: 'session-1',
+            mode: 'chat',
+            prompt: 'Make me a video game about collecting blocks.',
+            format: 'html',
+            artifactIds: [],
+            existingContent: '',
+            model: 'gpt-5.4',
+        });
+
+        expect(createResponse.mock.calls[0][0]?.instructions).toContain('Build a polished frontend demo instead of a plain document.');
+        expect(createResponse.mock.calls[0][0]?.instructions).toContain('For browser game, playable simulation, or multi-step app requests');
+        expect(renderArtifact).not.toHaveBeenCalled();
+        expect(artifactStore.create).toHaveBeenCalledWith(expect.objectContaining({
+            extension: 'zip',
+            mimeType: 'application/zip',
+            metadata: expect.objectContaining({
+                generationStrategy: 'single-pass-frontend-demo',
+                frameworkTarget: 'vite',
+                siteBundle: expect.objectContaining({
+                    entry: 'index.html',
+                    fileCount: 4,
+                }),
+                bundle: expect.objectContaining({
+                    files: expect.arrayContaining([
+                        expect.objectContaining({ path: 'index.html' }),
+                        expect.objectContaining({ path: 'styles.css' }),
+                        expect.objectContaining({ path: 'game.js' }),
+                        expect.objectContaining({ path: 'README.md' }),
+                    ]),
+                }),
+            }),
+        }));
+    });
+
     test('recovers empty 3D sandbox model output into a playable zip instead of a 22-byte archive', async () => {
         createResponse.mockResolvedValueOnce({
             id: 'resp-3d-empty-1',

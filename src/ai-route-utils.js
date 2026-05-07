@@ -387,7 +387,7 @@ function isWebsiteDesignExampleRequest(text = '') {
         return false;
     }
 
-    const hasWebsiteImplementationCue = /\b(web page|webpage|website|site|frontend|ui|vite|react|nextjs|microsite|landing page|browser game|web game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized);
+    const hasWebsiteImplementationCue = /\b(web page|webpage|website|site|frontend|ui|vite|react|nextjs|microsite|landing page|browser game|web game|video game|sandboxed game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized);
     const hasDesignPrototypeCue = /\b(template|prototype|mockup|example|demo|starter|boilerplate|layout|wireframe|design system|component)\b/.test(normalized);
     const hasPresentationOrDocumentCue = /\b(slides|slide deck|deck|presentation|storyboard|report|brief|document|doc)\b/.test(normalized);
     const hasSlideDeckCue = /\b(powerpoint|pptx?|slide deck|slides?|presentation|deck)\b/.test(normalized);
@@ -406,7 +406,7 @@ function inferRequestedOutputFormat(text = '') {
     const hasArtifactIntent = hasExplicitArtifactGenerationIntent(normalized);
     const hasBuildIntent = /\b(create|make|generate|build|built|produce|render|prepare|draft)\b/.test(normalized);
     const hasWebsiteArtifactSubject = (
-        /\b(website|web page|webpage|html page|page|landing page|homepage|microsite|marketing site|frontend demo|front-end demo|site mockup|site prototype|browser game|web game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
+        /\b(website|web page|webpage|html page|page|landing page|homepage|microsite|marketing site|frontend demo|front-end demo|site mockup|site prototype|browser game|web game|video game|sandboxed game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
         || isDashboardRequest(normalized)
     );
     const hasSandboxPreviewCue = /\b(sandbox|preview|browser preview|live preview|full screen preview|fullscreen preview)\b/.test(normalized);

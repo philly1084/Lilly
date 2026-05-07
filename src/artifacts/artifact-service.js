@@ -1339,7 +1339,7 @@ function isFrontendDemoArtifactRequest(prompt = '') {
         return true;
     }
 
-    return /\b(website|web page|webpage|landing page|homepage|microsite|marketing site|product page|campaign page|frontend demo|front-end demo|site prototype|site mockup|browser game|web game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
+    return /\b(website|web page|webpage|landing page|homepage|microsite|marketing site|product page|campaign page|frontend demo|front-end demo|site prototype|site mockup|browser game|web game|video game|sandboxed game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
         || /\b(3d|three\.?js|webgl|web gpu|webgpu|immersive scene|interactive scene|scene sandbox|sandboxed scene|shader|particles?|orbit controls?)\b/.test(normalized)
         || isDashboardRequest(normalized)
         || (

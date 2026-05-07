@@ -1090,7 +1090,7 @@ function isPreviewableFrontendWorkflowRequest(prompt = '') {
     return false;
   }
 
-  return /\b(website|web page|webpage|landing page|homepage|microsite|marketing site|product page|campaign page|frontend|front-end|web app|app mockup|site prototype|site mockup|website mockup|ui mockup|interactive prototype|soundtrack system|browser game|web game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
+  return /\b(website|web page|webpage|landing page|homepage|microsite|marketing site|product page|campaign page|frontend|front-end|web app|app mockup|site prototype|site mockup|website mockup|ui mockup|interactive prototype|soundtrack system|browser game|web game|video game|sandboxed game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
     || /\b(3d|three\.?js|webgl|web gpu|webgpu|immersive scene|interactive scene|scene sandbox|shader|particles?|orbit controls?)\b/.test(normalized)
     || isDashboardRequest(normalized);
 }

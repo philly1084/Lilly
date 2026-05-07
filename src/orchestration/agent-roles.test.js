@@ -7,6 +7,7 @@ const {
 describe('agent role frontend sandbox detection', () => {
   test('treats browser games and Vite previews as sandbox frontend builds', () => {
     expect(hasWebsiteBuildIntent('Build a playable browser game with a Vite preview')).toBe(true);
+    expect(hasWebsiteBuildIntent('Make me a video game about collecting blocks')).toBe(true);
     expect(hasWebsiteBuildIntent('Make a multi-step frontend sandbox for onboarding')).toBe(true);
 
     const pipeline = inferAgentRolePipeline({
