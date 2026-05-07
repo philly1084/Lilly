@@ -3977,6 +3977,11 @@ class ToolManager {
             subject: { type: 'string' },
             requestBrief: { type: 'string' },
             originalPrompt: { type: 'string' },
+            systemPrompt: {
+              type: 'string',
+              description: 'Optional production-level instructions layered on top of the base podcast script writer instructions.',
+            },
+            additionalSystemPrompt: { type: 'string' },
             title: { type: 'string' },
             filename: { type: 'string' },
             durationMinutes: { type: 'integer', minimum: 3, maximum: 30 },

@@ -222,7 +222,7 @@ class OpenAIClient {
    * @param {string|null} model - Optional model ID
    * @returns {Promise<Object>} Final response data
    */
-  async chat(message, sessionId, onDelta, onDone, model = null, outputFormat = null, onReasoning = null) {
+  async chat(message, sessionId, onDelta, onDone, model = null, outputFormat = null, onReasoning = null, options = {}) {
     this.refreshClient();
     
     const messages = [{ role: 'user', content: message }];
@@ -238,6 +238,9 @@ class OpenAIClient {
         remoteBuildAutonomyApproved: CLI_REMOTE_BUILD_AUTONOMY_APPROVED,
         clientSurface: CLI_CLIENT_SURFACE,
         enableConversationExecutor: true,
+        ...(options.metadata && typeof options.metadata === 'object'
+          ? options.metadata
+          : {}),
       },
     };
     

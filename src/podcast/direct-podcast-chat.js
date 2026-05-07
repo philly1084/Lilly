@@ -61,11 +61,66 @@ function shouldUseDirectPodcastChat(text = '') {
   return hasExplicitPodcastIntent(text);
 }
 
+function normalizeBooleanOption(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function normalizePodcastOptions(options = {}) {
+  const source = options && typeof options === 'object' ? options : {};
+  const normalized = {};
+  [
+    'includeVideo',
+    'voiceOnlyAudio',
+    'includeIntro',
+    'includeOutro',
+    'includeMusicBed',
+    'videoGenerateImages',
+  ].forEach((key) => {
+    const value = normalizeBooleanOption(source[key]);
+    if (value !== null) {
+      normalized[key] = value;
+    }
+  });
+
+  [
+    'videoAspectRatio',
+    'videoRenderMode',
+    'videoImageMode',
+    'scriptDesign',
+    'scriptDesignExample',
+    'systemPrompt',
+    'additionalSystemPrompt',
+    'directContentRequest',
+    'outputFormat',
+  ].forEach((key) => {
+    const value = String(source[key] || '').trim();
+    if (value) {
+      normalized[key] = value;
+    }
+  });
+
+  const durationMinutes = Number(source.durationMinutes);
+  if (Number.isFinite(durationMinutes)) {
+    normalized.durationMinutes = Math.max(3, Math.min(30, Math.round(durationMinutes)));
+  }
+
+  if (normalized.voiceOnlyAudio !== true && (
+    normalized.includeIntro === true
+    || normalized.includeOutro === true
+    || normalized.includeMusicBed === true
+  )) {
+    normalized.voiceOnlyAudio = false;
+  }
+
+  return normalized;
+}
+
 function buildDirectPodcastParams({
   text = '',
   artifactIds = [],
   model = null,
   reasoningEffort = null,
+  podcastOptions = null,
 } = {}) {
   const topic = extractExplicitPodcastTopic(text);
   if (!topic) {
@@ -84,10 +139,16 @@ function buildDirectPodcastParams({
     ? inferPodcastVideoOptions(text)
     : {};
   const audioAssetOptions = inferPodcastAudioAssetOptions(text);
+  const structuredOptions = normalizePodcastOptions(podcastOptions);
+  const directContentRequest = String(structuredOptions.directContentRequest || '').trim();
+  const additionalBrief = directContentRequest
+    ? `\n\nDirect content request:\n${directContentRequest}`
+    : '';
+  delete structuredOptions.directContentRequest;
 
   return {
     topic,
-    ...(requestBrief ? { requestBrief } : {}),
+    ...(requestBrief || additionalBrief ? { requestBrief: `${requestBrief}${additionalBrief}`.trim() } : {}),
     ...(hostCount ? { hostCount } : {}),
     ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
     ...(durationMinutes ? { durationMinutes } : {}),
@@ -96,6 +157,7 @@ function buildDirectPodcastParams({
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...audioAssetOptions,
     ...videoOptions,
+    ...structuredOptions,
   };
 }
 

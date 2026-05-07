@@ -52,6 +52,7 @@ const COMMANDS = [
   '/url', '/config', '/theme', '/export', '/import', '/rename', '/delete',
   '/copy', '/paste', '/undo', '/redo', '/search', '/settings', '/download-image',
   '/models', '/model', '/image', '/img', '/imgmodels', '/providers', '/attach',
+  '/podcast', '/video-podcast',
   '/provider-status', '/remote', '/skills', '/skill', '/skill-create', '/skill-update',
   '/.help', '/.status', '/.interrupt', '/.detach'
 ];
@@ -158,6 +159,8 @@ function printHelp() {
     ['/models', 'List available chat models'],
     ['/model <id>', 'Set default model'],
     ['/image <prompt>', 'Generate an image'],
+    ['/podcast <topic> [--music] [--audio]', 'Create a basic audio podcast'],
+    ['/video-podcast <topic> [--music] [--audio]', 'Create a basic video podcast'],
     ['/download-image <url|index> [file]', 'Download an image from URL or last response'],
     ['/imgmodels', 'List image generation models'],
     ['/upload <file>', 'Upload an artifact to the current session'],
@@ -891,6 +894,51 @@ async function handleImage(args) {
   }
 }
 
+async function handlePodcastCommand(args = '', includeVideo = false) {
+  const parsed = minimist(String(args || '').split(/\s+/).filter(Boolean), {
+    boolean: ['music', 'audio', 'intro', 'outro', 'unsplash'],
+    string: ['system', 'brief', 'aspect'],
+    alias: {
+      m: 'music',
+      a: 'audio',
+    },
+    default: {
+      aspect: includeVideo ? '16:9' : '',
+    },
+  });
+  const topic = parsed._.join(' ').trim();
+  if (!topic) {
+    console.log(chalk.yellow(`Usage: /${includeVideo ? 'video-podcast' : 'podcast'} <topic> [--music] [--audio] [--system "extra prompt"]`));
+    return;
+  }
+
+  const includeMusicBed = parsed.music === true || parsed.audio === true;
+  const includeIntro = parsed.intro === true || parsed.audio === true;
+  const includeOutro = parsed.outro === true || parsed.audio === true;
+  const productionType = includeVideo ? 'video-podcast' : 'podcast';
+  const message = `Create a ${includeVideo ? 'video podcast' : 'podcast'} about ${topic}`;
+
+  await sendChatMessage(message, {
+    metadata: {
+      podcastOptions: {
+        enabled: true,
+        productionType,
+        includeVideo,
+        voiceOnlyAudio: !(includeMusicBed || includeIntro || includeOutro),
+        includeMusicBed,
+        includeIntro,
+        includeOutro,
+        videoAspectRatio: String(parsed.aspect || '16:9'),
+        videoRenderMode: includeVideo ? 'storyboard' : undefined,
+        videoImageMode: parsed.unsplash === true ? 'unsplash' : 'generated',
+        videoGenerateImages: includeVideo && parsed.unsplash !== true,
+        directContentRequest: String(parsed.brief || '').trim(),
+        systemPrompt: String(parsed.system || '').trim(),
+      },
+    },
+  });
+}
+
 /**
  * Handle the /export command.
  * @param {string} filename - Output filename
@@ -1310,7 +1358,7 @@ function inferRequestedOutputFormat(message) {
 
   return checks.find(([, pattern]) => pattern.test(text))?.[0] || null;
 }
-async function sendChatMessage(message) {
+async function sendChatMessage(message, options = {}) {
   if (isProcessing) {
     console.log(chalk.yellow('⚠ Please wait for the current response...'));
     return;
@@ -1363,7 +1411,8 @@ async function sendChatMessage(message) {
       },
       currentModel,
       outputFormat,
-      appendReasoning
+      appendReasoning,
+      options
     );
     
     if (result.sessionId && result.sessionId !== currentSessionId) {
@@ -2238,6 +2287,12 @@ async function processInput(input) {
       case 'image':
       case 'img':
         await handleImage(args);
+        return true;
+      case 'podcast':
+        await handlePodcastCommand(args, false);
+        return true;
+      case 'video-podcast':
+        await handlePodcastCommand(args, true);
         return true;
       case 'download-image':
         await handleDownloadImageCommand(args);

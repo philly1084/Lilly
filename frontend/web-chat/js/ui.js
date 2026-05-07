@@ -4909,6 +4909,11 @@ class UIHelpers {
         this.trapFocus(modal);
     }
 
+    openPodcastModal() {
+        this.openImageModal();
+        this.setImageSource('podcast');
+    }
+
     getImageModelPreferenceRank(model = {}) {
         const normalizedId = String(model?.id || '').trim().toLowerCase();
         const preferredOrder = [
@@ -5059,11 +5064,15 @@ class UIHelpers {
         const modelSelect = document.getElementById('image-model-select');
         const sizeSelect = document.getElementById('image-size-select');
         const countSelect = document.getElementById('image-count-select');
+        const directRequestInput = document.getElementById('podcast-direct-request-input');
+        const systemPromptInput = document.getElementById('podcast-system-prompt-input');
         
         if (promptInput) promptInput.value = '';
         if (modelSelect) modelSelect.value = this.getPreferredImageModelId();
         if (sizeSelect) sizeSelect.value = '';
         if (countSelect) countSelect.value = '1';
+        if (directRequestInput) directRequestInput.value = '';
+        if (systemPromptInput) systemPromptInput.value = '';
         
         this.imageGenerationState.quality = null;
         this.imageGenerationState.style = null;
@@ -5092,6 +5101,7 @@ class UIHelpers {
         // Show/hide appropriate options
         const aiOptions = document.getElementById('ai-generation-options');
         const unsplashOptions = document.getElementById('unsplash-options');
+        const podcastOptions = document.getElementById('podcast-options');
         const promptLabel = document.getElementById('image-prompt-label');
         const actionText = document.getElementById('image-action-text');
         const actionIcon = document.querySelector('#image-generate-btn i');
@@ -5099,15 +5109,24 @@ class UIHelpers {
         if (source === 'generate') {
             aiOptions?.classList.remove('hidden');
             unsplashOptions?.classList.add('hidden');
+            podcastOptions?.classList.add('hidden');
             if (promptLabel) promptLabel.textContent = 'Describe the image you want to generate...';
             if (actionText) actionText.textContent = 'Generate Image';
             if (actionIcon) actionIcon.setAttribute('data-lucide', 'wand-2');
-        } else {
+        } else if (source === 'unsplash') {
             aiOptions?.classList.add('hidden');
             unsplashOptions?.classList.remove('hidden');
+            podcastOptions?.classList.add('hidden');
             if (promptLabel) promptLabel.textContent = 'What are you looking for?';
             if (actionText) actionText.textContent = 'Search Unsplash';
             if (actionIcon) actionIcon.setAttribute('data-lucide', 'search');
+        } else {
+            aiOptions?.classList.add('hidden');
+            unsplashOptions?.classList.add('hidden');
+            podcastOptions?.classList.remove('hidden');
+            if (promptLabel) promptLabel.textContent = 'What should the podcast be about?';
+            if (actionText) actionText.textContent = 'Create Podcast';
+            if (actionIcon) actionIcon.setAttribute('data-lucide', 'audio-lines');
         }
         
         // Re-initialize icons
@@ -5250,6 +5269,44 @@ class UIHelpers {
         }
         
         return options;
+    }
+
+    getPodcastProductionOptions() {
+        const promptInput = document.getElementById('image-prompt-input');
+        const outputSelect = document.getElementById('podcast-output-select');
+        const aspectSelect = document.getElementById('podcast-aspect-select');
+        const musicToggle = document.getElementById('podcast-music-toggle');
+        const introToggle = document.getElementById('podcast-intro-toggle');
+        const outroToggle = document.getElementById('podcast-outro-toggle');
+        const unsplashToggle = document.getElementById('podcast-unsplash-toggle');
+        const directRequestInput = document.getElementById('podcast-direct-request-input');
+        const systemPromptInput = document.getElementById('podcast-system-prompt-input');
+        const productionType = String(outputSelect?.value || 'podcast').trim();
+        const includeVideo = productionType === 'video-podcast';
+        const includeMusicBed = musicToggle?.checked === true;
+        const includeIntro = introToggle?.checked === true;
+        const includeOutro = outroToggle?.checked === true;
+
+        return {
+            prompt: promptInput?.value?.trim() || '',
+            metadata: {
+                podcastOptions: {
+                    enabled: true,
+                    productionType,
+                    includeVideo,
+                    voiceOnlyAudio: !(includeMusicBed || includeIntro || includeOutro),
+                    includeMusicBed,
+                    includeIntro,
+                    includeOutro,
+                    videoAspectRatio: aspectSelect?.value || '16:9',
+                    videoRenderMode: includeVideo ? 'storyboard' : undefined,
+                    videoImageMode: unsplashToggle?.checked === true ? 'unsplash' : 'generated',
+                    videoGenerateImages: includeVideo && unsplashToggle?.checked !== true,
+                    directContentRequest: directRequestInput?.value?.trim() || '',
+                    systemPrompt: systemPromptInput?.value?.trim() || '',
+                },
+            },
+        };
     }
 
     /**

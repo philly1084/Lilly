@@ -66,6 +66,47 @@ describe('direct podcast chat intent', () => {
     }));
   });
 
+  test('treats requested soundtrack as a music bed without polluting the topic', () => {
+    const params = buildDirectPodcastParams({
+      text: 'make a video podcast about grid batteries with a subtle background soundtrack',
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      topic: 'grid batteries',
+      includeVideo: true,
+      voiceOnlyAudio: false,
+      includeMusicBed: true,
+    }));
+  });
+
+  test('lets structured production controls override text inference', () => {
+    const params = buildDirectPodcastParams({
+      text: 'make a podcast about grid batteries',
+      podcastOptions: {
+        includeVideo: true,
+        includeMusicBed: true,
+        videoAspectRatio: '9:16',
+        videoRenderMode: 'storyboard',
+        videoImageMode: 'unsplash',
+        directContentRequest: 'Focus on practical homeowner decisions.',
+        systemPrompt: 'Keep the hosts concrete and avoid generic framing.',
+      },
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      topic: 'grid batteries',
+      includeVideo: true,
+      voiceOnlyAudio: false,
+      includeMusicBed: true,
+      videoAspectRatio: '9:16',
+      videoRenderMode: 'storyboard',
+      videoImageMode: 'unsplash',
+      systemPrompt: 'Keep the hosts concrete and avoid generic framing.',
+    }));
+    expect(params.requestBrief).toContain('Direct content request:');
+    expect(params.requestBrief).toContain('practical homeowner decisions');
+  });
+
   test('keeps explicitly clean video podcast audio speaker-only', () => {
     const params = buildDirectPodcastParams({
       text: 'make a video podcast about grid batteries with clean audio and no music',

@@ -48,7 +48,7 @@ class CodeCLIApp {
         // Available commands for autocomplete
         this.commands = [
             '/help', '/?', '/clear', '/cls', '/new', '/sessions', '/switch', '/delete', '/models', '/model', '/theme', '/voxel',
-            '/export', '/save', '/load', '/copy', '/image', '/image-models', '/unsplash', '/diagram',
+            '/export', '/save', '/load', '/copy', '/image', '/image-models', '/unsplash', '/podcast', '/video-podcast', '/diagram',
             '/upload', '/session', '/history', '/artifacts', '/stats', '/shortcuts', '/keys', '/health', '/tools', '/tool', '/tool-help',
             '/skills', '/skill', '/skill-create', '/skill-update',
             '/files', '/ls', '/download', '/open', '/pet', '/spawn', '/agent', '/voxel-agent', '/random-agent', '/creator', '/voxel-creator',
@@ -1233,6 +1233,12 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
             case 'unsplash':
                 await this.searchUnsplash(args.join(' '));
                 break;
+            case 'podcast':
+                await this.runPodcastCommand(args.join(' '), false);
+                break;
+            case 'video-podcast':
+                await this.runPodcastCommand(args.join(' '), true);
+                break;
             case 'diagram':
                 if (!args[0] || args[0] === 'help' || args[0] === '?') {
                     this.printDiagramHelp();
@@ -1302,7 +1308,7 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
         }
     }
     
-    async processQuery(input) {
+    async processQuery(input, options = {}) {
         if (this.isProcessing) {
             this.printWarning('Already processing. Please wait...');
             return;
@@ -1315,7 +1321,14 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
         this.reactVoxelPet(input, 'think');
         
         try {
-            const chatOptions = this.buildVoxelChatOptions(input);
+            const chatOptions = {
+                ...this.buildVoxelChatOptions(input),
+                ...(options || {}),
+                metadata: {
+                    ...(this.buildVoxelChatOptions(input)?.metadata || {}),
+                    ...(options?.metadata || {}),
+                },
+            };
             
             const response = await api.sendMessage(input, (chunk) => {
                 // Stream progress
@@ -1379,6 +1392,98 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
             // Process any queued commands
             this.processQueue();
         }
+    }
+
+    parsePodcastCliOptions(input = '') {
+        const tokens = String(input || '').split(/\s+/).filter(Boolean);
+        const flags = {
+            music: false,
+            audio: false,
+            intro: false,
+            outro: false,
+            unsplash: false,
+            aspect: '16:9',
+            systemPrompt: '',
+            directContentRequest: '',
+        };
+        const topic = [];
+
+        for (let index = 0; index < tokens.length; index += 1) {
+            const token = tokens[index];
+            if (token === '--music' || token === '-m') {
+                flags.music = true;
+            } else if (token === '--audio' || token === '-a') {
+                flags.audio = true;
+            } else if (token === '--intro') {
+                flags.intro = true;
+            } else if (token === '--outro') {
+                flags.outro = true;
+            } else if (token === '--unsplash') {
+                flags.unsplash = true;
+            } else if (token === '--aspect') {
+                flags.aspect = tokens[index + 1] || flags.aspect;
+                index += 1;
+            } else if (token === '--system') {
+                flags.systemPrompt = tokens[index + 1] || '';
+                index += 1;
+            } else if (token === '--brief') {
+                flags.directContentRequest = tokens[index + 1] || '';
+                index += 1;
+            } else {
+                topic.push(token);
+            }
+        }
+
+        return {
+            topic: topic.join(' ').trim(),
+            flags,
+        };
+    }
+
+    async runPodcastCommand(input = '', includeVideo = false) {
+        const parsed = this.parsePodcastCliOptions(input);
+        if (!parsed.topic) {
+            this.printError(`Usage: /${includeVideo ? 'video-podcast' : 'podcast'} <topic> [--music] [--audio] [--system "extra prompt"]`);
+            return;
+        }
+
+        const includeMusicBed = parsed.flags.music === true || parsed.flags.audio === true;
+        const includeIntro = parsed.flags.intro === true || parsed.flags.audio === true;
+        const includeOutro = parsed.flags.outro === true || parsed.flags.audio === true;
+        const productionType = includeVideo ? 'video-podcast' : 'podcast';
+        const message = `Create a ${includeVideo ? 'video podcast' : 'podcast'} about ${parsed.topic}`;
+
+        await this.processQueryWithOptions(message, {
+            metadata: {
+                podcastOptions: {
+                    enabled: true,
+                    productionType,
+                    includeVideo,
+                    voiceOnlyAudio: !(includeMusicBed || includeIntro || includeOutro),
+                    includeMusicBed,
+                    includeIntro,
+                    includeOutro,
+                    videoAspectRatio: parsed.flags.aspect || '16:9',
+                    videoRenderMode: includeVideo ? 'storyboard' : undefined,
+                    videoImageMode: parsed.flags.unsplash ? 'unsplash' : 'generated',
+                    videoGenerateImages: includeVideo && !parsed.flags.unsplash,
+                    directContentRequest: parsed.flags.directContentRequest,
+                    systemPrompt: parsed.flags.systemPrompt,
+                },
+            },
+        });
+    }
+
+    async processQueryWithOptions(input, options = {}) {
+        const merged = {
+            ...this.buildVoxelChatOptions(input),
+            ...(options || {}),
+            metadata: {
+                ...(this.buildVoxelChatOptions(input)?.metadata || {}),
+                ...(options?.metadata || {}),
+            },
+        };
+        return this.processQuery(input, merged);
     }
     
     // ==================== Simple Status & Queue ====================
@@ -2083,6 +2188,10 @@ Session Statistics:
   /image-models      List available image models
   /unsplash <query>  Search Unsplash for stock images
                      Options: --orientation landscape|portrait|squarish
+  /podcast <topic>   Create a basic audio podcast
+                     Options: --music --audio --intro --outro --system "extra prompt"
+  /video-podcast <topic>
+                     Create a video podcast; add --music for background soundtrack
   /diagram <type>    Generate Mermaid diagram
   /upload            Upload a file for context
 

@@ -259,7 +259,7 @@
             <div class="modal-header">
                 <div class="flex items-center gap-2">
                     <i data-lucide="image" class="w-5 h-5 text-purple-500" aria-hidden="true"></i>
-                    <h3 id="image-modal-title">Create Image</h3>
+                    <h3 id="image-modal-title">Create Media</h3>
                 </div>
                 <button class="btn-icon" onclick="uiHelpers.closeImageModal()" aria-label="Close image generation modal">
                     <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
@@ -286,6 +286,15 @@
                                 aria-checked="false">
                             <i data-lucide="camera" class="w-4 h-4" aria-hidden="true"></i>
                             <span>Unsplash</span>
+                        </button>
+                        <button type="button"
+                                class="image-source-btn"
+                                data-source="podcast"
+                                onclick="uiHelpers.setImageSource('podcast')"
+                                role="radio"
+                                aria-checked="false">
+                            <i data-lucide="audio-lines" class="w-4 h-4" aria-hidden="true"></i>
+                            <span>Podcast</span>
                         </button>
                     </div>
                     
@@ -353,6 +362,53 @@
                                 <i data-lucide="info" class="w-4 h-4" aria-hidden="true"></i>
                                 Search millions of free high-quality photos from Unsplash.
                             </p>
+                        </div>
+                    </div>
+
+                    <!-- Podcast / Video Podcast Options -->
+                    <div id="podcast-options" class="hidden space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <label class="block text-sm font-medium text-text-secondary">
+                                Output
+                                <select id="podcast-output-select" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary focus:outline-none focus:border-accent">
+                                    <option value="podcast">Audio podcast</option>
+                                    <option value="video-podcast">Video podcast</option>
+                                </select>
+                            </label>
+                            <label class="block text-sm font-medium text-text-secondary">
+                                Video shape
+                                <select id="podcast-aspect-select" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary focus:outline-none focus:border-accent">
+                                    <option value="16:9">16:9 landscape</option>
+                                    <option value="9:16">9:16 vertical</option>
+                                    <option value="1:1">1:1 square</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <label class="check-field">
+                                <input id="podcast-music-toggle" type="checkbox">
+                                <span>Background music / soundtrack</span>
+                            </label>
+                            <label class="check-field">
+                                <input id="podcast-intro-toggle" type="checkbox">
+                                <span>Intro bumper</span>
+                            </label>
+                            <label class="check-field">
+                                <input id="podcast-outro-toggle" type="checkbox">
+                                <span>Outro bumper</span>
+                            </label>
+                            <label class="check-field">
+                                <input id="podcast-unsplash-toggle" type="checkbox">
+                                <span>Use Unsplash visuals</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label for="podcast-direct-request-input" class="block text-sm font-medium text-text-secondary mb-2">Direct content request</label>
+                            <textarea id="podcast-direct-request-input" class="w-full bg-bg-tertiary border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none" rows="3" placeholder="Required beats, sources, tone, host style, or exclusions..."></textarea>
+                        </div>
+                        <div>
+                            <label for="podcast-system-prompt-input" class="block text-sm font-medium text-text-secondary mb-2">Additional system prompt</label>
+                            <textarea id="podcast-system-prompt-input" class="w-full bg-bg-tertiary border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none" rows="3" placeholder="Production rules layered above the base podcast writer..."></textarea>
                         </div>
                     </div>
                     
@@ -799,6 +855,9 @@
                             <!-- Image Generation Button -->
                             <button id="image-btn" class="image-btn ml-2 mb-3 p-2 rounded-lg text-text-secondary hover:text-purple-500 hover:bg-purple-500/10 transition-all" title="Generate image (Ctrl+I)" onclick="uiHelpers.openImageModal()" aria-label="Generate image">
                                 <i data-lucide="image-plus" class="w-5 h-5" aria-hidden="true"></i>
+                            </button>
+                            <button id="podcast-btn" class="image-btn mb-3 p-2 rounded-lg text-text-secondary hover:text-emerald-500 hover:bg-emerald-500/10 transition-all" title="Create podcast or video podcast" onclick="uiHelpers.openPodcastModal()" aria-label="Create podcast or video podcast">
+                                <i data-lucide="audio-lines" class="w-5 h-5" aria-hidden="true"></i>
                             </button>
                             <textarea 
                                 id="message-input" 

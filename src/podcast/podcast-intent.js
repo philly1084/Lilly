@@ -130,7 +130,8 @@ function inferPodcastAudioAssetOptions(text = '') {
     const includeOutro = useAllAdminAudio
         || /\b(?:use|add|include|with)\b[\s\S]{0,30}\b(?:outro|closing bumper|closer)\b/i.test(normalized);
     const includeMusicBed = useAllAdminAudio
-        || /\b(?:use|add|include|with)\b[\s\S]{0,40}\b(?:music bed|background music|bed music|theme music|backing track)\b/i.test(normalized);
+        || /\b(?:use|add|include|with|want|needs?|give it|make it)\b[\s\S]{0,50}\b(?:music bed|background music|bed music|theme music|backing track|soundtrack|score|music underneath|music underlay)\b/i.test(normalized)
+        || /\b(?:music bed|background music|bed music|theme music|backing track|soundtrack|score)\b[\s\S]{0,30}\b(?:under|behind|beneath|throughout|in the background)\b/i.test(normalized);
 
     if (!includeIntro && !includeOutro && !includeMusicBed) {
         return {};
@@ -147,7 +148,7 @@ function inferPodcastAudioAssetOptions(text = '') {
 function cleanExtractedPodcastTopic(value = '') {
     return String(value || '')
         .replace(/\b(?:with|using|use|include|add)\s+(?:the\s+)?(?:admin|uploaded|saved|configured)\s+(?:podcast\s+)?(?:audio|audio sources|audio assets|tracks)\b[\s\S]*$/i, '')
-        .replace(/\b(?:with|using|use|include|add)\s+(?:an?\s+)?(?:intro|outro|music bed|background music|opening bumper|closing bumper|theme music|backing track)\b[\s\S]*$/i, '')
+        .replace(/\b(?:with|using|use|include|add|want|needs?)\s+(?:an?\s+)?(?:subtle|light|soft|quiet|ambient|background)?\s*(?:intro|outro|music bed|background music|background soundtrack|opening bumper|closing bumper|theme music|backing track|soundtrack|score)\b[\s\S]*$/i, '')
         .replace(/\b(?:speaker[- ]only|voice[- ]only|clean audio|no music|without music|no admin audio|without admin audio|no audio sources|without audio sources)\b[\s\S]*$/i, '')
         .replace(/\bwith\s+(?:generated|ai|custom|scene|cover)\s+(?:images?|visuals?|art|artwork)\b[\s\S]*$/i, '')
         .replace(/\bwith\s+(?:visuals?|scene images?|cover art|an? image|images?)\b[\s\S]*$/i, '')

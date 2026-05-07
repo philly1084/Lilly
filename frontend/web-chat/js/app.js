@@ -3995,6 +3995,9 @@ class ChatApp {
                         assistantMessageId: storedAssistantMessage.id,
                         userMessageTimestamp: storedUserMessage.timestamp,
                         assistantMessageTimestamp: storedAssistantMessage.timestamp,
+                        ...(options.metadata && typeof options.metadata === 'object'
+                            ? options.metadata
+                            : {}),
                     },
                     artifactIds: selectedArtifactIds,
                     shouldResyncAfterDisconnect: (error, context) => this.shouldResyncAfterDisconnect(error, context),
@@ -8019,16 +8022,40 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const source = uiHelpers.getImageSource();
         
         if (!options.prompt) {
-            uiHelpers.showToast(source === 'unsplash' ? 'Please enter a search query' : 'Please enter a prompt', 'warning');
+            const warning = source === 'unsplash'
+                ? 'Please enter a search query'
+                : (source === 'podcast' ? 'Please describe the podcast topic or content request' : 'Please enter a prompt');
+            uiHelpers.showToast(warning, 'warning');
             return;
         }
         
         if (source === 'unsplash') {
             uiHelpers.closeImageModal();
             await this.searchUnsplashImages(options.prompt);
+        } else if (source === 'podcast') {
+            await this.handlePodcastProductionAction();
         } else {
             await this.generateImage();
         }
+    }
+
+    async handlePodcastProductionAction() {
+        const options = uiHelpers.getPodcastProductionOptions();
+        if (!options.prompt) {
+            uiHelpers.showToast('Please describe the podcast topic or content request', 'warning');
+            return;
+        }
+
+        uiHelpers.closeImageModal();
+        const productionType = options.metadata?.podcastOptions?.productionType === 'video-podcast'
+            ? 'video podcast'
+            : 'podcast';
+        const prefix = /^(make|create|generate|produce)\b/i.test(options.prompt)
+            ? ''
+            : `Create a ${productionType} about `;
+        await this.sendPreparedMessage(`${prefix}${options.prompt}`.trim(), {
+            metadata: options.metadata,
+        });
     }
 
     async generateImage(optionsOverride = null) {

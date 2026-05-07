@@ -1213,6 +1213,24 @@ ${sourceText}
   `.trim();
 }
 
+function buildPodcastScriptInstructions(params = {}) {
+  const baseInstructions = 'You write polished, factual, natural-sounding podcast scripts and must return valid JSON only.';
+  const additionalSystemPrompt = sanitizePodcastText(
+    params.systemPrompt || params.additionalSystemPrompt || params.customSystemPrompt || '',
+    { preserveNewlines: true },
+  );
+
+  if (!additionalSystemPrompt) {
+    return baseInstructions;
+  }
+
+  return [
+    baseInstructions,
+    'Additional user production instructions:',
+    additionalSystemPrompt,
+  ].join('\n\n');
+}
+
 class PodcastService {
   constructor(dependencies = {}) {
     this.createResponse = dependencies.createResponse || createResponse;
@@ -1425,6 +1443,7 @@ class PodcastService {
     reasoningEffort,
     requestTimeoutMs = DEFAULT_PODCAST_SCRIPT_REQUEST_TIMEOUT_MS,
     videoFormat = false,
+    systemPrompt = '',
   }) {
     const modelCandidates = uniqueOrdered(Array.isArray(models) ? models : [models]);
     const prompt = buildResearchPrompt({
@@ -1468,7 +1487,7 @@ class PodcastService {
       try {
         const response = await this.retryTransientOperation(() => this.createResponse({
           input: prompt,
-          instructions: 'You write polished, factual, natural-sounding podcast scripts and must return valid JSON only.',
+          instructions: buildPodcastScriptInstructions({ systemPrompt }),
           stream: false,
           model: modelCandidate || undefined,
           reasoningEffort,
@@ -1806,6 +1825,7 @@ class PodcastService {
       reasoningEffort: params.reasoningEffort || context.reasoningEffort || undefined,
       requestTimeoutMs: podcastScriptRequestTimeoutMs,
       videoFormat: params.includeVideo === true,
+      systemPrompt: params.systemPrompt || params.additionalSystemPrompt || params.customSystemPrompt || '',
     }), {
       sessionId,
       topic: normalizedTopic,
