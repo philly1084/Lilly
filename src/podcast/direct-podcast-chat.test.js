@@ -113,6 +113,26 @@ describe('direct podcast chat intent', () => {
     expect(params.requestBrief).toContain('practical homeowner decisions');
   });
 
+  test('uses structured menu metadata to treat plain prompt text as a podcast topic', () => {
+    const params = buildDirectPodcastParams({
+      text: 'best time to fish this week in nova scotia',
+      podcastOptions: {
+        enabled: true,
+        productionType: 'podcast',
+        voiceOnlyAudio: false,
+        includeIntro: true,
+        includeMusicBed: true,
+      },
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      topic: 'best time to fish this week in nova scotia',
+      voiceOnlyAudio: false,
+      includeIntro: true,
+      includeMusicBed: true,
+    }));
+  });
+
   test('keeps explicitly clean video podcast audio speaker-only', () => {
     const params = buildDirectPodcastParams({
       text: 'make a video podcast about grid batteries with clean audio and no music',

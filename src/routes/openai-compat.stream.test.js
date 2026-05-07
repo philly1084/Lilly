@@ -127,6 +127,7 @@ jest.mock('../user-checkpoints', () => ({
 
 const { sessionStore } = require('../session-store');
 const { executeConversationRuntime } = require('../runtime-execution');
+const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const openAiCompatRouter = require('./openai-compat');
 
 describe('/v1/chat/completions stream forwarding', () => {
@@ -219,6 +220,72 @@ describe('/v1/chat/completions stream forwarding', () => {
         expect(response.text).toContain('"name":"web_search"');
         expect(response.text).toContain('"delta":{"content":"Answer"}');
         expect(response.text).toContain('data: [DONE]');
+    });
+
+    test('routes web-chat menu podcast metadata directly to the podcast tool', async () => {
+        const toolManager = {
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                data: {
+                    title: 'Fishing Windows',
+                    summary: 'A produced episode with mixed audio.',
+                    artifacts: [{
+                        id: 'artifact-podcast-1',
+                        filename: 'fishing-windows.wav',
+                        mimeType: 'audio/wav',
+                    }],
+                },
+            }),
+        };
+        ensureRuntimeToolManager.mockResolvedValue(toolManager);
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                messages: [
+                    { role: 'user', content: 'best time to fish this week in nova scotia' },
+                ],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                stream: false,
+                session_id: 'web-chat-stream-1',
+                model: 'gpt-5.5',
+                metadata: {
+                    podcastOptions: {
+                        enabled: true,
+                        productionType: 'podcast',
+                        voiceOnlyAudio: false,
+                        includeIntro: true,
+                        includeMusicBed: true,
+                        cycleHostVoices: false,
+                        allowVoiceFallback: false,
+                    },
+                },
+            });
+
+        expect(response.status).toBe(200);
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'podcast',
+            expect.objectContaining({
+                topic: 'best time to fish this week in nova scotia',
+                voiceOnlyAudio: false,
+                includeIntro: true,
+                includeMusicBed: true,
+                cycleHostVoices: false,
+                allowVoiceFallback: false,
+            }),
+            expect.objectContaining({
+                route: '/v1/chat/completions',
+                executionProfile: 'podcast',
+            }),
+        );
+        expect(executeConversationRuntime).not.toHaveBeenCalled();
+        expect(response.body.choices[0].message.content).toContain('Fishing Windows');
+        expect(response.body.tool_events[0].toolCall.function.arguments).toContain('includeMusicBed');
     });
 
     test('forwards orchestration progress events before final stream completion', async () => {

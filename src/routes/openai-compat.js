@@ -77,10 +77,33 @@ const {
     extractResponseUsageMetadata,
     normalizeUsageMetadata,
 } = require('../utils/token-usage');
+const {
+    buildDirectPodcastAssistantMessage,
+    buildDirectPodcastParams,
+    shouldUseDirectPodcastChat,
+} = require('../podcast/direct-podcast-chat');
 
 const router = Router();
 const FINAL_SYNTHESIS_PLACEHOLDER = 'I completed the request, but the final answer could not be synthesized from the model response.';
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
+
+function getPodcastRequestOptions(metadata = {}) {
+    const source = metadata && typeof metadata === 'object' ? metadata : {};
+    const options = source.podcastOptions || source.podcastProduction || null;
+    return options && typeof options === 'object' ? options : null;
+}
+
+function hasStructuredPodcastRequest(metadata = {}) {
+    const options = getPodcastRequestOptions(metadata);
+    if (!options) {
+        return false;
+    }
+
+    return options.enabled === true
+        || options.includeVideo === true
+        || options.productionType === 'podcast'
+        || options.productionType === 'video-podcast';
+}
 
 function buildOwnerMemoryMetadata(ownerId = null, memoryScope = null, extra = {}) {
     return buildScopedMemoryMetadata({
@@ -1090,6 +1113,176 @@ router.post('/chat/completions', async (req, res, next) => {
             transport: 'http',
             metadata: { route: '/v1/chat/completions', stream, phase: 'preflight', reasoningEffort },
         });
+        const podcastRequestOptions = getPodcastRequestOptions(effectiveRequestMetadata);
+        if (shouldUseDirectPodcastChat(lastUserText) || hasStructuredPodcastRequest(effectiveRequestMetadata)) {
+            const podcastParams = buildDirectPodcastParams({
+                text: lastUserText,
+                artifactIds: effectiveArtifactIds,
+                model,
+                reasoningEffort,
+                podcastOptions: podcastRequestOptions,
+            });
+            if (podcastParams) {
+                if (stream) {
+                    activeSse = openSseStream(req, res, sessionId, '/v1/chat/completions#podcast');
+                    writeCompatSseProgressPayload(activeSse, sessionId, {
+                        phase: 'podcast',
+                        detail: 'Starting the podcast workflow.',
+                        summary: 'Creating podcast audio',
+                    });
+                }
+
+                const toolManager = await ensureRuntimeToolManager(req.app);
+                const result = await toolManager.executeTool('podcast', podcastParams, {
+                    sessionId,
+                    route: '/v1/chat/completions',
+                    transport: 'http',
+                    memoryService,
+                    ownerId,
+                    clientSurface,
+                    memoryScope,
+                    sessionIsolation,
+                    memoryKeywords,
+                    signal: requestAbortSignal,
+                    timezone: requestTimezone,
+                    now: requestNow,
+                    workloadService: req.app.locals.agentWorkloadService,
+                    userCheckpointPolicy,
+                    model,
+                    reasoningEffort,
+                    executionProfile: podcastParams.includeVideo ? 'podcast-video' : 'podcast',
+                });
+                const toolEvents = [{
+                    toolCall: {
+                        function: {
+                            name: 'podcast',
+                            arguments: JSON.stringify(podcastParams),
+                        },
+                    },
+                    result,
+                }];
+                if (result?.success === false) {
+                    const error = new Error(result.error || 'Podcast workflow failed.');
+                    error.code = result.errorCode || result?.diagnostics?.podcast?.code || 'podcast_error';
+                    error.statusCode = Number(result.statusCode || result?.diagnostics?.podcast?.statusCode || 502);
+                    error.podcastDiagnostics = result?.diagnostics?.podcast || {};
+                    throw error;
+                }
+
+                const responseId = `podcast-${Date.now()}`;
+                const assistantText = buildDirectPodcastAssistantMessage(result.data || {});
+                partialAssistantText = assistantText;
+                const artifacts = extractArtifactsFromToolEvents(toolEvents);
+                await sessionStore.recordResponse(sessionId, responseId);
+                await sessionStore.update(sessionId, {
+                    metadata: {
+                        taskType,
+                        clientSurface: clientSurface || taskType,
+                        memoryScope,
+                        lastToolIntent: 'podcast',
+                        lastPodcastTopic: podcastParams.topic,
+                    },
+                });
+                memoryService.rememberResponse(sessionId, assistantText, buildOwnerMemoryMetadata(ownerId, memoryScope, {
+                    sourceSurface: clientSurface || taskType,
+                    ...(memoryKeywords.length > 0 ? { memoryKeywords } : {}),
+                    ...(sessionIsolation ? { sessionIsolation: true } : {}),
+                }));
+                await persistForegroundTurnMessages(
+                    sessionStore,
+                    sessionId,
+                    buildWebChatSessionMessages({
+                        userText: lastUserText,
+                        assistantText,
+                        toolEvents,
+                        artifacts,
+                        ...buildForegroundTurnMessageOptions(pendingForegroundTurn),
+                    }),
+                    pendingForegroundTurn,
+                );
+                foregroundTurnFinalized = true;
+                await updateSessionProjectMemory(sessionId, {
+                    userText: lastUserText,
+                    assistantText,
+                    toolEvents,
+                    artifacts,
+                }, ownerId);
+                completeRuntimeTask(runtimeTask?.id, {
+                    responseId,
+                    output: assistantText,
+                    model: result.data?.model || model || null,
+                    duration: Date.now() - startedAt,
+                    metadata: {
+                        toolEvents,
+                        route: 'openai-compat-direct-podcast',
+                    },
+                });
+
+                const responsePayload = {
+                    id: `chatcmpl-${responseId}`,
+                    object: 'chat.completion',
+                    created: Math.floor(Date.now() / 1000),
+                    model: model || 'gpt-4o',
+                    choices: [{
+                        index: 0,
+                        message: {
+                            role: 'assistant',
+                            content: assistantText,
+                            artifacts,
+                        },
+                        finish_reason: 'stop',
+                    }],
+                    session_id: sessionId,
+                    artifacts,
+                    tool_events: toolEvents,
+                    toolEvents,
+                    assistant_metadata: buildFrontendAssistantMetadata({
+                        toolEvents,
+                        artifacts,
+                    }),
+                    assistantMetadata: buildFrontendAssistantMetadata({
+                        toolEvents,
+                        artifacts,
+                    }),
+                };
+
+                if (stream) {
+                    activeSse.write(`data: ${JSON.stringify({
+                        id: `chatcmpl-${responseId}-0`,
+                        object: 'chat.completion.chunk',
+                        created: Math.floor(Date.now() / 1000),
+                        model: model || 'gpt-4o',
+                        choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+                    })}\n\n`);
+                    activeSse.write(`data: ${JSON.stringify({
+                        id: `chatcmpl-${responseId}-1`,
+                        object: 'chat.completion.chunk',
+                        created: Math.floor(Date.now() / 1000),
+                        model: model || 'gpt-4o',
+                        choices: [{ index: 0, delta: { content: assistantText }, finish_reason: null }],
+                    })}\n\n`);
+                    activeSse.write(`data: ${JSON.stringify({
+                        id: `chatcmpl-${responseId}-2`,
+                        object: 'chat.completion.chunk',
+                        created: Math.floor(Date.now() / 1000),
+                        model: model || 'gpt-4o',
+                        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+                        session_id: sessionId,
+                        artifacts,
+                        tool_events: toolEvents,
+                        toolEvents,
+                        assistant_metadata: responsePayload.assistant_metadata,
+                        assistantMetadata: responsePayload.assistantMetadata,
+                    })}\n\n`);
+                    activeSse.write('data: [DONE]\n\n');
+                    activeSse.end();
+                    return;
+                }
+
+                res.json(responsePayload);
+                return;
+            }
+        }
         if (effectiveOutputFormat) {
             setSessionHeaders(res, sessionId);
             activeSse = stream

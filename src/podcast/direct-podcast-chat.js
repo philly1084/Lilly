@@ -124,7 +124,17 @@ function buildDirectPodcastParams({
   reasoningEffort = null,
   podcastOptions = null,
 } = {}) {
-  const topic = extractExplicitPodcastTopic(text);
+  const structuredOptions = normalizePodcastOptions(podcastOptions);
+  const hasStructuredPodcastOptions = structuredOptions.enabled === true
+    || structuredOptions.includeVideo === true
+    || structuredOptions.productionType === 'podcast'
+    || structuredOptions.productionType === 'video-podcast';
+  const fallbackTopic = hasStructuredPodcastOptions
+    ? String(text || '')
+      .replace(/^(?:please\s+)?(?:make|create|generate|produce)\s+(?:a|an)?\s*(?:video\s+)?podcast(?:\s+(?:about|on|for))?\s*/i, '')
+      .trim()
+    : '';
+  const topic = extractExplicitPodcastTopic(text) || fallbackTopic;
   if (!topic) {
     return null;
   }
@@ -141,7 +151,6 @@ function buildDirectPodcastParams({
     ? inferPodcastVideoOptions(text)
     : {};
   const audioAssetOptions = inferPodcastAudioAssetOptions(text);
-  const structuredOptions = normalizePodcastOptions(podcastOptions);
   const directContentRequest = String(structuredOptions.directContentRequest || '').trim();
   const additionalBrief = directContentRequest
     ? `\n\nDirect content request:\n${directContentRequest}`
