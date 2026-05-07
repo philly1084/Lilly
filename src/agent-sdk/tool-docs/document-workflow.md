@@ -19,6 +19,8 @@ Current runtime formats:
 Quality defaults:
 
 - Every AI-backed generation request receives the built-in document quality standard: strategy architecture, background art direction, evidence editing, accessibility review, and final polish.
+- Use a Kimi K2.6-style creation loop for document work: lock the user intent, separate known context from safe assumptions and blockers, architect the artifact, build it, critique the rendered result, repair issues, and hand off proof.
+- The generated artifact or handoff should carry a compact user-alignment snapshot: user goal, audience, target format, purpose, assumptions, open questions, acceptance checks, verification plan, checks run, and checks still needed.
 - Treat design-sensitive documents and sandbox websites as a Symphony-style build loop: plan the surface, generate the artifact, review rendered output, then iterate before final delivery when the review exposes template sameness, broken layout, auth walls, low contrast, missing assets, or thin content.
 - Background creation is automatic. The workflow should define readable canvas, page, panel, dark band, table, chart, caption, and image-overlay surfaces without making the user ask for visual prompt details.
 - Pass `qualityPass:false` only for explicit cost or latency-sensitive calls where the caller accepts lower polish.
@@ -26,6 +28,7 @@ Quality defaults:
 Done means verified:
 
 - The artifact exists and the response includes its artifact ID, download URL, preview URL, or saved file path.
+- The handoff says what user outcome the document is meant to satisfy, what assumptions were made, what open questions remain, and which acceptance checks are already satisfied.
 - HTML previews have been opened or checked with `node bin/kimibuilt-ui-check.js <url-or-file-url> --out ui-checks/<name>` when a browser is available.
 - PDF output has been rendered or visually reviewed for page breaks, contrast, table splits, captions, headers/footers, and image quality.
 - PPTX/XLSX outputs have been opened, rendered, or inspected with the available office/spreadsheet tooling before delivery when tooling exists.

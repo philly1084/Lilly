@@ -1478,6 +1478,10 @@ describe('ToolManager image tools', () => {
       }),
       expect.any(Object),
     );
+    const handoff = nestedToolManager.executeTool.mock.calls[0][1].files.find((file) => file.path === 'AGENT_SANDBOX_BUILD.md').content;
+    expect(handoff).toContain('Kimi K2.6-style creation loop');
+    expect(handoff).toContain('alignment snapshot');
+    expect(handoff).toContain('acceptance checks');
     expect(result.data.sandboxBuild).toEqual(expect.objectContaining({ mode: 'project' }));
   });
 

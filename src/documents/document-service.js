@@ -1395,6 +1395,8 @@ class DocumentService {
         templateUse: 'Use templates as curated starting structures, not final canned output.',
         visualDocuments: 'Prefer generated charts, diagrams, verified images, intentional background systems, browser-rendered PDFs, and Vite/static preview bundles when they materially improve the deliverable.',
         qualityStandard: 'AI document generation includes built-in strategy, background design, evidence, accessibility, and final polish passes unless explicitly disabled.',
+        creationLoop: 'Use a Kimi K2.6-style creation loop: user-intent lock, context decisions, artifact architecture, build/render, critic repair, and handoff proof.',
+        userAlignment: 'Carry user goal, assumptions, open questions, acceptance checks, and verification notes in metadata or handoff notes so the final document can be judged against what the user actually wanted.',
       },
     };
   }

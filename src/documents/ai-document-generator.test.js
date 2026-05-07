@@ -87,11 +87,15 @@ describe('AIDocumentGenerator', () => {
       },
     });
 
-    expect(prompt).toContain('<quality_standard version="document-quality-2026-05-context-interaction">');
-    expect(prompt).toContain('Pass: lets create context by interaction with the user to avoid slop');
+    expect(prompt).toContain('<quality_standard version="document-quality-2026-05-k26-creation-loop">');
+    expect(prompt).toContain('Pass: Kimi K2.6-style creation loop with context, steps, critique, and proof');
     expect(prompt).toContain('<document_intake>');
     expect(prompt).toContain('brief_scan: extract known format, audience, purpose, source material, constraints, and acceptance checks');
     expect(prompt).toContain('Ask one or two concise follow-up questions only when missing details would materially change the document');
+    expect(prompt).toContain('<kimi_creation_loop>');
+    expect(prompt).toContain('Intent lock');
+    expect(prompt).toContain('<user_alignment_snapshot>');
+    expect(prompt).toContain('metadata.userGoal, assumptions, openQuestions, acceptanceChecks, and verificationNotes');
     expect(prompt).toContain('<background_creation>');
     expect(prompt).toContain('Background Art Director');
     expect(prompt).toContain('<multi_agent_design_pass>');
@@ -142,9 +146,10 @@ describe('AIDocumentGenerator', () => {
     expect(result.sections[0].heading).toBe('Approve the focused launch path');
     expect(result.metadata.qualityPassApplied).toBe(true);
     expect(result.metadata.qualityStandard).toEqual(expect.objectContaining({
-      version: 'document-quality-2026-05-context-interaction',
-      passName: 'lets create context by interaction with the user to avoid slop',
+      version: 'document-quality-2026-05-k26-creation-loop',
+      passName: 'Kimi K2.6-style creation loop with context, steps, critique, and proof',
       agentPasses: expect.arrayContaining(['background-art-director', 'accessibility-reviewer']),
+      creationLoop: expect.arrayContaining(['intent-lock', 'critic-repair', 'handoff-proof']),
     }));
   });
 

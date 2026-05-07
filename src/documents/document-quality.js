@@ -1,4 +1,37 @@
-const DOCUMENT_QUALITY_STANDARD_VERSION = 'document-quality-2026-05-context-interaction';
+const DOCUMENT_QUALITY_STANDARD_VERSION = 'document-quality-2026-05-k26-creation-loop';
+
+const KIMI_CREATION_LOOP = [
+  {
+    id: 'intent-lock',
+    label: 'Intent lock',
+    focus: 'Restate the real user job, audience, delivery format, and success condition before choosing structure.',
+  },
+  {
+    id: 'context-decisions',
+    label: 'Context decisions',
+    focus: 'Separate known facts, inferred defaults, missing blockers, and optional nice-to-have details.',
+  },
+  {
+    id: 'artifact-architecture',
+    label: 'Artifact architecture',
+    focus: 'Choose sections, reader journey, visual system, evidence plan, and export path before drafting.',
+  },
+  {
+    id: 'build-and-render',
+    label: 'Build and render',
+    focus: 'Create the actual document or sandbox source with assets, styles, print rules, and target-format constraints.',
+  },
+  {
+    id: 'critic-repair',
+    label: 'Critic and repair',
+    focus: 'Review rendered output against acceptance checks, then fix visible layout, content, or export issues.',
+  },
+  {
+    id: 'handoff-proof',
+    label: 'Handoff proof',
+    focus: 'Return final artifact links plus assumptions, checks run, fixed issues, and remaining limits.',
+  },
+];
 
 const QUALITY_AGENT_PASSES = [
   {
@@ -76,7 +109,7 @@ function buildDocumentQualityPlan({
 
   return {
     version: DOCUMENT_QUALITY_STANDARD_VERSION,
-    passName: 'lets create context by interaction with the user to avoid slop',
+    passName: 'Kimi K2.6-style creation loop with context, steps, critique, and proof',
     standard: 'publication-ready',
     documentType: normalizeDocumentTypeLabel(documentType),
     format: normalizedFormat,
@@ -113,6 +146,26 @@ function buildDocumentQualityPlan({
         'For document requests, never ship a generic filler draft just because the prompt is short; use the brief to choose structure, evidence needs, and reader jobs.',
       ],
     },
+    userAlignment: {
+      label: 'User alignment snapshot',
+      fields: [
+        'userGoal',
+        'audience',
+        'format',
+        'purpose',
+        'assumptions',
+        'openQuestions',
+        'acceptanceChecks',
+        'verificationPlan',
+      ],
+      rules: [
+        'Keep a compact alignment snapshot in metadata or handoff notes so follow-up agents can see what was inferred and why.',
+        'Open questions should be empty unless the missing information would materially change the artifact.',
+        'Acceptance checks should be concrete and medium-specific, such as readable PDF page breaks, working sandbox preview, cited current facts, or editable source bundle preserved.',
+        'Verification notes must distinguish checks already run from checks that still need the target runtime or user review.',
+      ],
+    },
+    creationLoop: KIMI_CREATION_LOOP.map((entry) => ({ ...entry })),
     backgroundDirection: {
       label: selectedLayout?.label
         ? `${selectedLayout.label} background system`
@@ -134,6 +187,7 @@ function buildDocumentQualityPlan({
       'Every section should justify its presence through a reader job: decide, understand, compare, execute, or remember.',
       'Tables, charts, stats, and callouts need labels and interpretation, not just raw values.',
       'If sources are incomplete, state limits as document content without exposing tool workflow details.',
+      'The final handoff must make it clear what was generated, which assumptions shaped it, which checks ran, and what still needs user approval or target-medium verification.',
     ],
   };
 }
@@ -156,6 +210,14 @@ function renderDocumentQualityPromptContext(planOrOptions = null) {
     `Brief fields: ${qualityPlan.interactionBrief.fields.join(', ')}`,
     ...qualityPlan.interactionBrief.rules.map((entry) => `- ${entry}`),
     '</document_intake>',
+    '<kimi_creation_loop>',
+    'Use a Kimi K2.6-style creation loop: visible confidence should come from context, deliberate steps, critique, repair, and proof rather than generic polish language.',
+    ...qualityPlan.creationLoop.map((entry) => `- ${entry.label} [${entry.id}]: ${entry.focus}`),
+    '</kimi_creation_loop>',
+    '<user_alignment_snapshot>',
+    `Fields: ${qualityPlan.userAlignment.fields.join(', ')}`,
+    ...qualityPlan.userAlignment.rules.map((entry) => `- ${entry}`),
+    '</user_alignment_snapshot>',
     '<background_creation>',
     `Direction: ${qualityPlan.backgroundDirection.label}`,
     ...qualityPlan.backgroundDirection.rules.map((entry) => `- ${entry}`),
@@ -187,6 +249,8 @@ function summarizeDocumentQualityPlan(planOrOptions = null) {
     standard: qualityPlan.standard,
     format: qualityPlan.format,
     agentPasses: qualityPlan.agentPasses.map((entry) => entry.id),
+    creationLoop: qualityPlan.creationLoop.map((entry) => entry.id),
+    userAlignmentFields: qualityPlan.userAlignment.fields.slice(),
     backgroundDirection: qualityPlan.backgroundDirection.label,
     completionGate: qualityPlan.completionGate.slice(0, 3),
   };
@@ -194,6 +258,7 @@ function summarizeDocumentQualityPlan(planOrOptions = null) {
 
 module.exports = {
   DOCUMENT_QUALITY_STANDARD_VERSION,
+  KIMI_CREATION_LOOP,
   QUALITY_AGENT_PASSES,
   buildDocumentQualityPlan,
   renderDocumentQualityPromptContext,

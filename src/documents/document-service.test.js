@@ -523,7 +523,11 @@ describe('DocumentService', () => {
     expect(plan.themeSuggestion).toEqual(expect.any(String));
     expect(plan.humanizationNotes.length).toBeGreaterThan(0);
     expect(plan.qualityStandard).toEqual(expect.objectContaining({
-      version: 'document-quality-2026-04',
+      version: 'document-quality-2026-05-k26-creation-loop',
+      creationLoop: expect.arrayContaining([
+        expect.objectContaining({ id: 'intent-lock' }),
+        expect.objectContaining({ id: 'handoff-proof' }),
+      ]),
       agentPasses: expect.arrayContaining([
         expect.objectContaining({ id: 'background-art-director' }),
         expect.objectContaining({ id: 'accessibility-reviewer' }),
@@ -557,6 +561,8 @@ describe('DocumentService', () => {
 
     expect(capabilities.policy.templateUse).toContain('not final canned output');
     expect(capabilities.policy.qualityStandard).toContain('built-in strategy');
+    expect(capabilities.policy.creationLoop).toContain('Kimi K2.6-style creation loop');
+    expect(capabilities.policy.userAlignment).toContain('user goal');
     expect(capabilities.formats).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'pdf',
