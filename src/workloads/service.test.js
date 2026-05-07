@@ -581,6 +581,69 @@ describe('AgentWorkloadService', () => {
         }));
     });
 
+    test('injects workload creation context into deferred chat runs', async () => {
+        const workload = {
+            id: 'workload-context-1',
+            ownerId: 'phill',
+            sessionId: 'session-1',
+            title: 'Follow-up workload',
+            prompt: 'Gather information on the k3s cluster on the server.',
+            trigger: { type: 'manual' },
+            policy: {
+                executionProfile: 'default',
+                toolIds: [],
+                maxRounds: 3,
+                maxToolCalls: 10,
+                maxDurationMs: 120000,
+                allowSideEffects: false,
+            },
+            stages: [],
+            metadata: {
+                creationContext: {
+                    originalRequest: 'run it five minutes from now',
+                    resolvedRequest: 'gather information on the k3s cluster on the server. run it five minutes from now',
+                    recentMessages: [
+                        { role: 'user', content: 'gather information on the k3s cluster on the server' },
+                        { role: 'assistant', content: 'I can inspect pods, events, and recent logs.' },
+                    ],
+                    instruction: 'Use this recent chat context to resolve references before executing the workload.',
+                },
+            },
+        };
+        const run = {
+            id: 'run-context-1',
+            workload,
+            stageIndex: -1,
+            scheduledFor: '2026-04-01T09:00:00.000Z',
+            prompt: workload.prompt,
+            metadata: {},
+        };
+
+        conversationRunService.runChatTurn.mockResolvedValue({
+            outputText: 'Cluster details collected.',
+            response: { id: 'resp-context-1' },
+            execution: { trace: { steps: 1 } },
+            artifacts: [],
+        });
+        store.completeRun.mockResolvedValue({ id: 'run-context-1', status: 'completed' });
+        store.enqueueRun.mockResolvedValue(null);
+
+        await service.executeClaimedRun(run, 'worker-1');
+
+        expect(conversationRunService.runChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+            message: expect.stringContaining('[Workload creation context]'),
+        }));
+        expect(conversationRunService.runChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+            message: expect.stringContaining('Original scheduling request: run it five minutes from now'),
+        }));
+        expect(conversationRunService.runChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+            message: expect.stringContaining('assistant: I can inspect pods, events, and recent logs.'),
+        }));
+        expect(conversationRunService.runChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+            message: expect.stringContaining('Current run objective:\nGather information on the k3s cluster on the server.'),
+        }));
+    });
+
     test('uses the workload default output format for the initial brutal builder pass', async () => {
         const workload = {
             id: 'workload-brutal-1',

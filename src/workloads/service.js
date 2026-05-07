@@ -576,6 +576,7 @@ class AgentWorkloadService {
             timezone: options.timezone,
             now: options.now,
             session,
+            recentMessages: options.recentMessages || [],
         });
         if (!canonical) {
             throw new Error('Describe the task and when it should run.');
@@ -1372,15 +1373,22 @@ class AgentWorkloadService {
             title: workload?.title,
             prompt: workload?.prompt,
         }));
+        const creationContext = this.renderCreationContext(workload?.metadata?.creationContext);
 
-        if (projectContext && trimmedPrompt && inputText) {
-            return `${projectContext}\n\nCurrent run objective:\n${trimmedPrompt}\n\nContext from prior stages:\n\n${inputText}`;
+        const contextParts = [
+            projectContext,
+            creationContext,
+        ].filter(Boolean);
+        const contextText = contextParts.join('\n\n');
+
+        if (contextText && trimmedPrompt && inputText) {
+            return `${contextText}\n\nCurrent run objective:\n${trimmedPrompt}\n\nContext from prior stages:\n\n${inputText}`;
         }
-        if (projectContext && trimmedPrompt) {
-            return `${projectContext}\n\nCurrent run objective:\n${trimmedPrompt}`;
+        if (contextText && trimmedPrompt) {
+            return `${contextText}\n\nCurrent run objective:\n${trimmedPrompt}`;
         }
-        if (projectContext && inputText) {
-            return `${projectContext}\n\nContext from prior stages:\n\n${inputText}`;
+        if (contextText && inputText) {
+            return `${contextText}\n\nContext from prior stages:\n\n${inputText}`;
         }
         if (trimmedPrompt && inputText) {
             return `${trimmedPrompt}\n\nContext from prior stages:\n\n${inputText}`;
@@ -1389,6 +1397,44 @@ class AgentWorkloadService {
             return trimmedPrompt;
         }
         return inputText;
+    }
+
+    renderCreationContext(context = null) {
+        if (!context || typeof context !== 'object' || Array.isArray(context)) {
+            return '';
+        }
+
+        const lines = [];
+        const instruction = sanitizeText(context.instruction);
+        const originalRequest = sanitizeText(context.originalRequest);
+        const resolvedRequest = sanitizeText(context.resolvedRequest);
+        const recentMessages = Array.isArray(context.recentMessages)
+            ? context.recentMessages
+                .map((message) => {
+                    const role = sanitizeText(message?.role);
+                    const content = sanitizeText(message?.content);
+                    return role && content ? `${role}: ${content}` : '';
+                })
+                .filter(Boolean)
+                .slice(-8)
+            : [];
+
+        if (instruction) {
+            lines.push(instruction);
+        }
+        if (originalRequest) {
+            lines.push(`Original scheduling request: ${originalRequest}`);
+        }
+        if (resolvedRequest) {
+            lines.push(`Resolved workload request: ${resolvedRequest}`);
+        }
+        if (recentMessages.length > 0) {
+            lines.push(`Recent chat context:\n${recentMessages.join('\n')}`);
+        }
+
+        return lines.length > 0
+            ? `[Workload creation context]\n${lines.join('\n\n')}`
+            : '';
     }
 
     buildCompletedRunMetadata(run = {}, stage = null, result = {}) {

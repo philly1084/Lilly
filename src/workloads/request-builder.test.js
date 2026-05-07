@@ -106,6 +106,16 @@ describe('workload request builder', () => {
             metadata: expect.objectContaining({
                 createdFromScenario: true,
                 scenarioRequest: expect.stringContaining('gather information on the k3s cluster on the server'),
+                creationContext: expect.objectContaining({
+                    originalRequest: 'run it five minutes from now',
+                    resolvedRequest: expect.stringContaining('gather information on the k3s cluster on the server'),
+                    recentMessages: [
+                        {
+                            role: 'user',
+                            content: 'gather information on the k3s cluster on the server',
+                        },
+                    ],
+                }),
             }),
         }));
     });

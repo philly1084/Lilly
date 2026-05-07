@@ -10,7 +10,7 @@
 <body data-ui-surface="admin">
     <div id="app">
         <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
+        <aside class="sidebar" id="sidebar" aria-label="Admin sections">
             <div class="sidebar-header">
                 <div class="logo">
                     <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -18,7 +18,7 @@
                     </svg>
                     <span class="logo-text">Agent SDK</span>
                 </div>
-                <button class="sidebar-toggle" id="sidebarToggle">
+                <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Collapse admin navigation" aria-expanded="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>
                     </svg>
@@ -148,11 +148,19 @@
                 </div>
             </div>
         </aside>
+        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
 
         <!-- Main Content -->
         <main class="main-content">
             <!-- Header -->
             <header class="header">
+                <button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Open admin navigation" aria-controls="sidebar" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6h16"/>
+                        <path d="M4 12h16"/>
+                        <path d="M4 18h16"/>
+                    </svg>
+                </button>
                 <div class="header-left">
                     <h1 class="page-title" id="pageTitle">Overview</h1>
                     <nav class="breadcrumbs" id="breadcrumbs">

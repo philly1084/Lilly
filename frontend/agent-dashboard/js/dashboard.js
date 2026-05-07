@@ -79,7 +79,19 @@ class Dashboard {
     setupEventListeners() {
         // Sidebar toggle
         document.getElementById('sidebarToggle')?.addEventListener('click', () => {
+            if (this.isMobileNavigation()) {
+                this.closeMobileNavigation();
+                return;
+            }
             this.toggleSidebar();
+        });
+
+        document.getElementById('mobileMenuToggle')?.addEventListener('click', () => {
+            this.toggleMobileNavigation();
+        });
+
+        document.getElementById('sidebarBackdrop')?.addEventListener('click', () => {
+            this.closeMobileNavigation();
         });
         
         // Global search
@@ -399,6 +411,7 @@ class Dashboard {
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
+                this.closeMobileNavigation();
                 document.querySelectorAll('.modal.active').forEach(modal => {
                     this.closeModal(modal.id);
                 });
@@ -426,6 +439,7 @@ class Dashboard {
                 const view = item.dataset.view;
                 if (view) {
                     this.navigateTo(view);
+                    this.closeMobileNavigation();
                 }
             });
         });
@@ -1885,9 +1899,45 @@ class Dashboard {
     
     // ==================== ACTIONS ====================
     
+    isMobileNavigation() {
+        return window.matchMedia('(max-width: 992px)').matches;
+    }
+
+    syncMobileNavigationState(isOpen) {
+        const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        const mobileToggle = document.getElementById('mobileMenuToggle');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+
+        sidebar?.classList.toggle('open', isOpen);
+        document.body.classList.toggle('admin-nav-open', isOpen);
+
+        if (backdrop) {
+            backdrop.hidden = !isOpen;
+        }
+
+        mobileToggle?.setAttribute('aria-expanded', String(isOpen));
+        sidebarToggle?.setAttribute('aria-label', this.isMobileNavigation() ? 'Close admin navigation' : 'Collapse admin navigation');
+        sidebarToggle?.setAttribute('aria-expanded', String(this.isMobileNavigation() ? isOpen : !this.state.sidebarCollapsed));
+    }
+
+    openMobileNavigation() {
+        this.syncMobileNavigationState(true);
+    }
+
+    closeMobileNavigation() {
+        this.syncMobileNavigationState(false);
+    }
+
+    toggleMobileNavigation() {
+        const sidebar = document.getElementById('sidebar');
+        this.syncMobileNavigationState(!sidebar?.classList.contains('open'));
+    }
+
     toggleSidebar() {
         this.state.sidebarCollapsed = !this.state.sidebarCollapsed;
         document.getElementById('sidebar').classList.toggle('collapsed', this.state.sidebarCollapsed);
+        document.getElementById('sidebarToggle')?.setAttribute('aria-expanded', String(!this.state.sidebarCollapsed));
     }
     
     selectPrompt(prompt) {
@@ -3824,6 +3874,12 @@ class Dashboard {
     }
     
     handleResize() {
+        if (!this.isMobileNavigation()) {
+            this.closeMobileNavigation();
+            document.getElementById('sidebarToggle')?.setAttribute('aria-label', 'Collapse admin navigation');
+            document.getElementById('sidebarToggle')?.setAttribute('aria-expanded', String(!this.state.sidebarCollapsed));
+        }
+
         // Resize charts
         Object.values(this.charts).forEach(chart => {
             chart?.resize();

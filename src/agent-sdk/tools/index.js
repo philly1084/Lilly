@@ -4463,7 +4463,7 @@ class ToolManager {
                 ...(request ? { request } : {}),
               }, context, session);
               if (!normalized) {
-                throw new Error('agent-workload create_from_scenario requires a `request` string or a structured workload payload.');
+                throw new Error('agent-workload create_from_scenario requires a recoverable scheduled request or an explicit manual request with a structured workload payload.');
               }
 
               assertWorkloadSchedulingIntent(normalized.payload, context);

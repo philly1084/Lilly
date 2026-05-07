@@ -148,6 +148,76 @@ function collectRecentUserMessages(recentMessages = [], limit = 6) {
         .slice(-Math.max(0, limit));
 }
 
+function collectRecentContextMessages(recentMessages = [], limit = 8, charLimit = 4000) {
+    if (!Array.isArray(recentMessages) || recentMessages.length === 0) {
+        return [];
+    }
+
+    const collected = [];
+    let remainingChars = Math.max(0, Number(charLimit) || 0);
+    const sourceMessages = recentMessages
+        .filter((message) => ['user', 'assistant', 'system'].includes(String(message?.role || '').trim()))
+        .slice(-Math.max(0, limit));
+
+    for (const message of sourceMessages) {
+        if (remainingChars <= 0) {
+            break;
+        }
+
+        const role = String(message?.role || '').trim();
+        const content = normalizeMessageText(message?.content);
+        if (!role || !content) {
+            continue;
+        }
+
+        const truncated = content.length > remainingChars
+            ? `${content.slice(0, Math.max(0, remainingChars - 3)).trim()}...`
+            : content;
+        if (!truncated) {
+            continue;
+        }
+
+        collected.push({
+            role,
+            content: truncated,
+        });
+        remainingChars -= truncated.length;
+    }
+
+    return collected;
+}
+
+function buildWorkloadCreationContext({
+    params = {},
+    options = {},
+    scenarioSource = '',
+    prompt = '',
+} = {}) {
+    const recentMessages = collectRecentContextMessages(options.recentMessages);
+    const originalRequest = sanitizeText(
+        params.metadata?.originalRequest
+        || params.metadata?.scenarioRequest
+        || params.request
+        || params.scenario
+        || params.description
+        || scenarioSource,
+    );
+    const resolvedRequest = sanitizeText(scenarioSource || prompt);
+
+    if (!originalRequest && !resolvedRequest && recentMessages.length === 0) {
+        return null;
+    }
+
+    return {
+        ...(originalRequest ? { originalRequest } : {}),
+        ...(resolvedRequest && resolvedRequest.toLowerCase() !== originalRequest.toLowerCase()
+            ? { resolvedRequest }
+            : {}),
+        ...(recentMessages.length > 0 ? { recentMessages } : {}),
+        instruction: 'Use this recent chat context to resolve references like it, that, the previous plan, or the described job before executing the workload. If the objective is still underspecified, first define the concrete task from the context and proceed; ask for clarification only when the intent cannot be recovered.',
+    };
+}
+
 function buildScenarioSourceCandidates(baseSource = '', recentMessages = []) {
     const directSource = sanitizeText(baseSource);
     const candidates = [];
@@ -483,14 +553,16 @@ function buildCanonicalWorkloadPayloadForSource(params = {}, options = {}, scena
         || !explicitPolicy
         || (!explicitExecution && hasRemoteExecutionShape(params))
     )) {
-        if (!hasWorkloadIntent(scenarioSource)) {
+        if (!explicitTrigger && !hasWorkloadIntent(scenarioSource)) {
             return null;
         }
 
-        scenario = parseWorkloadScenario(scenarioSource, {
-            ...(timezone ? { timezone } : {}),
-            ...(now ? { now } : {}),
-        });
+        if (hasWorkloadIntent(scenarioSource)) {
+            scenario = parseWorkloadScenario(scenarioSource, {
+                ...(timezone ? { timezone } : {}),
+                ...(now ? { now } : {}),
+            });
+        }
     }
 
     const prompt = explicitPrompt || scenario?.prompt || '';
@@ -511,6 +583,12 @@ function buildCanonicalWorkloadPayloadForSource(params = {}, options = {}, scena
     const execution = explicitExecution || buildFallbackExecution(params, session, scenarioSource || prompt);
     const policy = explicitPolicy || scenario?.policy || (effectivePrompt ? inferWorkloadPolicy(effectivePrompt) : undefined);
     const scenarioRequest = sanitizeText(metadata.scenarioRequest || scenarioSource);
+    const creationContext = metadata.creationContext || buildWorkloadCreationContext({
+        params,
+        options,
+        scenarioSource,
+        prompt: effectivePrompt,
+    });
 
     if (!effectivePrompt || !title || !trigger) {
         return null;
@@ -564,6 +642,7 @@ function buildCanonicalWorkloadPayloadForSource(params = {}, options = {}, scena
                         scenarioRequest,
                     }
                     : {}),
+                ...(creationContext ? { creationContext } : {}),
             },
         },
         scenario,
