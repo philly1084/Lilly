@@ -296,8 +296,70 @@
             color: var(--text-primary);
             background: var(--bg-secondary);
             border-left: 3px solid var(--success-bright);
-            padding-left: 12px;
+            padding: 0;
             margin-left: 0;
+            border-radius: 0 6px 6px 0;
+            overflow: hidden;
+        }
+
+        .cli-response-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 34px;
+            padding: 6px 10px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px;
+        }
+
+        .cli-response-title {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .ai-response-toggle {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 24px;
+            padding: 0;
+            color: var(--text-primary);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .ai-response-toggle:hover,
+        .ai-response-toggle:focus-visible {
+            color: var(--accent-hover);
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.18);
+        }
+
+        .cli-response-body {
+            padding: 8px 12px 10px;
+        }
+
+        .line-output.ai.is-collapsed .cli-response-body,
+        .line-output.ai.is-collapsed .voxel-response-body {
+            display: none;
+        }
+
+        .line-output.ai.is-collapsed .cli-response-head,
+        .line-output.ai.is-collapsed .voxel-response-head {
+            border-bottom: 0;
         }
 
         .line-output.user-message {

@@ -387,6 +387,7 @@ body[data-theme="voxel"] .line-output.error {
     align-items: center;
     gap: 8px;
     min-width: 0;
+    margin-right: auto;
 }
 
 .voxel-response-pip {
@@ -404,6 +405,23 @@ body[data-theme="voxel"] .line-output.error {
     color: var(--text-muted);
     font-size: 11px;
     text-transform: none;
+}
+
+body[data-theme="voxel"] .ai-response-toggle {
+    color: var(--voxel-pet-secondary);
+    background: rgba(6, 16, 19, 0.88);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.22);
+}
+
+body[data-theme="voxel"] .ai-response-toggle:hover,
+body[data-theme="voxel"] .ai-response-toggle:focus-visible {
+    color: var(--voxel-pet-primary);
+    border-color: var(--voxel-pet-secondary);
+    box-shadow:
+        0 0 0 2px rgba(244, 201, 93, 0.12),
+        3px 3px 0 rgba(0, 0, 0, 0.28);
 }
 
 .voxel-response-body {

@@ -1563,17 +1563,52 @@ Session Statistics:
         this.renderMermaidDiagrams(line);
     }
 
-    renderAIContent(text, options = {}) {
-        const body = this.renderMarkdown(text);
-        if (this.theme !== 'voxel') {
-            return body;
+    toggleAIResponse(button) {
+        const line = button?.closest?.('.line-output.ai');
+        if (!line) {
+            return;
         }
 
+        const collapsed = !line.classList.contains('is-collapsed');
+        line.classList.toggle('is-collapsed', collapsed);
+        button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        button.setAttribute('aria-label', collapsed ? 'Expand response' : 'Collapse response');
+        button.title = collapsed ? 'Expand response' : 'Collapse response';
+        button.textContent = collapsed ? '-' : 'v';
+    }
+
+    renderAIContent(text, options = {}) {
+        const body = this.renderMarkdown(text);
+        const isStreaming = options.streaming === true;
         const title = options.title || 'AI Output';
+        const toggleMarkup = `
+            <button
+                type="button"
+                class="ai-response-toggle"
+                onclick="app.toggleAIResponse(this)"
+                aria-label="Collapse response"
+                aria-expanded="true"
+                title="Collapse response"
+            >v</button>
+        `;
+
+        if (this.theme !== 'voxel') {
+            return `
+                <div class="cli-response-shell${isStreaming ? ' cli-response-shell--streaming' : ''}">
+                    <div class="cli-response-head">
+                        ${toggleMarkup}
+                        <span class="cli-response-title">${this.escapeHtml(title)}</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+
         const meta = options.meta || `${api.currentModel || 'default'} | ${this.voxelPet?.name || 'voxel companion'}`;
         return `
             <div class="voxel-response-head">
                 <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>${this.escapeHtml(title)}</span>
+                ${toggleMarkup}
                 <span class="voxel-response-meta">${this.escapeHtml(meta)}</span>
             </div>
             <div class="voxel-response-body">${body}</div>
