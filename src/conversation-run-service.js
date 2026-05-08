@@ -18,6 +18,12 @@ const { buildProjectMemoryUpdate, mergeProjectMemory } = require('./project-memo
 const { buildContinuityInstructions } = require('./runtime-prompts');
 const { extractArtifactsFromToolEvents, mergeRuntimeArtifacts } = require('./runtime-artifacts');
 const { buildScopedMemoryMetadata, isSessionIsolationEnabled, resolveSessionScope } = require('./session-scope');
+const {
+    buildAgentJournalInstructions,
+    loadAgentJournalEntries,
+    recordAgentJournalTurn,
+    stripAgentJournalBlocks,
+} = require('./agent-journal');
 
 class ConversationRunService {
     constructor({
@@ -150,6 +156,7 @@ class ConversationRunService {
             error.statusCode = 404;
             throw error;
         }
+        const sanitizedMessage = stripAgentJournalBlocks(message);
 
         const runtimeToolManager = await ensureRuntimeToolManager(this.app);
         const sessionIsolation = isSessionIsolationEnabled(metadata, resolvedSession);
@@ -159,17 +166,23 @@ class ConversationRunService {
                 maxApps: 4,
             })
             : '';
+        const agentJournalInstructions = buildAgentJournalInstructions(
+            await loadAgentJournalEntries(this.sessionStore, resolvedSession, ownerId),
+        );
         const instructions = await buildInstructionsWithArtifacts(
             resolvedSession,
-            buildContinuityInstructions(),
+            [
+                agentJournalInstructions,
+                buildContinuityInstructions(),
+            ].filter(Boolean).join('\n\n'),
             [],
         );
 
         const execution = await executeConversationRuntime(this.app, {
-            input: message,
+            input: sanitizedMessage,
             session: resolvedSession,
             sessionId,
-            memoryInput: message,
+            memoryInput: sanitizedMessage,
             previousResponseId: resolvedSession.previousResponseId,
             instructions,
             stream: false,
@@ -219,11 +232,10 @@ class ConversationRunService {
                 this.memoryService.rememberResponse(sessionId, outputText, memoryMetadata);
             }
             await this.sessionStore.appendMessages(sessionId, [
-                { role: 'user', content: message },
+                { role: 'user', content: sanitizedMessage },
                 { role: 'assistant', content: outputText },
             ]);
         }
-
         const sshMetadata = extractSshSessionMetadataFromToolEvents(toolEvents);
         if (sshMetadata) {
             await this.sessionStore.update(sessionId, { metadata: sshMetadata });
@@ -234,7 +246,7 @@ class ConversationRunService {
             sessionId,
             ownerId,
             session: resolvedSession,
-            message,
+            message: sanitizedMessage,
             mode: metadata.taskType || 'chat',
             responseId: response?.id || null,
             outputText,
@@ -254,7 +266,7 @@ class ConversationRunService {
                 sessionId,
                 ownerId,
                 session: resolvedSession,
-                message,
+                message: sanitizedMessage,
                 outputText,
                 artifacts: missingToolArtifacts.length > 0 ? missingToolArtifacts : toolArtifacts,
                 outputFormat: missingToolArtifacts[missingToolArtifacts.length - 1]?.format
@@ -267,11 +279,23 @@ class ConversationRunService {
         const runtimeArtifacts = mergeRuntimeArtifacts(toolArtifacts, persistedDeferredArtifacts);
 
         const updatedProjectSession = await this.updateProjectMemory(sessionId, ownerId, {
-            userText: message,
+            userText: sanitizedMessage,
             assistantText: outputText,
             toolEvents,
             artifacts: runtimeArtifacts,
         });
+        try {
+            await recordAgentJournalTurn(this.sessionStore, resolvedSession, {
+                ownerId,
+                responseId: response?.id || '',
+                userText: sanitizedMessage,
+                assistantText: artifactMessage || outputText,
+                toolEvents,
+                artifacts: runtimeArtifacts,
+            });
+        } catch (error) {
+            console.warn('[ConversationRunService] Failed to update agent journal:', error.message);
+        }
         if (this.sessionStore?.maybeCompactSession) {
             await this.sessionStore.maybeCompactSession(sessionId, {
                 ownerId,

@@ -21,6 +21,7 @@ const {
     normalizeSessionCompaction,
     shouldCompactSession,
 } = require('./session-compaction');
+const { stripAgentJournalBlocks } = require('./agent-journal');
 
 const MAX_RECENT_MESSAGES = config.memory.recentMessageWindow;
 const MAX_RECENT_MESSAGE_LENGTH = config.memory.recentMessageCharLimit;
@@ -108,7 +109,7 @@ class SessionStore {
                 const role = ['user', 'assistant', 'system', 'tool'].includes(entry?.role)
                     ? entry.role
                     : null;
-                const content = stripNullCharacters(entry?.content || '').trim();
+                const content = stripAgentJournalBlocks(stripNullCharacters(entry?.content || '')).trim();
                 const timestamp = entry?.timestamp || new Date().toISOString();
                 const metadata = this.extractMessageMetadata(entry);
 

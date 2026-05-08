@@ -44,6 +44,12 @@ const {
     buildUserCheckpointPolicy,
 } = require('../user-checkpoints');
 const {
+    buildAgentJournalInstructions,
+    loadAgentJournalEntries,
+    recordAgentJournalTurn,
+    stripAgentJournalBlocks,
+} = require('../agent-journal');
+const {
     applyAnsweredUserCheckpointState,
     applyAskedUserCheckpointState,
     buildUserCheckpointPolicyMetadata,
@@ -342,6 +348,15 @@ async function maybePersistSaveableDocumentResponse({
     }
 }
 
+async function safeRecordAgentJournalTurn(session, details = {}) {
+    try {
+        return await recordAgentJournalTurn(sessionStore, session, details);
+    } catch (error) {
+        console.warn('[ChatRoute] Failed to update agent journal:', error.message);
+        return [];
+    }
+}
+
 const chatSchema = {
     message: { required: true, type: 'string' },
     sessionId: { required: false, type: 'string' },
@@ -493,7 +508,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
     const startedAt = Date.now();
     try {
         const {
-            message,
+            message: rawMessage,
             stream = true,
             model = null,
             reasoning: _ignoredReasoning = null,
@@ -502,6 +517,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             executionProfile = null,
             metadata: requestMetadata = {},
         } = req.body;
+        const message = stripAgentJournalBlocks(rawMessage);
+        if (!message) {
+            return res.status(400).json({ error: { message: 'message is required' } });
+        }
         streamRequested = stream === true;
         const reasoningEffort = resolveReasoningEffort(req.body);
         const enableConversationExecutor = resolveConversationExecutorFlag(req.body);
@@ -758,6 +777,14 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     toolEvents,
                     artifacts,
                 }, ownerId);
+                await safeRecordAgentJournalTurn(effectiveSession, {
+                    ownerId,
+                    responseId,
+                    userText: message,
+                    assistantText,
+                    toolEvents,
+                    artifacts,
+                });
 
                 completeRuntimeTask(runtimeTask?.id, {
                     responseId,
@@ -929,6 +956,14 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 toolEvents: preparedImages.toolEvents,
                 artifacts: responseArtifacts,
             }, ownerId);
+            await safeRecordAgentJournalTurn(effectiveSession, {
+                ownerId,
+                responseId: generationArtifacts.responseId,
+                userText: message,
+                assistantText: generationArtifacts.assistantMessage,
+                toolEvents: preparedImages.toolEvents,
+                artifacts: responseArtifacts,
+            });
 
             completeRuntimeTask(runtimeTask?.id, {
                 responseId: generationArtifacts.responseId,
@@ -994,9 +1029,13 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 metadata: effectiveRequestMetadata,
             }),
         ].filter(Boolean).join('\n\n');
+        const agentJournalInstructions = buildAgentJournalInstructions(
+            await loadAgentJournalEntries(sessionStore, effectiveSession, ownerId),
+        );
         const instructions = await buildInstructionsWithArtifacts(
             effectiveSession,
             [
+                agentJournalInstructions,
                 buildContinuityInstructions(buildUserCheckpointInstructions(userCheckpointPolicy)),
                 naturalInstructions,
                 responseFormattingInstructions,
@@ -1218,6 +1257,14 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                             foregroundTurn,
                         );
                     }
+                    await safeRecordAgentJournalTurn(effectiveSession, {
+                        ownerId,
+                        responseId: event.response.id,
+                        userText: message,
+                        assistantText: fullText,
+                        toolEvents,
+                        artifacts,
+                    });
                     completeRuntimeTask(runtimeTask?.id, {
                         responseId: event.response.id,
                         output: fullText,
@@ -1384,6 +1431,14 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 assistantMetadata: response?.metadata,
             }));
         }
+        await safeRecordAgentJournalTurn(effectiveSession, {
+            ownerId,
+            responseId: response.id,
+            userText: message,
+            assistantText: outputText,
+            toolEvents: response?.metadata?.toolEvents || [],
+            artifacts,
+        });
 
         completeRuntimeTask(runtimeTask?.id, {
             responseId: response.id,
