@@ -4,6 +4,15 @@
  */
 const { resolveDocumentTheme } = require('../document-design-engine');
 
+const DEFAULT_PORTRAIT_PAGE_SIZE = {
+  width: 11.33 * 72,
+  height: 14.67 * 72,
+};
+const DEFAULT_PORTRAIT_PAGE_MARGINS = [54, 62, 54, 58];
+const DEFAULT_CONTENT_WIDTH = DEFAULT_PORTRAIT_PAGE_SIZE.width
+  - DEFAULT_PORTRAIT_PAGE_MARGINS[0]
+  - DEFAULT_PORTRAIT_PAGE_MARGINS[2];
+
 class PdfGenerator {
   constructor() {
     this.mimeType = 'application/pdf';
@@ -119,8 +128,8 @@ class PdfGenerator {
     const v = template.variables || {};
 
     const docDefinition = {
-      pageSize: 'A4',
-      pageMargins: [40, 60, 40, 60],
+      pageSize: DEFAULT_PORTRAIT_PAGE_SIZE,
+      pageMargins: DEFAULT_PORTRAIT_PAGE_MARGINS,
       
       defaultStyle: {
         font: 'Roboto',
@@ -232,8 +241,8 @@ class PdfGenerator {
     }
 
     return {
-      pageSize: 'A4',
-      pageMargins: designPlan?.pdf?.pageMargins || [46, 56, 46, 50],
+      pageSize: designPlan?.pdf?.pageSize || DEFAULT_PORTRAIT_PAGE_SIZE,
+      pageMargins: designPlan?.pdf?.pageMargins || DEFAULT_PORTRAIT_PAGE_MARGINS,
       
       defaultStyle: {
         font: 'Roboto',
@@ -602,7 +611,7 @@ class PdfGenerator {
         type: 'line',
         x1: 0,
         y1: 0,
-        x2: 515,
+        x2: DEFAULT_CONTENT_WIDTH,
         y2: 0,
         lineWidth: 1,
         lineColor: '#D8E1F0'
@@ -620,8 +629,8 @@ class PdfGenerator {
     }
 
     return {
-      pageSize: 'A4',
-      pageMargins: [48, 56, 48, 54],
+      pageSize: DEFAULT_PORTRAIT_PAGE_SIZE,
+      pageMargins: DEFAULT_PORTRAIT_PAGE_MARGINS,
       defaultStyle: {
         font: 'Roboto',
         fontSize: 11,
@@ -900,7 +909,7 @@ class PdfGenerator {
             type: 'line',
             x1: indent,
             y1: 0,
-            x2: 515,
+            x2: DEFAULT_CONTENT_WIDTH,
             y2: 0,
             lineWidth: 1,
             lineColor: '#E2E8F0'
@@ -1217,7 +1226,7 @@ class PdfGenerator {
 
     // Separator line
     content.push({
-      canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 2 }],
+      canvas: [{ type: 'line', x1: 0, y1: 0, x2: DEFAULT_CONTENT_WIDTH, y2: 0, lineWidth: 2 }],
       margin: [0, 0, 0, 20]
     });
 

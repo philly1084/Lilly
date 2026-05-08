@@ -42,14 +42,21 @@ describe('normalizeMermaidSource', () => {
         }));
     });
 
-    test('keeps normal documents on the default portrait PDF path', () => {
+    test('keeps normal documents on the default large portrait PDF path', () => {
         const options = inferPdfPageOptionsFromHtml(
             '<!DOCTYPE html><html><body><main><h1>Executive Brief</h1><p>Normal report.</p></main></body></html>',
         );
 
         expect(options.landscape).toBeUndefined();
-        expect(options.width).toBeUndefined();
         expect(options).toEqual(expect.objectContaining({
+            width: '11.33in',
+            height: '14.67in',
+            margin: expect.objectContaining({
+                top: '0.72in',
+                right: '0.65in',
+                bottom: '0.68in',
+                left: '0.65in',
+            }),
             printBackground: true,
             preferCSSPageSize: true,
         }));

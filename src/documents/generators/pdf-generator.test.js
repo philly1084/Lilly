@@ -1,6 +1,20 @@
 const { PdfGenerator } = require('./pdf-generator');
 
 describe('PdfGenerator', () => {
+  test('uses the default large portrait page size with border room', () => {
+    const generator = new PdfGenerator();
+    const definition = generator.buildContentDefinition({
+      title: 'Decision Brief',
+      sections: [{ heading: 'Recommendation', content: 'Approve the rollout.' }],
+    });
+
+    expect(definition.pageSize).toEqual({
+      width: 11.33 * 72,
+      height: 14.67 * 72,
+    });
+    expect(definition.pageMargins).toEqual([54, 62, 54, 58]);
+  });
+
   test('generates a Notes page PDF buffer', async () => {
     const generator = new PdfGenerator();
 

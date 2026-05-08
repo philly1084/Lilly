@@ -19,6 +19,15 @@ const PLAYWRIGHT_BROWSER_ARGS = [
 ];
 const PDF_RENDER_CRASHLOG_DIR = path.join(process.cwd(), 'output', 'crashlogs', 'pdf-renderer');
 const GENERATED_ARTIFACT_STYLE_MARKER = 'data-kimibuilt-style-safety-net';
+const PDF_RUNTIME_STYLE_MARKER = 'data-kimibuilt-pdf-runtime-style';
+const DEFAULT_PORTRAIT_PDF_WIDTH = '11.33in';
+const DEFAULT_PORTRAIT_PDF_HEIGHT = '14.67in';
+const DEFAULT_PORTRAIT_PDF_MARGIN = {
+    top: '0.72in',
+    right: '0.65in',
+    bottom: '0.68in',
+    left: '0.65in',
+};
 const GENERATED_ARTIFACT_BASE_CSS = `
     :root {
       --kb-bg: #f5f7fb;
@@ -552,6 +561,27 @@ function injectArtifactBaseForPdf(html = '') {
     return `${baseTag}\n${source}`;
 }
 
+function injectPdfRuntimeStyle(html = '') {
+    const source = String(html || '');
+    if (source.includes(PDF_RUNTIME_STYLE_MARKER)) {
+        return source;
+    }
+
+    const runtimeCss = buildPdfRuntimeStyleOverrides(inferPdfPageOptionsFromHtml(source));
+    if (!runtimeCss) {
+        return source;
+    }
+
+    const styleTag = `<style ${PDF_RUNTIME_STYLE_MARKER}>\n${runtimeCss}\n</style>`;
+    if (/<\/head>/i.test(source)) {
+        return source.replace(/<\/head>/i, `${styleTag}\n</head>`);
+    }
+    if (/<html[^>]*>/i.test(source)) {
+        return source.replace(/<html([^>]*)>/i, `<html$1>\n<head>\n${styleTag}\n</head>`);
+    }
+    return `${styleTag}\n${source}`;
+}
+
 function extractInternalArtifactIdFromUrl(url = '') {
     const normalized = String(url || '').trim();
     const match = normalized.match(/^(?:https?:\/\/[^/]+)?\/api\/artifacts\/([^/?#]+)\/download\b/i);
@@ -785,8 +815,11 @@ async function buildStyledPdfBufferFromHtml(html = '', title = 'Document') {
             ...blocks,
         ];
         const definition = {
-            pageSize: 'LETTER',
-            pageMargins: [42, 54, 42, 48],
+            pageSize: {
+                width: 11.33 * 72,
+                height: 14.67 * 72,
+            },
+            pageMargins: [54, 62, 54, 58],
             defaultStyle: {
                 font: 'Roboto',
                 fontSize: 10.5,
@@ -1025,6 +1058,9 @@ function inferPdfPageOptionsFromHtml(html = '') {
         return {
             printBackground: true,
             preferCSSPageSize: true,
+            width: DEFAULT_PORTRAIT_PDF_WIDTH,
+            height: DEFAULT_PORTRAIT_PDF_HEIGHT,
+            margin: DEFAULT_PORTRAIT_PDF_MARGIN,
         };
     }
 
@@ -1039,6 +1075,9 @@ function inferPdfPageOptionsFromHtml(html = '') {
         return {
             printBackground: true,
             preferCSSPageSize: true,
+            width: DEFAULT_PORTRAIT_PDF_WIDTH,
+            height: DEFAULT_PORTRAIT_PDF_HEIGHT,
+            margin: DEFAULT_PORTRAIT_PDF_MARGIN,
         };
     }
 
@@ -1053,7 +1092,11 @@ function inferPdfPageOptionsFromHtml(html = '') {
 
 function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
     if (!pageOptions?.landscape) {
-        return '';
+        return `
+        @page { size: ${DEFAULT_PORTRAIT_PDF_WIDTH} ${DEFAULT_PORTRAIT_PDF_HEIGHT} portrait; margin: 0.72in 0.65in 0.68in; }
+        html, body { min-height: ${DEFAULT_PORTRAIT_PDF_HEIGHT}; overflow: visible !important; }
+        *, *::before, *::after { box-sizing: border-box; }
+    `;
     }
 
     return `
@@ -1149,7 +1192,7 @@ async function renderPdfViaBrowser(html, title) {
 
     try {
         const resolvedHtml = await inlineRenderableImagesForPdf(html);
-        const pdfHtml = injectArtifactBaseForPdf(resolvedHtml);
+        const pdfHtml = injectPdfRuntimeStyle(injectArtifactBaseForPdf(resolvedHtml));
         await fs.writeFile(htmlPath, pdfHtml, 'utf8');
         const playwrightBuffer = await renderPdfViaPlaywright(htmlPath, pdfPath, browserPath, { html: pdfHtml })
             .catch((error) => {
