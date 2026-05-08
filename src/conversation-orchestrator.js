@@ -4951,6 +4951,15 @@ function hasRemoteCliAgentAuthoringIntent(text = '') {
         return false;
     }
 
+    const deploymentRetryIntent = [
+        /\bwhat (?:address|url|domain|host)\b[\s\S]{0,60}\bdeploy(?:ed)?\b[\s\S]{0,80}\b(?:didn['’]?t|doesn['’]?t|won['’]?t|not)\s+work\b[\s\S]{0,80}\b(?:try again|retry|rerun|re-run|redeploy|fix)\b/,
+        /\bdeploy(?:ed)?\b[\s\S]{0,80}\b(?:didn['’]?t|doesn['’]?t|won['’]?t|not)\s+work\b[\s\S]{0,80}\b(?:try again|retry|rerun|re-run|redeploy|fix)\b/,
+        /\b(?:try again|retry|rerun|re-run|redeploy)\b[\s\S]{0,80}\b(?:deploy|deployment|route|ingress|dns|tls|public url|public host)\b/,
+    ].some((pattern) => pattern.test(normalized));
+    if (deploymentRetryIntent) {
+        return true;
+    }
+
     const explicitAssistedCli = /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|agents sdk remote cli|assisted cli|cli tool)\b/.test(normalized);
     const authoringIntent = /\b(create|make|build|generate|implement|develop|write|update|fix|finish|continue|resume|complete|deploy|publish|launch|ship)\b/.test(normalized);
     const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|visualization|visualisation|viewer|map|globe|world|service)\b/.test(normalized);
@@ -5141,6 +5150,7 @@ function extractManagedAppReference(text = '') {
     }
 
     const patterns = [
+        /\b(?:fix|update|modify|change|edit|refresh|rebuild|deploy|redeploy|publish|inspect|show|check|verify|diagnose|debug|troubleshoot|status|describe|review|build|create|make)\s+(?:the\s+)?managed[- ]app\s+([a-z0-9][a-z0-9-]{1,63})\b/i,
         /\b(?:fix|update|modify|change|edit|refresh|rebuild|deploy|redeploy|publish|inspect|show|check|verify|diagnose|debug|troubleshoot|status|describe|review|build|create|make)\s+([a-z0-9][a-z0-9-]{1,63})\s+(?:app|website|site|frontend|service|game)\b/i,
         /\bmanaged app\s+([a-z0-9]+-[a-z0-9-]{1,63})\b/i,
         /\b(?:for|on|with)\s+(?:the\s+)?([^"',.\n]+?)(?=\s+(?:to\s+(?:get|bring|take)\s+it\s+(?:online|live)|online|live|deployed|published)\b)/i,
@@ -5256,6 +5266,43 @@ function inferManagedAppRequestedAction(text = '') {
     return 'build';
 }
 
+function shouldUseRemoteCliForManagedAppIteration(text = '', options = {}) {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const executionProfile = String(options.executionProfile || '').trim();
+    const workflowLane = String(options.workflow?.lane || '').trim();
+    const hasGitLabSourceCue = /\b(gitlab|gitlab ci|gitlab[-_ ]runner|build events webhook|registry\.gitlab|source[- ]?to[- ]?public|pipeline|pipelines)\b/i.test(normalized);
+    const hasRemoteCliCue = /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|backend cli|cli worker|agents sdk remote cli)\b/i.test(normalized);
+    const hasClusterDeployCue = /\b(k3s|k8s|kubernetes|cluster|kubectl|ingress|traefik|tls|dns|rollout|route|public host|public url)\b/i.test(normalized);
+    const hasComplexBuildCue = /\b(build|create|update|edit|fix|patch|deploy|redeploy|publish|launch|ship|verify)\b/i.test(normalized)
+        && /\b(app|website|site|frontend|service|game|dashboard|workspace|repo|repository)\b/i.test(normalized);
+
+    return hasRemoteCliCue
+        || hasGitLabSourceCue
+        || (executionProfile === REMOTE_BUILD_EXECUTION_PROFILE && hasClusterDeployCue && hasComplexBuildCue)
+        || (workflowLane === 'repo-then-deploy' && hasClusterDeployCue);
+}
+
+function applyManagedAppRemoteCliIterationDefaults(params = {}, { objective = '', executionProfile = DEFAULT_EXECUTION_PROFILE, workflow = null } = {}) {
+    const normalizedParams = params && typeof params === 'object' ? { ...params } : {};
+    if (normalizedParams.executor || normalizedParams.useRemoteCliAgent === true || normalizedParams.remoteCliAgent === true) {
+        return normalizedParams;
+    }
+
+    if (!shouldUseRemoteCliForManagedAppIteration(objective, { executionProfile, workflow })) {
+        return normalizedParams;
+    }
+
+    return {
+        ...normalizedParams,
+        executor: 'remote-cli-agent',
+        useRemoteCliAgent: true,
+    };
+}
+
 function buildManagedAppDirectAction(objective = '', options = {}) {
     const normalized = String(objective || '').trim();
     const executionProfile = String(options.executionProfile || '').trim() || DEFAULT_EXECUTION_PROFILE;
@@ -5333,16 +5380,23 @@ function buildManagedAppDirectAction(objective = '', options = {}) {
         return {
             tool: 'managed-app',
             reason: 'Managed app deployment follow-ups should use the backend-owned iteration loop with GitLab and deployment evidence.',
-            params: applyManagedAppDeploymentTargetDefaults({
-                action: 'iterate',
-                requestedAction: 'deploy',
-                iterationAction: 'deploy',
-                appRef: reference,
-                prompt: effectivePrompt,
-            }, {
-                objective: normalized,
-                executionProfile,
-            }),
+            params: applyManagedAppDeploymentTargetDefaults(
+                applyManagedAppRemoteCliIterationDefaults({
+                    action: 'iterate',
+                    requestedAction: 'deploy',
+                    iterationAction: 'deploy',
+                    appRef: reference,
+                    prompt: effectivePrompt,
+                }, {
+                    objective: normalized,
+                    executionProfile,
+                    workflow: options.workflow,
+                }),
+                {
+                    objective: normalized,
+                    executionProfile,
+                },
+            ),
         };
     }
 
@@ -5350,17 +5404,24 @@ function buildManagedAppDirectAction(objective = '', options = {}) {
         return {
             tool: 'managed-app',
             reason: 'Managed app update requests should use the backend-owned iteration loop instead of remote-cli handoff.',
-            params: applyManagedAppDeploymentTargetDefaults({
-                action: 'iterate',
-                requestedAction: workflowRequestedAction,
-                iterationAction: hasDeployIntent ? 'deploy' : 'edit',
-                appRef: reference,
-                prompt: effectivePrompt,
-                sourcePrompt: effectivePrompt,
-            }, {
-                objective: normalized,
-                executionProfile,
-            }),
+            params: applyManagedAppDeploymentTargetDefaults(
+                applyManagedAppRemoteCliIterationDefaults({
+                    action: 'iterate',
+                    requestedAction: workflowRequestedAction,
+                    iterationAction: hasDeployIntent ? 'deploy' : 'edit',
+                    appRef: reference,
+                    prompt: effectivePrompt,
+                    sourcePrompt: effectivePrompt,
+                }, {
+                    objective: normalized,
+                    executionProfile,
+                    workflow: options.workflow,
+                }),
+                {
+                    objective: normalized,
+                    executionProfile,
+                },
+            ),
         };
     }
 

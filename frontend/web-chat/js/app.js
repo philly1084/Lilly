@@ -3958,9 +3958,12 @@ class ChatApp {
         
         // Build message history for OpenAI API format
         const messages = this.buildMessageHistory(sessionId);
-        const selectedArtifactIds = typeof window.fileManager?.getSelectedArtifactIds === 'function'
-            ? window.fileManager.getSelectedArtifactIds()
-            : [];
+        const selectedArtifactIds = Array.from(new Set([
+            ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
+            ...(typeof window.fileManager?.getSelectedArtifactIds === 'function'
+                ? window.fileManager.getSelectedArtifactIds()
+                : []),
+        ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
         
         // Create abort controller for this request
         this.currentAbortController = new AbortController();
@@ -4000,6 +4003,7 @@ class ChatApp {
                             : {}),
                     },
                     artifactIds: selectedArtifactIds,
+                    ...(options.outputFormat ? { outputFormat: options.outputFormat } : {}),
                     shouldResyncAfterDisconnect: (error, context) => this.shouldResyncAfterDisconnect(error, context),
                 },
             )) {

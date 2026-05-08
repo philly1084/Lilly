@@ -614,6 +614,18 @@ describe('ai-route-utils', () => {
         }, [], 'deploy the site online and verify the public route')).toEqual([]);
     });
 
+    test('remote deploy address follow-ups do not silently reuse the last generated website artifact', () => {
+        const session = {
+            metadata: {
+                lastOutputFormat: 'html',
+                lastGeneratedArtifactId: 'artifact-website-1',
+            },
+        };
+
+        expect(inferOutputFormatFromSession('use a new address with remote cli agent to deploy th', session)).toBeNull();
+        expect(resolveArtifactContextIds(session, [], 'use a new address with remote cli agent to deploy th')).toEqual([]);
+    });
+
     test('resolveArtifactContextIds does not keep html artifacts attached on implementation-transition turns', () => {
         expect(resolveArtifactContextIds({
             metadata: {

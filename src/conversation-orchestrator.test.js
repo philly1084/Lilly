@@ -5609,6 +5609,114 @@ describe('ConversationOrchestrator', () => {
         });
     });
 
+    test('routes managed app GitLab/k3s iterations through remote-cli-agent as a controlled worker', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['managed-app', 'remote-cli-agent', 'remote-command', 'git-safe', 'k3s-deploy', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Update managed app hello-stack, use remote-cli-agent to fix the site, then rebuild through GitLab and deploy to the k3s cluster.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+        });
+
+        expect(directAction).toEqual({
+            tool: 'managed-app',
+            reason: 'Managed app update requests should use the backend-owned iteration loop instead of remote-cli handoff.',
+            params: {
+                action: 'iterate',
+                requestedAction: 'deploy',
+                iterationAction: 'deploy',
+                appRef: 'hello-stack',
+                prompt: objective,
+                sourcePrompt: objective,
+                executor: 'remote-cli-agent',
+                useRemoteCliAgent: true,
+                deployTarget: 'runner',
+            },
+        });
+    });
+
+    test('routes failed deployed-address retries to remote-cli-agent instead of raw remote-command redeploys', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'git-safe', 'k3s-deploy', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'what address did you deploy too?. it did not work on either. try again';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session: {
+                metadata: {},
+            },
+            toolPolicy,
+            toolContext: {
+                remoteWorkspacePath: '/srv/apps/retry-deploy',
+            },
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(directAction).toEqual({
+            tool: 'remote-cli-agent',
+            reason: 'The request asks an assisted remote CLI agent to own the coding, build, deploy, and verification loop.',
+            params: {
+                task: objective,
+                waitMs: 30000,
+                adminMode: true,
+                cwd: '/srv/apps/retry-deploy',
+            },
+        });
+    });
+
     test.skip('managed-app platform diagnose routing was deleted from orchestration', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {

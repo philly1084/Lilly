@@ -283,6 +283,9 @@ function inferExecutionProfile(payload = {}) {
         /\b(kubectl|kubernetes|k8s|docker compose|docker-compose|systemctl|journalctl|nginx|pm2)\b/,
         /\b(build|compile|install|run)\b[\s\S]{0,40}\b(on|via)\b[\s\S]{0,20}\b(server|ssh|remote)\b/,
         /\b(gitlab|gitea|image repo|container registry)\b/,
+        /\bwhat (?:address|url|domain|host)\b[\s\S]{0,60}\bdeploy(?:ed)?\b/,
+        /\bdeploy(?:ed)?\b[\s\S]{0,80}\b(?:didn['’]?t|doesn['’]?t|won['’]?t|not)\s+work\b[\s\S]{0,80}\b(?:try again|retry|rerun|re-run|redeploy|fix)\b/,
+        /\b(?:try again|retry|rerun|re-run|redeploy)\b[\s\S]{0,80}\b(?:deploy|deployment|route|ingress|dns|tls|public url|public host)\b/,
     ].some((pattern) => pattern.test(normalized));
     const remoteContinuationIntent = (stickyRemoteIntent || stickyRemoteWorkflow)
         && hasRemoteResumeIntentText(normalized);

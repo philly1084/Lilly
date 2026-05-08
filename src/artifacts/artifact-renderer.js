@@ -993,6 +993,7 @@ function getBrowserArgs(outputPath, inputPath, html = '') {
     const extraArgs = splitArgs(config.artifacts.browserArgs);
     const htmlSource = String(html || '');
     const imageCount = (htmlSource.match(/<img\b/ig) || []).length;
+    const pageOptions = inferPdfPageOptionsFromHtml(htmlSource);
     let virtualTimeBudget = 5000;
     if (/class="mermaid"|cdn\.jsdelivr\.net\/npm\/mermaid/i.test(htmlSource)) {
         virtualTimeBudget = Math.max(virtualTimeBudget, 10000);
@@ -1009,13 +1010,74 @@ function getBrowserArgs(outputPath, inputPath, html = '') {
         '--run-all-compositor-stages-before-draw',
         `--virtual-time-budget=${virtualTimeBudget}`,
         '--no-pdf-header-footer',
+        ...(pageOptions.landscape ? ['--landscape'] : []),
         `--print-to-pdf=${outputPath}`,
         ...extraArgs,
         pathToFileURL(inputPath).href,
     ];
 }
 
-async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null) {
+function inferPdfPageOptionsFromHtml(html = '') {
+    const source = String(html || '');
+    const normalized = source.toLowerCase();
+    const explicitPortrait = /@page[^{}]*\{[^}]*\b(?:size\s*:\s*)?(?:a4|letter)?\s*portrait\b/i.test(source);
+    if (explicitPortrait) {
+        return {
+            printBackground: true,
+            preferCSSPageSize: true,
+        };
+    }
+
+    const explicitLandscape = /@page[^{}]*\{[^}]*\blandscape\b/i.test(source);
+    const slideLike = explicitLandscape
+        || /\b(presentation-deck|deck-slide|slide-track|slide-deck|widescreen)\b/i.test(source)
+        || /aspect-ratio\s*:\s*(?:16\s*\/\s*9|1\.77[0-9]*)/i.test(source)
+        || /data-(?:layout|format|aspect|document-type)=["'][^"']*(?:slide|deck|widescreen|16:9|16\/9)/i.test(source)
+        || normalized.includes('website slides');
+
+    if (!slideLike) {
+        return {
+            printBackground: true,
+            preferCSSPageSize: true,
+        };
+    }
+
+    return {
+        printBackground: true,
+        preferCSSPageSize: true,
+        landscape: true,
+        width: '13.333in',
+        height: '7.5in',
+    };
+}
+
+function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
+    if (!pageOptions?.landscape) {
+        return '';
+    }
+
+    return `
+        @page { size: 13.333in 7.5in landscape; margin: 0; }
+        html, body { width: 13.333in; min-height: 7.5in; overflow: visible !important; }
+        *, *::before, *::after { box-sizing: border-box; }
+        .presentation-deck { width: 13.333in; padding: 0 !important; }
+        .deck-meta, .deck-footer { display: none !important; }
+        .deck-track { max-width: none !important; width: 100% !important; gap: 0 !important; }
+        .deck-slide {
+            width: 13.333in !important;
+            min-height: 7.5in !important;
+            height: auto !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            break-after: page;
+            page-break-after: always;
+            overflow: hidden;
+        }
+        .deck-slide:last-child { break-after: auto; page-break-after: auto; }
+    `;
+}
+
+async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null, options = {}) {
     const loaded = loadPlaywrightPackage();
     if (!loaded) {
         return null;
@@ -1026,6 +1088,7 @@ async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null) {
     }
 
     const timeout = Math.max(1000, Number(config.artifacts.pdfTimeoutMs) || 15000);
+    const pageOptions = inferPdfPageOptionsFromHtml(options.html || '');
     const launchOptions = {
         headless: true,
         timeout,
@@ -1043,7 +1106,9 @@ async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null) {
     try {
         context = await browser.newContext({
             ignoreHTTPSErrors: true,
-            viewport: { width: 1440, height: 960 },
+            viewport: pageOptions.landscape
+                ? { width: 1280, height: 720 }
+                : { width: 1440, height: 960 },
         });
         page = await context.newPage();
         await page.goto(pathToFileURL(htmlPath).href, {
@@ -1058,11 +1123,14 @@ async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null) {
             timeout: Math.min(timeout, 5000),
         }).catch(() => {});
         await page.waitForTimeout(250);
+        const runtimeCss = buildPdfRuntimeStyleOverrides(pageOptions);
+        if (runtimeCss) {
+            await page.addStyleTag({ content: runtimeCss }).catch(() => {});
+        }
 
         return await page.pdf({
             path: pdfPath,
-            printBackground: true,
-            preferCSSPageSize: true,
+            ...pageOptions,
         });
     } finally {
         await page?.close().catch(() => {});
@@ -1083,7 +1151,7 @@ async function renderPdfViaBrowser(html, title) {
         const resolvedHtml = await inlineRenderableImagesForPdf(html);
         const pdfHtml = injectArtifactBaseForPdf(resolvedHtml);
         await fs.writeFile(htmlPath, pdfHtml, 'utf8');
-        const playwrightBuffer = await renderPdfViaPlaywright(htmlPath, pdfPath, browserPath)
+        const playwrightBuffer = await renderPdfViaPlaywright(htmlPath, pdfPath, browserPath, { html: pdfHtml })
             .catch((error) => {
                 console.warn('[Artifacts] Playwright PDF rendering failed:', error.message);
                 return writePdfRenderCrashLog({
@@ -1215,6 +1283,7 @@ module.exports = {
     extractCompositeDocumentParts,
     hasSubstantiveCss,
     injectHtmlStyleSafetyNet,
+    inferPdfPageOptionsFromHtml,
     inlineExternalImagesForPdf,
     inlineRenderableImagesForPdf,
     inlineInternalArtifactImagesForPdf,

@@ -236,6 +236,7 @@ describe('runtime-execution', () => {
         expect(inferExecutionProfile({ input: 'Run a remote command on root@77.42.44.98 to check its health.' })).toBe('remote-build');
         expect(inferExecutionProfile({ input: 'Use remote CLI into root@77.42.44.98 to check its health.' })).toBe('remote-build');
         expect(inferExecutionProfile({ input: 'Use this server as the sandbox and build environment to create and develop the web app through Gitea.' })).toBe('remote-build');
+        expect(inferExecutionProfile({ input: 'what address did you deploy too?. it did not work on either. try again' })).toBe('remote-build');
         expect(inferExecutionProfile({ input: 'Answer directly.' })).toBe('default');
     });
 

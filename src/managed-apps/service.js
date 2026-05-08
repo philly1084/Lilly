@@ -2618,9 +2618,10 @@ class ManagedAppService {
             'User iteration prompt:',
             prompt,
             '',
-            'Use the backend CLI/remote workbench tools to inspect the repo, patch source, run focused checks, commit, and push to the configured GitLab source of truth.',
-            'Do not treat a successful shell command or a healthy pod as completion by itself. Completion evidence must come back as source-to-public proof where available.',
-            'If this is an edit or build action, finish with a pushed commit. Include final marker lines: GIT_REPO=<origin>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated paths>, and any known DEPLOYMENT/PUBLIC_HOST/UI_CHECK_REPORT/UI_SCREENSHOTS markers.',
+            'Use the backend CLI/remote workbench tools to inspect the repo tree, patch source, run focused checks, commit, and push to the configured GitLab source of truth.',
+            'Prefer GitLab CI, the managed-app build event path, and repo-managed manifests for build/deploy. Do not deploy by ad hoc ConfigMap or kubectl shell mutation unless you are explicitly repairing an existing failed rollout and then persist the fix back to GitLab.',
+            'Do not treat a successful shell command or a healthy pod as completion by itself. Completion evidence must come back as source-to-public proof: changed files, commit, GitLab pipeline/build, image tag or digest, rollout, and public verification where available.',
+            'If this is an edit or build action, finish with a pushed commit. Include final marker lines: GIT_REPO=<origin>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated paths>, PIPELINE_URL=<url if known>, IMAGE_TAG=<tag if known>, and any known DEPLOYMENT/PUBLIC_HOST/UI_CHECK_REPORT/UI_SCREENSHOTS markers.',
             'If credentials, runner access, destructive replacement, or an ambiguous target blocks the work, emit USER_INPUT_REQUIRED=<concise decision needed> instead of guessing.',
         ].filter(Boolean).join('\n');
     }
@@ -2654,7 +2655,8 @@ class ManagedAppService {
             instructions: [
                 'This run is controlled by the KimiBuilt managed-app iteration loop.',
                 'Do not ask for routine names, hosts, branches, namespaces, or deployment shape; use the managed-app facts in the task.',
-                'Prefer GitLab-backed source, commit, pipeline/build event, image/deploy evidence, and public verification markers over conversational status.',
+                'Use the GitLab repository tree as the editable source of truth. Prefer GitLab-backed source, commit, pipeline/build event, image/deploy evidence, and public verification markers over conversational status.',
+                'Avoid direct live-cluster artifact deployment as the normal path; if a live repair is unavoidable, make the same change durable in the repo before reporting completion.',
             ].join('\n'),
         });
 

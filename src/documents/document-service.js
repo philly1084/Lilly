@@ -2914,6 +2914,10 @@ class DocumentService {
 
     return `
       <style>
+        @page {
+          size: 13.333in 7.5in landscape;
+          margin: 0;
+        }
         :root {
           --deck-bg: ${theme.background};
           --deck-bg-end: ${background.canvasEnd || theme.background};
@@ -2975,6 +2979,10 @@ class DocumentService {
         @media print {
           body { background: #ffffff !important; color: #111827 !important; }
           .presentation-deck { padding: 0; }
+          .deck-track { gap: 0; max-width: none; }
+          .deck-meta, .deck-footer { display: none; }
+          .deck-slide { break-after: page; page-break-after: always; min-height: 7.5in; border-radius: 0; }
+          .deck-slide:last-child { break-after: auto; page-break-after: auto; }
           .deck-slide,
           .stat-card,
           .column-card {

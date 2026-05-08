@@ -230,6 +230,7 @@ describe('DocumentService', () => {
     expect(document.mimeType).toBe('text/html');
     expect(document.filename).toMatch(/\.html$/);
     expect(String(document.content)).toContain('presentation-deck');
+    expect(String(document.content)).toContain('size: 13.333in 7.5in landscape');
     expect(String(document.content)).toContain('Website Slides');
   });
 

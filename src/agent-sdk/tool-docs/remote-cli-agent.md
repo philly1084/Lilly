@@ -49,12 +49,14 @@ Behavior:
 - The inner agent receives instructions to use `remote_code_run`, poll `remote_code_status` when jobs are still running, and reuse returned session IDs for continuation.
 - The backend stores returned `sessionId` and `mcpSessionId` in the conversation control state, so follow-up requests can continue the same remote workbench session.
 - For k3s website/app creation or edits, the remote CLI agent must use a git-backed workspace as the editable source of truth. Prefer an existing configured GitLab origin; if none exists, check configured GitLab context and non-interactive credentials before asking the user to do manual programming or repo setup.
+- For retry requests like "the deployed address did not work, try again", do not patch the live cluster first. Re-open the owning git workspace or managed-app repo, inspect the current tree and manifests, make the durable change there, then rebuild/deploy through GitLab or the documented fallback path.
 - GitLab source-control skill:
   1. Inspect `git status`, `git remote -v`, recent commits, and deploy manifests before editing.
   2. If the current origin host matches the configured GitLab host, keep it as the source of truth and commit deployable changes there.
   3. If GitLab is configured but the workspace has no matching origin, create or use a repo under the configured group when credentials/API access are available; prefer token/askpass HTTPS over SSH prompts.
   4. If repo creation is blocked by missing credentials or API capability, commit locally, report the exact missing piece, and leave the workspace ready to attach to GitLab.
   5. If GitLab is not configured or reachable, use the direct BuildKit/kubectl path from a local git repo and clearly mark GitLab as the missing automation layer.
+- Source-to-public completion requires evidence in this order when available: changed files, commit SHA, GitLab pipeline/build event, image tag or digest, k3s rollout, ingress/TLS/HTTPS verification, and browser screenshot for UI work. A healthy pod by itself is not enough.
 - Before first commit in a fresh remote workspace, set repo-local `git config user.name` and `git config user.email` if they are missing.
 - For follow-up edits, inspect `git status`, recent commits, and current source first. Use live Kubernetes resources, ConfigMaps, or mounted files only as diagnostics or recovery input, then persist the change back to git before redeploying.
 - Track repeated failures. After the same command shape or root error fails twice without a materially different fix, stop that loop, summarize the blocker, and name the next distinct recovery option.

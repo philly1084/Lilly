@@ -677,6 +677,55 @@
         renderSelectedChips();
     }
 
+    function normalizeArtifactOutputFormat(artifact = null) {
+        const format = String(artifact?.format || artifact?.extension || '').trim().toLowerCase();
+        if (artifact?.bundleDownloadUrl || artifact?.sandboxUrl || artifact?.previewUrl) {
+            if (format === 'html' || format === 'htm' || artifact?.bundleDownloadUrl) {
+                return 'html';
+            }
+        }
+        if (['pdf', 'html', 'xml', 'xlsx', 'mermaid', 'power-query'].includes(format)) {
+            return format;
+        }
+        if (format === 'docx' || format === 'doc') {
+            return 'html';
+        }
+        if (format === 'mmd') {
+            return 'mermaid';
+        }
+        return '';
+    }
+
+    function getArtifactIterationLabel(artifact = null) {
+        const filename = String(artifact?.filename || '').toLowerCase();
+        const format = normalizeArtifactOutputFormat(artifact);
+        if (artifact?.bundleDownloadUrl || /\b(game|play|arcade)\b/.test(filename)) {
+            return 'game/site';
+        }
+        if (format === 'html' && /\b(site|website|page|landing|frontend)\b/.test(filename)) {
+            return 'site';
+        }
+        if (['pdf', 'html', 'xlsx', 'mermaid', 'power-query'].includes(format)) {
+            return 'document';
+        }
+        return 'artifact';
+    }
+
+    function setComposerDraft(text = '') {
+        const input = document.getElementById('message-input');
+        if (!input) {
+            return false;
+        }
+        input.value = String(text || '').trim();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+        if (typeof input.setSelectionRange === 'function') {
+            input.setSelectionRange(input.value.length, input.value.length);
+        }
+        window.uiHelpers?.scrollToBottom?.();
+        return true;
+    }
+
     function renderUploadedArtifactsMessage(artifacts = []) {
         const files = (Array.isArray(artifacts) ? artifacts : []).filter((artifact) => artifact?.id);
         const sessionId = getCurrentSessionId();
@@ -1037,6 +1086,12 @@
                 </button>
             `
             : '';
+        const updateAction = `
+            <button onclick="artifactManager.prepareArtifactUpdate('${artifact.id}')">
+                <i data-lucide="pencil" class="w-4 h-4"></i>
+                Update
+            </button>
+        `;
         const deployActions = artifact?.bundleDownloadUrl
             ? `
                 <button onclick="artifactManager.exportSiteToManagedApp('${artifact.id}')">
@@ -1068,6 +1123,7 @@
                     ${mermaidActions}
                     ${htmlActions}
                     ${deployActions}
+                    ${updateAction}
                     <button onclick="artifactManager.addToContext('${artifact.id}')">
                         <i data-lucide="plus" class="w-4 h-4"></i>
                         Add to Context
@@ -1314,6 +1370,7 @@
                         window.fileManager?.addFile?.(artifact, { sessionId });
                     });
                     state.selectedArtifactIds = [];
+                    state.outputFormat = '';
                     renderSelectedChips();
                 }
                 state.lastDone = null;
@@ -1351,13 +1408,15 @@
         
         window.sessionManager.addEventListener('sessionCreated', () => {
             state.selectedArtifactIds = [];
+            state.outputFormat = '';
             state.artifacts = [];
             renderSelectedChips();
             fetchArtifacts();
         });
-        
+
         window.sessionManager.addEventListener('sessionSwitched', () => {
             state.selectedArtifactIds = [];
+            state.outputFormat = '';
             renderSelectedChips();
             fetchArtifacts();
         });
@@ -1368,6 +1427,7 @@
         
         window.sessionManager.addEventListener('sessionDeleted', () => {
             state.selectedArtifactIds = [];
+            state.outputFormat = '';
             state.artifacts = [];
             renderSelectedChips();
         });
@@ -1745,6 +1805,49 @@
                 }
             }
         },
+
+        prepareArtifactUpdate: (id) => {
+            const artifact = state.artifacts.find((entry) => entry.id === id) || state.lastDone?.artifacts?.find((entry) => entry.id === id);
+            if (!artifact) {
+                if (window.uiHelpers?.showToast) {
+                    uiHelpers.showToast('That artifact is not available in this session yet.', 'warning');
+                }
+                return;
+            }
+
+            state.selectedArtifactIds = [id];
+            state.outputFormat = normalizeArtifactOutputFormat(artifact);
+            renderSelectedChips();
+
+            const label = getArtifactIterationLabel(artifact);
+            const filename = artifact.filename ? ` (${artifact.filename})` : '';
+            setComposerDraft(`Update this ${label}${filename}: `);
+
+            if (window.uiHelpers?.showToast) {
+                uiHelpers.showToast('This artifact is pinned for the next update.', 'success');
+            }
+        },
+
+        sendArtifactUpdate: async (id, prompt) => {
+            const artifact = state.artifacts.find((entry) => entry.id === id) || state.lastDone?.artifacts?.find((entry) => entry.id === id);
+            const normalizedPrompt = String(prompt || '').trim();
+            if (!artifact || !normalizedPrompt || !window.chatApp?.sendPreparedMessage) {
+                return false;
+            }
+            const outputFormat = normalizeArtifactOutputFormat(artifact);
+            return window.chatApp.sendPreparedMessage(normalizedPrompt, {
+                artifactIds: [id],
+                ...(outputFormat ? { outputFormat } : {}),
+                metadata: {
+                    workflowAction: 'web-chat-artifact-update',
+                    artifactUpdateIntent: {
+                        artifactId: id,
+                        filename: artifact.filename || '',
+                        outputFormat,
+                    },
+                },
+            });
+        },
         
         uploadFile: uploadArtifact,
         persistGeneratedFile: async (content, filename, mimeType = 'application/octet-stream') => {
@@ -1760,6 +1863,7 @@
         getSelectedIds: () => [...state.selectedArtifactIds],
         clearSelection: () => {
             state.selectedArtifactIds = [];
+            state.outputFormat = '';
             renderSelectedChips();
         }
     };
