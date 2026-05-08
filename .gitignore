@@ -6,6 +6,8 @@ node_modules/
 agent-notes.md
 asset-index.json
 research-buckets/
+local/remote-tunnels.local.json
+local/remote-tunnels/*.pid
 
 # Test & Build
 coverage/

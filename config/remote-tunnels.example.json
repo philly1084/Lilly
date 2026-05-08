@@ -1,0 +1,36 @@
+{
+  "servers": {
+    "primary": {
+      "sshTarget": "root@168.119.176.121",
+      "identityFile": "",
+      "strictHostKeyChecking": "accept-new",
+      "forwards": [
+        {
+          "name": "kimibuilt-http",
+          "localPort": 33001,
+          "remoteHost": "127.0.0.1",
+          "remotePort": 3000
+        },
+        {
+          "name": "gitlab-http",
+          "localPort": 33081,
+          "remoteHost": "127.0.0.1",
+          "remotePort": 80
+        }
+      ]
+    },
+    "secondary": {
+      "sshTarget": "philip@159.69.15.0",
+      "identityFile": "",
+      "strictHostKeyChecking": "accept-new",
+      "forwards": [
+        {
+          "name": "kimibuilt-http",
+          "localPort": 33002,
+          "remoteHost": "127.0.0.1",
+          "remotePort": 3000
+        }
+      ]
+    }
+  }
+}
