@@ -70,6 +70,24 @@ describe('GitLabClient', () => {
         );
     });
 
+    test('adds actionable remediation when GitLab rejects the configured token', async () => {
+        global.fetch = jest.fn()
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 401,
+                text: async () => JSON.stringify({ message: '401 Unauthorized' }),
+            });
+
+        const client = new GitLabClient();
+
+        await expect(client.getOrganization('agent-apps')).rejects.toMatchObject({
+            code: 'gitlab_auth_rejected',
+            statusCode: 401,
+            message: expect.stringContaining('Check integrations.gitlab.token / GITLAB_TOKEN'),
+            remediation: expect.stringContaining('GET /api/v4/groups/<configured-group>'),
+        });
+    });
+
     test('creates a GitLab project in the managed app group', async () => {
         global.fetch = jest.fn()
             .mockResolvedValueOnce({

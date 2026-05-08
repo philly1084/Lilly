@@ -132,8 +132,15 @@ class GitLabClient {
 
         if (!response.ok) {
             const errorText = await response.text();
-            const error = new Error(`GitLab API ${method} ${pathname} failed: HTTP ${response.status}${errorText ? ` ${errorText}` : ''}`);
+            const authHint = [401, 403].includes(response.status)
+                ? ' Check integrations.gitlab.token / GITLAB_TOKEN: it must be a GitLab API token with access to the configured group and the required api/write_repository permissions.'
+                : '';
+            const error = new Error(`GitLab API ${method} ${pathname} failed: HTTP ${response.status}${errorText ? ` ${errorText}` : ''}${authHint}`);
             error.statusCode = response.status;
+            if (authHint) {
+                error.code = response.status === 401 ? 'gitlab_auth_rejected' : 'gitlab_access_forbidden';
+                error.remediation = 'Create or rotate the GitLab PAT/service token, save it as integrations.gitlab.token or GITLAB_TOKEN, and verify it can GET /api/v4/groups/<configured-group>.';
+            }
             throw error;
         }
 
