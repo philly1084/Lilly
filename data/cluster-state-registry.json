@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-08T00:41:04.277Z",
+  "updatedAt": "2026-05-09T11:42:49.268Z",
   "targets": {
     "10.0.0.5:22": {
       "key": "10.0.0.5:22",
@@ -89,7 +89,7 @@
       "username": "",
       "port": 22,
       "firstSeenAt": "2026-04-23T23:24:35.187Z",
-      "lastSeenAt": "2026-05-08T00:41:04.277Z",
+      "lastSeenAt": "2026-05-09T11:42:49.268Z",
       "paths": [],
       "domains": [],
       "lastObjective": "Reconcile the managed app platform on the remote k3s host.",

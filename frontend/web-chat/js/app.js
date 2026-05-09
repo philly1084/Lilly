@@ -3960,10 +3960,11 @@ class ChatApp {
         
         // Handle slash commands
         if (content.startsWith('/')) {
-            this.executeSlashCommand(content);
+            await this.executeSlashCommand(content);
             this.messageInput.value = '';
             this.autoResize?.reset?.();
             this.updateSendButton();
+            uiHelpers.updateCharCounter(this.messageInput, this.charCounter);
             return;
         }
 
@@ -5049,7 +5050,7 @@ class ChatApp {
             }));
     }
 
-    executeSlashCommand(command) {
+    async executeSlashCommand(command) {
         const parts = command.slice(1).split(' ');
         const cmd = parts[0].toLowerCase();
         const args = parts.slice(1).join(' ');
@@ -5077,13 +5078,13 @@ class ChatApp {
                 }
                 break;
             case 'remote':
-                this.handleRemoteCommand(args);
+                await this.handleRemoteCommand(args);
                 break;
             case 'clear':
                 this.clearCurrentSession();
                 break;
             case 'new':
-                this.createNewSession();
+                await this.createNewSession();
                 break;
             case 'help':
                 uiHelpers.openShortcutsModal();

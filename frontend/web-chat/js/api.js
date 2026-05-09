@@ -185,6 +185,26 @@ function buildNaturalInteractionContext(messages = [], extras = {}) {
     };
 }
 
+function getLastUserMessageText(messages = []) {
+    const recentMessages = Array.isArray(messages) ? messages.slice().reverse() : [];
+    const message = recentMessages.find((entry) => String(entry?.role || '').trim().toLowerCase() === 'user');
+    return String(message?.content || '').trim();
+}
+
+function hasRemoteBuildIntentText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized || normalized.startsWith('/')) {
+        return false;
+    }
+
+    const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|service|software)\b/.test(normalized);
+    const remoteTarget = /\b(remote|server|runner|gitlab|gitlab ci|pipeline|registry|image|cluster|k3s|k8s|kubernetes|ingress|traefik|tls|domain|dns|live|public|hosted|production)\b/.test(normalized);
+    const action = /\b(create|build|make|develop|implement|update|fix|deploy|redeploy|publish|launch|ship|go live|rollout|verify)\b/.test(normalized);
+    const explicitManagedApp = /\bmanaged[- ]app\b|\bmanaged app\b/.test(normalized);
+
+    return action && remoteTarget && (softwareTarget || explicitManagedApp);
+}
+
 // Retry configuration
 const RETRY_CONFIG = {
     maxRetries: 3,
@@ -1094,6 +1114,14 @@ class OpenAIAPIClient extends EventTarget {
             params.metadata.remoteBuildAutonomyApproved = true;
         }
 
+        if (hasRemoteBuildIntentText(getLastUserMessageText(messages))) {
+            params.executionProfile = 'remote-build';
+            params.metadata.remoteBuildAutonomyApproved = true;
+            params.metadata.frontendRemoteBuildAutonomyApproved = true;
+            params.metadata.remoteBuildIntent = true;
+            params.metadata.preferManagedApp = true;
+        }
+
         if (reasoningEffort) {
             params.reasoning_effort = reasoningEffort;
         }
@@ -1537,6 +1565,14 @@ class OpenAIAPIClient extends EventTarget {
 
         if (isRemoteBuildAutonomyApproved()) {
             params.metadata.remoteBuildAutonomyApproved = true;
+        }
+
+        if (hasRemoteBuildIntentText(getLastUserMessageText(messages))) {
+            params.executionProfile = 'remote-build';
+            params.metadata.remoteBuildAutonomyApproved = true;
+            params.metadata.frontendRemoteBuildAutonomyApproved = true;
+            params.metadata.remoteBuildIntent = true;
+            params.metadata.preferManagedApp = true;
         }
 
         if (reasoningEffort) {

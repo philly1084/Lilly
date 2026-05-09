@@ -283,6 +283,7 @@ const AUTO_TOOL_ALLOWLIST = new Set([
     'remote-command',
     'remote-cli-agent',
     'k3s-deploy',
+    'managed-app',
     'code-sandbox',
     'security-scan',
     ...PROMOTED_LOCAL_TOOL_IDS,
@@ -1978,7 +1979,7 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     }
 
     if (toolId === 'managed-app') {
-        return false;
+        return executionProfile === 'remote-build' && hasManagedAppIntent(prompt);
     }
 
     if (toolId === 'agent-workload') {
@@ -3113,6 +3114,11 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && hasRemoteSoftwareCreationIntent(prompt);
     const remoteSoftwareDeploymentIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareDeploymentIntent(prompt);
+    const managedAppIntent = executionProfile === 'remote-build'
+        && hasManagedAppIntent(prompt);
+    const shouldSuppressDocumentWorkflowForRemoteDeploy = remoteSoftwareCreationIntent
+        || remoteSoftwareDeploymentIntent
+        || managedAppIntent;
     const internalArtifactReference = hasInternalArtifactReference(prompt);
     const shouldPreferRemoteWorkspaceSource = Boolean(
         remoteToolId
@@ -3146,7 +3152,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add(DEEP_RESEARCH_PRESENTATION_TOOL_ID);
     }
 
-    if (hasDocumentWorkflowIntent && availableToolIds.has(DOCUMENT_WORKFLOW_TOOL_ID)) {
+    if (hasDocumentWorkflowIntent && !shouldSuppressDocumentWorkflowForRemoteDeploy && availableToolIds.has(DOCUMENT_WORKFLOW_TOOL_ID)) {
         selectedIds.add(DOCUMENT_WORKFLOW_TOOL_ID);
     }
 
@@ -3254,7 +3260,11 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add('agent-notes-write');
     }
 
-    if (remoteCliAgentToolId && remoteSoftwareDeploymentIntent) {
+    if (availableToolIds.has('managed-app') && managedAppIntent) {
+        selectedIds.add('managed-app');
+    }
+
+    if (remoteCliAgentToolId && remoteSoftwareDeploymentIntent && !managedAppIntent) {
         selectedIds.add(remoteCliAgentToolId);
     }
 

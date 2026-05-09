@@ -2389,19 +2389,20 @@ class ManagedAppService {
         const byId = this.store?.getAppById
             ? await this.store.getAppById(reference, ownerId)
             : null;
-        if (byId) {
+        if (hasPersistedAppId(byId)) {
             return this.normalizeAppRecord(byId);
         }
 
         const bySlug = this.store?.getAppBySlug
             ? await this.store.getAppBySlug(reference, ownerId)
             : null;
-        if (bySlug) {
+        if (hasPersistedAppId(bySlug)) {
             return this.normalizeAppRecord(bySlug);
         }
 
         if (repoReference && this.store?.getAppBySlug) {
-            return this.normalizeAppRecord(await this.store.getAppBySlug(repoReference.repoName, ownerId));
+            const byRepoSlug = await this.store.getAppBySlug(repoReference.repoName, ownerId);
+            return hasPersistedAppId(byRepoSlug) ? this.normalizeAppRecord(byRepoSlug) : null;
         }
 
         return null;

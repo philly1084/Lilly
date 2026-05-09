@@ -1001,6 +1001,24 @@ describe('ManagedAppService', () => {
         expect(getAppByRepo).toHaveBeenCalledWith('agent-apps', 'demo');
     });
 
+    test('resolveApp ignores empty placeholder records from store misses', async () => {
+        const service = new ManagedAppService({
+            store: {
+                isAvailable: () => true,
+                getAppByRepo: jest.fn(async () => null),
+                getAppById: jest.fn(async () => ({})),
+                getAppBySlug: jest.fn(async () => ({
+                    id: '',
+                    slug: '',
+                    status: 'draft',
+                    metadata: {},
+                })),
+            },
+        });
+
+        await expect(service.resolveApp('missing-app', 'user-1')).resolves.toBeNull();
+    });
+
     test('createApp reuses an existing app by public host and keeps repo identity stable', async () => {
         const existingApp = {
             id: 'app-1',

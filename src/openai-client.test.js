@@ -386,6 +386,20 @@ function createToolManager() {
                 },
             },
         }],
+        ['managed-app', {
+            id: 'managed-app',
+            name: 'Managed App',
+            description: 'Create, build, deploy, inspect, and repair GitLab-backed managed apps.',
+            inputSchema: {
+                type: 'object',
+                required: ['action'],
+                properties: {
+                    action: { type: 'string' },
+                    slug: { type: 'string' },
+                    prompt: { type: 'string' },
+                },
+            },
+        }],
         ['code-sandbox', {
             id: 'code-sandbox',
             name: 'Code Sandbox',
@@ -474,6 +488,7 @@ function createToolManager() {
         ['remote-command', { enabled: true, triggerPatterns: ['remote command', 'execute remotely'], requiresConfirmation: true }],
         ['remote-cli-agent', { enabled: true, triggerPatterns: ['remote cli agent', 'remote software deployment'], requiresConfirmation: true }],
         ['k3s-deploy', { enabled: true, triggerPatterns: ['deploy to k3s', 'kubectl apply', 'rollout status'], requiresConfirmation: true }],
+        ['managed-app', { enabled: true, triggerPatterns: ['managed app', 'gitlab managed app'], requiresConfirmation: true }],
         ['code-sandbox', { enabled: true, triggerPatterns: ['sandbox', 'run code'], requiresConfirmation: false }],
         ['user-checkpoint', { enabled: true, triggerPatterns: ['ask a checkpoint question'], requiresConfirmation: false }],
         ['document-workflow', { enabled: true, triggerPatterns: ['generate document', 'make slides', 'create brief'], requiresConfirmation: false }],
@@ -2723,6 +2738,34 @@ describe('openai-client automatic tool orchestration helpers', () => {
             automaticTools.map((tool) => tool.id),
             { executionProfile: 'remote-build' },
         )).not.toBe('managed-app');
+    });
+
+    test('prefers managed-app over document-workflow for GitLab live website deployment prompts', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Use the managed-app GitLab deployment path to create a small live website, commit it to GitLab, build the image, deploy it to k3s, and verify the public HTTPS site.';
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(
+            toolManager,
+            prompt,
+            { executionProfile: 'remote-build' },
+        );
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(
+            automaticTools,
+            prompt,
+            { toolContext: { executionProfile: 'remote-build' } },
+        );
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(selectedIds).toContain('managed-app');
+        expect(selectedIds).not.toContain('document-workflow');
     });
 
     test('does not misclassify research html documents about public or live events as remote website work', () => {
