@@ -2,7 +2,7 @@
   "servers": {
     "primary": {
       "sshTarget": "root@168.119.176.121",
-      "identityFile": "",
+      "identityFile": "C:\\Users\\phill\\.ssh\\codex_desktop_remote_ed25519",
       "strictHostKeyChecking": "accept-new",
       "forwards": [
         {
@@ -20,8 +20,8 @@
       ]
     },
     "secondary": {
-      "sshTarget": "philip@159.69.15.0",
-      "identityFile": "",
+      "sshTarget": "root@162.55.163.199",
+      "identityFile": "C:\\Users\\phill\\.ssh\\codex_desktop_remote_ed25519",
       "strictHostKeyChecking": "accept-new",
       "forwards": [
         {

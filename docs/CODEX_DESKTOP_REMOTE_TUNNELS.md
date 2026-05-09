@@ -12,11 +12,36 @@ Create the ignored local config:
 powershell -ExecutionPolicy Bypass -File scripts/codex-remote-tunnel.ps1 -Action init
 ```
 
+Create a permanent local Codex Desktop SSH key:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-remote-key-bootstrap.ps1
+```
+
+The script prints one public key and the exact three remote commands to run after you log in to each server once with a password. After both servers trust the key, this bootstrap script is no longer needed and can be deleted in a cleanup update.
+
+For the lowest-effort remote bootstrap, generate a one-shot server command instead:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-remote-access-pack.ps1 -Mode ssh-key -User root
+```
+
+That prints this computer's current public IP when available and a base64-packed server bootstrap command. You can run that command once on each server, or place it in a Git/cloud-init/deploy step that executes on the server.
+It also prints a disposable onboard phrase and writes it to `~/.ssh/codex_onboard_phrase` on the server so Codex can verify that the expected bootstrap ran.
+
+For VPN mode, create a reusable Tailscale auth key in the Tailscale admin console, then run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-remote-access-pack.ps1 -Mode tailscale -User root -TailscaleAuthKey "tskey-auth-..."
+```
+
+VPN mode is the cleanest long-term option because it avoids depending on this computer's changing public IP and lets the servers join a private network with stable Tailscale names.
+
 Edit `local/remote-tunnels.local.json`:
 
 - Set `servers.primary.sshTarget` to the first server, such as `root@168.119.176.121` or an SSH config alias.
 - Set `servers.secondary.sshTarget` to the second server.
-- Set `identityFile` only if the normal SSH agent/config is not enough.
+- Set `identityFile` to `C:\\Users\\phill\\.ssh\\codex_desktop_remote_ed25519` unless the normal SSH agent/config is enough.
 - Adjust local ports if they collide with another process.
 
 The local config is gitignored. Keep secrets out of it.
