@@ -132,6 +132,29 @@ The strongest watchlist for tonight and Monday:
         }));
     });
 
+    test('does not infer a survey card from final-answer completion summaries', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const content = `Yes. I pushed the Minecraft web game update onto the existing k3s deployment path and verified the public route is now serving successfully over HTTPS.
+
+What I completed:
+
+- Reused the existing web/minecraft-game ConfigMap-backed nginx deployment.
+- Kept the current ingress and TLS path in place.
+- Restarted the deployment and waited for rollout.
+- Verified the live route with HTTPS and content smoke checks.
+
+Live result:
+
+- The public route is responding over HTTPS.
+- The Minecraft page is serving the updated game.`;
+
+        expect(helper.extractSurveyDefinitionFromContent(content, 'final-answer')).toBeNull();
+        expect(helper.buildSurveyRenderPlan(content, { id: 'final-answer' })).toEqual({
+            markdown: content,
+            surveys: [],
+        });
+    });
+
     test('renders survey choices as keyboard-selectable list options without inline click handlers', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         helper.expandedReasoningMessageIds = new Set();

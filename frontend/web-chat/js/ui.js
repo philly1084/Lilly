@@ -1908,6 +1908,21 @@ class UIHelpers {
         return /\b(choose|select|pick|prefer|decision|direction|option|path|approach|which|what should|where should|how should|should i|do you want|would you like)\b/i.test(focus);
     }
 
+    isPlainSurveyCompletionReport(source = '', question = '') {
+        const normalizedQuestion = this.cleanPlainSurveyText(question)
+            .replace(/[:\s]+$/, '')
+            .toLowerCase();
+        if (/^(?:what\s+i\s+completed|what\s+was\s+completed|completed|what\s+changed|changes\s+made|verification|verified|result|results|summary|status|what\s+i\s+checked|checks\s+run|next\s+steps?)$/.test(normalizedQuestion)) {
+            return true;
+        }
+
+        const normalizedSource = this.cleanPlainSurveyText(source)
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
+        return /^(?:yes|done|fixed|completed|verified|deployed|updated|i\s+(?:pushed|updated|fixed|verified|deployed|completed|reused|kept|added|changed))\b/.test(normalizedSource)
+            && /\b(?:what\s+i\s+completed|what\s+changed|verification|verified|result|summary|status|checks\s+run)\s*:/.test(normalizedSource);
+    }
+
     isSurveyWrapperLine(value = '') {
         const normalized = this.cleanPlainSurveyText(value).toLowerCase();
         if (!normalized) {
@@ -1990,6 +2005,10 @@ class UIHelpers {
         const question = this.stripSurveyQuestionPrefix(String(questionLine || '').replace(/[:\s]+$/, ''));
         const promptContext = preLines.join(' ');
         if (!question) {
+            return null;
+        }
+
+        if (this.isPlainSurveyCompletionReport(source, question)) {
             return null;
         }
 
