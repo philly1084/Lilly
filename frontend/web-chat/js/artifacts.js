@@ -329,20 +329,10 @@
                 gap: 6px;
             }
 
-            .artifact-generated-card .artifact-html-preview-actions button {
-                min-height: 28px;
-                padding: 4px 9px;
-                border: 1px solid var(--border);
-                border-radius: 7px;
-                background: var(--bg-secondary);
-                color: var(--text-primary);
-                font-size: 12px;
-                cursor: pointer;
-            }
-
-            .artifact-generated-card .artifact-html-preview-actions button:disabled {
-                cursor: default;
-                opacity: 0.5;
+            .artifact-generated-card .artifact-html-preview-status {
+                color: var(--text-tertiary);
+                font-size: 11px;
+                font-weight: 600;
             }
 
             .artifact-generated-card .artifact-html-preview-stage {
@@ -360,6 +350,15 @@
                 height: 320px;
                 border: none;
                 background: #ffffff;
+            }
+
+            .artifact-generated-card .artifact-html-preview.is-loading .artifact-html-preview-stage,
+            .artifact-generated-card .artifact-html-preview.is-error .artifact-html-preview-stage {
+                background: rgba(15, 23, 42, 0.08);
+            }
+
+            .artifact-generated-card .artifact-html-preview.is-error .artifact-html-preview-stage {
+                color: var(--error);
             }
 
             .artifact-generated-card .artifact-image-preview {
@@ -478,6 +477,10 @@
                 background: var(--accent);
                 color: white;
                 border-color: var(--accent);
+            }
+
+            .artifact-generated-card .file-actions button.is-secondary {
+                background: rgba(255, 255, 255, 0.035);
             }
             
             @media (max-width: 640px) {
@@ -995,6 +998,35 @@
         return resolveApiUrl(inlinePath, { absolute });
     }
 
+    function findArtifactById(id = '') {
+        const artifactId = String(id || '').trim();
+        if (!artifactId) {
+            return null;
+        }
+
+        const directArtifact = state.artifacts.find((entry) => entry?.id === artifactId)
+            || state.lastDone?.artifacts?.find((entry) => entry?.id === artifactId);
+        if (directArtifact) {
+            return directArtifact;
+        }
+
+        const sessionId = getCurrentSessionId();
+        const messages = window.sessionManager?.getMessages?.(sessionId) || [];
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const message = messages[index] || {};
+            const messageArtifacts = [
+                ...(Array.isArray(message.artifacts) ? message.artifacts : []),
+                ...(Array.isArray(message.metadata?.artifacts) ? message.metadata.artifacts : []),
+            ];
+            const messageArtifact = messageArtifacts.find((entry) => entry?.id === artifactId);
+            if (messageArtifact) {
+                return messageArtifact;
+            }
+        }
+
+        return window.fileManager?.files?.find?.((entry) => entry?.id === artifactId) || null;
+    }
+
     function isFullSitePreviewArtifact(artifact) {
         return Boolean(
             artifact?.bundleDownloadUrl
@@ -1044,14 +1076,11 @@
             ? `
                 <div class="artifact-html-preview" data-preview-url="${escapeHtmlAttr(htmlPreviewUrl)}" data-preview-title="${escapeHtmlAttr(artifact.filename || 'Artifact preview')}">
                     <div class="artifact-html-preview-toolbar">
-                        <span>HTML preview</span>
-                        <div class="artifact-html-preview-actions">
-                            <button type="button" data-action="start-preview" onclick="artifactManager.startInlineArtifactPreview(this)">Start</button>
-                            <button type="button" data-action="stop-preview" onclick="artifactManager.stopInlineArtifactPreview(this)" disabled>Stop</button>
-                        </div>
+                        <span>HTML page preview</span>
+                        <span class="artifact-html-preview-status">Loading</span>
                     </div>
                     <div class="artifact-html-preview-stage">
-                        Preview stopped. Start it when you want to run this artifact.
+                        Loading page preview...
                     </div>
                 </div>
             `
@@ -1088,26 +1117,30 @@
             : '';
         const htmlActions = htmlPreviewUrl
             ? `
-                <button onclick="artifactManager.openArtifactPreview('${artifact.id}')">
-                    <i data-lucide="external-link" class="w-4 h-4"></i>
-                    ${artifact?.bundleDownloadUrl ? 'Open Site' : 'Preview'}
+                <button class="primary" onclick="artifactManager.openArtifactPreview('${artifact.id}')">
+                    ${artifact?.bundleDownloadUrl ? 'Open Site' : 'Open Page'}
                 </button>
             `
             : '';
         const updateAction = `
             <button onclick="artifactManager.prepareArtifactUpdate('${artifact.id}')">
-                <i data-lucide="pencil" class="w-4 h-4"></i>
                 Update
             </button>
         `;
         const deployActions = artifact?.bundleDownloadUrl
             ? `
                 <button onclick="artifactManager.exportSiteToManagedApp('${artifact.id}')">
-                    <i data-lucide="rocket" class="w-4 h-4"></i>
                     Push to Web
                 </button>
             `
             : '';
+        const contextAction = htmlPreviewUrl
+            ? ''
+            : `
+                <button onclick="artifactManager.addToContext('${artifact.id}')">
+                    Add to Context
+                </button>
+            `;
         const downloadLabel = artifact?.bundleDownloadUrl ? 'Bundle Zip' : 'Download';
 
         return `
@@ -1124,18 +1157,14 @@
                 ${htmlPreview}
                 ${textPreview}
                 <div class="file-actions">
-                    <button class="primary" onclick="artifactManager.downloadArtifact('${artifact.id}', '${escapeHtml(artifact.filename)}')">
-                        <i data-lucide="download" class="w-4 h-4"></i>
+                    ${htmlActions}
+                    <button class="${htmlPreviewUrl ? 'is-secondary' : 'primary'}" onclick="artifactManager.downloadArtifact('${artifact.id}', '${escapeHtml(artifact.filename)}')">
                         ${downloadLabel}
                     </button>
                     ${mermaidActions}
-                    ${htmlActions}
                     ${deployActions}
                     ${updateAction}
-                    <button onclick="artifactManager.addToContext('${artifact.id}')">
-                        <i data-lucide="plus" class="w-4 h-4"></i>
-                        Add to Context
-                    </button>
+                    ${contextAction}
                 </div>
             </div>
         `;
@@ -1191,6 +1220,7 @@
             }
 
             window.uiHelpers?.renderMermaidDiagrams?.(card);
+            hydrateInlineArtifactPreviews(card);
         });
 
         container.scrollTop = container.scrollHeight;
@@ -1198,6 +1228,26 @@
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
+    }
+
+    function startArtifactPreviewObserver() {
+        if (window.__kimibuiltArtifactPreviewObserverStarted) {
+            hydrateInlineArtifactPreviews(document);
+            return;
+        }
+
+        window.__kimibuiltArtifactPreviewObserverStarted = true;
+        hydrateInlineArtifactPreviews(document);
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes?.forEach?.((node) => {
+                    if (node?.nodeType === 1) {
+                        hydrateInlineArtifactPreviews(node);
+                    }
+                });
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
     function injectToolbar() {
@@ -1651,18 +1701,19 @@
         document.body.classList.add('site-preview-open');
     }
 
-    function getInlineArtifactPreviewElements(button) {
-        const wrapper = button?.closest?.('.artifact-html-preview');
+    function getInlineArtifactPreviewElements(target) {
+        const wrapper = target?.classList?.contains?.('artifact-html-preview')
+            ? target
+            : target?.closest?.('.artifact-html-preview');
         return {
             wrapper,
             stage: wrapper?.querySelector?.('.artifact-html-preview-stage') || null,
-            start: wrapper?.querySelector?.('[data-action="start-preview"]') || null,
-            stop: wrapper?.querySelector?.('[data-action="stop-preview"]') || null,
+            status: wrapper?.querySelector?.('.artifact-html-preview-status') || null,
         };
     }
 
-    async function startInlineArtifactPreview(button) {
-        const { wrapper, stage, start, stop } = getInlineArtifactPreviewElements(button);
+    async function startInlineArtifactPreview(target) {
+        const { wrapper, stage, status } = getInlineArtifactPreviewElements(target);
         if (!wrapper || !stage || !wrapper?.dataset?.previewUrl) {
             if (window.uiHelpers?.showToast) {
                 uiHelpers.showToast('Preview is not available for this artifact.', 'warning');
@@ -1670,18 +1721,28 @@
             return;
         }
 
-        if (start) start.disabled = true;
-        stage.textContent = 'Starting preview...';
+        if (wrapper.dataset.previewActive === 'true' || wrapper.dataset.previewLoading === 'true') {
+            return;
+        }
+
+        wrapper.dataset.previewLoading = 'true';
+        wrapper.classList.add('is-loading');
+        wrapper.classList.remove('is-error');
+        stage.textContent = 'Loading page preview...';
+        if (status) status.textContent = 'Loading';
 
         let previewUrl = '';
         try {
             previewUrl = await resolveAuthenticatedPreviewUrl(wrapper.dataset.previewUrl);
         } catch (error) {
+            wrapper.classList.remove('is-loading');
+            wrapper.classList.add('is-error');
+            wrapper.dataset.previewLoading = 'false';
             stage.textContent = 'Preview authentication failed. Sign in again and retry.';
+            if (status) status.textContent = 'Auth blocked';
             if (window.uiHelpers?.showToast) {
                 uiHelpers.showToast(error.message || 'Preview authentication failed', 'error');
             }
-            if (start) start.disabled = false;
             return;
         }
 
@@ -1691,22 +1752,36 @@
         iframe.loading = 'lazy';
         iframe.referrerPolicy = 'no-referrer';
         iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
+        iframe.addEventListener('load', () => {
+            wrapper.classList.remove('is-loading');
+            wrapper.dataset.previewLoading = 'false';
+            if (status) status.textContent = 'Ready';
+        }, { once: true });
         stage.innerHTML = '';
         stage.appendChild(iframe);
         wrapper.dataset.previewActive = 'true';
-        if (stop) stop.disabled = false;
     }
 
-    function stopInlineArtifactPreview(button) {
-        const { wrapper, stage, start, stop } = getInlineArtifactPreviewElements(button);
+    function stopInlineArtifactPreview(target) {
+        const { wrapper, stage, status } = getInlineArtifactPreviewElements(target);
         if (!wrapper || !stage) {
             return;
         }
 
-        stage.innerHTML = 'Preview stopped. Start it when you want to run this artifact.';
+        stage.innerHTML = 'Preview paused.';
         wrapper.dataset.previewActive = 'false';
-        if (start) start.disabled = false;
-        if (stop) stop.disabled = true;
+        wrapper.dataset.previewLoading = 'false';
+        wrapper.classList.remove('is-loading', 'is-error');
+        if (status) status.textContent = 'Paused';
+    }
+
+    function hydrateInlineArtifactPreviews(root = document) {
+        const scope = root?.querySelectorAll ? root : document;
+        scope.querySelectorAll('.artifact-html-preview[data-preview-url]:not([data-preview-hydrated="true"])')
+            .forEach((wrapper) => {
+                wrapper.dataset.previewHydrated = 'true';
+                startInlineArtifactPreview(wrapper);
+            });
     }
     
     // Create global artifact manager for external access
@@ -1750,7 +1825,7 @@
         },
 
         openArtifactPreview: async (id) => {
-            const artifact = state.artifacts.find((entry) => entry.id === id) || state.lastDone?.artifacts?.find((entry) => entry.id === id);
+            const artifact = findArtifactById(id);
             const previewUrl = getArtifactPreviewUrl(artifact);
             if (!previewUrl) {
                 if (window.uiHelpers?.showToast) {
@@ -1770,9 +1845,10 @@
 
         startInlineArtifactPreview,
         stopInlineArtifactPreview,
+        hydrateInlineArtifactPreviews,
 
         exportSiteToManagedApp: async (id) => {
-            const artifact = state.artifacts.find((entry) => entry.id === id) || state.lastDone?.artifacts?.find((entry) => entry.id === id);
+            const artifact = findArtifactById(id);
             if (!artifact?.bundleDownloadUrl) {
                 if (window.uiHelpers?.showToast) {
                     uiHelpers.showToast('Only website bundle artifacts can be pushed to the web build lane.', 'warning');
@@ -1897,6 +1973,7 @@
             patchApp();
             hookSessionEvents();
             fetchArtifacts();
+            startArtifactPreviewObserver();
         }, 100);
     });
 })();
