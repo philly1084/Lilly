@@ -1,0 +1,380 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: philip-blog
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: philip-blog-content
+  namespace: philip-blog
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Philip's Blogs</title>
+        <style>
+          :root {
+            --bg: #f6f7fb;
+            --text: #17202a;
+            --muted: #4e5d6c;
+            --surface: #ffffff;
+            --accent: #2266d2;
+            --accent-dark: #164b9e;
+            --border: #d8dfeb;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--text);
+            background: var(--bg);
+          }
+
+          main {
+            width: min(980px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 56px 0;
+          }
+
+          .hero {
+            padding: 40px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 12px 32px rgba(23, 32, 42, 0.08);
+          }
+
+          h1 {
+            margin: 0 0 12px;
+            font-size: clamp(2rem, 5vw, 4.25rem);
+            line-height: 1;
+          }
+
+          p {
+            color: var(--muted);
+            font-size: 1.08rem;
+            line-height: 1.65;
+          }
+
+          .links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-top: 28px;
+          }
+
+          a.card {
+            display: block;
+            min-height: 150px;
+            padding: 22px;
+            color: var(--text);
+            text-decoration: none;
+            background: #eef4ff;
+            border: 1px solid #bfd0ee;
+            border-radius: 8px;
+          }
+
+          a.card:focus,
+          a.card:hover {
+            border-color: var(--accent);
+            outline: 3px solid rgba(34, 102, 210, 0.18);
+          }
+
+          .card strong {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--accent-dark);
+            font-size: 1.15rem;
+          }
+
+          @media (max-width: 640px) {
+            main {
+              width: min(100% - 20px, 980px);
+              padding: 24px 0;
+            }
+
+            .hero {
+              padding: 24px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <main>
+          <section class="hero" aria-labelledby="title">
+            <h1 id="title">Philip's Blogs</h1>
+            <p>A small home for writing, experiments, and project notes. The deployment is a real nginx site on k3s behind Traefik, not a chat-only HTML artifact.</p>
+            <nav class="links" aria-label="Blog pages">
+              <a class="card" href="/frontend-demo">
+                <strong>Frontend Demo</strong>
+                An interactive page with form controls and live output.
+              </a>
+            </nav>
+          </section>
+        </main>
+      </body>
+    </html>
+  frontend-demo.html: |
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Frontend Demo | Philip's Blogs</title>
+        <style>
+          :root {
+            --bg: #f6f7fb;
+            --text: #17202a;
+            --muted: #4e5d6c;
+            --surface: #ffffff;
+            --accent: #2266d2;
+            --accent-dark: #164b9e;
+            --border: #d8dfeb;
+            --field: #ffffff;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--text);
+            background: var(--bg);
+          }
+
+          main {
+            width: min(760px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 42px 0;
+          }
+
+          a {
+            color: var(--accent-dark);
+          }
+
+          .panel {
+            margin-top: 18px;
+            padding: 28px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 12px 32px rgba(23, 32, 42, 0.08);
+          }
+
+          h1 {
+            margin: 0 0 20px;
+            font-size: 2.25rem;
+          }
+
+          label {
+            display: block;
+            margin: 16px 0 6px;
+            color: var(--text);
+            font-weight: 700;
+          }
+
+          input,
+          select,
+          textarea {
+            width: 100%;
+            padding: 11px 12px;
+            color: var(--text);
+            background: var(--field);
+            border: 1px solid #a8b4c3;
+            border-radius: 6px;
+            font: inherit;
+          }
+
+          textarea {
+            min-height: 120px;
+            resize: vertical;
+          }
+
+          button {
+            margin-top: 18px;
+            padding: 12px 18px;
+            color: #ffffff;
+            background: var(--accent);
+            border: 0;
+            border-radius: 6px;
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+          }
+
+          button:hover,
+          button:focus {
+            background: var(--accent-dark);
+            outline: 3px solid rgba(34, 102, 210, 0.22);
+          }
+
+          output {
+            display: block;
+            min-height: 64px;
+            margin-top: 18px;
+            padding: 14px;
+            color: var(--text);
+            background: #eef4ff;
+            border: 1px solid #bfd0ee;
+            border-radius: 6px;
+            line-height: 1.5;
+          }
+        </style>
+      </head>
+      <body>
+        <main>
+          <a href="/">Back to Philip's Blogs</a>
+          <section class="panel" aria-labelledby="demo-title">
+            <h1 id="demo-title">Frontend Demo</h1>
+            <form id="demo-form">
+              <label for="name">Name</label>
+              <input id="name" name="name" placeholder="Enter your name" autocomplete="name" />
+
+              <label for="role">Role</label>
+              <select id="role" name="role">
+                <option>Developer</option>
+                <option>Writer</option>
+                <option>Designer</option>
+                <option>Builder</option>
+              </select>
+
+              <label for="message">Message</label>
+              <textarea id="message" name="message" placeholder="Write something..."></textarea>
+
+              <button type="submit">Submit</button>
+              <output id="result">Output will appear here.</output>
+            </form>
+          </section>
+        </main>
+        <script>
+          const form = document.querySelector('#demo-form');
+          const result = document.querySelector('#result');
+
+          form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const data = new FormData(form);
+            const name = data.get('name') || 'Anonymous';
+            const role = data.get('role');
+            const message = data.get('message') || 'No message yet.';
+            result.textContent = `${name} (${role}) says: ${message}`;
+          });
+        </script>
+      </body>
+    </html>
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+      root /usr/share/nginx/html;
+      index index.html;
+
+      location = /frontend-demo {
+        try_files /frontend-demo.html =404;
+      }
+
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: philip-blog
+  namespace: philip-blog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: philip-blog
+  template:
+    metadata:
+      labels:
+        app: philip-blog
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+              readOnly: true
+            - name: content
+              mountPath: /usr/share/nginx/html/frontend-demo.html
+              subPath: frontend-demo.html
+              readOnly: true
+            - name: content
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: content
+          configMap:
+            name: philip-blog-content
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: philip-blog
+  namespace: philip-blog
+spec:
+  selector:
+    app: philip-blog
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: philip-blog
+  namespace: philip-blog
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - philip.demoserver2.buzz
+      secretName: philip-blog-tls
+  rules:
+    - host: philip.demoserver2.buzz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: philip-blog
+                port:
+                  number: 80

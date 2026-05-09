@@ -11,6 +11,7 @@ const ARTIFACT_RESULT_KEYS = [
     'documents',
     'generatedArtifact',
     'generatedArtifacts',
+    'sandboxBuild',
     'video',
     'videoArtifact',
 ];
@@ -134,7 +135,12 @@ function extractArtifactsFromValue(value, depth = 0) {
     }
 
     const artifact = normalizeArtifactEntry(value);
-    return artifact ? [artifact] : [];
+    if (artifact) {
+        return [artifact];
+    }
+
+    return ARTIFACT_RESULT_KEYS
+        .flatMap((key) => extractArtifactsFromValue(value[key], depth + 1));
 }
 
 function extractArtifactsFromToolEvents(toolEvents = []) {

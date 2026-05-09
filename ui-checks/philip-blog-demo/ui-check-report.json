@@ -1,0 +1,103 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "https://philip.demoserver2.buzz/frontend-demo",
+  "originalUrl": "https://philip.demoserver2.buzz/frontend-demo",
+  "authenticated": false,
+  "generatedAt": "2026-05-09T21:41:37.749Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-demo\\frontend-demo-philip-s-blogs-desktop.png",
+      "metrics": {
+        "title": "Frontend Demo | Philip's Blogs",
+        "url": "https://philip.demoserver2.buzz/frontend-demo",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 120,
+        "bodyTextPreview": "Back to Philip's Blogs Frontend Demo Name Role Developer Writer Designer Builder Message Submit Output will appear here.",
+        "headings": [
+          "Frontend Demo"
+        ],
+        "interactiveControls": 5,
+        "textContrast": {
+          "checked": 10,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-demo\\frontend-demo-philip-s-blogs-mobile.png",
+      "metrics": {
+        "title": "Frontend Demo | Philip's Blogs",
+        "url": "https://philip.demoserver2.buzz/frontend-demo",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 120,
+        "bodyTextPreview": "Back to Philip's Blogs Frontend Demo Name Role Developer Writer Designer Builder Message Submit Output will appear here.",
+        "headings": [
+          "Frontend Demo"
+        ],
+        "interactiveControls": 5,
+        "textContrast": {
+          "checked": 10,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-demo\\frontend-demo-philip-s-blogs-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-demo\\frontend-demo-philip-s-blogs-mobile.png"
+    ],
+    "issues": []
+  }
+}

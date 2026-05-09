@@ -5,6 +5,7 @@ const { config } = require('./config');
 const { getSessionControlState } = require('./runtime-control-state');
 const { resolveDeferredWorkloadPreflight } = require('./workloads/preflight');
 const { isDashboardRequest } = require('./dashboard-template-catalog');
+const { extractArtifactsFromToolEvents } = require('./runtime-artifacts');
 const settingsController = require('./routes/admin/settings.controller');
 const { parseLenientJson } = require('./utils/lenient-json');
 const { isInteractiveDocumentRequest } = require('./artifacts/artifact-experience');
@@ -397,6 +398,97 @@ function isWebsiteDesignExampleRequest(text = '') {
         || (hasPresentationOrDocumentCue && !hasSlideDeckCue && (hasWebsiteImplementationCue || hasWebsiteDesignCue));
 }
 
+function shouldUseAgentSandboxForProjectArtifact(text = '', outputFormat = null) {
+    if (normalizeFormat(outputFormat) !== 'html') {
+        return false;
+    }
+
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized || /\b(text only|text-only|plain text|no artifact|no file|inline only|no sandbox|without sandbox)\b/.test(normalized)) {
+        return false;
+    }
+
+    const hasBuildIntent = /\b(create|make|generate|build|built|produce|render|prepare|draft|mock(?:\s|-)?up|prototype)\b/.test(normalized);
+    const hasProjectSurface = /\b(project|website|web page|webpage|html page|landing page|homepage|microsite|marketing site|frontend|front-end|ui|dashboard|web app|app workspace|prototype|mockup|demo|browser game|web game|video game|sandboxed game|playable game|multi step frontend|multi-step frontend)\b/.test(normalized)
+        || isDashboardRequest(normalized);
+    const hasDocumentSurface = /\b(document|doc|report|brief|guide|manual|workbook|dossier|whitepaper|white paper|article|paper|proposal|plan|spec)\b/.test(normalized);
+
+    return hasBuildIntent && (hasProjectSurface || hasDocumentSurface || isInteractiveDocumentRequest(normalized));
+}
+
+async function maybeGenerateAgentSandboxArtifact({
+    sessionId,
+    prompt = '',
+    outputFormat = null,
+    model = null,
+    reasoningEffort = null,
+    toolManager = null,
+    toolContext = {},
+} = {}) {
+    if (!sessionId
+        || !shouldUseAgentSandboxForProjectArtifact(prompt, outputFormat)
+        || typeof toolManager?.executeTool !== 'function') {
+        return null;
+    }
+
+    if (typeof toolManager.getTool === 'function' && !toolManager.getTool('document-workflow')) {
+        return null;
+    }
+
+    const params = {
+        action: 'generate-suite',
+        prompt,
+        formats: ['html'],
+        format: 'html',
+        buildMode: 'sandbox',
+        useSandbox: true,
+        includeContent: true,
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+    };
+
+    const toolEvent = {
+        toolCall: {
+            function: {
+                name: 'document-workflow',
+                arguments: JSON.stringify(params),
+            },
+        },
+        result: await toolManager.executeTool('document-workflow', params, {
+            ...toolContext,
+            sessionId,
+            toolManager,
+        }),
+        reason: 'Use the agent sandbox project path for a previewable HTML/document project.',
+    };
+
+    if (toolEvent.result?.success === false) {
+        throw new Error(toolEvent.result?.error || 'document-workflow sandbox generation failed.');
+    }
+
+    const artifacts = extractArtifactsFromToolEvents([toolEvent]);
+    if (artifacts.length === 0) {
+        throw new Error('document-workflow sandbox generation completed without a reusable artifact.');
+    }
+
+    const primaryArtifact = artifacts.find((artifact) => artifact?.sandboxUrl || artifact?.bundleDownloadUrl)
+        || artifacts.find((artifact) => artifact?.previewUrl)
+        || artifacts[0];
+
+    return {
+        responseId: `document-workflow-${Date.now()}`,
+        artifact: primaryArtifact,
+        artifacts,
+        outputText: String(toolEvent.result?.data?.sandboxBuild?.stdout || ''),
+        model,
+        assistantMessage: buildArtifactCompletionMessage(outputFormat, primaryArtifact),
+        metadata: {
+            agentSandbox: true,
+            toolEvents: [toolEvent],
+        },
+    };
+}
+
 function inferRequestedOutputFormat(text = '') {
     const normalized = String(text || '').toLowerCase();
     if (!normalized) {
@@ -459,6 +551,12 @@ function inferRequestedOutputFormat(text = '') {
     }
 
     if (wantsGeneratedDocument && !/\b(text only|text-only|plain text|no artifact|no file|inline only)\b/.test(normalized)) {
+        return 'html';
+    }
+
+    if (hasArtifactIntent
+        && hasDocumentArtifactCue
+        && !/\b(text only|text-only|plain text|no artifact|no file|inline only)\b/.test(normalized)) {
         return 'html';
     }
 
@@ -1531,6 +1629,23 @@ async function generateOutputArtifactFromPrompt({
         const error = new Error('A user prompt is required to generate an output artifact');
         error.statusCode = 400;
         throw error;
+    }
+
+    try {
+        const sandboxResult = await maybeGenerateAgentSandboxArtifact({
+            sessionId,
+            prompt,
+            outputFormat,
+            model,
+            reasoningEffort,
+            toolManager,
+            toolContext,
+        });
+        if (sandboxResult) {
+            return sandboxResult;
+        }
+    } catch (error) {
+        console.warn(`[Artifacts] Agent sandbox generation failed; falling back to direct artifact generation: ${error.message}`);
     }
 
     const result = await artifactService.generateArtifact({

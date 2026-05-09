@@ -232,4 +232,49 @@ describe('runtime artifact helpers', () => {
             }),
         ]);
     });
+
+    test('extracts document-workflow sandboxBuild artifacts for web-chat sandbox previews', () => {
+        const artifacts = extractArtifactsFromToolEvents([{
+            toolCall: {
+                function: {
+                    name: 'document-workflow',
+                },
+            },
+            result: {
+                success: true,
+                data: {
+                    action: 'generate-suite',
+                    document: {
+                        id: 'doc-text-1',
+                        filename: 'brief.html',
+                        mimeType: 'text/html',
+                        downloadUrl: '/api/artifacts/doc-text-1/download',
+                        previewUrl: '/api/artifacts/doc-text-1/preview',
+                    },
+                    sandboxBuild: {
+                        mode: 'project',
+                        artifact: {
+                            id: 'artifact-sandbox-1',
+                            filename: 'brief-sandbox.zip',
+                            mimeType: 'application/zip',
+                            downloadUrl: '/api/artifacts/artifact-sandbox-1/download',
+                            previewUrl: '/api/artifacts/artifact-sandbox-1/preview',
+                            sandboxUrl: '/api/artifacts/artifact-sandbox-1/sandbox',
+                            bundleDownloadUrl: '/api/artifacts/artifact-sandbox-1/bundle',
+                        },
+                    },
+                },
+            },
+        }]);
+
+        expect(artifacts).toEqual([
+            expect.objectContaining({ id: 'doc-text-1' }),
+            expect.objectContaining({
+                id: 'artifact-sandbox-1',
+                filename: 'brief-sandbox.zip',
+                sandboxUrl: '/api/artifacts/artifact-sandbox-1/sandbox',
+                bundleDownloadUrl: '/api/artifacts/artifact-sandbox-1/bundle',
+            }),
+        ]);
+    });
 });

@@ -227,6 +227,65 @@ describe('ai-route-utils', () => {
         }));
     });
 
+    test('generateOutputArtifactFromPrompt prefers document-workflow sandbox for project-like html artifacts', async () => {
+        const toolManager = {
+            getTool: jest.fn(() => ({ id: 'document-workflow' })),
+            executeTool: jest.fn(async () => ({
+                success: true,
+                data: {
+                    sandboxBuild: {
+                        artifact: {
+                            id: 'sandbox-artifact-1',
+                            filename: 'onboarding.zip',
+                            mimeType: 'application/zip',
+                            downloadUrl: '/api/artifacts/sandbox-artifact-1/download',
+                            previewUrl: '/api/artifacts/sandbox-artifact-1/preview',
+                            sandboxUrl: '/api/artifacts/sandbox-artifact-1/sandbox',
+                            bundleDownloadUrl: '/api/artifacts/sandbox-artifact-1/bundle',
+                        },
+                    },
+                },
+            })),
+        };
+
+        const result = await generateOutputArtifactFromPrompt({
+            sessionId: 'session-sandbox-1',
+            mode: 'chat',
+            outputFormat: 'html',
+            prompt: 'Create a document about onboarding new support agents.',
+            toolManager,
+            toolContext: { route: '/v1/responses' },
+        });
+
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'document-workflow',
+            expect.objectContaining({
+                action: 'generate-suite',
+                formats: ['html'],
+                buildMode: 'sandbox',
+                useSandbox: true,
+            }),
+            expect.objectContaining({
+                sessionId: 'session-sandbox-1',
+                toolManager,
+            }),
+        );
+        expect(artifactService.generateArtifact).not.toHaveBeenCalled();
+        expect(result).toEqual(expect.objectContaining({
+            artifact: expect.objectContaining({
+                id: 'sandbox-artifact-1',
+                sandboxUrl: '/api/artifacts/sandbox-artifact-1/sandbox',
+            }),
+            artifacts: [
+                expect.objectContaining({ id: 'sandbox-artifact-1' }),
+            ],
+            metadata: expect.objectContaining({
+                agentSandbox: true,
+                toolEvents: expect.any(Array),
+            }),
+        }));
+    });
+
     test('generateOutputArtifactFromPrompt carries exact token usage metadata when artifact generation reports it', async () => {
         artifactService.generateArtifact.mockResolvedValue({
             responseId: 'resp-2',
@@ -352,6 +411,13 @@ describe('ai-route-utils', () => {
         expect(inferRequestedOutputFormat('Create a research paper about penguins with images and citations.')).toBe('html');
         expect(inferRequestedOutputFormat('Make a long-form evidence document on penguin habitats.')).toBe('html');
         expect(inferRequestedOutputFormat('Do some research on AI browser tools.')).toBeNull();
+    });
+
+    test('inferRequestedOutputFormat treats generic document creation as an artifact unless text-only is explicit', () => {
+        expect(inferRequestedOutputFormat('Create a document about onboarding new support agents.')).toBe('html');
+        expect(inferRequestedOutputFormat('Make a professional brief for the product launch.')).toBe('html');
+        expect(inferRequestedOutputFormat('Draft a plain text document about onboarding new support agents.')).toBeNull();
+        expect(inferRequestedOutputFormat('Create a document about onboarding new support agents, no artifact.')).toBeNull();
     });
 
     test('hasExplicitMermaidFileIntent only returns true for file-like Mermaid requests', () => {

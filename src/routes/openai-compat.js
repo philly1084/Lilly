@@ -1483,6 +1483,10 @@ router.post('/chat/completions', async (req, res, next) => {
                 preparedImages.artifacts,
                 generation.artifacts,
             );
+            const artifactToolEvents = [
+                ...(Array.isArray(preparedImages.toolEvents) ? preparedImages.toolEvents : []),
+                ...(Array.isArray(generation?.metadata?.toolEvents) ? generation.metadata.toolEvents : []),
+            ];
 
             await sessionStore.recordResponse(
                 sessionId,
@@ -1520,7 +1524,7 @@ router.post('/chat/completions', async (req, res, next) => {
                 buildWebChatSessionMessages({
                     userText: lastUserText,
                     assistantText: generation.assistantMessage,
-                    toolEvents: preparedImages.toolEvents,
+                    toolEvents: artifactToolEvents,
                     artifacts: responseArtifacts,
                     ...buildForegroundTurnMessageOptions(pendingForegroundTurn),
                 }),
@@ -1530,7 +1534,7 @@ router.post('/chat/completions', async (req, res, next) => {
             await updateSessionProjectMemory(sessionId, {
                 userText: lastUserText,
                 assistantText: generation.assistantMessage,
-                toolEvents: preparedImages.toolEvents,
+                toolEvents: artifactToolEvents,
                 artifacts: responseArtifacts,
             }, ownerId);
 
@@ -1542,7 +1546,7 @@ router.post('/chat/completions', async (req, res, next) => {
                 metadata: {
                     outputFormat: effectiveOutputFormat,
                     artifactDirect: true,
-                    toolEvents: preparedImages.toolEvents,
+                    toolEvents: artifactToolEvents,
                     ...(generation.metadata || {}),
                 },
             });
@@ -1578,8 +1582,8 @@ router.post('/chat/completions', async (req, res, next) => {
                     gateway,
                     session_id: sessionId,
                     artifacts: responseArtifacts,
-                    tool_events: preparedImages.toolEvents,
-                    toolEvents: preparedImages.toolEvents,
+                    tool_events: artifactToolEvents,
+                    toolEvents: artifactToolEvents,
                     assistant_metadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
                     assistantMetadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
                 })}\n\n`);
@@ -1606,8 +1610,8 @@ router.post('/chat/completions', async (req, res, next) => {
                 gateway,
                 session_id: sessionId,
                 artifacts: responseArtifacts,
-                tool_events: preparedImages.toolEvents,
-                toolEvents: preparedImages.toolEvents,
+                tool_events: artifactToolEvents,
+                toolEvents: artifactToolEvents,
                 assistant_metadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
                 assistantMetadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
             });
@@ -2376,6 +2380,10 @@ router.post('/responses', async (req, res, next) => {
                 preparedImages.artifacts,
                 generation.artifacts,
             );
+            const artifactToolEvents = [
+                ...(Array.isArray(preparedImages.toolEvents) ? preparedImages.toolEvents : []),
+                ...(Array.isArray(generation?.metadata?.toolEvents) ? generation.metadata.toolEvents : []),
+            ];
 
             await sessionStore.recordResponse(
                 sessionId,
@@ -2410,13 +2418,13 @@ router.post('/responses', async (req, res, next) => {
             await sessionStore.appendMessages(sessionId, buildWebChatSessionMessages({
                 userText: userInput,
                 assistantText: generation.assistantMessage,
-                toolEvents: preparedImages.toolEvents,
+                toolEvents: artifactToolEvents,
                 artifacts: responseArtifacts,
             }));
             await updateSessionProjectMemory(sessionId, {
                 userText: userInput,
                 assistantText: generation.assistantMessage,
-                toolEvents: preparedImages.toolEvents,
+                toolEvents: artifactToolEvents,
                 artifacts: responseArtifacts,
             }, ownerId);
 
@@ -2454,7 +2462,7 @@ router.post('/responses', async (req, res, next) => {
                 metadata: {
                     outputFormat: effectiveOutputFormat,
                     artifactDirect: true,
-                    toolEvents: preparedImages.toolEvents,
+                    toolEvents: artifactToolEvents,
                     ...(generation.metadata || {}),
                 },
             });
@@ -2468,8 +2476,8 @@ router.post('/responses', async (req, res, next) => {
                     gateway,
                     session_id: sessionId,
                     artifacts: responseArtifacts,
-                    tool_events: preparedImages.toolEvents,
-                    toolEvents: preparedImages.toolEvents,
+                    tool_events: artifactToolEvents,
+                    toolEvents: artifactToolEvents,
                 })}\n\n`);
                 res.end();
                 return;
@@ -2481,8 +2489,8 @@ router.post('/responses', async (req, res, next) => {
                 gateway,
                 session_id: sessionId,
                 artifacts: responseArtifacts,
-                tool_events: preparedImages.toolEvents,
-                toolEvents: preparedImages.toolEvents,
+                tool_events: artifactToolEvents,
+                toolEvents: artifactToolEvents,
             });
             return;
         }

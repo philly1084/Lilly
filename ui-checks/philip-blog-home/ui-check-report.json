@@ -1,0 +1,103 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "https://philip.demoserver2.buzz/",
+  "originalUrl": "https://philip.demoserver2.buzz/",
+  "authenticated": false,
+  "generatedAt": "2026-05-09T21:41:37.742Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-home\\philip-s-blogs-desktop.png",
+      "metrics": {
+        "title": "Philip's Blogs",
+        "url": "https://philip.demoserver2.buzz/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 232,
+        "bodyTextPreview": "Philip's Blogs A small home for writing, experiments, and project notes. The deployment is a real nginx site on k3s behind Traefik, not a chat-only HTML artifact. Frontend Demo An interactive page with form controls and live output.",
+        "headings": [
+          "Philip's Blogs"
+        ],
+        "interactiveControls": 1,
+        "textContrast": {
+          "checked": 4,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-home\\philip-s-blogs-mobile.png",
+      "metrics": {
+        "title": "Philip's Blogs",
+        "url": "https://philip.demoserver2.buzz/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 232,
+        "bodyTextPreview": "Philip's Blogs A small home for writing, experiments, and project notes. The deployment is a real nginx site on k3s behind Traefik, not a chat-only HTML artifact. Frontend Demo An interactive page with form controls and live output.",
+        "headings": [
+          "Philip's Blogs"
+        ],
+        "interactiveControls": 1,
+        "textContrast": {
+          "checked": 4,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-home\\philip-s-blogs-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\philip-blog-home\\philip-s-blogs-mobile.png"
+    ],
+    "issues": []
+  }
+}
