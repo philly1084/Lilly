@@ -78,6 +78,37 @@ describe('web-chat markdown normalization', () => {
         expect(html).toBe('');
     });
 
+    test('infers a build brief for previewable frontend requests', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const brief = helper.inferBuildRunBrief('Build a playable browser game with a sandbox preview.');
+
+        expect(brief).toEqual(expect.objectContaining({
+            lane: 'Sandbox/front-end build',
+            output: 'Previewable sandbox',
+        }));
+        expect(brief.checks).toContain('Preview opens');
+        expect(brief.checks).toContain('Artifact links persist');
+    });
+
+    test('renders user build briefs without changing the user message text', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.renderUserMessage('Build a dashboard', {
+            metadata: {
+                buildRunBrief: {
+                    summary: 'Build a dashboard',
+                    lane: 'Sandbox/front-end build',
+                    output: 'Previewable sandbox',
+                    checks: ['Preview opens', 'No layout overflow'],
+                },
+            },
+        });
+
+        expect(html).toContain('Build a dashboard');
+        expect(html).toContain('user-build-brief');
+        expect(html).toContain('Sandbox/front-end build');
+        expect(html).toContain('Preview opens');
+    });
+
     test('renders voted alignment feedback as disabled state', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAlignmentFeedbackButtonsMarkup('assistant-1', {

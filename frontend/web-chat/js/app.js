@@ -4293,6 +4293,27 @@ class ChatApp {
             ? this.getSessionMessage(sessionId, reuseAssistantMessageId)
             : null;
         const shouldReuseAssistantMessage = existingAssistantMessage?.role === 'assistant';
+        const selectedArtifactIds = Array.from(new Set([
+            ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
+            ...(typeof window.fileManager?.getSelectedArtifactIds === 'function'
+                ? window.fileManager.getSelectedArtifactIds()
+                : []),
+        ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
+        const requestMetadata = {
+            ...(options.metadata && typeof options.metadata === 'object'
+                ? options.metadata
+                : {}),
+        };
+        const inferredBuildRunBrief = shouldReuseUserMessage
+            ? (options.userMessage?.metadata?.buildRunBrief || requestMetadata.buildRunBrief || null)
+            : (requestMetadata.buildRunBrief || uiHelpers.inferBuildRunBrief?.(normalizedContent, {
+                ...options,
+                artifactIds: selectedArtifactIds,
+                metadata: requestMetadata,
+            }) || null);
+        if (inferredBuildRunBrief && typeof inferredBuildRunBrief === 'object') {
+            requestMetadata.buildRunBrief = inferredBuildRunBrief;
+        }
 
         // Hide welcome message
         uiHelpers.hideWelcomeMessage();
@@ -4304,11 +4325,24 @@ class ChatApp {
                 role: 'user',
                 content: normalizedContent,
                 timestamp: new Date().toISOString(),
+                ...(inferredBuildRunBrief
+                    ? {
+                        metadata: {
+                            buildRunBrief: inferredBuildRunBrief,
+                        },
+                    }
+                    : {}),
             };
         const storedUserMessage = shouldReuseUserMessage
             ? {
                 ...userMessage,
                 content: normalizedContent,
+                metadata: inferredBuildRunBrief
+                    ? {
+                        ...(userMessage.metadata || {}),
+                        buildRunBrief: inferredBuildRunBrief,
+                    }
+                    : userMessage.metadata,
             }
             : sessionManager.addMessage(sessionId, userMessage);
 
@@ -4401,12 +4435,6 @@ class ChatApp {
         
         // Build message history for OpenAI API format
         const messages = this.buildMessageHistory(sessionId);
-        const selectedArtifactIds = Array.from(new Set([
-            ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
-            ...(typeof window.fileManager?.getSelectedArtifactIds === 'function'
-                ? window.fileManager.getSelectedArtifactIds()
-                : []),
-        ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
         
         // Create abort controller for this request
         this.currentAbortController = new AbortController();
@@ -4441,9 +4469,7 @@ class ChatApp {
                         assistantMessageId: storedAssistantMessage.id,
                         userMessageTimestamp: storedUserMessage.timestamp,
                         assistantMessageTimestamp: storedAssistantMessage.timestamp,
-                        ...(options.metadata && typeof options.metadata === 'object'
-                            ? options.metadata
-                            : {}),
+                        ...requestMetadata,
                     },
                     artifactIds: selectedArtifactIds,
                     ...(options.outputFormat ? { outputFormat: options.outputFormat } : {}),

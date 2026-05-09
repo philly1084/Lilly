@@ -3934,7 +3934,7 @@ class UIHelpers {
             ? null
             : this.buildAssistantRenderPlan(message, effectiveStreaming);
         const content = isUser ? 
-            this.renderUserMessage(renderedContent) :
+            this.renderUserMessage(renderedContent, message) :
             assistantRenderPlan.html;
         const messageTextClass = isUser
             ? ''
@@ -3993,8 +3993,135 @@ class UIHelpers {
         return messageEl;
     }
 
-    renderUserMessage(content) {
-        return this.escapeHtml(content);
+    renderUserMessage(content, message = {}) {
+        const bodyHtml = this.escapeHtml(content);
+        const brief = this.normalizeBuildRunBrief(message?.metadata?.buildRunBrief);
+        return brief ? `${bodyHtml}${this.buildUserBuildBriefMarkup(brief)}` : bodyHtml;
+    }
+
+    normalizeBuildRunBrief(value = null) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return null;
+        }
+
+        const summary = this.clipDisplayTextAtBoundary(value.summary || value.goal || '', 96);
+        const lane = this.clipDisplayTextAtBoundary(value.lane || '', 48);
+        const output = this.clipDisplayTextAtBoundary(value.output || value.outputType || '', 48);
+        const source = this.clipDisplayTextAtBoundary(value.source || value.sources || '', 64);
+        const checks = Array.isArray(value.checks)
+            ? value.checks
+                .map((check) => this.clipDisplayTextAtBoundary(check, 42))
+                .filter(Boolean)
+                .slice(0, 3)
+            : [];
+
+        if (!summary && !lane && !output && checks.length === 0) {
+            return null;
+        }
+
+        return {
+            version: 1,
+            summary,
+            lane: lane || 'Create/build',
+            output: output || 'Working artifact',
+            source,
+            checks,
+        };
+    }
+
+    inferBuildRunBrief(content = '', options = {}) {
+        const text = String(content || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.startsWith('/')) {
+            return null;
+        }
+
+        const normalized = text.toLowerCase();
+        const hasAction = /\b(create|make|generate|build|draft|design|implement|improve|update|fix|deploy|publish|launch|export|render|convert|rebuild|polish|prototype)\b/.test(normalized);
+        const hasTarget = /\b(artifact|file|document|doc|pdf|report|brief|deck|slides?|pptx|spreadsheet|xlsx|csv|markdown|html|website|webpage|web page|site|frontend|front-end|ui|dashboard|app|application|component|sandbox|preview|game|browser game|web game|image|picture|photo|video|podcast|audio|skill|plugin|workflow|remote|server|gitlab|pipeline|k3s|kubernetes|cluster|ingress|live|hosted)\b/.test(normalized);
+        const artifactIds = Array.isArray(options.artifactIds)
+            ? options.artifactIds.map((id) => String(id || '').trim()).filter(Boolean)
+            : [];
+        const hasExistingSourceCue = /\b(previous|earlier|prior|old|older|existing|uploaded|attached|generated|saved|that file|that artifact|same file|last one|last version)\b/.test(normalized);
+        const outputFormat = String(options.outputFormat || options.metadata?.outputFormat || '').trim().toLowerCase();
+
+        if (!hasAction || (!hasTarget && !hasExistingSourceCue && artifactIds.length === 0 && !outputFormat)) {
+            return null;
+        }
+
+        let lane = 'Create/build';
+        if (/\b(remote|server|gitlab|pipeline|k3s|kubernetes|cluster|ingress|live|hosted|production|deploy|publish|launch)\b/.test(normalized)) {
+            lane = 'Remote build/deploy';
+        } else if (hasExistingSourceCue || artifactIds.length > 0) {
+            lane = 'Improve existing artifact';
+        } else if (/\b(pdf|document|doc|report|brief|deck|slides?|pptx|spreadsheet|xlsx|csv|markdown|export)\b/.test(normalized) || ['pdf', 'pptx', 'xlsx', 'markdown'].includes(outputFormat)) {
+            lane = 'Document/export';
+        } else if (/\b(website|webpage|web page|site|frontend|front-end|ui|dashboard|app|component|sandbox|preview|game|browser game|web game|html)\b/.test(normalized) || outputFormat === 'html') {
+            lane = 'Sandbox/front-end build';
+        } else if (/\b(image|picture|photo|video|podcast|audio)\b/.test(normalized)) {
+            lane = 'Media creation';
+        } else if (/\b(skill|plugin|workflow)\b/.test(normalized)) {
+            lane = 'Skill/workflow';
+        }
+
+        let output = 'Working artifact';
+        if (lane === 'Remote build/deploy') {
+            output = 'Live route or deployment proof';
+        } else if (lane === 'Improve existing artifact') {
+            output = 'Updated artifact';
+        } else if (lane === 'Document/export') {
+            output = outputFormat ? outputFormat.toUpperCase() : 'Exportable document';
+        } else if (lane === 'Sandbox/front-end build') {
+            output = 'Previewable sandbox';
+        } else if (lane === 'Media creation') {
+            output = 'Generated media artifact';
+        } else if (lane === 'Skill/workflow') {
+            output = 'Reusable skill/workflow';
+        }
+
+        const checks = [];
+        if (lane === 'Sandbox/front-end build') {
+            checks.push('Preview opens', 'No layout overflow', 'Artifact links persist');
+        } else if (lane === 'Remote build/deploy') {
+            checks.push('Rollout proof', 'Public route check', 'UI smoke pass');
+        } else if (lane === 'Document/export') {
+            checks.push('Readable export', 'Page/render check', 'Artifact links persist');
+        } else if (lane === 'Improve existing artifact') {
+            checks.push('Source reused', 'Updated output saved', 'Preview/link preserved');
+        } else {
+            checks.push('Artifact saved', 'Result is inspectable');
+        }
+
+        return {
+            version: 1,
+            summary: this.clipDisplayTextAtBoundary(text, 96),
+            lane,
+            output,
+            source: artifactIds.length > 0 ? `${artifactIds.length} selected artifact${artifactIds.length === 1 ? '' : 's'}` : '',
+            checks,
+        };
+    }
+
+    buildUserBuildBriefMarkup(brief = {}) {
+        const checks = Array.isArray(brief.checks) ? brief.checks.filter(Boolean).slice(0, 3) : [];
+        return `
+            <div class="user-build-brief" aria-label="Build request summary">
+                <div class="user-build-brief__header">
+                    <i data-lucide="route" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    <span>Build brief</span>
+                </div>
+                ${brief.summary ? `<div class="user-build-brief__summary">${this.escapeHtml(brief.summary)}</div>` : ''}
+                <div class="user-build-brief__meta">
+                    <span><strong>Lane</strong>${this.escapeHtml(brief.lane)}</span>
+                    <span><strong>Output</strong>${this.escapeHtml(brief.output)}</span>
+                    ${brief.source ? `<span><strong>Source</strong>${this.escapeHtml(brief.source)}</span>` : ''}
+                </div>
+                ${checks.length > 0 ? `
+                    <div class="user-build-brief__checks">
+                        ${checks.map((check) => `<span>${this.escapeHtml(check)}</span>`).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
     }
 
     renderAssistantMessage(messageOrContent, isStreaming = false) {
