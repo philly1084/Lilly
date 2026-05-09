@@ -77,9 +77,15 @@ const {
     buildDirectPodcastParams,
     shouldUseDirectPodcastChat,
 } = require('../podcast/direct-podcast-chat');
+const {
+    buildAlignmentGuidanceContext,
+    buildFallbackEvaluation,
+    evaluateAlignment,
+} = require('../alignment/evaluator-service');
 
 const router = Router();
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
+const ALIGNMENT_FEEDBACK_HISTORY_LIMIT = 12;
 
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
@@ -97,6 +103,65 @@ function hasStructuredPodcastRequest(metadata = {}) {
         || options.includeVideo === true
         || options.productionType === 'podcast'
         || options.productionType === 'video-podcast';
+}
+
+function normalizeAlignmentRating(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'up' || normalized === 'down') {
+        return normalized;
+    }
+    return '';
+}
+
+function buildAlignmentFeedbackId() {
+    return `align_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function findAlignmentTurnMessages(messages = [], assistantMessageId = '') {
+    const normalizedMessageId = String(assistantMessageId || '').trim();
+    const source = Array.isArray(messages) ? messages : [];
+    const assistantIndex = source.findIndex((message) => String(message?.id || '').trim() === normalizedMessageId);
+    const assistant = assistantIndex >= 0 ? source[assistantIndex] : null;
+    const user = assistantIndex > 0
+        ? [...source.slice(0, assistantIndex)].reverse().find((message) => message?.role === 'user')
+        : null;
+
+    return { assistant, user };
+}
+
+function buildAlignmentFeedbackMetadata({
+    feedbackId = '',
+    rating = '',
+    status = 'recorded',
+    reason = '',
+    evaluation = null,
+    model = null,
+    previous = {},
+} = {}) {
+    const updatedAt = new Date().toISOString();
+    return {
+        ...(previous && typeof previous === 'object' ? previous : {}),
+        feedbackId,
+        evaluationId: feedbackId,
+        rating,
+        status,
+        updatedAt,
+        ...(reason ? { reason: String(reason || '').trim().slice(0, 500) } : {}),
+        ...(evaluation ? { evaluation } : {}),
+        ...(model ? { model } : {}),
+    };
+}
+
+function appendAlignmentHistory(session = null, entry = {}) {
+    const existing = Array.isArray(session?.metadata?.alignmentFeedbackHistory)
+        ? session.metadata.alignmentFeedbackHistory
+        : [];
+    const feedbackId = String(entry.feedbackId || entry.evaluationId || '').trim();
+    const next = [
+        ...existing.filter((item) => String(item?.feedbackId || item?.evaluationId || '').trim() !== feedbackId),
+        entry,
+    ];
+    return next.slice(-ALIGNMENT_FEEDBACK_HISTORY_LIMIT);
 }
 
 function normalizeClientNow(value = '') {
@@ -499,6 +564,144 @@ function writeSseProgressPayload(sse, sessionId, progress = {}) {
         progress,
     })}\n\n`);
 }
+
+router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, res, next) => {
+    try {
+        const sessionId = String(req.params.sessionId || '').trim();
+        const messageId = String(req.params.messageId || '').trim();
+        const rating = normalizeAlignmentRating(req.body?.rating);
+        const reason = String(req.body?.reason || '').trim().slice(0, 500);
+
+        if (!sessionId || !messageId) {
+            return res.status(400).json({ success: false, error: 'sessionId and messageId are required.' });
+        }
+        if (!rating) {
+            return res.status(400).json({ success: false, error: 'rating must be "up" or "down".' });
+        }
+
+        const session = await sessionStore.get(sessionId);
+        if (!session) {
+            return res.status(404).json({ success: false, error: 'Session not found.' });
+        }
+
+        const messages = await sessionStore.loadAllSessionMessages(sessionId);
+        const { assistant, user } = findAlignmentTurnMessages(messages, messageId);
+        if (!assistant || assistant.role !== 'assistant') {
+            return res.status(404).json({ success: false, error: 'Assistant message not found.' });
+        }
+
+        const feedbackId = buildAlignmentFeedbackId();
+        const baseEvaluation = rating === 'up'
+            ? buildFallbackEvaluation({
+                rating,
+                reason,
+                userText: user?.content || '',
+                assistantText: assistant.content || '',
+            })
+            : null;
+        let status = rating === 'up' ? 'recorded' : 'evaluating';
+        let evaluation = baseEvaluation;
+        let evaluatorModel = null;
+
+        let alignmentFeedback = buildAlignmentFeedbackMetadata({
+            feedbackId,
+            rating,
+            status,
+            reason,
+            evaluation,
+            previous: assistant.metadata?.alignmentFeedback,
+        });
+        let updatedAssistant = await sessionStore.upsertMessage(sessionId, {
+            ...assistant,
+            metadata: {
+                ...(assistant.metadata || {}),
+                alignmentFeedback,
+            },
+        });
+
+        if (rating === 'down') {
+            try {
+                const result = await evaluateAlignment({
+                    feedbackId,
+                    sessionId,
+                    messageId,
+                    rating,
+                    reason,
+                    userText: user?.content || '',
+                    assistantText: assistant.content || '',
+                    recentMessages: messages,
+                    assistantMetadata: {
+                        ...(assistant.metadata || {}),
+                        model: assistant.model || assistant.metadata?.model || session.metadata?.model || null,
+                    },
+                });
+                status = result.status || 'completed';
+                evaluation = result.evaluation || buildFallbackEvaluation({
+                    rating,
+                    reason,
+                    userText: user?.content || '',
+                    assistantText: assistant.content || '',
+                });
+                evaluatorModel = result.model || null;
+            } catch (error) {
+                console.warn('[AlignmentEvaluator] Evaluation failed:', error.message);
+                status = 'failed';
+                evaluation = buildFallbackEvaluation({
+                    rating,
+                    reason: reason || error.message,
+                    userText: user?.content || '',
+                    assistantText: assistant.content || '',
+                });
+            }
+
+            alignmentFeedback = buildAlignmentFeedbackMetadata({
+                feedbackId,
+                rating,
+                status,
+                reason,
+                evaluation,
+                model: evaluatorModel,
+                previous: assistant.metadata?.alignmentFeedback,
+            });
+            updatedAssistant = await sessionStore.upsertMessage(sessionId, {
+                ...assistant,
+                metadata: {
+                    ...(assistant.metadata || {}),
+                    alignmentFeedback,
+                },
+            });
+        }
+
+        const historyEntry = {
+            feedbackId,
+            evaluationId: feedbackId,
+            messageId,
+            rating,
+            status,
+            reason,
+            evaluation,
+            updatedAt: alignmentFeedback.updatedAt,
+        };
+        await sessionStore.update(sessionId, {
+            metadata: {
+                alignmentFeedback: historyEntry,
+                alignmentFeedbackHistory: appendAlignmentHistory(session, historyEntry),
+            },
+        });
+
+        return res.json({
+            success: true,
+            data: {
+                feedbackId,
+                status,
+                evaluation,
+                message: updatedAssistant,
+            },
+        });
+    } catch (error) {
+        return next(error);
+    }
+});
 
 router.post('/', validate(chatSchema), async (req, res, next) => {
     let runtimeTask = null;
@@ -1032,10 +1235,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         const agentJournalInstructions = buildAgentJournalInstructions(
             await loadAgentJournalEntries(sessionStore, effectiveSession, ownerId),
         );
+        const alignmentGuidanceInstructions = buildAlignmentGuidanceContext(effectiveSession);
         const instructions = await buildInstructionsWithArtifacts(
             effectiveSession,
             [
                 agentJournalInstructions,
+                alignmentGuidanceInstructions,
                 buildContinuityInstructions(buildUserCheckpointInstructions(userCheckpointPolicy)),
                 naturalInstructions,
                 responseFormattingInstructions,

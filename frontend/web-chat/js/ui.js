@@ -3969,6 +3969,7 @@ class UIHelpers {
                         </button>
                         ${!isUser ? `
                         ${this.buildMessageSpeechButtonMarkup(messageId, message)}
+                        ${this.buildAlignmentFeedbackButtonsMarkup(messageId, message)}
                         <button class="message-action-btn" onclick="uiHelpers.regenerateMessage('${messageId}')" title="Regenerate response" aria-label="Regenerate response">
                             <i data-lucide="refresh-cw" class="w-4 h-4" aria-hidden="true"></i>
                         </button>
@@ -4815,6 +4816,12 @@ class UIHelpers {
     regenerateMessage(messageId) {
         // Dispatch custom event for the app to handle
         window.dispatchEvent(new CustomEvent('regenerateMessage', { detail: { messageId } }));
+    }
+
+    submitAlignmentFeedback(messageId, rating) {
+        window.dispatchEvent(new CustomEvent('submitAlignmentFeedback', {
+            detail: { messageId, rating },
+        }));
     }
 
     // ============================================
@@ -6467,6 +6474,49 @@ class UIHelpers {
                 ${state.disabled ? 'disabled' : ''}
             >
                 <i data-lucide="${state.icon}" class="w-4 h-4${state.isLoading ? ' animate-spin' : ''}" aria-hidden="true"></i>
+            </button>
+        `;
+    }
+
+    buildAlignmentFeedbackButtonsMarkup(messageId = '', message = null) {
+        if (!message || message.role === 'user' || message.isStreaming === true) {
+            return '';
+        }
+
+        const feedback = message?.metadata?.alignmentFeedback && typeof message.metadata.alignmentFeedback === 'object'
+            ? message.metadata.alignmentFeedback
+            : {};
+        const rating = String(feedback.rating || '').trim();
+        const status = String(feedback.status || '').trim();
+        const hasVote = rating === 'up' || rating === 'down';
+        const reviewing = status === 'evaluating';
+        const upActive = rating === 'up';
+        const downActive = rating === 'down';
+        const upTitle = upActive ? 'Aligned' : 'Mark response aligned';
+        const downTitle = reviewing
+            ? 'Reviewing alignment'
+            : (downActive ? (status === 'failed' ? 'Alignment review failed' : 'Alignment review saved') : 'Review alignment');
+
+        return `
+            <button
+                class="message-action-btn alignment-feedback-btn${upActive ? ' is-active is-positive' : ''}"
+                data-alignment-rating="up"
+                onclick="uiHelpers.submitAlignmentFeedback('${this.escapeHtmlAttr(messageId)}', 'up')"
+                title="${this.escapeHtmlAttr(upTitle)}"
+                aria-label="${this.escapeHtmlAttr(upTitle)}"
+                ${hasVote ? 'disabled' : ''}
+            >
+                <i data-lucide="thumbs-up" class="w-4 h-4" aria-hidden="true"></i>
+            </button>
+            <button
+                class="message-action-btn alignment-feedback-btn${downActive ? ' is-active is-negative' : ''}${reviewing ? ' is-loading' : ''}"
+                data-alignment-rating="down"
+                onclick="uiHelpers.submitAlignmentFeedback('${this.escapeHtmlAttr(messageId)}', 'down')"
+                title="${this.escapeHtmlAttr(downTitle)}"
+                aria-label="${this.escapeHtmlAttr(downTitle)}"
+                ${hasVote ? 'disabled' : ''}
+            >
+                <i data-lucide="${reviewing ? 'loader-2' : 'thumbs-down'}" class="w-4 h-4${reviewing ? ' animate-spin' : ''}" aria-hidden="true"></i>
             </button>
         `;
     }

@@ -1383,6 +1383,35 @@ class OpenAIAPIClient extends EventTarget {
         }
     }
 
+    async submitAlignmentFeedback(sessionId, messageId, feedback = {}) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedSessionId || !normalizedMessageId) {
+            throw new Error('A session and assistant message are required for alignment feedback.');
+        }
+
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/chat/${encodeURIComponent(normalizedSessionId)}/messages/${encodeURIComponent(normalizedMessageId)}/alignment-feedback`, {
+            method: 'POST',
+            headers: buildGatewayHeaders({
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            }),
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                rating: feedback.rating,
+                reason: feedback.reason || '',
+                clientSurface: WEB_CHAT_API_CLIENT_SURFACE,
+            }),
+        });
+
+        if (!response.ok) {
+            const payload = await this.parseErrorPayload(response);
+            throw new Error(payload?.error || payload?.message || `Alignment feedback failed with HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
     /**
      * Stream chat using OpenAI SDK
      */

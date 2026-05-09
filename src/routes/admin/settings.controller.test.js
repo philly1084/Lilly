@@ -250,10 +250,14 @@ describe('settings.controller personality support', () => {
           plannerModel: ' gpt-5.5 ',
           synthesisModel: '',
           repairModel: 'gpt-5.5',
+          evaluatorModel: ' gpt-5.4-mini ',
           fallbackModels: 'gemini-3.1-pro, groq-compound, gemini-3.1-pro',
           plannerReasoningEffort: 'high',
           synthesisReasoningEffort: 'medium',
           repairReasoningEffort: 'high',
+          evaluatorReasoningEffort: 'medium',
+          enableAlignmentEvaluator: true,
+          applyAlignmentGuidance: false,
         },
       },
     };
@@ -269,15 +273,21 @@ describe('settings.controller personality support', () => {
       defaultModel: 'gpt-5.5',
       plannerModel: 'gpt-5.5',
       repairModel: 'gpt-5.5',
+      evaluatorModel: 'gpt-5.4-mini',
       fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
       plannerReasoningEffort: 'high',
+      evaluatorReasoningEffort: 'medium',
+      enableAlignmentEvaluator: true,
+      applyAlignmentGuidance: false,
     }));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
       data: expect.objectContaining({
         orchestration: expect.objectContaining({
           plannerModel: 'gpt-5.5',
+          evaluatorModel: 'gpt-5.4-mini',
           fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
+          applyAlignmentGuidance: false,
         }),
       }),
     }));

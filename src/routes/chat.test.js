@@ -17,6 +17,7 @@ jest.mock('../session-store', () => ({
         recordResponse: jest.fn(),
         appendMessages: jest.fn(),
         upsertMessage: jest.fn(),
+        loadAllSessionMessages: jest.fn(),
     },
 }));
 
@@ -84,11 +85,41 @@ jest.mock('../runtime-prompts', () => ({
     buildContinuityInstructions: jest.fn(() => 'continuity instructions'),
 }));
 
+jest.mock('../alignment/evaluator-service', () => ({
+    buildAlignmentGuidanceContext: jest.fn(() => ''),
+    buildFallbackEvaluation: jest.fn(({ rating = 'up' } = {}) => ({
+        decision: rating === 'up' ? 'aligned' : 'needs_review',
+        requestType: 'frontend',
+        confidence: rating === 'up' ? 0.8 : 0.35,
+        summary: rating === 'up' ? 'The user marked this response as aligned.' : 'The user marked this response for alignment review.',
+        evidence: [],
+        recommendedChanges: [],
+        decisionGuidance: [],
+        memoryCandidate: false,
+    })),
+    evaluateAlignment: jest.fn(async () => ({
+        feedbackId: 'align-test',
+        status: 'completed',
+        model: 'gpt-evaluator',
+        evaluation: {
+            decision: 'needs_review',
+            requestType: 'frontend',
+            confidence: 0.7,
+            summary: 'Needs UI follow-through.',
+            evidence: [],
+            recommendedChanges: ['Add the icon beside read aloud.'],
+            decisionGuidance: ['For similar UI requests, make the actual frontend change.'],
+            memoryCandidate: false,
+        },
+    })),
+}));
+
 const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const { executeConversationRuntime } = require('../runtime-execution');
 const { artifactService } = require('../artifacts/artifact-service');
+const alignmentEvaluator = require('../alignment/evaluator-service');
 const {
     buildInstructionsWithArtifacts,
     generateOutputArtifactFromPrompt,
@@ -122,6 +153,7 @@ describe('/api/chat route', () => {
         sessionStore.update.mockResolvedValue(session);
         sessionStore.updateControlState.mockResolvedValue({});
         sessionStore.upsertMessage.mockResolvedValue({});
+        sessionStore.loadAllSessionMessages.mockResolvedValue([]);
         buildInstructionsWithArtifacts.mockResolvedValue('continuity instructions');
         maybeGenerateOutputArtifact.mockResolvedValue([]);
         maybePrepareImagesForArtifactPrompt.mockResolvedValue({
@@ -147,6 +179,108 @@ describe('/api/chat route', () => {
             request: '',
             scenario: null,
         });
+    });
+
+    test('records thumbs-up alignment feedback without evaluator call', async () => {
+        const session = { id: 'session-1', metadata: {} };
+        const assistantMessage = {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'I added the icon.',
+            timestamp: '2026-05-09T12:00:01.000Z',
+            metadata: {},
+        };
+        sessionStore.get.mockResolvedValue(session);
+        sessionStore.loadAllSessionMessages.mockResolvedValue([
+            {
+                id: 'user-1',
+                role: 'user',
+                content: 'Add an icon beside read aloud.',
+                timestamp: '2026-05-09T12:00:00.000Z',
+                metadata: {},
+            },
+            assistantMessage,
+        ]);
+        sessionStore.upsertMessage.mockImplementation(async (_sessionId, message) => message);
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat/session-1/messages/assistant-1/alignment-feedback')
+            .send({ rating: 'up', clientSurface: 'web-chat' })
+            .expect(200);
+
+        expect(alignmentEvaluator.evaluateAlignment).not.toHaveBeenCalled();
+        expect(response.body.data.status).toBe('recorded');
+        expect(sessionStore.upsertMessage).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            id: 'assistant-1',
+            metadata: expect.objectContaining({
+                alignmentFeedback: expect.objectContaining({
+                    rating: 'up',
+                    status: 'recorded',
+                    evaluationId: expect.stringMatching(/^align_/),
+                }),
+            }),
+        }));
+    });
+
+    test('runs evaluator for thumbs-down alignment feedback and stores guidance', async () => {
+        const session = { id: 'session-1', metadata: {} };
+        const assistantMessage = {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'Here is a conceptual plan.',
+            timestamp: '2026-05-09T12:00:01.000Z',
+            metadata: {},
+        };
+        sessionStore.get.mockResolvedValue(session);
+        sessionStore.loadAllSessionMessages.mockResolvedValue([
+            {
+                id: 'user-1',
+                role: 'user',
+                content: 'Implement the web-chat icon.',
+                timestamp: '2026-05-09T12:00:00.000Z',
+                metadata: {},
+            },
+            assistantMessage,
+        ]);
+        sessionStore.upsertMessage.mockImplementation(async (_sessionId, message) => message);
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat/session-1/messages/assistant-1/alignment-feedback')
+            .send({ rating: 'down', reason: 'It planned instead of implementing.', clientSurface: 'web-chat' })
+            .expect(200);
+
+        expect(alignmentEvaluator.evaluateAlignment).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'session-1',
+            messageId: 'assistant-1',
+            rating: 'down',
+            reason: 'It planned instead of implementing.',
+            userText: 'Implement the web-chat icon.',
+            assistantText: 'Here is a conceptual plan.',
+        }));
+        expect(response.body.data.status).toBe('completed');
+        expect(response.body.data.evaluation.summary).toBe('Needs UI follow-through.');
+        expect(sessionStore.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                alignmentFeedback: expect.objectContaining({
+                    rating: 'down',
+                    status: 'completed',
+                    evaluation: expect.objectContaining({
+                        requestType: 'frontend',
+                    }),
+                }),
+                alignmentFeedbackHistory: expect.arrayContaining([
+                    expect.objectContaining({ rating: 'down' }),
+                ]),
+            }),
+        }));
     });
 
     test('runs explicit podcast requests through the podcast tool without chat orchestration', async () => {

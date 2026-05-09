@@ -550,8 +550,21 @@
                                         <input type="text" class="form-control" id="orchestrationRepairModel" value="gpt-5.5">
                                     </div>
                                     <div class="form-group">
+                                        <label for="orchestrationEvaluatorModel">Evaluator model</label>
+                                        <input type="text" class="form-control" id="orchestrationEvaluatorModel" value="gpt-5.5">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
                                         <label for="orchestrationFallbackModels">Fallback models</label>
                                         <textarea class="form-control" id="orchestrationFallbackModels" rows="3">gemini-3.1-pro&#10;groq-compound</textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="orchestrationEnableAlignmentEvaluator">Alignment evaluator</label>
+                                        <select class="form-control" id="orchestrationEnableAlignmentEvaluator">
+                                            <option value="true">Enabled</option>
+                                            <option value="false">Disabled</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div class="form-row">
@@ -582,6 +595,24 @@
                                             <option value="low">Low</option>
                                             <option value="medium">Medium</option>
                                             <option value="high">High</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="orchestrationEvaluatorReasoning">Evaluator reasoning</label>
+                                        <select class="form-control" id="orchestrationEvaluatorReasoning">
+                                            <option value="">Auto</option>
+                                            <option value="low">Low</option>
+                                            <option value="medium">Medium</option>
+                                            <option value="high">High</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="orchestrationApplyAlignmentGuidance">Apply alignment guidance</label>
+                                        <select class="form-control" id="orchestrationApplyAlignmentGuidance">
+                                            <option value="true">Enabled</option>
+                                            <option value="false">Disabled</option>
                                         </select>
                                     </div>
                                 </div>

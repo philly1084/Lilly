@@ -2437,10 +2437,14 @@ class Dashboard {
                     plannerModel: document.getElementById('orchestrationPlannerModel').value.trim(),
                     synthesisModel: document.getElementById('orchestrationSynthesisModel').value.trim(),
                     repairModel: document.getElementById('orchestrationRepairModel').value.trim(),
+                    evaluatorModel: document.getElementById('orchestrationEvaluatorModel').value.trim(),
                     fallbackModels: this.parseDelimitedList(document.getElementById('orchestrationFallbackModels').value),
                     plannerReasoningEffort: document.getElementById('orchestrationPlannerReasoning').value,
                     synthesisReasoningEffort: document.getElementById('orchestrationSynthesisReasoning').value,
                     repairReasoningEffort: document.getElementById('orchestrationRepairReasoning').value,
+                    evaluatorReasoningEffort: document.getElementById('orchestrationEvaluatorReasoning').value,
+                    enableAlignmentEvaluator: document.getElementById('orchestrationEnableAlignmentEvaluator').value === 'true',
+                    applyAlignmentGuidance: document.getElementById('orchestrationApplyAlignmentGuidance').value === 'true',
                 },
             };
 
@@ -4788,10 +4792,14 @@ class Dashboard {
         this.setInputValue('orchestrationPlannerModel', orchestration.plannerModel || orchestration.defaultModel || 'gpt-5.5');
         this.setInputValue('orchestrationSynthesisModel', orchestration.synthesisModel || orchestration.defaultModel || 'gpt-5.5');
         this.setInputValue('orchestrationRepairModel', orchestration.repairModel || orchestration.defaultModel || 'gpt-5.5');
+        this.setInputValue('orchestrationEvaluatorModel', orchestration.evaluatorModel || orchestration.defaultModel || 'gpt-5.5');
         this.setInputValue('orchestrationFallbackModels', this.joinListForTextarea(orchestration.fallbackModels || ['gemini-3.1-pro', 'groq-compound']));
         this.setInputValue('orchestrationPlannerReasoning', orchestration.plannerReasoningEffort || 'high');
         this.setInputValue('orchestrationSynthesisReasoning', orchestration.synthesisReasoningEffort || 'medium');
         this.setInputValue('orchestrationRepairReasoning', orchestration.repairReasoningEffort || 'high');
+        this.setInputValue('orchestrationEvaluatorReasoning', orchestration.evaluatorReasoningEffort || 'medium');
+        this.setInputValue('orchestrationEnableAlignmentEvaluator', String(orchestration.enableAlignmentEvaluator !== false));
+        this.setInputValue('orchestrationApplyAlignmentGuidance', String(orchestration.applyAlignmentGuidance !== false));
         apiClient.baseUrl = window.location.origin;
 
         this.setCheckboxValue('featureWebsocket', Boolean(features.realTimeUpdates));

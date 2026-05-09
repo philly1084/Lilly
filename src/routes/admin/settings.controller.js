@@ -93,9 +93,13 @@ class SettingsController {
         plannerModel: 'gpt-5.5',
         synthesisModel: 'gpt-5.5',
         repairModel: 'gpt-5.5',
+        evaluatorModel: 'gpt-5.5',
         plannerReasoningEffort: 'high',
         synthesisReasoningEffort: 'medium',
-        repairReasoningEffort: 'high'
+        repairReasoningEffort: 'high',
+        evaluatorReasoningEffort: 'medium',
+        enableAlignmentEvaluator: true,
+        applyAlignmentGuidance: true,
       },
       personality: {
         enabled: true,
@@ -676,14 +680,22 @@ class SettingsController {
       'plannerModel',
       'synthesisModel',
       'repairModel',
+      'evaluatorModel',
       'plannerReasoningEffort',
       'synthesisReasoningEffort',
       'repairReasoningEffort',
+      'evaluatorReasoningEffort',
     ].forEach((key) => {
       if (next[key] !== undefined) {
         next[key] = String(next[key] || '').trim();
       }
     });
+    next.enableAlignmentEvaluator = value.enableAlignmentEvaluator !== undefined
+      ? Boolean(value.enableAlignmentEvaluator)
+      : current.enableAlignmentEvaluator !== false;
+    next.applyAlignmentGuidance = value.applyAlignmentGuidance !== undefined
+      ? Boolean(value.applyAlignmentGuidance)
+      : current.applyAlignmentGuidance !== false;
 
     next.fallbackModels = this.normalizeStringArray(
       value.fallbackModels ?? value.fallbackModelList ?? next.fallbackModels,
@@ -987,18 +999,24 @@ class SettingsController {
     const envPlanner = String(config.runtime?.plannerModel || '').trim();
     const envSynthesis = String(config.runtime?.synthesisModel || '').trim();
     const envRepair = String(config.runtime?.repairModel || '').trim();
+    const envEvaluator = String(config.runtime?.evaluatorModel || '').trim();
     const envPlannerReasoning = String(config.runtime?.plannerReasoningEffort || '').trim();
     const envSynthesisReasoning = String(config.runtime?.synthesisReasoningEffort || '').trim();
     const envRepairReasoning = String(config.runtime?.repairReasoningEffort || '').trim();
+    const envEvaluatorReasoning = String(config.runtime?.evaluatorReasoningEffort || '').trim();
 
     return {
       ...merged,
       plannerModel: envPlanner || merged.plannerModel || merged.defaultModel,
       synthesisModel: envSynthesis || merged.synthesisModel || merged.defaultModel,
       repairModel: envRepair || merged.repairModel || merged.defaultModel,
+      evaluatorModel: envEvaluator || merged.evaluatorModel || merged.defaultModel,
       plannerReasoningEffort: envPlannerReasoning || merged.plannerReasoningEffort || 'high',
       synthesisReasoningEffort: envSynthesisReasoning || merged.synthesisReasoningEffort || 'medium',
       repairReasoningEffort: envRepairReasoning || merged.repairReasoningEffort || 'high',
+      evaluatorReasoningEffort: envEvaluatorReasoning || merged.evaluatorReasoningEffort || 'medium',
+      enableAlignmentEvaluator: merged.enableAlignmentEvaluator !== false,
+      applyAlignmentGuidance: merged.applyAlignmentGuidance !== false,
       fallbackModels: this.normalizeStringArray(merged.fallbackModels, defaults.fallbackModels),
       source: this.canUsePostgresSettings() ? 'postgres' : 'file',
     };
@@ -1045,9 +1063,13 @@ class SettingsController {
         plannerModel: 'gpt-5.5',
         synthesisModel: 'gpt-5.5',
         repairModel: 'gpt-5.5',
+        evaluatorModel: 'gpt-5.5',
         plannerReasoningEffort: 'high',
         synthesisReasoningEffort: 'medium',
-        repairReasoningEffort: 'high'
+        repairReasoningEffort: 'high',
+        evaluatorReasoningEffort: 'medium',
+        enableAlignmentEvaluator: true,
+        applyAlignmentGuidance: true,
       },
       personality: {
         enabled: true,

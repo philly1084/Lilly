@@ -77,6 +77,7 @@ const {
     extractResponseUsageMetadata,
     normalizeUsageMetadata,
 } = require('../utils/token-usage');
+const { buildAlignmentGuidanceContext } = require('../alignment/evaluator-service');
 const {
     buildDirectPodcastAssistantMessage,
     buildDirectPodcastParams,
@@ -1621,10 +1622,11 @@ router.post('/chat/completions', async (req, res, next) => {
             clientSurface,
             taskType,
         });
+        const alignmentGuidanceInstructions = buildAlignmentGuidanceContext(session);
         const instructions = await buildInstructionsWithArtifacts(
             session,
             buildContinuityInstructions(
-                [artifactInstructions, userCheckpointInstructions, responseFormattingInstructions]
+                [artifactInstructions, alignmentGuidanceInstructions, userCheckpointInstructions, responseFormattingInstructions]
                     .filter(Boolean)
                     .join('\n\n'),
             ),
@@ -2488,9 +2490,10 @@ router.post('/responses', async (req, res, next) => {
         const artifactInstructions = effectiveOutputFormat
             ? artifactService.getGenerationInstructions(effectiveOutputFormat)
             : '';
+        const alignmentGuidanceInstructions = buildAlignmentGuidanceContext(session);
         const fullInstructions = await buildInstructionsWithArtifacts(
             session,
-            [buildContinuityInstructions(), instructions || '', artifactInstructions].filter(Boolean).join('\n\n'),
+            [buildContinuityInstructions(), alignmentGuidanceInstructions, instructions || '', artifactInstructions].filter(Boolean).join('\n\n'),
             effectiveArtifactIds,
         );
         const lastUserIndex = normalizedInputMessages.map((entry) => entry.role).lastIndexOf('user');

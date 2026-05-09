@@ -51,6 +51,52 @@ function loadUIHelpersPrototype() {
 }
 
 describe('web-chat markdown normalization', () => {
+    test('renders assistant alignment feedback buttons with thumbs icons', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAlignmentFeedbackButtonsMarkup('assistant-1', {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'Done.',
+            metadata: {},
+        });
+
+        expect(html).toContain('data-alignment-rating="up"');
+        expect(html).toContain('data-alignment-rating="down"');
+        expect(html).toContain('data-lucide="thumbs-up"');
+        expect(html).toContain('data-lucide="thumbs-down"');
+    });
+
+    test('does not render alignment feedback buttons for user messages', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAlignmentFeedbackButtonsMarkup('user-1', {
+            id: 'user-1',
+            role: 'user',
+            content: 'Please build this.',
+            metadata: {},
+        });
+
+        expect(html).toBe('');
+    });
+
+    test('renders voted alignment feedback as disabled state', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAlignmentFeedbackButtonsMarkup('assistant-1', {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'Done.',
+            metadata: {
+                alignmentFeedback: {
+                    rating: 'down',
+                    status: 'completed',
+                },
+            },
+        });
+
+        expect(html).toContain('is-negative');
+        expect(html).toContain('disabled');
+        expect(html).toContain('Alignment review saved');
+    });
+
     test('restores flattened recipe headings and tables before rendering', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const normalized = helper.normalizeStructuredAssistantMarkdown(`Here is a potato recipe: Garlic-Herb Roasted Potatoes Why it works

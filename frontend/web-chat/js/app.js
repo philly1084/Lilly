@@ -746,6 +746,10 @@ class ChatApp {
         window.addEventListener('regenerateMessage', (e) => {
             this.regenerateResponse(e.detail.messageId);
         });
+
+        window.addEventListener('submitAlignmentFeedback', (e) => {
+            this.submitAlignmentFeedback(e.detail?.messageId, e.detail?.rating);
+        });
         
         // Handle model change event
         window.addEventListener('modelChanged', (e) => {
@@ -6059,6 +6063,104 @@ curl -fsSIL --max-time 20 "https://$host"`;
         };
         sessionManager.saveToStorage();
         return messages[index];
+    }
+
+    patchMessageAlignmentFeedback(sessionId, messageId, patch = {}) {
+        const currentMessage = this.getSessionMessage(sessionId, messageId);
+        if (!currentMessage || currentMessage.role !== 'assistant') {
+            return null;
+        }
+
+        const nextMessage = {
+            ...currentMessage,
+            metadata: {
+                ...(currentMessage.metadata || {}),
+                alignmentFeedback: {
+                    ...(currentMessage.metadata?.alignmentFeedback || {}),
+                    ...(patch || {}),
+                    updatedAt: patch.updatedAt || new Date().toISOString(),
+                },
+            },
+        };
+        const savedMessage = this.upsertSessionMessage(sessionId, nextMessage);
+        if (savedMessage && this.isVisibleSession(sessionId)) {
+            uiHelpers.updateMessageContent(messageId, savedMessage, savedMessage.isStreaming === true);
+            const messageEl = document.getElementById(messageId);
+            if (messageEl) {
+                uiHelpers.reinitializeIcons(messageEl);
+            }
+        }
+        return savedMessage || nextMessage;
+    }
+
+    async submitAlignmentFeedback(messageId = '', rating = '') {
+        const sessionId = sessionManager.currentSessionId;
+        const normalizedMessageId = String(messageId || '').trim();
+        const normalizedRating = String(rating || '').trim().toLowerCase();
+        if (!sessionId || !normalizedMessageId || !['up', 'down'].includes(normalizedRating)) {
+            return;
+        }
+
+        const currentMessage = this.getSessionMessage(sessionId, normalizedMessageId);
+        if (!currentMessage || currentMessage.role !== 'assistant') {
+            uiHelpers.showToast('Could not find that assistant response', 'error');
+            return;
+        }
+        if (['up', 'down'].includes(String(currentMessage.metadata?.alignmentFeedback?.rating || '').trim())) {
+            return;
+        }
+
+        const optimisticStatus = normalizedRating === 'up' ? 'recorded' : 'evaluating';
+        this.patchMessageAlignmentFeedback(sessionId, normalizedMessageId, {
+            rating: normalizedRating,
+            status: optimisticStatus,
+        });
+        uiHelpers.showToast(normalizedRating === 'up' ? 'Marked aligned' : 'Reviewing alignment', normalizedRating === 'up' ? 'success' : 'info');
+
+        try {
+            const response = await apiClient.submitAlignmentFeedback(sessionId, normalizedMessageId, {
+                rating: normalizedRating,
+            });
+            const data = response?.data || {};
+            const serverMessage = data.message && typeof data.message === 'object'
+                ? data.message
+                : null;
+
+            if (serverMessage) {
+                const savedMessage = this.upsertSessionMessage(sessionId, {
+                    ...currentMessage,
+                    ...serverMessage,
+                    metadata: {
+                        ...(currentMessage.metadata || {}),
+                        ...(serverMessage.metadata || {}),
+                    },
+                });
+                if (savedMessage && this.isVisibleSession(sessionId)) {
+                    uiHelpers.updateMessageContent(normalizedMessageId, savedMessage, savedMessage.isStreaming === true);
+                    const messageEl = document.getElementById(normalizedMessageId);
+                    if (messageEl) {
+                        uiHelpers.reinitializeIcons(messageEl);
+                    }
+                }
+            } else {
+                this.patchMessageAlignmentFeedback(sessionId, normalizedMessageId, {
+                    rating: normalizedRating,
+                    status: data.status || (normalizedRating === 'up' ? 'recorded' : 'completed'),
+                    feedbackId: data.feedbackId || '',
+                    evaluationId: data.feedbackId || '',
+                    evaluation: data.evaluation || null,
+                });
+            }
+
+            uiHelpers.showToast(normalizedRating === 'up' ? 'Aligned' : 'Alignment review saved', 'success');
+        } catch (error) {
+            console.error('Alignment feedback failed:', error);
+            this.patchMessageAlignmentFeedback(sessionId, normalizedMessageId, {
+                rating: normalizedRating,
+                status: 'failed',
+            });
+            uiHelpers.showToast('Alignment review failed', 'error');
+        }
     }
 
     moveSessionMessageToEnd(sessionId, messageId) {

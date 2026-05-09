@@ -5116,6 +5116,16 @@ body.layout-minimal #input-meta-row {
     color: var(--accent);
 }
 
+.alignment-feedback-btn.is-positive {
+    color: var(--success, #22c55e);
+    background: rgba(34, 197, 94, 0.12);
+}
+
+.alignment-feedback-btn.is-negative {
+    color: var(--warning, #f59e0b);
+    background: rgba(245, 158, 11, 0.12);
+}
+
 .message-action-btn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
