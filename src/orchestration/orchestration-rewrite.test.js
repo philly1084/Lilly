@@ -264,6 +264,110 @@ describe('orchestration rewrite policy', () => {
     })]);
   });
 
+  test('planner rejects screenshot QA before a sandbox game preview exists', async () => {
+    const llmClient = {
+      createResponse: jest.fn(),
+      complete: jest.fn().mockResolvedValue(JSON.stringify({
+        steps: [{
+          tool: 'web-scrape',
+          reason: 'Verify the generated game preview renders in a browser with a desktop screenshot.',
+          params: {
+            url: 'about:blank',
+            browser: true,
+            captureScreenshot: true,
+            viewport: { width: 1440, height: 960 },
+          },
+        }],
+      })),
+    };
+    const orchestrator = new ConversationOrchestrator({
+      llmClient,
+      toolManager: buildToolManager(['web-scrape', 'document-workflow']),
+    });
+    const objective = 'make a quick sandboxed game for sophia that works with mouse keyboard or phone';
+    const toolPolicy = {
+      allowedToolIds: ['web-scrape', 'document-workflow'],
+      candidateToolIds: ['web-scrape', 'document-workflow'],
+      toolContracts: {
+        'web-scrape': {
+          inputSchema: {
+            type: 'object',
+            required: ['url'],
+            properties: {
+              url: { type: 'string' },
+            },
+          },
+        },
+        'document-workflow': {
+          inputSchema: {
+            type: 'object',
+            required: ['action'],
+            properties: {
+              action: { type: 'string' },
+            },
+          },
+        },
+      },
+    };
+
+    const plan = await orchestrator.planToolUse({
+      objective,
+      executionProfile: 'default',
+      toolPolicy,
+      toolContext: {
+        clientSurface: 'web-chat',
+      },
+    });
+
+    expect(plan).toEqual([expect.objectContaining({
+      tool: 'document-workflow',
+      reason: expect.stringContaining('sandbox'),
+      params: expect.objectContaining({
+        action: 'generate-suite',
+        formats: ['html'],
+        buildMode: 'sandbox',
+        useSandbox: true,
+      }),
+    })]);
+  });
+
+  test('direct follow-up QA uses the latest sandbox preview URL after a build', () => {
+    const orchestrator = new ConversationOrchestrator({});
+    const objective = 'make a quick sandboxed game for sophia that works with mouse keyboard or phone';
+    const action = orchestrator.buildDirectAction({
+      objective,
+      toolPolicy: {
+        candidateToolIds: ['web-scrape', 'document-workflow'],
+      },
+      toolEvents: [{
+        toolCall: {
+          function: {
+            name: 'document-workflow',
+            arguments: JSON.stringify({ action: 'generate-suite', formats: ['html'] }),
+          },
+        },
+        result: {
+          success: true,
+          data: {
+            sandboxBuild: {
+              previewUrl: '/api/artifacts/game-1/sandbox',
+            },
+          },
+        },
+      }],
+    });
+
+    expect(action).toEqual(expect.objectContaining({
+      tool: 'web-scrape',
+      params: expect.objectContaining({
+        url: '{{lastPreviewUrl}}',
+        browser: true,
+        captureScreenshot: true,
+        viewport: { width: 1440, height: 960 },
+      }),
+    }));
+  });
+
   test('classifies sparse sandboxed game requests as sandbox website builds', () => {
     const pipeline = inferAgentRolePipeline({
       objective: 'lets make a quick sandboxed game for sophia. easy with mouse, keyboard, or phone in a webapp',

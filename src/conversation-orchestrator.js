@@ -1554,6 +1554,101 @@ function shouldAllowDirectAction(action = null, { toolPolicy = {}, toolEvents = 
     return true;
 }
 
+function extractStrictPreviewUrlFromToolEvent(event = {}) {
+    const data = event?.result?.data || {};
+    const candidates = [
+        data?.sandboxBuild,
+        data?.artifact,
+        ...(Array.isArray(data?.artifacts) ? data.artifacts : []),
+        {
+            previewUrl: data?.previewUrl || data?.preview_url || '',
+            sandboxUrl: data?.sandboxUrl || data?.sandbox_url || '',
+            publicUrl: data?.publicUrl || data?.public_url || '',
+        },
+    ];
+
+    for (const candidate of candidates) {
+        if (!candidate || typeof candidate !== 'object') {
+            continue;
+        }
+        for (const key of PLAN_PREVIEW_URL_KEYS) {
+            const found = normalizePlanUrlCandidate(candidate[key]);
+            if (found) {
+                return found;
+            }
+        }
+    }
+
+    return '';
+}
+
+function hasSuccessfulPreviewProducingEvent(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => (
+        event?.result?.success !== false
+        && extractStrictPreviewUrlFromToolEvent(event)
+    ));
+}
+
+function getLastPreviewProducingEventIndex(toolEvents = []) {
+    const events = Array.isArray(toolEvents) ? toolEvents : [];
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (events[index]?.result?.success !== false && extractStrictPreviewUrlFromToolEvent(events[index])) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+function getSandboxQaEventsAfterLatestPreview(toolEvents = []) {
+    const events = Array.isArray(toolEvents) ? toolEvents : [];
+    const previewIndex = getLastPreviewProducingEventIndex(events);
+    if (previewIndex < 0) {
+        return [];
+    }
+
+    return events.slice(previewIndex + 1).filter((event) => {
+        const toolId = event?.toolCall?.function?.name || event?.result?.toolId || '';
+        const args = parseToolCallArguments(event?.toolCall?.function?.arguments || '{}');
+        return toolId === 'web-scrape'
+            && event?.result?.success !== false
+            && (args.captureScreenshot === true || event?.result?.data?.screenshot);
+    });
+}
+
+function hasSandboxQaAfterLatestPreview(toolEvents = []) {
+    return getSandboxQaEventsAfterLatestPreview(toolEvents).length > 0;
+}
+
+function buildSandboxQaFollowupPlanFromToolEvents({ objective = '', toolPolicy = {}, toolEvents = [] } = {}) {
+    if (!hasWebsiteBuildIntent(objective)
+        || !toolPolicy.candidateToolIds.includes('web-scrape')
+        || !hasSuccessfulPreviewProducingEvent(toolEvents)) {
+        return [];
+    }
+
+    const qaEvents = getSandboxQaEventsAfterLatestPreview(toolEvents);
+    if (qaEvents.length >= 2) {
+        return [];
+    }
+
+    const mobile = qaEvents.length === 1;
+    return [{
+        tool: 'web-scrape',
+        reason: mobile
+            ? 'Verify the generated sandbox preview is responsive and usable on mobile.'
+            : 'Verify the generated sandbox preview renders in a desktop browser screenshot.',
+        params: {
+            url: '{{lastPreviewUrl}}',
+            browser: true,
+            captureScreenshot: true,
+            fullPageScreenshot: true,
+            viewport: mobile
+                ? { width: 390, height: 844 }
+                : { width: 1440, height: 960 },
+        },
+    }];
+}
+
 function reviewExecutionRound({
     round = 0,
     nextPlan = [],
@@ -5811,6 +5906,19 @@ function doesToolEventChangeState(event = {}) {
         return true;
     }
 
+    if ([DOCUMENT_WORKFLOW_TOOL_ID, DEEP_RESEARCH_PRESENTATION_TOOL_ID, 'code-sandbox'].includes(toolId)) {
+        const data = event?.result?.data || {};
+        return Boolean(
+            data?.artifact
+            || data?.downloadUrl
+            || data?.markdownImage
+            || data?.sandboxBuild
+            || data?.sandboxUrl
+            || data?.previewUrl
+            || (Array.isArray(data?.artifacts) && data.artifacts.length > 0)
+        );
+    }
+
     if (toolId === 'managed-app') {
         return ['create', 'update', 'deploy', 'reconcile'].includes(action);
     }
@@ -6388,7 +6496,7 @@ function evidenceMatchesHarnessCriterion(evidence = {}, criterion = {}) {
         return /\b(deployment-verified|public-verification|rollout|pod-readiness|service-ingress)\b/.test(haystack);
     }
     if (text.includes('repository implementation') || text.includes('implement')) {
-        return /\b(repository-implemented|managed-app-authoring|code-change)\b/.test(haystack);
+        return /\b(repository-implemented|managed-app-authoring|code-change|document-generated|artifact-created)\b/.test(haystack);
     }
     if (text.includes('workspace built') || text.includes('build')) {
         return /\b(build-complete|managed-app-build|remote-workspace-build)\b/.test(haystack);
@@ -8941,6 +9049,24 @@ class ConversationOrchestrator extends EventEmitter {
                 }
 
                 if (nextPlan.length === 0) {
+                    const guidedSandboxQaPlan = filterRepeatedPlanSteps(
+                        buildSandboxQaFollowupPlanFromToolEvents({
+                            objective,
+                            toolPolicy,
+                            toolEvents,
+                        }),
+                        executedStepSignatures,
+                        executedStepSignatureCounts,
+                    );
+
+                    if (guidedSandboxQaPlan.length > 0) {
+                        nextPlan = guidedSandboxQaPlan;
+                        runtimeMode = 'guided-tools';
+                        planSource = 'guided-sandbox-qa';
+                    }
+                }
+
+                if (nextPlan.length === 0) {
                     const guidedDocumentPlan = filterRepeatedPlanSteps(
                         buildDocumentWorkflowFollowupPlanFromToolEvents({
                             objective,
@@ -10680,6 +10806,7 @@ class ConversationOrchestrator extends EventEmitter {
                 },
             });
         }
+
         if (toolPolicy.candidateToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)
             && hasDocumentWorkflowIntentText(objective)
             && hasGroundedDocumentSources) {
@@ -10831,13 +10958,25 @@ class ConversationOrchestrator extends EventEmitter {
             });
         }
 
+        const sandboxQaFollowup = buildSandboxQaFollowupPlanFromToolEvents({
+            objective,
+            toolPolicy,
+            toolEvents,
+        });
+        if (sandboxQaFollowup.length > 0) {
+            return finalizeAction(sandboxQaFollowup[0]);
+        }
+
         if (toolPolicy.candidateToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)
-            && hasDocumentWorkflowIntentText(objective)
+            && (hasDocumentWorkflowIntentText(objective) || hasWebsiteBuildIntent(objective))
             && !searchQuery
+            && !hasSuccessfulPreviewProducingEvent(toolEvents)
             && !(firstUrl && /\b(scrape|extract|selector|structured|parse)\b/i.test(objective))) {
             return finalizeAction({
                 tool: DOCUMENT_WORKFLOW_TOOL_ID,
-                reason: 'Explicit document or slide deliverable should start with the document workflow.',
+                reason: hasWebsiteBuildIntent(objective)
+                    ? 'Previewable website, app, or game requests should build the sandbox artifact before browser QA.'
+                    : 'Explicit document or slide deliverable should start with the document workflow.',
                 params: documentWorkflowParams,
             });
         }
@@ -10982,13 +11121,27 @@ class ConversationOrchestrator extends EventEmitter {
         return normalizedStep;
     }
 
-    isPlannerStepAllowed(step = {}, { toolPolicy = {}, toolEvents = [] } = {}) {
+    isPlannerStepAllowed(step = {}, { objective = '', toolPolicy = {}, toolEvents = [] } = {}) {
         if (!step?.tool) {
             return Boolean(step?.tool);
         }
 
         if (step.tool === 'web-scrape' && hasBlankPlanUrlParam(step.params)) {
             return false;
+        }
+
+        if (step.tool === 'web-scrape'
+            && step.params?.captureScreenshot === true
+            && hasWebsiteBuildIntent(objective)
+            && !hasSuccessfulPreviewProducingEvent(toolEvents)) {
+            const plannedUrl = String(step.params?.url || '').trim();
+            PLAN_TEMPLATE_PATTERN.lastIndex = 0;
+            const usesPreviewTemplate = PLAN_TEMPLATE_PATTERN.test(plannedUrl);
+            PLAN_TEMPLATE_PATTERN.lastIndex = 0;
+            const explicitUrl = extractFirstUrl(objective);
+            if (usesPreviewTemplate || !explicitUrl || normalizePlanUrlCandidate(plannedUrl) !== normalizePlanUrlCandidate(explicitUrl)) {
+                return false;
+            }
         }
 
         if (!isJudgmentV2Enabled()) {
@@ -11523,6 +11676,7 @@ class ConversationOrchestrator extends EventEmitter {
             }))
             .filter((step) => step.tool && toolPolicy.candidateToolIds.includes(step.tool))
             .filter((step) => this.isPlannerStepAllowed(step, {
+                objective,
                 toolPolicy,
                 toolEvents,
             }));

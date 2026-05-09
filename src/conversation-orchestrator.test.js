@@ -282,6 +282,26 @@ describe('HarnessRunState', () => {
         expect(harness.getUnmetCriteria()).toHaveLength(0);
     });
 
+    test('artifact evidence satisfies generic implementation milestones', () => {
+        const harness = new HarnessRunState({
+            objective: 'Make a quick sandboxed game and verify it.',
+            executionProfile: 'default',
+            completionCriteria: [
+                'Implement the requested changes',
+                'Validate and review the result',
+            ],
+        });
+
+        harness.recordEvidence({
+            type: 'artifact-created',
+            summary: 'A runtime artifact was created by a tool result.',
+            tool: 'document-workflow',
+            stateChanged: true,
+        });
+
+        expect(harness.getUnmetCriteria()).toHaveLength(0);
+    });
+
     test('restores completion state from a resumeable control-state snapshot', () => {
         const original = new HarnessRunState({
             objective: 'Deploy the app.',
