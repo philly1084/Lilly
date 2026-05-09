@@ -70,15 +70,20 @@ async function testTools() {
     console.log(`  ${cat.name}: ${cat.count}`);
   });
 
+  console.log('\nTool readiness:');
+  toolManager.getToolReadinessSummary().forEach(readiness => {
+    console.log(`  ${readiness.toolId}: ${readiness.status} (${readiness.executableShape})`);
+  });
+
   // Test executing a tool
   console.log('\n\n⚡ Testing Tool Execution:');
   console.log('=========================');
   
   try {
-    const webFetch = registry.getTool('web-fetch');
+    const webFetch = toolManager.getTool('web-fetch');
     if (webFetch) {
       console.log('\nExecuting web-fetch...');
-      const result = await webFetch.execute({
+      const result = await toolManager.executeTool('web-fetch', {
         url: 'https://api.github.com',
         method: 'GET',
         timeout: 10000
@@ -86,6 +91,9 @@ async function testTools() {
       
       console.log(`Success: ${result.success}`);
       console.log(`Status: ${result.data?.status}`);
+      if (result.error) {
+        console.log(`Error: ${result.error}`);
+      }
       console.log(`Duration: ${result.duration}ms`);
     }
   } catch (error) {

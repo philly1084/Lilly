@@ -1,0 +1,707 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:4177/web-chat/app.html",
+  "originalUrl": "http://127.0.0.1:4177/web-chat/app.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-09T22:05:56.726Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-iphone-mobile-after\\lilly-workspace-mobile.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://127.0.0.1:4177/web-chat/app.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar sidebar-panel bg-bg-secondary border-r border-border flex flex-col",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -300,
+            "right": 0,
+            "width": 300
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-shell p-4 border-b border-border",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -300,
+            "right": 0,
+            "width": 300
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-card",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -284,
+            "right": -16,
+            "width": 268
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-mark",
+            "text": "",
+            "left": -284,
+            "right": -240,
+            "width": 44
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "w-5 h-5",
+            "text": "",
+            "left": -272,
+            "right": -252,
+            "width": 20
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-copy",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "p",
+            "id": "",
+            "className": "sidebar-brand-kicker",
+            "text": "AI WORKSPACE",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "h2",
+            "id": "",
+            "className": "sidebar-brand-title",
+            "text": "Lilly",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "p",
+            "id": "",
+            "className": "sidebar-brand-description",
+            "text": "Chat-first interface with sessions, files, exports, and agent workloads close at",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "button",
+            "id": "new-chat-btn",
+            "className": "btn-primary sidebar-primary-btn w-full flex items-center justify-center gap-2 py",
+            "text": "New Chat",
+            "left": -284,
+            "right": -16,
+            "width": 268
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "w-5 h-5",
+            "text": "",
+            "left": -199,
+            "right": -179,
+            "width": 20
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "sidebar-btn-text",
+            "text": "New Chat",
+            "left": -171,
+            "right": -101,
+            "width": 71
+          }
+        ],
+        "bodyTextLength": 674,
+        "bodyTextPreview": "Skip to main content AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent workloads close at hand. New Chat WORKSPACE Import Export Search Files Focus Mode APPEARANCE Obsidian Theme Lilly No active session STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them. Live streaming Search and tools Image generation Saved sessions Research with sources ",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 136,
+        "textContrast": {
+          "checked": 51,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://127.0.0.1:4177/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        }
+      ],
+      "pageErrors": [
+        "marked is not defined",
+        "uiHelpers is not defined"
+      ],
+      "failedRequests": [
+        {
+          "url": "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://unpkg.com/lucide@latest",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        }
+      ],
+      "issues": [
+        "page-errors",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "iphone-se",
+        "width": 320,
+        "height": 568,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-iphone-mobile-after\\lilly-workspace-iphone-se.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://127.0.0.1:4177/web-chat/app.html",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "scrollWidth": 320,
+        "scrollHeight": 568,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar sidebar-panel bg-bg-secondary border-r border-border flex flex-col",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -300,
+            "right": 0,
+            "width": 300
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-shell p-4 border-b border-border",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -300,
+            "right": 0,
+            "width": 300
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-card",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -284,
+            "right": -16,
+            "width": 268
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-mark",
+            "text": "",
+            "left": -284,
+            "right": -240,
+            "width": 44
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "w-5 h-5",
+            "text": "",
+            "left": -272,
+            "right": -252,
+            "width": 20
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-brand-copy",
+            "text": "AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "p",
+            "id": "",
+            "className": "sidebar-brand-kicker",
+            "text": "AI WORKSPACE",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "h2",
+            "id": "",
+            "className": "sidebar-brand-title",
+            "text": "Lilly",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "p",
+            "id": "",
+            "className": "sidebar-brand-description",
+            "text": "Chat-first interface with sessions, files, exports, and agent workloads close at",
+            "left": -226,
+            "right": -16,
+            "width": 210
+          },
+          {
+            "tag": "button",
+            "id": "new-chat-btn",
+            "className": "btn-primary sidebar-primary-btn w-full flex items-center justify-center gap-2 py",
+            "text": "New Chat",
+            "left": -284,
+            "right": -16,
+            "width": 268
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "w-5 h-5",
+            "text": "",
+            "left": -199,
+            "right": -179,
+            "width": 20
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "sidebar-btn-text",
+            "text": "New Chat",
+            "left": -171,
+            "right": -101,
+            "width": 71
+          }
+        ],
+        "bodyTextLength": 674,
+        "bodyTextPreview": "Skip to main content AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent workloads close at hand. New Chat WORKSPACE Import Export Search Files Focus Mode APPEARANCE Obsidian Theme Lilly No active session STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them. Live streaming Search and tools Image generation Saved sessions Research with sources ",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 136,
+        "textContrast": {
+          "checked": 51,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://127.0.0.1:4177/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        }
+      ],
+      "pageErrors": [
+        "marked is not defined",
+        "uiHelpers is not defined"
+      ],
+      "failedRequests": [
+        {
+          "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-docker.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        }
+      ],
+      "issues": [
+        "page-errors",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-iphone-mobile-after\\lilly-workspace-mobile.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-iphone-mobile-after\\lilly-workspace-iphone-se.png"
+    ],
+    "issues": [
+      "page-errors",
+      "failed-requests"
+    ]
+  }
+}

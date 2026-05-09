@@ -238,18 +238,21 @@ class SkillStore {
     return true;
   }
 
-  scoreSkill(skill = {}, text = '') {
+  scoreSkill(skill = {}, text = '', options = {}) {
     const normalizedText = normalizeWhitespace(text).toLowerCase();
-    if (!normalizedText) {
-      return 0;
-    }
+    const requestedTools = new Set(normalizeStringList(options.toolIds || []).map((tool) => tool.toLowerCase()));
+    const surface = normalizeWhitespace(options.surface || options.clientSurface || '').toLowerCase();
+    const taskType = normalizeWhitespace(options.taskType || options.activeMode || '').toLowerCase();
+    const capabilityNeeds = normalizeStringList(options.capabilityNeeds || options.capabilities || []).map((entry) => entry.toLowerCase());
 
     let score = 0;
+    const reasons = [];
     const exactFields = [skill.id, skill.name, ...(skill.tools || [])];
     exactFields.forEach((field) => {
       const normalized = normalizeWhitespace(field).toLowerCase();
       if (normalized && normalizedText.includes(normalized)) {
         score += 4;
+        reasons.push(`matched ${normalized}`);
       }
     });
 
@@ -260,32 +263,94 @@ class SkillStore {
       }
       if (normalizedText.includes(normalized)) {
         score += 6;
+        reasons.push(`trigger ${normalized}`);
       } else {
         normalized.split(' ').forEach((word) => {
           if (word.length > 3 && normalizedText.includes(word)) {
             score += 1;
+            reasons.push(`keyword ${word}`);
           }
         });
       }
     });
 
-    return score;
+    if ((skill.tools || []).some((tool) => requestedTools.has(String(tool || '').toLowerCase()))) {
+      score += 5;
+      reasons.push('tool affinity');
+    }
+
+    const skillText = [
+      skill.id,
+      skill.name,
+      skill.description,
+      ...(skill.triggerPatterns || []),
+      ...(skill.tools || []),
+    ].join(' ').toLowerCase();
+
+    if (surface && skillText.includes(surface)) {
+      score += 2;
+      reasons.push(`surface ${surface}`);
+    }
+    if (taskType && skillText.includes(taskType)) {
+      score += 2;
+      reasons.push(`task ${taskType}`);
+    }
+    capabilityNeeds.forEach((capability) => {
+      if (capability && skillText.includes(capability)) {
+        score += 2;
+        reasons.push(`capability ${capability}`);
+      }
+    });
+
+    const successRate = Number(skill.successRate);
+    if (Number.isFinite(successRate) && reasons.length > 0) {
+      const normalizedSuccess = Math.max(0, Math.min(successRate, 100)) / 100;
+      score += normalizedSuccess;
+    }
+
+    if (options.returnDetails) {
+      return {
+        score,
+        reasons: Array.from(new Set(reasons)).slice(0, 8),
+      };
+    }
+
+    return normalizedText || requestedTools.size > 0 || surface || taskType || capabilityNeeds.length > 0
+      ? score
+      : 0;
   }
 
-  selectRelevantSkills({ text = '', toolIds = [], limit = DEFAULT_MATCH_LIMIT } = {}) {
+  selectRelevantSkillMatches({
+    text = '',
+    toolIds = [],
+    limit = DEFAULT_MATCH_LIMIT,
+    surface = '',
+    taskType = '',
+    capabilityNeeds = [],
+  } = {}) {
     const requestedTools = new Set(normalizeStringList(toolIds).map((tool) => tool.toLowerCase()));
     return this.listSkills({ includeBody: true })
       .map((skill) => {
-        const toolScore = (skill.tools || []).some((tool) => requestedTools.has(String(tool || '').toLowerCase())) ? 5 : 0;
+        const details = this.scoreSkill(skill, text, {
+          toolIds,
+          surface,
+          taskType,
+          capabilityNeeds,
+          returnDetails: true,
+        });
         return {
           skill,
-          score: this.scoreSkill(skill, text) + toolScore,
+          score: details.score,
+          reasons: details.reasons,
         };
       })
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, Math.max(1, Math.min(Number(limit) || DEFAULT_MATCH_LIMIT, 8)))
-      .map((entry) => entry.skill);
+      .slice(0, Math.max(1, Math.min(Number(limit) || DEFAULT_MATCH_LIMIT, 8)));
+  }
+
+  selectRelevantSkills(options = {}) {
+    return this.selectRelevantSkillMatches(options).map((entry) => entry.skill);
   }
 
   buildContextBlock({ text = '', toolIds = [], selectedSkillIds = [], limit = DEFAULT_MATCH_LIMIT } = {}) {
@@ -323,6 +388,54 @@ class SkillStore {
 
     lines.push('</registered_skills>');
     return lines.join('\n');
+  }
+
+  buildContext({
+    text = '',
+    toolIds = [],
+    selectedSkillIds = [],
+    limit = DEFAULT_MATCH_LIMIT,
+    surface = '',
+    taskType = '',
+    capabilityNeeds = [],
+  } = {}) {
+    const explicitSkills = normalizeStringList(selectedSkillIds)
+      .map((id) => this.readSkill(id, { includeBody: true }))
+      .filter(Boolean);
+    const explicitIds = new Set(explicitSkills.map((skill) => skill.id));
+    const matches = this.selectRelevantSkillMatches({
+      text,
+      toolIds,
+      limit,
+      surface,
+      taskType,
+      capabilityNeeds,
+    }).filter((entry) => !explicitIds.has(entry.skill.id));
+    const explicitMatches = explicitSkills.map((skill) => ({
+      skill,
+      score: Number.MAX_SAFE_INTEGER,
+      reasons: ['explicitly selected'],
+    }));
+    const selected = [...explicitMatches, ...matches].slice(0, Math.max(1, Math.min(Number(limit) || DEFAULT_MATCH_LIMIT, 8)));
+    const block = this.buildContextBlock({
+      text,
+      toolIds,
+      selectedSkillIds: selected.map((entry) => entry.skill.id),
+      limit,
+    });
+
+    return {
+      block,
+      selectedSkills: selected.map((entry) => ({
+        id: entry.skill.id,
+        name: entry.skill.name,
+        tools: entry.skill.tools || [],
+        score: Number.isFinite(entry.score) && entry.score !== Number.MAX_SAFE_INTEGER
+          ? Number(entry.score.toFixed(2))
+          : null,
+        reasons: entry.reasons || [],
+      })),
+    };
   }
 
   getSummary() {

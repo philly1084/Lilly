@@ -8,10 +8,15 @@
  */
 
 const EventEmitter = require('events');
+const {
+  evaluateToolReadiness,
+  summarizeToolReadiness,
+} = require('../../orchestration/tool-readiness');
 
 class UnifiedRegistry extends EventEmitter {
   constructor() {
     super();
+    this.setMaxListeners(100);
     
     // Backend implementations
     this.tools = new Map();
@@ -27,6 +32,9 @@ class UnifiedRegistry extends EventEmitter {
     
     // Usage statistics
     this.stats = new Map();
+
+    // Executability/readiness state
+    this.readiness = new Map();
 
     this.maxUsageHistory = 25;
     
@@ -121,6 +129,16 @@ class UnifiedRegistry extends EventEmitter {
     
     // 4. Initialize stats
     this.stats.set(id, this.createEmptyStats());
+
+    // 4b. Initialize readiness from the registered definition. ToolManager can
+    // later refresh this with the loaded executable instance.
+    this.readiness.set(id, evaluateToolReadiness(id, {
+      ...toolDefinition,
+      execute: toolDefinition.execute,
+    }, {
+      skill,
+      previous: this.readiness.get(id),
+    }));
     
     // 5. Add to category
     this.categories.add(category);
@@ -228,7 +246,8 @@ class UnifiedRegistry extends EventEmitter {
       .filter(manifest => manifest.exposeToFrontend)
       .map(manifest => ({
         ...manifest,
-        isAvailable: this.isToolAvailable(manifest.id)
+        isAvailable: this.isToolAvailable(manifest.id),
+        readiness: summarizeToolReadiness(this.getToolReadiness(manifest.id)),
       }));
   }
 
@@ -240,6 +259,7 @@ class UnifiedRegistry extends EventEmitter {
       .map((manifest) => ({
         ...manifest,
         isAvailable: this.isToolAvailable(manifest.id),
+        readiness: summarizeToolReadiness(this.getToolReadiness(manifest.id)),
       }));
   }
 
@@ -256,7 +276,44 @@ class UnifiedRegistry extends EventEmitter {
    */
   isToolAvailable(id) {
     const skill = this.skills.get(id);
-    return skill ? skill.enabled !== false : false;
+    const readiness = this.getToolReadiness(id);
+    return Boolean(skill && skill.enabled !== false && readiness.status !== 'unavailable');
+  }
+
+  setToolReadiness(id, readiness = {}) {
+    const tool = this.tools.get(id);
+    const skill = this.skills.get(id);
+    const next = evaluateToolReadiness(id, tool, {
+      skill,
+      previous: this.readiness.get(id),
+      probe: readiness,
+    });
+    this.readiness.set(id, next);
+    this.emit('tool:readiness', { id, readiness: next, timestamp: new Date().toISOString() });
+    return next;
+  }
+
+  refreshToolReadiness(id, tool = null, probe = null) {
+    const skill = this.skills.get(id);
+    const next = evaluateToolReadiness(id, tool || this.tools.get(id), {
+      skill,
+      previous: this.readiness.get(id),
+      probe,
+    });
+    this.readiness.set(id, next);
+    return next;
+  }
+
+  getToolReadiness(id) {
+    if (!this.readiness.has(id)) {
+      return this.refreshToolReadiness(id);
+    }
+    return this.readiness.get(id);
+  }
+
+  getAllToolReadiness() {
+    return Array.from(this.tools.keys())
+      .map((id) => summarizeToolReadiness(this.getToolReadiness(id)));
   }
 
   /**
@@ -516,6 +573,7 @@ class UnifiedRegistry extends EventEmitter {
       skills: Array.from(this.skills.entries()),
       manifests: Array.from(this.manifests.entries()),
       stats: Array.from(this.stats.entries()),
+      readiness: Array.from(this.readiness.entries()),
       categories: Array.from(this.categories),
       exportedAt: new Date().toISOString()
     };
@@ -536,6 +594,9 @@ class UnifiedRegistry extends EventEmitter {
     }
     if (data.stats) {
       this.stats = new Map(data.stats);
+    }
+    if (data.readiness) {
+      this.readiness = new Map(data.readiness);
     }
     if (data.categories) {
       this.categories = new Set(data.categories);

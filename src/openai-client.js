@@ -37,6 +37,7 @@ const {
     extractResponseUsageMetadata,
     mergeUsageMetadata,
 } = require('./utils/token-usage');
+const { buildModelContract } = require('./model-catalog');
 const {
     buildImageGenerationDiagnostics,
     formatImageDiagnosticsSummary,
@@ -233,6 +234,18 @@ function resolveOpenAIApiMode({
 
 function shouldUseResponsesAPI(options = {}) {
     return resolveOpenAIApiMode(options) === 'responses';
+}
+
+function resolveRuntimeModelId(model = null, {
+    baseURL = config.openai.baseURL,
+    fallback = config.openai.model,
+} = {}) {
+    const requested = normalizeModelId(model || fallback);
+    if (requested.toLowerCase() === 'auto' && isOpenAIBaseURL(baseURL)) {
+        const configured = normalizeModelId(fallback);
+        return configured && configured.toLowerCase() !== 'auto' ? configured : 'gpt-5.5';
+    }
+    return requested || fallback;
 }
 
 function shouldSendReasoningEffort({
@@ -5797,8 +5810,13 @@ async function createResponse({
     });
 
     const normalizedReasoningEffort = normalizeReasoningEffort(reasoningEffort || config.openai.reasoningEffort);
+    const requestedModel = normalizeModelId(model || config.openai.model);
+    const resolvedModel = resolveRuntimeModelId(model, {
+        baseURL: config.openai.baseURL,
+        fallback: config.openai.model,
+    });
     const params = {
-        model: model || config.openai.model,
+        model: resolvedModel,
         input: buildResponsesInput(messages),
         stream,
     };
@@ -5822,6 +5840,15 @@ async function createResponse({
     console.log(`[OpenAI] Creating response: model=${params.model}, stream=${stream}, messages=${messages.length}, reasoning=${normalizedReasoningEffort || 'default'}, apiMode=${apiMode}, promptReuse=${promptState.canReuseThreadedPrompt}`);
     console.log('[OpenAI] Request params summary:', JSON.stringify(summarizeOpenAIRequestParamsForLog(params)));
     const kimibuiltMetadata = {
+        requestedModel,
+        resolvedModel: params.model,
+        resolved_model: params.model,
+        modelContract: buildModelContract({
+            id: params.model,
+            owned_by: inferProviderFamily({ baseURL: config.openai.baseURL, model: params.model }),
+        }, {
+            officialOpenAI: isOpenAIBaseURL(config.openai.baseURL),
+        }),
         promptState: {
             instructionsFingerprint: promptState.instructionsFingerprint,
             previousInstructionsFingerprint: promptState.previousInstructionsFingerprint,

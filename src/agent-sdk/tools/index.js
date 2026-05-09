@@ -52,6 +52,13 @@ const {
 } = require('../../user-checkpoints');
 const { skillStore } = require('../../skills/skill-store');
 const { buildToolContract } = require('../../orchestration/tool-contracts');
+const {
+  READINESS_DEGRADED,
+  READINESS_READY,
+  READINESS_UNAVAILABLE,
+  summarizeToolReadiness,
+} = require('../../orchestration/tool-readiness');
+const { classifyFailureText } = require('../../orchestration/recovery-policy');
 const { validatePlanStep } = require('../../orchestration/plan-validator');
 const { getHostnameFromUrl, normalizeDomainList } = require('./categories/web/research-site-policy');
 
@@ -1776,6 +1783,7 @@ class ToolManager {
 
     // Set up event listeners
     this.setupEventListeners();
+    this.refreshToolReadiness();
 
     this.initialized = true;
     
@@ -5363,6 +5371,30 @@ class ToolManager {
     return this.loadedTools.get(id) || this.registry.getTool(id);
   }
 
+  refreshToolReadiness(ids = null) {
+    const toolIds = Array.isArray(ids) && ids.length > 0
+      ? ids
+      : Array.from(new Set([
+        ...this.registry.getAllTools().map((tool) => tool.id),
+        ...this.loadedTools.keys(),
+      ]));
+    return toolIds.map((id) => this.registry.refreshToolReadiness(id, this.getTool(id)));
+  }
+
+  getToolReadiness(id) {
+    return this.registry.refreshToolReadiness(id, this.getTool(id));
+  }
+
+  getToolReadinessSummary(ids = null) {
+    const toolIds = Array.isArray(ids) && ids.length > 0
+      ? ids
+      : Array.from(new Set([
+        ...this.registry.getAllTools().map((tool) => tool.id),
+        ...this.loadedTools.keys(),
+      ]));
+    return toolIds.map((id) => summarizeToolReadiness(this.getToolReadiness(id)));
+  }
+
   getToolContract(id) {
     const tool = this.getTool(id);
     return tool ? buildToolContract(id, tool) : null;
@@ -5398,6 +5430,15 @@ class ToolManager {
       throw new Error(`Tool ${id} is disabled`);
     }
 
+    const readiness = this.getToolReadiness(id);
+    if (readiness.status === READINESS_UNAVAILABLE
+      || (readiness.status === READINESS_DEGRADED && readiness.executableShape === 'none')) {
+      const error = new Error(`Tool ${id} is unavailable: ${readiness.reason}`);
+      error.code = 'TOOL_UNAVAILABLE';
+      error.readiness = readiness;
+      throw error;
+    }
+
     const normalizedParams = id === 'file-write'
       ? normalizeFileWriteParams(params)
       : params;
@@ -5417,7 +5458,19 @@ class ToolManager {
     // Execute either a ToolBase instance or a registry definition.
     let result;
     if (typeof tool.execute === 'function') {
-      result = await tool.execute(normalizedParams, effectiveContext);
+      const startedAt = Date.now();
+      try {
+        result = await tool.execute(normalizedParams, effectiveContext);
+      } catch (error) {
+        result = {
+          success: false,
+          error: error.message,
+          ...(error?.code ? { errorCode: error.code } : {}),
+          duration: Date.now() - startedAt,
+          toolId: id,
+          timestamp: new Date().toISOString(),
+        };
+      }
     } else if (typeof tool.backend?.handler === 'function') {
       const startedAt = Date.now();
       try {
@@ -5476,6 +5529,40 @@ class ToolManager {
     } else {
       throw new Error(`Tool ${id} has no executable handler`);
     }
+
+    const failureKind = result?.success === false
+      ? classifyFailureText([
+          result?.error,
+          result?.errorCode,
+          result?.diagnostics ? JSON.stringify(result.diagnostics) : '',
+        ].filter(Boolean).join('\n'))
+      : null;
+    result = {
+      ...(result || {}),
+      toolId: result?.toolId || id,
+      readiness: summarizeToolReadiness(readiness),
+      verification: {
+        status: result?.success === false ? 'failed' : 'observed',
+        evidence: result?.success === false
+          ? 'Tool returned an error result.'
+          : 'Tool returned a structured result.',
+      },
+      ...(failureKind ? { failureKind } : {}),
+    };
+
+    this.registry.setToolReadiness(id, {
+      status: result.success === false && failureKind === 'unavailable_tool'
+        ? READINESS_DEGRADED
+        : READINESS_READY,
+      reason: result.success === false
+        ? `Last execution failed: ${result.error || failureKind}`
+        : 'Last execution completed.',
+      lastProbe: {
+        success: result.success !== false,
+        failureKind,
+        timestamp: result.timestamp || new Date().toISOString(),
+      },
+    });
     
     // Record stats
     this.registry.recordInvocation(id, result, {

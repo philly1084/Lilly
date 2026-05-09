@@ -116,6 +116,7 @@ function buildToolContract(toolId = '', tool = {}) {
     destructiveRisk: override.destructiveRisk || (sideEffects.includes('write') ? 'medium' : 'low'),
     requiresConfirmation: override.requiresConfirmation ?? tool?.skill?.requiresConfirmation === true,
     idempotency: override.idempotency || 'unknown',
+    readiness: tool?.readiness || null,
   };
 }
 
@@ -124,7 +125,12 @@ function getToolContract(toolManager, toolId = '') {
   if (!tool) {
     return null;
   }
-  return buildToolContract(toolId, tool);
+  return buildToolContract(toolId, {
+    ...tool,
+    readiness: typeof toolManager?.getToolReadiness === 'function'
+      ? toolManager.getToolReadiness(toolId)
+      : null,
+  });
 }
 
 module.exports = {

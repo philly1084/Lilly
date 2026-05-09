@@ -193,9 +193,10 @@ class CodeCLIApp {
         
         // Model selection
         this.modelSelect.addEventListener('change', () => {
+            const scrollState = this.captureTerminalScrollState();
             api.setModel(this.modelSelect.value);
             this.updateModelInfo();
-            this.printSystem(`Model set to: ${this.modelSelect.value}`);
+            this.printSystem(`Model set to: ${this.modelSelect.value}`, { scrollState });
         });
         
         // File drop handling
@@ -1818,12 +1819,48 @@ Session Statistics:
         `;
     }
     
-    printSystem(text) {
+    captureTerminalScrollState() {
+        const output = this.terminalOutput;
+        if (!output) {
+            return {
+                scrollTop: 0,
+                scrollHeight: 0,
+                clientHeight: 0,
+                nearBottom: true,
+            };
+        }
+
+        const distanceFromBottom = output.scrollHeight - output.scrollTop - output.clientHeight;
+        return {
+            scrollTop: output.scrollTop,
+            scrollHeight: output.scrollHeight,
+            clientHeight: output.clientHeight,
+            nearBottom: distanceFromBottom <= 32,
+        };
+    }
+
+    restoreTerminalScrollState(scrollState = null) {
+        if (!this.terminalOutput) {
+            return;
+        }
+
+        if (!scrollState || scrollState.nearBottom) {
+            this.scrollToBottom();
+            return;
+        }
+
+        const heightDelta = this.terminalOutput.scrollHeight - scrollState.scrollHeight;
+        this.terminalOutput.scrollTop = scrollState.scrollTop + Math.max(0, heightDelta);
+        this.enforceScrollbackLimit();
+    }
+
+    printSystem(text, options = {}) {
+        const scrollState = options.scrollState || this.captureTerminalScrollState();
         const line = document.createElement('div');
         line.className = 'line line-output system';
         line.innerHTML = `<span class="timestamp">${this.getTimestamp()}</span> ${this.escapeHtml(text)}`;
         this.terminalOutput.appendChild(line);
-        this.terminalOutput.scrollTop = 0;
+        this.restoreTerminalScrollState(scrollState);
     }
     
     printError(text) {

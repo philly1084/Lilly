@@ -79,10 +79,12 @@ const { stripNullCharacters } = require('./utils/text');
 const {
     buildNaturalContext,
     buildNaturalContextInstructions,
+    buildRegisteredSkillsContext,
     buildRegisteredSkillsInstructions,
     buildSkillsTreeInstructions,
     buildNaturalContextUpdate,
 } = require('./natural-context');
+const { classifyToolEventFailure } = require('./orchestration/recovery-policy');
 const { formatImageDiagnosticsSummary } = require('./image-generation-diagnostics');
 const {
     DEFAULT_EXECUTION_PROFILE,
@@ -7819,16 +7821,32 @@ function normalizeToolResult(result, fallbackToolId, timing = {}) {
         || toIsoTimestamp(new Date(new Date(endTime).getTime() - Math.max(0, Number(result?.duration || 0))), endTime);
     const durationFromTimestamps = Math.max(0, new Date(endTime).getTime() - new Date(fallbackStartTime).getTime());
 
-    return {
+    const base = {
         success: result?.success !== false,
         toolId: result?.toolId || fallbackToolId,
         duration: Number(result?.duration || durationFromTimestamps || 0),
         data: sanitizeValue(result?.data),
         error: result?.error || null,
         diagnostics: sanitizeValue(result?.diagnostics),
+        readiness: sanitizeValue(result?.readiness),
+        verification: sanitizeValue(result?.verification),
+        failureKind: result?.failureKind || null,
         timestamp: endTime,
         startedAt: fallbackStartTime,
         endedAt: endTime,
+    };
+    return {
+        ...base,
+        recoveryPolicy: base.success
+            ? null
+            : classifyToolEventFailure({
+                result: base,
+                toolCall: {
+                    function: {
+                        name: base.toolId,
+                    },
+                },
+            }),
     };
 }
 
@@ -11384,7 +11402,7 @@ class ConversationOrchestrator extends EventEmitter {
             })
             .join('\n');
         const planningPrompt = String(objective || '');
-        const registeredSkillsInstructions = buildRegisteredSkillsInstructions({
+        const registeredSkillsContext = buildRegisteredSkillsContext({
             userText: planningPrompt,
             metadata: {
                 ...(toolContext?.metadata || {}),
@@ -11393,6 +11411,8 @@ class ConversationOrchestrator extends EventEmitter {
             },
             toolIds: toolPolicy.candidateToolIds,
         });
+        const registeredSkillsInstructions = registeredSkillsContext.block;
+        toolPolicy.selectedSkills = registeredSkillsContext.selectedSkills || [];
         const prompt = [
             'You are planning tool usage for an application-owned agent runtime.',
             'Classify first, then choose the smallest safe tool sequence that follows the classification and verified evidence.',
@@ -11437,6 +11457,16 @@ class ConversationOrchestrator extends EventEmitter {
                 : []),
             'Candidate tools:',
             toolCatalog,
+            ...(Object.keys(toolPolicy?.toolContracts || {}).length > 0
+                ? [
+                    '',
+                    'Tool readiness:',
+                    JSON.stringify(toolPolicy.candidateToolIds
+                        .map((toolId) => toolPolicy.toolContracts?.[toolId]?.readiness)
+                        .filter(Boolean), null, 2),
+                    'Prefer ready tools. Use degraded tools only when they are still executable and clearly best fit. Do not plan unavailable tools.',
+                ]
+                : []),
             '',
             'User request:',
             objective || '(empty)',
@@ -11818,6 +11848,8 @@ class ConversationOrchestrator extends EventEmitter {
                         paramKeys: Object.keys(step.params || {}).sort(),
                         error: normalizedResult.error,
                         diagnostics: normalizedResult.diagnostics || null,
+                        failureKind: normalizedResult.failureKind || null,
+                        recoveryPolicy: normalizedResult.recoveryPolicy || null,
                         classification,
                         stateChanged: false,
                     },
@@ -11898,6 +11930,8 @@ class ConversationOrchestrator extends EventEmitter {
                         paramKeys: Object.keys(step.params || {}).sort(),
                         error: normalizedResult.error || null,
                         diagnostics: normalizedResult.diagnostics || null,
+                        failureKind: normalizedResult.failureKind || null,
+                        recoveryPolicy: normalizedResult.recoveryPolicy || null,
                         classification,
                         stateChanged,
                     },
@@ -11950,6 +11984,8 @@ class ConversationOrchestrator extends EventEmitter {
                         paramKeys: Object.keys(step.params || {}).sort(),
                         error: normalizedResult.error || null,
                         diagnostics: normalizedResult.diagnostics || null,
+                        failureKind: normalizedResult.failureKind || null,
+                        recoveryPolicy: normalizedResult.recoveryPolicy || null,
                         classification,
                         stateChanged,
                     },
@@ -12653,6 +12689,21 @@ class ConversationOrchestrator extends EventEmitter {
         const aggregatedUsage = tracedUsage
             || extractResponseUsageMetadata(finalResponse)
             || (!hasModelCall ? createZeroUsageMetadata() : null);
+        const toolReadinessSummary = Object.values(toolPolicy?.toolContracts || {})
+            .map((contract) => contract?.readiness)
+            .filter(Boolean)
+            .map((readiness) => ({
+                toolId: readiness.toolId || null,
+                status: readiness.status || null,
+                reason: readiness.reason || '',
+                executableShape: readiness.executableShape || null,
+            }));
+        const verificationSummary = {
+            toolEvents: toolEvents.length,
+            successfulToolEvents: toolEvents.filter((event) => event?.result?.success !== false).length,
+            failedToolEvents: toolEvents.filter((event) => event?.result?.success === false).length,
+            verifiedEvidence: toolEvents.filter((event) => event?.result?.verification?.status === 'observed').length,
+        };
         const surfaceFinisher = inferSurfaceFinisher({
             taskType,
             clientSurface,
@@ -12682,6 +12733,9 @@ class ConversationOrchestrator extends EventEmitter {
             surfaceFinisher,
             agencyProfile: toolPolicy?.agencyProfile || null,
             rolePipeline: toolPolicy?.rolePipeline || null,
+            selectedSkills: toolPolicy?.selectedSkills || [],
+            toolReadiness: toolReadinessSummary,
+            verification: verificationSummary,
             ...(harnessSummary ? { harness: harnessSummary } : {}),
             naturalContext: nextNaturalContext,
             perceivedIntelligenceScores: intelligenceSummary.perceivedIntelligenceScores,
@@ -12736,6 +12790,9 @@ class ConversationOrchestrator extends EventEmitter {
             agencyProfile: toolPolicy?.agencyProfile || null,
             projectKey: toolPolicy?.projectKey || null,
             candidateToolScores: toolPolicy?.candidateToolScores || null,
+            selectedSkills: toolPolicy?.selectedSkills || [],
+            toolReadiness: toolReadinessSummary,
+            verification: verificationSummary,
             replanReason: extractLatestReplanReason(executionTrace),
             recallSummary: summarizeRecallTrace(memoryTrace),
             finalizationMode: inferFinalizationMode({

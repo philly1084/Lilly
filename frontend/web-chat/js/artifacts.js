@@ -166,8 +166,9 @@
             
             .artifact-toolbar-compact .toolbar-btn.primary {
                 background: var(--accent);
-                color: white;
+                color: #06111f;
                 border-color: var(--accent);
+                font-weight: 700;
             }
             
             .artifact-toolbar-compact .toolbar-btn.primary:hover {
@@ -183,7 +184,7 @@
             
             .artifact-toolbar-compact .selected-count {
                 font-size: 12px;
-                color: var(--text-tertiary);
+                color: var(--text-secondary);
                 padding: 0 4px;
             }
             

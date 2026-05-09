@@ -81,13 +81,117 @@ function inferModelCapabilities(model = {}) {
     return capabilities;
 }
 
+function inferProviderFamily(model = {}) {
+    const id = normalizeModelId(typeof model === 'string' ? model : model.id).toLowerCase();
+    const owner = String(model?.owned_by || model?.provider || '').toLowerCase();
+    const text = `${id} ${owner}`;
+    if (text.includes('openai') || /^gpt-|^o\d|^chatgpt/.test(id)) return 'openai';
+    if (text.includes('groq')) return 'groq';
+    if (text.includes('gemini') || text.includes('google')) return 'gemini';
+    if (text.includes('anthropic') || text.includes('claude')) return 'anthropic';
+    if (text.includes('deepseek')) return 'deepseek';
+    if (text.includes('kimi') || text.includes('moonshot')) return 'kimi';
+    if (text.includes('llama') || text.includes('meta')) return 'meta';
+    return owner || 'unknown';
+}
+
+function inferContextWindow(model = {}) {
+    const id = normalizeModelId(typeof model === 'string' ? model : model.id).toLowerCase();
+    if (/gpt-5|gpt-4\.1|claude|gemini-1\.5|gemini-2|qwen|deepseek|kimi/.test(id)) return 128000;
+    if (/gpt-4o|o3|o4|llama-3\.1|llama-3\.3/.test(id)) return 128000;
+    if (/gpt-4|mixtral|mistral-large/.test(id)) return 32000;
+    return 16000;
+}
+
+function buildModelContract(model = {}, options = {}) {
+    const id = normalizeModelId(typeof model === 'string' ? model : model.id);
+    const capabilities = inferModelCapabilities(typeof model === 'string' ? { id } : model);
+    const capabilitySet = new Set(capabilities);
+    const provider = options.provider || inferProviderFamily(model);
+    const officialOpenAI = provider === 'openai' || options.officialOpenAI === true;
+
+    return {
+        id,
+        provider,
+        capabilities,
+        supports: {
+            chat: capabilitySet.has('chat'),
+            responses: officialOpenAI && capabilitySet.has('responses'),
+            tools: capabilitySet.has('tools'),
+            vision: capabilitySet.has('vision') || capabilitySet.has('image_input'),
+            reasoning: capabilitySet.has('reasoning'),
+            structured_outputs: capabilitySet.has('structured_outputs'),
+            image_generation: capabilitySet.has('image_generation'),
+            streaming: capabilitySet.has('streaming'),
+        },
+        contextWindow: Number(model?.context_window || model?.contextWindow || 0) || inferContextWindow(model),
+        costTier: model?.costTier || (/mini|small|flash|haiku|8b|7b/i.test(id) ? 'low' : (/gpt-5|opus|large|pro/i.test(id) ? 'high' : 'medium')),
+        latencyTier: model?.latencyTier || (/mini|flash|groq|8b|7b/i.test(id) ? 'low' : 'medium'),
+        reliabilityTier: model?.reliabilityTier || (officialOpenAI ? 'high' : 'unknown'),
+        openaiFirst: officialOpenAI,
+    };
+}
+
+function requiredCapabilitiesForRequest({
+    needsTools = false,
+    needsVision = false,
+    needsReasoning = false,
+    needsStructuredOutputs = false,
+    needsImageGeneration = false,
+    apiMode = 'chat',
+} = {}) {
+    const required = [];
+    if (needsImageGeneration) {
+        required.push('image_generation');
+        return required;
+    }
+    required.push(apiMode === 'responses' ? 'responses' : 'chat');
+    if (needsTools) required.push('tools');
+    if (needsVision) required.push('vision');
+    if (needsReasoning) required.push('reasoning');
+    if (needsStructuredOutputs) required.push('structured_outputs');
+    return required;
+}
+
+function modelSatisfiesCapabilities(contract = {}, required = []) {
+    const supports = contract.supports || {};
+    return required.every((capability) => supports[capability] === true || (contract.capabilities || []).includes(capability));
+}
+
+function selectAutoModel(models = [], request = {}, options = {}) {
+    const required = requiredCapabilitiesForRequest(request);
+    const candidates = (Array.isArray(models) ? models : [])
+        .map((model) => buildModelContract(model, options))
+        .filter((contract) => contract.id && modelSatisfiesCapabilities(contract, required));
+
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    const score = (contract) => {
+        let value = 0;
+        if (contract.openaiFirst) value += 3;
+        if (contract.supports.reasoning && request.needsReasoning) value += 2;
+        if (contract.supports.tools && request.needsTools) value += 2;
+        if (contract.reliabilityTier === 'high') value += 2;
+        if (contract.costTier === 'low') value += 1;
+        if (contract.latencyTier === 'low') value += 1;
+        value += Math.min(contract.contextWindow || 0, 128000) / 128000;
+        return value;
+    };
+
+    return [...candidates].sort((a, b) => score(b) - score(a))[0];
+}
+
 function toPublicModelRecord(model = {}) {
+    const contract = buildModelContract(model);
     return {
         id: model.id,
         object: model.object || 'model',
         created: model.created || Math.floor(Date.now() / 1000),
         owned_by: model.owned_by || 'unknown',
-        capabilities: inferModelCapabilities(model),
+        capabilities: contract.capabilities,
+        contract,
     };
 }
 
@@ -117,7 +221,11 @@ function toPublicChatModelList(models = []) {
 
 module.exports = {
     NON_CHAT_MODEL_TOKENS,
+    buildModelContract,
     inferModelCapabilities,
+    modelSatisfiesCapabilities,
+    requiredCapabilitiesForRequest,
+    selectAutoModel,
     isPublicChatModel,
     toPublicChatModelList,
     toPublicModelList,

@@ -126,6 +126,21 @@ function validatePlanStep(step = {}, {
   }
 
   const contract = contracts[normalized.tool] || null;
+  if (contract?.readiness?.status === 'unavailable') {
+    rejections.push({
+      code: 'tool_unavailable',
+      message: `Tool ${normalized.tool} is unavailable: ${contract.readiness.reason || 'not ready'}`,
+      readiness: contract.readiness,
+    });
+  }
+  if (contract?.readiness?.status === 'degraded'
+    && contract?.readiness?.executableShape === 'none') {
+    rejections.push({
+      code: 'tool_degraded',
+      message: `Tool ${normalized.tool} is degraded: ${contract.readiness.reason || 'not executable'}`,
+      readiness: contract.readiness,
+    });
+  }
   if (requiresConfirmationForStep(contract, normalized)) {
     rejections.push({ code: 'confirmation_required', message: `Tool ${normalized.tool} requires confirmation.` });
   }

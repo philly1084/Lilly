@@ -1,0 +1,370 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:4178/web-cli/",
+  "originalUrl": "http://127.0.0.1:4178/web-cli/",
+  "authenticated": false,
+  "generatedAt": "2026-05-09T22:10:25.462Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-iphone-mobile\\kimibuilt-web-cli-mobile.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://127.0.0.1:4178/web-cli/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 650,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Disconnected auto gpt-4o gpt-4o-mini gpt-4-turbo gpt-3.5-turbo ? KIMIBUILT WEB CLI AGENT COMMAND SURFACE Command from the browser, keep the terminal rhythm. Chat, inspect tools, run sandboxes, call remote agents, and keep generated files in the same session. MODE chat MODEL auto SESSION pending Ask Start with a normal request /tools Inspect available actions /skills Route with reusable skills /files Review generated artifacts /remote plan See remote deploy lanes Build Draft a r",
+        "headings": [],
+        "interactiveControls": 39,
+        "textContrast": {
+          "checked": 57,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to restore isolated session: Error: Failed to load sessions: HTTP 404\n    at WebCLIAPI.getSessionState (http://127.0.0.1:4178/web-cli/js/api.js:1282:19)\n    at async CodeCLIApp.restoreSharedSession (http://127.0.0.1:4178/web-cli/js/app.js?v=20260509a:1534:26)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdn.tailwindcss.com/",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        }
+      ],
+      "issues": [
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "iphone-se",
+        "width": 320,
+        "height": 568,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-iphone-mobile\\kimibuilt-web-cli-iphone-se.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://127.0.0.1:4178/web-cli/",
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "scrollWidth": 320,
+        "scrollHeight": 568,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 650,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Disconnected auto gpt-4o gpt-4o-mini gpt-4-turbo gpt-3.5-turbo ? KIMIBUILT WEB CLI AGENT COMMAND SURFACE Command from the browser, keep the terminal rhythm. Chat, inspect tools, run sandboxes, call remote agents, and keep generated files in the same session. MODE chat MODEL auto SESSION pending Ask Start with a normal request /tools Inspect available actions /skills Route with reusable skills /files Review generated artifacts /remote plan See remote deploy lanes Build Draft a r",
+        "headings": [],
+        "interactiveControls": 39,
+        "textContrast": {
+          "checked": 57,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to restore isolated session: Error: Failed to load sessions: HTTP 404\n    at WebCLIAPI.getSessionState (http://127.0.0.1:4178/web-cli/js/api.js:1282:19)\n    at async CodeCLIApp.restoreSharedSession (http://127.0.0.1:4178/web-cli/js/app.js?v=20260509a:1534:26)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdn.tailwindcss.com/",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        },
+        {
+          "url": "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+          "failure": "net::ERR_NETWORK_ACCESS_DENIED"
+        }
+      ],
+      "issues": [
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-iphone-mobile\\kimibuilt-web-cli-mobile.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-iphone-mobile\\kimibuilt-web-cli-iphone-se.png"
+    ],
+    "issues": [
+      "failed-requests"
+    ]
+  }
+}

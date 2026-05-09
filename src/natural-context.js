@@ -247,6 +247,14 @@ function buildRegisteredSkillsInstructions({
     metadata = {},
     toolIds = [],
 } = {}) {
+    return buildRegisteredSkillsContext({ userText, metadata, toolIds }).block;
+}
+
+function buildRegisteredSkillsContext({
+    userText = '',
+    metadata = {},
+    toolIds = [],
+} = {}) {
     try {
         const selectedSkillIds = normalizeList(
             metadata?.skillIds
@@ -262,14 +270,23 @@ function buildRegisteredSkillsInstructions({
             || [],
         );
 
-        return getSkillStore().buildContextBlock({
+        const naturalContext = normalizeNaturalContext(
+            metadata?.naturalContext
+            || metadata?.workingContext
+            || metadata?.interactionContext
+            || {},
+        );
+        return getSkillStore().buildContext({
             text: userText,
             toolIds: [...metadataToolIds, ...normalizeToolIds(toolIds)],
             selectedSkillIds,
+            surface: metadata?.clientSurface || metadata?.client_surface || naturalContext.activeSurface || '',
+            taskType: metadata?.taskType || metadata?.task_type || naturalContext.activeMode || '',
+            capabilityNeeds: metadata?.capabilityNeeds || metadata?.capabilities || [],
         });
     } catch (error) {
         console.warn('[NaturalContext] Failed to build registered skill instructions:', error.message);
-        return '';
+        return { block: '', selectedSkills: [] };
     }
 }
 
@@ -311,6 +328,7 @@ function buildNaturalContextUpdate({
 module.exports = {
     buildNaturalContext,
     buildNaturalContextInstructions,
+    buildRegisteredSkillsContext,
     buildSkillsTreeInstructions,
     buildRegisteredSkillsInstructions,
     buildNaturalContextUpdate,
