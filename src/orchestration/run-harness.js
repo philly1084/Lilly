@@ -168,9 +168,12 @@ class HarnessState {
     choices = [],
   } = {}) {
     const normalizedItem = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+    const normalizedOutputTools = Array.isArray(outputTools) && outputTools.length > 0
+      ? outputTools
+      : this.deriveOutputToolsFromEvents();
     const sample = {
       output_text: String(outputText || ''),
-      output_tools: Array.isArray(outputTools) ? outputTools : [],
+      output_tools: normalizedOutputTools,
       choices: Array.isArray(choices) ? choices : [],
     };
 
@@ -188,6 +191,33 @@ class HarnessState {
       blockers: this.blockers,
       metadata: this.toTraceMetadata(),
     };
+  }
+
+  deriveOutputToolsFromEvents() {
+    return this.toolEvents
+      .filter((event = {}) => {
+        const type = String(event.type || event.stepType || event.toolType || '').toLowerCase();
+        return (
+          type.includes('tool')
+          || Boolean(event.toolName)
+          || Boolean(event.functionName)
+          || Boolean(event.arguments)
+          || Boolean(event.args)
+          || Boolean(event.metadata?.toolCall)
+        );
+      })
+      .map((event = {}) => {
+        const toolCall = event.metadata?.toolCall && typeof event.metadata.toolCall === 'object'
+          ? event.metadata.toolCall
+          : {};
+
+        return {
+          name: event.toolName || event.functionName || toolCall.name || event.name || 'tool-call',
+          arguments: event.arguments || event.args || event.input || toolCall.arguments || {},
+          status: event.status || event.outcome || toolCall.status || null,
+          output: event.output || event.result || toolCall.output || null,
+        };
+      });
   }
 
   toJSON() {

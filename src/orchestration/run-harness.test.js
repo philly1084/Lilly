@@ -118,6 +118,86 @@ describe('HarnessState', () => {
     });
   });
 
+  test('derives grader output tools from recorded tool events', () => {
+    const harness = new HarnessState({
+      runId: 'run-tools',
+      toolEvents: [
+        {
+          type: 'llm-call',
+          name: 'planner',
+          status: 'completed',
+        },
+        {
+          type: 'tool-call',
+          name: 'web-fetch',
+          status: 'completed',
+          arguments: { url: 'https://platform.openai.com/docs/guides/graders/' },
+          output: { ok: true },
+        },
+        {
+          type: 'ToolExecutionEvent',
+          status: 'failed',
+          metadata: {
+            toolCall: {
+              name: 'kimibuilt-ui-check',
+              arguments: { target: 'http://localhost:3000/web-chat/app.html' },
+              output: { issue: 'low-contrast-text' },
+            },
+          },
+        },
+      ],
+    });
+
+    const payload = harness.toGradingPayload({
+      outputText: 'Fetched docs and ran UI check.',
+    });
+
+    expect(payload.sample.output_tools).toEqual([
+      {
+        name: 'web-fetch',
+        arguments: { url: 'https://platform.openai.com/docs/guides/graders/' },
+        status: 'completed',
+        output: { ok: true },
+      },
+      {
+        name: 'kimibuilt-ui-check',
+        arguments: { target: 'http://localhost:3000/web-chat/app.html' },
+        status: 'failed',
+        output: { issue: 'low-contrast-text' },
+      },
+    ]);
+  });
+
+  test('preserves explicit grader output tools over derived tool events', () => {
+    const harness = new HarnessState({
+      runId: 'run-explicit-tools',
+      toolEvents: [
+        {
+          type: 'tool-call',
+          name: 'web-fetch',
+          status: 'completed',
+          arguments: { url: 'https://example.com' },
+        },
+      ],
+    });
+
+    const payload = harness.toGradingPayload({
+      outputTools: [
+        {
+          name: 'remote-command',
+          arguments: { command: 'kubectl get pods -A' },
+        },
+      ],
+    });
+
+    expect(payload.sample.output_tools).toEqual([
+      {
+        name: 'remote-command',
+        arguments: { command: 'kubectl get pods -A' },
+      },
+    ]);
+  });
+
   test('summarizes diagnostics for failed evidence and tool events', () => {
     const harness = new HarnessState({
       runId: 'run-789',
