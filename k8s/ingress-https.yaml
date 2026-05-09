@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: kimibuilt-ingress
+  name: kimibuilt-lilly-ingress
   namespace: kimibuilt
   annotations:
     kubernetes.io/ingress.class: traefik
@@ -14,22 +14,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - kimibuilt.secdevsolutions.help
-        - kimibuilt.demoserver2.buzz
-      secretName: kimibuilt-tls
+        - lilly.secdevsolutions.help
+      secretName: kimibuilt-lilly-tls
   rules:
-    - host: kimibuilt.secdevsolutions.help
-      http:
-        paths:
-          # Frontend files (root and all frontend paths)
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 3000
-    - host: kimibuilt.demoserver2.buzz
+    - host: lilly.secdevsolutions.help
       http:
         paths:
           # Frontend files (root and all frontend paths)

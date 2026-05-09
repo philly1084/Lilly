@@ -4,10 +4,10 @@ metadata:
   name: kimibuilt-config
   namespace: kimibuilt
 data:
-  API_BASE_URL: "https://kimibuilt.secdevsolutions.help"
-  # Security hardening: keep auth required in production and only allow browser API calls from known KimiBuilt public origins.
+  API_BASE_URL: "https://lilly.secdevsolutions.help"
+  # Security hardening: keep auth required in production and only allow browser API calls from the canonical Lilly public origin.
   KIMIBUILT_AUTH_REQUIRED: "true"
-  KIMIBUILT_ALLOWED_ORIGINS: "https://kimibuilt.secdevsolutions.help,https://kimibuilt.demoserver2.buzz,https://168.119.176.121,http://168.119.176.121"
+  KIMIBUILT_ALLOWED_ORIGINS: "https://lilly.secdevsolutions.help,https://168.119.176.121,http://168.119.176.121"
   KIMIBUILT_ALLOW_QUERY_TOKENS: "false"
   KIMIBUILT_RATE_LIMIT_WINDOW_MS: "60000"
   KIMIBUILT_RATE_LIMIT_MAX: "120"

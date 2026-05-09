@@ -5,34 +5,24 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: kimibuilt-ingress
+  name: kimibuilt-lilly-ingress
   namespace: kimibuilt
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.priority: "100"
-    traefik.ingress.kubernetes.io/router.middlewares: kimibuilt-cors@kubernetescrd
     traefik.ingress.kubernetes.io/proxy-read-timeout: "300"
     traefik.ingress.kubernetes.io/proxy-send-timeout: "300"
     traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  ingressClassName: traefik
   tls:
     - hosts:
-        - kimibuilt.secdevsolutions.help
-        - kimibuilt.demoserver2.buzz
-      secretName: kimibuilt-tls
+        - lilly.secdevsolutions.help
+      secretName: kimibuilt-lilly-tls
   rules:
-    - host: kimibuilt.secdevsolutions.help
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 3000
-    - host: kimibuilt.demoserver2.buzz
+    - host: lilly.secdevsolutions.help
       http:
         paths:
           - path: /
@@ -60,9 +50,49 @@ spec:
     accessControlAllowHeaders:
       - "*"
     accessControlAllowOriginList:
-      - "https://kimibuilt.secdevsolutions.help"
-      - "https://kimibuilt.demoserver2.buzz"
+      - "https://lilly.secdevsolutions.help"
       - "http://localhost:8080"
       - "http://localhost:3000"
     accessControlMaxAge: 100
     addVaryHeader: true
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-to-lilly
+  namespace: kimibuilt
+spec:
+  redirectRegex:
+    regex: ^https?://kimibuilt\.secdevsolutions\.help/(.*)
+    replacement: https://lilly.secdevsolutions.help/${1}
+    permanent: true
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kimibuilt-legacy-redirect
+  namespace: kimibuilt
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: kimibuilt-redirect-to-lilly@kubernetescrd
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - kimibuilt.secdevsolutions.help
+      secretName: kimibuilt-secdevsolutions-tls
+  rules:
+    - host: kimibuilt.secdevsolutions.help
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 3000
