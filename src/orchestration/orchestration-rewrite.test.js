@@ -121,6 +121,22 @@ describe('orchestration rewrite policy', () => {
     });
   }));
 
+  test('keeps managed-app available for GitLab-observable remote-build deploy lanes', () => withRewriteFlag('true', () => {
+    const toolManager = buildToolManager(['managed-app', 'remote-cli-agent', 'remote-command']);
+    const policy = applyRewritePolicyOverlay({
+      legacyPolicy: {
+        allowedToolIds: ['managed-app', 'remote-cli-agent', 'remote-command'],
+        candidateToolIds: ['managed-app', 'remote-cli-agent', 'remote-command'],
+      },
+      objective: 'Use GitLab to build and deploy this managed app to the k3s server.',
+      executionProfile: 'remote-build',
+      toolManager,
+    });
+
+    expect(policy.allowedToolIds).toContain('managed-app');
+    expect(policy.candidateToolIds).toContain('managed-app');
+  }));
+
   test('validates planned steps before execution and returns structured rejection reasons', () => {
     const toolManager = buildToolManager(['agent-workload']);
     const invalid = validatePlanStep({
@@ -376,7 +392,7 @@ describe('orchestration rewrite policy', () => {
 
     expect(pipeline).toEqual(expect.objectContaining({
       requiresSandbox: true,
-      strategy: 'research-design-sandbox-build',
+      strategy: 'concept-design-sandbox-build',
     }));
     expect(pipeline.roles.map((role) => role.id)).toEqual(expect.arrayContaining([
       ROLE_IDS.BUILDER,

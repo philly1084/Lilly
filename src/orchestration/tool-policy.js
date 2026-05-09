@@ -5,17 +5,29 @@ function isOrchestrationRewriteEnabled() {
   return String(process.env.ORCHESTRATION_REWRITE_ENABLED || '').trim().toLowerCase() === 'true';
 }
 
-function removeUnsupportedAutonomousTools(toolIds = []) {
+function shouldAllowManagedAppTool({
+  objective = '',
+  executionProfile = 'default',
+} = {}) {
+  const normalized = String(objective || '').trim().toLowerCase();
+  return executionProfile === 'remote-build'
+    || /\b(managed app|managed-app|gitlab|gitlab ci|gitlab runner|build events webhook)\b/.test(normalized);
+}
+
+function removeUnsupportedAutonomousTools(toolIds = [], {
+  allowManagedApp = false,
+} = {}) {
   return Array.from(new Set((Array.isArray(toolIds) ? toolIds : [])
     .map((toolId) => String(toolId || '').trim())
-    .filter(Boolean)));
+    .filter((toolId) => toolId && (allowManagedApp || toolId !== 'managed-app'))));
 }
 
 function selectCandidatesForAgencyMode({
   candidateToolIds = [],
   agencyProfile = null,
+  allowManagedApp = false,
 } = {}) {
-  const candidates = removeUnsupportedAutonomousTools(candidateToolIds);
+  const candidates = removeUnsupportedAutonomousTools(candidateToolIds, { allowManagedApp });
   const mode = agencyProfile?.mode || AGENCY_MODES.RESPOND;
 
   if (mode === AGENCY_MODES.SCHEDULE || mode === AGENCY_MODES.SCHEDULE_MULTIPLE) {
@@ -30,9 +42,9 @@ function selectCandidatesForAgencyMode({
   return candidates;
 }
 
-function buildToolContracts(toolManager, toolIds = []) {
+function buildToolContracts(toolManager, toolIds = [], options = {}) {
   const contracts = {};
-  for (const toolId of removeUnsupportedAutonomousTools(toolIds)) {
+  for (const toolId of removeUnsupportedAutonomousTools(toolIds, options)) {
     const contract = getToolContract(toolManager, toolId);
     if (contract) {
       contracts[toolId] = contract;
@@ -59,15 +71,17 @@ function applyRewritePolicyOverlay({
   const resolvedAgencyProfile = agencyProfile?.source === 'orchestration-rewrite'
     ? agencyProfile
     : buildAgencyProfile({ intent, objective, executionProfile });
-  const allowedToolIds = removeUnsupportedAutonomousTools(legacyPolicy.allowedToolIds || []);
-  const baseCandidates = removeUnsupportedAutonomousTools(legacyPolicy.candidateToolIds || []);
+  const allowManagedApp = shouldAllowManagedAppTool({ objective, executionProfile });
+  const allowedToolIds = removeUnsupportedAutonomousTools(legacyPolicy.allowedToolIds || [], { allowManagedApp });
+  const baseCandidates = removeUnsupportedAutonomousTools(legacyPolicy.candidateToolIds || [], { allowManagedApp });
   const candidateToolIds = isOrchestrationRewriteEnabled()
     ? selectCandidatesForAgencyMode({
       candidateToolIds: baseCandidates,
       agencyProfile: resolvedAgencyProfile,
+      allowManagedApp,
     })
     : baseCandidates;
-  const contracts = buildToolContracts(toolManager, allowedToolIds);
+  const contracts = buildToolContracts(toolManager, allowedToolIds, { allowManagedApp });
 
   return {
     ...legacyPolicy,
@@ -89,4 +103,5 @@ module.exports = {
   isOrchestrationRewriteEnabled,
   removeUnsupportedAutonomousTools,
   selectCandidatesForAgencyMode,
+  shouldAllowManagedAppTool,
 };

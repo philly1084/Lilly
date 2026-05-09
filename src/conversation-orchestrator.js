@@ -1554,6 +1554,15 @@ function shouldAllowDirectAction(action = null, { toolPolicy = {}, toolEvents = 
     return true;
 }
 
+function shouldAllowManagedAppPlan({ objective = '', executionProfile = DEFAULT_EXECUTION_PROFILE, toolPolicy = {} } = {}) {
+    if (!Array.isArray(toolPolicy?.allowedToolIds) || !toolPolicy.allowedToolIds.includes('managed-app')) {
+        return false;
+    }
+    const normalized = String(objective || '').trim().toLowerCase();
+    return executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+        || /\b(managed app|managed-app|gitlab|gitlab ci|gitlab runner|build events webhook)\b/.test(normalized);
+}
+
 function extractStrictPreviewUrlFromToolEvent(event = {}) {
     const data = event?.result?.data || {};
     const candidates = [
@@ -11685,6 +11694,7 @@ class ConversationOrchestrator extends EventEmitter {
             const validated = validatePlan(requestedSteps, {
                 candidateToolIds: toolPolicy.candidateToolIds,
                 contracts: toolPolicy.toolContracts || {},
+                allowUnsupportedManagedApp: shouldAllowManagedAppPlan({ objective, executionProfile, toolPolicy }),
             });
             if (validated.rejected.length > 0 && toolPolicy.orchestrationRewrite?.enabled) {
                 console.warn('[ConversationOrchestrator] Planner returned rejected tool steps:', validated.rejected.map((entry) => ({
@@ -11713,6 +11723,7 @@ class ConversationOrchestrator extends EventEmitter {
         return validatePlan(fallbackPlan, {
             candidateToolIds: toolPolicy.candidateToolIds,
             contracts: toolPolicy.toolContracts || {},
+            allowUnsupportedManagedApp: shouldAllowManagedAppPlan({ objective, executionProfile, toolPolicy }),
         }).steps;
     }
 
