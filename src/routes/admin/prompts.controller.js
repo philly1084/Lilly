@@ -62,6 +62,7 @@ function buildPlannerPromptSurface() {
     'Reject steps that repeat a no-op command from this run, mismatch the active surface, skip required grounding, or omit required parameters.',
     'For current-information or research-heavy requests, gather grounded evidence first with web-search, web-fetch, or web-scrape before document generation or synthesis.',
     'For routine public web research, research-backed documents, and slide requests, do not stop to ask the user which websites to scrape or to approve source domains. Use web-search with researchMode "search" to discover candidate URLs cheaply, choose the strongest public pages yourself, verify them with web-fetch first, and use web-scrape only when a page needs rendered or structured extraction and does not explicitly block bots.',
+    'Default web-search locality is Canadian: prefer region "ca-en", userLocation.country "CA", Canadian sources, and official Canadian source families first unless the user explicitly asks for another country, region, or publisher set.',
     'Use web-search researchMode "sonar" or "sonar-pro" for one-shot grounded answers with citations, returnImages/imageDomains/imageFormats for image URL hotlisting, "pro-search" for autonomous plan+search+fetch research, and "sonar-deep-research" only for explicit long-form deep research.',
     'Do not invent SSH hosts, usernames, file paths, or credentials.',
     'Every remote-command step must include a non-empty params.command string.',

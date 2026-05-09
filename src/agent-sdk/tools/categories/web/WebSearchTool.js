@@ -11,6 +11,8 @@ const DEFAULT_MAX_TOKENS = 10000;
 const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1800;
 const DEFAULT_DEEP_RESEARCH_OUTPUT_TOKENS = 7000;
+const DEFAULT_SEARCH_REGION = 'ca-en';
+const DEFAULT_SEARCH_COUNTRY = 'CA';
 const AGENT_RESEARCH_MODES = Object.freeze([
   'fast-search',
   'pro-search',
@@ -114,14 +116,14 @@ function normalizeBoolean(value = false) {
   return value === 1;
 }
 
-function normalizeUserLocation(userLocation = null, region = 'us-en') {
-  const countryFromRegion = String(region || 'us-en').split('-')[0].toUpperCase();
+function normalizeUserLocation(userLocation = null, region = DEFAULT_SEARCH_REGION) {
+  const countryFromRegion = String(region || DEFAULT_SEARCH_REGION).split('-')[0].toUpperCase();
   const raw = userLocation && typeof userLocation === 'object' && !Array.isArray(userLocation)
     ? userLocation
     : {};
 
   const normalized = {
-    country: String(raw.country || countryFromRegion || 'US').trim().toUpperCase(),
+    country: String(raw.country || countryFromRegion || DEFAULT_SEARCH_COUNTRY).trim().toUpperCase(),
     region: String(raw.region || '').trim(),
     city: String(raw.city || '').trim(),
   };
@@ -134,7 +136,7 @@ function normalizeUserLocation(userLocation = null, region = 'us-en') {
   }
 
   if (!normalized.country || normalized.country.length !== 2) {
-    normalized.country = 'US';
+    normalized.country = DEFAULT_SEARCH_COUNTRY;
   }
 
   return normalized;
@@ -214,8 +216,8 @@ class WebSearchTool extends ToolBase {
           },
           region: {
             type: 'string',
-            description: 'Region hint such as us-en or uk-en',
-            default: 'us-en',
+            description: 'Region hint such as ca-en, us-en, or uk-en',
+            default: DEFAULT_SEARCH_REGION,
           },
           timeRange: {
             type: 'string',
@@ -457,7 +459,7 @@ class WebSearchTool extends ToolBase {
       researchMode = 'search',
       limit = DEFAULT_SEARCH_LIMIT,
       safeSearch = true,
-      region = 'us-en',
+      region = DEFAULT_SEARCH_REGION,
       timeRange = 'all',
       includeSnippets = true,
       includeUrls = true,
@@ -1011,12 +1013,12 @@ class WebSearchTool extends ToolBase {
     };
   }
 
-  mapRegionToCountry(region = 'us-en') {
+  mapRegionToCountry(region = DEFAULT_SEARCH_REGION) {
     const prefix = String(region).split('-')[0].toUpperCase();
     if (prefix.length === 2) {
       return prefix;
     }
-    return 'US';
+    return DEFAULT_SEARCH_COUNTRY;
   }
 
   resolveResearchMode(researchMode = 'search', { returnImages = false, returnVideos = false } = {}) {

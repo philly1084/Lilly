@@ -5174,6 +5174,10 @@ describe('ConversationOrchestrator', () => {
                 engine: 'perplexity',
                 query: 'managed Postgres providers for startups',
                 researchMode: 'search',
+                region: 'ca-en',
+                userLocation: {
+                    country: 'CA',
+                },
             }),
         });
     });

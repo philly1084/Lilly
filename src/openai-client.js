@@ -2535,7 +2535,10 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
             params: {
                 query: webQuery,
                 limit: normalizeResearchSearchResultCount(),
-                region: 'us-en',
+                region: 'ca-en',
+                userLocation: {
+                    country: 'CA',
+                },
                 timeRange: 'all',
                 includeSnippets: true,
                 includeUrls: true,

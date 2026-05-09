@@ -104,6 +104,33 @@ describe('WebSearchTool', () => {
     );
   });
 
+  test('defaults ordinary searches to Canadian locality', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'search-ca-default',
+        results: [],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const tracker = {
+      recordNetworkCall: jest.fn(),
+    };
+
+    await tool.handler({
+      query: 'latest mortgage rates',
+    }, {}, tracker);
+
+    const [, request] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+
+    expect(payload).toEqual(expect.objectContaining({
+      country: 'CA',
+    }));
+  });
+
   test('uses Sonar for grounded answers and image URL hotlisting', async () => {
     global.fetch.mockResolvedValue({
       ok: true,

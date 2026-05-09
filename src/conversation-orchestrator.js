@@ -10798,12 +10798,12 @@ class ConversationOrchestrator extends EventEmitter {
                     engine: 'perplexity',
                     researchMode: inferPerplexityResearchModeFromText(objective),
                     limit: normalizeResearchSearchResultCount(),
-                    region: localeParams.region || 'us-en',
+                    region: localeParams.region || 'ca-en',
                     timeRange: inferResearchTimeRangeFromText(objective),
                     includeSnippets: true,
                     includeUrls: true,
                     ...(localeParams.domains ? { domains: localeParams.domains } : {}),
-                    ...(localeParams.userLocation ? { userLocation: localeParams.userLocation } : {}),
+                    userLocation: localeParams.userLocation || { country: 'CA' },
                 },
             });
         }
@@ -11077,12 +11077,12 @@ class ConversationOrchestrator extends EventEmitter {
                     engine: 'perplexity',
                     researchMode: inferPerplexityResearchModeFromText(prompt),
                     limit: normalizeResearchSearchResultCount(),
-                    region: localeParams.region || 'us-en',
+                    region: localeParams.region || 'ca-en',
                     timeRange: 'all',
                     includeSnippets: true,
                     includeUrls: true,
                     ...(localeParams.domains ? { domains: localeParams.domains } : {}),
-                    ...(localeParams.userLocation ? { userLocation: localeParams.userLocation } : {}),
+                    userLocation: localeParams.userLocation || { country: 'CA' },
                 },
             }];
         }

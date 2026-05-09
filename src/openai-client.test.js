@@ -1128,6 +1128,10 @@ describe('openai-client automatic tool orchestration helpers', () => {
                 params: expect.objectContaining({
                     query: 'tigers and cats differences',
                     limit: expect.any(Number),
+                    region: 'ca-en',
+                    userLocation: {
+                        country: 'CA',
+                    },
                 }),
             },
             {

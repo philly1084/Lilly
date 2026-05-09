@@ -36,6 +36,7 @@ Key params:
 Notes:
 - `perplexity` is the working engine in this backend.
 - Requires `PERPLEXITY_API_KEY` in the backend environment.
+- Default locality is Canadian: use `region: "ca-en"` and `userLocation: { "country": "CA" }` for ordinary searches, and prefer Canadian sources or official Canadian source families first unless the user explicitly asks for another country, region, or publisher set.
 - `researchMode: "search"` uses Perplexity's raw `/search` endpoint for ranked results.
 - `researchMode: "sonar" | "sonar-pro" | "sonar-reasoning-pro" | "sonar-deep-research"` uses Perplexity Sonar `/v1/sonar` for grounded answers, citations, search results, and optional media.
 - `researchMode: "fast-search" | "pro-search" | "deep-research" | "advanced-deep-research"` uses Perplexity's `/v1/agent` presets for autonomous searched answers plus source results.
@@ -45,5 +46,6 @@ Notes:
 - Use `pro-search` when a single Perplexity call should plan, search, and fetch autonomously.
 - Use `sonar-deep-research` only when the user explicitly asks for deep, comprehensive, or long-form research that justifies higher cost.
 - Use `domains` to bias Perplexity toward official docs, publishers, or an approved source family.
+- For Canadian current-info requests, use authoritative Canadian domains when obvious, such as `weather.gc.ca` for weather.
 - Use `web-fetch` first on a result URL for direct verification.
 - Use `web-scrape` only when deeper rendered or structured extraction is needed.
