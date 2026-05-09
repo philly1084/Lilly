@@ -6,15 +6,15 @@
       "strictHostKeyChecking": "accept-new",
       "forwards": [
         {
-          "name": "kimibuilt-http",
+          "name": "kimibuilt-backend",
           "localPort": 33001,
-          "remoteHost": "127.0.0.1",
+          "remoteHost": "10.43.152.112",
           "remotePort": 3000
         },
         {
-          "name": "gitlab-http",
-          "localPort": 33081,
-          "remoteHost": "127.0.0.1",
+          "name": "kimibuilt-frontend",
+          "localPort": 33080,
+          "remoteHost": "10.43.77.5",
           "remotePort": 80
         }
       ]
@@ -25,10 +25,22 @@
       "strictHostKeyChecking": "accept-new",
       "forwards": [
         {
-          "name": "kimibuilt-http",
+          "name": "kimibuilt-backend",
           "localPort": 33002,
-          "remoteHost": "127.0.0.1",
+          "remoteHost": "10.43.110.235",
           "remotePort": 3000
+        },
+        {
+          "name": "kimibuilt-frontend",
+          "localPort": 33082,
+          "remoteHost": "10.43.88.48",
+          "remotePort": 80
+        },
+        {
+          "name": "gitlab-http",
+          "localPort": 33083,
+          "remoteHost": "10.43.76.64",
+          "remotePort": 80
         }
       ]
     }

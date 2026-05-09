@@ -74,9 +74,11 @@ Default example forwards:
 
 | Server | Local URL | Remote target |
 | --- | --- | --- |
-| primary | `http://localhost:33001` | `127.0.0.1:3000` |
-| primary | `http://localhost:33081` | `127.0.0.1:80` |
-| secondary | `http://localhost:33002` | `127.0.0.1:3000` |
+| primary | `http://localhost:33001` | `kimibuilt/backend:3000` |
+| primary | `http://localhost:33080` | `kimibuilt/frontend:80` |
+| secondary | `http://localhost:33002` | `kimibuilt/backend:3000` |
+| secondary | `http://localhost:33082` | `kimibuilt/frontend:80` |
+| secondary | `http://localhost:33083` | `agent-platform/gitlab-http:80` |
 
 Check or stop tunnels:
 

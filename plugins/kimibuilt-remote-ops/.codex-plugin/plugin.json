@@ -1,0 +1,45 @@
+{
+  "name": "kimibuilt-remote-ops",
+  "version": "1.0.0",
+  "description": "Codex Desktop remote SSH tunnel and k3s operations workflow for the two KimiBuilt servers.",
+  "author": {
+    "name": "Phill Local",
+    "email": "philly1084@gmail.com",
+    "url": "https://demoserver2.buzz"
+  },
+  "homepage": "https://demoserver2.buzz",
+  "repository": "https://demoserver2.buzz",
+  "license": "MIT",
+  "keywords": [
+    "kimibuilt",
+    "ssh",
+    "tunnel",
+    "k3s",
+    "remote-ops",
+    "codex-desktop"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "KimiBuilt Remote Ops",
+    "shortDescription": "Use Codex Desktop SSH tunnels to work against the two live KimiBuilt k3s servers.",
+    "longDescription": "Guides Codex through the proven local-to-remote workflow for KimiBuilt: establish the active server, run read-only baselines, open local SSH forwards, verify k3s state, test public and tunneled endpoints, and clean up temporary onboarding artifacts.",
+    "developerName": "Phill Local",
+    "category": "Developer Tools",
+    "capabilities": [
+      "SSH Tunnels",
+      "Remote Testing",
+      "k3s Operations",
+      "Deployment Verification"
+    ],
+    "websiteURL": "https://demoserver2.buzz",
+    "privacyPolicyURL": "https://demoserver2.buzz/privacy",
+    "termsOfServiceURL": "https://demoserver2.buzz/terms",
+    "defaultPrompt": [
+      "Use KimiBuilt Remote Ops to baseline both servers.",
+      "Open the KimiBuilt remote tunnels and test the live app through localhost.",
+      "Verify the k3s rollout and public endpoint on the main server."
+    ],
+    "brandColor": "#2563EB",
+    "screenshots": []
+  }
+}
