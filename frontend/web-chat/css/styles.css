@@ -6897,6 +6897,15 @@ body.layout-minimal #input-meta-row {
     word-break: break-word;
 }
 
+.plain-text-fence {
+    max-width: 100%;
+    margin: 0.85rem 0;
+    padding: 0;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .mermaid-source-block {
     border-bottom: 1px solid #2d2d2d;
 }

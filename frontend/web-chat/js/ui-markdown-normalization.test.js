@@ -78,6 +78,17 @@ describe('web-chat markdown normalization', () => {
         expect(html).toBe('');
     });
 
+    test('renders plain text fences without the code preview chrome', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.renderPlainTextFence('A plain assistant answer');
+
+        expect(html).toContain('plain-text-fence');
+        expect(html).toContain('A plain assistant answer');
+        expect(html).not.toContain('code-header');
+        expect(html).not.toContain('code-language');
+        expect(html).not.toContain('text-code-block');
+    });
+
     test('infers a build brief for previewable frontend requests', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const brief = helper.inferBuildRunBrief('Build a playable browser game with a sandbox preview.');
@@ -206,6 +217,23 @@ The strongest watchlist for tonight and Monday:
                 expect.objectContaining({ label: 'Dashboard UI' }),
                 expect.objectContaining({ label: 'Cluster deployment' }),
             ],
+        }));
+    });
+
+    test('keeps inferred survey ids stable when the submit path reparses the message', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const content = `Which direction should we take?
+
+1. Dashboard UI
+2. Cluster deployment`;
+        const message = { id: 'choice-message-1' };
+        const renderPlan = helper.buildSurveyRenderPlan(content, message);
+        const reparsedSurvey = helper.extractSurveyDefinitionFromContent(content, message.id);
+
+        expect(renderPlan.surveys[0].html).toContain('data-survey-id="choice-message-1"');
+        expect(reparsedSurvey).toEqual(expect.objectContaining({
+            id: 'choice-message-1',
+            question: 'Which direction should we take?',
         }));
     });
 

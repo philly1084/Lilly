@@ -166,7 +166,7 @@
             
             .artifact-toolbar-compact .toolbar-btn.primary {
                 background: var(--accent);
-                color: #06111f;
+                color: white;
                 border-color: var(--accent);
                 font-weight: 700;
             }
@@ -875,10 +875,17 @@
         if (!artifact || isMermaidArtifact(artifact) || isImageArtifact(artifact)) {
             return '';
         }
-        if (artifact.preview?.type === 'text') {
+        const format = String(artifact.format || '').toLowerCase();
+        const mimeType = String(artifact.mimeType || '').toLowerCase();
+        const filename = String(artifact.filename || '').toLowerCase();
+        const isStructuredText = ['csv', 'xml', 'power-query'].includes(format)
+            || /\.(csv|xml|pq|m)$/i.test(filename);
+        const isGenericText = ['txt', 'text', 'md', 'markdown'].includes(format)
+            || mimeType === 'text/plain'
+            || /\.(txt|md|markdown)$/i.test(filename);
+        if (artifact.preview?.type === 'text' && !isGenericText && isStructuredText) {
             return String(artifact.preview.content || '').trim();
         }
-        const format = String(artifact.format || '').toLowerCase();
         if (['csv', 'xml', 'power-query'].includes(format) && typeof artifact.contentPreview === 'string') {
             return artifact.contentPreview.trim();
         }

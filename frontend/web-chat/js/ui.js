@@ -1114,6 +1114,10 @@ class UIHelpers {
             const lang = this.inferCodeBlockLanguage(normalizedCode, declaredLang);
             const normalizedLang = lang.toLowerCase();
 
+            if (this.isPlainTextCodeLanguage(normalizedLang)) {
+                return this.renderPlainTextFence(normalizedCode);
+            }
+
             if (normalizedLang === 'mermaid') {
                 const mermaidSource = this.normalizeMermaidSource(normalizedCode);
                 const escapedCode = this.escapeHtml(mermaidSource);
@@ -1304,6 +1308,15 @@ class UIHelpers {
             .trim()
             .toLowerCase();
         return !normalized || ['text', 'txt', 'plain', 'plaintext', 'none'].includes(normalized);
+    }
+
+    renderPlainTextFence(code = '') {
+        const escapedCode = this.escapeHtml(String(code || '').trim());
+        if (!escapedCode) {
+            return '';
+        }
+
+        return `<div class="plain-text-fence">${escapedCode}</div>`;
     }
 
     inferCodeBlockLanguage(code = '', declaredLang = 'text') {

@@ -3132,7 +3132,10 @@ class ChatApp {
             return embeddedSurvey;
         }
 
-        return this.extractSurveyDefinition(message?.displayContent ?? message?.content ?? '');
+        return this.extractSurveyDefinition(
+            message?.displayContent ?? message?.content ?? '',
+            message?.id || '',
+        );
     }
 
     findLatestSurveyMessageEntry(sessionId = '', checkpointId = '') {
@@ -6295,8 +6298,8 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return {};
     }
 
-    extractSurveyDefinition(messageContent = '') {
-        return uiHelpers.extractSurveyDefinitionFromContent(messageContent);
+    extractSurveyDefinition(messageContent = '', fallbackId = '') {
+        return uiHelpers.extractSurveyDefinitionFromContent(messageContent, fallbackId);
     }
 
     parseSurveyResponseContent(messageContent = '') {
