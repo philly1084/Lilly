@@ -1746,6 +1746,24 @@
             return;
         }
 
+        try {
+            const previewResponse = await fetch(previewUrl, {
+                credentials: 'include',
+                cache: 'no-store',
+            });
+            if (!previewResponse.ok) {
+                throw new Error(`Preview returned ${previewResponse.status}`);
+            }
+        } catch (error) {
+            wrapper.classList.remove('is-loading');
+            wrapper.classList.add('is-error');
+            wrapper.dataset.previewLoading = 'false';
+            stage.textContent = 'Preview file is not available anymore.';
+            if (status) status.textContent = 'Unavailable';
+            console.warn('[Artifacts] Inline preview unavailable', error);
+            return;
+        }
+
         const iframe = document.createElement('iframe');
         iframe.src = previewUrl;
         iframe.title = wrapper.dataset.previewTitle || 'Artifact preview';
