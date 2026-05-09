@@ -1359,6 +1359,7 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
 
             // Finalize streaming output after the pixel reveal buffer catches up.
             await this.finalizeStreamingOutput(response.content || 'No response');
+            await this.attachLatestAlignmentTargetToLastAIResponse(response);
             this.finalizeLiveProgressCard();
             const addedArtifactFiles = this.syncArtifactsToSessionFiles([
                 ...(Array.isArray(response.artifacts) ? response.artifacts : []),
@@ -1668,6 +1669,101 @@ Session Statistics:
         this.renderMermaidDiagrams(line);
     }
 
+    async attachLatestAlignmentTargetToLastAIResponse(response = {}) {
+        const sessionId = String(response?.sessionId || api.sessionId || '').trim();
+        if (!sessionId || String(sessionId).startsWith('local_')) {
+            return;
+        }
+
+        try {
+            const messages = await api.getSessionMessages(sessionId, 12);
+            const assistantMessage = [...messages].reverse()
+                .find((message) => String(message?.role || '').toLowerCase() === 'assistant' && String(message?.id || '').trim());
+            const line = [...this.terminalOutput.querySelectorAll('.line-output.ai')].reverse()
+                .find((entry) => !entry.dataset.alignmentMessageId);
+            if (!assistantMessage || !line) {
+                return;
+            }
+
+            line.dataset.alignmentSessionId = sessionId;
+            line.dataset.alignmentMessageId = assistantMessage.id;
+            line.querySelectorAll('.cli-alignment-btn').forEach((button) => {
+                button.disabled = false;
+            });
+        } catch (error) {
+            console.warn('[WebCLI] Failed to bind alignment feedback target:', error);
+        }
+    }
+
+    async submitAlignmentFeedback(button = null, rating = '') {
+        const line = button?.closest?.('.line-output.ai');
+        const normalizedRating = String(rating || '').trim().toLowerCase();
+        const sessionId = String(line?.dataset?.alignmentSessionId || api.sessionId || '').trim();
+        const messageId = String(line?.dataset?.alignmentMessageId || '').trim();
+        if (!line || !['up', 'down'].includes(normalizedRating)) {
+            return;
+        }
+        if (!sessionId || !messageId) {
+            this.printWarning('Alignment feedback is not ready for this response yet.');
+            return;
+        }
+
+        let reason = '';
+        if (normalizedRating === 'down') {
+            const answer = window.prompt('What issue should the evaluator review for alignment?', '');
+            if (answer === null) {
+                return;
+            }
+            reason = String(answer || '').trim().slice(0, 500);
+        }
+
+        line.querySelectorAll('.cli-alignment-btn').forEach((entry) => {
+            entry.disabled = true;
+        });
+        line.dataset.alignmentRating = normalizedRating;
+        line.dataset.alignmentStatus = normalizedRating === 'up' ? 'recording' : 'reviewing';
+
+        try {
+            await api.submitAlignmentFeedback(sessionId, messageId, {
+                rating: normalizedRating,
+                reason,
+            });
+
+            line.dataset.alignmentStatus = normalizedRating === 'up' ? 'recorded' : 'reviewed';
+            if (normalizedRating === 'up') {
+                this.showAlignmentConfetti(line);
+                this.printSuccess('Confetti yaa, alignment registered.');
+            } else {
+                this.printSuccess('Alignment review saved.');
+            }
+        } catch (error) {
+            line.dataset.alignmentStatus = 'failed';
+            line.querySelectorAll('.cli-alignment-btn').forEach((entry) => {
+                entry.disabled = false;
+            });
+            this.printWarning(error.message || 'Alignment feedback failed.');
+        }
+    }
+
+    showAlignmentConfetti(anchor = null) {
+        const burst = document.createElement('div');
+        burst.className = 'cli-confetti-burst';
+        burst.textContent = 'Confetti yaa';
+
+        const target = anchor?.querySelector?.('.cli-response-head, .voxel-response-head') || anchor || this.terminalOutput;
+        target.appendChild(burst);
+        window.setTimeout(() => burst.remove(), 1400);
+    }
+
+    buildAlignmentActionsMarkup() {
+        return `
+            <div class="cli-alignment-actions" aria-label="Response alignment feedback">
+                <button type="button" class="cli-alignment-btn" data-alignment-rating="up" onclick="app.submitAlignmentFeedback(this, 'up')" title="Mark response aligned" aria-label="Mark response aligned" disabled>Thumbs up</button>
+                <button type="button" class="cli-alignment-btn" data-alignment-rating="down" onclick="app.submitAlignmentFeedback(this, 'down')" title="Review alignment" aria-label="Review alignment" disabled>Thumbs down</button>
+            </div>
+        `;
+    }
+
     toggleAIResponse(button) {
         const line = button?.closest?.('.line-output.ai');
         if (!line) {
@@ -1703,6 +1799,7 @@ Session Statistics:
                     <div class="cli-response-head">
                         ${toggleMarkup}
                         <span class="cli-response-title">${this.escapeHtml(title)}</span>
+                        ${isStreaming ? '' : this.buildAlignmentActionsMarkup()}
                     </div>
                     <div class="cli-response-body">${body}</div>
                 </div>
@@ -1715,6 +1812,7 @@ Session Statistics:
                 <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>${this.escapeHtml(title)}</span>
                 ${toggleMarkup}
                 <span class="voxel-response-meta">${this.escapeHtml(meta)}</span>
+                ${isStreaming ? '' : this.buildAlignmentActionsMarkup()}
             </div>
             <div class="voxel-response-body">${body}</div>
         `;
@@ -1741,6 +1839,14 @@ Session Statistics:
         line.className = 'line line-output';
         line.style.color = 'var(--warning)';
         line.innerHTML = `<span class="timestamp">${this.getTimestamp()}</span> ? ${this.escapeHtml(text)}`;
+        this.terminalOutput.appendChild(line);
+        this.scrollToBottom();
+    }
+
+    printSuccess(text) {
+        const line = document.createElement('div');
+        line.className = 'line line-output success';
+        line.innerHTML = `<span class="timestamp">${this.getTimestamp()}</span> ${this.escapeHtml(text)}`;
         this.terminalOutput.appendChild(line);
         this.scrollToBottom();
     }
@@ -5175,6 +5281,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         line.innerHTML = this.renderAIContent('', {
             title: 'Streaming',
             meta: `${api.currentModel || 'default'} | ${this.voxelPet?.name || 'voxel companion'}`,
+            streaming: true,
         });
         this.terminalOutput.appendChild(line);
         return line;
@@ -5185,6 +5292,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         line.innerHTML = this.renderAIContent(text, {
             title: options.title || 'Streaming',
             meta: `${api.currentModel || 'default'} | ${this.voxelPet?.name || 'voxel companion'}`,
+            streaming: true,
         });
         this.scrollToBottom();
         return line;
@@ -5258,6 +5366,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             lastLine.innerHTML = this.renderAIContent(this.currentOutput + chunk, {
                 title: 'Streaming',
                 meta: `${api.currentModel || 'default'} | ${this.voxelPet?.name || 'voxel companion'}`,
+                streaming: true,
             });
             this.currentOutput += chunk;
             if (typeof hljs !== 'undefined') {
@@ -5275,6 +5384,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             line.innerHTML = this.renderAIContent(chunk, {
                 title: 'Streaming',
                 meta: `${api.currentModel || 'default'} | ${this.voxelPet?.name || 'voxel companion'}`,
+                streaming: true,
             });
             this.terminalOutput.appendChild(line);
         }

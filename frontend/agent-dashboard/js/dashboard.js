@@ -2433,12 +2433,12 @@ class Dashboard {
             const settings = {
                 orchestration: {
                     enabled: document.getElementById('orchestrationEnabled').value === 'true',
-                    defaultModel: document.getElementById('orchestrationDefaultModel').value.trim(),
-                    plannerModel: document.getElementById('orchestrationPlannerModel').value.trim(),
-                    synthesisModel: document.getElementById('orchestrationSynthesisModel').value.trim(),
-                    repairModel: document.getElementById('orchestrationRepairModel').value.trim(),
-                    evaluatorModel: document.getElementById('orchestrationEvaluatorModel').value.trim(),
-                    fallbackModels: this.parseDelimitedList(document.getElementById('orchestrationFallbackModels').value),
+                    defaultModel: document.getElementById('orchestrationDefaultModel').value,
+                    plannerModel: document.getElementById('orchestrationPlannerModel').value,
+                    synthesisModel: document.getElementById('orchestrationSynthesisModel').value,
+                    repairModel: document.getElementById('orchestrationRepairModel').value,
+                    evaluatorModel: document.getElementById('orchestrationEvaluatorModel').value,
+                    fallbackModels: this.getSelectedModelValues('orchestrationFallbackModels'),
                     plannerReasoningEffort: document.getElementById('orchestrationPlannerReasoning').value,
                     synthesisReasoningEffort: document.getElementById('orchestrationSynthesisReasoning').value,
                     repairReasoningEffort: document.getElementById('orchestrationRepairReasoning').value,
@@ -4689,20 +4689,116 @@ class Dashboard {
 
     syncModelOptions(models = this.state.models) {
         const select = document.getElementById('defaultModel');
-        if (!select) return;
+        const selectableModels = this.getSelectableModels(models);
 
-        const existing = new Set(Array.from(select.options).map((option) => option.value));
-        (models || []).forEach((model) => {
-            if (existing.has(model.id)) return;
+        if (select) {
+            this.syncModelSelect(select, selectableModels, {
+                selectedValues: [this.state.settings?.models?.defaultModel || select.value].filter(Boolean),
+                keepExisting: true,
+            });
+        }
+
+        const orchestration = this.state.settings?.orchestration || {};
+        const orchestrationSelections = {
+            orchestrationDefaultModel: [orchestration.defaultModel || 'gpt-5.5'],
+            orchestrationPlannerModel: [orchestration.plannerModel || orchestration.defaultModel || 'gpt-5.5'],
+            orchestrationSynthesisModel: [orchestration.synthesisModel || orchestration.defaultModel || 'gpt-5.5'],
+            orchestrationRepairModel: [orchestration.repairModel || orchestration.defaultModel || 'gpt-5.5'],
+            orchestrationEvaluatorModel: [orchestration.evaluatorModel || orchestration.defaultModel || 'gpt-5.5'],
+            orchestrationFallbackModels: orchestration.fallbackModels || ['gemini-3.1-pro', 'groq-compound'],
+        };
+
+        Object.entries(orchestrationSelections).forEach(([id, selectedValues]) => {
+            const modelSelect = document.getElementById(id);
+            if (!modelSelect) return;
+            this.syncModelSelect(modelSelect, selectableModels, {
+                selectedValues,
+                allowMultiple: modelSelect.multiple,
+            });
+        });
+    }
+
+    getSelectableModels(models = []) {
+        const byId = new Map();
+        (Array.isArray(models) ? models : []).forEach((model) => {
+            const id = String(model?.id || '').trim();
+            if (!id || model.usageOnly) return;
+            byId.set(id, {
+                id,
+                name: model.name || this.humanizeModelId(id),
+                provider: model.provider || model.raw?.owned_by || 'unknown',
+            });
+        });
+        return Array.from(byId.values())
+            .sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)));
+    }
+
+    syncModelSelect(select, models = [], { selectedValues = [], allowMultiple = false, keepExisting = false } = {}) {
+        const normalizedSelected = Array.from(new Set(
+            (Array.isArray(selectedValues) ? selectedValues : [selectedValues])
+                .map((value) => String(value || '').trim())
+                .filter(Boolean),
+        ));
+        const liveIds = new Set(models.map((model) => model.id));
+        const selectedIds = new Set(normalizedSelected);
+        const existingOptions = keepExisting
+            ? Array.from(select.options)
+                .map((option) => ({
+                    id: option.value,
+                    name: option.textContent || option.value,
+                    provider: option.dataset.provider || '',
+                }))
+                .filter((model) => model.id && !liveIds.has(model.id))
+            : [];
+        const optionModels = [...models, ...existingOptions].filter((model, index, list) =>
+            list.findIndex((candidate) => candidate.id === model.id) === index,
+        );
+
+        select.innerHTML = '';
+
+        optionModels.forEach((model) => {
             const option = document.createElement('option');
             option.value = model.id;
-            option.textContent = model.name;
+            option.textContent = this.formatModelOptionLabel(model);
+            option.dataset.provider = model.provider || '';
+            option.selected = selectedIds.has(model.id);
             select.appendChild(option);
         });
 
-        if (this.state.settings?.models?.defaultModel) {
-            select.value = this.state.settings.models.defaultModel;
+        normalizedSelected
+            .filter((id) => !liveIds.has(id) && !optionModels.some((model) => model.id === id))
+            .forEach((id) => {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = `Unavailable: ${id}`;
+                option.disabled = true;
+                option.selected = true;
+                select.appendChild(option);
+            });
+
+        if (!allowMultiple && !select.value && select.options.length > 0) {
+            select.selectedIndex = 0;
         }
+    }
+
+    formatModelOptionLabel(model = {}) {
+        const name = model.name || this.humanizeModelId(model.id);
+        const provider = String(model.provider || '').trim();
+        return provider && provider !== 'unknown' ? `${name} (${provider})` : name;
+    }
+
+    humanizeModelId(id = '') {
+        return String(id)
+            .replace(/[-_]+/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    getSelectedModelValues(id) {
+        const select = document.getElementById(id);
+        if (!select) return [];
+        return Array.from(select.selectedOptions)
+            .map((option) => option.value)
+            .filter(Boolean);
     }
 
     populateLogModelFilter(logs = []) {
@@ -4788,12 +4884,6 @@ class Dashboard {
         this.syncModelOptions();
         this.setInputValue('defaultModel', models.defaultModel || 'gpt-4o');
         this.setInputValue('orchestrationEnabled', String(orchestration.enabled !== false));
-        this.setInputValue('orchestrationDefaultModel', orchestration.defaultModel || 'gpt-5.5');
-        this.setInputValue('orchestrationPlannerModel', orchestration.plannerModel || orchestration.defaultModel || 'gpt-5.5');
-        this.setInputValue('orchestrationSynthesisModel', orchestration.synthesisModel || orchestration.defaultModel || 'gpt-5.5');
-        this.setInputValue('orchestrationRepairModel', orchestration.repairModel || orchestration.defaultModel || 'gpt-5.5');
-        this.setInputValue('orchestrationEvaluatorModel', orchestration.evaluatorModel || orchestration.defaultModel || 'gpt-5.5');
-        this.setInputValue('orchestrationFallbackModels', this.joinListForTextarea(orchestration.fallbackModels || ['gemini-3.1-pro', 'groq-compound']));
         this.setInputValue('orchestrationPlannerReasoning', orchestration.plannerReasoningEffort || 'high');
         this.setInputValue('orchestrationSynthesisReasoning', orchestration.synthesisReasoningEffort || 'medium');
         this.setInputValue('orchestrationRepairReasoning', orchestration.repairReasoningEffort || 'high');

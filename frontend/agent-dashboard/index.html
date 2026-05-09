@@ -531,33 +531,46 @@
                                     </div>
                                     <div class="form-group">
                                         <label for="orchestrationDefaultModel">Default orchestration model</label>
-                                        <input type="text" class="form-control" id="orchestrationDefaultModel" value="gpt-5.5">
+                                        <select class="form-control orchestration-model-select" id="orchestrationDefaultModel">
+                                            <option value="gpt-5.5">GPT 5.5</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="orchestrationPlannerModel">Planner model</label>
-                                        <input type="text" class="form-control" id="orchestrationPlannerModel" value="gpt-5.5">
+                                        <select class="form-control orchestration-model-select" id="orchestrationPlannerModel">
+                                            <option value="gpt-5.5">GPT 5.5</option>
+                                        </select>
                                     </div>
                                     <div class="form-group">
                                         <label for="orchestrationSynthesisModel">Synthesis model</label>
-                                        <input type="text" class="form-control" id="orchestrationSynthesisModel" value="gpt-5.5">
+                                        <select class="form-control orchestration-model-select" id="orchestrationSynthesisModel">
+                                            <option value="gpt-5.5">GPT 5.5</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="orchestrationRepairModel">Repair model</label>
-                                        <input type="text" class="form-control" id="orchestrationRepairModel" value="gpt-5.5">
+                                        <select class="form-control orchestration-model-select" id="orchestrationRepairModel">
+                                            <option value="gpt-5.5">GPT 5.5</option>
+                                        </select>
                                     </div>
                                     <div class="form-group">
                                         <label for="orchestrationEvaluatorModel">Evaluator model</label>
-                                        <input type="text" class="form-control" id="orchestrationEvaluatorModel" value="gpt-5.5">
+                                        <select class="form-control orchestration-model-select" id="orchestrationEvaluatorModel">
+                                            <option value="gpt-5.5">GPT 5.5</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="orchestrationFallbackModels">Fallback models</label>
-                                        <textarea class="form-control" id="orchestrationFallbackModels" rows="3">gemini-3.1-pro&#10;groq-compound</textarea>
+                                        <select class="form-control orchestration-model-select" id="orchestrationFallbackModels" multiple size="5">
+                                            <option value="gemini-3.1-pro">Gemini 3.1 Pro</option>
+                                            <option value="groq-compound">Groq Compound</option>
+                                        </select>
                                     </div>
                                     <div class="form-group">
                                         <label for="orchestrationEnableAlignmentEvaluator">Alignment evaluator</label>

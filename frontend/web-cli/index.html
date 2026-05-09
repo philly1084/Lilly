@@ -321,6 +321,87 @@
             white-space: nowrap;
         }
 
+        .cli-alignment-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+        }
+
+        .cli-alignment-btn {
+            min-height: 24px;
+            padding: 0 8px;
+            color: var(--text-secondary);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font: inherit;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .cli-alignment-btn:hover:not(:disabled),
+        .cli-alignment-btn:focus-visible {
+            color: var(--success-bright);
+            border-color: var(--success-bright);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(35, 209, 139, 0.16);
+        }
+
+        .cli-alignment-btn:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .line-output.ai[data-alignment-rating="up"] .cli-alignment-btn[data-alignment-rating="up"] {
+            color: #052e16;
+            background: #bbf7d0;
+            border-color: #86efac;
+            opacity: 1;
+        }
+
+        .line-output.ai[data-alignment-rating="down"] .cli-alignment-btn[data-alignment-rating="down"] {
+            color: #431407;
+            background: #fed7aa;
+            border-color: #fdba74;
+            opacity: 1;
+        }
+
+        .cli-confetti-burst {
+            position: absolute;
+            right: 10px;
+            top: 38px;
+            z-index: 5;
+            padding: 5px 9px;
+            color: #052e16;
+            background: #bbf7d0;
+            border: 1px solid #86efac;
+            border-radius: 999px;
+            box-shadow: 0 12px 28px rgba(5, 46, 22, 0.22);
+            animation: cli-confetti-yaa 1200ms ease both;
+        }
+
+        .cli-response-head,
+        .voxel-response-head {
+            position: relative;
+        }
+
+        @keyframes cli-confetti-yaa {
+            0% {
+                opacity: 0;
+                transform: translateY(6px) scale(0.94);
+            }
+            18%,
+            74% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-8px) scale(0.96);
+            }
+        }
+
         .ai-response-toggle {
             width: 24px;
             height: 24px;

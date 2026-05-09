@@ -1410,6 +1410,36 @@ class WebCLIAPI {
         return Array.isArray(data.messages) ? data.messages : [];
     }
 
+    async submitAlignmentFeedback(sessionId, messageId, feedback = {}) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedSessionId || !normalizedMessageId) {
+            throw new Error('A session and assistant message are required for alignment feedback.');
+        }
+
+        const response = await this.fetchWithRetry(
+            `${BASE_URL_WITHOUT_API}/api/chat/${encodeURIComponent(normalizedSessionId)}/messages/${encodeURIComponent(normalizedMessageId)}/alignment-feedback`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rating: feedback.rating,
+                    reason: feedback.reason || '',
+                    clientSurface: WEB_CLI_CLIENT_SURFACE,
+                }),
+            },
+            MAX_RETRIES,
+            30000,
+        );
+
+        if (!response.ok) {
+            const errorText = await this.parseErrorResponse(response);
+            throw new Error(errorText || `Alignment feedback failed: HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
     async getSessionArtifacts(sessionId = this.sessionId) {
         if (!sessionId) {
             return [];

@@ -6110,16 +6110,25 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return;
         }
 
+        const reason = normalizedRating === 'down'
+            ? this.promptForAlignmentIssue()
+            : '';
+        if (normalizedRating === 'down' && reason === null) {
+            return;
+        }
+
         const optimisticStatus = normalizedRating === 'up' ? 'recorded' : 'evaluating';
         this.patchMessageAlignmentFeedback(sessionId, normalizedMessageId, {
             rating: normalizedRating,
             status: optimisticStatus,
+            ...(reason ? { reason } : {}),
         });
         uiHelpers.showToast(normalizedRating === 'up' ? 'Marked aligned' : 'Reviewing alignment', normalizedRating === 'up' ? 'success' : 'info');
 
         try {
             const response = await apiClient.submitAlignmentFeedback(sessionId, normalizedMessageId, {
                 rating: normalizedRating,
+                reason: reason || '',
             });
             const data = response?.data || {};
             const serverMessage = data.message && typeof data.message === 'object'
@@ -6152,7 +6161,12 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 });
             }
 
-            uiHelpers.showToast(normalizedRating === 'up' ? 'Aligned' : 'Alignment review saved', 'success');
+            if (normalizedRating === 'up') {
+                uiHelpers.showToast('Confetti yaa, alignment registered', 'success', 'Aligned');
+                uiHelpers.showAlignmentConfetti?.();
+            } else {
+                uiHelpers.showToast('Alignment review saved', 'success');
+            }
         } catch (error) {
             console.error('Alignment feedback failed:', error);
             this.patchMessageAlignmentFeedback(sessionId, normalizedMessageId, {
@@ -6161,6 +6175,22 @@ curl -fsSIL --max-time 20 "https://$host"`;
             });
             uiHelpers.showToast('Alignment review failed', 'error');
         }
+    }
+
+    promptForAlignmentIssue() {
+        if (typeof window === 'undefined' || typeof window.prompt !== 'function') {
+            return '';
+        }
+
+        const response = window.prompt(
+            'What issue should the evaluator review for alignment?',
+            '',
+        );
+        if (response === null) {
+            return null;
+        }
+
+        return String(response || '').trim().slice(0, 500);
     }
 
     moveSessionMessageToEnd(sessionId, messageId) {

@@ -8819,6 +8819,32 @@ class UIHelpers {
         }, 5000);
     }
 
+    showAlignmentConfetti() {
+        if (typeof document === 'undefined') {
+            return;
+        }
+
+        const burst = document.createElement('div');
+        burst.className = 'alignment-confetti-burst';
+        burst.setAttribute('aria-hidden', 'true');
+
+        const pieces = 18;
+        for (let index = 0; index < pieces; index += 1) {
+            const piece = document.createElement('span');
+            piece.style.setProperty('--confetti-x', `${Math.cos((Math.PI * 2 * index) / pieces) * (48 + (index % 4) * 12)}px`);
+            piece.style.setProperty('--confetti-y', `${Math.sin((Math.PI * 2 * index) / pieces) * (34 + (index % 3) * 10)}px`);
+            piece.style.setProperty('--confetti-delay', `${index * 12}ms`);
+            piece.style.setProperty('--confetti-hue', `${(index * 47) % 360}`);
+            burst.appendChild(piece);
+        }
+
+        const label = document.createElement('strong');
+        label.textContent = 'Confetti yaa';
+        burst.appendChild(label);
+        document.body.appendChild(burst);
+        window.setTimeout(() => burst.remove(), 1300);
+    }
+
     removeToast(toast) {
         toast.style.opacity = '0';
         toast.style.transform = 'translateX(100%)';
