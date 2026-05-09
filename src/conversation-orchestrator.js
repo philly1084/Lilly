@@ -1242,6 +1242,220 @@ function adjustCandidateToolScore(scoreMap = {}, toolId = '', delta = 0, reason 
     }
 }
 
+function getToolIdFromToolEvent(event = {}) {
+    return String(event?.result?.toolId || event?.toolCall?.function?.name || '').trim();
+}
+
+function getRecoveryPolicyFromToolEvent(event = {}) {
+    if (!event || event?.result?.success !== false) {
+        return null;
+    }
+    if (event?.result?.recoveryPolicy && typeof event.result.recoveryPolicy === 'object') {
+        return event.result.recoveryPolicy;
+    }
+    return classifyToolEventFailure(event);
+}
+
+function getRecoveryAlternateToolIds(toolId = '', failureKind = '') {
+    const id = String(toolId || '').trim();
+    const alternates = new Set();
+    const add = (...toolIds) => {
+        toolIds.forEach((candidate) => {
+            if (candidate && candidate !== id) {
+                alternates.add(candidate);
+            }
+        });
+    };
+
+    if (['web-search', 'web-fetch', 'web-scrape'].includes(id)
+        || failureKind === 'low_confidence_source') {
+        add('web-search', 'web-fetch', 'web-scrape');
+    }
+    if (['remote-command', 'ssh-execute', 'remote-cli-agent', 'remote-workbench', 'k3s-deploy'].includes(id)) {
+        add('remote-command', 'remote-cli-agent', 'remote-workbench', 'k3s-deploy');
+    }
+    if (id === 'managed-app') {
+        add('remote-cli-agent', 'remote-command');
+    }
+    if (['document-workflow', 'asset-search', 'file-read', 'code-sandbox'].includes(id)
+        || failureKind === 'empty_or_missing_artifact') {
+        add('asset-search', 'file-read', 'document-workflow', 'code-sandbox');
+    }
+    if (id === 'image-generate') {
+        add('image-search-unsplash', 'image-from-url', 'asset-search');
+    }
+
+    return Array.from(alternates);
+}
+
+function summarizeRecoveryPoliciesForToolEvents(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : [])
+        .filter((event) => event?.result?.success === false)
+        .map((event) => {
+            const policy = getRecoveryPolicyFromToolEvent(event);
+            if (!policy) {
+                return null;
+            }
+            const toolId = policy.toolId || getToolIdFromToolEvent(event) || null;
+            return {
+                toolId,
+                failureKind: policy.failureKind || 'tool_failure',
+                retryable: policy.retryable !== false,
+                nextAction: policy.nextAction || 'replan_with_smaller_candidate_set',
+                hint: policy.hint || '',
+                alternates: getRecoveryAlternateToolIds(toolId, policy.failureKind),
+            };
+        })
+        .filter(Boolean);
+}
+
+function applyRecoveryPoliciesToCandidateScores(scoreMap = {}, toolEvents = []) {
+    summarizeRecoveryPoliciesForToolEvents(toolEvents).forEach((policy) => {
+        const toolId = policy.toolId;
+        switch (policy.failureKind) {
+        case 'unavailable_tool':
+            adjustCandidateToolScore(scoreMap, toolId, -3.5, 'Recovery policy: unavailable tools should be removed before replanning.');
+            policy.alternates.forEach((alternate) => {
+                adjustCandidateToolScore(scoreMap, alternate, 0.8, `Recovery alternate for unavailable ${toolId}.`);
+            });
+            break;
+        case 'auth_or_secret':
+            adjustCandidateToolScore(scoreMap, toolId, -2.2, 'Recovery policy: do not retry secret-gated tools without new credentials.');
+            policy.alternates.forEach((alternate) => {
+                adjustCandidateToolScore(scoreMap, alternate, 0.35, `Read-only fallback after credential failure in ${toolId}.`);
+            });
+            break;
+        case 'bad_schema_or_missing_params':
+            adjustCandidateToolScore(scoreMap, toolId, -0.15, 'Recovery policy: retry only with validated required params.');
+            break;
+        case 'network_or_transient':
+            adjustCandidateToolScore(scoreMap, toolId, -0.35, 'Recovery policy: retry once with smaller input, then choose an alternate source.');
+            policy.alternates.forEach((alternate) => {
+                adjustCandidateToolScore(scoreMap, alternate, 0.5, `Alternate path after transient failure in ${toolId}.`);
+            });
+            break;
+        case 'empty_or_missing_artifact':
+            adjustCandidateToolScore(scoreMap, toolId, -0.25, 'Recovery policy: recover source artifact before consuming it again.');
+            policy.alternates.forEach((alternate) => {
+                adjustCandidateToolScore(scoreMap, alternate, 0.65, `Artifact recovery path after ${toolId} returned no usable output.`);
+            });
+            break;
+        case 'low_confidence_source':
+            policy.alternates.forEach((alternate) => {
+                adjustCandidateToolScore(scoreMap, alternate, 0.65, 'Recovery policy: gather verified source evidence before synthesis.');
+            });
+            break;
+        default:
+            adjustCandidateToolScore(scoreMap, toolId, -0.35, 'Recent tool failures reduce immediate reuse confidence.');
+            break;
+        }
+    });
+}
+
+function isReadyExecutableContract(contract = null) {
+    const readiness = contract?.readiness || null;
+    if (!readiness) {
+        return true;
+    }
+    if (readiness.status === 'unavailable') {
+        return false;
+    }
+    if (readiness.status === 'degraded'
+        && ['none', 'missing'].includes(String(readiness.executableShape || '').trim())) {
+        return false;
+    }
+    return true;
+}
+
+function buildToolDecisionTrace(policy = {}, { toolEvents = [] } = {}) {
+    const scores = policy?.candidateToolScores || {};
+    const contracts = policy?.toolContracts || {};
+    const topTools = (Array.isArray(policy?.candidateToolIds) ? policy.candidateToolIds : [])
+        .slice(0, 8)
+        .map((toolId) => ({
+            toolId,
+            score: Number(scores?.[toolId]?.score || 0),
+            readiness: contracts?.[toolId]?.readiness?.status || null,
+            reasons: Array.isArray(scores?.[toolId]?.reasons)
+                ? scores[toolId].reasons.slice(0, 3)
+                : [],
+        }));
+
+    return {
+        topTools,
+        selectedSkills: Array.isArray(policy?.selectedSkills) ? policy.selectedSkills : [],
+        readinessFiltered: Array.isArray(policy?.readinessFiltered) ? policy.readinessFiltered : [],
+        recoveryPolicies: summarizeRecoveryPoliciesForToolEvents(toolEvents).slice(-6),
+    };
+}
+
+function applyRuntimeToolPolicySignals(policy = {}, { toolEvents = [] } = {}) {
+    const candidateToolScores = policy.candidateToolScores || {};
+    const contracts = policy.toolContracts || {};
+    applyRecoveryPoliciesToCandidateScores(candidateToolScores, toolEvents);
+
+    const readinessFiltered = [];
+    const readinessFilteredToolIds = new Set();
+    const recordReadinessFiltered = (toolId) => {
+        if (!toolId || readinessFilteredToolIds.has(toolId)) {
+            return;
+        }
+        const contract = contracts?.[toolId] || null;
+        readinessFilteredToolIds.add(toolId);
+        readinessFiltered.push({
+            toolId,
+            status: contract?.readiness?.status || 'unavailable',
+            reason: contract?.readiness?.reason || 'Tool is not currently executable.',
+        });
+    };
+    const isCandidateReady = (toolId) => {
+        const contract = contracts?.[toolId] || null;
+        if (isReadyExecutableContract(contract)) {
+            if (contract?.readiness?.status === 'degraded') {
+                adjustCandidateToolScore(candidateToolScores, toolId, -0.2, 'Tool readiness is degraded, so prefer fully ready alternatives when possible.');
+            }
+            return true;
+        }
+        recordReadinessFiltered(toolId);
+        adjustCandidateToolScore(candidateToolScores, toolId, -4, 'Tool readiness blocks execution.');
+        return false;
+    };
+
+    const recoveryAlternates = new Set();
+    const recoveryPolicies = summarizeRecoveryPoliciesForToolEvents(toolEvents);
+    recoveryPolicies.forEach((policySummary) => {
+        if ((policy.allowedToolIds || []).includes(policySummary.toolId)
+            && !isReadyExecutableContract(contracts?.[policySummary.toolId] || null)) {
+            recordReadinessFiltered(policySummary.toolId);
+        }
+        policySummary.alternates.forEach((toolId) => recoveryAlternates.add(toolId));
+    });
+
+    const originalCandidates = Array.isArray(policy.candidateToolIds) ? policy.candidateToolIds : [];
+    const candidateSet = new Set(originalCandidates.filter(isCandidateReady));
+    recoveryAlternates.forEach((toolId) => {
+        if ((policy.allowedToolIds || []).includes(toolId) && isCandidateReady(toolId)) {
+            candidateSet.add(toolId);
+        }
+    });
+
+    const candidateToolIds = Array.from(candidateSet)
+        .sort((left, right) => {
+            const leftScore = Number(candidateToolScores?.[left]?.score || 0);
+            const rightScore = Number(candidateToolScores?.[right]?.score || 0);
+            return rightScore - leftScore;
+        });
+
+    const nextPolicy = {
+        ...policy,
+        candidateToolIds,
+        candidateToolScores,
+        readinessFiltered,
+    };
+    nextPolicy.decisionTrace = buildToolDecisionTrace(nextPolicy, { toolEvents });
+    return nextPolicy;
+}
+
 function hasGroundedResearchToolResult(toolEvents = []) {
     return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => {
         const toolId = String(event?.result?.toolId || event?.toolCall?.function?.name || '').trim();
@@ -1299,10 +1513,6 @@ function buildScoredCandidateToolMap({
     const hasStructuredRemoteWorkbenchIntent = /\b(remote workbench|repo-map|repo map|changed files?|grep|read file|write file|apply patch|focused test|remote build|remote test|deployment logs?|rollout|deploy verify|deployment verification)\b/.test(normalizedPrompt);
     const groundedResearch = hasGroundedResearchToolResult(toolEvents);
     const classificationConfidence = Number(classification?.confidence || 0);
-    const failedToolIds = Array.from(new Set((Array.isArray(toolEvents) ? toolEvents : [])
-        .filter((event) => event?.result?.success === false)
-        .map((event) => String(event?.result?.toolId || event?.toolCall?.function?.name || '').trim())
-        .filter(Boolean)));
 
     if (classification) {
         const hasHighImpactDecisionGate = hasHighImpactDecisionGateText(normalizedPrompt);
@@ -1492,9 +1702,7 @@ function buildScoredCandidateToolMap({
         adjustCandidateToolScore(scoreMap, USER_CHECKPOINT_TOOL_ID, canUseUserCheckpoint ? 0.12 : 0, 'Lower classifier confidence can justify a checkpoint only when the decision is high-impact.');
     }
 
-    failedToolIds.forEach((toolId) => {
-        adjustCandidateToolScore(scoreMap, toolId, -0.35, 'Recent tool failures reduce immediate reuse confidence.');
-    });
+    applyRecoveryPoliciesToCandidateScores(scoreMap, toolEvents);
 
     return scoreMap;
 }
@@ -10696,7 +10904,7 @@ class ConversationOrchestrator extends EventEmitter {
             ),
         };
 
-        return applyRewritePolicyOverlay({
+        return applyRuntimeToolPolicySignals(applyRewritePolicyOverlay({
             legacyPolicy,
             objective,
             instructions,
@@ -10704,7 +10912,7 @@ class ConversationOrchestrator extends EventEmitter {
             classification,
             agencyProfile: effectiveAgencyProfile,
             toolManager,
-        });
+        }), { toolEvents });
     }
 
     buildDirectAction({ objective = '', session = null, recentMessages = [], toolPolicy = {}, toolContext = {}, toolEvents = [] }) {
@@ -11413,6 +11621,7 @@ class ConversationOrchestrator extends EventEmitter {
         });
         const registeredSkillsInstructions = registeredSkillsContext.block;
         toolPolicy.selectedSkills = registeredSkillsContext.selectedSkills || [];
+        toolPolicy.decisionTrace = buildToolDecisionTrace(toolPolicy, { toolEvents });
         const prompt = [
             'You are planning tool usage for an application-owned agent runtime.',
             'Classify first, then choose the smallest safe tool sequence that follows the classification and verified evidence.',
@@ -12704,6 +12913,7 @@ class ConversationOrchestrator extends EventEmitter {
             failedToolEvents: toolEvents.filter((event) => event?.result?.success === false).length,
             verifiedEvidence: toolEvents.filter((event) => event?.result?.verification?.status === 'observed').length,
         };
+        const decisionTrace = buildToolDecisionTrace(toolPolicy, { toolEvents });
         const surfaceFinisher = inferSurfaceFinisher({
             taskType,
             clientSurface,
@@ -12735,6 +12945,7 @@ class ConversationOrchestrator extends EventEmitter {
             rolePipeline: toolPolicy?.rolePipeline || null,
             selectedSkills: toolPolicy?.selectedSkills || [],
             toolReadiness: toolReadinessSummary,
+            decisionTrace,
             verification: verificationSummary,
             ...(harnessSummary ? { harness: harnessSummary } : {}),
             naturalContext: nextNaturalContext,
@@ -12792,6 +13003,7 @@ class ConversationOrchestrator extends EventEmitter {
             candidateToolScores: toolPolicy?.candidateToolScores || null,
             selectedSkills: toolPolicy?.selectedSkills || [],
             toolReadiness: toolReadinessSummary,
+            decisionTrace,
             verification: verificationSummary,
             replanReason: extractLatestReplanReason(executionTrace),
             recallSummary: summarizeRecallTrace(memoryTrace),

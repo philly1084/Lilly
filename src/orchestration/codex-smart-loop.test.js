@@ -13,6 +13,8 @@ const {
   selectAutoModel,
 } = require('../model-catalog');
 const { SkillStore } = require('../skills/skill-store');
+const { ConversationOrchestrator } = require('../conversation-orchestrator');
+const { config } = require('../config');
 
 describe('Codex-smart orchestration primitives', () => {
   test('tool readiness distinguishes executable tools from registry-only shells', () => {
@@ -126,5 +128,72 @@ describe('Codex-smart orchestration primitives', () => {
       failureKind: 'network_or_transient',
       retryable: true,
     }));
+  });
+
+  test('tool policy filters non-executable candidates and promotes recovery alternates', () => {
+    const previousJudgmentFlag = config.runtime.judgmentV2Enabled;
+    config.runtime.judgmentV2Enabled = true;
+    try {
+      const orchestrator = new ConversationOrchestrator({});
+      const tools = new Map(['web-search', 'web-fetch', 'web-scrape'].map((toolId) => [toolId, {
+        id: toolId,
+        name: toolId,
+        description: `${toolId} test tool`,
+        execute: async () => ({ success: true }),
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      }]));
+      const toolManager = {
+        getTool: jest.fn((toolId) => tools.get(toolId) || null),
+        getToolReadiness: jest.fn((toolId) => toolId === 'web-fetch'
+          ? {
+            toolId,
+            status: 'degraded',
+            reason: 'Tool is registered but has no executable handler.',
+            executableShape: 'none',
+          }
+          : {
+            toolId,
+            status: 'ready',
+            reason: 'Tool is registered and executable.',
+            executableShape: 'execute',
+          }),
+      };
+
+      const policy = orchestrator.buildToolPolicy({
+        objective: 'Fetch https://example.com and verify the latest details.',
+        executionProfile: 'default',
+        toolManager,
+        requestedToolIds: ['web-search', 'web-fetch', 'web-scrape'],
+        toolEvents: [{
+          toolCall: {
+            function: {
+              name: 'web-fetch',
+              arguments: JSON.stringify({ url: 'https://example.com' }),
+            },
+          },
+          result: {
+            toolId: 'web-fetch',
+            success: false,
+            error: 'Tool web-fetch is unavailable: no executable handler',
+          },
+        }],
+      });
+
+      expect(policy.candidateToolIds).not.toContain('web-fetch');
+      expect(policy.candidateToolIds).toEqual(expect.arrayContaining(['web-search', 'web-scrape']));
+      expect(policy.readinessFiltered).toEqual(expect.arrayContaining([
+        expect.objectContaining({ toolId: 'web-fetch', status: 'degraded' }),
+      ]));
+      expect(policy.decisionTrace.recoveryPolicies[0]).toEqual(expect.objectContaining({
+        toolId: 'web-fetch',
+        failureKind: 'unavailable_tool',
+        nextAction: 'choose_alternate_ready_tool',
+      }));
+    } finally {
+      config.runtime.judgmentV2Enabled = previousJudgmentFlag;
+    }
   });
 });
