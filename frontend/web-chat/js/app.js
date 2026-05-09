@@ -373,6 +373,9 @@ class ChatApp {
         this.projectViewportFrame = document.getElementById('project-viewport-frame');
         this.projectViewportLabel = document.getElementById('project-viewport-label');
         this.projectViewportLink = document.getElementById('project-viewport-link');
+        this.projectViewportState = document.getElementById('project-viewport-state');
+        this.projectViewportStateLabel = document.getElementById('project-viewport-state-label');
+        this.projectViewportStateDetail = document.getElementById('project-viewport-state-detail');
         
         this.isProcessing = false;
         this.isCancellingCurrentRequest = false;
@@ -446,6 +449,8 @@ class ChatApp {
         this.connectionStatus = 'checking';
         this.managedAppProgressByKey = new Map();
         this.managedAppHostMessageByKey = new Map();
+        this.projectPreviewTokenCache = null;
+        this.projectViewportRequestId = 0;
         
         this.init();
     }
@@ -634,12 +639,28 @@ class ChatApp {
             this.closeWorkloadsPanel();
         });
         this.projectViewport?.addEventListener('click', (event) => {
+            const actionButton = event.target?.closest?.('[data-project-viewport-action]');
+            if (actionButton) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.handleProjectViewportAction(actionButton.dataset.projectViewportAction);
+                return;
+            }
+
             const sizeButton = event.target?.closest?.('[data-project-viewport-size]');
             if (sizeButton) {
                 event.preventDefault();
                 event.stopPropagation();
                 void this.setProjectViewportSize(sizeButton.dataset.projectViewportSize);
             }
+        });
+        this.projectViewportFrame?.addEventListener('load', () => {
+            if (this.projectViewportFrame?.dataset.projectUrl) {
+                this.setProjectViewportFrameState('ready');
+            }
+        });
+        this.projectViewportFrame?.addEventListener('error', () => {
+            this.setProjectViewportFrameState('error', 'Preview could not be loaded.', 'Check authentication or open it in a new tab.');
         });
         this.newWorkloadBtn?.addEventListener('click', () => {
             this.openWorkloadModal();
@@ -2693,14 +2714,52 @@ class ChatApp {
             : null;
     }
 
+    getSessionProjectForViewport(sessionId = '') {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
+            return null;
+        }
+
+        const session = sessionManager.sessions.find((entry) => entry.id === normalizedSessionId);
+        const activeProject = session?.metadata?.activeProject;
+        if (!activeProject || typeof activeProject !== 'object') {
+            return null;
+        }
+
+        const type = String(activeProject.type || '').trim().toLowerCase();
+        if (type === 'managed-app') {
+            return activeProject;
+        }
+
+        const hasPreviewUrl = Boolean(
+            activeProject.publicUrl
+            || activeProject.url
+            || activeProject.publicHost
+            || activeProject.sandboxUrl
+            || activeProject.previewUrl
+            || activeProject.artifactPreviewUrl
+        );
+        return hasPreviewUrl ? activeProject : null;
+    }
+
     normalizeProjectViewportSize(size = '') {
         const normalized = String(size || '').trim().toLowerCase();
         return ['collapsed', 'compact', 'wide', 'full'].includes(normalized) ? normalized : 'wide';
     }
 
     buildProjectViewportUrl(project = {}) {
-        const explicitUrl = String(project?.publicUrl || project?.url || '').trim();
+        const explicitUrl = String(
+            project?.publicUrl
+            || project?.url
+            || project?.previewUrl
+            || project?.sandboxUrl
+            || project?.artifactPreviewUrl
+            || '',
+        ).trim();
         if (/^https?:\/\//i.test(explicitUrl)) {
+            return explicitUrl;
+        }
+        if (explicitUrl.startsWith('/')) {
             return explicitUrl;
         }
 
@@ -2708,9 +2767,125 @@ class ChatApp {
         return publicHost ? `https://${publicHost}` : '';
     }
 
+    resolveProjectApiUrl(urlPath = '') {
+        const normalized = String(urlPath || '').trim();
+        if (!normalized) {
+            return '';
+        }
+        if (/^https?:\/\//i.test(normalized) || normalized.startsWith('blob:') || normalized.startsWith('data:')) {
+            return normalized;
+        }
+
+        const relativePath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+        const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+        const base = isLocal ? 'http://localhost:3000' : `${window.location.protocol}//${window.location.host}`;
+        return `${base}${relativePath}`;
+    }
+
+    isProjectPreviewAuthRoute(urlPath = '') {
+        try {
+            const parsed = new URL(this.resolveProjectApiUrl(urlPath), window.location.href);
+            return /^\/api\/(?:artifacts|sandbox-workspaces)\/[^/]+\/(?:sandbox|preview)(?:\/)?$/i.test(parsed.pathname)
+                || /^\/api\/(?:artifacts|sandbox-workspaces)\/[^/]+\/(?:sandbox-access|preview-access)\//i.test(parsed.pathname);
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    async getProjectPreviewAccessToken() {
+        if (typeof window.artifactManager?.getPreviewAccessToken === 'function') {
+            return window.artifactManager.getPreviewAccessToken();
+        }
+
+        const now = Date.now();
+        if (
+            this.projectPreviewTokenCache?.token
+            && Number(this.projectPreviewTokenCache.expiresAt || 0) * 1000 > now + 30000
+        ) {
+            return this.projectPreviewTokenCache.token;
+        }
+
+        const response = await fetch(this.resolveProjectApiUrl('/api/auth/ws-token'), {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+        if (!response.ok) {
+            throw new Error(`Project preview authentication failed (${response.status})`);
+        }
+
+        const data = await response.json().catch(() => ({}));
+        const token = String(data?.token || '').trim();
+        if (!token) {
+            throw new Error('Project preview authentication did not return a token.');
+        }
+
+        this.projectPreviewTokenCache = {
+            token,
+            expiresAt: Number(data?.expiresAt || 0),
+        };
+        return token;
+    }
+
+    applyProjectPreviewAccessToken(urlPath = '', token = '') {
+        if (typeof window.artifactManager?.applyPreviewAccessToken === 'function') {
+            return window.artifactManager.applyPreviewAccessToken(urlPath, token);
+        }
+
+        const accessToken = String(token || '').trim();
+        const absoluteUrl = this.resolveProjectApiUrl(urlPath);
+        if (!accessToken) {
+            return absoluteUrl;
+        }
+
+        try {
+            const parsed = new URL(absoluteUrl, window.location.href);
+            if (/\/api\/artifacts\/[^/]+\/sandbox(?:\/)?$/i.test(parsed.pathname)) {
+                parsed.pathname = parsed.pathname.replace(/\/sandbox\/?$/i, `/sandbox-access/${encodeURIComponent(accessToken)}`);
+                return parsed.toString();
+            }
+            if (/\/api\/artifacts\/[^/]+\/preview(?:\/)?$/i.test(parsed.pathname)) {
+                parsed.pathname = parsed.pathname.replace(/\/preview\/?$/i, `/preview-access/${encodeURIComponent(accessToken)}/`);
+                return parsed.toString();
+            }
+            if (/\/api\/sandbox-workspaces\/[^/]+\/sandbox(?:\/)?$/i.test(parsed.pathname)) {
+                parsed.pathname = parsed.pathname.replace(/\/sandbox\/?$/i, `/sandbox-access/${encodeURIComponent(accessToken)}`);
+                return parsed.toString();
+            }
+            if (/\/api\/sandbox-workspaces\/[^/]+\/preview(?:\/)?$/i.test(parsed.pathname)) {
+                parsed.pathname = parsed.pathname.replace(/\/preview\/?$/i, `/preview-access/${encodeURIComponent(accessToken)}/`);
+                return parsed.toString();
+            }
+            if ((parsed.pathname.startsWith('/api/artifacts/') || parsed.pathname.startsWith('/api/sandbox-workspaces/')) && !parsed.searchParams.has('access_token')) {
+                parsed.searchParams.set('access_token', accessToken);
+            }
+            return parsed.toString();
+        } catch (_error) {
+            const separator = absoluteUrl.includes('?') ? '&' : '?';
+            return `${absoluteUrl}${separator}access_token=${encodeURIComponent(accessToken)}`;
+        }
+    }
+
+    async resolveProjectViewportUrl(project = {}) {
+        const url = this.buildProjectViewportUrl(project);
+        if (!url) {
+            return '';
+        }
+        if (typeof window.artifactManager?.getAuthenticatedPreviewUrl === 'function' && this.isProjectPreviewAuthRoute(url)) {
+            return window.artifactManager.getAuthenticatedPreviewUrl(url);
+        }
+        if (!this.isProjectPreviewAuthRoute(url)) {
+            return this.resolveProjectApiUrl(url);
+        }
+
+        const token = await this.getProjectPreviewAccessToken();
+        return this.applyProjectPreviewAccessToken(url, token);
+    }
+
     getCurrentProjectViewportState() {
         const sessionId = String(sessionManager.currentSessionId || '').trim();
-        const project = this.getSessionActiveProject(sessionId);
+        const project = this.getSessionProjectForViewport(sessionId);
         if (!project) {
             return {
                 sessionId,
@@ -2734,9 +2909,9 @@ class ChatApp {
         }
 
         const appShell = document.getElementById('app');
-        const { project, url, size } = this.getCurrentProjectViewportState();
+        const { project, url: rawUrl, size } = this.getCurrentProjectViewportState();
         const hasProject = Boolean(project);
-        const hasUrl = Boolean(url);
+        const hasUrl = Boolean(rawUrl);
         const isMinimalLayout = typeof uiHelpers !== 'undefined' && typeof uiHelpers?.isMinimalistMode === 'function'
             ? uiHelpers.isMinimalistMode()
             : false;
@@ -2756,22 +2931,24 @@ class ChatApp {
 
         if (!hasProject) {
             if (this.projectViewportFrame) {
+                this.projectViewportFrame.dataset.rawProjectUrl = '';
                 this.projectViewportFrame.dataset.projectUrl = '';
                 this.projectViewportFrame.dataset.suspendedProjectUrl = '';
                 this.projectViewportFrame.removeAttribute('src');
             }
+            this.setProjectViewportFrameState('idle');
             return;
         }
 
         const title = String(project?.title || project?.appName || project?.appSlug || 'Live project').trim();
-        const hostLabel = String(project?.publicHost || url || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+        const hostLabel = String(project?.publicHost || rawUrl || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
         if (this.projectViewportLabel) {
             this.projectViewportLabel.textContent = title;
         }
         if (this.projectViewportLink) {
             this.projectViewportLink.textContent = hostLabel || 'Waiting for public route';
             if (hasUrl) {
-                this.projectViewportLink.href = url;
+                this.projectViewportLink.href = this.resolveProjectApiUrl(rawUrl);
                 this.projectViewportLink.removeAttribute('aria-disabled');
             } else {
                 this.projectViewportLink.href = '#';
@@ -2779,13 +2956,40 @@ class ChatApp {
             }
         }
         if (this.projectViewportFrame && isSuspended) {
-            this.projectViewportFrame.dataset.suspendedProjectUrl = hasUrl ? url : '';
+            this.projectViewportFrame.dataset.rawProjectUrl = '';
+            this.projectViewportFrame.dataset.suspendedProjectUrl = hasUrl ? rawUrl : '';
             this.projectViewportFrame.dataset.projectUrl = '';
             this.projectViewportFrame.removeAttribute('src');
-        } else if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.projectUrl !== url) {
-            this.projectViewportFrame.dataset.projectUrl = url;
+            this.setProjectViewportFrameState(hasUrl ? 'suspended' : 'empty');
+        } else if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.rawProjectUrl !== rawUrl) {
+            this.projectViewportFrame.dataset.rawProjectUrl = rawUrl;
+            this.projectViewportFrame.dataset.projectUrl = '';
             this.projectViewportFrame.dataset.suspendedProjectUrl = '';
-            this.projectViewportFrame.src = url;
+            this.projectViewportFrame.removeAttribute('src');
+            this.setProjectViewportFrameState('loading');
+            const requestId = ++this.projectViewportRequestId;
+            this.resolveProjectViewportUrl(project)
+                .then((resolvedUrl) => {
+                    if (requestId !== this.projectViewportRequestId || !this.projectViewportFrame) {
+                        return;
+                    }
+                    if (!resolvedUrl) {
+                        this.setProjectViewportFrameState('empty');
+                        return;
+                    }
+                    this.projectViewportFrame.dataset.projectUrl = resolvedUrl;
+                    this.projectViewportFrame.src = resolvedUrl;
+                })
+                .catch((error) => {
+                    if (requestId !== this.projectViewportRequestId) {
+                        return;
+                    }
+                    this.setProjectViewportFrameState(
+                        'error',
+                        'Project preview authentication failed.',
+                        error?.message || 'Open the project in a new tab or sign in again.',
+                    );
+                });
         }
 
         this.projectViewport
@@ -2802,10 +3006,76 @@ class ChatApp {
         uiHelpers.reinitializeIcons(this.projectViewport);
     }
 
+    setProjectViewportFrameState(state = 'idle', label = '', detail = '') {
+        if (!this.projectViewport) {
+            return;
+        }
+
+        const normalized = String(state || 'idle').trim().toLowerCase();
+        ['idle', 'loading', 'ready', 'error', 'empty', 'suspended'].forEach((entry) => {
+            this.projectViewport.classList.toggle(`is-${entry}`, entry === normalized);
+        });
+
+        const copy = {
+            loading: {
+                label: 'Loading project preview',
+                detail: 'Preparing authenticated access...',
+            },
+            error: {
+                label: 'Project preview unavailable',
+                detail: 'Authentication or routing blocked the embedded preview.',
+            },
+            empty: {
+                label: 'Waiting for a project URL',
+                detail: 'The build is tracked, but no public or sandbox preview URL is available yet.',
+            },
+            suspended: {
+                label: 'Preview paused',
+                detail: 'Expand the project viewport to load it.',
+            },
+            ready: {
+                label: '',
+                detail: '',
+            },
+            idle: {
+                label: '',
+                detail: '',
+            },
+        }[normalized] || {};
+
+        if (this.projectViewportStateLabel) {
+            this.projectViewportStateLabel.textContent = label || copy.label || '';
+        }
+        if (this.projectViewportStateDetail) {
+            this.projectViewportStateDetail.textContent = detail || copy.detail || '';
+        }
+    }
+
+    handleProjectViewportAction(action = '') {
+        const normalizedAction = String(action || '').trim().toLowerCase();
+        const currentUrl = this.projectViewportFrame?.dataset.projectUrl
+            || this.projectViewportFrame?.dataset.suspendedProjectUrl
+            || this.buildProjectViewportUrl(this.getCurrentProjectViewportState().project || {});
+        if (!currentUrl) {
+            this.setProjectViewportFrameState('empty');
+            return;
+        }
+
+        if (normalizedAction === 'open') {
+            window.open(this.resolveProjectApiUrl(currentUrl), '_blank', 'noopener');
+            return;
+        }
+
+        if (normalizedAction === 'reload') {
+            this.projectViewportFrame.dataset.rawProjectUrl = '';
+            this.renderProjectViewport();
+        }
+    }
+
     async setProjectViewportSize(size = '') {
         let normalizedSize = this.normalizeProjectViewportSize(size);
         const sessionId = String(sessionManager.currentSessionId || '').trim();
-        const project = this.getSessionActiveProject(sessionId);
+        const project = this.getSessionProjectForViewport(sessionId);
         if (!sessionId || !project) {
             return;
         }

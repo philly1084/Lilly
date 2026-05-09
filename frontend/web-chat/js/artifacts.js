@@ -995,6 +995,14 @@
         return resolveApiUrl(inlinePath, { absolute });
     }
 
+    function isFullSitePreviewArtifact(artifact) {
+        return Boolean(
+            artifact?.bundleDownloadUrl
+            || artifact?.preview?.type === 'site'
+            || artifact?.metadata?.siteBundle,
+        );
+    }
+
     function shouldRenderInlineArtifactPreview(artifact) {
         if (!getArtifactPreviewUrl(artifact)) {
             return false;
@@ -1633,6 +1641,11 @@
         const absolutePreviewUrl = await resolveAuthenticatedPreviewUrl(previewUrl);
         title.textContent = artifact?.filename || 'Website preview';
         iframe.dataset.previewSrc = absolutePreviewUrl;
+        if (isFullSitePreviewArtifact(artifact)) {
+            iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation allow-downloads allow-same-origin');
+        } else {
+            iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups allow-downloads');
+        }
         iframe.src = absolutePreviewUrl;
         modal.hidden = false;
         document.body.classList.add('site-preview-open');
@@ -1774,7 +1787,11 @@
                 }
                 const response = await fetch(resolveApiUrl(`/api/artifacts/${encodeURIComponent(id)}/managed-app`, { absolute: true }), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         sessionId: getCurrentSessionId(),
                         requestedAction: 'deploy',
@@ -1795,6 +1812,9 @@
                 }
             }
         },
+        getAuthenticatedPreviewUrl: resolveAuthenticatedPreviewUrl,
+        applyPreviewAccessToken,
+        getPreviewAccessToken,
         
         addToContext: (id) => {
             if (!state.selectedArtifactIds.includes(id)) {

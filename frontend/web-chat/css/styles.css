@@ -2610,6 +2610,7 @@ body {
     color: var(--accent);
 }
 
+.project-viewport__actions,
 .project-viewport__controls {
     display: inline-flex;
     align-items: center;
@@ -2644,6 +2645,57 @@ body {
     background: #ffffff;
 }
 
+.project-viewport__state {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1.25rem;
+    text-align: center;
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(8, 13, 22, 0.96)),
+        var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.project-viewport.is-loading .project-viewport__state,
+.project-viewport.is-error .project-viewport__state,
+.project-viewport.is-suspended .project-viewport__state {
+    display: flex;
+}
+
+.project-viewport.is-ready .project-viewport__state,
+.project-viewport.is-idle .project-viewport__state {
+    display: none;
+}
+
+.project-viewport__state-label {
+    color: var(--text-primary);
+    font-size: 0.92rem;
+    font-weight: 750;
+}
+
+.project-viewport__state-detail {
+    max-width: 20rem;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.project-viewport.is-error .project-viewport__status {
+    background: var(--error);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--error) 18%, transparent);
+}
+
+.project-viewport.is-loading .project-viewport__status {
+    background: var(--warning);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent);
+}
+
 .project-viewport.is-collapsed .project-viewport__chrome {
     flex: 1 1 auto;
     flex-direction: column;
@@ -2662,6 +2714,10 @@ body {
 
 .project-viewport.is-collapsed .project-viewport__controls {
     flex-direction: column;
+}
+
+.project-viewport.is-collapsed .project-viewport__actions {
+    display: none;
 }
 
 .project-viewport.is-collapsed .project-viewport__control:not(.project-viewport__control--collapse) {

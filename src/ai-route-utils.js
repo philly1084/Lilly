@@ -149,7 +149,7 @@ function buildArtifactCompletionMessage(outputFormat, artifact) {
 
     const filename = artifact?.filename ? ` (${artifact.filename})` : '';
     if (isSiteBundle) {
-        const preview = artifact?.sandboxUrl || artifact?.previewUrl || '';
+        const preview = artifact?.previewUrl || artifact?.sandboxUrl || '';
         const bundle = artifact?.bundleDownloadUrl || artifact?.downloadUrl || '';
         return [
             `Created the ${formatLabel} artifact${filename}.`,

@@ -911,6 +911,14 @@
                         <a id="project-viewport-link" class="project-viewport__host" href="#" target="_blank" rel="noopener noreferrer"></a>
                     </span>
                 </div>
+                <div class="project-viewport__actions" role="group" aria-label="Project viewport actions">
+                    <button type="button" class="project-viewport__control" data-project-viewport-action="reload" aria-label="Reload project preview" title="Reload preview">
+                        <i data-lucide="refresh-cw" class="w-4 h-4" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="project-viewport__control" data-project-viewport-action="open" aria-label="Open project in a new tab" title="Open in new tab">
+                        <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>
+                    </button>
+                </div>
                 <div class="project-viewport__controls" role="group" aria-label="Project viewport size">
                     <button type="button" class="project-viewport__control project-viewport__control--collapse" data-project-viewport-size="collapsed" aria-label="Collapse project viewport" title="Collapse">
                         <i data-lucide="minimize-2" class="w-4 h-4" aria-hidden="true"></i>
@@ -927,6 +935,10 @@
                 </div>
             </div>
             <div class="project-viewport__stage">
+                <div id="project-viewport-state" class="project-viewport__state" aria-live="polite">
+                    <span id="project-viewport-state-label" class="project-viewport__state-label">Loading project preview</span>
+                    <span id="project-viewport-state-detail" class="project-viewport__state-detail">Preparing authenticated access...</span>
+                </div>
                 <iframe
                     id="project-viewport-frame"
                     title="Live project website"

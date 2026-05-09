@@ -47,6 +47,56 @@ describe('web-chat project viewport helpers', () => {
         })).toBe('https://demo-app.demoserver2.buzz/live');
     });
 
+    test('uses preview URLs before sandbox wrappers as viewport project targets', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        expect(app.buildProjectViewportUrl({
+            type: 'sandbox',
+            sandboxUrl: '/api/artifacts/artifact-site-1/sandbox',
+        })).toBe('/api/artifacts/artifact-site-1/sandbox');
+        expect(app.buildProjectViewportUrl({
+            type: 'sandbox',
+            previewUrl: '/api/sandbox-workspaces/workspace-1/preview',
+        })).toBe('/api/sandbox-workspaces/workspace-1/preview');
+        expect(app.buildProjectViewportUrl({
+            type: 'sandbox',
+            sandboxUrl: '/api/artifacts/artifact-site-1/sandbox',
+            previewUrl: '/api/artifacts/artifact-site-1/preview',
+        })).toBe('/api/artifacts/artifact-site-1/preview');
+    });
+
+    test('tokenizes sandbox preview URLs before embedding them', async () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        app.projectPreviewTokenCache = null;
+        context.window.location = {
+            hostname: 'chat.example.test',
+            protocol: 'https:',
+            host: 'chat.example.test',
+            href: 'https://chat.example.test/web-chat/app.html',
+            origin: 'https://chat.example.test',
+        };
+        context.fetch = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                token: 'signed-preview-token',
+                expiresAt: Math.floor(Date.now() / 1000) + 600,
+            }),
+        }));
+
+        await expect(app.resolveProjectViewportUrl({
+            type: 'sandbox',
+            sandboxUrl: '/api/artifacts/artifact-site-1/sandbox',
+        })).resolves.toBe('https://chat.example.test/api/artifacts/artifact-site-1/sandbox-access/signed-preview-token');
+        expect(context.fetch).toHaveBeenCalledWith(
+            'https://chat.example.test/api/auth/ws-token',
+            expect.objectContaining({
+                credentials: 'same-origin',
+                cache: 'no-store',
+            }),
+        );
+    });
+
     test('keeps viewport sizing to the supported persistent choices', () => {
         const app = Object.create(loadChatAppPrototype());
 

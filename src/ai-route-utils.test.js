@@ -68,6 +68,16 @@ describe('ai-route-utils', () => {
             .toBe('Created the PDF artifact (space-zine.pdf).');
     });
 
+    test('buildArtifactCompletionMessage gives site bundles the normal preview URL first', () => {
+        expect(buildArtifactCompletionMessage('html', {
+            filename: 'site.html',
+            previewUrl: '/api/artifacts/site-1/preview',
+            sandboxUrl: '/api/artifacts/site-1/sandbox',
+            bundleDownloadUrl: '/api/artifacts/site-1/bundle',
+            metadata: { siteBundle: true },
+        })).toContain('Play it: /api/artifacts/site-1/preview');
+    });
+
     test('shouldDeferArtifactGenerationToWorkload detects scheduled artifact requests', () => {
         expect(shouldDeferArtifactGenerationToWorkload(
             'can you do web search on penguins and then make a pdf for me but schedule it for 5 minutes from now',

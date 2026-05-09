@@ -2437,8 +2437,9 @@ class OpenAIAPIClient extends EventTarget {
 
         const response = await fetch(`${BASE_URL_WITHOUT_API}/api/managed-apps/${encodeURIComponent(normalizedAppRef)}/progress`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' },
+            headers: buildGatewayHeaders({ 'Accept': 'application/json' }),
             credentials: 'same-origin',
+            cache: 'no-store',
         });
 
         if (response.status === 404 || response.status === 503) {
@@ -2460,10 +2461,10 @@ class OpenAIAPIClient extends EventTarget {
 
         const response = await fetch(`${BASE_URL_WITHOUT_API}/api/managed-apps/${encodeURIComponent(normalizedAppRef)}/iterations`, {
             method: 'POST',
-            headers: {
+            headers: buildGatewayHeaders({
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
-            },
+            }),
             credentials: 'same-origin',
             body: JSON.stringify(payload),
         });

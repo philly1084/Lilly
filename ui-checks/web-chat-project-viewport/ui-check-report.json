@@ -1,0 +1,446 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://localhost:3000/web-chat/app.html",
+  "originalUrl": "http://localhost:3000/web-chat/app.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-09T13:21:44.165Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-project-viewport\\lilly-workspace-desktop.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://localhost:3000/web-chat/app.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 950,
+        "bodyTextPreview": "Skip to main content AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent workloads close at hand. New Chat No conversations yet Start a new chat to begin WORKSPACE Import Export Search Files Focus Mode APPEARANCE Paper Theme Lilly LIVE CHAT No active session Connected GPT-5.4 Mini STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them. Live stre",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Image",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 159,
+        "textContrast": {
+          "checked": 79,
+          "lowContrastCount": 26,
+          "lowContrast": [
+            {
+              "tag": "p",
+              "id": "",
+              "className": "sidebar-brand-kicker",
+              "text": "AI WORKSPACE",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 10.9,
+              "fontWeight": 700,
+              "largeText": false,
+              "top": 33,
+              "left": 91
+            },
+            {
+              "tag": "button",
+              "id": "new-chat-btn",
+              "className": "btn-primary sidebar-primary-btn w-full flex items-center justify-center gap-2 py",
+              "text": "New Chat",
+              "contrast": 1,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#ffffff",
+              "fontSize": 16,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 148,
+              "left": 33
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "sidebar-btn-text",
+              "text": "New Chat",
+              "contrast": 1,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#ffffff",
+              "fontSize": 16,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 160,
+              "left": 144
+            },
+            {
+              "tag": "p",
+              "id": "",
+              "className": "text-xs text-text-muted mt-1",
+              "text": "Start a new chat to begin",
+              "contrast": 1.33,
+              "required": 4.5,
+              "color": "#d7e0ec",
+              "background": "#ffffff",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 350,
+              "left": 97
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "sidebar-footer-label",
+              "text": "WORKSPACE",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 10.9,
+              "fontWeight": 700,
+              "largeText": false,
+              "top": 693,
+              "left": 33
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "sidebar-footer-label sidebar-footer-label--subtle",
+              "text": "APPEARANCE",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 10.9,
+              "fontWeight": 700,
+              "largeText": false,
+              "top": 858,
+              "left": 33
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "chat-header-pill",
+              "text": "LIVE CHAT",
+              "contrast": 3.04,
+              "required": 4.5,
+              "color": "#3d8dff",
+              "background": "#f2f8ff",
+              "fontSize": 10.9,
+              "fontWeight": 700,
+              "largeText": false,
+              "top": 38,
+              "left": 470
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "text-xs text-text-tertiary",
+              "text": "News, analysis, and citations",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 487,
+              "left": 477
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "text-xs text-text-tertiary",
+              "text": "Faster engineering help",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 487,
+              "left": 914
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "text-xs text-text-tertiary",
+              "text": "Documents, plans, and summaries",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 609,
+              "left": 477
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "text-xs text-text-tertiary",
+              "text": "AI images and references",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 609,
+              "left": 914
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "+",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12.8,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 671,
+              "left": 704
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "commands",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12.8,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 671,
+              "left": 746
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "quick actions",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12.8,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 671,
+              "left": 854
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "+",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12.8,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 671,
+              "left": 991
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "toggle sidebar",
+              "contrast": 3.46,
+              "required": 4.5,
+              "color": "#7b8ba3",
+              "background": "#ffffff",
+              "fontSize": 12.8,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 671,
+              "left": 1033
+            }
+          ]
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://localhost:3000/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": [
+        "low-contrast-text"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-project-viewport\\lilly-workspace-mobile.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://localhost:3000/web-chat/app.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 206,
+        "bodyTextPreview": "Skip to main content Lilly STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them.",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Image",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 159,
+        "textContrast": {
+          "checked": 12,
+          "lowContrastCount": 3,
+          "lowContrast": [
+            {
+              "tag": "button",
+              "id": "minimalist-toggle-btn",
+              "className": "btn-icon minimalist-toggle-btn px-3 rounded-lg is-active",
+              "text": "Focus",
+              "contrast": 2.93,
+              "required": 4.5,
+              "color": "#3d8dff",
+              "background": "#ecf4ff",
+              "fontSize": 16,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 14,
+              "left": 334
+            },
+            {
+              "tag": "button",
+              "id": "send-btn",
+              "className": "btn-primary composer-send-btn p-2.5 rounded-lg disabled:opacity-50 disabled:curs",
+              "text": "",
+              "contrast": 1,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#ffffff",
+              "fontSize": 16,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 734,
+              "left": 320
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "toolbar-btn primary",
+              "text": "Files",
+              "contrast": 1,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#ffffff",
+              "fontSize": 13,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 796,
+              "left": 198
+            }
+          ]
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://localhost:3000/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": [
+        "low-contrast-text"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-project-viewport\\lilly-workspace-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-project-viewport\\lilly-workspace-mobile.png"
+    ],
+    "issues": [
+      "low-contrast-text"
+    ]
+  }
+}
