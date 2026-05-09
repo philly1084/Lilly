@@ -483,11 +483,17 @@ describe('DashboardController', () => {
           boot: expect.objectContaining({
             status: 'healthy',
           }),
+          qdrant: expect.any(Object),
+          sdk: expect.any(Object),
           websocket: expect.any(Object),
           tts: expect.any(Object),
           audioProcessing: expect.any(Object),
           podcastVideo: expect.any(Object),
           memory: expect.any(Object),
+        }),
+        services: expect.objectContaining({
+          sdk: expect.any(String),
+          vectorStore: expect.any(String),
         }),
       }),
     }));

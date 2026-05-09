@@ -128,6 +128,32 @@ function summarizeOverallStatus(components = {}) {
     return 'healthy';
 }
 
+function componentToLegacyServiceStatus(component = null, healthyLabel = 'connected') {
+    const status = String(component?.status || '').trim().toLowerCase();
+    if (status === 'healthy') {
+        return healthyLabel;
+    }
+    if (status === 'disabled') {
+        return 'disabled';
+    }
+    if (status === 'starting') {
+        return 'starting';
+    }
+
+    const detail = String(component?.details?.state || component?.details?.postgres || '').trim().toLowerCase();
+    if (detail) {
+        return detail;
+    }
+
+    if (status === 'degraded') {
+        return 'not_configured';
+    }
+    if (status === 'unhealthy') {
+        return 'disconnected';
+    }
+    return 'unknown';
+}
+
 async function checkVectorStoreStatus(orchestrator = null) {
     const sdkVectorStore = orchestrator?.vectorStore || orchestrator?.skillMemory?.vectorStore;
     const candidate = sdkVectorStore || vectorStore;
@@ -363,6 +389,13 @@ async function buildSystemHealthReport({
         httpStatus: status === 'healthy' ? 200 : 503,
         readiness,
         components,
+        services: {
+            sdk: componentToLegacyServiceStatus(components.sdk),
+            llmClient: componentToLegacyServiceStatus(components.llmClient),
+            vectorStore: componentToLegacyServiceStatus(components.qdrant),
+            embedder: componentToLegacyServiceStatus(components.ollama),
+            sessionStore: componentToLegacyServiceStatus(components.sessionStore, 'connected'),
+        },
         capabilities,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
