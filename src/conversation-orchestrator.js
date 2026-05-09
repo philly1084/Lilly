@@ -4977,6 +4977,33 @@ function hasRemoteCliAgentAuthoringIntent(text = '') {
     return authoringIntent && softwareTarget && remoteTarget && deploymentIntent && !infraOnly;
 }
 
+function hasExplicitDirectRemoteCliIntent(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return [
+        /\bdirect\s+(?:remote\s+)?(?:ssh|cli|ssh\/cli|command|runner)\b/,
+        /\b(?:ssh\/cli|remote ssh\/cli)\s+path\b/,
+        /\b(?:ad hoc|manual)\s+(?:ssh|kubectl|k3s|remote command)\b/,
+        /\b(?:without|bypass|skip|do not use|don't use)\s+(?:gitlab|managed[- ]app|managed app)\b/,
+        /\buse\s+(?:only\s+)?(?:ssh|kubectl|remote-command|remote command)\b/,
+    ].some((pattern) => pattern.test(normalized));
+}
+
+function getRemoteBuildMetadataPreference(metadata = {}, toolContext = {}) {
+    const toolMetadata = toolContext?.metadata && typeof toolContext.metadata === 'object'
+        ? toolContext.metadata
+        : {};
+    return metadata?.preferManagedApp === true
+        || metadata?.remoteBuildIntent === true
+        || metadata?.frontendRemoteBuildAutonomyApproved === true
+        || toolMetadata.preferManagedApp === true
+        || toolMetadata.remoteBuildIntent === true
+        || toolMetadata.frontendRemoteBuildAutonomyApproved === true;
+}
+
 function hasRemoteCliAgentContinuationIntent(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized) {
@@ -5430,20 +5457,27 @@ function buildManagedAppDirectAction(objective = '', options = {}) {
         reason: recoveryCreate
             ? 'Managed app recovery should reinitialize the catalog record and repo/build lane before deployment continues.'
             : 'Managed app creation and deployment requests should use the dedicated control-plane tool.',
-        params: applyManagedAppDeploymentTargetDefaults({
-            action: 'create',
-            prompt: effectivePrompt,
-            sourcePrompt: effectivePrompt,
-            requestedAction: workflowRequestedAction,
-            ...(reference
-                ? (isSlugLikeReference
-                    ? { slug: reference.toLowerCase() }
-                    : { name: reference })
-                : {}),
-        }, {
-            objective: normalized,
-            executionProfile,
-        }),
+        params: applyManagedAppDeploymentTargetDefaults(
+            applyManagedAppRemoteCliIterationDefaults({
+                action: 'create',
+                prompt: effectivePrompt,
+                sourcePrompt: effectivePrompt,
+                requestedAction: workflowRequestedAction,
+                ...(reference
+                    ? (isSlugLikeReference
+                        ? { slug: reference.toLowerCase() }
+                        : { name: reference })
+                    : {}),
+            }, {
+                objective: normalized,
+                executionProfile,
+                workflow: options.workflow,
+            }),
+            {
+                objective: normalized,
+                executionProfile,
+            },
+        ),
     };
 }
 
@@ -9999,6 +10033,10 @@ class ConversationOrchestrator extends EventEmitter {
         const hasManagedAppIntent = hasManagedAppIntentText(prompt);
         const hasManagedAppAuthoringRequest = hasManagedAppAuthoringIntent(prompt, { executionProfile });
         const hasRemoteCliAgentAuthoringRequest = hasRemoteCliAgentAuthoringIntent(prompt);
+        const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+            && getRemoteBuildMetadataPreference(metadata, toolContext)
+            && hasRemoteCliAgentAuthoringRequest
+            && !hasExplicitDirectRemoteCliIntent(prompt);
         const hasManagedAppContinuationRecovery = (
             isLikelyTranscriptDependentTurn(objective)
             || /\b(?:go ahead|continue|proceed|from there|those steps|next step|next steps|get it online|get it live|get it deployed)\b/i.test(objective)
@@ -10195,7 +10233,7 @@ class ConversationOrchestrator extends EventEmitter {
             if (hasRemoteCliAgentAuthoringRequest && allowedToolIds.includes('remote-cli-agent')) {
                 candidates.add('remote-cli-agent');
             }
-            if ((hasManagedAppIntent || hasManagedAppAuthoringRequest || hasManagedAppContinuationRecovery)
+            if ((hasManagedAppIntent || hasManagedAppAuthoringRequest || hasManagedAppContinuationRecovery || prefersManagedAppForRemoteBuild)
                 && allowedToolIds.includes('managed-app')) {
                 candidates.add('managed-app');
             }
@@ -10452,6 +10490,7 @@ class ConversationOrchestrator extends EventEmitter {
         const needsGitLabManagedAppObservability = hasManagedAppIntent
             || hasManagedAppAuthoringRequest
             || hasManagedAppContinuationRecovery
+            || prefersManagedAppForRemoteBuild
             || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(prompt);
 
         if (needsGitLabManagedAppObservability
@@ -10682,6 +10721,12 @@ class ConversationOrchestrator extends EventEmitter {
         if (toolPolicy.candidateToolIds.includes('managed-app')
             && (hasManagedAppIntentText(objective)
                 || hasManagedAppAuthoringIntent(objective, { executionProfile: toolPolicy.executionProfile })
+                || (
+                    toolPolicy.executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+                    && getRemoteBuildMetadataPreference({}, toolContext)
+                    && hasRemoteCliAgentAuthoringIntent(objective)
+                    && !hasExplicitDirectRemoteCliIntent(objective)
+                )
                 || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(objective)
                 || inferManagedAppRecoveryActionFromRecentMessages(recentMessages) === 'create')) {
             return finalizeAction(buildManagedAppDirectAction(objective, {

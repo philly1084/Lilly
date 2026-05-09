@@ -316,6 +316,9 @@ async function executeConversationRuntime(app, params = {}) {
     const executionProfile = inferExecutionProfile(params);
     const effectiveToolContext = {
         ...(params.toolContext || {}),
+        ...(params.metadata && typeof params.metadata === 'object'
+            ? { metadata: params.metadata }
+            : {}),
         model: params?.toolContext?.model || params.model || null,
         documentService: params?.toolContext?.documentService || app?.locals?.documentService || null,
         opencodeService: params?.toolContext?.opencodeService || app?.locals?.opencodeService || null,

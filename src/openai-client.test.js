@@ -2768,6 +2768,38 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(selectedIds).not.toContain('document-workflow');
     });
 
+    test('uses managed-app for frontend-approved live website builds without explicit GitLab wording', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Build a small playable web app, deploy it to the remote k3s cluster, and verify the public HTTPS site.';
+        const toolContext = {
+            executionProfile: 'remote-build',
+            metadata: {
+                preferManagedApp: true,
+                remoteBuildIntent: true,
+                frontendRemoteBuildAutonomyApproved: true,
+            },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(selectedIds).toContain('managed-app');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).not.toBe('remote-cli-agent');
+    });
+
     test('does not misclassify research html documents about public or live events as remote website work', () => {
         jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
             enabled: true,

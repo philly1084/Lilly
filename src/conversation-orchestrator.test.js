@@ -5605,6 +5605,8 @@ describe('ConversationOrchestrator', () => {
                 requestedAction: 'deploy',
                 slug: 'hello-stack',
                 deployTarget: 'runner',
+                executor: 'remote-cli-agent',
+                useRemoteCliAgent: true,
             },
         });
     });
@@ -8402,6 +8404,67 @@ describe('ConversationOrchestrator', () => {
         expect(toolPolicy.candidateToolIds).toContain('remote-command');
         expect(toolPolicy.candidateToolIds).not.toContain('managed-app');
         expect(directAction?.tool || null).not.toBe('managed-app');
+    });
+
+    test('routes frontend-approved live website builds through managed-app while preserving remote CLI execution', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['managed-app', 'remote-command', 'remote-cli-agent', 'k3s-deploy', 'git-safe', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Build a small playable web app, deploy it to the remote k3s cluster, and verify the public HTTPS site.';
+        const toolContext = {
+            metadata: {
+                preferManagedApp: true,
+                remoteBuildIntent: true,
+                frontendRemoteBuildAutonomyApproved: true,
+            },
+            workspacePath: '/workspace/test-site',
+            repositoryPath: '/workspace/test-site',
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            toolContext,
+            metadata: toolContext.metadata,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session: {
+                metadata: {},
+            },
+            toolPolicy,
+            toolContext,
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('managed-app');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'managed-app',
+            params: expect.objectContaining({
+                executor: 'remote-cli-agent',
+                useRemoteCliAgent: true,
+            }),
+        }));
     });
 
     test('keeps discovery-first server build prompts out of the repo implementation lane', () => {

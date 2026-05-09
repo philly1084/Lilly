@@ -1979,7 +1979,7 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     }
 
     if (toolId === 'managed-app') {
-        return executionProfile === 'remote-build' && hasManagedAppIntent(prompt);
+        return shouldPreferManagedAppForRemoteBuild(prompt, options);
     }
 
     if (toolId === 'agent-workload') {
@@ -2073,6 +2073,52 @@ function hasManagedAppIntent(prompt = '') {
         /\b(gitlab|gitlab[-_ ]runner|gitlab ci|gitea|act[-_ ]runner|gitea actions?|managed app catalog|managed-app catalog|build events webhook)\b/i,
         /\b(managed-app|managed app)\b[\s\S]{0,40}\b(create|build|deploy|publish|launch|ship|update|redeploy|inspect|list|doctor|reconcile|repair)\b/i,
     ].some((pattern) => pattern.test(text));
+}
+
+function getToolContextMetadata(options = {}) {
+    if (options?.metadata && typeof options.metadata === 'object') {
+        return options.metadata;
+    }
+    if (options?.toolContext?.metadata && typeof options.toolContext.metadata === 'object') {
+        return options.toolContext.metadata;
+    }
+    return {};
+}
+
+function hasExplicitDirectRemoteCliIntent(prompt = '') {
+    const text = String(prompt || '').trim().toLowerCase();
+    if (!text) {
+        return false;
+    }
+
+    return [
+        /\bdirect\s+(?:remote\s+)?(?:ssh|cli|ssh\/cli|command|runner)\b/,
+        /\b(?:ssh\/cli|remote ssh\/cli)\s+path\b/,
+        /\b(?:ad hoc|manual)\s+(?:ssh|kubectl|k3s|remote command)\b/,
+        /\b(?:without|bypass|skip|do not use|don't use)\s+(?:gitlab|managed[- ]app|managed app)\b/,
+        /\buse\s+(?:only\s+)?(?:ssh|kubectl|remote-command|remote command)\b/,
+    ].some((pattern) => pattern.test(text));
+}
+
+function shouldPreferManagedAppForRemoteBuild(prompt = '', options = {}) {
+    const executionProfile = normalizeExecutionProfile(
+        options?.executionProfile
+        || options?.toolContext?.executionProfile,
+    );
+    if (executionProfile !== 'remote-build' || hasExplicitDirectRemoteCliIntent(prompt)) {
+        return false;
+    }
+
+    const metadata = getToolContextMetadata(options);
+    const frontendPreference = metadata.preferManagedApp === true
+        || metadata.remoteBuildIntent === true
+        || metadata.frontendRemoteBuildAutonomyApproved === true;
+
+    return hasManagedAppIntent(prompt)
+        || (frontendPreference && (
+            hasRemoteSoftwareCreationIntent(prompt)
+            || hasRemoteSoftwareDeploymentIntent(prompt)
+        ));
 }
 
 function hasExplicitWebResearchIntent(prompt = '') {
@@ -3114,8 +3160,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && hasRemoteSoftwareCreationIntent(prompt);
     const remoteSoftwareDeploymentIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareDeploymentIntent(prompt);
-    const managedAppIntent = executionProfile === 'remote-build'
-        && hasManagedAppIntent(prompt);
+    const managedAppIntent = shouldPreferManagedAppForRemoteBuild(prompt, options);
     const shouldSuppressDocumentWorkflowForRemoteDeploy = remoteSoftwareCreationIntent
         || remoteSoftwareDeploymentIntent
         || managedAppIntent;
@@ -3387,7 +3432,9 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
         return 'agent-workload';
     }
 
-    if (remoteCliAgentToolId && hasRemoteSoftwareDeploymentIntent(prompt)) {
+    if (remoteCliAgentToolId
+        && hasRemoteSoftwareDeploymentIntent(prompt)
+        && !(availableToolIds.has('managed-app') && shouldPreferManagedAppForRemoteBuild(prompt, options))) {
         return remoteCliAgentToolId;
     }
 
