@@ -7,6 +7,8 @@
 const SESSION_MANAGER_TASK_TYPE = 'chat';
 const SESSION_MANAGER_CLIENT_SURFACE = 'web-chat';
 const WEB_CHAT_PREFERENCE_SYNC_DELAY_MS = 180;
+const WEB_CHAT_RECOVERED_MESSAGE_SYNC_DELAY_MS = 75;
+const WEB_CHAT_TERMINAL_SYNC_STATUSES = new Set([400, 404, 409, 422]);
 const WEB_CHAT_SECONDARY_WORKSPACE_CACHE_RESET_VERSION = '20260424-secondary-workspace-cache-reset-1';
 const WEB_CHAT_SYNCED_STORAGE_KEYS = new Set([
     'kimibuilt_default_model',
@@ -407,6 +409,65 @@ class SessionManager extends EventTarget {
                 this.setStorageAvailability(false);
             }
         });
+    }
+
+    sleep(ms = 0) {
+        const delay = Math.max(0, Number(ms) || 0);
+        if (!delay) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    shouldSyncMessageToBackend(message = {}) {
+        if (!message || typeof message !== 'object') {
+            return false;
+        }
+
+        const metadata = message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+            ? message.metadata
+            : {};
+        const syncSuppressed = message.backendSyncSuppressed === true
+            || metadata.backendSyncSuppressed === true;
+
+        return Boolean(
+            message.id
+            && message.clientOnly !== true
+            && !syncSuppressed
+            && ['user', 'assistant', 'system', 'tool'].includes(message.role)
+            && String(message.content || '').trim()
+        );
+    }
+
+    markMessageBackendSyncSuppressed(sessionId = '', messageId = '', status = null) {
+        if (!sessionId || !messageId || !this.sessionMessages.has(sessionId)) {
+            return;
+        }
+
+        const messages = this.sessionMessages.get(sessionId);
+        const index = messages.findIndex((entry) => entry?.id === messageId);
+        if (index === -1) {
+            return;
+        }
+
+        const existingMetadata = messages[index]?.metadata && typeof messages[index].metadata === 'object' && !Array.isArray(messages[index].metadata)
+            ? messages[index].metadata
+            : {};
+        const nextMetadata = {
+            ...existingMetadata,
+            backendSyncSuppressed: true,
+            backendSyncStatus: status,
+            backendSyncSuppressedAt: new Date().toISOString(),
+        };
+
+        messages[index] = {
+            ...messages[index],
+            backendSyncSuppressed: true,
+            backendSyncStatus: status,
+            metadata: nextMetadata,
+        };
+        this.saveToStorage();
     }
 
     getPreferencesEndpoint() {
@@ -1001,6 +1062,11 @@ class SessionManager extends EventTarget {
             return false;
         }
 
+        const syncableMessages = messages.filter((message) => this.shouldSyncMessageToBackend(message));
+        if (syncableMessages.length === 0) {
+            return true;
+        }
+
         try {
             const response = await fetch(`${this.apiBaseUrl}/sessions/${encodeURIComponent(sessionId)}/messages`, {
                 method: 'POST',
@@ -1008,10 +1074,15 @@ class SessionManager extends EventTarget {
                     'Content-Type': 'application/json',
                 }),
                 credentials: 'same-origin',
-                body: JSON.stringify({ messages }),
+                body: JSON.stringify({ messages: syncableMessages }),
             });
 
             if (!response.ok) {
+                if (WEB_CHAT_TERMINAL_SYNC_STATUSES.has(response.status)) {
+                    syncableMessages.forEach((message) => {
+                        this.markMessageBackendSyncSuppressed(sessionId, message.id, response.status);
+                    });
+                }
                 throw new Error(`HTTP ${response.status}`);
             }
 
@@ -1022,12 +1093,11 @@ class SessionManager extends EventTarget {
         }
     }
 
-    async syncMessageToBackend(sessionId, message) {
-        const normalizedContent = String(message?.content || '').trim();
+    async syncMessageToBackend(sessionId, message, options = {}) {
         if (!sessionId || this.isLocalSession(sessionId) || !message?.id) {
             return false;
         }
-        if (!normalizedContent) {
+        if (!this.shouldSyncMessageToBackend(message)) {
             return true;
         }
 
@@ -1042,14 +1112,58 @@ class SessionManager extends EventTarget {
             });
 
             if (!response.ok) {
+                if (WEB_CHAT_TERMINAL_SYNC_STATUSES.has(response.status)) {
+                    this.markMessageBackendSyncSuppressed(sessionId, message.id, response.status);
+                    if (options.quietTerminal === true) {
+                        return false;
+                    }
+                }
+                if (response.status === 429 && options.throwOnRateLimit === true) {
+                    const error = new Error(`HTTP ${response.status}`);
+                    error.status = response.status;
+                    throw error;
+                }
                 throw new Error(`HTTP ${response.status}`);
             }
 
             return true;
         } catch (error) {
+            if (error?.status === 429 && options.throwOnRateLimit === true) {
+                throw error;
+            }
             console.warn('Failed to sync backend session message:', error);
             return false;
         }
+    }
+
+    async syncRecoveredMessagesToBackend(sessionId, messages = []) {
+        const syncableMessages = Array.isArray(messages)
+            ? messages.filter((message) => this.shouldSyncMessageToBackend(message))
+            : [];
+
+        let syncedCount = 0;
+        for (const message of syncableMessages) {
+            let synced = false;
+            try {
+                synced = await this.syncMessageToBackend(sessionId, message, {
+                    quietTerminal: true,
+                    throwOnRateLimit: true,
+                });
+            } catch (error) {
+                if (error?.status === 429) {
+                    console.warn('Paused recovered session message sync after rate limit response:', error);
+                    break;
+                }
+                console.warn('Failed to sync recovered session message:', error);
+            }
+            if (synced) {
+                syncedCount += 1;
+            }
+
+            await this.sleep(WEB_CHAT_RECOVERED_MESSAGE_SYNC_DELAY_MS);
+        }
+
+        return syncedCount;
     }
 
     async loadSessionMessagesFromBackend(sessionId, options = {}) {
@@ -1176,7 +1290,7 @@ class SessionManager extends EventTarget {
 
             this.promoteSessionId(previousSessionId, backendSessionId);
             const messages = this.getMessages(backendSessionId);
-            await Promise.all(messages.map((message) => this.syncMessageToBackend(backendSessionId, message)));
+            await this.syncRecoveredMessagesToBackend(backendSessionId, messages);
 
             if (title && title !== 'New Chat') {
                 await this.persistSessionMetadata(backendSessionId, { title });
