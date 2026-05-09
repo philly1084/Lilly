@@ -21,7 +21,7 @@ Do not do broad prompt rewrites. Do not start a second item in the same run unle
 
 ## Hourly Items
 
-### [ ] P1-001 Split Planner Prompt Into Policy Packs
+### [x] P1-001 Split Planner Prompt Into Policy Packs
 
 Goal: Reduce instruction dilution in the application-owned planner by moving large topic-specific rules into composable policy packs.
 
@@ -188,5 +188,6 @@ Focused checks:
 Append newest entries at the top.
 
 ```text
+2026-05-09 20:53 - P1-001 - done - src/conversation-orchestrator.js; src/conversation-orchestrator.test.js; src/workloads/natural-language.js; docs/prompt-optimization-hourly-backlog.md - npm test -- --runTestsByPath src/conversation-orchestrator.test.js - Added planner policy packs (workload/remote/frontend) with focused gating + tests.
 YYYY-MM-DD HH:mm - ITEM-ID - status - files changed - checks run - notes/blockers
 ```

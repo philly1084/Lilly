@@ -330,6 +330,74 @@ describe('HarnessRunState', () => {
     });
 });
 
+describe('Planner policy packs', () => {
+    test('omits workload and remote packs when tools are unavailable', async () => {
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({ llmClient });
+        const toolPolicy = {
+            candidateToolIds: ['web-search'],
+            toolDescriptions: { 'web-search': 'web-search' },
+        };
+
+        await orchestrator.planToolUse({
+            objective: 'Find sources about GPU benchmarks.',
+            executionProfile: 'default',
+            toolPolicy,
+        });
+
+        const plannerPrompt = llmClient.complete.mock.calls[0]?.[0] || '';
+        expect(plannerPrompt).not.toContain('Every `agent-workload` step must use the deferred workload schema only');
+        expect(plannerPrompt).not.toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`');
+    });
+
+    test('includes workload pack only when agent-workload is a candidate', async () => {
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({ llmClient });
+        const toolPolicy = {
+            candidateToolIds: ['agent-workload'],
+            toolDescriptions: { 'agent-workload': 'agent-workload' },
+        };
+
+        await orchestrator.planToolUse({
+            objective: 'Remind me tomorrow to deploy the app.',
+            executionProfile: 'default',
+            toolPolicy,
+        });
+
+        const plannerPrompt = llmClient.complete.mock.calls[0]?.[0] || '';
+        expect(plannerPrompt).toContain('Every `agent-workload` step must use the deferred workload schema only');
+        expect(plannerPrompt).not.toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`');
+    });
+
+    test('includes remote pack only when remote tools are candidates', async () => {
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({ llmClient });
+        const toolPolicy = {
+            candidateToolIds: ['remote-command'],
+            toolDescriptions: { 'remote-command': 'remote-command' },
+        };
+
+        await orchestrator.planToolUse({
+            objective: 'Inspect the server logs.',
+            executionProfile: 'default',
+            toolPolicy,
+        });
+
+        const plannerPrompt = llmClient.complete.mock.calls[0]?.[0] || '';
+        expect(plannerPrompt).toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`');
+        expect(plannerPrompt).not.toContain('Every `agent-workload` step must use the deferred workload schema only');
+    });
+});
+
 describe('ConversationOrchestrator', () => {
     beforeEach(() => {
         jest.clearAllMocks();

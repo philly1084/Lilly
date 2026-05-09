@@ -7994,6 +7994,71 @@ function getPreferredRemoteToolId(toolPolicy = {}) {
     return null;
 }
 
+function buildPlannerPolicyPacks({
+    toolPolicy = {},
+    objective = '',
+    executionProfile = DEFAULT_EXECUTION_PROFILE,
+    remoteToolId = null,
+} = {}) {
+    const candidateToolIds = Array.isArray(toolPolicy?.candidateToolIds) ? toolPolicy.candidateToolIds : [];
+    const normalizedObjective = String(objective || '');
+
+    const workloadRelevant = candidateToolIds.includes('agent-workload');
+    const remoteRelevant = Boolean(remoteToolId)
+        || executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+        || candidateToolIds.some((toolId) => (
+            typeof toolId === 'string' && (toolId.startsWith('remote-') || toolId === 'managed-app')
+        ));
+    const frontendRelevant = hasWebsiteBuildIntent(normalizedObjective)
+        || /\b(dashboard|landing page|microsite|frontend|front end|webapp|web app|html page|html document|browser game|web game|video game|playable game|interactive sandbox|vite preview|vite sandbox|ui mockup|html prototype)\b/i.test(normalizedObjective)
+        || candidateToolIds.includes('code-sandbox');
+
+    return {
+        workload: workloadRelevant
+            ? [
+                'Do not create `agent-workload` steps for immediate requests, "now" requests, vague later language, or because runtime/project instructions mention scheduling. Use `agent-workload` only when the latest user request explicitly asks for future, recurring, reminder, follow-up, cron, or scheduled work.',
+                'Every `agent-workload` step must use the deferred workload schema only: `{"tool":"agent-workload","reason":"why","params":{"action":"create_from_scenario","request":"the full original user request","timezone":"IANA/Zone"}}`.',
+                'Do not parse the schedule, cron, or remote command yourself for `agent-workload`; pass the full original request and let the runtime canonicalize it.',
+                'Do not use `command`, `name`, `schedule`, or remote-command style fields inside `agent-workload` params.',
+                'Before planning `agent-workload`, classify the latest user turn as one-time future run, recurring workload, reminder/follow-up, host crontab management, or no scheduled work. Timing words such as "tomorrow" are not enough by themselves.',
+                'If that classification shows the user actually asks for a cron job, recurring schedule, reminder, or future run, prefer `agent-workload` instead of `remote-command` even when an SSH target is already available.',
+                'If the user asks for multiple jobs or automations, split them into one `agent-workload` step per distinct task instead of combining everything into one workload.',
+                ...(toolPolicy?.workflow?.status === 'active'
+                    ? [
+                        'A foreground end-to-end workflow is already active for this session. Treat it as the current project task list and continue that work unless the user explicitly changes scope, asks to defer it, or asks to schedule a separate workload.',
+                        'Do not convert the active foreground project into `agent-workload` just because the user answered with timing, checkpoint feedback, or a short decision reply.',
+                    ]
+                    : []),
+            ]
+            : [],
+        remote: remoteRelevant
+            ? [
+                'Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`; do not route those phrases to a local shell or code sandbox.',
+                'For most remote software creation, update, and deployment requests where an app, website, service, dashboard, or frontend must be changed and put live, prefer `remote-cli-agent` with `params.adminMode:true` so the remote coding agent owns authoring, build, deploy, and verification through the configured admin-capable CLI runner lane.',
+                'For remote website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, or UI mockup work, include the Impressive Frontend Websites standard in the remote agent objective: infer a compact brief, build the usable first screen, include relevant assets and real interactions/states, verify desktop/mobile and opened UI surfaces, then refine before deploy/final.',
+                'Use `remote-command` for quick non-interactive host inspection, kubectl/log checks, one-off admin repairs, and post-deploy verification. Do not choose legacy raw SSH tooling when `remote-command` is available.',
+                'If `remote-cli-agent` asks for user input or emits `USER_INPUT_REQUIRED`, forward that concise decision to the user; after the user answers, continue the same remote CLI session with their choice.',
+                'If `remote-cli-agent` hits the same blocked command or root error twice without a materially changed strategy, stop that retry loop and report the blocker plus the next distinct recovery option.',
+                'When a remote task matches a `remote-workbench` action, prefer that structured action over hand-writing equivalent shell in `remote-command`.',
+                'When remote CLI runtime inventory is present, prefer commands and fallbacks that match the actual CLI tools reported by the online remote runner.',
+                'Keep `remote-command` for kubectl, host inspection, package installs, logs, restarts, deployments, DNS, TLS, and other infrastructure operations.',
+                'For Kubernetes deployment creation from `remote-command`, prefer repo manifests or `kubectl create ... --dry-run=client -o yaml | kubectl apply -f -` generators over hand-authored manifest heredocs inside a shell command.',
+                'Before applying hand-authored Kubernetes YAML from a remote shell, run `kubectl apply --dry-run=server -f <file>` or `kubectl apply --dry-run=client -f <file>` and fix decoding or YAML parse errors before a live apply.',
+                'If Kubernetes reports `strict decoding error: unknown field`, `error converting YAML to JSON`, or `unknown flag: --add`, do not retry the same manifest style. Switch to validated manifests, `kubectl create` generators, or the documented remote-command web workload pattern.',
+                'Do not use `kubectl set --add`; when adding volumes use `kubectl set volume --add` with the subcommand or use `kubectl patch` with a valid strategic merge patch.',
+            ]
+            : [],
+        frontend: frontendRelevant
+            ? [
+                'Use `document-workflow generate-suite` with `buildMode:"sandbox"` or `useSandbox:true` for previewable website/dashboard/front-end/game/multi-step app artifacts so the builder produces a sandbox project instead of only a template. Treat this as a Symphony build-review-iterate loop, not a one-shot template export.',
+                'For sandbox website/dashboard/front-end/game artifacts, require the builder to follow the Impressive Frontend Websites and Sandbox Vite Games standards: request-matched visual direction, relevant imagery/assets, real controls and states, game loop or workflow state machine when needed, pause/restart/reset, stable responsive layout, readable opened dropdown/menu/popover/dialog states, and a refinement pass after initial screenshot for non-trivial pages.',
+                'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus previewable files. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
+                'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
+            ]
+            : [],
+    };
+}
+
 function sanitizeValue(value, depth = 0) {
     if (value == null) {
         return value;
@@ -11622,6 +11687,12 @@ class ConversationOrchestrator extends EventEmitter {
         const registeredSkillsInstructions = registeredSkillsContext.block;
         toolPolicy.selectedSkills = registeredSkillsContext.selectedSkills || [];
         toolPolicy.decisionTrace = buildToolDecisionTrace(toolPolicy, { toolEvents });
+        const plannerPolicyPacks = buildPlannerPolicyPacks({
+            toolPolicy,
+            objective: planningPrompt,
+            executionProfile,
+            remoteToolId,
+        });
         const prompt = [
             'You are planning tool usage for an application-owned agent runtime.',
             'Classify first, then choose the smallest safe tool sequence that follows the classification and verified evidence.',
@@ -11730,9 +11801,11 @@ class ConversationOrchestrator extends EventEmitter {
             'Reject steps that repeat a no-op command from this run, mismatch the active surface, skip required grounding, or omit required parameters.',
             'Use the harness state to avoid prior failed signatures, respect current blockers, and stay inside the remaining autonomy and replan budget.',
             'If a step is missing required parameters, return a changed plan with those parameters filled instead of executing a malformed call.',
-            'Do not create `agent-workload` steps for immediate requests, "now" requests, vague later language, or because runtime/project instructions mention scheduling. Use `agent-workload` only when the latest user request explicitly asks for future, recurring, reminder, follow-up, cron, or scheduled work.',
             'If the active surface is notes page editing, stay inside notes-safe research tools rather than switching to file, deploy, or document workflows.',
             'If grounding is required, do not jump straight to `document-workflow generate` unless verified web evidence already exists in this run.',
+            ...(plannerPolicyPacks.workload.length > 0 ? ['', ...plannerPolicyPacks.workload] : []),
+            ...(plannerPolicyPacks.remote.length > 0 ? ['', ...plannerPolicyPacks.remote] : []),
+            ...(plannerPolicyPacks.frontend.length > 0 ? ['', ...plannerPolicyPacks.frontend] : []),
             '',
             'Return exactly this shape:',
             '{"steps":[{"tool":"tool-id","reason":"why","params":{}}]}',
@@ -11741,37 +11814,12 @@ class ConversationOrchestrator extends EventEmitter {
             'Do not invent SSH hosts, usernames, file paths, or credentials.',
             'Every `remote-command` step must include a non-empty `params.command` string.',
             'Every `remote-workbench` step must include `params.action`; use action names such as `repo-map`, `changed-files`, `grep`, `read-file`, `write-file`, `apply-patch`, `build`, `test`, `logs`, `rollout`, or `deploy-verify`.',
-            'Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`; do not route those phrases to a local shell or code sandbox.',
-            'For most remote software creation, update, and deployment requests where an app, website, service, dashboard, or frontend must be changed and put live, prefer `remote-cli-agent` with `params.adminMode:true` so the remote coding agent owns authoring, build, deploy, and verification through the configured admin-capable CLI runner lane.',
-            'For remote website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, or UI mockup work, include the Impressive Frontend Websites standard in the remote agent objective: infer a compact brief, build the usable first screen, include relevant assets and real interactions/states, verify desktop/mobile and opened UI surfaces, then refine before deploy/final.',
-            'Use `remote-command` for quick non-interactive host inspection, kubectl/log checks, one-off admin repairs, and post-deploy verification. Do not choose legacy raw SSH tooling when `remote-command` is available.',
-            'If `remote-cli-agent` asks for user input or emits `USER_INPUT_REQUIRED`, forward that concise decision to the user; after the user answers, continue the same remote CLI session with their choice.',
-            'If `remote-cli-agent` hits the same blocked command or root error twice without a materially changed strategy, stop that retry loop and report the blocker plus the next distinct recovery option.',
-            'When a remote task matches a `remote-workbench` action, prefer that structured action over hand-writing equivalent shell in `remote-command`.',
-            'When remote CLI runtime inventory is present, prefer commands and fallbacks that match the actual CLI tools reported by the online remote runner.',
-            'Keep `remote-command` for kubectl, host inspection, package installs, logs, restarts, deployments, DNS, TLS, and other infrastructure operations.',
-            'For Kubernetes deployment creation from `remote-command`, prefer repo manifests or `kubectl create ... --dry-run=client -o yaml | kubectl apply -f -` generators over hand-authored manifest heredocs inside a shell command.',
-            'Before applying hand-authored Kubernetes YAML from a remote shell, run `kubectl apply --dry-run=server -f <file>` or `kubectl apply --dry-run=client -f <file>` and fix decoding or YAML parse errors before a live apply.',
-            'If Kubernetes reports `strict decoding error: unknown field`, `error converting YAML to JSON`, or `unknown flag: --add`, do not retry the same manifest style. Switch to validated manifests, `kubectl create` generators, or the documented remote-command web workload pattern.',
-            'Do not use `kubectl set --add`; when adding volumes use `kubectl set volume --add` with the subcommand or use `kubectl patch` with a valid strategic merge patch.',
-            'Every `agent-workload` step must use the deferred workload schema only: `{"tool":"agent-workload","reason":"why","params":{"action":"create_from_scenario","request":"the full original user request","timezone":"IANA/Zone"}}`.',
-            'Do not parse the schedule, cron, or remote command yourself for `agent-workload`; pass the full original request and let the runtime canonicalize it.',
-            'Do not use `command`, `name`, `schedule`, or remote-command style fields inside `agent-workload` params.',
-            'Before planning `agent-workload`, classify the latest user turn as one-time future run, recurring workload, reminder/follow-up, host crontab management, or no scheduled work. Timing words such as "tomorrow" are not enough by themselves.',
-            'If that classification shows the user actually asks for a cron job, recurring schedule, reminder, or future run, prefer `agent-workload` instead of `remote-command` even when an SSH target is already available.',
-            'If the user asks for multiple jobs or automations, split them into one `agent-workload` step per distinct task instead of combining everything into one workload.',
             'Every `agent-delegate` step must use `params.action` set to `spawn`, `status`, or `list`.',
             'For `agent-delegate spawn`, pass `params.tasks` as an array of 1 to 3 task objects. Each task needs a clear `title` and either a `prompt` or structured `execution` object.',
             'Use `agent-delegate` only when the user explicitly wants sub-agents, delegated workers, or parallel background tasks.',
             'For `agent-delegate`, spawn immediate helper tasks only. Each task prompt must be a bounded subtask that helps the current foreground work; do not pass the identical full user request as a child task.',
             'Do not plan more than 3 sub-agent tasks in one `agent-delegate` step, and do not use `agent-delegate` from inside a sub-agent task.',
             'When delegated tasks may write files, set distinct `writeTargets` or `lockKey` values so overlapping document edits are rejected.',
-            ...(toolPolicy?.workflow?.status === 'active'
-                ? [
-                    'A foreground end-to-end workflow is already active for this session. Treat it as the current project task list and continue that work unless the user explicitly changes scope, asks to defer it, or asks to schedule a separate workload.',
-                    'Do not convert the active foreground project into `agent-workload` just because the user answered with timing, checkpoint feedback, or a short decision reply.',
-                ]
-                : []),
             ...(toolPolicy?.projectPlan?.status === 'active'
                 ? [
                     'A foreground session project plan is already active. Advance the active milestone before creating new scope or treating the conversation like a fresh task.',
@@ -11794,12 +11842,8 @@ class ConversationOrchestrator extends EventEmitter {
             'Every `document-workflow` step must include `params.action` set to `recommend`, `plan`, `generate`, `assemble`, or `generate-suite`.',
             'Use `document-workflow generate` for final briefs, reports, documents, HTML pages, and slide decks. For slides, slide decks, presentations, and PowerPoint requests, default the final deliverable to PPTX unless the user explicitly asks for interactive or HTML output.',
             'Do not ask the user to supply generic design-prompt quality wording for documents; document-workflow already applies built-in strategy, background design, evidence, accessibility, and final polish passes.',
-            'Use `document-workflow generate-suite` with `buildMode:"sandbox"` or `useSandbox:true` for previewable website/dashboard/front-end/game/multi-step app artifacts so the builder produces a sandbox project instead of only a template. Treat this as a Symphony build-review-iterate loop, not a one-shot template export.',
-            'For sandbox website/dashboard/front-end/game artifacts, require the builder to follow the Impressive Frontend Websites and Sandbox Vite Games standards: request-matched visual direction, relevant imagery/assets, real controls and states, game loop or workflow state machine when needed, pause/restart/reset, stable responsive layout, readable opened dropdown/menu/popover/dialog states, and a refinement pass after initial screenshot for non-trivial pages.',
             'For natural software-development journeys that start as an idea or concept, keep the flow conversational but concrete: shape a compact build brief, create a local sandbox prototype first when the user asks to try/build it, then use `remote-cli-agent`/deploy/git lanes only when the next turn asks to promote, deploy, publish, or save the work.',
             'Use `document-workflow generate-suite` for requested output packages such as PDF + PPTX + HTML, or when web-chat needs an HTML preview companion for PDF/PPTX/XLSX deliverables.',
-            'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus previewable files. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
-            'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
             'When the user wants a research-backed deliverable, prefer `web-search` and `web-fetch` first, then use `web-scrape` only when a page needs rendered or structured extraction before `document-workflow` with grounded `sources` derived from the verified tool results.',
             'Set `document-workflow.params.includeContent` to `true` only when a later step needs the full textual body for `file-write`; otherwise prefer the stored document download URL.',
             'Use `deep-research-presentation` when the user wants a research-backed deck handled as one ordered plan -> research -> images -> presentation workflow.',

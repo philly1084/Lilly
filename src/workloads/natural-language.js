@@ -700,9 +700,10 @@ function hasWorkloadIntent(text = '') {
         new RegExp(`\\b(set up|setup|schedule|queue|save)\\b[\\s\\S]{0,60}\\b${scheduleIntentFragment}\\b`),
     ].some((pattern) => pattern.test(normalized));
 
+    const taskVerbFragment = '(?:run|do|check|review|research|summarize|follow up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan|give(?:\\s+me)?|break\\s*down|breakdown)';
     const hasTimedTaskRequest = [
-        new RegExp(`\\b(run|do|check|review|research|summarize|follow up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan)\\b[\\s\\S]{0,40}\\b${timedTaskScheduleIntentFragment}\\b`),
-        new RegExp(`\\b${timedTaskScheduleIntentFragment}\\b[\\s\\S]{0,60}\\b(run|do|check|review|research|summarize|follow up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan)\\b`),
+        new RegExp(`\\b${taskVerbFragment}\\b[\\s\\S]{0,40}\\b${timedTaskScheduleIntentFragment}\\b`),
+        new RegExp(`\\b${timedTaskScheduleIntentFragment}\\b[\\s\\S]{0,60}\\b${taskVerbFragment}\\b`),
     ].some((pattern) => pattern.test(normalized));
 
     return hasSchedulingCue(normalized) && (hasExplicitWorkloadSetup || hasTimedTaskRequest);
