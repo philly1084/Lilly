@@ -2549,6 +2549,12 @@ body {
     max-width: min(68rem, 68vw);
 }
 
+.project-viewport.is-collapsed {
+    flex: 0 0 3.75rem;
+    min-width: 3.75rem;
+    max-width: 3.75rem;
+}
+
 .project-viewport__chrome {
     display: flex;
     align-items: center;
@@ -2636,6 +2642,30 @@ body {
     flex: 1 1 auto;
     min-height: 0;
     background: #ffffff;
+}
+
+.project-viewport.is-collapsed .project-viewport__chrome {
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding: 0.75rem 0.45rem;
+}
+
+.project-viewport.is-collapsed .project-viewport__identity {
+    justify-content: center;
+}
+
+.project-viewport.is-collapsed .project-viewport__copy,
+.project-viewport.is-collapsed .project-viewport__stage {
+    display: none;
+}
+
+.project-viewport.is-collapsed .project-viewport__controls {
+    flex-direction: column;
+}
+
+.project-viewport.is-collapsed .project-viewport__control:not(.project-viewport__control--collapse) {
+    display: none;
 }
 
 .project-viewport__stage iframe {
@@ -8290,6 +8320,13 @@ code[class*="language-"] {
         max-width: 44vw;
     }
 
+    .project-viewport.is-collapsed {
+        flex: 0 0 3.75rem;
+        min-width: 3.75rem;
+        min-height: 0;
+        max-width: 3.75rem;
+    }
+
     .header-control-group--utilities {
         display: none;
     }
@@ -8323,6 +8360,10 @@ code[class*="language-"] {
         min-height: 42vh;
     }
 
+    .app-shell.has-project-viewport.has-project-viewport-collapsed .main-shell {
+        min-height: 0;
+    }
+
     .project-viewport,
     .project-viewport.is-compact,
     .project-viewport.is-wide,
@@ -8342,6 +8383,13 @@ code[class*="language-"] {
         max-height: 58vh;
     }
 
+    .project-viewport.is-collapsed {
+        flex: 0 0 max(3.4rem, calc(3rem + env(safe-area-inset-bottom, 0px)));
+        min-height: max(3.4rem, calc(3rem + env(safe-area-inset-bottom, 0px)));
+        max-height: max(3.4rem, calc(3rem + env(safe-area-inset-bottom, 0px)));
+        width: 100%;
+    }
+
     .main-shell,
     .sidebar-panel,
     .project-viewport {
@@ -8353,6 +8401,29 @@ code[class*="language-"] {
 
     .project-viewport__chrome {
         padding: 0.7rem 0.85rem;
+    }
+
+    .project-viewport.is-collapsed .project-viewport__chrome {
+        min-height: 100%;
+        flex-direction: row;
+        justify-content: space-between;
+        padding:
+            0.5rem max(0.85rem, env(safe-area-inset-right, 0px))
+            max(0.5rem, env(safe-area-inset-bottom, 0px))
+            max(0.85rem, env(safe-area-inset-left, 0px));
+        border-bottom: 0;
+    }
+
+    .project-viewport.is-collapsed .project-viewport__copy {
+        display: flex;
+    }
+
+    .project-viewport.is-collapsed .project-viewport__host {
+        display: none;
+    }
+
+    .project-viewport.is-collapsed .project-viewport__controls {
+        flex-direction: row;
     }
 
     .project-viewport__host {

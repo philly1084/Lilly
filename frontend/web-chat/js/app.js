@@ -637,6 +637,7 @@ class ChatApp {
             const sizeButton = event.target?.closest?.('[data-project-viewport-size]');
             if (sizeButton) {
                 event.preventDefault();
+                event.stopPropagation();
                 void this.setProjectViewportSize(sizeButton.dataset.projectViewportSize);
             }
         });
@@ -2694,7 +2695,7 @@ class ChatApp {
 
     normalizeProjectViewportSize(size = '') {
         const normalized = String(size || '').trim().toLowerCase();
-        return ['compact', 'wide', 'full'].includes(normalized) ? normalized : 'wide';
+        return ['collapsed', 'compact', 'wide', 'full'].includes(normalized) ? normalized : 'wide';
     }
 
     buildProjectViewportUrl(project = {}) {
@@ -2738,11 +2739,13 @@ class ChatApp {
         const hasUrl = Boolean(url);
         this.projectViewport.classList.toggle('hidden', !hasProject);
         this.projectViewport.classList.toggle('is-empty', hasProject && !hasUrl);
+        this.projectViewport.classList.toggle('is-collapsed', hasProject && size === 'collapsed');
         this.projectViewport.classList.toggle('is-compact', hasProject && size === 'compact');
         this.projectViewport.classList.toggle('is-wide', hasProject && size === 'wide');
         this.projectViewport.classList.toggle('is-full', hasProject && size === 'full');
         this.projectViewport.setAttribute('aria-hidden', hasProject ? 'false' : 'true');
         appShell?.classList.toggle('has-project-viewport', hasProject);
+        appShell?.classList.toggle('has-project-viewport-collapsed', hasProject && size === 'collapsed');
 
         if (!hasProject) {
             if (this.projectViewportFrame) {
@@ -2782,20 +2785,31 @@ class ChatApp {
                 const isActive = button.dataset.projectViewportSize === size;
                 button.classList.toggle('is-active', isActive);
                 button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                if (button.dataset.projectViewportSize === 'collapsed') {
+                    button.setAttribute('aria-label', size === 'collapsed' ? 'Expand project viewport' : 'Collapse project viewport');
+                    button.setAttribute('title', size === 'collapsed' ? 'Expand' : 'Collapse');
+                }
             });
         uiHelpers.reinitializeIcons(this.projectViewport);
     }
 
     async setProjectViewportSize(size = '') {
-        const normalizedSize = this.normalizeProjectViewportSize(size);
+        let normalizedSize = this.normalizeProjectViewportSize(size);
         const sessionId = String(sessionManager.currentSessionId || '').trim();
         const project = this.getSessionActiveProject(sessionId);
         if (!sessionId || !project) {
             return;
         }
+        const currentSize = this.normalizeProjectViewportSize(project.viewportSize || project.projectViewportSize || 'wide');
+        if (normalizedSize === 'collapsed' && currentSize === 'collapsed') {
+            const restoredSize = this.normalizeProjectViewportSize(project.previousViewportSize || project.previousProjectViewportSize || 'wide');
+            normalizedSize = restoredSize === 'collapsed' ? 'wide' : restoredSize;
+        }
 
         const activeProject = {
             ...project,
+            previousViewportSize: normalizedSize === 'collapsed' ? currentSize : project.previousViewportSize,
+            previousProjectViewportSize: normalizedSize === 'collapsed' ? currentSize : project.previousProjectViewportSize,
             viewportSize: normalizedSize,
             projectViewportSize: normalizedSize,
         };

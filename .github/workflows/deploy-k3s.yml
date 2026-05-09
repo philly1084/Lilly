@@ -159,11 +159,42 @@ jobs:
             echo "${key}=patched"
           }
 
+          cleanup_stale_backend_env() {
+            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # Older Rancher edits wrote managed-app settings directly onto the
+            # backend container. Direct env values override kimibuilt-config, so
+            # remove those keys before applying the current GitLab config.
+            kubectl set env deployment/backend -n "${KUBE_NAMESPACE}" \
+              API_BASE_URL- \
+              KIMIBUILT_ALLOWED_ORIGINS- \
+              KUBERNETES_IN_CLUSTER_ENABLED- \
+              GITEA_BASE_URL- \
+              GITEA_TOKEN- \
+              GITEA_WEBHOOK_SECRET- \
+              GITEA_ORG- \
+              GITEA_REGISTRY_HOST- \
+              GITEA_REGISTRY_USERNAME- \
+              GITEA_REGISTRY_PASSWORD- \
+              MANAGED_APPS_ENABLED- \
+              MANAGED_APPS_BASE_DOMAIN- \
+              MANAGED_APPS_NAMESPACE_PREFIX- \
+              MANAGED_APPS_PLATFORM_NAMESPACE- \
+              MANAGED_APPS_DEFAULT_BRANCH- \
+              MANAGED_APPS_DEFAULT_CONTAINER_PORT- \
+              MANAGED_APPS_REGISTRY_PULL_SECRET- \
+              MANAGED_APPS_BUILD_EVENTS_PATH- \
+              --overwrite
+          }
+
           # Apply namespace first
           kubectl apply -f k8s/namespace.yaml
           
           # Apply configmap
           kubectl apply -f k8s/configmap.yaml
+          cleanup_stale_backend_env
           
           # Create or patch runtime secrets from GitHub Actions secrets when they
           # are configured. Existing non-placeholder live values are preserved.

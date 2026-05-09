@@ -45,6 +45,7 @@ describe('web-chat project viewport helpers', () => {
         expect(app.normalizeProjectViewportSize('compact')).toBe('compact');
         expect(app.normalizeProjectViewportSize('wide')).toBe('wide');
         expect(app.normalizeProjectViewportSize('full')).toBe('full');
+        expect(app.normalizeProjectViewportSize('collapsed')).toBe('collapsed');
         expect(app.normalizeProjectViewportSize('giant')).toBe('wide');
     });
 });
