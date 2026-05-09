@@ -369,6 +369,10 @@ class ChatApp {
         this.saveWorkloadBtn = document.getElementById('save-workload-btn');
         this.cancelWorkloadBtn = document.getElementById('cancel-workload-btn');
         this.closeWorkloadModalBtn = document.getElementById('close-workload-modal-btn');
+        this.projectViewport = document.getElementById('project-viewport');
+        this.projectViewportFrame = document.getElementById('project-viewport-frame');
+        this.projectViewportLabel = document.getElementById('project-viewport-label');
+        this.projectViewportLink = document.getElementById('project-viewport-link');
         
         this.isProcessing = false;
         this.isCancellingCurrentRequest = false;
@@ -628,6 +632,13 @@ class ChatApp {
         });
         this.closeWorkloadsPanelBtn?.addEventListener('click', () => {
             this.closeWorkloadsPanel();
+        });
+        this.projectViewport?.addEventListener('click', (event) => {
+            const sizeButton = event.target?.closest?.('[data-project-viewport-size]');
+            if (sizeButton) {
+                event.preventDefault();
+                void this.setProjectViewportSize(sizeButton.dataset.projectViewportSize);
+            }
         });
         this.newWorkloadBtn?.addEventListener('click', () => {
             this.openWorkloadModal();
@@ -1059,6 +1070,7 @@ class ChatApp {
         sessionManager.addEventListener('sessionsChanged', (e) => {
             uiHelpers.renderSessionsList(e.detail.sessions, sessionManager.currentSessionId);
             this.renderWorkloadsPanel();
+            this.renderProjectViewport();
             this.updateSessionInfo();
         });
         
@@ -1071,6 +1083,7 @@ class ChatApp {
             this.loadSessionMessages(e.detail.session.id);
             this.subscribeToSessionUpdates(e.detail.session.id);
             this.loadSessionWorkloads(e.detail.session.id);
+            this.renderProjectViewport();
             this.updateSessionInfo();
         });
         
@@ -1086,6 +1099,7 @@ class ChatApp {
                 .finally(() => {
                     this.subscribeToSessionUpdates(e.detail.sessionId);
                     this.loadSessionWorkloads(e.detail.sessionId);
+                    this.renderProjectViewport();
                     this.updateSessionInfo();
                     void this.processMessageQueue({ sessionId: e.detail.sessionId });
                     uiHelpers.closeSidebar();
@@ -1112,6 +1126,7 @@ class ChatApp {
                 this.hiddenCompletedWorkloadCount = 0;
                 this.renderWorkloadsPanel();
             }
+            this.renderProjectViewport();
             this.updateSessionInfo();
         });
         
@@ -1297,8 +1312,10 @@ class ChatApp {
                 });
             } else {
                 this.renderWorkloadsPanel();
+                this.renderProjectViewport();
             }
             
+            this.renderProjectViewport();
             this.updateSessionInfo();
         } catch (error) {
             console.error('Failed to load sessions:', error);
@@ -1306,6 +1323,7 @@ class ChatApp {
             // Show empty state
             uiHelpers.renderSessionsList([], null);
             this.renderWorkloadsPanel();
+            this.renderProjectViewport();
         }
     }
 
@@ -1327,6 +1345,7 @@ class ChatApp {
         uiHelpers.stopSpeechPlayback();
         await sessionManager.loadSessionMessagesFromBackend(sessionId);
         await this.refreshManagedAppProgressForSession(sessionId);
+        this.renderProjectViewport();
         let messages = this.syncAnnotatedSurveyStates(sessionId);
         const resumedBackgroundStream = this.resumePersistedBackgroundStream(sessionId, messages);
         if (resumedBackgroundStream) {
@@ -2673,6 +2692,118 @@ class ChatApp {
             : null;
     }
 
+    normalizeProjectViewportSize(size = '') {
+        const normalized = String(size || '').trim().toLowerCase();
+        return ['compact', 'wide', 'full'].includes(normalized) ? normalized : 'wide';
+    }
+
+    buildProjectViewportUrl(project = {}) {
+        const explicitUrl = String(project?.publicUrl || project?.url || '').trim();
+        if (/^https?:\/\//i.test(explicitUrl)) {
+            return explicitUrl;
+        }
+
+        const publicHost = String(project?.publicHost || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+        return publicHost ? `https://${publicHost}` : '';
+    }
+
+    getCurrentProjectViewportState() {
+        const sessionId = String(sessionManager.currentSessionId || '').trim();
+        const project = this.getSessionActiveProject(sessionId);
+        if (!project) {
+            return {
+                sessionId,
+                project: null,
+                url: '',
+                size: 'wide',
+            };
+        }
+
+        return {
+            sessionId,
+            project,
+            url: this.buildProjectViewportUrl(project),
+            size: this.normalizeProjectViewportSize(project.viewportSize || project.projectViewportSize || 'wide'),
+        };
+    }
+
+    renderProjectViewport() {
+        if (!this.projectViewport) {
+            return;
+        }
+
+        const appShell = document.getElementById('app');
+        const { project, url, size } = this.getCurrentProjectViewportState();
+        const hasProject = Boolean(project);
+        const hasUrl = Boolean(url);
+        this.projectViewport.classList.toggle('hidden', !hasProject);
+        this.projectViewport.classList.toggle('is-empty', hasProject && !hasUrl);
+        this.projectViewport.classList.toggle('is-compact', hasProject && size === 'compact');
+        this.projectViewport.classList.toggle('is-wide', hasProject && size === 'wide');
+        this.projectViewport.classList.toggle('is-full', hasProject && size === 'full');
+        this.projectViewport.setAttribute('aria-hidden', hasProject ? 'false' : 'true');
+        appShell?.classList.toggle('has-project-viewport', hasProject);
+
+        if (!hasProject) {
+            if (this.projectViewportFrame) {
+                this.projectViewportFrame.dataset.projectUrl = '';
+                this.projectViewportFrame.removeAttribute('src');
+            }
+            return;
+        }
+
+        const title = String(project?.title || project?.appName || project?.appSlug || 'Live project').trim();
+        const hostLabel = String(project?.publicHost || url || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+        if (this.projectViewportLabel) {
+            this.projectViewportLabel.textContent = title;
+        }
+        if (this.projectViewportLink) {
+            this.projectViewportLink.textContent = hostLabel || 'Waiting for public route';
+            if (hasUrl) {
+                this.projectViewportLink.href = url;
+                this.projectViewportLink.removeAttribute('aria-disabled');
+            } else {
+                this.projectViewportLink.href = '#';
+                this.projectViewportLink.setAttribute('aria-disabled', 'true');
+            }
+        }
+        if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.projectUrl !== url) {
+            this.projectViewportFrame.dataset.projectUrl = url;
+            this.projectViewportFrame.src = url;
+        }
+        if (this.projectViewportFrame && !hasUrl) {
+            this.projectViewportFrame.dataset.projectUrl = '';
+            this.projectViewportFrame.removeAttribute('src');
+        }
+
+        this.projectViewport
+            .querySelectorAll('[data-project-viewport-size]')
+            .forEach((button) => {
+                const isActive = button.dataset.projectViewportSize === size;
+                button.classList.toggle('is-active', isActive);
+                button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        uiHelpers.reinitializeIcons(this.projectViewport);
+    }
+
+    async setProjectViewportSize(size = '') {
+        const normalizedSize = this.normalizeProjectViewportSize(size);
+        const sessionId = String(sessionManager.currentSessionId || '').trim();
+        const project = this.getSessionActiveProject(sessionId);
+        if (!sessionId || !project) {
+            return;
+        }
+
+        const activeProject = {
+            ...project,
+            viewportSize: normalizedSize,
+            projectViewportSize: normalizedSize,
+        };
+        sessionManager.mergeSessionMetadataLocally(sessionId, { activeProject });
+        this.renderProjectViewport();
+        await sessionManager.persistSessionMetadata(sessionId, { activeProject });
+    }
+
     getManagedAppMessageMeta(message = null) {
         const metadata = message?.metadata && typeof message.metadata === 'object'
             ? message.metadata
@@ -3388,7 +3519,7 @@ class ChatApp {
             }
         }
 
-        const projectSummaryMessage = this.buildManagedProjectSummaryMessage(normalizedSessionId, {
+        const projectState = {
             type: 'managed-app',
             key: progressKey,
             title: String(event?.app?.appName || event?.app?.slug || 'Project').trim(),
@@ -3402,7 +3533,21 @@ class ChatApp {
             openItems: Array.isArray(nextState.progressState?.openItems) ? nextState.progressState.openItems : [],
             updatedAt: event?.timestamp || new Date().toISOString(),
             progress: nextState.progressState,
+        };
+        const existingProject = this.getSessionActiveProject(normalizedSessionId);
+        sessionManager.mergeSessionMetadataLocally(normalizedSessionId, {
+            activeProject: {
+                ...(existingProject || {}),
+                ...projectState,
+                viewportSize: this.normalizeProjectViewportSize(existingProject?.viewportSize || existingProject?.projectViewportSize || 'wide'),
+            },
+            title: String(projectState.title || '').trim(),
         });
+        if (sessionManager.currentSessionId === normalizedSessionId) {
+            this.renderProjectViewport();
+        }
+
+        const projectSummaryMessage = this.buildManagedProjectSummaryMessage(normalizedSessionId, projectState);
         if (projectSummaryMessage) {
             this.upsertSessionMessage(normalizedSessionId, projectSummaryMessage);
             this.renderOrReplaceMessage(projectSummaryMessage);
