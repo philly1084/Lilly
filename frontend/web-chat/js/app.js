@@ -2737,19 +2737,27 @@ class ChatApp {
         const { project, url, size } = this.getCurrentProjectViewportState();
         const hasProject = Boolean(project);
         const hasUrl = Boolean(url);
-        this.projectViewport.classList.toggle('hidden', !hasProject);
+        const isMinimalLayout = typeof uiHelpers !== 'undefined' && typeof uiHelpers?.isMinimalistMode === 'function'
+            ? uiHelpers.isMinimalistMode()
+            : false;
+        const isCollapsed = hasProject && size === 'collapsed';
+        const isSuspended = !hasProject || isMinimalLayout || isCollapsed || !hasUrl;
+        const hasVisibleViewport = hasProject && !isMinimalLayout;
+        this.projectViewport.classList.toggle('hidden', !hasVisibleViewport);
         this.projectViewport.classList.toggle('is-empty', hasProject && !hasUrl);
-        this.projectViewport.classList.toggle('is-collapsed', hasProject && size === 'collapsed');
+        this.projectViewport.classList.toggle('is-collapsed', isCollapsed);
+        this.projectViewport.classList.toggle('is-suspended', hasProject && isSuspended);
         this.projectViewport.classList.toggle('is-compact', hasProject && size === 'compact');
         this.projectViewport.classList.toggle('is-wide', hasProject && size === 'wide');
         this.projectViewport.classList.toggle('is-full', hasProject && size === 'full');
-        this.projectViewport.setAttribute('aria-hidden', hasProject ? 'false' : 'true');
-        appShell?.classList.toggle('has-project-viewport', hasProject);
-        appShell?.classList.toggle('has-project-viewport-collapsed', hasProject && size === 'collapsed');
+        this.projectViewport.setAttribute('aria-hidden', hasVisibleViewport ? 'false' : 'true');
+        appShell?.classList.toggle('has-project-viewport', hasVisibleViewport);
+        appShell?.classList.toggle('has-project-viewport-collapsed', hasVisibleViewport && isCollapsed);
 
         if (!hasProject) {
             if (this.projectViewportFrame) {
                 this.projectViewportFrame.dataset.projectUrl = '';
+                this.projectViewportFrame.dataset.suspendedProjectUrl = '';
                 this.projectViewportFrame.removeAttribute('src');
             }
             return;
@@ -2770,13 +2778,14 @@ class ChatApp {
                 this.projectViewportLink.setAttribute('aria-disabled', 'true');
             }
         }
-        if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.projectUrl !== url) {
-            this.projectViewportFrame.dataset.projectUrl = url;
-            this.projectViewportFrame.src = url;
-        }
-        if (this.projectViewportFrame && !hasUrl) {
+        if (this.projectViewportFrame && isSuspended) {
+            this.projectViewportFrame.dataset.suspendedProjectUrl = hasUrl ? url : '';
             this.projectViewportFrame.dataset.projectUrl = '';
             this.projectViewportFrame.removeAttribute('src');
+        } else if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.projectUrl !== url) {
+            this.projectViewportFrame.dataset.projectUrl = url;
+            this.projectViewportFrame.dataset.suspendedProjectUrl = '';
+            this.projectViewportFrame.src = url;
         }
 
         this.projectViewport

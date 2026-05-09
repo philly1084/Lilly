@@ -7412,6 +7412,7 @@ class UIHelpers {
         this.syncSidebarState();
         this.updateMinimalistToggleUI();
         appInstance?.updateSessionInfo?.();
+        appInstance?.renderProjectViewport?.();
 
         if (normalizedMode === 'minimal') {
             setTimeout(() => {

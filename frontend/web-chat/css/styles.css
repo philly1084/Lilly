@@ -4350,6 +4350,10 @@ body.layout-minimal .sidebar-resize-handle {
     display: none !important;
 }
 
+body.layout-minimal .project-viewport {
+    display: none !important;
+}
+
 body.layout-minimal .main-shell {
     flex: 1 1 auto;
     width: 100%;
