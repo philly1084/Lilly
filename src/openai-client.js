@@ -6118,6 +6118,7 @@ async function resolveImageGenerationSelection(model = null) {
 async function generateImageWithSelection({
     prompt,
     modelId,
+    requestedModel = null,
     selectedModel,
     size = 'auto',
     quality = 'auto',
@@ -6152,6 +6153,17 @@ async function generateImageWithSelection({
 
     const images = extractProviderImageRecords(response);
     const providerMetadata = getImageProviderMetadata(response);
+    const usage = mergeUsageMetadata(
+        response?.usage,
+        response?.usage_metadata,
+        response?.usageMetadata,
+        response?.token_usage,
+        response?.tokenUsage,
+        response?.total_token_usage,
+        response?.totalTokenUsage,
+        images.map((image) => image.usage).filter(Boolean),
+    );
+    const providerCallCount = Math.max(1, Number(providerMetadata.requestVariant || 0) + 1);
     const diagnostics = buildImageGenerationDiagnostics({
         route: 'openai-client',
         stage: images.length > 0 ? 'provider_response_parsed' : 'provider_response_parse',
@@ -6172,6 +6184,9 @@ async function generateImageWithSelection({
     return {
         created: response.created,
         model: params.model,
+        requested_model: normalizeModelId(requestedModel) || null,
+        provider_call_count: providerCallCount,
+        parsed_count: images.length,
         size: params.size,
         quality: params.quality || null,
         style: params.style || null,
@@ -6180,6 +6195,7 @@ async function generateImageWithSelection({
         output_compression: params.output_compression ?? null,
         moderation: params.moderation || null,
         data: images,
+        ...(usage ? { usage } : {}),
         diagnostics: {
             imageGeneration: diagnostics,
         },
@@ -6207,6 +6223,7 @@ async function generateImage({
     return generateImageWithSelection({
         prompt,
         modelId,
+        requestedModel: model,
         selectedModel,
         size,
         quality,
@@ -6260,6 +6277,7 @@ async function generateImageBatch({
         (entry) => generateImageWithSelection({
             prompt: entry,
             modelId,
+            requestedModel: model,
             selectedModel,
             size,
             quality,
@@ -6283,6 +6301,10 @@ async function generateImageBatch({
             }))
         ));
         const firstResponse = responses[0] || {};
+        const usage = mergeUsageMetadata(responses.map((response) => response?.usage).filter(Boolean));
+        const providerCallCount = responses.reduce((sum, response) => (
+            sum + Math.max(1, Number(response?.provider_call_count || 1))
+        ), 0);
         const responseCreatedTimes = responses.map((response) => Number(response.created) || 0).filter(Boolean);
         const diagnostics = buildImageGenerationDiagnostics({
             route: 'openai-client-batch',
@@ -6310,6 +6332,9 @@ async function generateImageBatch({
         return {
             created: responseCreatedTimes.length > 0 ? Math.max(...responseCreatedTimes) : firstResponse.created,
             model: firstResponse.model || modelId,
+            requested_model: normalizeModelId(model) || null,
+            provider_call_count: providerCallCount,
+            parsed_count: data.length,
             size: firstResponse.size || size,
             quality: firstResponse.quality || null,
             style: firstResponse.style || null,
@@ -6318,6 +6343,7 @@ async function generateImageBatch({
             output_compression: firstResponse.output_compression ?? null,
             moderation: firstResponse.moderation || null,
             data,
+            ...(usage ? { usage } : {}),
             batch: {
                 mode,
                 concurrency: Math.min(Math.max(Number(concurrency) || 1, 1), Math.max(promptsForResponses.length, 1)),
@@ -6335,6 +6361,7 @@ async function generateImageBatch({
             const response = await generateImageWithSelection({
                 prompt: promptList[0],
                 modelId,
+                requestedModel: model,
                 selectedModel,
                 size,
                 quality,
@@ -6365,6 +6392,7 @@ async function generateImageBatch({
             const remainingResponses = await generateParallelResponses(remainingPrompts);
             const remainingResult = buildParallelResult(remainingResponses, remainingPrompts, 'auto-fill-parallel');
             const responseCreatedTimes = [response, ...remainingResponses].map((entry) => Number(entry.created) || 0).filter(Boolean);
+            const usage = mergeUsageMetadata(response?.usage, remainingResult?.usage);
             const combinedData = [
                 ...responseData.map((image, index) => ({
                     ...image,
@@ -6402,6 +6430,11 @@ async function generateImageBatch({
                 ...response,
                 created: responseCreatedTimes.length > 0 ? Math.max(...responseCreatedTimes) : response.created,
                 data: combinedData,
+                requested_model: normalizeModelId(model) || response.requested_model || null,
+                provider_call_count: Math.max(1, Number(response.provider_call_count || 1))
+                    + Math.max(0, Number(remainingResult.provider_call_count || 0)),
+                parsed_count: combinedData.length,
+                ...(usage ? { usage } : {}),
                 batch: {
                     mode: 'auto-fill-parallel',
                     requestedCount,

@@ -50,6 +50,11 @@ describe('openai-client image generation', () => {
             ok: true,
             json: async () => ({
                 created: 123,
+                usage: {
+                    input_tokens: 12,
+                    output_tokens: 4,
+                    total_tokens: 16,
+                },
                 data: [{
                     b64_json: 'aGVsbG8=',
                     revised_prompt: 'A refined prompt',
@@ -76,6 +81,17 @@ describe('openai-client image generation', () => {
                 revised_prompt: 'A refined prompt',
             }),
         ]);
+        expect(result).toEqual(expect.objectContaining({
+            model: 'gpt-image-1',
+            requested_model: 'gpt-image-1',
+            provider_call_count: 1,
+            parsed_count: 1,
+            usage: expect.objectContaining({
+                promptTokens: 12,
+                completionTokens: 4,
+                totalTokens: 16,
+            }),
+        }));
     });
 
     test('normalizes gpt-image-2 parameters for the OpenAI image API', async () => {
@@ -374,9 +390,6 @@ describe('openai-client image generation', () => {
         }
     });
 
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
     test('includes request metadata in HTTP image generation errors', async () => {
         process.env.OPENAI_BASE_URL = 'https://gateway.example/v1';
         process.env.OPENAI_IMAGE_MODEL = 'gpt-image-2';
@@ -406,12 +419,6 @@ describe('openai-client image generation', () => {
         }
     });
 
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
     test('can opt in to official media fallback after the router endpoint fails', async () => {
         process.env.OPENAI_BASE_URL = 'https://gateway.example/v1';
         process.env.OPENAI_IMAGE_MODEL = 'gpt-image-2';
@@ -497,6 +504,11 @@ describe('openai-client image generation', () => {
         expect(result.batch).toEqual(expect.objectContaining({
             mode: 'parallel',
             requestedCount: 2,
+        }));
+        expect(result).toEqual(expect.objectContaining({
+            requested_model: 'gpt-image-2',
+            provider_call_count: 2,
+            parsed_count: 2,
         }));
         expect(result.data).toHaveLength(2);
         expect(result.data[1]).toEqual(expect.objectContaining({

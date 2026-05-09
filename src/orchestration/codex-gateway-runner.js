@@ -48,7 +48,12 @@ function normalizeGatewayEvent(eventName = '', payload = {}) {
     turn_id: payload.turn_id || payload.turnId || null,
     session_id: payload.session_id || payload.sessionId || null,
     codex_app_server_pid: payload.codex_app_server_pid || payload.codexAppServerPid || null,
-    usage: payload.usage || null,
+    usage: payload.usage
+      || payload.tokenUsage
+      || payload.token_usage
+      || payload.total_token_usage
+      || payload.totalTokenUsage
+      || null,
     rate_limits: payload.rate_limits || payload.rateLimits || null,
     message: payload.message || payload.error || null,
     payload,

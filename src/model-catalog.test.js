@@ -52,7 +52,7 @@ describe('model-catalog', () => {
         ])).toEqual([
             expect.objectContaining({
                 id: 'gpt-4o',
-                capabilities: ['chat'],
+                capabilities: expect.arrayContaining(['chat', 'responses', 'streaming', 'tools', 'structured_outputs', 'vision', 'image_input']),
             }),
             expect.objectContaining({
                 id: 'gpt-image-2',

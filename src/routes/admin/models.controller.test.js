@@ -138,4 +138,52 @@ describe('admin models controller', () => {
       }),
     ]);
   });
+
+  test('adds throughput, cost, and EWMA latency to usage stats', () => {
+    logsController.logs = [
+      {
+        model: 'priced-model',
+        promptTokens: 2000,
+        completionTokens: 1000,
+        tokens: 3000,
+        latency: 3000,
+        status: 'success',
+      },
+      {
+        model: 'priced-model',
+        promptTokens: 1000,
+        completionTokens: 500,
+        tokens: 1500,
+        latency: 1000,
+        status: 'success',
+      },
+    ];
+
+    const usage = modelsController.buildUsageStats([{
+      id: 'priced-model',
+      name: 'Priced Model',
+      provider: 'gateway',
+      pricing: {
+        inputPerMillion: 2,
+        outputPerMillion: 6,
+      },
+    }]);
+
+    expect(usage[0]).toEqual(expect.objectContaining({
+      modelId: 'priced-model',
+      tokensPerSecond: 375,
+      throughput: {
+        outputTokensPerSecond: 375,
+        totalTokensPerSecond: 1125,
+      },
+      ewmaLatency: 1700,
+      estimatedCost: 0.015,
+      cost: expect.objectContaining({
+        input: 0.006,
+        output: 0.009,
+        total: 0.015,
+        estimated: true,
+      }),
+    }));
+  });
 });

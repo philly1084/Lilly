@@ -63,7 +63,19 @@ function inferModelCapabilities(model = {}) {
             capabilities.push('transcription');
         }
     } else {
-        capabilities.push('chat');
+        capabilities.push('chat', 'responses', 'streaming');
+        if (/(tool|function|4o|o\d|gpt-5|claude|gemini|mistral|qwen|llama)/i.test(normalizedId)) {
+            capabilities.push('tools');
+        }
+        if (/(^|[-_/])(o\d|reason|gpt-5)/i.test(normalizedId)) {
+            capabilities.push('reasoning');
+        }
+        if (/(json|structured|4o|o\d|gpt-5|claude|gemini)/i.test(normalizedId)) {
+            capabilities.push('structured_outputs');
+        }
+        if (/(vision|image[_-]?input|4o|omni|gpt-5|gemini|claude-3|claude-4|llava)/i.test(normalizedId)) {
+            capabilities.push('vision', 'image_input');
+        }
     }
 
     return capabilities;

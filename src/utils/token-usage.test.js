@@ -63,6 +63,27 @@ describe('token usage utilities', () => {
         });
     });
 
+    test('normalizes Codex bridge completion payload usage', () => {
+        expect(normalizeUsageMetadata({
+            event: 'turn_completed',
+            payload: {
+                total_token_usage: {
+                    input_tokens: 9,
+                    output_tokens: 6,
+                    total_tokens: 15,
+                    source: 'codex-bridge',
+                },
+            },
+        })).toEqual({
+            promptTokens: 9,
+            inputTokens: 9,
+            completionTokens: 6,
+            outputTokens: 6,
+            totalTokens: 15,
+            source: 'codex-bridge',
+        });
+    });
+
     test('normalizes Ollama-style gateway eval counts', () => {
         expect(normalizeUsageMetadata({
             prompt_eval_count: 8,

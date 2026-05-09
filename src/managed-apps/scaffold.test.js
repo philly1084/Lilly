@@ -1,5 +1,6 @@
 'use strict';
 
+const yaml = require('js-yaml');
 const {
     buildDefaultScaffoldFiles,
     normalizeGeneratedManagedAppSourceFiles,
@@ -24,6 +25,7 @@ describe('managed app scaffold', () => {
         expect(workflow).toBeTruthy();
         expect(workflow.content).toContain('build-and-publish:');
         expect(workflow.content).toContain('image: alpine:3.20');
+        expect(workflow.content).toContain('tags:\n    - kimibuilt');
         expect(workflow.content).toContain('apk add --no-cache bash curl wget tar git ca-certificates coreutils');
         expect(workflow.content).toContain('test -f Dockerfile');
         expect(workflow.content).toContain('BUILDKIT_ADDR="${BUILDKIT_HOST:-tcp://buildkitd.agent-platform.svc.cluster.local:1234}"');
@@ -43,6 +45,10 @@ describe('managed app scaffold', () => {
         expect(workflow.content).toContain('X-KimiBuilt-Webhook-Secret');
         expect(workflow.content).toContain('KIMIBUILT_BUILD_EVENTS_INSECURE');
         expect(workflow.content).toContain('"buildStatus":"$build_status"');
+        expect(workflow.content).toContain('\n      {"repoOwner":"$GIT_PROVIDER_ORG"');
+        expect(workflow.content).toContain('\n      EOF\n\n        header_secret=');
+        expect(workflow.content).toContain('\n      {"auths":{"$target_registry_host"');
+        expect(workflow.content).toContain('\n      EOF\n\n      test -n "$IMAGE_REPO"');
         expect(workflow.content).toContain('"deployRequested":true');
         expect(workflow.content).toContain('CI_PIPELINE_ID');
         expect(workflow.content).toContain('CI_PIPELINE_URL');
@@ -50,6 +56,7 @@ describe('managed app scaffold', () => {
         expect(workflow.content).not.toContain('--body-file="$payload_file"');
         expect(workflow.content).not.toContain('uses: actions/checkout@v4');
         expect(workflow.content).not.toContain('GITEA_REGISTRY_USERNAME');
+        expect(() => yaml.safeLoad(workflow.content)).not.toThrow();
     });
 
     test('normalizes generated source files down to the supported public bundle', () => {

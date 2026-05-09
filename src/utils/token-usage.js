@@ -29,6 +29,17 @@ function hasUsagePath(source = {}, paths = []) {
     return paths.some((path) => getNestedValue(source, path) !== undefined);
 }
 
+function firstStringValue(source = {}, paths = []) {
+    for (const path of paths) {
+        const value = getNestedValue(source, path);
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+
+    return '';
+}
+
 function normalizeUsageMetadata(usage = {}) {
     if (!usage || typeof usage !== 'object') {
         return null;
@@ -60,6 +71,22 @@ function normalizeUsageMetadata(usage = {}) {
         'total_token_usage.input_tokens',
         'totalTokenUsage.promptTokens',
         'totalTokenUsage.inputTokens',
+        'payload.usage.promptTokens',
+        'payload.usage.prompt_tokens',
+        'payload.usage.inputTokens',
+        'payload.usage.input_tokens',
+        'payload.tokenUsage.promptTokens',
+        'payload.tokenUsage.inputTokens',
+        'payload.token_usage.prompt_tokens',
+        'payload.token_usage.input_tokens',
+        'payload.total_token_usage.prompt_tokens',
+        'payload.total_token_usage.input_tokens',
+        'payload.totalTokenUsage.promptTokens',
+        'payload.totalTokenUsage.inputTokens',
+        'body.usage.prompt_tokens',
+        'response.usage.prompt_tokens',
+        'result.usage.prompt_tokens',
+        'data.usage.prompt_tokens',
     ];
     const completionPaths = [
         'completionTokens',
@@ -87,6 +114,22 @@ function normalizeUsageMetadata(usage = {}) {
         'total_token_usage.output_tokens',
         'totalTokenUsage.completionTokens',
         'totalTokenUsage.outputTokens',
+        'payload.usage.completionTokens',
+        'payload.usage.completion_tokens',
+        'payload.usage.outputTokens',
+        'payload.usage.output_tokens',
+        'payload.tokenUsage.completionTokens',
+        'payload.tokenUsage.outputTokens',
+        'payload.token_usage.completion_tokens',
+        'payload.token_usage.output_tokens',
+        'payload.total_token_usage.completion_tokens',
+        'payload.total_token_usage.output_tokens',
+        'payload.totalTokenUsage.completionTokens',
+        'payload.totalTokenUsage.outputTokens',
+        'body.usage.completion_tokens',
+        'response.usage.completion_tokens',
+        'result.usage.completion_tokens',
+        'data.usage.completion_tokens',
     ];
     const totalPaths = [
         'totalTokens',
@@ -106,6 +149,17 @@ function normalizeUsageMetadata(usage = {}) {
         'token_usage.total_tokens',
         'total_token_usage.total_tokens',
         'totalTokenUsage.totalTokens',
+        'payload.usage.totalTokens',
+        'payload.usage.total_tokens',
+        'payload.usage.tokensUsed',
+        'payload.tokenUsage.totalTokens',
+        'payload.token_usage.total_tokens',
+        'payload.total_token_usage.total_tokens',
+        'payload.totalTokenUsage.totalTokens',
+        'body.usage.total_tokens',
+        'response.usage.total_tokens',
+        'result.usage.total_tokens',
+        'data.usage.total_tokens',
     ];
     const reasoningPaths = [
         'reasoningTokens',
@@ -118,6 +172,11 @@ function normalizeUsageMetadata(usage = {}) {
         'usageMetadata.outputTokenDetails.reasoningTokens',
         'tokenUsage.reasoningTokens',
         'total_token_usage.reasoning_tokens',
+        'payload.usage.reasoning_tokens',
+        'payload.usage.output_tokens_details.reasoning_tokens',
+        'payload.usage.completion_tokens_details.reasoning_tokens',
+        'payload.tokenUsage.reasoningTokens',
+        'payload.total_token_usage.reasoning_tokens',
     ];
     const cachedPaths = [
         'cachedTokens',
@@ -130,6 +189,11 @@ function normalizeUsageMetadata(usage = {}) {
         'usageMetadata.inputTokenDetails.cachedTokens',
         'tokenUsage.cachedTokens',
         'total_token_usage.cached_tokens',
+        'payload.usage.cached_tokens',
+        'payload.usage.input_tokens_details.cached_tokens',
+        'payload.usage.prompt_tokens_details.cached_tokens',
+        'payload.tokenUsage.cachedTokens',
+        'payload.total_token_usage.cached_tokens',
     ];
     const modelCallPaths = [
         'modelCalls',
@@ -140,6 +204,34 @@ function normalizeUsageMetadata(usage = {}) {
         'token_usage.model_calls',
         'total_token_usage.model_calls',
         'totalTokenUsage.modelCalls',
+        'payload.usage.modelCalls',
+        'payload.usage.model_calls',
+        'payload.tokenUsage.modelCalls',
+        'payload.token_usage.model_calls',
+        'payload.total_token_usage.model_calls',
+        'payload.totalTokenUsage.modelCalls',
+    ];
+    const sourcePaths = [
+        'source',
+        'usage_source',
+        'usageSource',
+        'usage.source',
+        'usage.usage_source',
+        'usage.usageSource',
+        'usageMetadata.source',
+        'tokenUsage.source',
+        'token_usage.source',
+        'total_token_usage.source',
+        'payload.usage.source',
+        'payload.usage.usage_source',
+        'payload.usage.usageSource',
+        'payload.tokenUsage.source',
+        'payload.token_usage.source',
+        'payload.total_token_usage.source',
+        'body.usage.source',
+        'response.usage.source',
+        'result.usage.source',
+        'data.usage.source',
     ];
 
     const promptTokens = firstFiniteValue(usage, promptPaths);
@@ -188,8 +280,9 @@ function normalizeUsageMetadata(usage = {}) {
     if (usage.estimated === true) {
         normalized.estimated = true;
     }
-    if (typeof usage.source === 'string' && usage.source.trim()) {
-        normalized.source = usage.source.trim();
+    const source = firstStringValue(usage, sourcePaths);
+    if (source) {
+        normalized.source = source;
     }
 
     return normalized;

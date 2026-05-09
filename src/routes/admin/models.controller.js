@@ -19,10 +19,20 @@ const EXCLUDED_MODEL_TOKENS = [
   'omni-moderation',
   'whisper',
 ];
+const EWMA_LATENCY_ALPHA = 0.35;
+const TOKENS_PER_MILLION = 1000000;
 
 function toFiniteNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 1000000) / 1000000;
+}
+
+function roundMetric(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
 }
 
 class ModelsController {
@@ -208,10 +218,10 @@ class ModelsController {
   }
 
   inferCapabilities(modelId = '') {
-    const capabilities = ['chat'];
+    const capabilities = ['chat', 'responses', 'streaming'];
 
     if (/(4o|vision|omni|gemini|claude-3|claude-4)/.test(modelId)) {
-      capabilities.push('vision');
+      capabilities.push('vision', 'image_input');
     }
     if (/(tool|function|4o|o3|o4|claude|gemini)/.test(modelId)) {
       capabilities.push('tools');
@@ -220,7 +230,7 @@ class ModelsController {
       capabilities.push('reasoning');
     }
     if (/(json|4o|o3|o4|gpt-5)/.test(modelId)) {
-      capabilities.push('json');
+      capabilities.push('json', 'structured_outputs');
     }
 
     return [...new Set(capabilities)];
@@ -269,11 +279,65 @@ class ModelsController {
     };
   }
 
+  readPricingRate(pricing = null, keys = []) {
+    if (!pricing || typeof pricing !== 'object') {
+      return 0;
+    }
+
+    for (const key of keys) {
+      const value = key.split('.').reduce((current, segment) => (
+        current && typeof current === 'object' ? current[segment] : undefined
+      ), pricing);
+      const parsed = toFiniteNumber(value);
+      if (parsed !== null) {
+        return parsed;
+      }
+    }
+
+    return 0;
+  }
+
+  estimateUsageCost(model = null, usage = {}) {
+    const pricing = model?.pricing || null;
+    const inputRate = this.readPricingRate(pricing, [
+      'inputPerMillion',
+      'input_per_million',
+      'input_per_1m',
+      'input.perMillion',
+      'input.per_1m',
+      'promptPerMillion',
+      'prompt.perMillion',
+      'prompt',
+      'input',
+    ]);
+    const outputRate = this.readPricingRate(pricing, [
+      'outputPerMillion',
+      'output_per_million',
+      'output_per_1m',
+      'output.perMillion',
+      'output.per_1m',
+      'completionPerMillion',
+      'completion.perMillion',
+      'completion',
+      'output',
+    ]);
+    const input = (Number(usage.inputTokens || 0) / TOKENS_PER_MILLION) * inputRate;
+    const output = (Number(usage.outputTokens || 0) / TOKENS_PER_MILLION) * outputRate;
+
+    return {
+      input: roundMoney(input),
+      output: roundMoney(output),
+      total: roundMoney(input + output),
+      estimated: Boolean(inputRate || outputRate),
+      source: pricing ? 'model-pricing' : null,
+    };
+  }
+
   buildUsageStats(models = []) {
     const usageByModel = new Map();
     const catalogById = new Map((models || []).map((model) => [model.id, model]));
 
-    for (const log of logsController.logs || []) {
+    for (const log of [...(logsController.logs || [])].reverse()) {
       const modelId = String(log.model || '').trim();
       if (!modelId) continue;
 
@@ -283,12 +347,19 @@ class ModelsController {
         outputTokens: 0,
         totalTokens: 0,
         totalLatency: 0,
+        ewmaLatency: null,
         successCount: 0,
       };
       const tokenUsage = this.deriveLogTokenUsage(log);
+      const latency = Number(log.latency || log.duration || 0);
 
       current.requests += 1;
-      current.totalLatency += Number(log.latency || log.duration || 0);
+      current.totalLatency += latency;
+      if (latency > 0) {
+        current.ewmaLatency = current.ewmaLatency === null
+          ? latency
+          : (EWMA_LATENCY_ALPHA * latency) + ((1 - EWMA_LATENCY_ALPHA) * current.ewmaLatency);
+      }
       current.inputTokens += tokenUsage.inputTokens;
       current.outputTokens += tokenUsage.outputTokens;
       current.totalTokens += tokenUsage.totalTokens;
@@ -311,8 +382,17 @@ class ModelsController {
         outputTokens: 0,
         totalTokens: 0,
         totalLatency: 0,
+        ewmaLatency: null,
         successCount: 0,
       };
+      const cost = this.estimateUsageCost(model, usage);
+      const elapsedSeconds = Math.max(0, Number(usage.totalLatency || 0) / 1000);
+      const outputTokensPerSecond = elapsedSeconds > 0
+        ? roundMetric(Number(usage.outputTokens || 0) / elapsedSeconds)
+        : 0;
+      const totalTokensPerSecond = elapsedSeconds > 0
+        ? roundMetric(Number(usage.totalTokens || 0) / elapsedSeconds)
+        : 0;
 
       return {
         modelId,
@@ -325,11 +405,20 @@ class ModelsController {
           total: usage.totalTokens,
         },
         cost: {
-          input: 0,
-          output: 0,
-          total: 0,
+          input: cost.input,
+          output: cost.output,
+          total: cost.total,
+          estimated: cost.estimated,
+          source: cost.source,
+        },
+        estimatedCost: cost.total,
+        tokensPerSecond: outputTokensPerSecond,
+        throughput: {
+          outputTokensPerSecond,
+          totalTokensPerSecond,
         },
         avgResponseTime: usage.requests > 0 ? Math.round(usage.totalLatency / usage.requests) : 0,
+        ewmaLatency: usage.ewmaLatency === null ? 0 : Math.round(usage.ewmaLatency),
         successRate: usage.requests > 0 ? Math.round((usage.successCount / usage.requests) * 100) : 0,
         isDefault: Boolean(model?.isDefault),
       };
@@ -346,6 +435,7 @@ class ModelsController {
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalTokens: 0,
+      estimatedCost: 0,
       providerTotals: [],
     };
     const providerMap = new Map();
@@ -365,6 +455,7 @@ class ModelsController {
       summary.totalInputTokens += input;
       summary.totalOutputTokens += output;
       summary.totalTokens += total;
+      summary.estimatedCost = roundMoney(summary.estimatedCost + Number(entry.cost?.total || entry.estimatedCost || 0));
 
       const current = providerMap.get(provider) || {
         provider,
@@ -372,6 +463,7 @@ class ModelsController {
         inputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
+        estimatedCost: 0,
         modelCount: 0,
       };
 
@@ -379,6 +471,7 @@ class ModelsController {
       current.inputTokens += input;
       current.outputTokens += output;
       current.totalTokens += total;
+      current.estimatedCost = roundMoney(current.estimatedCost + Number(entry.cost?.total || entry.estimatedCost || 0));
       current.modelCount += 1;
       providerMap.set(provider, current);
     }

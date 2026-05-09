@@ -42,6 +42,8 @@ variables:
 build-and-publish:
   stage: build
   image: alpine:3.20
+  tags:
+    - kimibuilt
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
@@ -69,8 +71,8 @@ build-and-publish:
 
         payload_file="$(mktemp)"
         cat > "$payload_file" <<EOF
-{"repoOwner":"$GIT_PROVIDER_ORG","repoName":"$APP_SLUG","slug":"$APP_SLUG","commitSha":"\${CI_COMMIT_SHA:-}","imageTag":"\${IMAGE_TAG:-}","imageRepo":"$IMAGE_REPO","buildStatus":"$build_status","requestedAction":"deploy","deployRequested":true,"runId":"\${CI_PIPELINE_ID:-}","runUrl":"\${CI_PIPELINE_URL:-}","platforms":"\${TARGET_PLATFORMS:-}"}
-EOF
+      {"repoOwner":"$GIT_PROVIDER_ORG","repoName":"$APP_SLUG","slug":"$APP_SLUG","commitSha":"\${CI_COMMIT_SHA:-}","imageTag":"\${IMAGE_TAG:-}","imageRepo":"$IMAGE_REPO","buildStatus":"$build_status","requestedAction":"deploy","deployRequested":true,"runId":"\${CI_PIPELINE_ID:-}","runUrl":"\${CI_PIPELINE_URL:-}","platforms":"\${TARGET_PLATFORMS:-}"}
+      EOF
 
         header_secret="\${KIMIBUILT_BUILD_EVENTS_SECRET:-}"
         curl_flags=(-fsS -X POST -H "Content-Type: application/json" --data-binary "@$payload_file")
@@ -140,8 +142,8 @@ EOF
       mkdir -p "$HOME/.docker"
       AUTH="$(printf '%s' "$registry_user:$registry_password" | base64 | tr -d '\\n')"
       cat > "$HOME/.docker/config.json" <<EOF
-{"auths":{"$target_registry_host":{"username":"$registry_user","password":"$registry_password","auth":"$AUTH"}}}
-EOF
+      {"auths":{"$target_registry_host":{"username":"$registry_user","password":"$registry_password","auth":"$AUTH"}}}
+      EOF
 
       test -n "$IMAGE_REPO"
       test -n "$TARGET_PLATFORMS"

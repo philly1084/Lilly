@@ -236,8 +236,155 @@ function buildCompatUsage(rawUsage = null) {
     return compatUsage;
 }
 
+function buildResponsesCompatUsage(rawUsage = null) {
+    const normalizedUsage = normalizeUsageMetadata(rawUsage);
+    if (!normalizedUsage) {
+        return null;
+    }
+
+    const inputTokens = Object.prototype.hasOwnProperty.call(normalizedUsage, 'promptTokens')
+        ? normalizedUsage.promptTokens
+        : (normalizedUsage.inputTokens || 0);
+    const outputTokens = Object.prototype.hasOwnProperty.call(normalizedUsage, 'completionTokens')
+        ? normalizedUsage.completionTokens
+        : (normalizedUsage.outputTokens || 0);
+    const totalTokens = Object.prototype.hasOwnProperty.call(normalizedUsage, 'totalTokens')
+        ? normalizedUsage.totalTokens
+        : inputTokens + outputTokens;
+    const compatUsage = {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        total_tokens: totalTokens,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(normalizedUsage, 'cachedTokens')) {
+        compatUsage.input_tokens_details = {
+            cached_tokens: normalizedUsage.cachedTokens,
+        };
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedUsage, 'reasoningTokens')) {
+        compatUsage.output_tokens_details = {
+            reasoning_tokens: normalizedUsage.reasoningTokens,
+        };
+    }
+
+    return compatUsage;
+}
+
 function buildCompatUsageFromResponse(response = {}) {
     return buildCompatUsage(extractResponseUsageMetadata(response));
+}
+
+function buildResponsesUsageFromResponse(response = {}) {
+    return buildResponsesCompatUsage(extractResponseUsageMetadata(response));
+}
+
+function firstNonEmptyString(...values) {
+    for (const value of values) {
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+
+    return '';
+}
+
+function normalizeStringList(value = null) {
+    if (Array.isArray(value)) {
+        return value
+            .map((entry) => String(entry || '').trim())
+            .filter(Boolean);
+    }
+    if (typeof value === 'string' && value.trim()) {
+        return value
+            .split(/[>,|]/)
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    }
+    return [];
+}
+
+function buildGatewayDecisionPayload({
+    requestedModel = null,
+    resolvedModel = null,
+    response = null,
+    metadata = null,
+    usage = null,
+} = {}) {
+    const sourceMetadata = metadata && typeof metadata === 'object'
+        ? metadata
+        : (response?.metadata && typeof response.metadata === 'object' ? response.metadata : {});
+    const normalizedUsage = normalizeUsageMetadata(
+        usage
+        || sourceMetadata.usage
+        || sourceMetadata.tokenUsage
+        || response?.usage
+        || null,
+    );
+    const requested = firstNonEmptyString(
+        sourceMetadata.requested_model,
+        sourceMetadata.requestedModel,
+        requestedModel,
+    );
+    const resolved = firstNonEmptyString(
+        sourceMetadata.resolved_model,
+        sourceMetadata.resolvedModel,
+        resolvedModel,
+        response?.model,
+        requested,
+    );
+    const fallbackChain = normalizeStringList(
+        sourceMetadata.fallback_chain
+        || sourceMetadata.fallbackChain
+        || sourceMetadata.fallback_models
+        || sourceMetadata.fallbackModels,
+    );
+
+    return {
+        requested_model: requested || null,
+        resolved_model: resolved || null,
+        provider_id: firstNonEmptyString(
+            sourceMetadata.provider_id,
+            sourceMetadata.providerId,
+            sourceMetadata.provider,
+            sourceMetadata.provider_source,
+            sourceMetadata.providerSource,
+            response?.provider_id,
+            response?.provider,
+        ) || null,
+        fallback_chain: fallbackChain,
+        routing_reason: firstNonEmptyString(
+            sourceMetadata.routing_reason,
+            sourceMetadata.routingReason,
+            sourceMetadata.route_reason,
+            sourceMetadata.routeReason,
+            sourceMetadata.routing?.reason,
+        ) || null,
+        usage_source: firstNonEmptyString(
+            sourceMetadata.usage_source,
+            sourceMetadata.usageSource,
+            normalizedUsage?.source,
+        ) || (normalizedUsage ? 'provider' : null),
+    };
+}
+
+function buildResponseRecordMetadata(response = {}, { requestedModel = null, resolvedModel = null } = {}) {
+    const sourceMetadata = response?.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+    const usage = extractResponseUsageMetadata(response);
+    const gateway = buildGatewayDecisionPayload({
+        requestedModel,
+        resolvedModel,
+        response,
+        metadata: sourceMetadata,
+        usage,
+    });
+    const updates = {
+        ...(sourceMetadata.promptState ? { promptState: sourceMetadata.promptState } : {}),
+        ...(usage ? { usage, tokenUsage: usage } : {}),
+        gateway,
+    };
+
+    return Object.keys(updates).length > 0 ? updates : null;
 }
 
 function isResponseToolOutputItem(item = {}) {
@@ -1336,7 +1483,18 @@ router.post('/chat/completions', async (req, res, next) => {
                 generation.artifacts,
             );
 
-            await sessionStore.recordResponse(sessionId, generation.responseId);
+            await sessionStore.recordResponse(
+                sessionId,
+                generation.responseId,
+                buildResponseRecordMetadata({
+                    id: generation.responseId,
+                    model: generation.model || model || null,
+                    metadata: generation.metadata || {},
+                }, {
+                    requestedModel: model,
+                    resolvedModel: generation.model || model || null,
+                }),
+            );
             await sessionStore.update(sessionId, {
                 metadata: {
                     lastOutputFormat: effectiveOutputFormat,
@@ -1388,20 +1546,35 @@ router.post('/chat/completions', async (req, res, next) => {
                 },
             });
 
+            const compatUsage = buildCompatUsage(
+                generation?.metadata?.usage
+                || generation?.metadata?.tokenUsage
+                || null,
+            );
+            const resolvedModel = generation.model || model || 'gpt-4o';
+            const gateway = buildGatewayDecisionPayload({
+                requestedModel: model,
+                resolvedModel,
+                metadata: generation.metadata || {},
+                usage: generation?.metadata?.usage || generation?.metadata?.tokenUsage || null,
+            });
+
             if (stream) {
                 activeSse?.write(`data: ${JSON.stringify({
                     id: `chatcmpl-${sessionId}-0`,
                     object: 'chat.completion.chunk',
                     created: Math.floor(Date.now() / 1000),
-                    model: model || 'gpt-4o',
+                    model: resolvedModel,
                     choices: [{ index: 0, delta: { content: generation.assistantMessage }, finish_reason: null }],
                 })}\n\n`);
                 activeSse?.write(`data: ${JSON.stringify({
                     id: `chatcmpl-${sessionId}`,
                     object: 'chat.completion.chunk',
                     created: Math.floor(Date.now() / 1000),
-                    model: model || 'gpt-4o',
+                    model: resolvedModel,
                     choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+                    ...(compatUsage ? { usage: compatUsage } : {}),
+                    gateway,
                     session_id: sessionId,
                     artifacts: responseArtifacts,
                     tool_events: preparedImages.toolEvents,
@@ -1414,16 +1587,11 @@ router.post('/chat/completions', async (req, res, next) => {
                 return;
             }
 
-            const compatUsage = buildCompatUsage(
-                generation?.metadata?.usage
-                || generation?.metadata?.tokenUsage
-                || null,
-            );
             res.json({
                 id: `chatcmpl-${generation.responseId}`,
                 object: 'chat.completion',
                 created: Math.floor(Date.now() / 1000),
-                model: model || 'gpt-4o',
+                model: resolvedModel,
                 choices: [{
                     index: 0,
                     message: {
@@ -1434,6 +1602,7 @@ router.post('/chat/completions', async (req, res, next) => {
                     finish_reason: 'stop',
                 }],
                 ...(compatUsage ? { usage: compatUsage } : {}),
+                gateway,
                 session_id: sessionId,
                 artifacts: responseArtifacts,
                 tool_events: preparedImages.toolEvents,
@@ -1619,9 +1788,7 @@ router.post('/chat/completions', async (req, res, next) => {
                         await sessionStore.recordResponse(
                             sessionId,
                             resolvedCompletion.response.id,
-                            resolvedCompletion.response?.metadata?.promptState
-                                ? { promptState: resolvedCompletion.response.metadata.promptState }
-                                : null,
+                            buildResponseRecordMetadata(resolvedCompletion.response, { requestedModel: model }),
                         );
                         memoryService.rememberResponse(sessionId, fullText, buildOwnerMemoryMetadata(ownerId, memoryScope, {
                             sourceSurface: clientSurface || taskType,
@@ -1683,12 +1850,20 @@ router.post('/chat/completions', async (req, res, next) => {
                         duration: Date.now() - startedAt,
                         metadata: resolvedCompletion.response?.metadata || {},
                     });
+                    const compatUsage = buildCompatUsageFromResponse(resolvedCompletion.response);
+                    const gateway = buildGatewayDecisionPayload({
+                        requestedModel: model,
+                        response: resolvedCompletion.response,
+                        usage: extractResponseUsageMetadata(resolvedCompletion.response),
+                    });
                     activeSse.write(`data: ${JSON.stringify({
                         id: `chatcmpl-${sessionId}`,
                         object: 'chat.completion.chunk',
                         created: Math.floor(Date.now() / 1000),
-                        model: model || 'gpt-4o',
+                        model: resolvedCompletion.response.model || model || 'gpt-4o',
                         choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+                        ...(compatUsage ? { usage: compatUsage } : {}),
+                        gateway,
                         session_id: sessionId,
                         artifacts,
                         tool_events: toolEvents,
@@ -1756,7 +1931,7 @@ router.post('/chat/completions', async (req, res, next) => {
             await sessionStore.recordResponse(
                 sessionId,
                 response.id,
-                response?.metadata?.promptState ? { promptState: response.metadata.promptState } : null,
+                buildResponseRecordMetadata(response, { requestedModel: model }),
             );
         }
         let outputText = extractResponseText(response);
@@ -1885,12 +2060,17 @@ router.post('/chat/completions', async (req, res, next) => {
         });
         const compatReasoningSummary = extractCompatReasoningSummary(response, artifacts);
         const compatUsage = buildCompatUsageFromResponse(response);
+        const gateway = buildGatewayDecisionPayload({
+            requestedModel: model,
+            response,
+            usage: extractResponseUsageMetadata(response),
+        });
 
         res.json({
             id: `chatcmpl-${response.id}`,
             object: 'chat.completion',
             created: Math.floor(Date.now() / 1000),
-            model: model || 'gpt-4o',
+            model: response.model || model || 'gpt-4o',
             choices: [{
                 index: 0,
                 message: {
@@ -1902,6 +2082,7 @@ router.post('/chat/completions', async (req, res, next) => {
                 finish_reason: 'stop',
             }],
             ...(compatUsage ? { usage: compatUsage } : {}),
+            gateway,
             session_id: sessionId,
             artifacts,
             tool_events: response?.metadata?.toolEvents || [],
@@ -2194,7 +2375,18 @@ router.post('/responses', async (req, res, next) => {
                 generation.artifacts,
             );
 
-            await sessionStore.recordResponse(sessionId, generation.responseId);
+            await sessionStore.recordResponse(
+                sessionId,
+                generation.responseId,
+                buildResponseRecordMetadata({
+                    id: generation.responseId,
+                    model: generation.model || model || null,
+                    metadata: generation.metadata || {},
+                }, {
+                    requestedModel: model,
+                    resolvedModel: generation.model || model || null,
+                }),
+            );
             await sessionStore.update(sessionId, {
                 metadata: {
                     lastOutputFormat: effectiveOutputFormat,
@@ -2226,16 +2418,30 @@ router.post('/responses', async (req, res, next) => {
                 artifacts: responseArtifacts,
             }, ownerId);
 
+            const responsesUsage = buildResponsesCompatUsage(
+                generation?.metadata?.usage
+                || generation?.metadata?.tokenUsage
+                || null,
+            );
+            const resolvedModel = generation.model || model || 'gpt-4o';
+            const gateway = buildGatewayDecisionPayload({
+                requestedModel: model,
+                resolvedModel,
+                metadata: generation.metadata || {},
+                usage: generation?.metadata?.usage || generation?.metadata?.tokenUsage || null,
+            });
             const syntheticResponse = {
                 id: generation.responseId,
                 object: 'response',
                 created_at: Math.floor(Date.now() / 1000),
-                model: model || 'gpt-4o',
+                model: resolvedModel,
                 output: [{
                     type: 'message',
                     role: 'assistant',
                     content: [{ type: 'output_text', text: generation.assistantMessage }],
                 }],
+                ...(responsesUsage ? { usage: responsesUsage } : {}),
+                gateway,
             };
 
             completeRuntimeTask(runtimeTask?.id, {
@@ -2256,6 +2462,8 @@ router.post('/responses', async (req, res, next) => {
                 res.write(`data: ${JSON.stringify({
                     type: 'response.completed',
                     response: syntheticResponse,
+                    ...(responsesUsage ? { usage: responsesUsage } : {}),
+                    gateway,
                     session_id: sessionId,
                     artifacts: responseArtifacts,
                     tool_events: preparedImages.toolEvents,
@@ -2267,6 +2475,8 @@ router.post('/responses', async (req, res, next) => {
 
             res.json({
                 ...syntheticResponse,
+                ...(responsesUsage ? { usage: responsesUsage } : {}),
+                gateway,
                 session_id: sessionId,
                 artifacts: responseArtifacts,
                 tool_events: preparedImages.toolEvents,
@@ -2392,9 +2602,7 @@ router.post('/responses', async (req, res, next) => {
                         await sessionStore.recordResponse(
                             sessionId,
                             resolvedCompletion.response.id,
-                            resolvedCompletion.response?.metadata?.promptState
-                                ? { promptState: resolvedCompletion.response.metadata.promptState }
-                                : null,
+                            buildResponseRecordMetadata(resolvedCompletion.response, { requestedModel: model }),
                         );
                         memoryService.rememberResponse(sessionId, fullText, buildOwnerMemoryMetadata(ownerId, memoryScope, {
                             sourceSurface: clientSurface || taskType,
@@ -2445,9 +2653,22 @@ router.post('/responses', async (req, res, next) => {
                         duration: Date.now() - startedAt,
                         metadata: resolvedCompletion.response?.metadata || {},
                     });
+                    const responsesUsage = buildResponsesUsageFromResponse(resolvedCompletion.response);
+                    const gateway = buildGatewayDecisionPayload({
+                        requestedModel: model,
+                        response: resolvedCompletion.response,
+                        usage: extractResponseUsageMetadata(resolvedCompletion.response),
+                    });
+                    const completedResponse = {
+                        ...resolvedCompletion.response,
+                        ...(responsesUsage ? { usage: responsesUsage } : {}),
+                        gateway,
+                    };
                     res.write(`data: ${JSON.stringify({
                         type: 'response.completed',
-                        response: resolvedCompletion.response,
+                        response: completedResponse,
+                        ...(responsesUsage ? { usage: responsesUsage } : {}),
+                        gateway,
                         session_id: sessionId,
                         artifacts,
                         tool_events: resolvedCompletion.response?.metadata?.toolEvents || [],
@@ -2511,7 +2732,7 @@ router.post('/responses', async (req, res, next) => {
             await sessionStore.recordResponse(
                 sessionId,
                 response.id,
-                response?.metadata?.promptState ? { promptState: response.metadata.promptState } : null,
+                buildResponseRecordMetadata(response, { requestedModel: model }),
             );
         }
         let outputText = extractResponseText(response);
@@ -2622,9 +2843,17 @@ router.post('/responses', async (req, res, next) => {
             duration: Date.now() - startedAt,
             metadata: response?.metadata || {},
         });
+        const responsesUsage = buildResponsesUsageFromResponse(response);
+        const gateway = buildGatewayDecisionPayload({
+            requestedModel: model,
+            response,
+            usage: extractResponseUsageMetadata(response),
+        });
 
         res.json({
             ...response,
+            ...(responsesUsage ? { usage: responsesUsage } : {}),
+            gateway,
             session_id: sessionId,
             artifacts,
             assistant_metadata: buildFrontendAssistantMetadata({
@@ -2753,8 +2982,16 @@ router.post('/images/generations', async (req, res, next) => {
             model: response?.model || model || null,
             images: response?.data || [],
         });
+        const imageUsage = normalizeUsageMetadata(response?.usage || null);
         const normalizedResponse = {
             ...response,
+            model: response?.model || model || null,
+            requested_model: response?.requested_model || model || null,
+            provider_call_count: Math.max(1, Number(response?.provider_call_count || 1)),
+            parsed_count: Number.isFinite(Number(response?.parsed_count))
+                ? Number(response.parsed_count)
+                : (Array.isArray(response?.data) ? response.data.length : 0),
+            ...(imageUsage ? { usage: imageUsage } : {}),
             data: persistedImages.images,
         };
         const diagnostics = buildImageGenerationDiagnostics({
@@ -2780,6 +3017,24 @@ router.post('/images/generations', async (req, res, next) => {
         const diagnosticSummary = formatImageDiagnosticsSummary(diagnostics);
         const responseId = `img_${Date.now()}`;
         const runtimeMetadata = {
+            ...(imageUsage ? { usage: imageUsage, tokenUsage: imageUsage } : {}),
+            gateway: buildGatewayDecisionPayload({
+                requestedModel: model,
+                resolvedModel: normalizedResponse.model || model || null,
+                metadata: {
+                    provider_id: response?.diagnostics?.imageGeneration?.provider?.source
+                        || response?.diagnostics?.imageGeneration?.providerSource
+                        || 'image-provider',
+                    usage_source: imageUsage?.source || (imageUsage ? 'provider' : null),
+                },
+                usage: imageUsage,
+            }),
+            image: {
+                requested_model: normalizedResponse.requested_model || null,
+                model: normalizedResponse.model || null,
+                provider_call_count: normalizedResponse.provider_call_count,
+                parsed_count: normalizedResponse.parsed_count,
+            },
             diagnostics: {
                 imageGeneration: diagnostics,
             },
@@ -2804,7 +3059,11 @@ router.post('/images/generations', async (req, res, next) => {
             }],
         };
 
-        await sessionStore.recordResponse(sessionId, responseId);
+        await sessionStore.recordResponse(sessionId, responseId, {
+            ...(imageUsage ? { usage: imageUsage, tokenUsage: imageUsage } : {}),
+            gateway: runtimeMetadata.gateway,
+            image: runtimeMetadata.image,
+        });
         await updateSessionProjectMemory(sessionId, {
             userText: promptText,
             assistantText: usableImageCount > 0

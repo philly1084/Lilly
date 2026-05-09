@@ -183,6 +183,12 @@ describe('/v1/chat/completions stream forwarding', () => {
                             content: [{ type: 'output_text', text: 'Answer' }],
                         }],
                         metadata: {
+                            usage: {
+                                promptTokens: 21,
+                                completionTokens: 13,
+                                totalTokens: 34,
+                                source: 'provider-stream',
+                            },
                             toolEvents: [],
                         },
                     },
@@ -219,6 +225,9 @@ describe('/v1/chat/completions stream forwarding', () => {
         expect(response.text).toContain('"type":"response.output_item.added"');
         expect(response.text).toContain('"name":"web_search"');
         expect(response.text).toContain('"delta":{"content":"Answer"}');
+        expect(response.text).toContain('"usage":{"prompt_tokens":21,"completion_tokens":13,"total_tokens":34}');
+        expect(response.text).toContain('"gateway":{"requested_model":null,"resolved_model":"gpt-4o"');
+        expect(response.text).toContain('"usage_source":"provider-stream"');
         expect(response.text).toContain('data: [DONE]');
     });
 
