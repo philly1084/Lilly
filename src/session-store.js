@@ -1594,28 +1594,33 @@ class SessionStore {
         }
 
         try {
-            const result = ownerId
-                ? await postgres.query(
-                    `
-                        SELECT sessions.*, session_runtime_state.state AS control_state
-                        FROM sessions
-                        LEFT JOIN session_runtime_state
-                            ON session_runtime_state.session_id = sessions.id
-                        WHERE COALESCE(sessions.metadata->>'ownerId', '') = ''
-                           OR sessions.metadata->>'ownerId' = $1
-                        ORDER BY sessions.updated_at DESC
-                    `,
-                    [ownerId],
-                )
-                : await postgres.query(
-                    `
-                        SELECT sessions.*, session_runtime_state.state AS control_state
-                        FROM sessions
-                        LEFT JOIN session_runtime_state
-                            ON session_runtime_state.session_id = sessions.id
-                        ORDER BY sessions.updated_at DESC
-                    `,
-                );
+            const whereParts = [];
+            const params = [];
+            if (ownerId) {
+                params.push(ownerId);
+                whereParts.push(`(
+                    COALESCE(sessions.metadata->>'ownerId', '') = ''
+                    OR sessions.metadata->>'ownerId' = $${params.length}
+                )`);
+            }
+            if (scopeKey) {
+                params.push(scopeKey);
+                whereParts.push(`sessions.scope_key = $${params.length}`);
+            }
+            const whereClause = whereParts.length > 0
+                ? `WHERE ${whereParts.join(' AND ')}`
+                : '';
+            const result = await postgres.query(
+                `
+                    SELECT sessions.*, session_runtime_state.state AS control_state
+                    FROM sessions
+                    LEFT JOIN session_runtime_state
+                        ON session_runtime_state.session_id = sessions.id
+                    ${whereClause}
+                    ORDER BY sessions.updated_at DESC
+                `,
+                params,
+            );
 
             const sessions = result.rows.map((row) => this.toSession(row));
             return scopeKey

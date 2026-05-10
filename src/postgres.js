@@ -305,6 +305,7 @@ class PostgresManager {
         await this.query('CREATE INDEX IF NOT EXISTS idx_artifacts_mime_type ON artifacts(mime_type)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at DESC)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_sessions_scope_key_updated_at ON sessions(scope_key, updated_at DESC)');
+        await this.query('CREATE INDEX IF NOT EXISTS idx_sessions_scope_owner_updated_at ON sessions(scope_key, (metadata->>\'ownerId\'), updated_at DESC)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_session_messages_session_id_created_at ON session_messages(session_id, created_at DESC)');
         await this.query('CREATE INDEX IF NOT EXISTS idx_session_runtime_state_updated_at ON session_runtime_state(updated_at DESC)');
 

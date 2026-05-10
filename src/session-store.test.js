@@ -1,4 +1,5 @@
 const { SessionStore } = require('./session-store');
+const { postgres } = require('./postgres');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
@@ -256,6 +257,41 @@ describe('SessionStore recent message continuity', () => {
         });
 
         expect(sessions.map((session) => session.id)).toEqual(['web-chat-session']);
+    });
+
+    test('list pushes owner and scope filters into Postgres', async () => {
+        const store = new SessionStore();
+        store.initialized = true;
+        store.usePostgres = true;
+        const querySpy = jest.spyOn(postgres, 'query').mockResolvedValue({
+            rows: [
+                {
+                    id: 'web-chat-session',
+                    previous_response_id: null,
+                    created_at: new Date('2026-05-10T10:00:00.000Z'),
+                    updated_at: new Date('2026-05-10T10:01:00.000Z'),
+                    message_count: 0,
+                    metadata: { ownerId: 'phill', clientSurface: 'web-chat' },
+                    scope_key: 'web-chat',
+                    control_state: {},
+                },
+            ],
+        });
+
+        try {
+            const sessions = await store.list({
+                ownerId: 'phill',
+                scopeKey: 'web-chat',
+            });
+
+            expect(sessions.map((session) => session.id)).toEqual(['web-chat-session']);
+            expect(querySpy).toHaveBeenCalledWith(
+                expect.stringContaining('sessions.scope_key = $2'),
+                ['phill', 'web-chat'],
+            );
+        } finally {
+            querySpy.mockRestore();
+        }
     });
 
     test('list keeps web-chat sessions visible when metadata scope expands beyond the surface', async () => {

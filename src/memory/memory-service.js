@@ -684,10 +684,33 @@ class MemoryService {
         }
         const searchScopes = Array.isArray(options.searchScopes) ? options.searchScopes : [];
 
-        const rows = await this.store.scroll(this.store.collection, {
-            limit: options.scanLimit || DEFAULT_MEMORY_SCAN_LIMIT,
-            with_payload: true,
-            with_vector: false,
+        const scanLimit = options.scanLimit || DEFAULT_MEMORY_SCAN_LIMIT;
+        const scopedRows = searchScopes.length > 0
+            ? await Promise.all(searchScopes.map((scope) => this.store.scroll(this.store.collection, {
+                limit: scanLimit,
+                filter: typeof this.store.buildPayloadFilter === 'function'
+                    ? this.store.buildPayloadFilter(scope)
+                    : undefined,
+                with_payload: true,
+                with_vector: false,
+            })))
+            : [await this.store.scroll(this.store.collection, {
+                limit: scanLimit,
+                filter: typeof this.store.buildPayloadFilter === 'function'
+                    ? this.store.buildPayloadFilter(options)
+                    : undefined,
+                with_payload: true,
+                with_vector: false,
+            })];
+
+        const seenRows = new Set();
+        const rows = scopedRows.flat().filter((row) => {
+            const id = String(row?.id || '');
+            if (!id || seenRows.has(id)) {
+                return false;
+            }
+            seenRows.add(id);
+            return true;
         });
 
         return rows

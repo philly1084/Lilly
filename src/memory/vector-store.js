@@ -21,6 +21,40 @@ class VectorStore {
         this.knownCollections = new Set();
     }
 
+    buildPayloadFilter({
+        sessionId = null,
+        ownerId = null,
+        memoryScope = null,
+        projectKey = null,
+        memoryNamespace = null,
+        sourceSurface = null,
+        memoryClass = null,
+    } = {}) {
+        const must = [];
+        if (sessionId) {
+            must.push({ key: 'sessionId', match: { value: sessionId } });
+        } else if (ownerId) {
+            must.push({ key: 'ownerId', match: { value: ownerId } });
+        }
+        if (memoryScope) {
+            must.push({ key: 'memoryScope', match: { value: memoryScope } });
+        }
+        if (projectKey) {
+            must.push({ key: 'projectKey', match: { value: projectKey } });
+        }
+        if (memoryNamespace) {
+            must.push({ key: 'memoryNamespace', match: { value: memoryNamespace } });
+        }
+        if (sourceSurface) {
+            must.push({ key: 'sourceSurface', match: { value: sourceSurface } });
+        }
+        if (memoryClass) {
+            must.push({ key: 'memoryClass', match: { value: memoryClass } });
+        }
+
+        return must.length > 0 ? { must } : undefined;
+    }
+
     async initialize() {
         if (this.initialized) return;
         await this.ensureCollection(this.collection);
@@ -104,29 +138,15 @@ class VectorStore {
         await this.ensureCollection(this.collection);
         const vector = await embedder.embed(query);
 
-        const must = [];
-        if (sessionId) {
-            must.push({ key: 'sessionId', match: { value: sessionId } });
-        } else if (ownerId) {
-            must.push({ key: 'ownerId', match: { value: ownerId } });
-        }
-        if (memoryScope) {
-            must.push({ key: 'memoryScope', match: { value: memoryScope } });
-        }
-        if (projectKey) {
-            must.push({ key: 'projectKey', match: { value: projectKey } });
-        }
-        if (memoryNamespace) {
-            must.push({ key: 'memoryNamespace', match: { value: memoryNamespace } });
-        }
-        if (sourceSurface) {
-            must.push({ key: 'sourceSurface', match: { value: sourceSurface } });
-        }
-        if (memoryClass) {
-            must.push({ key: 'memoryClass', match: { value: memoryClass } });
-        }
-
-        const filter = must.length > 0 ? { must } : undefined;
+        const filter = this.buildPayloadFilter({
+            sessionId,
+            ownerId,
+            memoryScope,
+            projectKey,
+            memoryNamespace,
+            sourceSurface,
+            memoryClass,
+        });
 
         const results = await this.client.search(this.collection, {
             vector,
@@ -170,6 +190,8 @@ class VectorStore {
         await this.ensureCollection(collectionName);
         const response = await this.client.scroll(collectionName, {
             limit: options.limit || 100,
+            ...(options.filter ? { filter: options.filter } : {}),
+            ...(options.offset ? { offset: options.offset } : {}),
             with_payload: options.with_payload ?? true,
             with_vector: options.with_vector ?? false,
         });

@@ -164,6 +164,14 @@ describe('MemoryService recall profiles', () => {
         expect(recall.contextMessages).toHaveLength(1);
         expect(recall.contextMessages[0]).toContain('chat-landing.html');
         expect(recall.contextMessages[0]).not.toContain('canvas-landing.html');
+        expect(service.store.scroll).toHaveBeenCalledWith(service.store.collection, expect.objectContaining({
+            filter: {
+                must: expect.arrayContaining([
+                    { key: 'sessionId', match: { value: 'session-1' } },
+                    { key: 'memoryNamespace', match: { value: SESSION_LOCAL_MEMORY_NAMESPACE } },
+                ]),
+            },
+        }));
     });
 
     test('does not recall another project for the same owner', async () => {
