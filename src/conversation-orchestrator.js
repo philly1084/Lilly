@@ -117,6 +117,7 @@ const { validatePlan } = require('./orchestration/plan-validator');
 const {
     ROLE_IDS,
     formatAgentRolePipelineForPrompt,
+    formatFrontendQualityBarForPrompt,
     hasRole,
     hasWebsiteBuildIntent,
     inferAgentRolePipeline,
@@ -8041,7 +8042,7 @@ function buildPlannerPolicyPacks({
             ? [
                 'Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`; do not route those phrases to a local shell or code sandbox.',
                 'For most remote software creation, update, and deployment requests where an app, website, service, dashboard, or frontend must be changed and put live, prefer `remote-cli-agent` with `params.adminMode:true` so the remote coding agent owns authoring, build, deploy, and verification through the configured admin-capable CLI runner lane.',
-                'For remote website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, or UI mockup work, include the Impressive Frontend Websites standard in the remote agent objective: infer a compact brief, build the usable first screen, include relevant assets and real interactions/states, verify desktop/mobile and opened UI surfaces, then refine before deploy/final.',
+                `For remote website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, or UI mockup work, include this frontend quality bar in the remote agent objective:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false })}`,
                 'Use `remote-command` for quick non-interactive host inspection, kubectl/log checks, one-off admin repairs, and post-deploy verification. Do not choose legacy raw SSH tooling when `remote-command` is available.',
                 'If `remote-cli-agent` asks for user input or emits `USER_INPUT_REQUIRED`, forward that concise decision to the user; after the user answers, continue the same remote CLI session with their choice.',
                 'If `remote-cli-agent` hits the same blocked command or root error twice without a materially changed strategy, stop that retry loop and report the blocker plus the next distinct recovery option.',
@@ -8057,7 +8058,7 @@ function buildPlannerPolicyPacks({
         frontend: frontendRelevant
             ? [
                 'Use `document-workflow generate-suite` with `buildMode:"sandbox"` or `useSandbox:true` for previewable website/dashboard/front-end/game/multi-step app artifacts so the builder produces a sandbox project instead of only a template. Treat this as a Symphony build-review-iterate loop, not a one-shot template export.',
-                'For sandbox website/dashboard/front-end/game artifacts, require the builder to follow the Impressive Frontend Websites and Sandbox Vite Games standards: request-matched visual direction, relevant imagery/assets, real controls and states, game loop or workflow state machine when needed, pause/restart/reset, stable responsive layout, readable opened dropdown/menu/popover/dialog states, and a refinement pass after initial screenshot for non-trivial pages.',
+                `For sandbox website/dashboard/front-end/game artifacts, require the builder to follow this frontend quality bar:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`,
                 'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus previewable files. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
                 'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
             ]
@@ -11735,7 +11736,7 @@ class ConversationOrchestrator extends EventEmitter {
                     formatAgentRolePipelineForPrompt(toolPolicy.rolePipeline),
                     'Follow role order through handoff artifacts: research evidence first when required, design brief before build, sandbox/project build for websites, then QA/integration.',
                     'Use `design-resource-search` for the design role before generating design-sensitive websites, dashboards, documents, or page artifacts unless it has already succeeded in this run.',
-                    'For website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, UI mockup, browser game, video game, and interactive sandbox builds, apply the Impressive Frontend Websites quality bar from the active role contract: specific first viewport, real controls/states/interactions, relevant assets, responsive layout, opened-state contrast, browser screenshots, nonblank canvas/WebGL when relevant, and at least one refinement pass for non-trivial work.',
+                    `For website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, UI mockup, browser game, video game, and interactive sandbox builds, apply the frontend quality bar from the active role contract:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`,
                     'For website, dashboard, landing-page, frontend, game, and multi-step Vite builds, prefer the Symphony-style sequence: design/resource context, `document-workflow generate-suite` with `formats:["html"]`, `buildMode:"sandbox"`, and `useSandbox:true`, then browser QA. Direct `code-sandbox` calls must use `mode:"project"` rather than execute mode.',
                     'For slides, slide decks, presentations, and PowerPoint requests, default the final deliverable to PPTX unless the user explicitly asks for interactive or HTML output. On web-chat, include an HTML sandbox companion preview only as a design/review stage, not as a replacement for the PPTX.',
                     'For explicit PDF/PPTX/HTML/XLSX packages or multi-format document requests, use `document-workflow generate-suite` with the requested `formats`. On web-chat, include an HTML companion preview when the main deliverable is PDF, PPTX, or XLSX.',
@@ -12649,7 +12650,7 @@ class ConversationOrchestrator extends EventEmitter {
             }
             if (toolPolicy.rolePipeline.requiresSandbox && allowedToolIds.includes('code-sandbox')) {
                 parts.push('For website/dashboard/front-end/game/Vite outputs, produce a previewable sandbox project. Prefer `document-workflow generate-suite` with `buildMode:"sandbox"`/`useSandbox:true`, or use `code-sandbox` only in `mode:"project"` with files.');
-                parts.push('Apply the Impressive Frontend Websites and Sandbox Vite Games standards for sandbox frontend builds: infer the brief, make the first viewport specific, include relevant assets and real controls/states/interactions, use a game loop or workflow state machine when needed, verify nonblank canvas/WebGL, avoid generic placeholders and one-note palettes, inspect opened UI states, and refine after the first render when the work is non-trivial.');
+                parts.push(`Apply the frontend quality bar from the active role contract for sandbox frontend builds:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`);
             }
             if (toolPolicy.rolePipeline.requiresSandbox && allowedToolIds.includes('web-scrape')) {
                 parts.push('For website/dashboard/front-end QA, use Playwright-backed `web-scrape` with `browser:true`, `captureScreenshot:true`, and desktop plus mobile `viewport` values once a preview or public URL exists. Omit `selectors` for screenshot-only QA.');
@@ -12718,7 +12719,7 @@ class ConversationOrchestrator extends EventEmitter {
             parts.push('Use `remote-command` to run commands through the online remote runner and prefer commands that match the reported remote CLI inventory.');
             if (allowedToolIds.includes('remote-cli-agent')) {
                 parts.push('For remote app, website, service, dashboard, or frontend work that needs changes deployed, prefer `remote-cli-agent` with `adminMode:true` so the remote coding agent can use the configured admin-capable CLI runner lane for the scoped deployment.');
-                parts.push('For remote website/dashboard/front-end builds, pass the Impressive Frontend Websites standard into the remote agent objective and hold deploy readiness on desktop/mobile visual QA plus a refinement pass for non-trivial UI.');
+                parts.push(`For remote website/dashboard/front-end builds, pass this frontend quality bar into the remote agent objective and hold deploy readiness on visual QA:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false })}`);
                 parts.push('If a remote CLI agent run requests a user choice, forward the concise question and continue the same session with the answer. If it repeats the same blocked command or root error twice without a changed strategy, stop that loop and surface the blocker.');
             }
             if (/Browser visual QA:/i.test(toolPolicy.remoteCliInventorySummary)) {

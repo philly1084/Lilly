@@ -1,5 +1,6 @@
 const {
   IMPRESSIVE_FRONTEND_QUALITY_BAR,
+  formatFrontendQualityBarForPrompt,
   hasWebsiteBuildIntent,
   inferAgentRolePipeline,
 } = require('./agent-roles');
@@ -46,5 +47,21 @@ describe('agent role frontend sandbox detection', () => {
         }),
       }),
     ]));
+  });
+
+  test('formats the canonical frontend quality bar for prompt surfaces', () => {
+    const promptText = formatFrontendQualityBarForPrompt({
+      includeCanvasHandoff: true,
+      includeGameAddendum: true,
+    });
+
+    expect(promptText).toContain('<impressive_frontend_website_standard>');
+    expect(promptText).toContain('first viewport must communicate the product');
+    expect(promptText).toContain('real controls, states, and interactions');
+    expect(promptText).toContain('visual assets that reveal the actual product');
+    expect(promptText).toContain('desktop and mobile screenshots');
+    expect(promptText).toContain('iteration pass after the first render');
+    expect(promptText).toContain('metadata.handoff');
+    expect(promptText).toContain('nonblank render verification');
   });
 });

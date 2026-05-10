@@ -25,6 +25,7 @@ const {
     buildNaturalContextInstructions,
     buildSkillsTreeInstructions,
 } = require('../natural-context');
+const { formatFrontendQualityBarForPrompt } = require('../orchestration/agent-roles');
 
 const router = Router();
 
@@ -383,20 +384,7 @@ function buildFrontendFormatGuide() {
 }
 
 function buildImpressiveFrontendWebsiteGuide() {
-    return [
-        '<impressive_frontend_website_standard>',
-        'Use this standard whenever the request is a site, dashboard, app workspace, landing page, frontend demo, HTML prototype, or UI mockup.',
-        '- Start from a compact brief: site type, audience, primary goals, content/data, brand mood, assets, and target devices. If details are missing, infer a tasteful direction and ask only for true blockers.',
-        '- Build the actual usable first screen. The first viewport must communicate the product, place, workflow, offer, or audience immediately; do not ship a generic placeholder or a static screenshot-like mockup.',
-        '- Match the artifact family: operational tools should be calm, dense, and scannable; documentation should prioritize wayfinding; reports should emphasize evidence; brand/editorial pages may be more expressive.',
-        '- Include real controls, states, and interactions where expected: nav, filters, tabs, forms, empty/loading/error/disabled states, menus, dialogs, tooltips, drill-downs, toggles, search, or chart controls.',
-        '- Use visual assets that reveal the actual product, place, workflow, state, or audience when assets are available or can be generated. Avoid vague decorative gradients, blobs, blurred stock-like backgrounds, and purely atmospheric imagery.',
-        '- Design with restraint and specificity: stable responsive grids, readable typography, balanced color, explicit contrast, consistent borders/radii/spacing, no nested cards, no clipped labels, no horizontal overflow, and no one-note palettes.',
-        '- Treat opened UI surfaces as first-class: dropdown lists, select options, menus, popovers, dialogs, tooltips, hover, selected, focus, disabled, and empty states must have readable text/background contrast.',
-        '- Include a verification plan in metadata.handoff: desktop/mobile screenshot checks, opened interactive states to inspect, broken-image and console-error checks, contrast/overflow checks, and any remaining assumptions.',
-        '- For non-trivial sites, expect an iteration pass after the first render; suggestions should name concrete next refinements rather than generic polish.',
-        '</impressive_frontend_website_standard>',
-    ].join('\n');
+    return formatFrontendQualityBarForPrompt({ includeCanvasHandoff: true });
 }
 
 function buildCanvasInstructions(canvasType, existingContent, requestPrompt = '', templateContext = '') {

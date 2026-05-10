@@ -396,6 +396,32 @@ describe('Planner policy packs', () => {
         expect(plannerPrompt).toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`');
         expect(plannerPrompt).not.toContain('Every `agent-workload` step must use the deferred workload schema only');
     });
+
+    test('includes the canonical frontend quality bar for frontend planning', async () => {
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({ llmClient });
+        const toolPolicy = {
+            candidateToolIds: ['code-sandbox', 'web-scrape'],
+            toolDescriptions: { 'code-sandbox': 'code-sandbox', 'web-scrape': 'web-scrape' },
+        };
+
+        await orchestrator.planToolUse({
+            objective: 'Build a dashboard frontend with filters and mobile QA.',
+            executionProfile: 'default',
+            toolPolicy,
+        });
+
+        const plannerPrompt = llmClient.complete.mock.calls[0]?.[0] || '';
+        expect(plannerPrompt).toContain('require the builder to follow this frontend quality bar');
+        expect(plannerPrompt).toContain('first viewport must communicate the product');
+        expect(plannerPrompt).toContain('real controls, states, and interactions');
+        expect(plannerPrompt).toContain('visual assets that reveal the actual product');
+        expect(plannerPrompt).toContain('desktop and mobile screenshots');
+        expect(plannerPrompt).toContain('iteration pass after the first render');
+    });
 });
 
 describe('ConversationOrchestrator', () => {

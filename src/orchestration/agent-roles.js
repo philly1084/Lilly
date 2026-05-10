@@ -12,14 +12,17 @@ const ROLE_IDS = Object.freeze({
 const IMPRESSIVE_FRONTEND_QUALITY_BAR = Object.freeze({
   name: 'impressive-frontend-websites',
   appliesTo: ['website', 'dashboard', 'app-workspace', 'landing-page', 'frontend-demo', 'html-prototype', 'ui-mockup', 'browser-game', 'interactive-sandbox', 'vite-preview'],
+  promptTag: 'impressive_frontend_website_standard',
   requiredPractices: [
-    'infer a compact brief when the user gives sparse context',
-    'make the first viewport specific to the product, place, workflow, offer, or audience',
-    'build the usable experience with real controls, states, data regions, and purposeful interactions',
-    'use relevant visual assets that reveal the product, workflow, audience, place, or state',
-    'avoid generic placeholders, one-note palettes, decorative blobs, nested cards, clipped labels, and horizontal overflow',
-    'verify desktop, mobile, opened interactive surfaces, contrast, console errors, broken images, and nonblank canvas or 3D rendering',
-    'iterate after the first working render for non-trivial frontend builds',
+    'Start from a compact brief: site type, audience, primary goals, content/data, brand mood, assets, and target devices. If details are missing, infer a tasteful direction and ask only for true blockers.',
+    'Build the actual usable first screen. The first viewport must communicate the product, place, workflow, offer, or audience immediately; do not ship a generic placeholder or a static screenshot-like mockup.',
+    'Match the artifact family: operational tools should be calm, dense, and scannable; documentation should prioritize wayfinding; reports should emphasize evidence; brand/editorial pages may be more expressive.',
+    'Include real controls, states, and interactions where expected: nav, filters, tabs, forms, empty/loading/error/disabled states, menus, dialogs, tooltips, drill-downs, toggles, search, or chart controls.',
+    'Use visual assets that reveal the actual product, place, workflow, state, or audience when assets are available or can be generated. Avoid vague decorative gradients, blobs, blurred stock-like backgrounds, and purely atmospheric imagery.',
+    'Design with restraint and specificity: stable responsive grids, readable typography, balanced color, explicit contrast, consistent borders/radii/spacing, no nested cards, no clipped labels, no horizontal overflow, and no one-note palettes.',
+    'Treat opened UI surfaces as first-class: dropdown lists, select options, menus, popovers, dialogs, tooltips, hover, selected, focus, disabled, and empty states must have readable text/background contrast.',
+    'Verify desktop and mobile screenshots, opened interactive states, broken images, console errors, contrast, overflow, clipped text, and nonblank canvas/WebGL/3D rendering when relevant.',
+    'For non-trivial sites, expect an iteration pass after the first render; suggestions should name concrete next refinements rather than generic polish.',
   ],
 });
 
@@ -93,6 +96,38 @@ function buildRole({
     outputContract,
     autonomy,
   };
+}
+
+function formatFrontendQualityBarForPrompt({
+  includeWrapper = true,
+  includeCanvasHandoff = false,
+  includeGameAddendum = false,
+} = {}) {
+  const tag = IMPRESSIVE_FRONTEND_QUALITY_BAR.promptTag;
+  const lines = [];
+
+  if (includeWrapper) {
+    lines.push(`<${tag}>`);
+  }
+
+  lines.push(`Use this standard whenever the request is a ${IMPRESSIVE_FRONTEND_QUALITY_BAR.appliesTo.join(', ')}.`);
+  IMPRESSIVE_FRONTEND_QUALITY_BAR.requiredPractices.forEach((practice) => {
+    lines.push(`- ${practice}`);
+  });
+
+  if (includeCanvasHandoff) {
+    lines.push('- Include a verification plan in metadata.handoff: desktop/mobile screenshot checks, opened interactive states to inspect, broken-image and console-error checks, contrast/overflow checks, clipped-text checks, and any remaining assumptions.');
+  }
+
+  if (includeGameAddendum) {
+    lines.push('- For games, simulations, canvas, and WebGL work, include a real loop or workflow state machine when needed, pause/restart/reset controls, input affordances, fallback messaging for blank/module failures, and nonblank render verification.');
+  }
+
+  if (includeWrapper) {
+    lines.push(`</${tag}>`);
+  }
+
+  return lines.join('\n');
 }
 
 function inferAgentRolePipeline({
@@ -260,6 +295,7 @@ function formatAgentRolePipelineForPrompt(pipeline = null) {
 module.exports = {
   ROLE_IDS,
   IMPRESSIVE_FRONTEND_QUALITY_BAR,
+  formatFrontendQualityBarForPrompt,
   formatAgentRolePipelineForPrompt,
   hasDocumentBuildIntent,
   hasConceptPrototypeIntent,
