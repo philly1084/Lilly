@@ -3299,8 +3299,14 @@ function extractRemoteCliAgentControlStateFromToolEvents(toolEvents = []) {
         ...(data.gitCommit ? { gitCommit: data.gitCommit } : {}),
         ...(data.deployment ? { deployment: data.deployment } : {}),
         ...(data.publicHost ? { publicHost: data.publicHost } : {}),
+        ...(data.publicUrl ? { publicUrl: data.publicUrl } : {}),
         ...(data.uiCheckReport ? { uiCheckReport: data.uiCheckReport } : {}),
         ...(Array.isArray(data.uiScreenshots) && data.uiScreenshots.length > 0 ? { uiScreenshots: data.uiScreenshots } : {}),
+        ...(data.whatChanged ? { whatChanged: data.whatChanged } : {}),
+        ...(Array.isArray(data.verifyCommands) && data.verifyCommands.length > 0 ? { verifyCommands: data.verifyCommands } : {}),
+        ...(Array.isArray(data.verifyResults) && data.verifyResults.length > 0 ? { verifyResults: data.verifyResults } : {}),
+        ...(data.blocker ? { blocker: data.blocker } : {}),
+        ...(data.completionStatus ? { completionStatus: data.completionStatus } : {}),
         ...(data.model ? { model: data.model } : {}),
     };
 

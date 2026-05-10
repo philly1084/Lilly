@@ -806,8 +806,14 @@ async function updateSessionToolMetadata(sessionId, toolId, params = {}, result 
       ...(payload?.gitCommit ? { gitCommit: payload.gitCommit } : {}),
       ...(payload?.deployment ? { deployment: payload.deployment } : {}),
       ...(payload?.publicHost ? { publicHost: payload.publicHost } : {}),
+      ...(payload?.publicUrl ? { publicUrl: payload.publicUrl } : {}),
       ...(payload?.uiCheckReport ? { uiCheckReport: payload.uiCheckReport } : {}),
       ...(Array.isArray(payload?.uiScreenshots) && payload.uiScreenshots.length > 0 ? { uiScreenshots: payload.uiScreenshots } : {}),
+      ...(payload?.whatChanged ? { whatChanged: payload.whatChanged } : {}),
+      ...(Array.isArray(payload?.verifyCommands) && payload.verifyCommands.length > 0 ? { verifyCommands: payload.verifyCommands } : {}),
+      ...(Array.isArray(payload?.verifyResults) && payload.verifyResults.length > 0 ? { verifyResults: payload.verifyResults } : {}),
+      ...(payload?.blocker ? { blocker: payload.blocker } : {}),
+      ...(payload?.completionStatus ? { completionStatus: payload.completionStatus } : {}),
       ...(payload?.model ? { model: payload.model } : {}),
     };
     const controlPatch = {

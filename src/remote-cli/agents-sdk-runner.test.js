@@ -32,6 +32,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(instructions).toContain('Playwright/Chromium screenshots');
     expect(instructions).toContain('kimibuilt-ui-check');
     expect(instructions).toContain('UI_CHECK_REPORT');
+    expect(instructions).toContain('WHAT_CHANGED');
+    expect(instructions).toContain('VERIFY_COMMANDS');
+    expect(instructions).toContain('VERIFY_RESULTS');
+    expect(instructions).toContain('PUBLIC_URL');
+    expect(instructions).toContain('BLOCKER');
     expect(instructions).toContain('GIT_COMMIT');
     expect(instructions).toContain('remote_code_status');
     expect(instructions).toContain('persistent private workbench');
@@ -98,8 +103,15 @@ describe('RemoteCliAgentsSdkRunner', () => {
       'GIT_COMMIT=abcdef123456',
       'DEPLOYMENT=app-weather/weather',
       'PUBLIC_HOST=weather.demoserver2.buzz',
+      'PUBLIC_URL=https://weather.demoserver2.buzz',
       'UI_CHECK_REPORT=/srv/apps/weather/ui-checks/ui-check-report.json',
       'UI_SCREENSHOTS=/srv/apps/weather/ui-checks/weather-desktop.png,/srv/apps/weather/ui-checks/weather-mobile.png',
+      'WHAT_CHANGED=Updated the weather dashboard copy and deployment manifest.',
+      'VERIFY_COMMANDS=npm test -- --runTestsByPath src/weather.test.js',
+      'VERIFY_COMMANDS=node /app/bin/kimibuilt-ui-check.js https://weather.demoserver2.buzz --out ui-checks',
+      'VERIFY_RESULTS=Jest passed.',
+      'VERIFY_RESULTS=UI check passed with desktop and mobile screenshots.',
+      'BLOCKER=none',
     ].join('\n'))).toEqual({
       sessionId: 'rcs_123',
       workspace: '/srv/apps/weather',
@@ -107,11 +119,39 @@ describe('RemoteCliAgentsSdkRunner', () => {
       gitCommit: 'abcdef123456',
       deployment: 'app-weather/weather',
       publicHost: 'weather.demoserver2.buzz',
+      publicUrl: 'https://weather.demoserver2.buzz',
       uiCheckReport: '/srv/apps/weather/ui-checks/ui-check-report.json',
       uiScreenshots: [
         '/srv/apps/weather/ui-checks/weather-desktop.png',
         '/srv/apps/weather/ui-checks/weather-mobile.png',
       ],
+      whatChanged: 'Updated the weather dashboard copy and deployment manifest.',
+      verifyCommands: [
+        'npm test -- --runTestsByPath src/weather.test.js',
+        'node /app/bin/kimibuilt-ui-check.js https://weather.demoserver2.buzz --out ui-checks',
+      ],
+      verifyResults: [
+        'Jest passed.',
+        'UI check passed with desktop and mobile screenshots.',
+      ],
+      completionStatus: 'complete',
+    });
+  });
+
+  test('classifies blocked remote CLI output from proof markers', () => {
+    expect(extractRemoteCliRunMetadata([
+      'Stopped before deploy.',
+      'WHAT_CHANGED=Patched the repository locally.',
+      'VERIFY_COMMANDS=npm test',
+      'VERIFY_RESULTS=Blocked before tests could run.',
+      'PUBLIC_URL=not_available',
+      'BLOCKER=Missing GitLab runner token.',
+    ].join('\n'))).toEqual({
+      whatChanged: 'Patched the repository locally.',
+      verifyCommands: ['npm test'],
+      verifyResults: ['Blocked before tests could run.'],
+      blocker: 'Missing GitLab runner token.',
+      completionStatus: 'blocked',
     });
   });
 
@@ -214,6 +254,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
             'REMOTE_CLI_SESSION_ID=remote-session-1',
             'WORKSPACE=/srv/apps/my-app',
             'GIT_COMMIT=abcdef123456',
+            'WHAT_CHANGED=Fixed the failing tests.',
+            'VERIFY_COMMANDS=npm test',
+            'VERIFY_RESULTS=npm test passed.',
+            'PUBLIC_URL=not_available',
+            'BLOCKER=none',
             'UI_CHECK_REPORT=/srv/apps/my-app/ui-checks/ui-check-report.json',
             'UI_SCREENSHOT=/srv/apps/my-app/ui-checks/my-app-desktop.png',
           ].join('\n'),
@@ -276,6 +321,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
       gitCommit: 'abcdef123456',
       uiCheckReport: '/srv/apps/my-app/ui-checks/ui-check-report.json',
       uiScreenshots: ['/srv/apps/my-app/ui-checks/my-app-desktop.png'],
+      whatChanged: 'Fixed the failing tests.',
+      verifyCommands: ['npm test'],
+      verifyResults: ['npm test passed.'],
+      completionStatus: 'complete',
     });
   });
 

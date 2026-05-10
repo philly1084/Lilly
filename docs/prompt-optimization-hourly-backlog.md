@@ -132,7 +132,7 @@ Status:
 - Checks run: `& 'C:\nvm4w\nodejs\npm.cmd' test -- --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js` (hits one unrelated existing failure in `src/openai-client.test.js` podcast video defaults); `node .\node_modules\jest\bin\jest.js --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js -t "continuity instructions|prompt-state reuse|runtime-execution"`; `node --check .\src\runtime-prompts.js`; `node --check .\src\openai-client.js`.
 - Notes: Universal continuity instructions now keep continuity, memory, verification, scheduling, and directness rules only. Remote/k3s/GitLab guidance moved behind a remote continuity helper that is appended before prompt fingerprinting when the execution profile or prompt indicates remote intent, so ordinary chats get a shorter base prompt while remote prompt-state reuse remains stable.
 
-### [ ] P2-005 Add Remote CLI Completion Proof Contract
+### [x] P2-005 Add Remote CLI Completion Proof Contract
 
 Goal: Make remote-cli-agent final outputs easier for the outer runtime to classify as complete, blocked, or partially verified.
 
@@ -154,6 +154,12 @@ Acceptance checks:
 
 Focused checks:
 - `npm test -- --runTestsByPath src/remote-cli/agents-sdk-runner.test.js`
+
+Status:
+- Done 2026-05-09 21:34.
+- Files changed: `src/remote-cli/agents-sdk-runner.js`, `src/remote-cli/agents-sdk-runner.test.js`, `src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.js`, `src/conversation-orchestrator.js`, `src/routes/tools.js`, `src/managed-apps/service.js`, `src/agent-sdk/tool-docs/remote-cli-agent.md`, `src/agent-sdk/tool-docs/managed-app.md`, `docs/prompt-optimization-hourly-backlog.md`.
+- Checks run: `node .\node_modules\jest\bin\jest.js --runTestsByPath src\remote-cli\agents-sdk-runner.test.js`; `node --check .\src\remote-cli\agents-sdk-runner.js`; `node --check .\src\agent-sdk\tools\categories\ssh\RemoteCliAgentTool.js`; `node --check .\src\managed-apps\service.js`; `node --check .\src\conversation-orchestrator.js`; `node --check .\src\routes\tools.js`.
+- Notes: Remote CLI instructions and docs now require final proof markers (`WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, `BLOCKER`) while preserving continuity markers. The runner extracts those fields, derives `completionStatus` as `complete`, `blocked`, `partially_verified`, or `unknown`, and carries the proof through tool output and session control state.
 
 ### [ ] P3-006 Make Agent Role Pipeline The Source Of Frontend Standards
 
@@ -206,6 +212,7 @@ Focused checks:
 Append newest entries at the top.
 
 ```text
+2026-05-09 21:34 - P2-005 - done - src/remote-cli/agents-sdk-runner.js; src/remote-cli/agents-sdk-runner.test.js; src/agent-sdk/tools/categories/ssh/RemoteCliAgentTool.js; src/conversation-orchestrator.js; src/routes/tools.js; src/managed-apps/service.js; src/agent-sdk/tool-docs/remote-cli-agent.md; src/agent-sdk/tool-docs/managed-app.md; docs/prompt-optimization-hourly-backlog.md - node .\node_modules\jest\bin\jest.js --runTestsByPath src\remote-cli\agents-sdk-runner.test.js; node --check .\src\remote-cli\agents-sdk-runner.js; node --check .\src\agent-sdk\tools\categories\ssh\RemoteCliAgentTool.js; node --check .\src\managed-apps\service.js; node --check .\src\conversation-orchestrator.js; node --check .\src\routes\tools.js - Added remote-cli completion proof markers, parser fields, derived completionStatus, tool/session metadata propagation, and managed-app/remote-cli docs.
 2026-05-09 21:32 - P2-004 - done - src/runtime-prompts.js; src/openai-client.js; src/openai-client.test.js; docs/prompt-optimization-hourly-backlog.md - & 'C:\nvm4w\nodejs\npm.cmd' test -- --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js (unrelated existing podcast video default failure in src/openai-client.test.js); node .\node_modules\jest\bin\jest.js --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js -t "continuity instructions|prompt-state reuse|runtime-execution"; node --check .\src\runtime-prompts.js; node --check .\src\openai-client.js - Split universal vs remote continuity instructions, gated remote guidance before prompt fingerprinting, and pinned non-remote compactness plus remote prompt reuse with focused tests.
 2026-05-09 21:05 - P2-003 - done - src/routes/notation.js; src/routes/notation.test.js; src/ws/handler.js; frontend/notation/js/output.js; frontend/notation/css/styles.css; docs/prompt-optimization-hourly-backlog.md - node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/notation.test.js; node --check .\frontend\notation\js\output.js; node --check .\src\ws\handler.js; node --check .\src\routes\notation.js; node -e "require('./src/ws/handler'); console.log('ws handler require ok')" - Added additive notation mode fields, validate issues/correctedNotation handling, issue-to-annotation compatibility, and shared HTTP/WS notation contracts.
 2026-05-09 20:59 - P1-002 - done - src/routes/canvas.js; src/routes/canvas.test.js; src/frontend-bundles.js; src/frontend-bundles.test.js; docs/prompt-optimization-hourly-backlog.md - node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/canvas.test.js src/frontend-bundles.test.js - Made canvas frontend outputs bundle-first, added handoff qaPlan normalization, and pinned short-content bundle behavior.

@@ -64,7 +64,13 @@ Behavior:
 - For website/dashboard/frontend work, run Playwright/Chromium visual QA when a local preview or public URL exists. Prefer `node /app/bin/kimibuilt-ui-check.js <url> --out ui-checks` when the helper is present.
 - For website, dashboard, app workspace, landing-page, frontend demo, HTML prototype, or UI mockup work, apply the Impressive Frontend Websites standard: infer a compact brief, make the first viewport specific to the product/workflow/offer/audience, use relevant visual assets, build real controls/states/interactions, verify desktop/mobile plus opened UI states, and perform a refinement pass after the first render for non-trivial UI before deploy/final.
 - Avoid generic templates, one-note palettes, decorative blobs, nested cards, clipped labels, horizontal overflow, broken image paths, and unreadable dropdown/menu/popover/dialog/tooltip states.
-- The final output should include continuity markers when known: `REMOTE_CLI_SESSION_ID=...`, `WORKSPACE=...`, `GIT_REPO=...`, `GIT_COMMIT=...`, `DEPLOYMENT=...`, `PUBLIC_HOST=...`, `UI_CHECK_REPORT=...`, and `UI_SCREENSHOTS=...`.
+- The final output must include completion proof markers so the outer runtime can classify the run:
+  - `WHAT_CHANGED=<short summary of source/config/deploy changes>`
+  - `VERIFY_COMMANDS=<command or check run; repeat the marker for multiple checks>`
+  - `VERIFY_RESULTS=<pass/fail/blocked result; repeat the marker for multiple checks>`
+  - `PUBLIC_URL=<https URL or not_available>`
+  - `BLOCKER=<none or exact blocker>`
+- The final output should also include continuity markers when known: `REMOTE_CLI_SESSION_ID=...`, `WORKSPACE=...`, `GIT_REPO=...`, `GIT_COMMIT=...`, `DEPLOYMENT=...`, `PUBLIC_HOST=...`, `UI_CHECK_REPORT=...`, and `UI_SCREENSHOTS=...`.
 - Prefer `waitMs: 30000` for long coding tasks.
 - Pass `sessionId` when continuing a previous remote coding session.
 - Pass `mcpSessionId` when continuing a previous Streamable HTTP MCP session.

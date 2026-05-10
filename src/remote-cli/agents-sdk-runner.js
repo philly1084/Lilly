@@ -109,6 +109,31 @@ function readMarkerLines(text = '', keys = []) {
     .filter(Boolean);
 }
 
+function normalizeOptionalProofValue(value = '') {
+  const normalized = cleanMarkerValue(value);
+  if (/^(?:none|n\/a|na|not[_\s-]?available|not[_\s-]?applicable|unknown)$/i.test(normalized)) {
+    return '';
+  }
+  return normalized;
+}
+
+function resolveCompletionStatus({ blocker = '', whatChanged = '', verifyResults = [], publicUrl = '', publicHost = '', uiCheckReport = '', gitCommit = '' } = {}) {
+  if (normalizeOptionalProofValue(blocker)) {
+    return 'blocked';
+  }
+
+  const hasVerification = verifyResults.length > 0 || Boolean(publicUrl || publicHost || uiCheckReport);
+  const hasChangeEvidence = Boolean(whatChanged || gitCommit);
+  if (hasChangeEvidence && hasVerification) {
+    return 'complete';
+  }
+  if (hasChangeEvidence || hasVerification) {
+    return 'partially_verified';
+  }
+
+  return 'unknown';
+}
+
 function extractRemoteCliRunMetadata(finalOutput = '') {
   const text = String(finalOutput || '');
   const sessionId = readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID'])
@@ -122,6 +147,7 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
   const deployment = readMarkerLine(text, ['DEPLOYMENT', 'K8S_DEPLOYMENT']);
   const publicHost = readMarkerLine(text, ['PUBLIC_HOST', 'HOST', 'URL'])
     || cleanMarkerValue(text.match(/https?:\/\/([^/\s`]+)/i)?.[1] || '');
+  const publicUrl = normalizeOptionalProofValue(readMarkerLine(text, ['PUBLIC_URL', 'LIVE_URL']));
   const uiCheckReport = readMarkerLine(text, ['UI_CHECK_REPORT']);
   const uiScreenshots = Array.from(new Set(
     readMarkerLines(text, ['UI_SCREENSHOTS', 'UI_SCREENSHOT'])
@@ -129,6 +155,26 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
       .map((value) => cleanMarkerValue(value))
       .filter(Boolean),
   ));
+  const whatChanged = normalizeOptionalProofValue(readMarkerLine(text, ['WHAT_CHANGED']));
+  const verifyCommands = readMarkerLines(text, ['VERIFY_COMMANDS', 'VERIFY_COMMAND'])
+    .map((value) => normalizeOptionalProofValue(value))
+    .filter(Boolean);
+  const verifyResults = readMarkerLines(text, ['VERIFY_RESULTS', 'VERIFY_RESULT'])
+    .map((value) => normalizeOptionalProofValue(value))
+    .filter(Boolean);
+  const blocker = normalizeOptionalProofValue(
+    readMarkerLine(text, ['BLOCKER', 'BLOCKED_BY'])
+      || readMarkerLine(text, ['USER_INPUT_REQUIRED']),
+  );
+  const completionStatus = resolveCompletionStatus({
+    blocker,
+    whatChanged,
+    verifyResults,
+    publicUrl,
+    publicHost,
+    uiCheckReport,
+    gitCommit,
+  });
 
   return {
     ...(sessionId ? { sessionId } : {}),
@@ -137,8 +183,14 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     ...(gitCommit ? { gitCommit } : {}),
     ...(deployment ? { deployment } : {}),
     ...(publicHost ? { publicHost } : {}),
+    ...(publicUrl ? { publicUrl } : {}),
     ...(uiCheckReport ? { uiCheckReport } : {}),
     ...(uiScreenshots.length > 0 ? { uiScreenshots } : {}),
+    ...(whatChanged ? { whatChanged } : {}),
+    ...(verifyCommands.length > 0 ? { verifyCommands } : {}),
+    ...(verifyResults.length > 0 ? { verifyResults } : {}),
+    ...(blocker ? { blocker } : {}),
+    completionStatus,
   };
 }
 
@@ -363,7 +415,8 @@ function buildRemoteCliInstructions({
     'When the task includes an "Original task" and a "Current user follow-up", preserve the original task as the governing objective. Treat the follow-up as steering or continuation, not as a replacement status request.',
     'Do not let progress callbacks, foreground plan labels, or status-card text become the task. Finish the requested work and only stop for USER_INPUT_REQUIRED when a real user decision is needed.',
     'Do not try to pass raw shell commands; only use the exposed tool schema.',
-    'Finish with marker lines for continuity when known: REMOTE_CLI_SESSION_ID=<remote_code_run sessionId>, WORKSPACE=<path>, GIT_REPO=<origin or local repo>, GIT_COMMIT=<sha>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>.',
+    'Finish every run with completion proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, and BLOCKER=<none or exact blocker>. Use one VERIFY_COMMANDS or VERIFY_RESULTS line per distinct command/result when useful.',
+    'Also finish with marker lines for continuity when known: REMOTE_CLI_SESSION_ID=<remote_code_run sessionId>, WORKSPACE=<path>, GIT_REPO=<origin or local repo>, GIT_COMMIT=<sha>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
     extraInstructions,
   ].filter(Boolean).join('\n');
 }
@@ -557,8 +610,14 @@ class RemoteCliAgentsSdkRunner {
         gitCommit: runMetadata.gitCommit || null,
         deployment: runMetadata.deployment || null,
         publicHost: runMetadata.publicHost || null,
+        publicUrl: runMetadata.publicUrl || null,
         uiCheckReport: runMetadata.uiCheckReport || null,
         uiScreenshots: runMetadata.uiScreenshots || [],
+        whatChanged: runMetadata.whatChanged || null,
+        verifyCommands: runMetadata.verifyCommands || [],
+        verifyResults: runMetadata.verifyResults || [],
+        blocker: runMetadata.blocker || null,
+        completionStatus: runMetadata.completionStatus || 'unknown',
         model,
         apiMode,
       };
