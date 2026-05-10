@@ -198,6 +198,84 @@ describe('web-chat project viewport helpers', () => {
         expect(frame.dataset.suspendedProjectUrl).toBe('https://demo-app.demoserver2.buzz');
         expect(frame.src).toBeUndefined();
     });
+
+    test('uses a lightweight placeholder while deferred session details load', () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        const projectViewport = createFakeElement('project-viewport');
+        const appShell = createFakeElement('app');
+        const frame = createFakeElement('project-viewport-frame');
+        const stateLabel = createFakeElement('project-viewport-state-label');
+        const stateDetail = createFakeElement('project-viewport-state-detail');
+
+        context.sessionManager = { currentSessionId: 'session-new' };
+        context.document = {
+            getElementById: (id) => ({
+                app: appShell,
+            }[id] || null),
+        };
+
+        app.projectViewport = projectViewport;
+        app.projectViewportFrame = frame;
+        app.projectViewportStateLabel = stateLabel;
+        app.projectViewportStateDetail = stateDetail;
+        app.currentSessionWorkloads = [{ id: 'old-workload' }];
+        app.workloadRunsById = new Map([['old-workload', []]]);
+        app.hiddenCompletedWorkloadCount = 2;
+        app.renderWorkloadsPanel = jest.fn();
+
+        app.hideDeferredSessionSurfaces('session-new');
+
+        expect(projectViewport.classList.contains('hidden')).toBe(true);
+        expect(projectViewport.classList.contains('is-suspended')).toBe(true);
+        expect(projectViewport.getAttribute('aria-hidden')).toBe('true');
+        expect(appShell.classList.contains('has-project-viewport')).toBe(false);
+        expect(frame.dataset.projectUrl).toBe('');
+        expect(frame.src).toBeUndefined();
+        expect(stateLabel.textContent).toBe('Loading preview');
+        expect(app.currentSessionWorkloads).toEqual([]);
+        expect(app.hiddenCompletedWorkloadCount).toBe(0);
+        expect(app.renderWorkloadsPanel).toHaveBeenCalled();
+    });
+
+    test('ignores stale workload responses from sessions that are no longer visible', async () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        const existingRuns = new Map([['current-workload', []]]);
+
+        context.sessionManager = {
+            currentSessionId: 'session-current',
+            isLocalSession: () => false,
+        };
+        context.apiClient = {
+            getSessionWorkloads: jest.fn(async () => ({
+                available: true,
+                workloads: [{ id: 'old-workload' }],
+            })),
+            getWorkloadRuns: jest.fn(async () => [{ id: 'old-run' }]),
+        };
+
+        app.isLoadingWorkloads = false;
+        app.loadingWorkloadsSessionId = null;
+        app.workloadsAvailable = true;
+        app.currentSessionWorkloads = [{ id: 'current-workload' }];
+        app.workloadRunsById = existingRuns;
+        app.hiddenCompletedWorkloadCount = 0;
+        app.shouldHideCompletedWorkload = () => false;
+        app.renderWorkloadsPanel = jest.fn();
+        app.pauseWorkloadSocket = jest.fn();
+        app.subscribeToSessionUpdates = jest.fn();
+
+        const result = await app.loadSessionWorkloads('session-old');
+
+        expect(result).toEqual([{ id: 'old-workload' }]);
+        expect(app.currentSessionWorkloads).toEqual([{ id: 'current-workload' }]);
+        expect(app.workloadRunsById).toBe(existingRuns);
+        expect(app.renderWorkloadsPanel).not.toHaveBeenCalled();
+        expect(app.subscribeToSessionUpdates).not.toHaveBeenCalled();
+        expect(app.loadingWorkloadsSessionId).toBeNull();
+        expect(app.isLoadingWorkloads).toBe(false);
+    });
 });
 
 function createFakeElement(id = 'element') {
@@ -207,6 +285,12 @@ function createFakeElement(id = 'element') {
         id,
         dataset: {},
         classList: {
+            add: (...classNames) => {
+                classNames.forEach((className) => classes.add(className));
+            },
+            remove: (...classNames) => {
+                classNames.forEach((className) => classes.delete(className));
+            },
             toggle: (className, force) => {
                 const shouldAdd = typeof force === 'boolean' ? force : !classes.has(className);
                 if (shouldAdd) {

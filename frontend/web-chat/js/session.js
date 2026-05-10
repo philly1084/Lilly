@@ -10,6 +10,28 @@ const WEB_CHAT_PREFERENCE_SYNC_DELAY_MS = 180;
 const WEB_CHAT_RECOVERED_MESSAGE_SYNC_DELAY_MS = 75;
 const WEB_CHAT_TERMINAL_SYNC_STATUSES = new Set([400, 404, 409, 422]);
 const WEB_CHAT_SECONDARY_WORKSPACE_CACHE_RESET_VERSION = '20260424-secondary-workspace-cache-reset-1';
+const WEB_CHAT_LOCAL_CACHE_SESSION_LIMIT = 40;
+const WEB_CHAT_LOCAL_CACHE_MESSAGES_PER_SESSION = 120;
+const WEB_CHAT_LOCAL_CACHE_STRING_LIMIT = 20000;
+const WEB_CHAT_LOCAL_CACHE_ARRAY_LIMIT = 80;
+const WEB_CHAT_LOCAL_CACHE_OBJECT_DEPTH_LIMIT = 5;
+const WEB_CHAT_LOCAL_CACHE_HEAVY_KEYS = new Set([
+    'audioData',
+    'audio_data',
+    'base64',
+    'b64',
+    'b64_json',
+    'blob',
+    'bytes',
+    'data',
+    'dataUrl',
+    'dataURL',
+    'imageData',
+    'image_data',
+    'inlineData',
+    'inline_data',
+    'raw',
+]);
 const WEB_CHAT_SYNCED_STORAGE_KEYS = new Set([
     'kimibuilt_default_model',
     'kimibuilt_reasoning_effort',
@@ -235,6 +257,7 @@ class SessionManager extends EventTarget {
         this.pendingPreferencePatch = {};
         this.preferenceSyncTimer = null;
         this.userPreferencesPromise = null;
+        this.recoveredSessionPromotionPromise = null;
         
         this.resetStaleSecondaryWorkspaceCacheIfNeeded();
         this.loadFromStorage();
@@ -258,9 +281,10 @@ class SessionManager extends EventTarget {
             return this.setStorageAvailability(window.__webChatStorageAvailable === true);
         }
 
-        // Avoid eager storage probes because privacy-focused browsers can log
-        // warnings even when the access is caught and handled.
-        return this.setStorageAvailability(false);
+        // Avoid eager read/write probes because privacy-focused browsers can
+        // log warnings even when access is caught. Assume served pages can try
+        // storage, and let the guarded getters/setters disable it on failure.
+        return this.setStorageAvailability(typeof window !== 'undefined');
     }
 
     /**
@@ -990,7 +1014,7 @@ class SessionManager extends EventTarget {
 
             await this.pruneBlankSessions();
             this.saveToStorage();
-            await this.promoteRecoveredLocalSessions();
+            this.queueRecoveredLocalSessionPromotion();
         } catch (error) {
             console.warn('Failed to load backend sessions, using local cache:', error);
         }
@@ -999,6 +1023,23 @@ class SessionManager extends EventTarget {
             detail: { sessions: this.sessions } 
         }));
         return this.sessions;
+    }
+
+    queueRecoveredLocalSessionPromotion() {
+        if (this.recoveredSessionPromotionPromise) {
+            return this.recoveredSessionPromotionPromise;
+        }
+
+        this.recoveredSessionPromotionPromise = this.promoteRecoveredLocalSessions()
+            .catch((error) => {
+                console.warn('Failed to promote recovered web-chat sessions:', error);
+                return [];
+            })
+            .finally(() => {
+                this.recoveredSessionPromotionPromise = null;
+            });
+
+        return this.recoveredSessionPromotionPromise;
     }
 
     async persistActiveSession(sessionId = null) {
@@ -1900,17 +1941,88 @@ class SessionManager extends EventTarget {
     // Storage
     // ============================================
 
+    trimCachedString(value = '') {
+        const text = String(value || '');
+        if (text.length <= WEB_CHAT_LOCAL_CACHE_STRING_LIMIT) {
+            return text;
+        }
+
+        return `${text.slice(0, WEB_CHAT_LOCAL_CACHE_STRING_LIMIT)}\n[local cache truncated]`;
+    }
+
+    sanitizeValueForLocalCache(value, depth = 0) {
+        if (typeof value === 'string') {
+            return this.trimCachedString(value);
+        }
+        if (typeof value === 'number' || typeof value === 'boolean' || value == null) {
+            return value;
+        }
+        if (depth >= WEB_CHAT_LOCAL_CACHE_OBJECT_DEPTH_LIMIT) {
+            return Array.isArray(value) ? [] : {};
+        }
+        if (Array.isArray(value)) {
+            return value
+                .slice(0, WEB_CHAT_LOCAL_CACHE_ARRAY_LIMIT)
+                .map((entry) => this.sanitizeValueForLocalCache(entry, depth + 1));
+        }
+        if (typeof value !== 'object') {
+            return null;
+        }
+
+        const sanitized = {};
+        Object.entries(value).forEach(([key, entry]) => {
+            if (WEB_CHAT_LOCAL_CACHE_HEAVY_KEYS.has(key)) {
+                return;
+            }
+
+            if (typeof entry === 'string' && /^data:(?:image|audio|video|application)\//i.test(entry)) {
+                return;
+            }
+
+            sanitized[key] = this.sanitizeValueForLocalCache(entry, depth + 1);
+        });
+        return sanitized;
+    }
+
+    buildLocalCacheSessions() {
+        return this.sessions
+            .slice(0, WEB_CHAT_LOCAL_CACHE_SESSION_LIMIT)
+            .map((session) => this.sanitizeValueForLocalCache(session));
+    }
+
+    buildLocalCacheMessages(sessionIds = new Set()) {
+        const allowedSessionIds = sessionIds instanceof Set
+            ? sessionIds
+            : new Set(Array.from(sessionIds || []));
+
+        return Array.from(this.sessionMessages.entries())
+            .filter(([sessionId]) => allowedSessionIds.has(sessionId))
+            .map(([sessionId, messages]) => [
+                sessionId,
+                (Array.isArray(messages) ? messages : [])
+                    .slice(-WEB_CHAT_LOCAL_CACHE_MESSAGES_PER_SESSION)
+                    .map((message) => this.sanitizeValueForLocalCache(message)),
+            ]);
+    }
+
     saveToStorage() {
         if (!this.storageAvailable) {
             return false;
         }
 
         try {
+            const cachedSessions = this.buildLocalCacheSessions();
+            const cachedSessionIds = new Set(cachedSessions.map((session) => session?.id).filter(Boolean));
             const data = {
                 version: this.version,
                 lastSaved: new Date().toISOString(),
-                sessions: this.sessions,
-                messages: Array.from(this.sessionMessages.entries())
+                cachePolicy: {
+                    sessionLimit: WEB_CHAT_LOCAL_CACHE_SESSION_LIMIT,
+                    messagesPerSession: WEB_CHAT_LOCAL_CACHE_MESSAGES_PER_SESSION,
+                    stringLimit: WEB_CHAT_LOCAL_CACHE_STRING_LIMIT,
+                },
+                sessions: cachedSessions,
+                messages: this.buildLocalCacheMessages(cachedSessionIds)
             };
             
             const serialized = JSON.stringify(data);

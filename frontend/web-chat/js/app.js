@@ -438,6 +438,10 @@ class ChatApp {
         this.subscribedWorkloadSessionId = null;
         this.isRefreshingSessionSummaries = false;
         this.isLoadingWorkloads = false;
+        this.loadingWorkloadsSessionId = null;
+        this.deferredSessionDetailsTimer = null;
+        this.deferredSessionDetailsRequestId = 0;
+        this.deferredSessionDetailsSessionId = null;
         this.isSavingWorkload = false;
         this.sharedSessionSyncTimer = null;
         this.activeStreamRequest = null;
@@ -1122,22 +1126,24 @@ class ChatApp {
                 uiHelpers.setCurrentModel(session.model);
             }
             uiHelpers.renderSessionsList(sessionManager.sessions, sessionManager.currentSessionId);
-            this.renderProjectViewport();
             this.updateSessionInfo();
 
             const cachedMessages = this.syncAnnotatedSurveyStates(e.detail.sessionId);
             this.renderMessages(cachedMessages.length > 0 ? cachedMessages : (e.detail.messages || []));
+            this.setDeferredSessionDetailsLoading(e.detail.sessionId, true);
+            this.hideDeferredSessionSurfaces(e.detail.sessionId);
 
             const switchedSessionId = e.detail.sessionId;
-            this.loadSessionMessages(switchedSessionId)
+            this.loadSessionMessages(switchedSessionId, {
+                refreshManagedApp: false,
+            })
                 .finally(() => {
                     if (sessionManager.currentSessionId !== switchedSessionId) {
                         return;
                     }
 
                     this.subscribeToSessionUpdates(switchedSessionId);
-                    this.loadSessionWorkloads(switchedSessionId);
-                    this.renderProjectViewport();
+                    this.scheduleDeferredSessionDetails(switchedSessionId);
                     this.updateSessionInfo();
                     void this.processMessageQueue({ sessionId: switchedSessionId });
                     uiHelpers.closeSidebar();
@@ -1343,11 +1349,12 @@ class ChatApp {
             
             // If we have a current session, load its messages
             if (sessionManager.currentSessionId) {
-                await this.loadSessionMessages(sessionManager.currentSessionId);
-                this.subscribeToSessionUpdates(sessionManager.currentSessionId);
-                void this.loadSessionWorkloads(sessionManager.currentSessionId).catch((error) => {
-                    console.warn('Failed to load initial session workloads:', error);
+                await this.loadSessionMessages(sessionManager.currentSessionId, {
+                    renderCachedFirst: true,
+                    refreshManagedApp: false,
                 });
+                this.subscribeToSessionUpdates(sessionManager.currentSessionId);
+                this.scheduleDeferredSessionDetails(sessionManager.currentSessionId);
             } else {
                 this.renderWorkloadsPanel();
                 this.renderProjectViewport();
@@ -1380,15 +1387,29 @@ class ChatApp {
     }
 
     async loadSessionMessages(sessionId, options = {}) {
-        uiHelpers.stopSpeechPlayback();
-        await sessionManager.loadSessionMessagesFromBackend(sessionId);
-        await this.refreshManagedAppProgressForSession(sessionId);
-        let messages = this.syncAnnotatedSurveyStates(sessionId);
-        const resumedBackgroundStream = this.resumePersistedBackgroundStream(sessionId, messages);
-        if (resumedBackgroundStream) {
-            messages = this.syncAnnotatedSurveyStates(sessionId);
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
+            return [];
         }
-        if (options.render === false || !this.isVisibleSession(sessionId)) {
+
+        uiHelpers.stopSpeechPlayback();
+        if (options.renderCachedFirst === true && this.isVisibleSession(normalizedSessionId)) {
+            const cachedMessages = this.syncAnnotatedSurveyStates(normalizedSessionId);
+            this.renderMessages(cachedMessages);
+        }
+
+        if (options.refreshBackend !== false) {
+            await sessionManager.loadSessionMessagesFromBackend(normalizedSessionId);
+        }
+        if (options.refreshManagedApp !== false) {
+            await this.refreshManagedAppProgressForSession(normalizedSessionId);
+        }
+        let messages = this.syncAnnotatedSurveyStates(normalizedSessionId);
+        const resumedBackgroundStream = this.resumePersistedBackgroundStream(normalizedSessionId, messages);
+        if (resumedBackgroundStream) {
+            messages = this.syncAnnotatedSurveyStates(normalizedSessionId);
+        }
+        if (options.render === false || !this.isVisibleSession(normalizedSessionId)) {
             return messages;
         }
 
@@ -1400,8 +1421,96 @@ class ChatApp {
         return messages;
     }
 
+    setDeferredSessionDetailsLoading(sessionId = '', loading = true) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (loading && normalizedSessionId) {
+            this.deferredSessionDetailsSessionId = normalizedSessionId;
+        } else if (!normalizedSessionId || this.deferredSessionDetailsSessionId === normalizedSessionId) {
+            this.deferredSessionDetailsSessionId = null;
+        }
+
+        this.updateSessionInfo();
+        if (normalizedSessionId && this.isVisibleSession(normalizedSessionId)) {
+            this.renderWorkloadsPanel();
+        }
+    }
+
+    hideDeferredSessionSurfaces(sessionId = '') {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId || !this.isVisibleSession(normalizedSessionId)) {
+            return;
+        }
+
+        const appShell = document.getElementById('app');
+        appShell?.classList.remove('has-project-viewport', 'has-project-viewport-collapsed');
+
+        if (this.projectViewport) {
+            this.projectViewport.classList.add('hidden', 'is-suspended');
+            this.projectViewport.setAttribute('aria-hidden', 'true');
+        }
+        if (this.projectViewportFrame) {
+            this.projectViewportFrame.dataset.rawProjectUrl = '';
+            this.projectViewportFrame.dataset.projectUrl = '';
+            this.projectViewportFrame.dataset.suspendedProjectUrl = '';
+            this.projectViewportFrame.removeAttribute('src');
+        }
+        this.setProjectViewportFrameState('suspended', 'Loading preview', 'Conversation history is ready; project details will appear next.');
+
+        this.currentSessionWorkloads = [];
+        this.workloadRunsById.clear();
+        this.hiddenCompletedWorkloadCount = 0;
+        this.renderWorkloadsPanel();
+    }
+
+    scheduleDeferredSessionDetails(sessionId = '', options = {}) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
+            return;
+        }
+
+        if (this.deferredSessionDetailsTimer) {
+            window.clearTimeout(this.deferredSessionDetailsTimer);
+            this.deferredSessionDetailsTimer = null;
+        }
+
+        const requestId = ++this.deferredSessionDetailsRequestId;
+        const delayMs = Number.isFinite(Number(options.delayMs)) ? Math.max(0, Number(options.delayMs)) : 120;
+        this.setDeferredSessionDetailsLoading(normalizedSessionId, true);
+
+        this.deferredSessionDetailsTimer = window.setTimeout(() => {
+            this.deferredSessionDetailsTimer = null;
+            void this.loadDeferredSessionDetails(normalizedSessionId, requestId);
+        }, delayMs);
+    }
+
+    async loadDeferredSessionDetails(sessionId = '', requestId = this.deferredSessionDetailsRequestId) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId || requestId !== this.deferredSessionDetailsRequestId) {
+            return;
+        }
+
+        try {
+            await this.refreshManagedAppProgressForSession(normalizedSessionId);
+            if (requestId !== this.deferredSessionDetailsRequestId || !this.isVisibleSession(normalizedSessionId)) {
+                return;
+            }
+
+            this.renderProjectViewport();
+            await this.loadSessionWorkloads(normalizedSessionId, {
+                force: true,
+                quiet: true,
+            });
+        } finally {
+            if (requestId === this.deferredSessionDetailsRequestId) {
+                this.setDeferredSessionDetailsLoading(normalizedSessionId, false);
+                this.updateSessionInfo();
+            }
+        }
+    }
+
     async loadSessionWorkloads(sessionId, options = {}) {
-        if (!sessionId) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
             this.workloadsAvailable = true;
             this.currentSessionWorkloads = [];
             this.workloadRunsById.clear();
@@ -1410,7 +1519,7 @@ class ChatApp {
             return [];
         }
 
-        if (window.sessionManager?.isLocalSession?.(sessionId)) {
+        if (window.sessionManager?.isLocalSession?.(normalizedSessionId)) {
             this.workloadsAvailable = false;
             this.currentSessionWorkloads = [];
             this.workloadRunsById.clear();
@@ -1419,22 +1528,19 @@ class ChatApp {
             return [];
         }
 
-        if (this.isLoadingWorkloads && !options.force) {
+        if (this.isLoadingWorkloads && this.loadingWorkloadsSessionId === normalizedSessionId && !options.force) {
             return this.currentSessionWorkloads;
         }
 
         this.isLoadingWorkloads = true;
+        this.loadingWorkloadsSessionId = normalizedSessionId;
         try {
-            const result = await apiClient.getSessionWorkloads(sessionId);
-            this.workloadsAvailable = result.available !== false;
+            const result = await apiClient.getSessionWorkloads(normalizedSessionId);
+            const nextWorkloadsAvailable = result.available !== false;
             const allWorkloads = Array.isArray(result.workloads) ? result.workloads : [];
-            this.workloadRunsById = new Map();
 
-            if (!this.workloadsAvailable) {
-                this.pauseWorkloadSocket();
-            }
-
-            if (this.workloadsAvailable && allWorkloads.length > 0) {
+            const nextWorkloadRunsById = new Map();
+            if (nextWorkloadsAvailable && allWorkloads.length > 0) {
                 const runs = await Promise.all(allWorkloads.map((workload) =>
                     apiClient.getWorkloadRuns(workload.id, 6)
                         .then((items) => [workload.id, items])
@@ -1444,10 +1550,20 @@ class ChatApp {
                         })));
 
                 runs.forEach(([workloadId, items]) => {
-                    this.workloadRunsById.set(workloadId, items);
+                    nextWorkloadRunsById.set(workloadId, items);
                 });
             }
 
+            if (!this.isVisibleSession(normalizedSessionId)) {
+                return allWorkloads;
+            }
+
+            this.workloadsAvailable = nextWorkloadsAvailable;
+            if (!this.workloadsAvailable) {
+                this.pauseWorkloadSocket();
+            }
+
+            this.workloadRunsById = nextWorkloadRunsById;
             this.currentSessionWorkloads = allWorkloads.filter((workload) => !this.shouldHideCompletedWorkload(
                 workload,
                 this.workloadRunsById.get(workload.id) || [],
@@ -1457,20 +1573,28 @@ class ChatApp {
             this.renderWorkloadsPanel();
             if (this.workloadsAvailable) {
                 this.workloadSocketPaused = false;
-                this.subscribeToSessionUpdates(sessionId);
+                this.subscribeToSessionUpdates(normalizedSessionId);
             }
             return this.currentSessionWorkloads;
         } catch (error) {
             console.error('Failed to load workloads:', error);
+            if (!this.isVisibleSession(normalizedSessionId)) {
+                return [];
+            }
             this.workloadsAvailable = true;
             this.currentSessionWorkloads = [];
             this.workloadRunsById.clear();
             this.hiddenCompletedWorkloadCount = 0;
             this.renderWorkloadsPanel();
-            uiHelpers.showToast(error.message || 'Failed to load workloads', 'error');
+            if (options.quiet !== true) {
+                uiHelpers.showToast(error.message || 'Failed to load workloads', 'error');
+            }
             return [];
         } finally {
-            this.isLoadingWorkloads = false;
+            if (this.loadingWorkloadsSessionId === normalizedSessionId) {
+                this.isLoadingWorkloads = false;
+                this.loadingWorkloadsSessionId = null;
+            }
         }
     }
 
@@ -1576,6 +1700,13 @@ class ChatApp {
 
         if (!sessionId) {
             this.workloadsEmpty.textContent = 'Open a conversation to manage workloads.';
+            this.workloadsEmpty.classList.remove('hidden');
+            this.workloadsList.innerHTML = '';
+            return;
+        }
+
+        if (this.deferredSessionDetailsSessionId === sessionId) {
+            this.workloadsEmpty.textContent = 'Loading conversation details...';
             this.workloadsEmpty.classList.remove('hidden');
             this.workloadsList.innerHTML = '';
             return;
@@ -9115,10 +9246,13 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 : (backgroundSnapshot.queued > 0
                     ? ` | ${this.formatBackgroundTaskCount(backgroundSnapshot.queued)} queued`
                     : '');
+            const detailsStatus = this.deferredSessionDetailsSessionId === session.id
+                ? ' | details loading'
+                : '';
             if (uiHelpers.isMinimalistMode()) {
-                this.currentSessionInfo.textContent = `${session.title || 'Conversation'} | ${messageCount} message${messageCount !== 1 ? 's' : ''}${backgroundStatus}`;
+                this.currentSessionInfo.textContent = `${session.title || 'Conversation'} | ${messageCount} message${messageCount !== 1 ? 's' : ''}${backgroundStatus}${detailsStatus}`;
             } else {
-                this.currentSessionInfo.textContent = `${sessionManager.getSessionModeLabel(session.mode)} | ${sessionManager.formatTimestamp(session.updatedAt)} | ${messageCount} message${messageCount !== 1 ? 's' : ''}${backgroundStatus}`;
+                this.currentSessionInfo.textContent = `${sessionManager.getSessionModeLabel(session.mode)} | ${sessionManager.formatTimestamp(session.updatedAt)} | ${messageCount} message${messageCount !== 1 ? 's' : ''}${backgroundStatus}${detailsStatus}`;
             }
             return;
         }
