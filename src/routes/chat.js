@@ -80,12 +80,15 @@ const {
 const {
     buildAlignmentGuidanceContext,
     buildFallbackEvaluation,
+    buildRegressionFixtureCandidate,
     evaluateAlignment,
 } = require('../alignment/evaluator-service');
 
 const router = Router();
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
 const ALIGNMENT_FEEDBACK_HISTORY_LIMIT = 12;
+const ALIGNMENT_ROUTE_PATTERN_LIMIT = 16;
+const ALIGNMENT_REGRESSION_FIXTURE_LIMIT = 24;
 
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
@@ -162,6 +165,137 @@ function appendAlignmentHistory(session = null, entry = {}) {
         entry,
     ];
     return next.slice(-ALIGNMENT_FEEDBACK_HISTORY_LIMIT);
+}
+
+function appendAlignmentList(session = null, metadataKey = '', entry = {}, limit = 12) {
+    const existing = Array.isArray(session?.metadata?.[metadataKey])
+        ? session.metadata[metadataKey]
+        : [];
+    const entryId = String(entry?.id || entry?.feedbackId || entry?.evaluationId || '').trim();
+    const next = [
+        ...existing.filter((item) => String(item?.id || item?.feedbackId || item?.evaluationId || '').trim() !== entryId),
+        entry,
+    ];
+    return next.slice(-Math.max(1, Number(limit) || 12));
+}
+
+function buildAlignmentLessonText(evaluation = {}) {
+    const lesson = String(evaluation?.lesson || '').trim();
+    const guidance = Array.isArray(evaluation?.decisionGuidance)
+        ? evaluation.decisionGuidance.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [];
+    const fixes = Array.isArray(evaluation?.fixStrategy)
+        ? evaluation.fixStrategy.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [];
+    const parts = [
+        lesson,
+        guidance.length > 0 ? `Guidance: ${guidance.join(' ')}` : '',
+        fixes.length > 0 ? `Fix strategy: ${fixes.join(' ')}` : '',
+    ].filter(Boolean);
+
+    return parts.join('\n');
+}
+
+async function maybeRememberAlignmentLesson(sessionId = '', {
+    session = null,
+    userText = '',
+    assistantText = '',
+    evaluation = null,
+    clientSurface = '',
+    rating = 'down',
+} = {}) {
+    if (!sessionId || !evaluation || typeof memoryService?.rememberLearnedSkill !== 'function') {
+        return;
+    }
+
+    const routeDecision = String(evaluation.routeDecision || '').trim();
+    const shouldRemember = rating === 'up'
+        || evaluation.memoryCandidate === true
+        || routeDecision === 'wrong_route'
+        || evaluation.decision === 'misaligned';
+    if (!shouldRemember) {
+        return;
+    }
+
+    const lessonText = buildAlignmentLessonText(evaluation);
+    if (!lessonText) {
+        return;
+    }
+
+    try {
+        await memoryService.rememberLearnedSkill(sessionId, {
+            objective: userText,
+            assistantText: lessonText,
+            toolEvents: [{
+                toolCall: {
+                    function: {
+                        name: 'alignment-evaluator',
+                        arguments: JSON.stringify({
+                            requestType: evaluation.requestType || 'unknown',
+                            routeDecision: evaluation.routeDecision || 'route_unclear',
+                            expectedRoute: evaluation.expectedRoute || '',
+                            actualRoute: evaluation.actualRoute || '',
+                        }),
+                    },
+                },
+                result: {
+                    success: true,
+                    toolId: 'alignment-evaluator',
+                    data: {
+                        summary: evaluation.summary || '',
+                        lesson: lessonText,
+                    },
+                },
+                reason: 'Persist a reusable routing lesson from negative web-chat alignment feedback.',
+            }],
+            metadata: buildOwnerMemoryMetadata(null, session?.metadata?.memoryScope || clientSurface || 'web-chat', {
+                sourceSurface: clientSurface || session?.metadata?.clientSurface || 'web-chat',
+                projectKey: session?.metadata?.projectKey || null,
+                memoryClass: rating === 'up' ? 'successful_route_pattern' : 'reusable_skill',
+                memoryKeywords: [
+                    'alignment feedback',
+                    rating === 'up' ? 'positive review' : 'negative review',
+                    'routing lesson',
+                    evaluation.requestType || '',
+                    evaluation.routeDecision || '',
+                    ...(Array.isArray(evaluation.failureCategories) ? evaluation.failureCategories : []),
+                ],
+                importance: rating === 'up' ? 0.82 : 0.95,
+            }),
+        });
+    } catch (error) {
+        console.warn('[AlignmentEvaluator] Failed to persist routing lesson:', error.message);
+    }
+}
+
+function buildPositiveRoutePattern({
+    feedbackId = '',
+    messageId = '',
+    userText = '',
+    evaluation = {},
+} = {}) {
+    if (!evaluation || evaluation.decision !== 'aligned') {
+        return null;
+    }
+
+    const route = String(evaluation.actualRoute || '').trim();
+    const pattern = String(evaluation.successPattern || evaluation.lesson || '').trim();
+    if (!route && !pattern) {
+        return null;
+    }
+
+    return {
+        id: feedbackId,
+        feedbackId,
+        messageId,
+        requestType: evaluation.requestType || 'unknown',
+        routeDecision: evaluation.routeDecision || 'correct_route',
+        promptPreview: String(userText || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+        actualRoute: route,
+        successPattern: pattern || `Positive feedback confirmed route: ${route}`,
+        lesson: evaluation.lesson || '',
+        updatedAt: new Date().toISOString(),
+    };
 }
 
 function normalizeClientNow(value = '') {
@@ -583,6 +717,7 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
         if (!session) {
             return res.status(404).json({ success: false, error: 'Session not found.' });
         }
+        const clientSurface = String(req.body?.clientSurface || req.body?.client_surface || session?.metadata?.clientSurface || 'web-chat').trim() || 'web-chat';
 
         const messages = await sessionStore.loadAllSessionMessages(sessionId);
         const { assistant, user } = findAlignmentTurnMessages(messages, messageId);
@@ -597,6 +732,7 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
                 reason,
                 userText: user?.content || '',
                 assistantText: assistant.content || '',
+                assistantMetadata: assistant.metadata || {},
             })
             : null;
         let status = rating === 'up' ? 'recorded' : 'evaluating';
@@ -633,6 +769,7 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
                     assistantMetadata: {
                         ...(assistant.metadata || {}),
                         model: assistant.model || assistant.metadata?.model || session.metadata?.model || null,
+                        clientSurface,
                     },
                 });
                 status = result.status || 'completed';
@@ -641,6 +778,7 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
                     reason,
                     userText: user?.content || '',
                     assistantText: assistant.content || '',
+                    assistantMetadata: assistant.metadata || {},
                 });
                 evaluatorModel = result.model || null;
             } catch (error) {
@@ -651,6 +789,7 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
                     reason: reason || error.message,
                     userText: user?.content || '',
                     assistantText: assistant.content || '',
+                    assistantMetadata: assistant.metadata || {},
                 });
             }
 
@@ -682,11 +821,61 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
             evaluation,
             updatedAt: alignmentFeedback.updatedAt,
         };
+        const regressionFixtureCandidate = buildRegressionFixtureCandidate({
+            feedbackId,
+            sessionId,
+            messageId,
+            rating,
+            reason,
+            userText: user?.content || '',
+            assistantText: assistant.content || '',
+            evaluation,
+            assistantMetadata: assistant.metadata || {},
+        });
+        if (regressionFixtureCandidate) {
+            historyEntry.regressionFixtureCandidate = regressionFixtureCandidate;
+        }
+        const positiveRoutePattern = rating === 'up'
+            ? buildPositiveRoutePattern({
+                feedbackId,
+                messageId,
+                userText: user?.content || '',
+                evaluation,
+            })
+            : null;
         await sessionStore.update(sessionId, {
             metadata: {
                 alignmentFeedback: historyEntry,
                 alignmentFeedbackHistory: appendAlignmentHistory(session, historyEntry),
+                ...(positiveRoutePattern
+                    ? {
+                        alignmentRoutePatterns: appendAlignmentList(
+                            session,
+                            'alignmentRoutePatterns',
+                            positiveRoutePattern,
+                            ALIGNMENT_ROUTE_PATTERN_LIMIT,
+                        ),
+                    }
+                    : {}),
+                ...(regressionFixtureCandidate
+                    ? {
+                        alignmentRegressionFixtures: appendAlignmentList(
+                            session,
+                            'alignmentRegressionFixtures',
+                            regressionFixtureCandidate,
+                            ALIGNMENT_REGRESSION_FIXTURE_LIMIT,
+                        ),
+                    }
+                    : {}),
             },
+        });
+        await maybeRememberAlignmentLesson(sessionId, {
+            session,
+            userText: user?.content || '',
+            assistantText: assistant.content || '',
+            evaluation,
+            clientSurface,
+            rating,
         });
 
         return res.json({

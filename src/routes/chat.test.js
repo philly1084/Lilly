@@ -95,8 +95,45 @@ jest.mock('../alignment/evaluator-service', () => ({
         evidence: [],
         recommendedChanges: [],
         decisionGuidance: [],
+        routeDecision: rating === 'up' ? 'correct_route' : 'route_unclear',
+        expectedRoute: rating === 'up' ? '' : 'Frontend implementation route with browser verification.',
+        actualRoute: rating === 'up' ? 'taskType=frontend; tools=ui-check' : 'No route metadata was recorded.',
+        failureCategories: rating === 'up' ? [] : ['answered_instead_of_acted'],
+        fixStrategy: rating === 'up' ? [] : ['Use the frontend implementation lane.'],
+        repairPlan: rating === 'up' ? [] : ['Make the actual frontend change.'],
+        successPattern: rating === 'up' ? 'This frontend route worked with implementation and verification.' : '',
+        lesson: rating === 'up'
+            ? 'Positive feedback confirms this frontend route can be reused for similar prompts when the context matches.'
+            : 'Route frontend implementation requests through code changes and browser verification.',
         memoryCandidate: false,
     })),
+    buildRegressionFixtureCandidate: jest.fn(({
+        feedbackId = 'align-test',
+        sessionId = 'session-1',
+        messageId = 'assistant-1',
+        rating = 'down',
+        userText = '',
+        assistantText = '',
+        evaluation = {},
+    } = {}) => {
+        if (rating !== 'down' || evaluation.promoteRegressionFixture !== true) {
+            return null;
+        }
+        return {
+            id: `alignment-${feedbackId}`,
+            source: 'alignment-feedback',
+            sessionId,
+            messageId,
+            prompt: userText,
+            rejectedResponsePreview: assistantText,
+            expected: {
+                requestType: evaluation.requestType || 'unknown',
+                forbiddenRoute: evaluation.actualRoute || '',
+                failureCategories: evaluation.failureCategories || [],
+                requiredEvidence: evaluation.repairPlan || [],
+            },
+        };
+    }),
     evaluateAlignment: jest.fn(async () => ({
         feedbackId: 'align-test',
         status: 'completed',
@@ -109,6 +146,13 @@ jest.mock('../alignment/evaluator-service', () => ({
             evidence: [],
             recommendedChanges: ['Add the icon beside read aloud.'],
             decisionGuidance: ['For similar UI requests, make the actual frontend change.'],
+            routeDecision: 'route_unclear',
+            expectedRoute: 'Frontend implementation route with browser verification.',
+            actualRoute: 'No route metadata was recorded.',
+            failureCategories: ['answered_instead_of_acted'],
+            fixStrategy: ['Use the frontend implementation lane.'],
+            repairPlan: ['Make the actual frontend change.'],
+            lesson: 'Route frontend implementation requests through code changes and browser verification.',
             memoryCandidate: false,
         },
     })),
@@ -224,6 +268,19 @@ describe('/api/chat route', () => {
                 }),
             }),
         }));
+        expect(sessionStore.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                alignmentRoutePatterns: expect.arrayContaining([
+                    expect.objectContaining({
+                        requestType: 'frontend',
+                        routeDecision: 'correct_route',
+                    }),
+                ]),
+            }),
+        }));
+        expect(memoryService.rememberLearnedSkill).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            assistantText: expect.stringContaining('Positive feedback confirms this frontend route'),
+        }));
     });
 
     test('runs evaluator for thumbs-down alignment feedback and stores guidance', async () => {
@@ -278,6 +335,88 @@ describe('/api/chat route', () => {
                 }),
                 alignmentFeedbackHistory: expect.arrayContaining([
                     expect.objectContaining({ rating: 'down' }),
+                ]),
+            }),
+        }));
+    });
+
+    test('persists reusable routing lesson for wrong-route negative feedback', async () => {
+        alignmentEvaluator.evaluateAlignment.mockResolvedValueOnce({
+            feedbackId: 'align-wrong-route',
+            status: 'completed',
+            model: 'gpt-evaluator',
+            evaluation: {
+                decision: 'misaligned',
+                requestType: 'frontend',
+                confidence: 0.9,
+                summary: 'The assistant answered with prose instead of changing the web-chat UI.',
+                evidence: ['User requested an implementation.'],
+                recommendedChanges: ['Make the frontend change and verify it.'],
+                decisionGuidance: ['For web-chat UI asks, use the frontend implementation path.'],
+                routeDecision: 'wrong_route',
+                expectedRoute: 'Frontend implementation route with served browser verification.',
+                actualRoute: 'taskType=chat; tools=none',
+                failureCategories: ['answered_instead_of_acted', 'missing_visual_verification'],
+                fixStrategy: ['Select the frontend/code path, then run a served UI check.'],
+                repairPlan: ['Edit the web-chat frontend.', 'Run a served UI check.'],
+                lesson: 'Web-chat UI implementation prompts should not stop at advice; route them to frontend edits plus served browser verification.',
+                promoteRegressionFixture: true,
+                memoryCandidate: true,
+            },
+        });
+        const session = { id: 'session-1', metadata: { clientSurface: 'web-chat', memoryScope: 'web-chat' } };
+        const assistantMessage = {
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'Here is how you could do it.',
+            timestamp: '2026-05-09T12:00:01.000Z',
+            metadata: { taskType: 'chat', toolEvents: [] },
+        };
+        sessionStore.get.mockResolvedValue(session);
+        sessionStore.loadAllSessionMessages.mockResolvedValue([
+            {
+                id: 'user-1',
+                role: 'user',
+                content: 'Fix the web-chat review buttons.',
+                timestamp: '2026-05-09T12:00:00.000Z',
+                metadata: {},
+            },
+            assistantMessage,
+        ]);
+        sessionStore.upsertMessage.mockImplementation(async (_sessionId, message) => message);
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        await request(app)
+            .post('/api/chat/session-1/messages/assistant-1/alignment-feedback')
+            .send({ rating: 'down', reason: 'Wrong path.', clientSurface: 'web-chat' })
+            .expect(200);
+
+        expect(memoryService.rememberLearnedSkill).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            objective: 'Fix the web-chat review buttons.',
+            assistantText: expect.stringContaining('Web-chat UI implementation prompts should not stop at advice'),
+            toolEvents: expect.arrayContaining([
+                expect.objectContaining({
+                    result: expect.objectContaining({
+                        toolId: 'alignment-evaluator',
+                    }),
+                }),
+            ]),
+        }));
+        expect(sessionStore.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                alignmentRegressionFixtures: expect.arrayContaining([
+                    expect.objectContaining({
+                        source: 'alignment-feedback',
+                        prompt: 'Fix the web-chat review buttons.',
+                        expected: expect.objectContaining({
+                            requestType: 'frontend',
+                            forbiddenRoute: 'taskType=chat; tools=none',
+                            failureCategories: ['answered_instead_of_acted', 'missing_visual_verification'],
+                        }),
+                    }),
                 ]),
             }),
         }));
