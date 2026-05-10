@@ -169,9 +169,9 @@ Status:
     - `k8s/DEPLOYMENT.md` links monitoring to concrete endpoint and kubectl commands.
     - `frontend/agent-dashboard/README.md` points operators to dashboard views and the runbook.
 
-### [ ] OP-004 Create Canadian Privacy And Data Governance Packet
+### [x] OP-004 Create Canadian Privacy And Data Governance Packet
 
-Goal: Replace generic CCPA/GDPR language with a Canadian-first governance artifact for KimiBuilt's actual data flows.
+Goal: Replace generic non-Canadian privacy language with a Canadian-first governance artifact for KimiBuilt's actual data flows.
 
 Primary files:
 - `docs/`
@@ -191,14 +191,24 @@ Suggested shape:
 Acceptance checks:
 - A project reviewer can understand what data is collected, why, where it is stored, who can access it, and how it can be deleted/exported.
 - The document does not claim compliance beyond implemented controls.
-- California-specific CCPA language is removed from this operationalization plan unless explicitly needed for a future jurisdiction.
+- Non-Canadian jurisdiction-specific privacy language is avoided unless explicitly needed for a future deployment.
 
 Focused checks:
 - Docs-only review.
 - Add focused route tests only if deletion/export behavior is changed.
 
 Status:
-- Pending.
+- Done. Added a Canadian-first privacy and data governance packet grounded in KimiBuilt's actual Postgres session/artifact stores, notes preferences, Qdrant memory, auth/session ownership, deletion routes, export paths, secrets handling, backups, and current gaps.
+  - Files changed:
+    - `docs/privacy-data-governance.md`
+    - `docs/operationalization-hardening-backlog.md`
+  - Checks run:
+    - Manual read-through of `src/session-store.js`, `src/memory/memory-service.js`, `src/routes/sessions.js`, `src/routes/artifacts.js`, `src/routes/notes.js`, `src/postgres.js`, `src/artifacts/artifact-store.js`, `src/routes/admin/storage.controller.js`, `src/auth/service.js`, and related focused route tests.
+    - Docs-only review; no behavior tests run because no runtime behavior changed.
+  - Evidence:
+    - `docs/privacy-data-governance.md` describes collected data categories, storage locations, collection/use, access control, retention, deletion, export, secrets, backups, Canadian privacy framing, and implemented gaps without claiming statutory compliance.
+    - Non-Canadian jurisdiction-specific privacy language was removed from the OP-004 plan language and not added to the packet.
+    - Follow-up hardening instituted operating measures for data request intake, monthly retention review, export, deletion, memory-cleanup verification, backup follow-up, and secret/sensitive-data incidents.
 
 ### [ ] OP-005 Add Human Operations And Incident Runbook
 
@@ -297,3 +307,6 @@ YYYY-MM-DD HH:mm - OP-XXX - status - files changed - checks run - evidence/block
 2026-05-10 11:59 - OP-001 - done - k8s/scaling-plan.md, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - py -3.12-64 validate_k8s.py (pass); kubectl apply --dry-run=client -f k8s/ (blocked: kubeconfig access denied) - Added explicit OP-001 scaling decision and current single-node vertical scaling runbook; HPA remains deferred until replica-safety prerequisites are complete
 2026-05-10 12:05 - OP-002 - done - scripts/load-release-gate.js, scripts/load-release-gate.test.js, package.json, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - node --check scripts\load-release-gate.js (pass); node .\node_modules\jest\bin\jest.js --runTestsByPath scripts\load-release-gate.test.js (pass); node scripts\load-release-gate.js --url http://localhost:3000 --smoke --dry-run (pass); node scripts\load-release-gate.js --url http://localhost:3000 --smoke (expected fail: local /api/chat HTTP 401 Unauthorized); npm run test:load -- --url http://localhost:3000 --smoke --dry-run (blocked: npm missing from PATH); C:\nvm4w\nodejs\npm.cmd run test:load -- --url http://localhost:3000 --smoke --dry-run (pass) - Added sanitized load release gate with p95/error thresholds and documented local/deployed usage
 2026-05-10 12:11 - OP-003 - done - docs/monitoring-alerting-slo-runbook.md, frontend/agent-dashboard/README.md, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - docs-only read-through; no behavior tests run - Added monitoring/SLO runbook covering current health/admin/runtime/Kubernetes signals, Rancher-first alerting, future Prometheus/Grafana path without overclaiming, and first-15-minutes triage
+2026-05-10 12:24 - OP-004 - blocked - none - docs-only read-through - Drafted Canadian privacy/data governance packet, but previous run could not write because sandbox was read-only
+2026-05-10 12:33 - OP-004 - done - docs/privacy-data-governance.md, docs/operationalization-hardening-backlog.md - docs-only review; no behavior tests run - Added Canadian-first privacy/data governance packet covering data categories, storage, retention, deletion/export paths, secrets, backups, access control, and explicit gaps without overclaiming compliance
+2026-05-10 12:47 - OP-004 - instituted - docs/privacy-data-governance.md, docs/operationalization-hardening-backlog.md - docs-only review; no behavior tests run - Added concrete OP-004 operating measures for privacy request intake, monthly retention review, export, deletion, Qdrant cleanup verification, backup follow-up, and secret/sensitive-data incidents
