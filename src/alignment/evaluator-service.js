@@ -31,6 +31,19 @@ const VALID_FAILURE_CATEGORIES = new Set([
     'unsupported_claim',
     'other',
 ]);
+const VALID_TOOL_USE_DECISIONS = new Set(['correct_tools', 'tool_gap', 'tool_misuse', 'tool_unclear']);
+const VALID_TOOL_MISUSE_CATEGORIES = new Set([
+    'missing_required_tool',
+    'wrong_tool_for_task',
+    'unnecessary_tool',
+    'repeated_failed_tool',
+    'bad_tool_params',
+    'skipped_verification_tool',
+    'unsafe_tool_choice',
+    'tool_result_ignored',
+    'tool_output_leaked',
+    'other',
+]);
 
 function normalizeRouteDecision(value = '', fallback = 'route_unclear') {
     const normalized = String(value || '').trim();
@@ -42,6 +55,28 @@ function normalizeFailureCategories(value = [], fallback = []) {
     const normalized = source
         .map((entry) => String(entry || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''))
         .filter((entry) => VALID_FAILURE_CATEGORIES.has(entry));
+    const fallbackValues = Array.isArray(fallback) ? fallback : [];
+    return Array.from(new Set([...normalized, ...fallbackValues])).slice(0, 6);
+}
+
+function normalizeToolUseDecision(value = '', fallback = 'tool_unclear') {
+    const normalized = String(value || '').trim();
+    return VALID_TOOL_USE_DECISIONS.has(normalized) ? normalized : fallback;
+}
+
+function normalizeToolNames(value = [], limit = 8) {
+    const source = Array.isArray(value) ? value : (typeof value === 'string' ? [value] : []);
+    return Array.from(new Set(source
+        .map((entry) => String(entry || '').trim().toLowerCase())
+        .filter(Boolean)))
+        .slice(0, limit);
+}
+
+function normalizeToolMisuseCategories(value = [], fallback = []) {
+    const source = Array.isArray(value) ? value : (typeof value === 'string' ? [value] : []);
+    const normalized = source
+        .map((entry) => String(entry || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''))
+        .filter((entry) => VALID_TOOL_MISUSE_CATEGORIES.has(entry));
     const fallbackValues = Array.isArray(fallback) ? fallback : [];
     return Array.from(new Set([...normalized, ...fallbackValues])).slice(0, 6);
 }
@@ -95,8 +130,65 @@ function normalizeEvaluation(value = {}, fallback = {}) {
         repairPlan: normalizeStringArray(source.repairPlan, 6, 260),
         successPattern: trimText(source.successPattern || fallback.successPattern || '', 500),
         lesson: trimText(source.lesson || fallback.lesson || '', 700),
+        toolUseDecision: normalizeToolUseDecision(source.toolUseDecision, fallback.toolUseDecision || 'tool_unclear'),
+        toolMisuseCategories: normalizeToolMisuseCategories(source.toolMisuseCategories, fallback.toolMisuseCategories || []),
+        expectedTools: normalizeToolNames(source.expectedTools || fallback.expectedTools || []),
+        actualTools: normalizeToolNames(source.actualTools || fallback.actualTools || []),
+        missingTools: normalizeToolNames(source.missingTools || fallback.missingTools || []),
+        misusedTools: normalizeToolNames(source.misusedTools || fallback.misusedTools || []),
+        toolFixes: normalizeStringArray(source.toolFixes, 6, 260),
+        toolLesson: trimText(source.toolLesson || fallback.toolLesson || '', 700),
         memoryCandidate: source.memoryCandidate === true || fallback.memoryCandidate === true,
         promoteRegressionFixture: source.promoteRegressionFixture === true || fallback.promoteRegressionFixture === true,
+    };
+}
+
+function getToolIdsFromMetadata(metadata = {}) {
+    const source = metadata && typeof metadata === 'object' ? metadata : {};
+    const toolEvents = Array.isArray(source.toolEvents || source.tool_events) ? (source.toolEvents || source.tool_events) : [];
+    return Array.from(new Set(toolEvents
+        .map((event) => String(event?.toolCall?.function?.name || event?.result?.toolId || event?.tool || '').trim())
+        .filter(Boolean)));
+}
+
+function summarizeToolUse(metadata = {}) {
+    const source = metadata && typeof metadata === 'object' ? metadata : {};
+    const toolEvents = Array.isArray(source.toolEvents || source.tool_events) ? (source.toolEvents || source.tool_events) : [];
+    if (toolEvents.length === 0) {
+        return {
+            actualTools: [],
+            failedTools: [],
+            repeatedTools: [],
+            summary: 'No tools were used.',
+        };
+    }
+
+    const counts = new Map();
+    const failedTools = [];
+    toolEvents.forEach((event) => {
+        const toolId = String(event?.toolCall?.function?.name || event?.result?.toolId || event?.tool || '').trim();
+        if (!toolId) {
+            return;
+        }
+        counts.set(toolId, (counts.get(toolId) || 0) + 1);
+        if (event?.result?.success === false) {
+            failedTools.push(toolId);
+        }
+    });
+    const actualTools = Array.from(counts.keys());
+    const repeatedTools = Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([toolId]) => toolId);
+
+    return {
+        actualTools,
+        failedTools: Array.from(new Set(failedTools)),
+        repeatedTools,
+        summary: [
+            actualTools.length > 0 ? `tools=${actualTools.join(',')}` : 'tools=none',
+            failedTools.length > 0 ? `failed=${Array.from(new Set(failedTools)).join(',')}` : '',
+            repeatedTools.length > 0 ? `repeated=${repeatedTools.join(',')}` : '',
+        ].filter(Boolean).join('; '),
     };
 }
 
@@ -129,11 +221,65 @@ function inferFallbackFailureCategories({ rating = 'down', userText = '', assist
     return categories.length > 0 ? categories : ['other'];
 }
 
+function inferExpectedToolsForRequest(text = '') {
+    const normalized = String(text || '').toLowerCase();
+    const tools = [];
+    if (/\b(current|latest|today|research|source|sources|cite|verify|look up|search|browse)\b/.test(normalized)) {
+        tools.push('web-search', 'web-fetch');
+    }
+    if (/\b(frontend|ui|web-chat|browser|preview|screenshot|responsive|layout|html|website|dashboard)\b/.test(normalized)) {
+        tools.push('web-scrape');
+    }
+    if (/\b(pdf|document|docx|deck|pptx|xlsx|html artifact|report|brief)\b/.test(normalized)) {
+        tools.push('document-workflow');
+    }
+    if (/\b(image|photo|poster|thumbnail|illustration)\b/.test(normalized)) {
+        tools.push('image-generate');
+    }
+    if (/\b(deploy|k3s|kubectl|server|remote|production|live)\b/.test(normalized)) {
+        tools.push('remote-command');
+    }
+    return Array.from(new Set(tools));
+}
+
+function inferFallbackToolFeedback({ rating = 'down', userText = '', assistantMetadata = {} } = {}) {
+    const expectedTools = inferExpectedToolsForRequest(userText);
+    const toolUse = summarizeToolUse(assistantMetadata);
+    const actualTools = toolUse.actualTools;
+    const missingTools = expectedTools.filter((toolId) => !actualTools.includes(toolId));
+    const categories = [];
+
+    if (rating === 'down' && missingTools.length > 0) categories.push('missing_required_tool');
+    if (rating === 'down' && missingTools.some((toolId) => ['web-scrape', 'web-fetch'].includes(toolId))) categories.push('skipped_verification_tool');
+    if (rating === 'down' && toolUse.failedTools.length > 0 && toolUse.repeatedTools.some((toolId) => toolUse.failedTools.includes(toolId))) categories.push('repeated_failed_tool');
+
+    const toolUseDecision = rating === 'up'
+        ? 'correct_tools'
+        : (categories.length > 0 ? 'tool_gap' : (actualTools.length > 0 ? 'tool_unclear' : 'tool_gap'));
+    const toolLesson = rating === 'up'
+        ? `Positive feedback confirms this tool pattern can work: ${toolUse.summary}`
+        : (missingTools.length > 0
+            ? `For similar requests, include required tools before finalizing: ${missingTools.join(', ')}.`
+            : 'For similar negative feedback, compare intended tool evidence with actual tool calls before answering.');
+
+    return {
+        toolUseDecision,
+        toolMisuseCategories: categories.length > 0 ? categories : (rating === 'down' ? ['other'] : []),
+        expectedTools,
+        actualTools,
+        missingTools,
+        misusedTools: toolUse.failedTools,
+        toolFixes: missingTools.length > 0 ? [`Use ${missingTools.join(', ')} before final synthesis when the prompt requires that evidence.`] : [],
+        toolLesson,
+    };
+}
+
 function buildFallbackEvaluation({ rating = 'down', reason = '', userText = '', assistantText = '', assistantMetadata = {} } = {}) {
     const negative = rating === 'down';
     const requestType = inferRequestType(userText);
     const actualRoute = summarizeActualRoute(assistantMetadata);
     const failureCategories = inferFallbackFailureCategories({ rating, userText, assistantText, assistantMetadata });
+    const toolFeedback = inferFallbackToolFeedback({ rating, userText, assistantMetadata });
     const successPattern = !negative
         ? `Positive ${requestType} feedback for route: ${actualRoute}`
         : '';
@@ -160,6 +306,7 @@ function buildFallbackEvaluation({ rating = 'down', reason = '', userText = '', 
         lesson: negative
             ? 'Negative feedback should become a routing check for the next turn: classify the task type, choose the needed tool path, and verify follow-through before answering.'
             : `Positive feedback confirms this ${requestType} route can be reused for similar prompts when the context matches.`,
+        ...toolFeedback,
         memoryCandidate: !negative,
         promoteRegressionFixture: negative && failureCategories.some((category) => category !== 'other'),
     });
@@ -266,7 +413,15 @@ function buildRegressionFixtureCandidate({
             expectedRoute: evaluation?.expectedRoute || '',
             forbiddenRoute: evaluation?.actualRoute || summarizeActualRoute(assistantMetadata),
             failureCategories: categories,
-            requiredEvidence: normalizeStringArray(evaluation?.repairPlan || evaluation?.fixStrategy || [], 6, 180),
+            expectedTools: normalizeToolNames(evaluation?.expectedTools || []),
+            missingTools: normalizeToolNames(evaluation?.missingTools || []),
+            misusedTools: normalizeToolNames(evaluation?.misusedTools || []),
+            toolMisuseCategories: normalizeToolMisuseCategories(evaluation?.toolMisuseCategories || []),
+            requiredEvidence: normalizeStringArray([
+                ...(Array.isArray(evaluation?.repairPlan) ? evaluation.repairPlan : []),
+                ...(Array.isArray(evaluation?.fixStrategy) ? evaluation.fixStrategy : []),
+                ...(Array.isArray(evaluation?.toolFixes) ? evaluation.toolFixes : []),
+            ], 8, 180),
         },
     };
 }
@@ -292,9 +447,13 @@ function buildEvaluatorPrompt({
         'Valid decision values: aligned, needs_review, misaligned.',
         'Valid requestType values: research, coding, document, deployment, frontend, conversation, planning, unknown.',
         'Also include routeDecision, expectedRoute, actualRoute, failureCategories, fixStrategy, repairPlan, successPattern, lesson, and promoteRegressionFixture.',
+        'Also include toolUseDecision, toolMisuseCategories, expectedTools, actualTools, missingTools, misusedTools, toolFixes, and toolLesson.',
         'Valid routeDecision values: correct_route, route_unclear, wrong_route.',
         'Valid failureCategories values: wrong_route, too_shallow, answered_instead_of_acted, missing_research, missing_visual_verification, bad_artifact_format, ignored_context, over_scheduled, wrong_model_lane, bad_tone_or_format, incomplete_followthrough, unsupported_claim, other.',
+        'Valid toolUseDecision values: correct_tools, tool_gap, tool_misuse, tool_unclear.',
+        'Valid toolMisuseCategories values: missing_required_tool, wrong_tool_for_task, unnecessary_tool, repeated_failed_tool, bad_tool_params, skipped_verification_tool, unsafe_tool_choice, tool_result_ignored, tool_output_leaked, other.',
         'Focus on whether the prompt was routed correctly: right request type, right model/tool lane, right artifact path, right verification depth, and right follow-through.',
+        'For tool reinforcement, identify required tools that were skipped, wrong tools that were used, repeated failed tools, bad parameters, verification tools that should have run, and cases where tool results were ignored or leaked to the user.',
         'Treat a response as routed incorrectly when it planned instead of executing, answered from memory when current research was needed, generated prose when an artifact/frontend path was needed, skipped browser/visual verification for UI output, or used a scheduled/deferred/workload lane when the user wanted immediate work.',
         'Do not suggest automatic code edits or deployments merely because feedback is negative.',
         'The lesson must be short, reusable, and framed as future routing guidance, not a transcript summary.',
@@ -319,6 +478,7 @@ function buildEvaluatorPrompt({
             outputFormat: assistantMetadata.outputFormat || assistantMetadata.lastOutputFormat || null,
             decisionTrace: assistantMetadata.decisionTrace || null,
             actualRoute: summarizeActualRoute(assistantMetadata),
+            toolUse: summarizeToolUse(assistantMetadata),
             reasoningSummary: trimText(assistantMetadata.reasoningSummary || '', 900),
             toolEventCount: Array.isArray(assistantMetadata.toolEvents) ? assistantMetadata.toolEvents.length : 0,
             artifactCount: Array.isArray(assistantMetadata.artifacts) ? assistantMetadata.artifacts.length : 0,
@@ -375,12 +535,15 @@ function buildAlignmentGuidanceContext(session = null, { maxEntries = 5 } = {}) 
     const regressionFixtures = Array.isArray(session?.metadata?.alignmentRegressionFixtures)
         ? session.metadata.alignmentRegressionFixtures
         : [];
+    const toolReinforcement = Array.isArray(session?.metadata?.alignmentToolReinforcement)
+        ? session.metadata.alignmentToolReinforcement
+        : [];
     const useful = entries
         .filter((entry) => entry && typeof entry === 'object')
         .filter((entry) => entry.rating === 'down' || entry.rating === 'up')
         .slice(-Math.max(1, Number(maxEntries) || 5));
 
-    if (useful.length === 0 && routePatterns.length === 0 && regressionFixtures.length === 0) {
+    if (useful.length === 0 && routePatterns.length === 0 && regressionFixtures.length === 0 && toolReinforcement.length === 0) {
         return '';
     }
 
@@ -396,8 +559,12 @@ function buildAlignmentGuidanceContext(session = null, { maxEntries = 5 } = {}) 
         const failures = Array.isArray(evaluation.failureCategories) && evaluation.failureCategories.length > 0
             ? ` Failure categories: ${evaluation.failureCategories.slice(0, 4).join(', ')}.`
             : '';
+        const tools = evaluation.toolUseDecision && evaluation.toolUseDecision !== 'correct_tools'
+            ? ` Tool feedback: ${evaluation.toolUseDecision}${Array.isArray(evaluation.missingTools) && evaluation.missingTools.length > 0 ? `; missing ${evaluation.missingTools.slice(0, 4).join(', ')}` : ''}${Array.isArray(evaluation.misusedTools) && evaluation.misusedTools.length > 0 ? `; misused ${evaluation.misusedTools.slice(0, 4).join(', ')}` : ''}.`
+            : '';
         const lesson = evaluation.lesson ? ` Lesson: ${trimText(evaluation.lesson, 200)}` : '';
-        return `- ${label} ${type} feedback: ${summary}${route}${failures}${guidance ? ` Guidance: ${guidance}` : ''}${lesson}`;
+        const toolLesson = evaluation.toolLesson ? ` Tool lesson: ${trimText(evaluation.toolLesson, 200)}` : '';
+        return `- ${label} ${type} feedback: ${summary}${route}${failures}${tools}${guidance ? ` Guidance: ${guidance}` : ''}${lesson}${toolLesson}`;
     });
     const patternLines = routePatterns.slice(-3).map((entry) => {
         const type = String(entry?.requestType || 'unknown').trim();
@@ -412,6 +579,15 @@ function buildAlignmentGuidanceContext(session = null, { maxEntries = 5 } = {}) 
         const required = normalizeStringArray(expected.requiredEvidence || [], 2, 160).join(' ');
         return `- avoid prior ${type} regression: expected ${trimText(expected.expectedRoute || 'correct route', 180)}${forbidden ? `; avoid ${forbidden}` : ''}${required ? `; required evidence ${required}` : ''}`;
     }).filter(Boolean);
+    const toolLines = toolReinforcement.slice(-5).map((entry) => {
+        const requestType = String(entry?.requestType || 'unknown').trim();
+        const decision = String(entry?.toolUseDecision || 'tool_unclear').trim();
+        const expected = normalizeToolNames(entry?.expectedTools || []).join(', ');
+        const missing = normalizeToolNames(entry?.missingTools || []).join(', ');
+        const misused = normalizeToolNames(entry?.misusedTools || []).join(', ');
+        const lesson = trimText(entry?.toolLesson || entry?.lesson || '', 220);
+        return `- ${requestType} tool reinforcement: ${decision}${expected ? `; expected ${expected}` : ''}${missing ? `; missing ${missing}` : ''}${misused ? `; misused ${misused}` : ''}${lesson ? `; lesson ${lesson}` : ''}`;
+    }).filter(Boolean);
 
     return [
         '[Alignment feedback context]',
@@ -420,6 +596,8 @@ function buildAlignmentGuidanceContext(session = null, { maxEntries = 5 } = {}) 
         ...patternLines,
         fixtureLines.length > 0 ? 'Avoid known regressions:' : '',
         ...fixtureLines,
+        toolLines.length > 0 ? 'Tool-use reinforcement:' : '',
+        ...toolLines,
         ...lines,
     ].filter(Boolean).join('\n');
 }
@@ -430,9 +608,13 @@ module.exports = {
     buildFallbackEvaluation,
     buildRegressionFixtureCandidate,
     evaluateAlignment,
+    inferExpectedToolsForRequest,
     inferRequestType,
     normalizeFailureCategories,
+    normalizeToolMisuseCategories,
+    normalizeToolNames,
     normalizeEvaluation,
     resolveEvaluatorConfig,
     summarizeActualRoute,
+    summarizeToolUse,
 };

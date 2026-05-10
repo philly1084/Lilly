@@ -89,6 +89,7 @@ const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
 const ALIGNMENT_FEEDBACK_HISTORY_LIMIT = 12;
 const ALIGNMENT_ROUTE_PATTERN_LIMIT = 16;
 const ALIGNMENT_REGRESSION_FIXTURE_LIMIT = 24;
+const ALIGNMENT_TOOL_REINFORCEMENT_LIMIT = 32;
 
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
@@ -187,10 +188,15 @@ function buildAlignmentLessonText(evaluation = {}) {
     const fixes = Array.isArray(evaluation?.fixStrategy)
         ? evaluation.fixStrategy.map((entry) => String(entry || '').trim()).filter(Boolean)
         : [];
+    const toolFixes = Array.isArray(evaluation?.toolFixes)
+        ? evaluation.toolFixes.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [];
     const parts = [
         lesson,
+        evaluation?.toolLesson ? `Tool lesson: ${String(evaluation.toolLesson || '').trim()}` : '',
         guidance.length > 0 ? `Guidance: ${guidance.join(' ')}` : '',
         fixes.length > 0 ? `Fix strategy: ${fixes.join(' ')}` : '',
+        toolFixes.length > 0 ? `Tool fixes: ${toolFixes.join(' ')}` : '',
     ].filter(Boolean);
 
     return parts.join('\n');
@@ -258,7 +264,12 @@ async function maybeRememberAlignmentLesson(sessionId = '', {
                     'routing lesson',
                     evaluation.requestType || '',
                     evaluation.routeDecision || '',
+                    evaluation.toolUseDecision || '',
                     ...(Array.isArray(evaluation.failureCategories) ? evaluation.failureCategories : []),
+                    ...(Array.isArray(evaluation.toolMisuseCategories) ? evaluation.toolMisuseCategories : []),
+                    ...(Array.isArray(evaluation.expectedTools) ? evaluation.expectedTools : []),
+                    ...(Array.isArray(evaluation.missingTools) ? evaluation.missingTools : []),
+                    ...(Array.isArray(evaluation.misusedTools) ? evaluation.misusedTools : []),
                 ],
                 importance: rating === 'up' ? 0.82 : 0.95,
             }),
@@ -294,6 +305,46 @@ function buildPositiveRoutePattern({
         actualRoute: route,
         successPattern: pattern || `Positive feedback confirmed route: ${route}`,
         lesson: evaluation.lesson || '',
+        updatedAt: new Date().toISOString(),
+    };
+}
+
+function buildAlignmentToolReinforcement({
+    feedbackId = '',
+    messageId = '',
+    rating = '',
+    userText = '',
+    evaluation = {},
+} = {}) {
+    if (!evaluation || typeof evaluation !== 'object') {
+        return null;
+    }
+
+    const toolUseDecision = String(evaluation.toolUseDecision || '').trim();
+    const hasToolSignal = toolUseDecision
+        || (Array.isArray(evaluation.expectedTools) && evaluation.expectedTools.length > 0)
+        || (Array.isArray(evaluation.missingTools) && evaluation.missingTools.length > 0)
+        || (Array.isArray(evaluation.misusedTools) && evaluation.misusedTools.length > 0)
+        || String(evaluation.toolLesson || '').trim();
+    if (!hasToolSignal) {
+        return null;
+    }
+
+    return {
+        id: `${feedbackId || messageId || Date.now().toString(36)}-tools`,
+        feedbackId,
+        messageId,
+        rating,
+        requestType: evaluation.requestType || 'unknown',
+        promptPreview: String(userText || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+        toolUseDecision: toolUseDecision || (rating === 'up' ? 'correct_tools' : 'tool_unclear'),
+        toolMisuseCategories: Array.isArray(evaluation.toolMisuseCategories) ? evaluation.toolMisuseCategories.slice(0, 6) : [],
+        expectedTools: Array.isArray(evaluation.expectedTools) ? evaluation.expectedTools.slice(0, 8) : [],
+        actualTools: Array.isArray(evaluation.actualTools) ? evaluation.actualTools.slice(0, 8) : [],
+        missingTools: Array.isArray(evaluation.missingTools) ? evaluation.missingTools.slice(0, 8) : [],
+        misusedTools: Array.isArray(evaluation.misusedTools) ? evaluation.misusedTools.slice(0, 8) : [],
+        toolFixes: Array.isArray(evaluation.toolFixes) ? evaluation.toolFixes.slice(0, 6) : [],
+        toolLesson: evaluation.toolLesson || '',
         updatedAt: new Date().toISOString(),
     };
 }
@@ -843,6 +894,13 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
                 evaluation,
             })
             : null;
+        const toolReinforcement = buildAlignmentToolReinforcement({
+            feedbackId,
+            messageId,
+            rating,
+            userText: user?.content || '',
+            evaluation,
+        });
         await sessionStore.update(sessionId, {
             metadata: {
                 alignmentFeedback: historyEntry,
@@ -864,6 +922,16 @@ router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, re
                             'alignmentRegressionFixtures',
                             regressionFixtureCandidate,
                             ALIGNMENT_REGRESSION_FIXTURE_LIMIT,
+                        ),
+                    }
+                    : {}),
+                ...(toolReinforcement
+                    ? {
+                        alignmentToolReinforcement: appendAlignmentList(
+                            session,
+                            'alignmentToolReinforcement',
+                            toolReinforcement,
+                            ALIGNMENT_TOOL_REINFORCEMENT_LIMIT,
                         ),
                     }
                     : {}),

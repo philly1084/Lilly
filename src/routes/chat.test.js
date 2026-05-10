@@ -105,6 +105,16 @@ jest.mock('../alignment/evaluator-service', () => ({
         lesson: rating === 'up'
             ? 'Positive feedback confirms this frontend route can be reused for similar prompts when the context matches.'
             : 'Route frontend implementation requests through code changes and browser verification.',
+        toolUseDecision: rating === 'up' ? 'correct_tools' : 'tool_gap',
+        toolMisuseCategories: rating === 'up' ? [] : ['missing_required_tool'],
+        expectedTools: rating === 'up' ? ['ui-check'] : ['web-scrape'],
+        actualTools: rating === 'up' ? ['ui-check'] : [],
+        missingTools: rating === 'up' ? [] : ['web-scrape'],
+        misusedTools: [],
+        toolFixes: rating === 'up' ? [] : ['Run browser verification before finalizing.'],
+        toolLesson: rating === 'up'
+            ? 'The UI verification tool pattern worked.'
+            : 'Frontend requests need browser verification evidence.',
         memoryCandidate: false,
     })),
     buildRegressionFixtureCandidate: jest.fn(({
@@ -130,6 +140,10 @@ jest.mock('../alignment/evaluator-service', () => ({
                 requestType: evaluation.requestType || 'unknown',
                 forbiddenRoute: evaluation.actualRoute || '',
                 failureCategories: evaluation.failureCategories || [],
+                expectedTools: evaluation.expectedTools || [],
+                missingTools: evaluation.missingTools || [],
+                misusedTools: evaluation.misusedTools || [],
+                toolMisuseCategories: evaluation.toolMisuseCategories || [],
                 requiredEvidence: evaluation.repairPlan || [],
             },
         };
@@ -153,6 +167,14 @@ jest.mock('../alignment/evaluator-service', () => ({
             fixStrategy: ['Use the frontend implementation lane.'],
             repairPlan: ['Make the actual frontend change.'],
             lesson: 'Route frontend implementation requests through code changes and browser verification.',
+            toolUseDecision: 'tool_gap',
+            toolMisuseCategories: ['missing_required_tool'],
+            expectedTools: ['web-scrape'],
+            actualTools: [],
+            missingTools: ['web-scrape'],
+            misusedTools: [],
+            toolFixes: ['Run browser verification before finalizing.'],
+            toolLesson: 'Frontend requests need browser verification evidence.',
             memoryCandidate: false,
         },
     })),
@@ -276,10 +298,17 @@ describe('/api/chat route', () => {
                         routeDecision: 'correct_route',
                     }),
                 ]),
+                alignmentToolReinforcement: expect.arrayContaining([
+                    expect.objectContaining({
+                        requestType: 'frontend',
+                        toolUseDecision: 'correct_tools',
+                        actualTools: ['ui-check'],
+                    }),
+                ]),
             }),
         }));
         expect(memoryService.rememberLearnedSkill).toHaveBeenCalledWith('session-1', expect.objectContaining({
-            assistantText: expect.stringContaining('Positive feedback confirms this frontend route'),
+            assistantText: expect.stringContaining('Tool lesson: The UI verification tool pattern worked.'),
         }));
     });
 
@@ -360,6 +389,14 @@ describe('/api/chat route', () => {
                 fixStrategy: ['Select the frontend/code path, then run a served UI check.'],
                 repairPlan: ['Edit the web-chat frontend.', 'Run a served UI check.'],
                 lesson: 'Web-chat UI implementation prompts should not stop at advice; route them to frontend edits plus served browser verification.',
+                toolUseDecision: 'tool_gap',
+                toolMisuseCategories: ['missing_required_tool', 'skipped_verification_tool'],
+                expectedTools: ['web-scrape'],
+                actualTools: [],
+                missingTools: ['web-scrape'],
+                misusedTools: [],
+                toolFixes: ['Run web-scrape/browser verification before finalizing.'],
+                toolLesson: 'Frontend UI requests need browser verification tools, not prose-only answers.',
                 promoteRegressionFixture: true,
                 memoryCandidate: true,
             },
@@ -415,7 +452,19 @@ describe('/api/chat route', () => {
                             requestType: 'frontend',
                             forbiddenRoute: 'taskType=chat; tools=none',
                             failureCategories: ['answered_instead_of_acted', 'missing_visual_verification'],
+                            expectedTools: ['web-scrape'],
+                            missingTools: ['web-scrape'],
+                            toolMisuseCategories: ['missing_required_tool', 'skipped_verification_tool'],
                         }),
+                    }),
+                ]),
+                alignmentToolReinforcement: expect.arrayContaining([
+                    expect.objectContaining({
+                        requestType: 'frontend',
+                        toolUseDecision: 'tool_gap',
+                        expectedTools: ['web-scrape'],
+                        missingTools: ['web-scrape'],
+                        toolMisuseCategories: ['missing_required_tool', 'skipped_verification_tool'],
                     }),
                 ]),
             }),

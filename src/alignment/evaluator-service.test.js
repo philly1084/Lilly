@@ -17,6 +17,7 @@ const {
     buildAlignmentGuidanceContext,
     buildRegressionFixtureCandidate,
     evaluateAlignment,
+    summarizeToolUse,
     summarizeActualRoute,
 } = require('./evaluator-service');
 
@@ -56,6 +57,14 @@ describe('alignment evaluator service', () => {
                 fixStrategy: ['Use the frontend implementation route.'],
                 repairPlan: ['Patch the UI and run a browser check.'],
                 lesson: 'Frontend implementation asks should lead to UI edits and served verification.',
+                toolUseDecision: 'tool_gap',
+                toolMisuseCategories: ['missing_required_tool', 'skipped_verification_tool'],
+                expectedTools: ['web-scrape'],
+                actualTools: [],
+                missingTools: ['web-scrape'],
+                misusedTools: [],
+                toolFixes: ['Run browser verification before finalizing.'],
+                toolLesson: 'Frontend requests need browser verification evidence.',
                 promoteRegressionFixture: true,
                 memoryCandidate: false,
             }),
@@ -84,6 +93,9 @@ describe('alignment evaluator service', () => {
             failureCategories: ['answered_instead_of_acted'],
             repairPlan: ['Patch the UI and run a browser check.'],
             lesson: 'Frontend implementation asks should lead to UI edits and served verification.',
+            toolUseDecision: 'tool_gap',
+            missingTools: ['web-scrape'],
+            toolLesson: 'Frontend requests need browser verification evidence.',
             promoteRegressionFixture: true,
         }));
     });
@@ -107,6 +119,47 @@ describe('alignment evaluator service', () => {
         expect(route).toContain('artifacts=1');
     });
 
+    test('summarizes tool use failures and repeats for reinforcement', () => {
+        const toolUse = summarizeToolUse({
+            toolEvents: [
+                {
+                    toolCall: { function: { name: 'web-search' } },
+                    result: { success: false, toolId: 'web-search' },
+                },
+                {
+                    toolCall: { function: { name: 'web-search' } },
+                    result: { success: false, toolId: 'web-search' },
+                },
+                {
+                    toolCall: { function: { name: 'web-fetch' } },
+                    result: { success: true, toolId: 'web-fetch' },
+                },
+            ],
+        });
+
+        expect(toolUse.actualTools).toEqual(['web-search', 'web-fetch']);
+        expect(toolUse.failedTools).toEqual(['web-search']);
+        expect(toolUse.repeatedTools).toEqual(['web-search']);
+        expect(toolUse.summary).toContain('repeated=web-search');
+    });
+
+    test('fallback feedback marks missing required tools', () => {
+        const result = require('./evaluator-service').buildFallbackEvaluation({
+            rating: 'down',
+            userText: 'Research the latest pricing and cite sources.',
+            assistantText: 'Here is what I remember.',
+            assistantMetadata: { toolEvents: [] },
+        });
+
+        expect(result.toolUseDecision).toBe('tool_gap');
+        expect(result.expectedTools).toEqual(['web-search', 'web-fetch']);
+        expect(result.missingTools).toEqual(['web-search', 'web-fetch']);
+        expect(result.toolMisuseCategories).toEqual(expect.arrayContaining([
+            'missing_required_tool',
+            'skipped_verification_tool',
+        ]));
+    });
+
     test('builds regression fixture candidates from negative route feedback', () => {
         const fixture = buildRegressionFixtureCandidate({
             feedbackId: 'align-123',
@@ -122,7 +175,12 @@ describe('alignment evaluator service', () => {
                 expectedRoute: 'Frontend implementation with browser verification.',
                 actualRoute: 'taskType=chat; tools=none',
                 failureCategories: ['answered_instead_of_acted', 'missing_visual_verification'],
+                expectedTools: ['web-scrape'],
+                missingTools: ['web-scrape'],
+                misusedTools: ['document-workflow'],
+                toolMisuseCategories: ['wrong_tool_for_task'],
                 repairPlan: ['Edit frontend files.', 'Run served browser verification.'],
+                toolFixes: ['Use web-scrape for browser verification.'],
                 promoteRegressionFixture: true,
             },
         });
@@ -134,6 +192,10 @@ describe('alignment evaluator service', () => {
                 requestType: 'frontend',
                 forbiddenRoute: 'taskType=chat; tools=none',
                 failureCategories: ['answered_instead_of_acted', 'missing_visual_verification'],
+                expectedTools: ['web-scrape'],
+                missingTools: ['web-scrape'],
+                misusedTools: ['document-workflow'],
+                toolMisuseCategories: ['wrong_tool_for_task'],
             }),
         }));
     });
@@ -151,8 +213,17 @@ describe('alignment evaluator service', () => {
                         requestType: 'research',
                         expectedRoute: 'Search then fetch selected sources.',
                         forbiddenRoute: 'tools=none',
+                        expectedTools: ['web-search', 'web-fetch'],
+                        missingTools: ['web-fetch'],
                         requiredEvidence: ['web-search', 'web-fetch'],
                     },
+                }],
+                alignmentToolReinforcement: [{
+                    requestType: 'research',
+                    toolUseDecision: 'tool_gap',
+                    expectedTools: ['web-search', 'web-fetch'],
+                    missingTools: ['web-fetch'],
+                    toolLesson: 'Fetch selected pages after search before citing.',
                 }],
             },
         });
@@ -161,6 +232,9 @@ describe('alignment evaluator service', () => {
         expect(context).toContain('successful frontend route pattern');
         expect(context).toContain('Avoid known regressions');
         expect(context).toContain('avoid prior research regression');
+        expect(context).toContain('Tool-use reinforcement');
+        expect(context).toContain('research tool reinforcement: tool_gap');
+        expect(context).toContain('missing web-fetch');
     });
 
     test('builds compact session-local alignment guidance context', () => {
@@ -174,8 +248,13 @@ describe('alignment evaluator service', () => {
                         routeDecision: 'wrong_route',
                         expectedRoute: 'Frontend edit plus browser verification.',
                         failureCategories: ['answered_instead_of_acted'],
+                        toolUseDecision: 'tool_gap',
+                        expectedTools: ['web-scrape'],
+                        missingTools: ['web-scrape'],
+                        toolMisuseCategories: ['skipped_verification_tool'],
                         decisionGuidance: ['Prefer implementation and browser verification.'],
                         lesson: 'UI implementation requests need the frontend route.',
+                        toolLesson: 'Run browser verification for UI changes.',
                     },
                 }],
             },
@@ -185,7 +264,9 @@ describe('alignment evaluator service', () => {
         expect(context).toContain('negative frontend feedback');
         expect(context).toContain('Route: wrong_route');
         expect(context).toContain('Failure categories: answered_instead_of_acted.');
+        expect(context).toContain('Tool feedback: tool_gap; missing web-scrape.');
         expect(context).toContain('Prefer implementation and browser verification.');
         expect(context).toContain('UI implementation requests need the frontend route.');
+        expect(context).toContain('Tool lesson: Run browser verification for UI changes.');
     });
 });
