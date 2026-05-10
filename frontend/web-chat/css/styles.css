@@ -437,6 +437,10 @@
 }
 
 [data-chat-theme="paper"] {
+    --accent: #1d4ed8;
+    --accent-hover: #1e40af;
+    --text-tertiary: #475569;
+    --text-muted: #64748b;
     --page-base-background: linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
     --page-wallpaper: radial-gradient(circle at 16% 14%, rgba(61, 141, 255, 0.14), transparent 30%), radial-gradient(circle at 82% 14%, rgba(234, 106, 59, 0.08), transparent 22%), repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.06) 0 1px, transparent 1px 14px);
     --page-vignette: linear-gradient(180deg, rgba(61, 141, 255, 0.04), transparent 24%);
@@ -3667,6 +3671,7 @@ body.mobile-chat-menu-open {
 
 .btn-primary {
     background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+    background-color: var(--accent-hover);
     color: white;
     border: none;
     box-shadow: var(--shadow-sm);
@@ -6233,6 +6238,7 @@ body.layout-minimal #input-meta-row {
     font-weight: 700;
     color: #fff;
     background: linear-gradient(135deg, var(--accent), var(--purple));
+    background-color: var(--accent-hover);
     box-shadow: var(--shadow-glow);
     transition: transform var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-fast);
 }

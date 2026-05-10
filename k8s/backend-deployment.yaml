@@ -5,6 +5,8 @@ metadata:
   namespace: kimibuilt
   labels:
     app: backend
+  annotations:
+    kimibuilt.secdevsolutions.help/scaling: "Single replica by design: uses shared backend-state PVC and Recreate strategy. See k8s/scaling-plan.md."
 spec:
   replicas: 1
   strategy:

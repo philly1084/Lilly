@@ -25,6 +25,7 @@ const DEFAULT_DURATION_MINUTES = 10;
 const DEFAULT_TARGET_WPM = 145;
 const DEFAULT_MAX_SOURCES = 4;
 const DEFAULT_SILENCE_MS = 325;
+const DEFAULT_FINAL_TAIL_SILENCE_MS = 650;
 const DEFAULT_MINIMUM_VALID_TURNS = 4;
 const DEFAULT_PODCAST_SEARCH_TIMEOUT_MS = 45000;
 const MAX_PODCAST_SOURCE_SNIPPET_CHARS = 800;
@@ -52,8 +53,9 @@ const DEFAULT_PODCAST_TTS_CONCURRENCY = Math.max(
 const MAX_PODCAST_RESEARCH_CONCURRENCY = 12;
 const MAX_PODCAST_TTS_CONCURRENCY = 24;
 const PODCAST_HIGH_QUALITY_VOICE_IDS = Object.freeze([
-  'af_bella',
   'af_heart',
+  'af_bella',
+  'af_nicole',
   'bf_emma',
   'ljspeech-high',
   'lessac-high',
@@ -109,28 +111,28 @@ const DEFAULT_HOST_ROSTER = Object.freeze([
     name: 'Maya',
     role: 'Lead host',
     persona: 'Warm, curious, and good at guiding the listener through the big picture.',
-    preferredVoiceIds: ['af_bella', 'af_heart'],
+    preferredVoiceIds: ['af_heart', 'af_bella'],
   },
   {
     key: 'hostB',
     name: 'June',
     role: 'Co-host',
     persona: 'Grounded, calm, and precise when unpacking details, tradeoffs, and practical consequences.',
-    preferredVoiceIds: ['bf_emma', 'af_heart'],
+    preferredVoiceIds: ['af_bella', 'af_nicole', 'bf_emma'],
   },
   {
     key: 'hostC',
     name: 'June',
     role: 'Co-host',
     persona: 'Sharper, more analytical, and slightly playful when unpacking details and tradeoffs.',
-    preferredVoiceIds: ['bf_emma', 'af_heart'],
+    preferredVoiceIds: ['af_bella', 'af_nicole', 'bf_emma'],
   },
   {
     key: 'hostD',
     name: 'Claire',
     role: 'Lead host',
     persona: 'Measured, thoughtful, and good at turning technical material into clear narrative beats.',
-    preferredVoiceIds: ['af_bella', 'af_heart'],
+    preferredVoiceIds: ['af_heart', 'af_bella'],
   },
 ]);
 const LEGACY_DEFAULT_HOSTS = Object.freeze([
@@ -1714,7 +1716,7 @@ class PodcastService {
 
     let outputFormat = null;
     const wavBuffers = [];
-    for (const synthesis of orderedSyntheses) {
+    orderedSyntheses.forEach((synthesis, index) => {
       const parsedSynthesisBuffer = parseWavBuffer(synthesis.audioBuffer, { allowNonPcm: true });
       if (!outputFormat) {
         outputFormat = {
@@ -1728,23 +1730,13 @@ class PodcastService {
         ? synthesis.audioBuffer
         : normalizeWavBufferFormat(synthesis.audioBuffer, outputFormat);
 
-      wavBuffers.push(applyWavEdgeFade(normalizedAudioBuffer, 18));
-      wavBuffers.push(createSilenceWavBuffer(outputFormat, silenceMs));
-    }
-
-    while (wavBuffers.length > 0) {
-      const lastBuffer = wavBuffers[wavBuffers.length - 1];
-      try {
-        const parsed = parseWavBuffer(lastBuffer);
-        if (parsed.data.every((value) => value === 0)) {
-          wavBuffers.pop();
-          continue;
-        }
-      } catch (_error) {
-        break;
+      wavBuffers.push(applyWavEdgeFade(normalizedAudioBuffer, 8, { fadeOut: false }));
+      if (index < orderedSyntheses.length - 1) {
+        wavBuffers.push(createSilenceWavBuffer(outputFormat, silenceMs));
       }
-      break;
-    }
+    });
+
+    wavBuffers.push(createSilenceWavBuffer(outputFormat, DEFAULT_FINAL_TAIL_SILENCE_MS));
 
     return concatWavBuffers(wavBuffers);
   }

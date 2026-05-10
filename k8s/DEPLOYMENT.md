@@ -348,6 +348,15 @@ kubectl port-forward svc/backend 3000:3000 -n kimibuilt
 curl http://localhost:3000/metrics
 ```
 
+## Scaling
+
+The backend is intentionally deployed as **a single replica** by default. Before enabling multi-replica or HPA, review:
+
+- `k8s/scaling-plan.md` (OP-001 decision, current vertical scaling runbook, why HPA is deferred today, and the enablement path)
+- `k8s/backend-deployment.yaml` (shared `backend-state` PVC + `Recreate` strategy)
+
+Do not apply an HPA manifest or raise `spec.replicas` above `1` until the backend no longer depends on the shared `backend-state` PVC and the update strategy is compatible with multiple live pods. For the current k3s-sized production baseline, scale vertically in small CPU/memory steps, verify with `kubectl top pods -n kimibuilt`, `kubectl describe pod -l app=backend -n kimibuilt`, rollout status, and `/health`, then record the observed pressure that justified the change.
+
 ### Logs Aggregation
 
 ```bash

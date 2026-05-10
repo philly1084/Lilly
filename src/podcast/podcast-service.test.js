@@ -15,6 +15,7 @@ jest.mock('../tts/tts-service', () => ({
       voices: [
         { id: 'af_heart', label: 'Heart Studio', provider: 'kokoro', aliases: ['lessac-high'] },
         { id: 'af_bella', label: 'Bella Expressive', provider: 'kokoro', aliases: ['ljspeech-high'] },
+        { id: 'af_nicole', label: 'Nicole Clear', provider: 'kokoro' },
         { id: 'am_adam', label: 'Adam Narrator', provider: 'kokoro', aliases: ['ryan-high'] },
         { id: 'am_michael', label: 'Michael Casual', provider: 'kokoro' },
         { id: 'bf_emma', label: 'Emma Editorial', provider: 'kokoro', aliases: ['cori-high'] },
@@ -1074,6 +1075,33 @@ describe('PodcastService', () => {
     expect(thirdSegmentIndex).toBeGreaterThan(secondSegmentIndex);
   });
 
+  test('keeps a final silence tail so the last spoken words are not clipped', async () => {
+    const service = new PodcastService();
+    const result = await service.synthesizeTurns(
+      [{ speaker: 'Maya', text: 'The final words need room to finish.' }],
+      [{
+        name: 'Maya',
+        voiceId: 'af_heart',
+      }],
+      {
+        silenceMs: 250,
+        chunkMaxChars: 1600,
+      },
+    );
+
+    const parsed = parseWavBuffer(result);
+    let trailingZeroBytes = 0;
+    for (let index = parsed.data.length - 1; index >= 0; index -= 1) {
+      if (parsed.data[index] !== 0) {
+        break;
+      }
+      trailingZeroBytes += 1;
+    }
+
+    const expectedTailBytes = Math.round(parsed.sampleRate * 0.65) * parsed.numChannels * (parsed.bitsPerSample / 8);
+    expect(trailingZeroBytes).toBeGreaterThanOrEqual(expectedTailBytes);
+  });
+
   test('passes podcast-specific Piper timeout settings into synthesis and retries timed out chunks with smaller splits', async () => {
     const timeoutError = new Error('Piper TTS timed out before audio generation completed.');
     timeoutError.statusCode = 504;
@@ -1438,6 +1466,7 @@ describe('PodcastService', () => {
     expect(new Set(usedVoiceIds).size).toBeGreaterThanOrEqual(2);
     usedVoiceIds.forEach((voiceId) => {
       expect([
+        'af_nicole',
         'af_bella',
         'af_heart',
         'bf_emma',
@@ -1502,6 +1531,7 @@ describe('PodcastService', () => {
       expect([
         'af_bella',
         'af_heart',
+        'af_nicole',
         'bf_emma',
         'ljspeech-high',
         'lessac-high',

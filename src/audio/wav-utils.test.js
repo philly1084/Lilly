@@ -130,4 +130,18 @@ describe('wav-utils', () => {
     expect(faded.data.readInt16LE(2)).toBeGreaterThan(0);
     expect(faded.data.readInt16LE(6)).toBeLessThan(100);
   });
+
+  test('can keep the end of speech untouched when disabling fade out', () => {
+    const source = writeWavBuffer({
+      sampleRate: 1000,
+      bitsPerSample: 16,
+      numChannels: 1,
+      data: Buffer.from([100, 0, 100, 0, 100, 0, 100, 0]),
+    });
+
+    const faded = parseWavBuffer(applyWavEdgeFade(source, 2, { fadeOut: false }));
+
+    expect(faded.data.readInt16LE(0)).toBe(0);
+    expect(faded.data.readInt16LE(6)).toBe(100);
+  });
 });

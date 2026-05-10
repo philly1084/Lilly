@@ -4736,18 +4736,18 @@ class ChatApp {
             this.renderOrReplaceMessage(surveyMessage);
         }
 
-        this.markLocalCheckpointAnswered(
-            sessionId,
-            surveyId,
-            responseContent.replace(/^Survey response \([^)]+\):\s*/i, ''),
-        );
-
         card.dataset.submitted = 'true';
         if (button) {
             button.disabled = true;
         }
 
         this.releasePendingSurveyProcessingGate(sessionId, surveyId);
+        this.markLocalCheckpointAnswered(
+            sessionId,
+            surveyId,
+            responseContent.replace(/^Survey response \([^)]+\):\s*/i, ''),
+        );
+
         const sendSucceeded = await this.sendPreparedMessage(responseContent);
         if (!sendSucceeded) {
             if (surveyMessage) {

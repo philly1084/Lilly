@@ -12,6 +12,12 @@
     "aliases": ["ljspeech-high"]
   },
   {
+    "id": "af_nicole",
+    "label": "Nicole Clear",
+    "description": "Calm, clear American English female Kokoro voice for technical, educational, and slower reflective podcast segments.",
+    "aliases": []
+  },
+  {
     "id": "bf_emma",
     "label": "Emma Editorial",
     "description": "Polished British English female Kokoro voice for editorial or documentary-style podcasts.",

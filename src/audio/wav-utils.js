@@ -292,7 +292,7 @@ function concatWavBuffers(buffers = []) {
   });
 }
 
-function applyWavEdgeFade(buffer, fadeMs = 8) {
+function applyWavEdgeFade(buffer, fadeMs = 8, options = {}) {
   const parsed = parseWavBuffer(buffer);
   if (parsed.audioFormat !== 1 || parsed.bitsPerSample !== 16) {
     return buffer;
@@ -310,6 +310,12 @@ function applyWavEdgeFade(buffer, fadeMs = 8) {
     return buffer;
   }
 
+  const fadeIn = options.fadeIn !== false;
+  const fadeOut = options.fadeOut !== false;
+  if (!fadeIn && !fadeOut) {
+    return buffer;
+  }
+
   const faded = Buffer.from(parsed.data);
   for (let frameIndex = 0; frameIndex < fadeFrames; frameIndex += 1) {
     const fadeInScale = frameIndex / fadeFrames;
@@ -319,8 +325,12 @@ function applyWavEdgeFade(buffer, fadeMs = 8) {
     for (let channelIndex = 0; channelIndex < parsed.numChannels; channelIndex += 1) {
       const inOffset = ((frameIndex * parsed.numChannels) + channelIndex) * 2;
       const outOffset = ((fadeOutFrame * parsed.numChannels) + channelIndex) * 2;
-      faded.writeInt16LE(Math.round(faded.readInt16LE(inOffset) * fadeInScale), inOffset);
-      faded.writeInt16LE(Math.round(faded.readInt16LE(outOffset) * fadeOutScale), outOffset);
+      if (fadeIn) {
+        faded.writeInt16LE(Math.round(faded.readInt16LE(inOffset) * fadeInScale), inOffset);
+      }
+      if (fadeOut) {
+        faded.writeInt16LE(Math.round(faded.readInt16LE(outOffset) * fadeOutScale), outOffset);
+      }
     }
   }
 

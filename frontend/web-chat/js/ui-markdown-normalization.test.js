@@ -286,6 +286,31 @@ Live result:
         expect(html).not.toContain('submitAgentSurvey');
     });
 
+    test('keeps one-option checkpoints selectable when free-text Other is available', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.expandedReasoningMessageIds = new Set();
+        const survey = helper.normalizeSurveyDefinition({
+            id: 'checkpoint-beach-direction',
+            title: 'Choose a direction',
+            steps: [{
+                id: 'step-1',
+                inputType: 'choice',
+                question: 'Choose a direction',
+                options: [
+                    { id: 'pamphlet', label: 'Beach vacation pamphlet' },
+                ],
+                allowFreeText: true,
+            }],
+        }, 'message-1');
+        const html = helper.renderSurveyBlock(survey, { id: 'message-1' });
+
+        expect(survey.steps[0].inputType).toBe('choice');
+        expect(html).toContain('data-option-id="pamphlet"');
+        expect(html).toContain('data-option-id="custom-input"');
+        expect(html).toContain('agent-survey-card__notes');
+        expect(html).not.toContain('agent-survey-card__input--text');
+    });
+
     test('renders progress as one live reasoning block with completed task styling', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAssistantRenderPlan({

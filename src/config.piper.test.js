@@ -35,6 +35,7 @@ describe('config bundled TTS defaults', () => {
         expect(config.tts.kokoro.voices).toEqual(expect.arrayContaining([
             expect.objectContaining({ id: 'af_heart', aliases: expect.arrayContaining(['lessac-high']) }),
             expect.objectContaining({ id: 'af_bella', aliases: expect.arrayContaining(['ljspeech-high']) }),
+            expect.objectContaining({ id: 'af_nicole' }),
             expect.objectContaining({ id: 'bf_emma', aliases: expect.arrayContaining(['cori-high']) }),
         ]));
         expect(config.tts.kokoro.voices.map((voice) => voice.id)).not.toEqual(expect.arrayContaining([

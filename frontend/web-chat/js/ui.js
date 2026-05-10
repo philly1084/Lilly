@@ -1790,14 +1790,14 @@ class UIHelpers {
             allowMultiple,
         });
         const isChoiceInput = inputType === 'choice' || inputType === 'multi-choice';
+        const allowFreeText = isChoiceInput ? this.resolveSurveyAllowFreeText(step) : false;
 
-        if (isChoiceInput && options.length < 2) {
+        if (isChoiceInput && options.length < 2 && !(options.length === 1 && allowFreeText)) {
             return null;
         }
 
         const title = String(step.title || '').trim();
         const placeholder = String(step.placeholder || step.inputPlaceholder || step.freeTextPlaceholder || '').trim();
-        const allowFreeText = isChoiceInput ? this.resolveSurveyAllowFreeText(step) : false;
 
         return {
             id: String(step.id || `step-${index + 1}`).trim(),

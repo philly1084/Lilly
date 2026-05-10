@@ -27,6 +27,7 @@ describe('web chat user checkpoint helpers', () => {
                 title: 'Choose a direction',
                 question: 'Which option should we take?',
             },
+            answeredThisTurn: false,
         });
     });
 
