@@ -114,9 +114,12 @@ body[data-theme="voxel"] .main-content {
 
 body[data-theme="voxel"] .terminal-container {
     position: relative;
+    min-width: 0;
+    min-height: 0;
     background:
         linear-gradient(180deg, rgba(73, 211, 167, 0.04), transparent 34%),
         var(--bg-primary);
+    overflow: hidden;
 }
 
 body[data-theme="voxel"] .terminal-container::before {
@@ -133,19 +136,21 @@ body[data-theme="voxel"] .terminal-container::before {
 body[data-theme="voxel"] .terminal-output {
     position: relative;
     z-index: 1;
+    min-width: 0;
+    overflow-x: hidden;
     padding: 22px 16px 118px;
 }
 
 body[data-theme="voxel"] .input-container {
-    position: absolute;
+    position: sticky;
     left: 0;
     right: 0;
     bottom: 0;
+    flex: 0 0 auto;
     z-index: 2;
     background: var(--voxel-panel-strong);
     border-top: 2px solid var(--border-color);
     box-shadow: 0 -8px 0 rgba(0, 0, 0, 0.16);
-    transform: translateY(42px);
     transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
@@ -1837,6 +1842,30 @@ body[data-theme="voxel"] .autocomplete-item.selected {
         overflow-x: hidden;
     }
 
+    body[data-theme="voxel"] {
+        height: 100dvh;
+        padding:
+            max(0.45rem, env(safe-area-inset-top, 0px))
+            max(0.55rem, env(safe-area-inset-right, 0px))
+            max(0.45rem, env(safe-area-inset-bottom, 0px))
+            max(0.55rem, env(safe-area-inset-left, 0px));
+        background: var(--bg-primary);
+    }
+
+    body[data-theme="voxel"] .app-container {
+        height: 100%;
+        min-height: 0;
+        border: 2px solid var(--border-color);
+        border-radius: 10px;
+        background: var(--bg-primary);
+        box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.22);
+    }
+
+    body[data-theme="voxel"] .main-content,
+    body[data-theme="voxel"] .terminal-container {
+        min-height: 0;
+    }
+
     body[data-theme="voxel"] .line-output.ai {
         max-width: calc(100vw - 24px);
     }
@@ -2029,27 +2058,30 @@ body[data-theme="voxel"] .autocomplete-item.selected {
     }
 
     body[data-theme="voxel"] .terminal-output {
-        padding: 0.85rem 0.75rem 7.25rem;
+        padding: 0.85rem 0.75rem 1rem;
     }
 
     body[data-theme="voxel"] .header {
-        overflow: visible;
-        transform: translateY(calc(-100% + 1.55rem));
-    }
-
-    body[data-theme="voxel"] .header:not(:hover):not(:focus-within) > * {
-        opacity: 0;
-        pointer-events: none;
+        position: relative;
+        top: auto;
+        left: auto;
+        right: auto;
+        flex: 0 0 auto;
+        overflow: hidden;
+        transform: none;
     }
 
     body[data-theme="voxel"] .header::after {
-        right: 0.75rem;
-        bottom: 0;
-        min-width: 4.5rem;
-        text-align: center;
+        content: none;
     }
 
     body[data-theme="voxel"] .input-container {
+        position: sticky;
+        left: auto;
+        right: auto;
+        bottom: 0;
+        width: 100%;
+        flex: 0 0 auto;
         transform: none;
         padding: 0.55rem 0.65rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
     }

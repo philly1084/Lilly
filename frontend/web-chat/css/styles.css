@@ -2163,6 +2163,7 @@ html,
 body {
     width: 100%;
     min-height: 100%;
+    overflow: hidden;
 }
 
 body,
@@ -2461,6 +2462,7 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
+    touch-action: manipulation;
     background:
         radial-gradient(circle at top left, rgba(88, 166, 255, 0.16), transparent 30%),
         radial-gradient(circle at top right, rgba(255, 138, 91, 0.1), transparent 24%),
@@ -2476,6 +2478,8 @@ body {
 
 .app-shell {
     display: flex;
+    width: 100%;
+    max-width: 100vw;
     height: 100vh;
     height: 100dvh;
     min-height: 100%;
@@ -8577,8 +8581,16 @@ code[class*="language-"] {
 
 @media (max-width: 768px) {
     .app-shell {
+        width: 100%;
+        max-width: 100vw;
+        height: 100dvh;
         gap: 0;
-        padding: 0;
+        padding:
+            max(0.45rem, env(safe-area-inset-top, 0px))
+            max(0.55rem, env(safe-area-inset-right, 0px))
+            max(0.45rem, env(safe-area-inset-bottom, 0px))
+            max(0.55rem, env(safe-area-inset-left, 0px));
+        overflow: hidden;
     }
 
     .app-shell.has-project-viewport {
@@ -8629,10 +8641,17 @@ code[class*="language-"] {
     .main-shell,
     .sidebar-panel,
     .project-viewport {
-        border-radius: 0;
-        border-left: none;
-        border-right: none;
+        border-radius: 1rem;
+        border-left: 1px solid var(--border);
+        border-right: 1px solid var(--border);
         box-shadow: none;
+    }
+
+    .main-shell {
+        height: 100%;
+        max-width: 100%;
+        min-height: 0;
+        contain: layout paint;
     }
 
     .project-viewport__chrome {
@@ -8689,6 +8708,7 @@ code[class*="language-"] {
         padding-left: 1rem;
         padding-right: 0.9rem;
         gap: 0.75rem;
+        flex: 0 0 auto;
     }
 
     .chat-header-brand {
@@ -8728,8 +8748,17 @@ code[class*="language-"] {
     }
     
     .message {
+        width: 100%;
+        max-width: 100%;
         padding: 0.8rem 0.2rem;
         gap: 0.75rem;
+    }
+
+    .message-content,
+    .message-text,
+    .markdown-content {
+        min-width: 0;
+        max-width: 100%;
     }
     
     .message-avatar {
@@ -8757,6 +8786,7 @@ code[class*="language-"] {
     }
     
     .input-area {
+        flex: 0 0 auto;
         padding: 0.65rem 0.75rem calc(0.8rem + env(safe-area-inset-bottom, 0px));
     }
 
@@ -8771,6 +8801,8 @@ code[class*="language-"] {
     }
 
     #composer-shell {
+        width: 100%;
+        max-width: 100%;
         gap: 0.4rem !important;
         border-radius: 1.15rem !important;
         padding: 0.3rem 0.35rem 0.35rem 0.45rem;
@@ -8883,10 +8915,15 @@ code[class*="language-"] {
 @media (max-width: 480px) {
     .main-shell {
         min-width: 0;
+        border-radius: 0.9rem;
     }
 
     #messages-container {
-        padding: 0.75rem 0.75rem 0.9rem;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        overflow-x: hidden;
+        padding: 0.75rem 0.65rem 0.9rem;
     }
 
     .sidebar {
@@ -8931,8 +8968,8 @@ code[class*="language-"] {
     }
     
     .chat-header {
-        padding-left: 0.75rem;
-        padding-right: 0.75rem;
+        padding-left: 0.65rem;
+        padding-right: 0.65rem;
         min-height: 4.55rem;
     }
 
@@ -9020,7 +9057,7 @@ code[class*="language-"] {
     }
 
     #input-area {
-        padding: 0.5rem 0.55rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+        padding: 0.5rem 0.5rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
     }
 
     #composer-shell {
@@ -9035,6 +9072,7 @@ code[class*="language-"] {
     }
 
     .composer-shell__actions {
+        flex: 0 0 auto;
         gap: 0.3rem !important;
         padding-right: 0.1rem !important;
         padding-bottom: 0.1rem !important;
@@ -9140,13 +9178,13 @@ code[class*="language-"] {
     }
 
     .welcome-title {
-        font-size: clamp(1.65rem, 9.5vw, 2.2rem);
-        line-height: 1.08;
+        font-size: clamp(1.45rem, 7vw, 1.85rem);
+        line-height: 1.14;
     }
 
     .welcome-description {
-        font-size: 0.9rem;
-        line-height: 1.48;
+        font-size: 0.86rem;
+        line-height: 1.52;
     }
 
     .welcome-capability-row {

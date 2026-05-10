@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>KimiBuilt Web CLI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -23,7 +23,7 @@
 
     <!-- PDF export for Mermaid diagrams -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <link rel="stylesheet" href="css/voxel.css?v=20260509a">
+    <link rel="stylesheet" href="css/voxel.css?v=20260510a">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
     
     <style>
@@ -150,9 +150,11 @@
             margin: 0;
             padding: 0;
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
             font-size: 14px;
             line-height: 1.5;
+            overscroll-behavior: none;
         }
 
         /* ===== Layout ===== */
@@ -160,6 +162,10 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
+            height: 100dvh;
+            min-height: 0;
+            max-width: 100vw;
+            overflow: hidden;
         }
 
         /* ===== Header ===== */
@@ -230,6 +236,7 @@
             flex: 1;
             display: flex;
             overflow: hidden;
+            min-height: 0;
         }
 
         /* ===== Terminal Output ===== */
@@ -238,11 +245,14 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-width: 0;
+            min-height: 0;
         }
 
         .terminal-output {
             flex: 1;
             overflow-y: auto;
+            overflow-x: hidden;
             padding: 16px;
             scroll-behavior: smooth;
         }
@@ -1152,7 +1162,7 @@
                 <div id="terminalOutput" class="terminal-output"></div>
                 
                 <!-- Input Area -->
-                <div class="input-container" style="position: relative;">
+                <div class="input-container">
                     <div class="input-wrapper">
                         <button id="voxelPetButton" class="voxel-prompt-pet" type="button" onclick="app.focusVoxelCreator({ source: 'prompt' })" title="Open voxel companion" aria-label="Open voxel companion creator">
                             <span id="voxelPetMini" class="voxel-prompt-pet-stage" aria-hidden="true"></span>
