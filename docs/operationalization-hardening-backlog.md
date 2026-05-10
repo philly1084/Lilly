@@ -210,7 +210,7 @@ Status:
     - Non-Canadian jurisdiction-specific privacy language was removed from the OP-004 plan language and not added to the packet.
     - Follow-up hardening instituted operating measures for data request intake, monthly retention review, export, deletion, memory-cleanup verification, backup follow-up, and secret/sensitive-data incidents.
 
-### [ ] OP-005 Add Human Operations And Incident Runbook
+### [x] OP-005 Add Human Operations And Incident Runbook
 
 Goal: Make support, maintenance, deployment, and incident response concrete enough for handoff.
 
@@ -236,7 +236,19 @@ Focused checks:
 - Optional smoke: `kubectl get pods -n kimibuilt` when live cluster access is available.
 
 Status:
-- Pending.
+- Done. Added a human operations and incident runbook that gives maintainers concrete daily checks, release checks, first-15-minutes incident triage, rollback/recovery commands, model/tool failure handling, memory/artifact cleanup guidance, bad-output intake, privacy request routing, secret handling, remote access safety, and an incident log template.
+  - Files changed:
+    - `docs/human-operations-incident-runbook.md`
+    - `k8s/DEPLOYMENT.md`
+    - `docs/operationalization-hardening-backlog.md`
+  - Checks run:
+    - Docs-only review of `k8s/K3S_RANCHER_PLAYBOOK.md`, `k8s/DEPLOYMENT.md`, `docs/CODEX_DESKTOP_REMOTE_TUNNELS.md`, `docs/monitoring-alerting-slo-runbook.md`, and `docs/privacy-data-governance.md`.
+    - `rg -n "California|CCPA|GDPR|CRM|order" docs/human-operations-incident-runbook.md` (pass: no matches).
+    - No behavior tests run because OP-005 changed only documentation.
+  - Evidence:
+    - The new runbook includes a first-15-minutes checklist with endpoint, pod, event, log, rollout, and ingress checks.
+    - Rollback and recovery are documented with `kubectl rollout undo`, explicit known-good image restore, Rancher UI guidance, and a PVC/data-loss warning.
+    - Support paths now identify owners for prompt/model/tool updates, deployment verification, privacy/deletion requests, and secret rotation without adding unrelated CRM/order integrations.
 
 ### [ ] OP-006 Define Model, Prompt, Tool, And Memory Improvement Loop
 
@@ -310,3 +322,4 @@ YYYY-MM-DD HH:mm - OP-XXX - status - files changed - checks run - evidence/block
 2026-05-10 12:24 - OP-004 - blocked - none - docs-only read-through - Drafted Canadian privacy/data governance packet, but previous run could not write because sandbox was read-only
 2026-05-10 12:33 - OP-004 - done - docs/privacy-data-governance.md, docs/operationalization-hardening-backlog.md - docs-only review; no behavior tests run - Added Canadian-first privacy/data governance packet covering data categories, storage, retention, deletion/export paths, secrets, backups, access control, and explicit gaps without overclaiming compliance
 2026-05-10 12:47 - OP-004 - instituted - docs/privacy-data-governance.md, docs/operationalization-hardening-backlog.md - docs-only review; no behavior tests run - Added concrete OP-004 operating measures for privacy request intake, monthly retention review, export, deletion, Qdrant cleanup verification, backup follow-up, and secret/sensitive-data incidents
+2026-05-10 14:38 - OP-005 - done - docs/human-operations-incident-runbook.md, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - docs-only review; rg -n "California|CCPA|GDPR|CRM|order" docs/human-operations-incident-runbook.md (pass: no matches); no behavior tests run - Added human handoff runbook with daily/release checks, first-15-minutes triage, rollback/recovery, model/tool failure handling, memory/artifact cleanup, bad-output intake, privacy request routing, secret handling, remote access, and incident log template

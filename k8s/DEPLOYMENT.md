@@ -340,6 +340,8 @@ spec:
 
 KimiBuilt's current production monitoring path is Rancher/Kubernetes-events first, with HTTP health endpoints and the admin dashboard as the application view. See `docs/monitoring-alerting-slo-runbook.md` for the SLO targets, alert conditions, first-15-minutes triage flow, and the future Prometheus/Grafana/Alertmanager enablement path.
 
+For human handoff, daily checks, release checks, rollback, recovery, bad-output handling, storage cleanup, privacy requests, and secret rotation, use `docs/human-operations-incident-runbook.md`.
+
 Core checks:
 
 ```bash
