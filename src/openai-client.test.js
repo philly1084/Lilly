@@ -1215,7 +1215,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
             includeVideo: true,
             videoAspectRatio: '16:9',
             videoRenderMode: 'storyboard',
-            videoImageMode: 'mixed',
+            videoImageMode: 'generated',
             videoGenerateImages: true,
         });
         expect(__testUtils.inferPodcastVideoOptions('Make a vertical video podcast about battery storage with generated images.')).toEqual({
