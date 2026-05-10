@@ -1,0 +1,406 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "file:///C:/Users/phill/KimiBuilt/frontend/web-chat/app.html",
+  "originalUrl": "file:///C:/Users/phill/KimiBuilt/frontend/web-chat/app.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-10T17:51:05.794Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-session-switch\\lilly-workspace-desktop.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/web-chat/app.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 932,
+        "bodyTextPreview": "Skip to main content AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent workloads close at hand. New Chat No conversations yet Start a new chat to begin WORKSPACE Import Export Search Files Focus Mode APPEARANCE Paper Theme Lilly LIVE CHAT No active session Offline Auto STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them. Live streaming Sear",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 176,
+        "textContrast": {
+          "checked": 79,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "file:///C:/Users/phill/KimiBuilt/frontend/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "warning",
+          "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing."
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/preferences/web-chat' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load synced web-chat preferences: TypeError: Failed to fetch\n    at SessionManager.loadUserPreferences (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:498:36)\n    at new SessionManager (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:242:44)\n    at file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:2299:24"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/tts/voices' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///live' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///v1/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Fetch fallback failed: TypeError: Failed to fetch\n    at OpenAIAPIClient.getModels (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/api.js?v=20260502a:1747:40)\n    at UIHelpers.loadModels (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/ui.js?v=20260503a:5523:46)\n    at ChatApp.init (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/app.js?v=20260510a:493:19)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/sessions?taskType=chat&clientSurface=web-chat&workspaceKey=web-chat' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load backend sessions, using local cache: TypeError: Failed to fetch\n    at SessionManager.loadSessions (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:878:36)\n    at ChatApp.loadSessions (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/app.js?v=20260510a:1338:34)\n    at ChatApp.init (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/app.js?v=20260510a:499:20)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///live' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/preferences/web-chat' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "file:///C:/shared/openai-sse.js?v=20260502a",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///C:/shared/model-output-parser.js?v=20260430a",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///C:/shared/theme-presets.js?v=20260426a",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///api/preferences/web-chat",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/tts/voices",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///live",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///v1/models",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/sessions?taskType=chat&clientSurface=web-chat&workspaceKey=web-chat",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///live",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/preferences/web-chat",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-session-switch\\lilly-workspace-mobile.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/web-chat/app.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 206,
+        "bodyTextPreview": "Skip to main content Lilly STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them.",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 176,
+        "textContrast": {
+          "checked": 12,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "file:///C:/Users/phill/KimiBuilt/frontend/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "warning",
+          "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing."
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/preferences/web-chat' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load synced web-chat preferences: TypeError: Failed to fetch\n    at SessionManager.loadUserPreferences (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:498:36)\n    at new SessionManager (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:242:44)\n    at file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:2299:24"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/tts/voices' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///live' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///v1/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Fetch fallback failed: TypeError: Failed to fetch\n    at OpenAIAPIClient.getModels (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/api.js?v=20260502a:1747:40)\n    at UIHelpers.loadModels (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/ui.js?v=20260503a:5523:46)\n    at ChatApp.init (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/app.js?v=20260510a:493:19)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/sessions?taskType=chat&clientSurface=web-chat&workspaceKey=web-chat' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load backend sessions, using local cache: TypeError: Failed to fetch\n    at SessionManager.loadSessions (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/session.js?v=20260509b:878:36)\n    at ChatApp.loadSessions (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/app.js?v=20260510a:1338:34)\n    at ChatApp.init (file:///C:/Users/phill/KimiBuilt/frontend/web-chat/js/app.js?v=20260510a:499:20)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///live' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/preferences/web-chat' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "file:///C:/shared/openai-sse.js?v=20260502a",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///C:/shared/model-output-parser.js?v=20260430a",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///C:/shared/theme-presets.js?v=20260426a",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///api/preferences/web-chat",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/tts/voices",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///live",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///v1/models",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/sessions?taskType=chat&clientSurface=web-chat&workspaceKey=web-chat",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///live",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/preferences/web-chat",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-session-switch\\lilly-workspace-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-session-switch\\lilly-workspace-mobile.png"
+    ],
+    "issues": [
+      "cors-errors",
+      "failed-requests"
+    ]
+  }
+}

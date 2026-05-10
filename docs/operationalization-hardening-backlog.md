@@ -250,7 +250,7 @@ Status:
     - Rollback and recovery are documented with `kubectl rollout undo`, explicit known-good image restore, Rancher UI guidance, and a PVC/data-loss warning.
     - Support paths now identify owners for prompt/model/tool updates, deployment verification, privacy/deletion requests, and secret rotation without adding unrelated CRM/order integrations.
 
-### [ ] OP-006 Define Model, Prompt, Tool, And Memory Improvement Loop
+### [x] OP-006 Define Model, Prompt, Tool, And Memory Improvement Loop
 
 Goal: Replace vague "model retraining" language with the improvement process KimiBuilt actually uses.
 
@@ -277,9 +277,20 @@ Focused checks:
 - Docs-only review otherwise
 
 Status:
-- Pending.
+- Done. Added a concrete continuous-improvement loop for KimiBuilt that replaces vague model-retraining language with the actual prompt, tool, routing, harness, feedback, memory, eval, deploy, monitor, and run-log process.
+  - Files changed:
+    - `docs/model-prompt-tool-memory-improvement-loop.md`
+    - `docs/operationalization-hardening-backlog.md`
+  - Checks run:
+    - Docs-only review of `src/perceived-intelligence-harness.js`, `src/perceived-intelligence-harness.test.js`, `src/orchestration/run-harness.js`, `src/conversation-orchestrator.js`, `src/alignment/evaluator-service.js`, `docs/prompt-optimization-hourly-backlog.md`, and `docs/human-operations-incident-runbook.md`.
+    - `rg -n "California|CCPA|CRM|order" docs/model-prompt-tool-memory-improvement-loop.md` (pass: no matches).
+    - No behavior tests run because OP-006 changed only documentation.
+  - Evidence:
+    - The new document defines collect, classify, select examples, change, test/evaluate, deploy, monitor, and log steps.
+    - It explicitly says the current improvement process uses prompt/tool/model-routing/memory changes, not fine-tuning or retraining, unless a future governed item adds that lane.
+    - It links the loop to existing perceived-intelligence scoring, harness diagnostics, conversation traces, alignment evaluation, and prompt optimization backlog practices.
 
-### [ ] OP-007 Create Operationalization Evidence Summary
+### [x] OP-007 Create Operationalization Evidence Summary
 
 Goal: Produce the final paperwork-friendly summary after the hardening items are complete or intentionally deferred.
 
@@ -304,7 +315,20 @@ Focused checks:
 - Docs-only review.
 
 Status:
-- Pending.
+- Done. Added a final paperwork-friendly operationalization evidence summary that rolls up the implemented controls, deferred items with rationale, evidence files, and repeatable commands without overclaiming autoscaling, alerting, privacy compliance, or retraining.
+  - Files changed:
+    - `docs/operationalization-evidence-summary.md`
+    - `docs/operationalization-hardening-backlog.md`
+    - `README.md`
+  - Checks run:
+    - Docs-only review of `README.md`, `agents.md`, `k8s/scaling-plan.md`, `k8s/DEPLOYMENT.md`, `docs/monitoring-alerting-slo-runbook.md`, `docs/privacy-data-governance.md`, `docs/human-operations-incident-runbook.md`, `docs/model-prompt-tool-memory-improvement-loop.md`, and the backlog run log.
+    - `rg -n "California|CCPA|CRM|order" docs/operationalization-evidence-summary.md` (pass: no matches).
+    - `git diff --check -- docs/operationalization-evidence-summary.md docs/operationalization-hardening-backlog.md README.md` (pass).
+    - No behavior tests run because OP-007 changed only documentation.
+  - Evidence:
+    - The summary includes operational mode, infrastructure, interfaces, security controls, testing/release gates, monitoring, Canadian-first privacy/data governance, human operations, and continuous improvement.
+    - It includes "Implemented now" and "Deferred with rationale" sections and points to the backlog/run log for traceability.
+    - README now links the evidence summary for project-management handoff.
 
 ## Run Log
 
@@ -323,3 +347,5 @@ YYYY-MM-DD HH:mm - OP-XXX - status - files changed - checks run - evidence/block
 2026-05-10 12:33 - OP-004 - done - docs/privacy-data-governance.md, docs/operationalization-hardening-backlog.md - docs-only review; no behavior tests run - Added Canadian-first privacy/data governance packet covering data categories, storage, retention, deletion/export paths, secrets, backups, access control, and explicit gaps without overclaiming compliance
 2026-05-10 12:47 - OP-004 - instituted - docs/privacy-data-governance.md, docs/operationalization-hardening-backlog.md - docs-only review; no behavior tests run - Added concrete OP-004 operating measures for privacy request intake, monthly retention review, export, deletion, Qdrant cleanup verification, backup follow-up, and secret/sensitive-data incidents
 2026-05-10 14:38 - OP-005 - done - docs/human-operations-incident-runbook.md, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - docs-only review; rg -n "California|CCPA|GDPR|CRM|order" docs/human-operations-incident-runbook.md (pass: no matches); no behavior tests run - Added human handoff runbook with daily/release checks, first-15-minutes triage, rollback/recovery, model/tool failure handling, memory/artifact cleanup, bad-output intake, privacy request routing, secret handling, remote access, and incident log template
+2026-05-10 15:05 - OP-006 - done - docs/model-prompt-tool-memory-improvement-loop.md, docs/operationalization-hardening-backlog.md - docs-only review; rg -n "California|CCPA|CRM|order" docs/model-prompt-tool-memory-improvement-loop.md (pass: no matches); no behavior tests run - Added improvement loop grounded in feedback intake, examples, prompt/tool/routing/memory changes, focused evals/tests, deploy proof, monitoring, and run-log records without promising retraining or fine-tuning
+2026-05-10 15:18 - OP-007 - done - docs/operationalization-evidence-summary.md, docs/operationalization-hardening-backlog.md, README.md - docs-only review; rg -n "California|CCPA|CRM|order" docs/operationalization-evidence-summary.md (pass: no matches); git diff --check -- docs/operationalization-evidence-summary.md docs/operationalization-hardening-backlog.md README.md (pass); no behavior tests run - Added final evidence summary with implemented controls, deferred items with rationale, evidence commands, and traceability to this backlog/run log

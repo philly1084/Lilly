@@ -56,6 +56,10 @@ kubectl apply -f k8s/
 
 See [agents.md](agents.md) for full documentation.
 
+## Operationalization Evidence
+
+For project-management handoff and production-readiness traceability, see [docs/operationalization-evidence-summary.md](docs/operationalization-evidence-summary.md) and the itemized run log in [docs/operationalization-hardening-backlog.md](docs/operationalization-hardening-backlog.md).
+
 ## License
 
 MIT

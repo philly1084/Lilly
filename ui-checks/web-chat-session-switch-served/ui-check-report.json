@@ -1,0 +1,60 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:8787/frontend/web-chat/app.html",
+  "originalUrl": "http://127.0.0.1:8787/frontend/web-chat/app.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-10T17:51:32.811Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8787/frontend/web-chat/app.html\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8787/frontend/web-chat/app.html\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:8787/frontend/web-chat/app.html",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        }
+      ],
+      "issues": [
+        "check-failed"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8787/frontend/web-chat/app.html\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8787/frontend/web-chat/app.html\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:8787/frontend/web-chat/app.html",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        }
+      ],
+      "issues": [
+        "check-failed"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [],
+    "issues": [
+      "check-failed"
+    ]
+  }
+}

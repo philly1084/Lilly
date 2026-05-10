@@ -1121,13 +1121,25 @@ class ChatApp {
             if (session?.model) {
                 uiHelpers.setCurrentModel(session.model);
             }
-            this.loadSessionMessages(e.detail.sessionId)
+            uiHelpers.renderSessionsList(sessionManager.sessions, sessionManager.currentSessionId);
+            this.renderProjectViewport();
+            this.updateSessionInfo();
+
+            const cachedMessages = this.syncAnnotatedSurveyStates(e.detail.sessionId);
+            this.renderMessages(cachedMessages.length > 0 ? cachedMessages : (e.detail.messages || []));
+
+            const switchedSessionId = e.detail.sessionId;
+            this.loadSessionMessages(switchedSessionId)
                 .finally(() => {
-                    this.subscribeToSessionUpdates(e.detail.sessionId);
-                    this.loadSessionWorkloads(e.detail.sessionId);
+                    if (sessionManager.currentSessionId !== switchedSessionId) {
+                        return;
+                    }
+
+                    this.subscribeToSessionUpdates(switchedSessionId);
+                    this.loadSessionWorkloads(switchedSessionId);
                     this.renderProjectViewport();
                     this.updateSessionInfo();
-                    void this.processMessageQueue({ sessionId: e.detail.sessionId });
+                    void this.processMessageQueue({ sessionId: switchedSessionId });
                     uiHelpers.closeSidebar();
                 });
         });
@@ -1371,12 +1383,16 @@ class ChatApp {
         uiHelpers.stopSpeechPlayback();
         await sessionManager.loadSessionMessagesFromBackend(sessionId);
         await this.refreshManagedAppProgressForSession(sessionId);
-        this.renderProjectViewport();
         let messages = this.syncAnnotatedSurveyStates(sessionId);
         const resumedBackgroundStream = this.resumePersistedBackgroundStream(sessionId, messages);
         if (resumedBackgroundStream) {
             messages = this.syncAnnotatedSurveyStates(sessionId);
         }
+        if (options.render === false || !this.isVisibleSession(sessionId)) {
+            return messages;
+        }
+
+        this.renderProjectViewport();
         this.renderMessages(messages);
         if (options.notifyNewAssistant === true && Array.isArray(options.previousMessages)) {
             this.playCueForNewAssistantMessages(options.previousMessages, messages);
