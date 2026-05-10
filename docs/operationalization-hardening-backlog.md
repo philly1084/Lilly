@@ -83,7 +83,7 @@ Status:
     - `k8s/scaling-plan.md` now includes the OP-001 decision record, current k3s vertical scaling runbook, scaling triggers, HPA blockers, and enablement path.
     - `k8s/DEPLOYMENT.md` now warns operators not to raise replicas or apply HPA before replica-safety prerequisites are complete.
 
-### [ ] OP-002 Add Load And Stress Test Release Gate
+### [x] OP-002 Add Load And Stress Test Release Gate
 
 Goal: Prove the platform can handle expected interactive use and make performance checks repeatable.
 
@@ -109,9 +109,26 @@ Focused checks:
 - `npm test -- --runTestsByPath <related-test-file>` if a unit-testable helper is added
 
 Status:
-- Pending.
+- Done. Added a dependency-free Node release gate for `/health`, `/web-chat/`, and `/api/chat` with configurable target URL, concurrency, duration, p95 latency threshold, error-rate threshold, request timeout, and bearer token source.
+  - Files changed:
+    - `scripts/load-release-gate.js`
+    - `scripts/load-release-gate.test.js`
+    - `package.json`
+    - `k8s/DEPLOYMENT.md`
+    - `docs/operationalization-hardening-backlog.md`
+  - Checks run:
+    - `node --check scripts\load-release-gate.js` (pass)
+    - `node .\node_modules\jest\bin\jest.js --runTestsByPath scripts\load-release-gate.test.js` (pass)
+    - `node scripts\load-release-gate.js --url http://localhost:3000 --smoke --dry-run` (pass; prints sanitized plan)
+    - `node scripts\load-release-gate.js --url http://localhost:3000 --smoke` (expected fail in this local environment: `/api/chat` returns `HTTP 401 Unauthorized`; confirms non-zero release-gate failure and sanitized errors)
+    - `npm run test:load -- --url http://localhost:3000 --smoke --dry-run` (blocked: `npm` not on PATH)
+    - `& 'C:\nvm4w\nodejs\npm.cmd' run test:load -- --url http://localhost:3000 --smoke --dry-run` (pass; verifies package script wiring)
+  - Evidence:
+    - `scripts/load-release-gate.js` exits non-zero on high error rate, unreachable/auth-failed endpoints, or p95 latency over threshold.
+    - The gate prints only sanitized plan/result output: token presence is reported, but token values and response bodies are not printed.
+    - `k8s/DEPLOYMENT.md` documents local and deployed commands with `KIMIBUILT_LOAD_TEST_TOKEN`.
 
-### [ ] OP-003 Formalize Monitoring, Alerts, And SLO Runbook
+### [x] OP-003 Formalize Monitoring, Alerts, And SLO Runbook
 
 Goal: Convert existing health/admin telemetry into an operations-ready monitoring story.
 
@@ -138,7 +155,19 @@ Focused checks:
 - Manual read-through of `/health` shape if docs-only
 
 Status:
-- Pending.
+- Done. Added an operations-ready monitoring and SLO runbook that maps current `/live`, `/ready`, `/health`, `/api/admin/health`, admin dashboard, runtime task, session store, memory, remote runner, and Kubernetes signals to practical alert states and first-response steps.
+  - Files changed:
+    - `docs/monitoring-alerting-slo-runbook.md`
+    - `frontend/agent-dashboard/README.md`
+    - `k8s/DEPLOYMENT.md`
+    - `docs/operationalization-hardening-backlog.md`
+  - Checks run:
+    - Manual read-through of `src/observability/health-report.js`, `src/admin/runtime-monitor.js`, `src/server.js`, `src/routes/admin/dashboard.controller.js`, `frontend/agent-dashboard/README.md`, and `k8s/DEPLOYMENT.md`.
+    - No behavior tests run; OP-003 was docs-only and did not change runtime code.
+  - Evidence:
+    - `docs/monitoring-alerting-slo-runbook.md` documents health signals, SLO-style thresholds, Rancher/Kubernetes-first alerting, future Prometheus/Grafana/Alertmanager guidance without claiming they are live, and a first-15-minutes incident triage path.
+    - `k8s/DEPLOYMENT.md` links monitoring to concrete endpoint and kubectl commands.
+    - `frontend/agent-dashboard/README.md` points operators to dashboard views and the runbook.
 
 ### [ ] OP-004 Create Canadian Privacy And Data Governance Packet
 
@@ -266,3 +295,5 @@ YYYY-MM-DD HH:mm - OP-XXX - status - files changed - checks run - evidence/block
 2026-05-10 11:41 - OP-001 - partial - k8s/scaling-plan.md, k8s/backend-deployment.yaml, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - py -3.12-64 validate_k8s.py (pass); kubectl dry-run blocked (kubeconfig access denied) - HPA deferral documented, but user requested item remain incomplete pending a basic k3s-sized scaling path
 2026-05-10 11:56 - OP-001 - reopened - docs/operationalization-hardening-backlog.md - docs-only update - OP-001 unchecked again so the backlog can continue honestly
 2026-05-10 11:59 - OP-001 - done - k8s/scaling-plan.md, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - py -3.12-64 validate_k8s.py (pass); kubectl apply --dry-run=client -f k8s/ (blocked: kubeconfig access denied) - Added explicit OP-001 scaling decision and current single-node vertical scaling runbook; HPA remains deferred until replica-safety prerequisites are complete
+2026-05-10 12:05 - OP-002 - done - scripts/load-release-gate.js, scripts/load-release-gate.test.js, package.json, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - node --check scripts\load-release-gate.js (pass); node .\node_modules\jest\bin\jest.js --runTestsByPath scripts\load-release-gate.test.js (pass); node scripts\load-release-gate.js --url http://localhost:3000 --smoke --dry-run (pass); node scripts\load-release-gate.js --url http://localhost:3000 --smoke (expected fail: local /api/chat HTTP 401 Unauthorized); npm run test:load -- --url http://localhost:3000 --smoke --dry-run (blocked: npm missing from PATH); C:\nvm4w\nodejs\npm.cmd run test:load -- --url http://localhost:3000 --smoke --dry-run (pass) - Added sanitized load release gate with p95/error thresholds and documented local/deployed usage
+2026-05-10 12:11 - OP-003 - done - docs/monitoring-alerting-slo-runbook.md, frontend/agent-dashboard/README.md, k8s/DEPLOYMENT.md, docs/operationalization-hardening-backlog.md - docs-only read-through; no behavior tests run - Added monitoring/SLO runbook covering current health/admin/runtime/Kubernetes signals, Rancher-first alerting, future Prometheus/Grafana path without overclaiming, and first-15-minutes triage

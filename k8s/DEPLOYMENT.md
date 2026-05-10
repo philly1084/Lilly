@@ -338,6 +338,22 @@ spec:
 
 ## Monitoring
 
+KimiBuilt's current production monitoring path is Rancher/Kubernetes-events first, with HTTP health endpoints and the admin dashboard as the application view. See `docs/monitoring-alerting-slo-runbook.md` for the SLO targets, alert conditions, first-15-minutes triage flow, and the future Prometheus/Grafana/Alertmanager enablement path.
+
+Core checks:
+
+```bash
+curl -fsS https://lilly.secdevsolutions.help/live
+curl -fsS https://lilly.secdevsolutions.help/ready
+curl -fsS https://lilly.secdevsolutions.help/health
+kubectl get pods -n kimibuilt -o wide
+kubectl get events -n kimibuilt --sort-by=.lastTimestamp
+kubectl logs -l app=backend -n kimibuilt --tail=200
+kubectl rollout status deployment/backend -n kimibuilt
+```
+
+Use `/health` for component status, `/ready` for startup/deploy readiness, `/live` for process liveness, `/api/admin/health` for the admin API health view, and `/admin/` for runtime task failures, logs, traces, and dashboard statistics.
+
 ### Prometheus Metrics
 
 If you have Prometheus installed:
@@ -348,6 +364,8 @@ kubectl port-forward svc/backend 3000:3000 -n kimibuilt
 curl http://localhost:3000/metrics
 ```
 
+Do not treat Prometheus/Grafana/Alertmanager as deployed until those components are actually installed and wired to the application.
+
 ## Scaling
 
 The backend is intentionally deployed as **a single replica** by default. Before enabling multi-replica or HPA, review:
@@ -356,6 +374,24 @@ The backend is intentionally deployed as **a single replica** by default. Before
 - `k8s/backend-deployment.yaml` (shared `backend-state` PVC + `Recreate` strategy)
 
 Do not apply an HPA manifest or raise `spec.replicas` above `1` until the backend no longer depends on the shared `backend-state` PVC and the update strategy is compatible with multiple live pods. For the current k3s-sized production baseline, scale vertically in small CPU/memory steps, verify with `kubectl top pods -n kimibuilt`, `kubectl describe pod -l app=backend -n kimibuilt`, rollout status, and `/health`, then record the observed pressure that justified the change.
+
+## Load Release Gate
+
+Run the lightweight release gate before production rollouts or after capacity changes. It exercises `/health`, the authenticated `/web-chat/` static frontend route, and `/api/chat` with configurable concurrency, duration, and p95/error thresholds.
+
+Local smoke test:
+
+```bash
+KIMIBUILT_LOAD_TEST_TOKEN="$FRONTEND_API_KEY" npm run test:load -- --url http://localhost:3000 --smoke
+```
+
+Deployed baseline:
+
+```bash
+KIMIBUILT_LOAD_TEST_TOKEN="$FRONTEND_API_KEY" npm run test:load -- --url https://lilly.secdevsolutions.help --duration 60 --concurrency 4 --max-p95 2500 --max-error-rate 0.02
+```
+
+Use `--token-env <NAME>` when the bearer token is stored under a different environment variable. The script prints whether a token is present, but never prints the token value. If the target is unreachable, an authenticated route returns 401/403, the error rate exceeds the threshold, or any endpoint p95 latency exceeds the threshold, the command exits non-zero.
 
 ### Logs Aggregation
 

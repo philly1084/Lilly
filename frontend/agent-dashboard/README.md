@@ -94,6 +94,10 @@ frontend/agent-dashboard/
 
 The dashboard is automatically served by the Express server at `/admin/` and connects to the Agent SDK backend via the `/api/admin/*` endpoints.
 
+## Operations
+
+Use the dashboard as a live operations view alongside the HTTP health endpoints. The Overview, Logs, Traces, and Health views help identify failed runtime tasks, repeated tool errors, slow requests, and degraded dependencies. The production monitoring and SLO runbook lives at `docs/monitoring-alerting-slo-runbook.md`.
+
 ## Development
 
 To modify the dashboard:
