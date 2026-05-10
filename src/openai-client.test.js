@@ -2903,6 +2903,58 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
+    test('keeps universal continuity instructions compact for non-remote prompts', () => {
+        const instructions = __testUtils.buildEffectiveContinuityInstructions({
+            instructions: 'Base continuity',
+            prompt: 'Answer directly.',
+            executionProfile: 'default',
+        });
+
+        expect(instructions).toBe('Base continuity');
+        expect(instructions).not.toContain('remote-cli-agent');
+        expect(instructions).not.toContain('GitLab');
+        expect(instructions).not.toContain('kubectl');
+    });
+
+    test('adds remote continuity instructions for remote-build prompts before prompt fingerprinting', () => {
+        const instructions = __testUtils.buildEffectiveContinuityInstructions({
+            instructions: 'Base continuity',
+            prompt: 'Deploy the latest build to the remote k3s cluster and verify HTTPS.',
+            executionProfile: 'remote-build',
+        });
+
+        expect(instructions).toContain('Base continuity');
+        expect(instructions).toContain('remote-cli-agent');
+        expect(instructions).toContain('GitLab');
+        expect(instructions).toContain('kubectl');
+    });
+
+    test('preserves prompt-state reuse for repeated remote continuity instructions', () => {
+        const instructions = __testUtils.buildEffectiveContinuityInstructions({
+            instructions: 'Base continuity',
+            prompt: 'Deploy the latest build to the remote k3s cluster and verify HTTPS.',
+            executionProfile: 'remote-build',
+        });
+        const initialPromptState = __testUtils.buildPromptState({
+            instructions,
+            input: 'Deploy the latest build to the remote k3s cluster and verify HTTPS.',
+            previousResponseId: 'resp_1',
+            apiMode: 'responses',
+        });
+        const reusedPromptState = __testUtils.buildPromptState({
+            instructions,
+            input: 'Deploy the latest build to the remote k3s cluster and verify HTTPS.',
+            previousPromptState: {
+                instructionsFingerprint: initialPromptState.instructionsFingerprint,
+            },
+            previousResponseId: 'resp_1',
+            apiMode: 'responses',
+        });
+
+        expect(reusedPromptState.instructionsFingerprint).toBe(initialPromptState.instructionsFingerprint);
+        expect(reusedPromptState.canReuseThreadedPrompt).toBe(true);
+    });
+
     test('does not duplicate the active user prompt when it is already in recent transcript', () => {
         const messages = __testUtils.buildMessages({
             input: 'Generate a dashboard for the sales report.',

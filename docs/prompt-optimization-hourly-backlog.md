@@ -102,7 +102,7 @@ Status:
 - Checks run: `node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/notation.test.js`; `node --check .\frontend\notation\js\output.js`; `node --check .\src\ws\handler.js`; `node --check .\src\routes\notation.js`; `node -e "require('./src/ws/handler'); console.log('ws handler require ok')"`.
 - Notes: Notation prompts now keep the legacy response shape while advertising optional mode-specific fields, validate mode requires structured `issues[]`, parser output preserves those fields, issue rows are mirrored into annotations for older UI flows, and the WebSocket notation path reuses the same prompt/parser contract.
 
-### [ ] P2-004 Move Remote And k3s Details Out Of Universal Continuity Prompt
+### [x] P2-004 Move Remote And k3s Details Out Of Universal Continuity Prompt
 
 Goal: Keep the universal continuity prompt compact and move remote/k3s/GitLab specifics behind remote intent or remote tool availability.
 
@@ -125,6 +125,12 @@ Acceptance checks:
 
 Focused checks:
 - `npm test -- --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js`
+
+Status:
+- Done 2026-05-09 21:32.
+- Files changed: `src/runtime-prompts.js`, `src/openai-client.js`, `src/openai-client.test.js`, `docs/prompt-optimization-hourly-backlog.md`.
+- Checks run: `& 'C:\nvm4w\nodejs\npm.cmd' test -- --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js` (hits one unrelated existing failure in `src/openai-client.test.js` podcast video defaults); `node .\node_modules\jest\bin\jest.js --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js -t "continuity instructions|prompt-state reuse|runtime-execution"`; `node --check .\src\runtime-prompts.js`; `node --check .\src\openai-client.js`.
+- Notes: Universal continuity instructions now keep continuity, memory, verification, scheduling, and directness rules only. Remote/k3s/GitLab guidance moved behind a remote continuity helper that is appended before prompt fingerprinting when the execution profile or prompt indicates remote intent, so ordinary chats get a shorter base prompt while remote prompt-state reuse remains stable.
 
 ### [ ] P2-005 Add Remote CLI Completion Proof Contract
 
@@ -200,6 +206,7 @@ Focused checks:
 Append newest entries at the top.
 
 ```text
+2026-05-09 21:32 - P2-004 - done - src/runtime-prompts.js; src/openai-client.js; src/openai-client.test.js; docs/prompt-optimization-hourly-backlog.md - & 'C:\nvm4w\nodejs\npm.cmd' test -- --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js (unrelated existing podcast video default failure in src/openai-client.test.js); node .\node_modules\jest\bin\jest.js --runTestsByPath src/openai-client.test.js src/runtime-execution.test.js -t "continuity instructions|prompt-state reuse|runtime-execution"; node --check .\src\runtime-prompts.js; node --check .\src\openai-client.js - Split universal vs remote continuity instructions, gated remote guidance before prompt fingerprinting, and pinned non-remote compactness plus remote prompt reuse with focused tests.
 2026-05-09 21:05 - P2-003 - done - src/routes/notation.js; src/routes/notation.test.js; src/ws/handler.js; frontend/notation/js/output.js; frontend/notation/css/styles.css; docs/prompt-optimization-hourly-backlog.md - node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/notation.test.js; node --check .\frontend\notation\js\output.js; node --check .\src\ws\handler.js; node --check .\src\routes\notation.js; node -e "require('./src/ws/handler'); console.log('ws handler require ok')" - Added additive notation mode fields, validate issues/correctedNotation handling, issue-to-annotation compatibility, and shared HTTP/WS notation contracts.
 2026-05-09 20:59 - P1-002 - done - src/routes/canvas.js; src/routes/canvas.test.js; src/frontend-bundles.js; src/frontend-bundles.test.js; docs/prompt-optimization-hourly-backlog.md - node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/canvas.test.js src/frontend-bundles.test.js - Made canvas frontend outputs bundle-first, added handoff qaPlan normalization, and pinned short-content bundle behavior.
 2026-05-09 20:53 - P1-001 - done - src/conversation-orchestrator.js; src/conversation-orchestrator.test.js; src/workloads/natural-language.js; docs/prompt-optimization-hourly-backlog.md - npm test -- --runTestsByPath src/conversation-orchestrator.test.js - Added planner policy packs (workload/remote/frontend) with focused gating + tests.

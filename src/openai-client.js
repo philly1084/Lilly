@@ -10,6 +10,9 @@ const {
     hasExplicitImageGenerationIntent,
     normalizeReasoningEffort,
 } = require('./ai-route-utils');
+const {
+    buildRemoteContinuityInstructions,
+} = require('./runtime-prompts');
 const { buildRecentTranscriptAnchor } = require('./conversation-continuity');
 const { isDashboardRequest } = require('./dashboard-template-catalog');
 const { isSessionIsolationEnabled } = require('./session-scope');
@@ -2070,6 +2073,56 @@ function hasExplicitK3sDeployIntent(prompt = '') {
 
     return /\b(deploy|rollout|apply|set image|update image|sync)\b[\s\S]{0,60}\b(k3s|k8s|kubernetes|kubectl|manifest|deployment|helm)\b/i.test(text)
         || /\b(k3s|k8s|kubernetes|kubectl)\b[\s\S]{0,60}\b(deploy|rollout|apply|set image|manifest|deployment|sync)\b/i.test(text);
+}
+
+function shouldIncludeRemoteContinuityInstructions({
+    prompt = '',
+    executionProfile = DEFAULT_EXECUTION_PROFILE,
+    toolContext = {},
+} = {}) {
+    if (normalizeExecutionProfile(executionProfile) === REMOTE_BUILD_EXECUTION_PROFILE) {
+        return true;
+    }
+
+    const text = String(prompt || '').trim();
+    if (!text) {
+        return false;
+    }
+
+    if (promptHasExplicitSshIntent(text) || hasExplicitK3sDeployIntent(text)) {
+        return true;
+    }
+
+    const allowedToolIds = new Set([
+        ...(Array.isArray(toolContext?.allowedToolIds) ? toolContext.allowedToolIds : []),
+        ...(Array.isArray(toolContext?.candidateToolIds) ? toolContext.candidateToolIds : []),
+        ...(Array.isArray(toolContext?.availableToolIds) ? toolContext.availableToolIds : []),
+    ].map((entry) => String(entry || '').trim()).filter(Boolean));
+
+    if (allowedToolIds.size === 0) {
+        return false;
+    }
+
+    const hasRemoteTool = ['remote-command', 'ssh-execute', 'remote-cli-agent', 'k3s-deploy', 'managed-app']
+        .some((toolId) => allowedToolIds.has(toolId));
+    if (!hasRemoteTool) {
+        return false;
+    }
+
+    return /\b(remote|server|cluster|deploy|deployment|rollout|ingress|tls|dns|gitlab|kubectl|k3s|k8s|kubernetes)\b/i.test(text);
+}
+
+function buildEffectiveContinuityInstructions({
+    instructions = null,
+    prompt = '',
+    executionProfile = DEFAULT_EXECUTION_PROFILE,
+    toolContext = {},
+} = {}) {
+    if (!shouldIncludeRemoteContinuityInstructions({ prompt, executionProfile, toolContext })) {
+        return instructions;
+    }
+
+    return mergeInstructions(instructions, [buildRemoteContinuityInstructions()]);
 }
 
 function hasManagedAppIntent(prompt = '') {
@@ -5787,14 +5840,20 @@ async function createResponse({
 }) {
     const openai = getClient();
     const apiMode = resolveOpenAIApiMode();
-    const promptState = buildPromptState({
+    const inputMessages = Array.isArray(input) ? input : [{ role: 'user', content: input }];
+    const effectiveInstructions = buildEffectiveContinuityInstructions({
         instructions,
+        prompt: getLastUserText(inputMessages),
+        executionProfile,
+        toolContext,
+    });
+    const promptState = buildPromptState({
+        instructions: effectiveInstructions,
         input,
         previousPromptState,
         previousResponseId,
         apiMode,
     });
-    const inputMessages = Array.isArray(input) ? input : [{ role: 'user', content: input }];
     const recentTranscriptAnchor = promptState.canReuseThreadedPrompt
         ? buildRecentTranscriptAnchor({
             currentInput: getLastUserText(inputMessages),
@@ -5803,7 +5862,7 @@ async function createResponse({
         : '';
     const messages = buildMessages({
         input,
-        instructions: promptState.canReuseThreadedPrompt ? null : instructions,
+        instructions: promptState.canReuseThreadedPrompt ? null : effectiveInstructions,
         contextMessages,
         recentMessages: promptState.canReuseThreadedPrompt ? [] : recentMessages,
         recentTranscriptAnchor,
@@ -6602,6 +6661,8 @@ module.exports = {
         normalizeProviderTransportError,
         retryProviderWarmupRequest,
         promptHasExplicitSshIntent,
+        shouldIncludeRemoteContinuityInstructions,
+        buildEffectiveContinuityInstructions,
         hasExplicitPodcastIntent,
         hasExplicitPodcastVideoIntent,
         extractExplicitPodcastTopic,
