@@ -166,6 +166,21 @@ function looksLikeRawGeneratedArtifactText(value = '') {
         || looksLikeSaveableDocumentResponse(normalized);
 }
 
+function looksLikeArtifactLinkSummaryText(value = '') {
+    const normalized = stripNullCharacters(String(value || '')).trim();
+    if (!normalized) {
+        return false;
+    }
+
+    const hasInternalArtifactLink = /\/api\/artifacts\/[a-z0-9-]+\/(?:preview|sandbox|download|bundle)\b/i.test(normalized);
+    if (!hasInternalArtifactLink) {
+        return false;
+    }
+
+    return /\b(?:created|generated|saved|built)\b[\s\S]{0,160}\b(?:artifact|bundle|file|html|site|page|zip)\b/i.test(normalized)
+        || /\b(?:play it|preview|open site|open page|download zip|download bundle|download)\s*:/i.test(normalized);
+}
+
 function buildFrontendAssistantMetadata(metadata = null) {
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
         return {};
@@ -203,7 +218,9 @@ function buildFrontendAssistantMetadata(metadata = null) {
         : (typeof metadata.display_content === 'string' && metadata.display_content.trim()
             ? normalizeSurveyDisplayContent(metadata.display_content.trim())
             : '');
-    const derivedDisplayContent = explicitDisplayContent || buildSurveyDisplayContentFromToolEvents(metadata.toolEvents || metadata.tool_events || []);
+    const derivedDisplayContent = explicitDisplayContent
+        || buildSurveyDisplayContentFromToolEvents(metadata.toolEvents || metadata.tool_events || [])
+        || buildArtifactSummary(artifacts);
     const displayContent = derivedDisplayContent;
     if (displayContent) {
         nextMetadata.displayContent = displayContent;
@@ -613,11 +630,13 @@ function buildWebChatSessionMessages({
     const normalizedDisplayContent = stripNullCharacters(String(mergedAssistantMetadata.displayContent || '')).trim();
     const rawGeneratedArtifactText = Boolean(artifactSummary)
         && looksLikeRawGeneratedArtifactText(normalizedAssistantText);
-    if (rawGeneratedArtifactText && artifactSummary) {
+    const artifactLinkSummaryText = Boolean(artifactSummary)
+        && looksLikeArtifactLinkSummaryText(normalizedAssistantText);
+    if ((rawGeneratedArtifactText || artifactLinkSummaryText) && artifactSummary) {
         mergedAssistantMetadata.displayContent = normalizedDisplayContent || artifactSummary;
     }
     const finalDisplayContent = stripNullCharacters(String(mergedAssistantMetadata.displayContent || '')).trim();
-    const assistantContent = placeholderAssistantText || rawGeneratedArtifactText
+    const assistantContent = placeholderAssistantText || rawGeneratedArtifactText || artifactLinkSummaryText
         ? (finalDisplayContent || 'Completed.')
         : (normalizedAssistantText || finalDisplayContent);
     const sequencedAuxiliaryMessages = auxiliaryMessages.map((message, index) => ({

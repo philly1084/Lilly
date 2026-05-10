@@ -8167,6 +8167,45 @@ curl -fsSIL --max-time 20 "https://$host"`;
             } catch (error) {
                 console.warn('[ChatApp] Failed to add generated artifacts to file manager:', error);
             }
+
+            const usableArtifacts = chunk.artifacts
+                .filter((artifact) => artifact?.id && (artifact?.downloadUrl || artifact?.bundleDownloadUrl || artifact?.previewUrl || artifact?.sandboxUrl))
+                .map((artifact) => ({
+                    ...artifact,
+                    downloadUrl: artifact.downloadUrl || (artifact.id ? `/api/artifacts/${encodeURIComponent(artifact.id)}/download` : ''),
+                }))
+                .filter((artifact) => artifact.downloadUrl);
+            if (currentMessage && usableArtifacts.length > 0) {
+                const existingArtifacts = [
+                    ...(Array.isArray(currentMessage.artifacts) ? currentMessage.artifacts : []),
+                    ...(Array.isArray(currentMessage.metadata?.artifacts) ? currentMessage.metadata.artifacts : []),
+                ];
+                const mergedArtifacts = [];
+                const seenArtifactIds = new Set();
+                [...existingArtifacts, ...usableArtifacts].forEach((artifact) => {
+                    const artifactId = String(artifact?.id || '').trim();
+                    if (!artifactId || seenArtifactIds.has(artifactId)) {
+                        return;
+                    }
+                    seenArtifactIds.add(artifactId);
+                    mergedArtifacts.push(artifact);
+                });
+                const artifactSummary = String(window.artifactManager?.buildArtifactSummary?.(mergedArtifacts) || '').trim();
+                const updatedMessage = {
+                    ...currentMessage,
+                    artifacts: mergedArtifacts,
+                    metadata: {
+                        ...(currentMessage.metadata || {}),
+                        artifacts: mergedArtifacts,
+                    },
+                };
+                if (artifactSummary && !String(updatedMessage.displayContent || updatedMessage.metadata.displayContent || '').trim()) {
+                    updatedMessage.displayContent = artifactSummary;
+                    updatedMessage.metadata.displayContent = artifactSummary;
+                }
+                this.upsertSessionMessage(sessionId, updatedMessage);
+                currentMessage = updatedMessage;
+            }
         }
 
         const readyDetail = uiHelpers.isTtsAutoPlayEnabled() && uiHelpers.isTtsAvailable()

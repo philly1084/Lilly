@@ -6526,7 +6526,14 @@ class UIHelpers {
 
         if (/^\s*(?:```(?:html)?\s*)?(?:html\s+)?(?:<!doctype\s+html\b|<html\b)/i.test(content)
             || /```html\b[\s\S]*?(?:<!doctype\s+html\b|<html\b)[\s\S]*?```/i.test(content)
-            || /\b(?:save|saved|saving|download|open)\b[\s\S]{0,80}?\b[a-z0-9][a-z0-9._ -]{1,100}\.html?\b/i.test(content)) {
+            || /\b(?:save|saved|saving|download|open)\b[\s\S]{0,80}?\b[a-z0-9][a-z0-9._ -]{1,100}\.html?\b/i.test(content)
+            || (
+                /\/api\/artifacts\/[a-z0-9-]+\/(?:preview|sandbox|download|bundle)\b/i.test(content)
+                && (
+                    /\b(?:created|generated|saved|built)\b[\s\S]{0,160}\b(?:artifact|bundle|file|html|site|page|zip)\b/i.test(content)
+                    || /\b(?:play it|preview|open site|open page|download zip|download bundle|download)\s*:/i.test(content)
+                )
+            )) {
             return false;
         }
 

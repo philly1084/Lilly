@@ -128,6 +128,7 @@ jest.mock('../user-checkpoints', () => ({
 const { sessionStore } = require('../session-store');
 const { executeConversationRuntime } = require('../runtime-execution');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
+const { generateOutputArtifactFromPrompt } = require('../ai-route-utils');
 const openAiCompatRouter = require('./openai-compat');
 
 describe('/v1/chat/completions stream forwarding', () => {
@@ -537,5 +538,63 @@ describe('/v1/chat/completions stream forwarding', () => {
         expect(sessionStore.updateControlState).toHaveBeenCalledWith('web-chat-stream-1', {
             foregroundTurn: null,
         });
+    });
+
+    test('streams direct artifact completions when the generator returns a singular artifact', async () => {
+        generateOutputArtifactFromPrompt.mockResolvedValue({
+            responseId: 'resp-artifact-singular-1',
+            model: 'gpt-4o',
+            assistantMessage: [
+                'Created the HTML site bundle artifact (frontend-demo.zip).',
+                'Play it: /api/artifacts/artifact-singular-1/preview',
+                'Download ZIP: /api/artifacts/artifact-singular-1/bundle',
+            ].join('\n'),
+            artifact: {
+                id: 'artifact-singular-1',
+                filename: 'frontend-demo.zip',
+                format: 'html',
+                downloadUrl: '/api/artifacts/artifact-singular-1/download',
+                previewUrl: '/api/artifacts/artifact-singular-1/preview',
+                bundleDownloadUrl: '/api/artifacts/artifact-singular-1/bundle',
+            },
+            artifacts: [],
+            metadata: {},
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                messages: [
+                    { role: 'user', content: 'Turn this into a site.' },
+                ],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                stream: true,
+                session_id: 'web-chat-stream-1',
+                output_format: 'html',
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.text).toContain('"artifacts":[{"id":"artifact-singular-1"');
+        expect(response.text).toContain('"displayContent":"Created frontend-demo.zip. Preview and Download below."');
+        expect(sessionStore.upsertMessage).toHaveBeenCalledWith(
+            'web-chat-stream-1',
+            expect.objectContaining({
+                role: 'assistant',
+                content: 'Created frontend-demo.zip. Preview and Download below.',
+                metadata: expect.objectContaining({
+                    artifacts: [
+                        expect.objectContaining({
+                            id: 'artifact-singular-1',
+                            previewUrl: '/api/artifacts/artifact-singular-1/preview',
+                        }),
+                    ],
+                }),
+            }),
+        );
     });
 });

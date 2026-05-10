@@ -272,6 +272,7 @@ describe('buildWebChatSessionMessages', () => {
 
         expect(metadata).toEqual(expect.objectContaining({
             taskType: 'chat',
+            displayContent: 'Created dashboard.html. Preview and Download below.',
             artifacts: [
                 expect.objectContaining({
                     id: 'artifact-html-1',
@@ -283,6 +284,31 @@ describe('buildWebChatSessionMessages', () => {
                 }),
             ],
         }));
+    });
+
+    test('replaces artifact-link prose with a concise preview summary', () => {
+        const messages = buildWebChatSessionMessages({
+            userText: 'Turn this HTML into a presentation piece.',
+            assistantText: [
+                'Created the HTML site bundle artifact (frontend-demo-qn2o61.zip).',
+                'Play it: /api/artifacts/c03d0e66-8b78-4ee5-8802-0f1a224f9265/preview',
+                'Download ZIP: /api/artifacts/c03d0e66-8b78-4ee5-8802-0f1a224f9265/bundle',
+            ].join('\n'),
+            artifacts: [{
+                id: 'c03d0e66-8b78-4ee5-8802-0f1a224f9265',
+                filename: 'frontend-demo-qn2o61.zip',
+                format: 'html',
+                downloadUrl: '/api/artifacts/c03d0e66-8b78-4ee5-8802-0f1a224f9265/download',
+                previewUrl: '/api/artifacts/c03d0e66-8b78-4ee5-8802-0f1a224f9265/preview',
+                bundleDownloadUrl: '/api/artifacts/c03d0e66-8b78-4ee5-8802-0f1a224f9265/bundle',
+            }],
+            timestamp: '2026-05-10T14:00:00.000Z',
+        });
+
+        expect(messages).toHaveLength(2);
+        expect(messages[1].content).toBe('Created frontend-demo-qn2o61.zip. Preview and Download below.');
+        expect(messages[1].metadata.displayContent).toBe('Created frontend-demo-qn2o61.zip. Preview and Download below.');
+        expect(messages[1].content).not.toContain('Play it:');
     });
 
     test('preserves Mermaid preview payloads for frontend rendering', () => {

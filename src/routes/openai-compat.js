@@ -1481,6 +1481,7 @@ router.post('/chat/completions', async (req, res, next) => {
             partialAssistantText = generation.assistantMessage;
             const responseArtifacts = mergeRuntimeArtifacts(
                 preparedImages.artifacts,
+                generation.artifact ? [generation.artifact] : [],
                 generation.artifacts,
             );
             const artifactToolEvents = [
@@ -2378,6 +2379,7 @@ router.post('/responses', async (req, res, next) => {
             });
             const responseArtifacts = mergeRuntimeArtifacts(
                 preparedImages.artifacts,
+                generation.artifact ? [generation.artifact] : [],
                 generation.artifacts,
             );
             const artifactToolEvents = [
