@@ -217,6 +217,19 @@
                 background: color-mix(in srgb, var(--bg-tertiary) 78%, transparent);
             }
 
+            body.layout-minimal .artifact-toolbar-compact .toolbar-btn.primary {
+                background: color-mix(in srgb, var(--bg-tertiary) 78%, transparent);
+                color: var(--text-secondary);
+                border-color: var(--border);
+                font-weight: 400;
+            }
+
+            body.layout-minimal .artifact-toolbar-compact .toolbar-btn.primary:hover {
+                border-color: var(--accent);
+                color: var(--text-primary);
+                opacity: 1;
+            }
+
             body.layout-minimal .artifact-toolbar-compact .toolbar-btn span,
             body.layout-minimal .artifact-toolbar-compact .toolbar-divider,
             body.layout-minimal .artifact-toolbar-compact .selected-count {
