@@ -1,5 +1,6 @@
 const {
     buildFrontendBundleArtifact,
+    normalizeFrontendMetadata,
     isComplexFrontendBundleRequest,
     readFrontendBundleArchive,
 } = require('./frontend-bundles');
@@ -99,5 +100,31 @@ describe('frontend bundle styling safety net', () => {
     test('treats 3D scene requests as bundle-worthy frontend work', () => {
         expect(isComplexFrontendBundleRequest('Build a sandboxed Three.js 3D scene in HTML')).toBe(true);
         expect(isComplexFrontendBundleRequest('Create an immersive WebGL particle scene')).toBe(true);
+    });
+
+    test('normalizes a frontend handoff qa plan for bundle-first canvas outputs', () => {
+        const metadata = normalizeFrontendMetadata({
+            title: 'Compact Canvas Demo',
+            bundle: {
+                files: [
+                    {
+                        path: 'index.html',
+                        language: 'html',
+                        content: '<!DOCTYPE html><html><head><title>Compact Canvas Demo</title></head><body><h1>Demo</h1></body></html>',
+                    },
+                ],
+            },
+            handoff: {
+                summary: 'Bundle-first demo.',
+            },
+        }, 'Preview: bundle contains the runnable project.');
+
+        expect(metadata.handoff.qaPlan).toEqual(expect.arrayContaining([
+            expect.stringContaining('desktop and mobile screenshots'),
+            expect.stringContaining('contrast'),
+        ]));
+        expect(metadata.bundle.files).toEqual(expect.arrayContaining([
+            expect.objectContaining({ path: 'index.html' }),
+        ]));
     });
 });

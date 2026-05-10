@@ -628,6 +628,11 @@ function normalizeFrontendHandoff(handoff = null, metadata = {}, content = '') {
             .map((entry) => String(entry || '').trim())
             .filter(Boolean)
         : [];
+    const qaPlan = Array.isArray(handoff?.qaPlan)
+        ? handoff.qaPlan
+            .map((entry) => String(entry || '').trim())
+            .filter(Boolean)
+        : [];
 
     return {
         summary: String(
@@ -643,6 +648,13 @@ function normalizeFrontendHandoff(handoff = null, metadata = {}, content = '') {
                 'Keep the generated demo as a visual reference first, then split it into project components.',
                 'Move shared colors, spacing, and typography into your design system tokens.',
                 'Replace demo copy, mock data, and inline scripts with live project data and components.',
+            ],
+        qaPlan: qaPlan.length > 0
+            ? qaPlan
+            : [
+                'Open the bundle entry page from a static server and check for console errors.',
+                'Capture desktop and mobile screenshots, including any primary interactive states.',
+                'Run contrast, horizontal overflow, broken image, and clipped text checks before handoff.',
             ],
         entryFile: normalizeBundlePath(handoff?.entryFile || 'index.html') || 'index.html',
         sourceType: /<html\b/i.test(String(content || '')) ? 'standalone-html' : 'markup-fragment',

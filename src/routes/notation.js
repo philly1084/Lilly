@@ -197,7 +197,7 @@ router.post('/', validate(notationSchema), async (req, res, next) => {
                 { role: 'assistant', content: outputText, metadata: assistantMetadata },
             ]);
         }
-        const structured = parseNotationResponse(outputText);
+        const structured = parseNotationResponse(outputText, helperMode);
         const generatedArtifacts = await maybeGenerateOutputArtifact({
             sessionId,
             session,
@@ -278,13 +278,18 @@ Always respond with valid JSON in this format:
 {
   "result": "the processed output",
   "annotations": [{"line": 1, "note": "explanation"}],
-  "suggestions": ["suggestion 1", "suggestion 2"]
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "structure": {"optional": "mode-specific outline or parsed shape"},
+  "assumptions": ["optional assumption"],
+  "ambiguities": ["optional ambiguity"],
+  "issues": [{"severity": "warning", "line": 1, "message": "problem", "fix": "suggested fix"}],
+  "correctedNotation": "optional corrected shorthand"
 }`;
 
     const modeInstructions = {
-        expand: '\n\nMODE: EXPAND - Take the shorthand notation and expand it into full, detailed content. Preserve the intent and structure while making it comprehensive and production-ready.',
-        explain: '\n\nMODE: EXPLAIN - Analyze the notation and provide detailed explanations for each part. Break down what each element means and how it connects to the whole.',
-        validate: '\n\nMODE: VALIDATE - Check the notation for correctness, completeness, and best practices. Flag any issues, missing elements, or improvements. Provide a corrected version if needed.',
+        expand: '\n\nMODE: EXPAND - Take the shorthand notation and expand it into full, detailed content. Preserve the intent and structure while making it comprehensive and production-ready. Use structure, assumptions, or ambiguities only when they clarify the expansion; do not add validate-only issues unless there is a real problem.',
+        explain: '\n\nMODE: EXPLAIN - Analyze the notation and provide detailed explanations for each part. Break down what each element means and how it connects to the whole. Prefer structure and assumptions for the explanation; do not overproduce validation-only fields.',
+        validate: '\n\nMODE: VALIDATE - Check the notation for correctness, completeness, and best practices. Always include issues as an array. When problems exist, each issue must include severity, line, message, and fix. Include correctedNotation when a concrete corrected shorthand would help.',
     };
 
     let instructions = base + (modeInstructions[helperMode] || modeInstructions.expand);
@@ -295,21 +300,124 @@ Always respond with valid JSON in this format:
     return instructions;
 }
 
-function parseNotationResponse(text) {
+function parseNotationResponse(text, helperMode = 'expand') {
     try {
         const parsed = JSON.parse(text);
+        const annotations = normalizeAnnotations(parsed.annotations);
+        const issues = normalizeIssues(parsed.issues);
         return {
             result: parsed.result || text,
-            annotations: parsed.annotations || [],
-            suggestions: parsed.suggestions || [],
+            annotations: mergeIssueAnnotations(annotations, issues),
+            suggestions: normalizeStringArray(parsed.suggestions),
+            ...(parsed.structure !== undefined ? { structure: parsed.structure } : {}),
+            ...(parsed.assumptions !== undefined ? { assumptions: normalizeStringArray(parsed.assumptions) } : {}),
+            ...(parsed.ambiguities !== undefined ? { ambiguities: normalizeStringArray(parsed.ambiguities) } : {}),
+            ...((helperMode === 'validate' || parsed.issues !== undefined) ? { issues } : {}),
+            ...(typeof parsed.correctedNotation === 'string' && parsed.correctedNotation.trim()
+                ? { correctedNotation: parsed.correctedNotation.trim() }
+                : {}),
         };
     } catch {
         return {
             result: text,
             annotations: [],
             suggestions: [],
+            ...(helperMode === 'validate' ? { issues: [] } : {}),
         };
     }
 }
+
+function normalizeStringArray(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((item) => (typeof item === 'string' ? item.trim() : String(item || '').trim()))
+        .filter(Boolean);
+}
+
+function normalizeAnnotations(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((annotation) => {
+            if (!annotation || typeof annotation !== 'object') {
+                return null;
+            }
+            const line = Number.parseInt(annotation.line, 10);
+            const note = String(annotation.note || annotation.message || '').trim();
+            if (!Number.isFinite(line) || line <= 0 || !note) {
+                return null;
+            }
+            return {
+                line,
+                note,
+                ...(annotation.type ? { type: String(annotation.type).trim() } : {}),
+            };
+        })
+        .filter(Boolean);
+}
+
+function normalizeIssues(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((issue) => {
+            if (!issue || typeof issue !== 'object') {
+                return null;
+            }
+            const line = Number.parseInt(issue.line, 10);
+            const message = String(issue.message || issue.note || '').trim();
+            if (!message) {
+                return null;
+            }
+            return {
+                severity: normalizeIssueSeverity(issue.severity),
+                line: Number.isFinite(line) && line > 0 ? line : null,
+                message,
+                fix: String(issue.fix || '').trim(),
+            };
+        })
+        .filter(Boolean);
+}
+
+function normalizeIssueSeverity(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['error', 'warning', 'info'].includes(normalized)) {
+        return normalized;
+    }
+    return 'warning';
+}
+
+function mergeIssueAnnotations(annotations, issues) {
+    if (!issues.length) {
+        return annotations;
+    }
+    const existingKeys = new Set(annotations.map((annotation) => `${annotation.line}:${annotation.note}`));
+    const issueAnnotations = issues
+        .filter((issue) => issue.line)
+        .map((issue) => ({
+            line: issue.line,
+            note: issue.fix ? `${issue.message} Fix: ${issue.fix}` : issue.message,
+            type: issue.severity === 'error' ? 'error' : issue.severity,
+        }))
+        .filter((annotation) => {
+            const key = `${annotation.line}:${annotation.note}`;
+            if (existingKeys.has(key)) {
+                return false;
+            }
+            existingKeys.add(key);
+            return true;
+        });
+    return annotations.concat(issueAnnotations);
+}
+
+router._private = {
+    buildNotationInstructions,
+    parseNotationResponse,
+    normalizeIssues,
+};
 
 module.exports = router;

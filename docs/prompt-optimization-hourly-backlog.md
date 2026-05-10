@@ -44,7 +44,7 @@ Focused checks:
 - `npm test -- --runTestsByPath src/conversation-orchestrator.test.js`
 - Add a small unit test for pack inclusion/exclusion if no existing assertion is close enough.
 
-### [ ] P1-002 Make Canvas Frontend Output Contract Smaller And More Reliable
+### [x] P1-002 Make Canvas Frontend Output Contract Smaller And More Reliable
 
 Goal: Improve canvas frontend prompt framing so the model treats `metadata.bundle.files` as the source of truth and avoids duplicated giant HTML in multiple fields.
 
@@ -66,7 +66,13 @@ Acceptance checks:
 Focused checks:
 - `npm test -- --runTestsByPath src/routes/canvas.test.js src/frontend-bundles.test.js`
 
-### [ ] P2-003 Strengthen Notation Helper Mode Contracts
+Status:
+- Done 2026-05-09 20:59.
+- Files changed: `src/routes/canvas.js`, `src/routes/canvas.test.js`, `src/frontend-bundles.js`, `src/frontend-bundles.test.js`, `docs/prompt-optimization-hourly-backlog.md`.
+- Checks run: `node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/canvas.test.js src/frontend-bundles.test.js`.
+- Notes: Canvas frontend instructions now make `metadata.bundle.files` authoritative, allow short `content` summaries when the runnable project is in the bundle, require `metadata.handoff.qaPlan`, and normalize a default QA plan for compatibility.
+
+### [x] P2-003 Strengthen Notation Helper Mode Contracts
 
 Goal: Make notation responses more useful and parseable by adding mode-specific fields without breaking older clients.
 
@@ -89,6 +95,12 @@ Acceptance checks:
 Focused checks:
 - Add route/parser tests if missing.
 - Run the notation frontend parser/output tests if present, otherwise run the route test slice.
+
+Status:
+- Done 2026-05-09 21:05.
+- Files changed: `src/routes/notation.js`, `src/routes/notation.test.js`, `src/ws/handler.js`, `frontend/notation/js/output.js`, `frontend/notation/css/styles.css`, `docs/prompt-optimization-hourly-backlog.md`.
+- Checks run: `node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/notation.test.js`; `node --check .\frontend\notation\js\output.js`; `node --check .\src\ws\handler.js`; `node --check .\src\routes\notation.js`; `node -e "require('./src/ws/handler'); console.log('ws handler require ok')"`.
+- Notes: Notation prompts now keep the legacy response shape while advertising optional mode-specific fields, validate mode requires structured `issues[]`, parser output preserves those fields, issue rows are mirrored into annotations for older UI flows, and the WebSocket notation path reuses the same prompt/parser contract.
 
 ### [ ] P2-004 Move Remote And k3s Details Out Of Universal Continuity Prompt
 
@@ -188,6 +200,8 @@ Focused checks:
 Append newest entries at the top.
 
 ```text
+2026-05-09 21:05 - P2-003 - done - src/routes/notation.js; src/routes/notation.test.js; src/ws/handler.js; frontend/notation/js/output.js; frontend/notation/css/styles.css; docs/prompt-optimization-hourly-backlog.md - node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/notation.test.js; node --check .\frontend\notation\js\output.js; node --check .\src\ws\handler.js; node --check .\src\routes\notation.js; node -e "require('./src/ws/handler'); console.log('ws handler require ok')" - Added additive notation mode fields, validate issues/correctedNotation handling, issue-to-annotation compatibility, and shared HTTP/WS notation contracts.
+2026-05-09 20:59 - P1-002 - done - src/routes/canvas.js; src/routes/canvas.test.js; src/frontend-bundles.js; src/frontend-bundles.test.js; docs/prompt-optimization-hourly-backlog.md - node .\node_modules\jest\bin\jest.js --coverage --runTestsByPath src/routes/canvas.test.js src/frontend-bundles.test.js - Made canvas frontend outputs bundle-first, added handoff qaPlan normalization, and pinned short-content bundle behavior.
 2026-05-09 20:53 - P1-001 - done - src/conversation-orchestrator.js; src/conversation-orchestrator.test.js; src/workloads/natural-language.js; docs/prompt-optimization-hourly-backlog.md - npm test -- --runTestsByPath src/conversation-orchestrator.test.js - Added planner policy packs (workload/remote/frontend) with focused gating + tests.
 YYYY-MM-DD HH:mm - ITEM-ID - status - files changed - checks run - notes/blockers
 ```

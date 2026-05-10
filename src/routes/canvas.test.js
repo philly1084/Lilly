@@ -41,7 +41,11 @@ describe('/api/canvas helpers', () => {
 
         expect(instructions).toContain('DEMO WEBSITE FRONTEND');
         expect(instructions).toContain('metadata.bundle');
+        expect(instructions).toContain('metadata.bundle.files as the source of truth');
+        expect(instructions).toContain('do not duplicate the same multi-file project');
+        expect(instructions).toContain('content field may be a short preview summary');
         expect(instructions).toContain('metadata.handoff');
+        expect(instructions).toContain('qaPlan');
         expect(instructions).toContain('<frontend_format_router>');
         expect(instructions).toContain('documentation-site');
         expect(instructions).toContain('<impressive_frontend_website_standard>');
@@ -93,6 +97,9 @@ describe('/api/canvas helpers', () => {
                     componentMap: [
                         { name: 'Hero', purpose: 'Top-level value proposition' },
                     ],
+                    qaPlan: [
+                        'Capture desktop and mobile screenshots.',
+                    ],
                 },
             },
             suggestions: ['Add a pricing section'],
@@ -112,7 +119,57 @@ describe('/api/canvas helpers', () => {
         expect(parsed.metadata.handoff.componentMap).toEqual([
             expect.objectContaining({ name: 'Hero' }),
         ]);
+        expect(parsed.metadata.handoff.qaPlan).toEqual([
+            'Capture desktop and mobile screenshots.',
+        ]);
         expect(parsed.suggestions).toEqual(['Add a pricing section']);
+    });
+
+    test('parseCanvasResponse preserves short frontend content when bundle files hold the project', () => {
+        const parsed = parseCanvasResponse(JSON.stringify({
+            content: 'Preview: a compact ops dashboard with filters and charts.',
+            metadata: {
+                title: 'Ops Dashboard',
+                frameworkTarget: 'static',
+                bundle: {
+                    entry: 'index.html',
+                    files: [
+                        {
+                            path: 'index.html',
+                            language: 'html',
+                            purpose: 'Preview entry',
+                            content: '<!DOCTYPE html><html><head><title>Ops Dashboard</title><link rel="stylesheet" href="./styles.css"></head><body><main><h1>Ops</h1></main><script src="./app.js"></script></body></html>',
+                        },
+                        {
+                            path: 'styles.css',
+                            language: 'css',
+                            purpose: 'Shared styles',
+                            content: 'body { color: #172033; background: #f8fafc; }',
+                        },
+                        {
+                            path: 'app.js',
+                            language: 'javascript',
+                            purpose: 'Interactions',
+                            content: 'document.body.dataset.ready = "true";',
+                        },
+                    ],
+                },
+                handoff: {
+                    summary: 'Static dashboard prototype.',
+                    integrationSteps: ['Move bundle files into the frontend app.'],
+                },
+            },
+        }), 'frontend');
+
+        expect(parsed.content).toBe('Preview: a compact ops dashboard with filters and charts.');
+        expect(parsed.metadata.bundle.files).toEqual(expect.arrayContaining([
+            expect.objectContaining({ path: 'index.html', content: expect.stringContaining('<!DOCTYPE html>') }),
+            expect.objectContaining({ path: 'styles.css' }),
+            expect.objectContaining({ path: 'app.js' }),
+        ]));
+        expect(parsed.metadata.handoff.qaPlan).toEqual(expect.arrayContaining([
+            expect.stringContaining('desktop and mobile screenshots'),
+        ]));
     });
 
     test('buildFrontendFallbackMetadata creates a repo-handoff shell for raw html', () => {

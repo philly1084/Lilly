@@ -1218,6 +1218,63 @@ body {
     line-height: 1.55;
 }
 
+.notation-detail-stack {
+    display: grid;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.notation-detail-card {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+}
+
+.notation-detail-card summary {
+    padding: var(--spacing-sm) var(--spacing-md);
+    color: var(--color-text-primary);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.notation-detail-card ul {
+    margin: 0;
+    padding: 0 var(--spacing-md) var(--spacing-md) calc(var(--spacing-md) + 1rem);
+}
+
+.notation-detail-card pre {
+    margin: 0 var(--spacing-md) var(--spacing-md);
+    padding: var(--spacing-md);
+    overflow-x: auto;
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+}
+
+.notation-issue {
+    margin-bottom: var(--spacing-sm);
+}
+
+.notation-issue strong {
+    margin-right: var(--spacing-xs);
+    color: var(--color-warning);
+}
+
+.notation-issue-error strong {
+    color: var(--color-error);
+}
+
+.notation-issue-info strong {
+    color: var(--color-info);
+}
+
+.notation-detail-fix {
+    margin-top: var(--spacing-xs);
+    color: var(--color-text-secondary);
+}
+
 .output-rendered table {
     width: 100%;
     border-collapse: collapse;

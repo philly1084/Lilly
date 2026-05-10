@@ -9,6 +9,11 @@ const OutputManager = {
     currentMode: 'expand',
     annotations: [],
     suggestions: [],
+    issues: [],
+    correctedNotation: '',
+    assumptions: [],
+    ambiguities: [],
+    structure: null,
 
     // DOM references
     elements: {
@@ -52,7 +57,12 @@ const OutputManager = {
             ? window.KimiBuiltModelOutputParser.normalizeModelOutputMarkdown(data.result || data)
             : (data.result || '');
         this.currentMode = data.mode || 'expand';
-        this.annotations = data.annotations || [];
+        this.issues = Array.isArray(data.issues) ? data.issues : [];
+        this.correctedNotation = typeof data.correctedNotation === 'string' ? data.correctedNotation.trim() : '';
+        this.assumptions = Array.isArray(data.assumptions) ? data.assumptions : [];
+        this.ambiguities = Array.isArray(data.ambiguities) ? data.ambiguities : [];
+        this.structure = data.structure || null;
+        this.annotations = this._normalizeAnnotationsFromData(data);
         this.suggestions = data.suggestions || [];
         this.reasoningSummary = String(data.reasoningSummary || '').trim();
 
@@ -98,7 +108,7 @@ const OutputManager = {
             html = this._renderPlainText(this.currentResult);
         }
 
-        this.elements.rendered.innerHTML = `${this._renderReasoningSummary()}${html}`;
+        this.elements.rendered.innerHTML = `${this._renderReasoningSummary()}${this._renderStructuredDetails()}${html}`;
 
         // Add line numbers and annotations
         this._addLineAnnotations();
@@ -169,6 +179,88 @@ const OutputManager = {
         `;
     },
 
+    _renderStructuredDetails() {
+        const sections = [];
+
+        if (this.issues.length > 0) {
+            const issueItems = this.issues.map(issue => {
+                const severity = this._normalizeIssueSeverity(issue.severity);
+                const line = issue.line ? `Line ${this.escapeHtml(String(issue.line))}: ` : '';
+                const fix = issue.fix ? `<div class="notation-detail-fix">Fix: ${this.escapeHtml(issue.fix)}</div>` : '';
+                return `<li class="notation-issue notation-issue-${severity}">
+                    <strong>${severity.toUpperCase()}</strong>
+                    <span>${line}${this.escapeHtml(issue.message || '')}</span>
+                    ${fix}
+                </li>`;
+            }).join('');
+            sections.push(`<details class="notation-detail-card" open>
+                <summary>Validation issues</summary>
+                <ul>${issueItems}</ul>
+            </details>`);
+        }
+
+        if (this.correctedNotation) {
+            sections.push(`<details class="notation-detail-card" open>
+                <summary>Corrected notation</summary>
+                <pre>${this.escapeHtml(this.correctedNotation)}</pre>
+            </details>`);
+        }
+
+        const assumptionsHtml = this._renderListDetail('Assumptions', this.assumptions);
+        if (assumptionsHtml) sections.push(assumptionsHtml);
+
+        const ambiguitiesHtml = this._renderListDetail('Ambiguities', this.ambiguities);
+        if (ambiguitiesHtml) sections.push(ambiguitiesHtml);
+
+        if (this.structure) {
+            const structureText = typeof this.structure === 'string'
+                ? this.structure
+                : JSON.stringify(this.structure, null, 2);
+            sections.push(`<details class="notation-detail-card">
+                <summary>Structure</summary>
+                <pre>${this.escapeHtml(structureText)}</pre>
+            </details>`);
+        }
+
+        return sections.length ? `<div class="notation-detail-stack">${sections.join('')}</div>` : '';
+    },
+
+    _renderListDetail(title, items) {
+        if (!Array.isArray(items) || items.length === 0) {
+            return '';
+        }
+        const list = items.map(item => `<li>${this.escapeHtml(String(item))}</li>`).join('');
+        return `<details class="notation-detail-card">
+            <summary>${this.escapeHtml(title)}</summary>
+            <ul>${list}</ul>
+        </details>`;
+    },
+
+    _normalizeAnnotationsFromData(data) {
+        const annotations = Array.isArray(data.annotations) ? [...data.annotations] : [];
+        const seen = new Set(annotations.map(annotation => `${annotation.line}:${annotation.note || annotation.message || ''}`));
+
+        this.issues.forEach(issue => {
+            if (!issue || !issue.line || !issue.message) return;
+            const note = issue.fix ? `${issue.message} Fix: ${issue.fix}` : issue.message;
+            const key = `${issue.line}:${note}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            annotations.push({
+                line: issue.line,
+                note,
+                type: issue.severity === 'error' ? 'error' : (issue.severity || 'warning')
+            });
+        });
+
+        return annotations;
+    },
+
+    _normalizeIssueSeverity(severity) {
+        const normalized = String(severity || '').trim().toLowerCase();
+        return ['error', 'warning', 'info'].includes(normalized) ? normalized : 'warning';
+    },
+
     /**
      * Apply a suggestion to the input
      * @param {number} index - Suggestion index
@@ -212,6 +304,11 @@ const OutputManager = {
         this.annotations = [];
         this.suggestions = [];
         this.reasoningSummary = '';
+        this.issues = [];
+        this.correctedNotation = '';
+        this.assumptions = [];
+        this.ambiguities = [];
+        this.structure = null;
 
         if (this.elements.empty) {
             this.elements.empty.classList.remove('hidden');

@@ -2,6 +2,7 @@ const { WebSocket } = require('ws');
 const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { config } = require('../config');
+const notationRouter = require('../routes/notation');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const { executeConversationRuntime, resolveConversationExecutorFlag } = require('../runtime-execution');
 const {
@@ -73,6 +74,10 @@ const {
 const EventEmitter = require('events');
 const adminEvents = new EventEmitter();
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
+const {
+    buildNotationInstructions,
+    parseNotationResponse,
+} = notationRouter._private || {};
 
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
@@ -1098,7 +1103,9 @@ async function handleNotation(ws, session, payload = {}, ownerId = null) {
     try {
         const instructions = await buildInstructionsWithArtifacts(
             session,
-            `You are an AI notation helper in ${helperMode} mode. Respond with valid JSON: { "result": "...", "annotations": [...], "suggestions": [...] }${context ? `\nContext: ${context}` : ''}`,
+            typeof buildNotationInstructions === 'function'
+                ? buildNotationInstructions(helperMode, context)
+                : `You are an AI notation helper in ${helperMode} mode. Respond with valid JSON: { "result": "...", "annotations": [...], "suggestions": [...] }${context ? `\nContext: ${context}` : ''}`,
             artifactIds,
         );
         const execution = await executeConversationRuntime(ws.app, {
@@ -1158,12 +1165,15 @@ async function handleNotation(ws, session, payload = {}, ownerId = null) {
                 { role: 'assistant', content: outputText, metadata: assistantMetadata },
             ]);
         }
+        const structured = typeof parseNotationResponse === 'function'
+            ? parseNotationResponse(outputText, helperMode)
+            : { result: outputText, annotations: [], suggestions: [] };
         const generatedArtifacts = await maybeGenerateOutputArtifact({
             sessionId: session.id,
             session,
             mode: 'notation',
             outputFormat,
-            content: outputText,
+            content: structured.result,
             prompt: notation,
             title: `notation-${helperMode}`,
             responseId: response.id,
@@ -1181,7 +1191,7 @@ async function handleNotation(ws, session, payload = {}, ownerId = null) {
             await Promise.all(artifacts.map((artifact) => memoryService.rememberArtifactResult(session.id, {
                 artifact,
                 summary: `Created the ${artifact.format || outputFormat || 'generated'} artifact (${artifact.filename}).`,
-                sourceText: outputText,
+                sourceText: structured.result,
                 metadata: buildOwnerMemoryMetadata(ownerId, memoryScope, {
                     sourceSurface: clientSurface || 'notation',
                     memoryKeywords,
@@ -1190,7 +1200,7 @@ async function handleNotation(ws, session, payload = {}, ownerId = null) {
             })));
             await memoryService.rememberLearnedSkill(session.id, {
                 objective: notation,
-                assistantText: outputText,
+                assistantText: structured.result,
                 toolEvents: response?.metadata?.toolEvents || [],
                 artifact: artifacts[artifacts.length - 1],
                 metadata: buildOwnerMemoryMetadata(ownerId, memoryScope, {
@@ -1215,10 +1225,11 @@ async function handleNotation(ws, session, payload = {}, ownerId = null) {
             sessionId: session.id,
             responseId: response.id,
             helperMode,
-            content: outputText,
+            content: structured.result,
             artifacts,
             assistant_metadata: assistantMetadata,
             assistantMetadata,
+            ...structured,
         });
     } catch (error) {
         failRuntimeTask(runtimeTask?.id, {
