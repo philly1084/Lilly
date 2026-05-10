@@ -190,6 +190,22 @@ class DashboardController {
       || null;
   }
 
+  buildFallbackModelStartTime(endTime, duration = 0, fallbackStartTime = null) {
+    const endMs = new Date(endTime).getTime();
+    const fallbackMs = fallbackStartTime ? new Date(fallbackStartTime).getTime() : NaN;
+    const requestedDuration = Math.max(0, Number(duration || 0));
+    const candidateMs = Number.isFinite(endMs)
+      ? endMs - requestedDuration
+      : NaN;
+    const clampedMs = Number.isFinite(candidateMs) && Number.isFinite(fallbackMs)
+      ? Math.max(candidateMs, fallbackMs)
+      : (Number.isFinite(candidateMs) ? candidateMs : fallbackMs);
+
+    return Number.isFinite(clampedMs)
+      ? new Date(clampedMs).toISOString()
+      : (fallbackStartTime || endTime || new Date().toISOString());
+  }
+
   buildTimeline(task, toolUsage, metadata = {}, { completed = true, responseId = null, output = '', duration = 0, error = '' } = {}) {
     const endTime = completed ? task.completedAt : task.failedAt;
     const traceMetadata = {
@@ -225,7 +241,7 @@ class DashboardController {
           ? {
             type: 'model_call',
             name: `Model response (${task.model})`,
-            startTime: new Date(new Date(endTime).getTime() - Math.max(0, Number(duration || 0))).toISOString(),
+            startTime: this.buildFallbackModelStartTime(endTime, duration, task.createdAt),
             endTime,
             duration: Number(duration || 0),
             status: 'completed',
@@ -239,7 +255,7 @@ class DashboardController {
           : {
             type: 'model_call',
             name: `Model request failed (${task.model})`,
-            startTime: new Date(new Date(endTime).getTime() - Math.max(0, Number(duration || 0))).toISOString(),
+            startTime: this.buildFallbackModelStartTime(endTime, duration, task.createdAt),
             endTime,
             duration: Number(duration || 0),
             status: 'error',

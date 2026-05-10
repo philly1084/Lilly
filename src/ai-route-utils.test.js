@@ -214,7 +214,25 @@ describe('ai-route-utils', () => {
             outputText: '<html><body>Space zine</body></html>',
             model: 'gpt-test',
             assistantMessage: 'Created the PDF artifact (space-zine.pdf).',
-            metadata: {},
+            metadata: {
+                artifactGeneration: expect.objectContaining({
+                    strategy: 'direct-artifact-service',
+                    outputFormat: 'pdf',
+                    artifactId: 'artifact-1',
+                    filename: 'space-zine.pdf',
+                }),
+                executionTrace: [
+                    expect.objectContaining({
+                        type: 'artifact_generation',
+                        name: 'PDF artifact generated',
+                        status: 'completed',
+                        details: expect.objectContaining({
+                            artifactId: 'artifact-1',
+                            filename: 'space-zine.pdf',
+                        }),
+                    }),
+                ],
+            },
         });
 
         expect(artifactService.generateArtifact).toHaveBeenCalledWith(expect.objectContaining({

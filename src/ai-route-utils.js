@@ -1631,6 +1631,9 @@ async function generateOutputArtifactFromPrompt({
         throw error;
     }
 
+    const startedAt = Date.now();
+    const normalizedOutputFormat = normalizeFormat(outputFormat);
+
     try {
         const sandboxResult = await maybeGenerateAgentSandboxArtifact({
             sessionId,
@@ -1648,6 +1651,7 @@ async function generateOutputArtifactFromPrompt({
         console.warn(`[Artifacts] Agent sandbox generation failed; falling back to direct artifact generation: ${error.message}`);
     }
 
+    const directGenerationStartedAt = Date.now();
     const result = await artifactService.generateArtifact({
         session,
         sessionId,
@@ -1665,6 +1669,22 @@ async function generateOutputArtifactFromPrompt({
         toolContext,
         executionProfile,
     });
+    const completedAt = Date.now();
+    const directStep = {
+        type: 'artifact_generation',
+        name: `${String(normalizedOutputFormat || outputFormat || 'output').toUpperCase()} artifact generated`,
+        startTime: new Date(directGenerationStartedAt).toISOString(),
+        endTime: new Date(completedAt).toISOString(),
+        duration: Math.max(0, completedAt - directGenerationStartedAt),
+        status: 'completed',
+        details: {
+            outputFormat: normalizedOutputFormat || outputFormat || null,
+            strategy: 'direct-artifact-service',
+            artifactId: result.artifact?.id || null,
+            filename: result.artifact?.filename || result.artifact?.name || null,
+            model: result.model || model || null,
+        },
+    };
 
     return {
         responseId: result.responseId,
@@ -1673,12 +1693,22 @@ async function generateOutputArtifactFromPrompt({
         outputText: result.outputText,
         model: result.model || model || null,
         assistantMessage: buildArtifactCompletionMessage(outputFormat, result.artifact),
-        metadata: result.usage
+        metadata: {
+            artifactGeneration: {
+                strategy: 'direct-artifact-service',
+                outputFormat: normalizedOutputFormat || outputFormat || null,
+                duration: Math.max(0, completedAt - startedAt),
+                artifactId: result.artifact?.id || null,
+                filename: result.artifact?.filename || result.artifact?.name || null,
+            },
+            executionTrace: [directStep],
+            ...(result.usage
             ? {
                 usage: result.usage,
                 tokenUsage: result.usage,
             }
-            : {},
+            : {}),
+        },
     };
 }
 

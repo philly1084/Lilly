@@ -340,6 +340,49 @@ describe('DashboardController', () => {
     });
   });
 
+  test('keeps synthesized model timeline entries after the request start', () => {
+    const controller = new DashboardController(null);
+    const task = controller.recordRuntimeTaskStart({
+      sessionId: 'session-trace-order',
+      input: 'Create an HTML gallery.',
+      model: 'gpt-test',
+      mode: 'openai-chat',
+      transport: 'http',
+      metadata: {
+        route: '/v1/chat/completions',
+      },
+    });
+    task.createdAt = '2026-05-10T18:28:59.010Z';
+
+    controller.recordRuntimeTaskComplete(task.id, {
+      responseId: 'resp-gallery',
+      output: 'Created the HTML document artifact (gallery.html).',
+      model: 'gpt-test',
+      duration: 258306,
+      metadata: {
+        toolEvents: [{
+          toolCall: {
+            function: {
+              name: 'image-generate',
+              arguments: JSON.stringify({ prompt: 'gallery image' }),
+            },
+          },
+          result: {
+            success: true,
+            duration: 89054,
+            timestamp: '2026-05-10T18:30:28.073Z',
+          },
+          reason: 'Generate image artifacts before creating the html artifact.',
+        }],
+      },
+    });
+
+    const trace = tracesController.addTrace.mock.calls[0][0];
+    expect(trace.timeline[0].type).toBe('request');
+    const modelStep = trace.timeline.find((step) => step.type === 'model_call');
+    expect(new Date(modelStep.startTime).getTime()).toBeGreaterThanOrEqual(new Date(task.createdAt).getTime());
+  });
+
   test('surfaces image diagnostics in admin logs and trace timelines', () => {
     const controller = new DashboardController(null);
     const task = controller.recordRuntimeTaskStart({

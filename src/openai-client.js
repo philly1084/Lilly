@@ -246,7 +246,9 @@ function resolveRuntimeModelId(model = null, {
     const requested = normalizeModelId(model || fallback);
     if (requested.toLowerCase() === 'auto' && isOpenAIBaseURL(baseURL)) {
         const configured = normalizeModelId(fallback);
-        return configured && configured.toLowerCase() !== 'auto' ? configured : 'gpt-5.5';
+        return configured && configured.toLowerCase() !== 'auto' && !isGptImageModelId(configured)
+            ? configured
+            : 'gpt-5.5';
     }
     return requested || fallback;
 }
@@ -6645,6 +6647,7 @@ module.exports = {
         filterRecentMessagesForPrompt,
         inferProviderFamily,
         parseToolArguments,
+        resolveRuntimeModelId,
         resolveOpenAIApiMode,
         runDeterministicToolPreflight,
         runDirectRequiredToolAction,

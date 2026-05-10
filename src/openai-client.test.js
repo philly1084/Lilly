@@ -666,6 +666,17 @@ describe('openai-client automatic tool orchestration helpers', () => {
         jest.restoreAllMocks();
     });
 
+    test('auto chat model resolution skips configured image-only models', () => {
+        expect(__testUtils.resolveRuntimeModelId('auto', {
+            baseURL: 'https://api.openai.com/v1',
+            fallback: 'gpt-image-2',
+        })).toBe('gpt-5.5');
+        expect(__testUtils.resolveRuntimeModelId('auto', {
+            baseURL: 'https://api.openai.com/v1',
+            fallback: 'gpt-5.5',
+        })).toBe('gpt-5.5');
+    });
+
     test('uses responses mode automatically for official OpenAI hosts', () => {
         expect(__testUtils.resolveOpenAIApiMode({
             baseURL: 'https://api.openai.com/v1',

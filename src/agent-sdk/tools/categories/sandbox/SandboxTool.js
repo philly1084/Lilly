@@ -127,6 +127,42 @@ class SandboxTool extends ToolBase {
     this.tempDir = path.join(os.tmpdir(), 'agent-sandbox');
   }
 
+  async execute(params = {}, context = {}) {
+    return super.execute(this.normalizeExecutionParams(params), context);
+  }
+
+  normalizeExecutionParams(params = {}) {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) {
+      return params;
+    }
+
+    if (params.files === undefined || Array.isArray(params.files)) {
+      return params;
+    }
+
+    const files = params.files && typeof params.files === 'object'
+      ? Object.entries(params.files)
+        .map(([filePath, value]) => {
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            return {
+              path: value.path || value.name || filePath,
+              ...value,
+            };
+          }
+
+          return {
+            path: filePath,
+            content: typeof value === 'string' ? value : JSON.stringify(value ?? '', null, 2),
+          };
+        })
+      : [];
+
+    return {
+      ...params,
+      files,
+    };
+  }
+
   async handler(params, context, tracker) {
     const {
       mode = 'execute',

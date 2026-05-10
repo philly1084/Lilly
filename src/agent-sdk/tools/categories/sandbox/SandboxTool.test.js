@@ -48,6 +48,32 @@ describe('SandboxTool runtime configuration', () => {
     expect(tool.normalizeProjectFiles({ language: 'tailwind', code: '<main></main>' })[0].path).toBe('index.html');
   });
 
+  test('normalizes planner object-shaped project files before schema validation', () => {
+    const tool = new SandboxTool();
+
+    expect(tool.normalizeExecutionParams({
+      mode: 'project',
+      language: 'vite',
+      files: {
+        'index.html': '<div id="app"></div>',
+        'src/main.js': {
+          content: 'document.body.dataset.ready = "true";',
+          language: 'javascript',
+        },
+      },
+    }).files).toEqual([
+      {
+        path: 'index.html',
+        content: '<div id="app"></div>',
+      },
+      {
+        path: 'src/main.js',
+        content: 'document.body.dataset.ready = "true";',
+        language: 'javascript',
+      },
+    ]);
+  });
+
   test('applies bundle styling normalization before workspace preview writes', () => {
     const tool = new SandboxTool();
 
