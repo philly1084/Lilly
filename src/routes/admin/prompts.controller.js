@@ -9,6 +9,7 @@ const { getEffectiveSoulConfig, writeSoulFile } = require('../../agent-soul');
 const { getEffectiveAgentNotesConfig, writeAgentNotesFile } = require('../../agent-notes');
 const { artifactService } = require('../../artifacts/artifact-service');
 const { buildContinuityInstructions: buildBaseContinuityInstructions } = require('../../runtime-prompts');
+const { getPromptSurfaceInventory } = require('../../orchestration/prompt-renderer');
 const settingsController = require('./settings.controller');
 
 const MANAGED_MESSAGE = 'Managed prompt surfaces can be edited here. Code-backed runtime snapshots remain read-only.';
@@ -46,6 +47,81 @@ function truncate(text = '', limit = 180) {
 
 function buildContinuityInstructions(extra = '') {
   return buildBaseContinuityInstructions(extra);
+}
+
+function formatInventoryContent(entry = {}) {
+  return [
+    `Prompt surface: ${entry.name || entry.id}`,
+    `Family: ${entry.promptFamily || 'runtime'}`,
+    `Owner surface: ${entry.ownerSurface || 'unknown'}`,
+    `Exposure: ${entry.exposure || 'conditional'}`,
+    entry.condition ? `Condition: ${entry.condition}` : '',
+    `Source file: ${entry.sourceFile || 'unknown'}`,
+    `Expected tests: ${(entry.expectedTests || []).join(', ') || 'not listed'}`,
+    '',
+    'This row is generated from the prompt surface inventory. The exact prompt is rendered at request time by the owning surface.',
+  ].filter(Boolean).join('\n');
+}
+
+function toAbsoluteSourcePath(rootDir, sourceFile = '') {
+  const normalized = String(sourceFile || '').trim();
+  if (!normalized) {
+    return rootDir;
+  }
+  if (path.isAbsolute(normalized)) {
+    return normalized;
+  }
+  return path.join(rootDir, normalized);
+}
+
+function applyPromptInventory(surfaces = [], rootDir) {
+  const inventory = getPromptSurfaceInventory();
+  const inventoryById = new Map(inventory.map((entry) => [entry.id, entry]));
+  const hydratedSurfaces = surfaces.map((surface) => {
+    const inventoryEntry = inventoryById.get(surface.id);
+    if (!inventoryEntry) {
+      return surface;
+    }
+    return {
+      ...surface,
+      category: surface.category || inventoryEntry.promptFamily,
+      inventory: inventoryEntry,
+      promptFamily: inventoryEntry.promptFamily,
+      ownerSurface: inventoryEntry.ownerSurface,
+      expectedTests: inventoryEntry.expectedTests,
+      exposure: inventoryEntry.exposure,
+      condition: inventoryEntry.condition || null,
+    };
+  });
+  const existingIds = new Set(hydratedSurfaces.map((surface) => surface.id));
+  const inventoryOnlySurfaces = inventory
+    .filter((entry) => !existingIds.has(entry.id))
+    .map((entry) => {
+      const sourceFile = toAbsoluteSourcePath(rootDir, entry.sourceFile);
+      const content = formatInventoryContent(entry);
+      return {
+        id: entry.id,
+        name: entry.name,
+        description: `Inventory entry for ${entry.ownerSurface}.`,
+        assignment: entry.ownerSurface,
+        category: entry.promptFamily,
+        live: false,
+        editable: false,
+        inventoryOnly: true,
+        sourceFile,
+        updatedAt: getFileTimestamp(sourceFile),
+        usageModes: [],
+        content,
+        inventory: entry,
+        promptFamily: entry.promptFamily,
+        ownerSurface: entry.ownerSurface,
+        expectedTests: entry.expectedTests,
+        exposure: entry.exposure,
+        condition: entry.condition || null,
+      };
+    });
+
+  return [...hydratedSurfaces, ...inventoryOnlySurfaces];
 }
 
 function buildPlannerPromptSurface() {
@@ -154,7 +230,7 @@ function buildPromptSurfaces() {
   const soul = getEffectiveSoulConfig(settingsController.settings?.personality || {});
   const agentNotes = getEffectiveAgentNotesConfig(settingsController.settings?.agentNotes || {});
 
-  return [
+  const surfaces = [
     {
       id: 'agent-soul',
       name: soul.displayName || 'Agent Soul',
@@ -259,7 +335,9 @@ function buildPromptSurfaces() {
       usageModes: ['chat', 'openai-chat', 'openai-responses', 'notes'],
       content: artifactService.getArtifactCompositionInstructions('html'),
     },
-  ].map((surface) => ({
+  ];
+
+  return applyPromptInventory(surfaces, rootDir).map((surface) => ({
     ...surface,
     editable: surface.editable === true || EDITABLE_SURFACE_IDS.has(surface.id),
     variables: [],

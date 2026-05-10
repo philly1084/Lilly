@@ -217,4 +217,35 @@ describe('admin prompts controller', () => {
     expect(prompt.content).toContain('USER_INPUT_REQUIRED');
     expect(prompt.content).toContain('avoid indentation-sensitive inline Python or YAML heredocs');
   });
+
+  test('exposes inventory-only prompt surfaces for request-time prompts', () => {
+    const surfaces = promptsController.getSurfaces();
+    const ids = surfaces.map((surface) => surface.id);
+
+    expect(ids).toEqual(expect.arrayContaining([
+      'canvas-generation',
+      'notation-helper',
+      'remote-cli-agent',
+      'tool-doc-guidance',
+      'skill-guidance',
+    ]));
+
+    const canvas = surfaces.find((surface) => surface.id === 'canvas-generation');
+    expect(canvas).toEqual(expect.objectContaining({
+      inventoryOnly: true,
+      editable: false,
+      promptFamily: 'canvas',
+      ownerSurface: '/api/canvas',
+      expectedTests: expect.arrayContaining(['src/routes/canvas.test.js']),
+    }));
+    expect(canvas.content).toContain('The exact prompt is rendered at request time');
+
+    const continuity = surfaces.find((surface) => surface.id === 'chat-continuity');
+    expect(continuity).toEqual(expect.objectContaining({
+      promptFamily: 'runtime',
+      ownerSurface: '/api/chat and OpenAI-compatible routes',
+      expectedTests: expect.arrayContaining(['src/openai-client.test.js']),
+    }));
+    expect(continuity).not.toHaveProperty('inventoryOnly');
+  });
 });
