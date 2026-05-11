@@ -140,4 +140,36 @@ describe('/api/audio', () => {
             mimeType: 'audio/webm',
         }));
     });
+
+    test('strips browser MediaRecorder codec parameters before transcription', async () => {
+        parseMultipartRequest.mockResolvedValue({
+            fields: {},
+            file: {
+                filename: 'voice-note.webm',
+                mimeType: 'audio/webm;codecs=opus',
+                buffer: Buffer.from('audio-bytes'),
+            },
+        });
+        transcriptionService.transcribe.mockResolvedValue({
+            text: 'Browser transcript.',
+            model: 'gpt-4o-mini-transcribe',
+            language: 'en',
+            duration: 1.2,
+            provider: 'openai',
+        });
+
+        const app = express();
+        app.use('/api/audio', audioRouter);
+
+        const response = await request(app)
+            .post('/api/audio/transcribe')
+            .set('content-type', 'multipart/form-data; boundary=test-boundary')
+            .send('ignored');
+
+        expect(response.status).toBe(200);
+        expect(transcriptionService.transcribe).toHaveBeenCalledWith(expect.objectContaining({
+            filename: 'voice-note.webm',
+            mimeType: 'audio/webm',
+        }));
+    });
 });

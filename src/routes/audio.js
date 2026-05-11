@@ -21,6 +21,10 @@ const TRANSCRIPTION_EXTENSION_MIME_TYPES = Object.freeze({
     m4a: 'audio/mp4',
 });
 
+function getBaseMimeType(mimeType = '') {
+    return String(mimeType || '').trim().toLowerCase().split(';')[0].trim();
+}
+
 function createRouteError(statusCode, message, code = 'audio_error') {
     const error = new Error(message);
     error.statusCode = statusCode;
@@ -34,7 +38,7 @@ function inferMimeTypeFromFilename(filename = '') {
 }
 
 function normalizeTranscriptionMimeType(mimeType = '', filename = '') {
-    const normalizedMimeType = String(mimeType || '').trim().toLowerCase();
+    const normalizedMimeType = getBaseMimeType(mimeType);
     if (normalizedMimeType.startsWith('audio/')) {
         return normalizedMimeType;
     }
@@ -47,7 +51,7 @@ function normalizeTranscriptionMimeType(mimeType = '', filename = '') {
 }
 
 function isSupportedTranscriptionUpload(mimeType = '', filename = '') {
-    const normalizedMimeType = String(mimeType || '').trim().toLowerCase();
+    const normalizedMimeType = getBaseMimeType(mimeType);
     if (normalizedMimeType.startsWith('audio/')) {
         return true;
     }
