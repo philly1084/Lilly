@@ -1341,7 +1341,7 @@ class ChatApp {
 
     async loadSessions() {
         try {
-            await sessionManager.loadSessions();
+            await sessionManager.loadSessions({ preserveCurrentSession: true });
             const health = await apiClient.checkHealth();
             this.updateConnectionStatus(health.connected ? 'connected' : 'disconnected');
             uiHelpers.renderSessionsList(sessionManager.sessions, sessionManager.currentSessionId);
@@ -2628,7 +2628,7 @@ class ChatApp {
 
         this.isRefreshingSessionSummaries = true;
         try {
-            await sessionManager.loadSessions();
+            await sessionManager.loadSessions({ preserveCurrentSession: true });
         } catch (error) {
             console.warn('Failed to refresh session summaries:', error);
         } finally {
@@ -7031,7 +7031,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         }
 
         try {
-            await sessionManager.loadSessions();
+            await sessionManager.loadSessions({ preserveCurrentSession: true });
             if (sessionManager.currentSessionId !== sessionId) {
                 return;
             }
@@ -9722,7 +9722,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             }
 
             apiClient.setSessionId(sessionId);
-            await sessionManager.loadSessions();
+            await sessionManager.loadSessions({ preserveCurrentSession: true });
             await sessionManager.loadSessionMessagesFromBackend(sessionId);
             this.updateConnectionStatus('connected');
 
@@ -9938,7 +9938,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const previousLastTimestamp = previousMessages[previousMessages.length - 1]?.timestamp || '';
         const previousSignature = this.buildMessageRefreshSignature(previousMessages);
 
-        await sessionManager.loadSessions();
+        await sessionManager.loadSessions({ preserveCurrentSession: true });
 
         const currentSessionId = sessionManager.currentSessionId;
         apiClient.setSessionId(currentSessionId || null);

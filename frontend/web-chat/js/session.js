@@ -15,6 +15,7 @@ const WEB_CHAT_LOCAL_CACHE_MESSAGES_PER_SESSION = 120;
 const WEB_CHAT_LOCAL_CACHE_STRING_LIMIT = 20000;
 const WEB_CHAT_LOCAL_CACHE_ARRAY_LIMIT = 80;
 const WEB_CHAT_LOCAL_CACHE_OBJECT_DEPTH_LIMIT = 5;
+const WEB_CHAT_ACTIVE_SESSION_LOCAL_HOLD_MS = 45000;
 const WEB_CHAT_LOCAL_CACHE_HEAVY_KEYS = new Set([
     'audioData',
     'audio_data',
@@ -258,6 +259,11 @@ class SessionManager extends EventTarget {
         this.preferenceSyncTimer = null;
         this.userPreferencesPromise = null;
         this.recoveredSessionPromotionPromise = null;
+        this.activeSessionSelection = {
+            sessionId: this.currentSessionId,
+            selectedAt: 0,
+            reason: 'initial',
+        };
         
         this.resetStaleSecondaryWorkspaceCacheIfNeeded();
         this.loadFromStorage();
@@ -892,7 +898,55 @@ class SessionManager extends EventTarget {
     // Session Operations
     // ============================================
 
-    async loadSessions() {
+    rememberActiveSessionSelection(sessionId = null, reason = 'local') {
+        this.activeSessionSelection = {
+            sessionId: String(sessionId || '').trim(),
+            selectedAt: Date.now(),
+            reason: String(reason || 'local'),
+        };
+        return this.activeSessionSelection;
+    }
+
+    hasRecentLocalActiveSessionSelection(sessionId = null) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const selectedSessionId = String(this.activeSessionSelection?.sessionId || '').trim();
+        if (!normalizedSessionId || normalizedSessionId !== selectedSessionId) {
+            return false;
+        }
+
+        const selectedAt = Number(this.activeSessionSelection?.selectedAt) || 0;
+        return selectedAt > 0 && Date.now() - selectedAt <= WEB_CHAT_ACTIVE_SESSION_LOCAL_HOLD_MS;
+    }
+
+    resolveActiveSessionAfterRefresh(backendActiveSessionId = '', options = {}) {
+        const previousCurrentSessionId = String(this.currentSessionId || '').trim();
+        const currentSessionStillExists = Boolean(
+            previousCurrentSessionId
+            && this.sessions.find((session) => session.id === previousCurrentSessionId),
+        );
+        const backendActiveSessionStillExists = Boolean(
+            backendActiveSessionId
+            && this.sessions.find((session) => session.id === backendActiveSessionId),
+        );
+
+        if (currentSessionStillExists
+            && (options.preserveCurrentSession === true
+                || this.hasRecentLocalActiveSessionSelection(previousCurrentSessionId))) {
+            return previousCurrentSessionId;
+        }
+
+        if (backendActiveSessionStillExists) {
+            return backendActiveSessionId;
+        }
+
+        if (currentSessionStillExists) {
+            return previousCurrentSessionId;
+        }
+
+        return this.sessions[0]?.id || null;
+    }
+
+    async loadSessions(options = {}) {
         try {
             const params = new URLSearchParams({
                 taskType: SESSION_MANAGER_TASK_TYPE,
@@ -1006,11 +1060,7 @@ class SessionManager extends EventTarget {
             const backendActiveSessionId = typeof data.activeSessionId === 'string'
                 ? data.activeSessionId.trim()
                 : '';
-            if (backendActiveSessionId && this.sessions.find((session) => session.id === backendActiveSessionId)) {
-                this.currentSessionId = backendActiveSessionId;
-            } else if (!this.sessions.find((session) => session.id === this.currentSessionId)) {
-                this.currentSessionId = this.sessions[0]?.id || null;
-            }
+            this.currentSessionId = this.resolveActiveSessionAfterRefresh(backendActiveSessionId, options);
 
             await this.pruneBlankSessions();
             this.saveToStorage();
@@ -1440,6 +1490,7 @@ class SessionManager extends EventTarget {
         this.sessions.unshift(localSession);
         this.sessionMessages.set(localSession.id, []);
         this.currentSessionId = localSession.id;
+        this.rememberActiveSessionSelection(localSession.id, 'created');
 
         this.saveToStorage();
         if (!isLocal) {
@@ -1476,6 +1527,7 @@ class SessionManager extends EventTarget {
         
         if (this.currentSessionId === sessionId) {
             this.currentSessionId = this.sessions.length > 0 ? this.sessions[0].id : null;
+            this.rememberActiveSessionSelection(this.currentSessionId, 'deleted');
         }
 
         this.saveToStorage();
@@ -1504,6 +1556,7 @@ class SessionManager extends EventTarget {
         
         const previousSessionId = this.currentSessionId;
         this.currentSessionId = sessionId;
+        this.rememberActiveSessionSelection(sessionId, 'switched');
         this.safeStorageSet(this.currentSessionKey, sessionId);
         if (!this.isLocalSession(sessionId)) {
             void this.persistActiveSession(sessionId);
