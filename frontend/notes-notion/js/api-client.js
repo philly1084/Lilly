@@ -412,6 +412,24 @@ class NotesAPIClient {
         this.abortControllers = new Map(); // Track abort controllers for cancellation
     }
 
+    async buildRequestError(response) {
+        let details = null;
+        try {
+            details = await response.clone().json();
+        } catch (_jsonError) {
+            try {
+                details = await response.text();
+            } catch (_textError) {
+                details = null;
+            }
+        }
+
+        const error = new Error(parseErrorMessage({ details }, response));
+        error.status = response.status;
+        error.details = details;
+        return error;
+    }
+
     // ============================================
     // Chat Methods
     // ============================================

@@ -209,7 +209,9 @@ const AgentUI = (function() {
     function openChat() {
         if (!elements.modal) return;
 
+        document.body.classList.add('agent-chat-open');
         elements.modal.style.display = 'flex';
+        elements.modal.setAttribute('aria-hidden', 'false');
 
         requestAnimationFrame(() => {
             elements.modal.classList.add('active');
@@ -232,7 +234,9 @@ const AgentUI = (function() {
     function closeChat() {
         if (!elements.modal) return;
 
+        document.body.classList.remove('agent-chat-open');
         elements.modal.classList.remove('active');
+        elements.modal.setAttribute('aria-hidden', 'true');
         if (elements.modalContent) {
             elements.modalContent.style.opacity = '0';
             elements.modalContent.style.transform = 'scale(0.98)';
@@ -674,7 +678,10 @@ const AgentUI = (function() {
         }
 
         messages.forEach((message) => {
-            elements.messagesContainer.appendChild(renderMessage(message));
+            const renderedMessage = renderMessage(message);
+            if (renderedMessage) {
+                elements.messagesContainer.appendChild(renderedMessage);
+            }
         });
 
         if (streamState.active) {
@@ -709,6 +716,14 @@ const AgentUI = (function() {
 
     function renderMessage(message) {
         const isUser = message.role === 'user';
+        const displayContent = normalizeMessageContentForDisplay(message);
+        const reasoningSummary = !isUser ? extractReasoningSummary(message) : '';
+        const requestUnderstanding = !isUser ? extractRequestUnderstanding(message) : null;
+
+        if (!displayContent && !reasoningSummary && !requestUnderstanding) {
+            return null;
+        }
+
         const div = document.createElement('div');
         div.className = `agent-message agent-message-${isUser ? 'user' : 'agent'}`;
 
@@ -717,8 +732,6 @@ const AgentUI = (function() {
             ? new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : '';
 
-        const reasoningSummary = !isUser ? extractReasoningSummary(message) : '';
-        const requestUnderstanding = !isUser ? extractRequestUnderstanding(message) : null;
         const reasoningMarkup = reasoningSummary ? `
             <details class="agent-reasoning-card" ${message.reasoningLive ? 'open' : ''}>
                 <summary>
@@ -741,12 +754,69 @@ const AgentUI = (function() {
             <div class="agent-message-content">
                 ${understandingMarkup}
                 ${reasoningMarkup}
-                <div class="agent-message-text">${markdownToHtml(message.content)}</div>
+                ${displayContent ? `<div class="agent-message-text">${markdownToHtml(displayContent)}</div>` : ''}
                 ${timestamp ? `<div class="agent-message-time">${timestamp}</div>` : ''}
             </div>
         `;
 
         return div;
+    }
+
+    function normalizeMessageContentForDisplay(message = {}) {
+        const source = String(message.content || '');
+        const cleaned = stripDisplayOnlyToolMarkup(source).trim();
+
+        if (!cleaned || isDisplayOnlyPlaceholder(cleaned) || looksLikeDisplayOnlyScaffold(cleaned)) {
+            return '';
+        }
+
+        if (!message._displayNormalized && window.Agent?._extractNotesActionPlan) {
+            try {
+                const parsed = window.Agent._extractNotesActionPlan(cleaned);
+                const parsedText = stripDisplayOnlyToolMarkup(parsed?.displayText || '').trim();
+                if (parsed?.actions?.length || parsedText !== cleaned) {
+                    return isDisplayOnlyPlaceholder(parsedText) || looksLikeDisplayOnlyScaffold(parsedText)
+                        ? ''
+                        : parsedText;
+                }
+            } catch (error) {
+                console.warn('AgentUI: failed to normalize assistant message display:', error);
+            }
+        }
+
+        return cleaned;
+    }
+
+    function stripDisplayOnlyToolMarkup(text = '') {
+        let value = String(text || '').replace(/\u0000/g, '');
+        if (!value) return '';
+
+        value = value
+            .replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?tool_calls(?:\s*[|｜])?\s*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?tool_calls(?:\s*[|｜])?\s*>/gi, '')
+            .replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?tool_calls(?:\s*[|｜])?\s*>[\s\S]*$/i, '')
+            .replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?invoke\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?invoke(?:\s*[|｜])?\s*>/gi, '')
+            .replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?parameter\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?parameter(?:\s*[|｜])?\s*>/gi, '')
+            .replace(/<\s*\/?\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?(?:tool_calls|invoke|parameter)(?:\b[^>]*)?>/gi, '');
+
+        return value.trim();
+    }
+
+    function isDisplayOnlyPlaceholder(text = '') {
+        const normalized = String(text || '').trim().toLowerCase();
+        return /^<\s*assistant(?:\s+reply)?\s*\/?>$/i.test(normalized)
+            || normalized === 'assistant reply'
+            || normalized === 'assistant_reply';
+    }
+
+    function looksLikeDisplayOnlyScaffold(text = '') {
+        const normalized = String(text || '').trim().toLowerCase();
+        if (!normalized) return false;
+
+        return (normalized.includes('original request:') && normalized.includes('approved page plan:'))
+            || normalized.includes('interpret "page" as the current notes page shown in this editor')
+            || normalized.includes('return notes-actions that apply the content to the current notes page')
+            || normalized.includes('hidden planning pass for a substantial notes-writing request')
+            || normalized.includes('hidden section-expansion pass for a substantial notes-writing request');
     }
 
     function extractReasoningSummary(message = {}) {

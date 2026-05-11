@@ -259,6 +259,43 @@ Approved page plan:
         expect(parsed.actions).toEqual([]);
     });
 
+    test('strips orphan DSML invoke markup from visible assistant text', () => {
+        const agent = loadAgent();
+        const responseText = [
+            'I will look up the current source first.',
+            '<｜DSML｜invoke name="web-fetch">',
+            '<｜DSML｜parameter name="url" string="true">https://example.com</｜DSML｜parameter>',
+            '</｜DSML｜invoke>',
+        ].join(' ');
+
+        const parsed = agent._extractNotesActionPlan(responseText);
+
+        expect(parsed.displayText).toBe('I will look up the current source first.');
+        expect(parsed.displayText).not.toContain('DSML');
+        expect(parsed.displayText).not.toContain('web-fetch');
+        expect(parsed.actions).toEqual([]);
+    });
+
+    test('suppresses raw notes action JSON instead of exposing block operation markup', () => {
+        const agent = loadAgent();
+        const responseText = JSON.stringify({
+            assistant_reply: '<assistant reply>',
+            actions: [
+                {
+                    op: 'append_to_page',
+                    blocks: [
+                        { type: 'heading_2', content: 'Clean Section' },
+                    ],
+                },
+            ],
+        });
+
+        const parsed = agent._extractNotesActionPlan(responseText);
+
+        expect(parsed.displayText).toBe('');
+        expect(parsed.actions).toHaveLength(1);
+    });
+
     test('parses malformed kimi-style notes-actions fences and spaced keys', () => {
         const agent = loadAgent();
         const responseText = [

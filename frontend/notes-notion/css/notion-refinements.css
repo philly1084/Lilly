@@ -3101,6 +3101,120 @@ body {
     linear-gradient(135deg, color-mix(in oklab, var(--notes-accent), black 12%), color-mix(in oklab, var(--notes-accent-warm), black 6%));
 }
 
+/* Keep hidden covers from pulling the page title under the sticky breadcrumb bar. */
+#cover-area[style*="display: none"] + .page-header,
+#cover-area[style*="display: none"] ~ .page-header,
+#cover-area[hidden] ~ .page-header,
+#cover-area[hidden] + .page-header {
+  margin-top: 0;
+  padding-top: 84px;
+}
+
+body.agent-chat-open .main-content {
+  margin-right: clamp(360px, 37vw, 520px);
+  transition: margin-right 180ms ease;
+}
+
+.agent-chat-modal {
+  pointer-events: none;
+}
+
+.agent-chat-overlay {
+  display: none;
+}
+
+.agent-chat-container {
+  pointer-events: auto;
+  width: min(440px, calc(100vw - 32px));
+  max-width: 440px;
+  height: min(660px, calc(100vh - 32px));
+  box-shadow: 0 22px 70px -42px rgba(15, 23, 42, 0.6), 0 12px 26px -24px rgba(15, 23, 42, 0.32);
+}
+
+.agent-chat-header {
+  min-height: 56px;
+  padding: 12px 16px;
+}
+
+.agent-chat-title {
+  min-width: 0;
+}
+
+#agent-chat-model-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-messages {
+  padding: 18px;
+}
+
+.agent-message-content {
+  max-width: min(88%, 34rem);
+  overflow-wrap: anywhere;
+}
+
+.agent-message-text {
+  overflow-wrap: anywhere;
+}
+
+.agent-message-text h1,
+.agent-message-text h2,
+.agent-message-text h3 {
+  margin: 0 0 8px;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.agent-message-text ul,
+.agent-message-text ol {
+  margin: 8px 0 8px 18px;
+  padding: 0;
+}
+
+.agent-message-text pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+}
+
+.agent-chat-input-area {
+  max-height: 45%;
+  overflow-y: auto;
+}
+
+@media (max-width: 1440px) {
+  body.agent-chat-open .main-content {
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  body.agent-chat-open .main-content {
+    margin-right: 0;
+  }
+
+  .agent-chat-modal {
+    pointer-events: auto;
+    padding: 10px;
+  }
+
+  .agent-chat-overlay {
+    display: block;
+    background: var(--overlay-scrim);
+  }
+
+  .agent-chat-container {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100vh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .agent-empty-state {
   align-items: stretch;
   text-align: left;

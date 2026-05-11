@@ -762,7 +762,7 @@ const Agent = (function() {
     }
 
     function hasInternalToolCallMarkup(text = '') {
-        return /<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?tool_calls(?:\s*[|｜])?\s*>/i.test(String(text || ''));
+        return /<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?(?:tool_calls|invoke|parameter)(?:\s*[|｜])?\b[^>]*>/i.test(String(text || ''));
     }
 
     function stripInternalToolCallMarkup(text = '') {
@@ -773,6 +773,9 @@ const Agent = (function() {
 
         value = value.replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?tool_calls(?:\s*[|｜])?\s*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?tool_calls(?:\s*[|｜])?\s*>/gi, '');
         value = value.replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?tool_calls(?:\s*[|｜])?\s*>[\s\S]*$/i, '');
+        value = value.replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?invoke\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?invoke(?:\s*[|｜])?\s*>/gi, '');
+        value = value.replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?parameter\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?parameter(?:\s*[|｜])?\s*>/gi, '');
+        value = value.replace(/<\s*\/?\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?(?:tool_calls|invoke|parameter)(?:\b[^>]*)?>/gi, '');
         return value.trim();
     }
 
@@ -6403,7 +6406,7 @@ Silently verify the lead cluster, section order, and final polish before returni
             return '';
         }
 
-        return String(
+        const reply = String(
             payload.assistant_reply
             || payload.assistantReply
             || payload.assistantMessage
@@ -6411,6 +6414,10 @@ Silently verify the lead cluster, section order, and final polish before returni
             || payload.message
             || ''
         ).trim();
+
+        return isAssistantReplyPlaceholderText(reply) || looksLikeInternalNotesScaffold(reply)
+            ? ''
+            : reply;
     }
 
     function tryParseNotesActionPayload(payloadText) {
