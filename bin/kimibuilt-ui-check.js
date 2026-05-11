@@ -579,6 +579,30 @@ async function collectUiMetrics(page) {
   });
 }
 
+async function waitForClientReady(page, timeout = 30000) {
+  await page.waitForFunction(() => {
+    const body = document.body;
+    const root = document.documentElement;
+    const surface = body?.dataset?.uiSurface || '';
+    if (surface !== 'web-chat') {
+      return true;
+    }
+
+    return Boolean(
+      window.chatApp
+      && window.uiHelpers
+      && root.getAttribute('data-theme')
+      && !body.classList.contains('preload')
+    );
+  }, null, {
+    timeout: Math.min(timeout, 5000),
+  }).catch(() => {});
+
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  })).catch(() => {});
+}
+
 async function run() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.url) {
@@ -647,6 +671,7 @@ async function run() {
         await page.waitForLoadState('networkidle', {
           timeout: Math.min(args.timeout, 8000),
         }).catch(() => {});
+        await waitForClientReady(page, args.timeout);
         if (args.waitForSelector) {
           await page.waitForSelector(args.waitForSelector, {
             timeout: args.timeout,
@@ -749,4 +774,5 @@ module.exports = {
   normalizeUrl,
   redactSensitiveUrl,
   rewritePreviewUrlWithToken,
+  waitForClientReady,
 };

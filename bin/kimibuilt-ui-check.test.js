@@ -5,6 +5,7 @@ const {
   normalizeUrl,
   redactSensitiveUrl,
   rewritePreviewUrlWithToken,
+  waitForClientReady,
 } = require('./kimibuilt-ui-check');
 
 describe('kimibuilt-ui-check preview auth helpers', () => {
@@ -84,5 +85,25 @@ describe('kimibuilt-ui-check preview auth helpers', () => {
     )).toBe(
       'https://kimibuilt.secdevsolutions.help/api/artifacts/site/preview-access/[redacted]/?access_token=[redacted]',
     );
+  });
+
+  test('waits for web-chat bootstrap before collecting visual metrics', async () => {
+    let readinessPredicate = null;
+    const page = {
+      waitForFunction: jest.fn(async (predicate) => {
+        readinessPredicate = predicate;
+      }),
+      evaluate: jest.fn(async () => {}),
+    };
+
+    await waitForClientReady(page, 30000);
+
+    expect(page.waitForFunction).toHaveBeenCalledWith(expect.any(Function), null, {
+      timeout: 5000,
+    });
+    expect(String(readinessPredicate)).toContain('window.chatApp');
+    expect(String(readinessPredicate)).toContain('data-theme');
+    expect(String(readinessPredicate)).toContain('preload');
+    expect(page.evaluate).toHaveBeenCalledWith(expect.any(Function));
   });
 });
