@@ -62,6 +62,65 @@ function validateBuiltInRequiredParams(normalized = {}) {
   return missing;
 }
 
+function hasNonEmptyString(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function hasProjectFileContent(files) {
+  if (Array.isArray(files)) {
+    return files.some((file) => (
+      isPlainObject(file)
+      && hasNonEmptyString(file.path || file.name)
+      && (
+        hasNonEmptyString(file.content)
+        || hasNonEmptyString(file.contents)
+        || hasNonEmptyString(file.contentBase64)
+        || hasNonEmptyString(file.dataBase64)
+      )
+    ));
+  }
+
+  if (isPlainObject(files)) {
+    return Object.entries(files).some(([filePath, value]) => {
+      if (!hasNonEmptyString(filePath)) {
+        return false;
+      }
+      if (hasNonEmptyString(value)) {
+        return true;
+      }
+      return isPlainObject(value)
+        && (
+          hasNonEmptyString(value.content)
+          || hasNonEmptyString(value.contents)
+          || hasNonEmptyString(value.contentBase64)
+          || hasNonEmptyString(value.dataBase64)
+        );
+    });
+  }
+
+  return false;
+}
+
+function validateBuiltInSemanticParams(normalized = {}) {
+  const params = isPlainObject(normalized?.params) ? normalized.params : {};
+  const rejections = [];
+
+  if (normalized?.tool === 'code-sandbox'
+    && String(params.mode || '').trim().toLowerCase() === 'project') {
+    const hasProjectContent = hasNonEmptyString(params.code) || hasProjectFileContent(params.files);
+    if (!hasProjectContent) {
+      rejections.push({
+        code: hasNonEmptyString(params.prompt) ? 'prompt_only_sandbox_project' : 'missing_project_content',
+        message: hasNonEmptyString(params.prompt)
+          ? '`code-sandbox` project mode cannot generate a playable app from `prompt` alone; provide complete `files` or `code`, or use `document-workflow generate-suite` with sandbox build mode.'
+          : '`code-sandbox` project mode requires complete `files` or non-empty `code`.',
+      });
+    }
+  }
+
+  return rejections;
+}
+
 function validateEnum(schema = {}, params = {}) {
   const invalid = [];
   const properties = isPlainObject(schema.properties) ? schema.properties : {};
@@ -153,6 +212,7 @@ function validatePlanStep(step = {}, {
       missing: builtInMissing,
     });
   }
+  rejections.push(...validateBuiltInSemanticParams(normalized));
 
   const schema = contract?.inputSchema || tool?.inputSchema || tool?.schema || null;
   if (schema) {
@@ -197,4 +257,5 @@ function validatePlan(steps = [], options = {}) {
 module.exports = {
   validatePlan,
   validatePlanStep,
+  validateBuiltInSemanticParams,
 };

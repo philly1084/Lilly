@@ -162,6 +162,10 @@ const MANAGED_APP_RECOVERABLE_ERROR_PATTERNS = [
     /managed app not found/i,
     /managed app catalog entry was not found/i,
 ];
+const CODE_SANDBOX_PROJECT_CONTENT_REJECTION_CODES = new Set([
+    'prompt_only_sandbox_project',
+    'missing_project_content',
+]);
 
 function readLocalGuidanceFile(filePath = '') {
     try {
@@ -178,6 +182,15 @@ function getMarkdownHeadingLevel(line = '') {
 
 function normalizeMarkdownHeading(line = '') {
     return String(line || '').replace(/^#{2,6}\s+/, '').trim().toLowerCase();
+}
+
+function hasRejectedDirectSandboxBuild(validatedPlan = null) {
+    return Array.isArray(validatedPlan?.rejected)
+        && validatedPlan.rejected.some((entry) => (
+            entry?.step?.tool === 'code-sandbox'
+            && Array.isArray(entry.rejections)
+            && entry.rejections.some((rejection) => CODE_SANDBOX_PROJECT_CONTENT_REJECTION_CODES.has(rejection?.code))
+        ));
 }
 
 function extractMarkdownSection(content = '', heading = '') {
@@ -8059,7 +8072,7 @@ function buildPlannerPolicyPacks({
             ? [
                 'Use `document-workflow generate-suite` with `buildMode:"sandbox"` or `useSandbox:true` for previewable website/dashboard/front-end/game/multi-step app artifacts so the builder produces a sandbox project instead of only a template. Treat this as a Symphony build-review-iterate loop, not a one-shot template export.',
                 `For sandbox website/dashboard/front-end/game artifacts, require the builder to follow this frontend quality bar:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`,
-                'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus previewable files. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
+                'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus complete previewable `files` or non-empty `code`. `params.prompt` alone is invalid because `code-sandbox` persists supplied files; it does not generate React/Vite code from a prompt. Use `document-workflow generate-suite` with `buildMode:"sandbox"` when generation from a prompt is needed. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
                 'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
             ]
             : [],
@@ -11737,7 +11750,7 @@ class ConversationOrchestrator extends EventEmitter {
                     'Follow role order through handoff artifacts: research evidence first when required, design brief before build, sandbox/project build for websites, then QA/integration.',
                     'Use `design-resource-search` for the design role before generating design-sensitive websites, dashboards, documents, or page artifacts unless it has already succeeded in this run.',
                     `For website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, UI mockup, browser game, video game, and interactive sandbox builds, apply the frontend quality bar from the active role contract:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`,
-                    'For website, dashboard, landing-page, frontend, game, and multi-step Vite builds, prefer the Symphony-style sequence: design/resource context, `document-workflow generate-suite` with `formats:["html"]`, `buildMode:"sandbox"`, and `useSandbox:true`, then browser QA. Direct `code-sandbox` calls must use `mode:"project"` rather than execute mode.',
+                    'For website, dashboard, landing-page, frontend, game, and multi-step Vite builds, prefer the Symphony-style sequence: design/resource context, `document-workflow generate-suite` with `formats:["html"]`, `buildMode:"sandbox"`, and `useSandbox:true`, then browser QA. Direct `code-sandbox` calls must use `mode:"project"` with complete `files` or `code`; never pass only `prompt` to `code-sandbox`.',
                     'For slides, slide decks, presentations, and PowerPoint requests, default the final deliverable to PPTX unless the user explicitly asks for interactive or HTML output. On web-chat, include an HTML sandbox companion preview only as a design/review stage, not as a replacement for the PPTX.',
                     'For explicit PDF/PPTX/HTML/XLSX packages or multi-format document requests, use `document-workflow generate-suite` with the requested `formats`. On web-chat, include an HTML companion preview when the main deliverable is PDF, PPTX, or XLSX.',
                 ]
@@ -11992,7 +12005,7 @@ class ConversationOrchestrator extends EventEmitter {
                     rejections: entry.rejections,
                 })));
             }
-            if (validated.steps.length > 0) {
+            if (validated.steps.length > 0 && !hasRejectedDirectSandboxBuild(validated)) {
                 return validated.steps;
             }
         }
@@ -12649,7 +12662,7 @@ class ConversationOrchestrator extends EventEmitter {
                 parts.push('Use `design-resource-search` as the design agent resource lane for curated fonts, styling, icons, safe visual sources, and website/document design references.');
             }
             if (toolPolicy.rolePipeline.requiresSandbox && allowedToolIds.includes('code-sandbox')) {
-                parts.push('For website/dashboard/front-end/game/Vite outputs, produce a previewable sandbox project. Prefer `document-workflow generate-suite` with `buildMode:"sandbox"`/`useSandbox:true`, or use `code-sandbox` only in `mode:"project"` with files.');
+                parts.push('For website/dashboard/front-end/game/Vite outputs, produce a previewable sandbox project. Prefer `document-workflow generate-suite` with `buildMode:"sandbox"`/`useSandbox:true`, or use `code-sandbox` only in `mode:"project"` with complete `files` or non-empty `code`; `prompt` alone is not a playable sandbox input.');
                 parts.push(`Apply the frontend quality bar from the active role contract for sandbox frontend builds:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`);
             }
             if (toolPolicy.rolePipeline.requiresSandbox && allowedToolIds.includes('web-scrape')) {

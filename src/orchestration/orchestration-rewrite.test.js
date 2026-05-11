@@ -452,7 +452,7 @@ describe('orchestration rewrite policy', () => {
     expect(pipeline.qualityBar).toEqual(expect.objectContaining({
       name: 'impressive-frontend-websites',
       requiredPractices: expect.arrayContaining([
-        expect.stringContaining('iterate after the first working render'),
+        expect.stringContaining('iteration pass after the first render'),
       ]),
     }));
     const designRole = pipeline.roles.find((role) => role.id === ROLE_IDS.DESIGN);
@@ -484,6 +484,20 @@ describe('orchestration rewrite policy', () => {
     });
     expect(projectStep.ok).toBe(true);
 
+    const promptOnlyProjectStep = validatePlanStep({
+      tool: 'code-sandbox',
+      params: {
+        mode: 'project',
+        language: 'vite',
+        prompt: 'Build a playable React art gallery.',
+      },
+    }, {
+      candidateToolIds: ['code-sandbox'],
+      contracts,
+    });
+    expect(promptOnlyProjectStep.ok).toBe(false);
+    expect(promptOnlyProjectStep.rejections.map((rejection) => rejection.code)).toContain('prompt_only_sandbox_project');
+
     const executeStep = validatePlanStep({
       tool: 'code-sandbox',
       params: {
@@ -497,6 +511,83 @@ describe('orchestration rewrite policy', () => {
     });
     expect(executeStep.ok).toBe(false);
     expect(executeStep.rejections.map((rejection) => rejection.code)).toContain('confirmation_required');
+  });
+
+  test('falls back to document-workflow when planner tries prompt-only code-sandbox project generation', async () => {
+    const llmClient = {
+      createResponse: jest.fn(),
+      complete: jest.fn().mockResolvedValue(JSON.stringify({
+        steps: [{
+          tool: 'asset-search',
+          reason: 'Gather prior visuals first.',
+          params: {
+            kind: 'artifact',
+            query: 'art gallery',
+            includeContent: true,
+          },
+        }, {
+          tool: 'code-sandbox',
+          reason: 'Build the React gallery from the prompt.',
+          params: {
+            mode: 'project',
+            language: 'vite',
+            prompt: 'Build a playable React art direction gallery.',
+          },
+        }],
+      })),
+    };
+    const orchestrator = new ConversationOrchestrator({
+      llmClient,
+      toolManager: buildToolManager(['asset-search', 'code-sandbox', 'document-workflow']),
+    });
+    const objective = 'Build a polished interactive frontend art direction gallery in React.';
+    const toolManager = buildToolManager(['asset-search', 'code-sandbox', 'document-workflow']);
+    const codeSandbox = toolManager.getTool('code-sandbox');
+    const toolPolicy = {
+      allowedToolIds: ['asset-search', 'code-sandbox', 'document-workflow'],
+      candidateToolIds: ['asset-search', 'code-sandbox', 'document-workflow'],
+      toolContracts: {
+        'code-sandbox': buildToolContract('code-sandbox', codeSandbox),
+        'document-workflow': {
+          inputSchema: {
+            type: 'object',
+            required: ['action'],
+            properties: {
+              action: { type: 'string' },
+            },
+          },
+        },
+        'asset-search': {
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+      },
+      orchestrationRewrite: {
+        enabled: true,
+      },
+    };
+
+    const plan = await orchestrator.planToolUse({
+      objective,
+      executionProfile: 'default',
+      toolPolicy,
+      toolContext: {
+        clientSurface: 'web-chat',
+      },
+    });
+
+    expect(plan).toEqual([expect.objectContaining({
+      tool: 'document-workflow',
+      reason: expect.stringContaining('sandbox'),
+      params: expect.objectContaining({
+        action: 'generate-suite',
+        formats: ['html'],
+        buildMode: 'sandbox',
+        useSandbox: true,
+      }),
+    })]);
   });
 
   test('orchestrator policy exposes role pipeline design and sandbox candidates for site builds', () => {
