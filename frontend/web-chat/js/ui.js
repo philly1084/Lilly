@@ -19,6 +19,13 @@ const WEB_CHAT_SHARED_THEMES = window.KimiBuiltThemePresets || {};
 const WEB_CHAT_THEME_PRESET_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.preset || 'kimibuilt_theme_preset';
 const WEB_CHAT_THEME_MODE_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.mode || 'kimibuilt_theme';
 const WEB_CHAT_SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
+const WEB_CHAT_ESTIMATED_REASONING_STEPS = Object.freeze([
+    'Tune into the ask',
+    'Find the clean route',
+    'Fit the useful pieces',
+    'Check the edges',
+    'Bring the answer home',
+]);
 const WEB_CHAT_THEME_DEFAULTS = WEB_CHAT_SHARED_THEMES.defaults || Object.freeze({
     dark: 'obsidian',
     light: 'paper',
@@ -3248,6 +3255,19 @@ class UIHelpers {
         });
     }
 
+    isGenericAssistantProgressStepTitle(value = '') {
+        const title = this.extractDisplayText(value).trim();
+        return /^(?:milestone|step|task)\s+\d+$/i.test(title)
+            || /^progress[-_\s]*step[-_\s]*\d+$/i.test(title)
+            || /^project[-_\s]*step[-_\s]*\d+$/i.test(title)
+            || /^workflow[-_\s]*step[-_\s]*\d+$/i.test(title);
+    }
+
+    getEstimatedReasoningStepTitle(index = 0) {
+        const labels = WEB_CHAT_ESTIMATED_REASONING_STEPS;
+        return labels[index % labels.length] || `Step ${index + 1}`;
+    }
+
     getAssistantProgressState(message = null) {
         const rawProgress = message?.progressState
             || message?.metadata?.progressState
@@ -3270,10 +3290,12 @@ class UIHelpers {
                 if (!title) {
                     return null;
                 }
+                const shouldUseEstimatedTitle = rawProgress.estimated !== false
+                    && this.isGenericAssistantProgressStepTitle(title);
 
                 return {
                     id: this.extractDisplayText(step?.id, { maxLength: 80 }) || `progress-step-${index + 1}`,
-                    title,
+                    title: shouldUseEstimatedTitle ? this.getEstimatedReasoningStepTitle(index) : title,
                     status: this.normalizeAssistantProgressStepStatus(step?.status),
                 };
             })
