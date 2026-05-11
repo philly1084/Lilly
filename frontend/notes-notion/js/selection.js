@@ -749,7 +749,7 @@ const Selection = (function() {
         
         // Keep on screen
         const pickerWidth = 200;
-        const pickerHeight = 100;
+        const pickerHeight = 320;
         
         if (left + pickerWidth > window.innerWidth) {
             left = rect.left - pickerWidth - 10;
@@ -784,7 +784,7 @@ const Selection = (function() {
         if (!picker) return;
         
         picker.addEventListener('click', (e) => {
-            const option = e.target.closest('.color-option');
+            const option = e.target.closest('.color-option, .style-option');
             if (!option) return;
             
             const blockId = picker.dataset.blockId;
@@ -798,7 +798,25 @@ const Selection = (function() {
                 picker.style.display = 'none';
                 return;
             }
-            
+
+            const fontFamily = option.dataset.fontFamily;
+            if (fontFamily !== undefined && blockId) {
+                if (callbacks.onFontFamilyChange) {
+                    callbacks.onFontFamilyChange(blockId, fontFamily === 'default' ? null : fontFamily);
+                }
+                picker.style.display = 'none';
+                return;
+            }
+
+            const fontSize = option.dataset.fontSize;
+            if (fontSize !== undefined && blockId) {
+                if (callbacks.onFontSizeChange) {
+                    callbacks.onFontSizeChange(blockId, fontSize === 'default' ? null : fontSize);
+                }
+                picker.style.display = 'none';
+                return;
+            }
+
             // Handle background color selection
             const bgColor = option.dataset.bgColor;
             if (bgColor !== undefined && blockId) {

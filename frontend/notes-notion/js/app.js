@@ -183,6 +183,12 @@
             onTextColorChange: (blockId, color) => {
                 Editor.setTextColor(blockId, color);
             },
+            onFontFamilyChange: (blockId, fontFamily) => {
+                Editor.setBlockFontFamily(blockId, fontFamily);
+            },
+            onFontSizeChange: (blockId, fontSize) => {
+                Editor.setBlockFontSize(blockId, fontSize);
+            },
             onTurnInto: (blockId, type) => {
                 const conversionInfo = Editor.getBlockConversionInfo?.(blockId, type);
                 if (conversionInfo?.requiresConfirmation) {

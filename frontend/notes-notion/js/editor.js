@@ -1091,6 +1091,18 @@ const Editor = (function() {
                 textInput.classList.add(`text-color-${block.textColor}`);
             }
         }
+
+        if (block.fontFamily || block.fontSize) {
+            const textInput = content.querySelector('.block-input, [contenteditable="true"]');
+            if (textInput) {
+                if (block.fontFamily) {
+                    textInput.classList.add(`font-family-${block.fontFamily}`);
+                }
+                if (block.fontSize) {
+                    textInput.classList.add(`font-size-${block.fontSize}`);
+                }
+            }
+        }
         
         contentWrapper.appendChild(content);
         blockEl.appendChild(contentWrapper);
@@ -2388,6 +2400,60 @@ const Editor = (function() {
         
         autoSave();
     }
+
+    function setBlockFontFamily(blockId, fontFamily) {
+        if (!currentPage) return;
+
+        saveToHistory();
+
+        const location = findBlockLocation(blockId);
+        const block = location?.block;
+        if (!block) return;
+
+        block.fontFamily = fontFamily;
+
+        const blockEl = document.querySelector(`.block[data-block-id="${blockId}"]`);
+        const input = blockEl?.querySelector?.('.block-input, [contenteditable="true"]');
+        if (input) {
+            input.classList.forEach((cls) => {
+                if (cls.startsWith('font-family-')) {
+                    input.classList.remove(cls);
+                }
+            });
+            if (fontFamily) {
+                input.classList.add(`font-family-${fontFamily}`);
+            }
+        }
+
+        autoSave();
+    }
+
+    function setBlockFontSize(blockId, fontSize) {
+        if (!currentPage) return;
+
+        saveToHistory();
+
+        const location = findBlockLocation(blockId);
+        const block = location?.block;
+        if (!block) return;
+
+        block.fontSize = fontSize;
+
+        const blockEl = document.querySelector(`.block[data-block-id="${blockId}"]`);
+        const input = blockEl?.querySelector?.('.block-input, [contenteditable="true"]');
+        if (input) {
+            input.classList.forEach((cls) => {
+                if (cls.startsWith('font-size-')) {
+                    input.classList.remove(cls);
+                }
+            });
+            if (fontSize) {
+                input.classList.add(`font-size-${fontSize}`);
+            }
+        }
+
+        autoSave();
+    }
     
     /**
      * Reorder blocks (drag and drop)
@@ -2562,6 +2628,8 @@ const Editor = (function() {
         unindentBlock,
         setBlockColor,
         setTextColor,
+        setBlockFontFamily,
+        setBlockFontSize,
         reorderBlocks,
         focusBlock,
         savePage,

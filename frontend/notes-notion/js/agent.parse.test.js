@@ -46,6 +46,8 @@ function loadAgent(overrides = {}) {
                 formatting: options.formatting || {},
                 color: options.color || null,
                 textColor: options.textColor || null,
+                fontFamily: options.fontFamily || null,
+                fontSize: options.fontSize || null,
                 icon: options.icon,
             })),
         },
@@ -804,6 +806,67 @@ Approved page plan:
         expect(editor.replaceBlockWithBlocks).not.toHaveBeenCalled();
         expect(blocks.block_a.id).toBe('block_a');
         expect(blocks.block_a.type).toBe('callout');
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+    });
+
+    test('applies agent block appearance aliases through the same update path as manual styling', () => {
+        jest.useFakeTimers();
+        const blocks = {
+            block_a: {
+                id: 'block_a',
+                type: 'text',
+                content: 'Make this feel like a designed note.',
+                children: [],
+                formatting: {},
+                color: null,
+                textColor: null,
+                fontFamily: null,
+                fontSize: null,
+            },
+        };
+        const editor = {
+            getBlock: jest.fn((blockId) => blocks[blockId]),
+            updateBlockFields: jest.fn((blockId, updates) => {
+                blocks[blockId] = { ...blocks[blockId], ...updates, id: blockId };
+                return blocks[blockId];
+            }),
+            replaceBlockWithBlocks: jest.fn(() => [{ id: 'fresh_id' }]),
+            savePage: jest.fn(),
+            focusBlock: jest.fn(),
+        };
+        const agent = loadAgent({ Editor: editor });
+        const parsed = agent._extractNotesActionPlan(JSON.stringify({
+            actions: [
+                {
+                    op: 'update_block',
+                    block_id: 'block_a',
+                    content: 'Make this feel like a designed note.',
+                    color: 'blue_background',
+                    text_color: 'green text',
+                    font_family: 'Georgia',
+                    font_size: 'extra large',
+                },
+            ],
+        }));
+
+        const result = agent._applyNotesActions(parsed.actions);
+
+        expect(result.appliedCount).toBe(1);
+        expect(editor.updateBlockFields).toHaveBeenCalledWith('block_a', expect.objectContaining({
+            id: 'block_a',
+            color: 'blue',
+            textColor: 'green',
+            fontFamily: 'serif',
+            fontSize: 'xlarge',
+        }));
+        expect(editor.replaceBlockWithBlocks).not.toHaveBeenCalled();
+        expect(blocks.block_a).toEqual(expect.objectContaining({
+            color: 'blue',
+            textColor: 'green',
+            fontFamily: 'serif',
+            fontSize: 'xlarge',
+        }));
         jest.runOnlyPendingTimers();
         jest.useRealTimers();
     });

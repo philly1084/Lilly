@@ -9,6 +9,8 @@ const Agent = (function() {
     const LEGACY_MESSAGES_STORAGE_KEY = 'notes_agent_messages';
     const PAGE_MESSAGES_STORAGE_PREFIX = 'notes_agent_messages:';
     const NOTES_COLOR_OPTIONS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
+    const NOTES_FONT_FAMILY_OPTIONS = ['sans', 'serif', 'mono'];
+    const NOTES_FONT_SIZE_OPTIONS = ['small', 'normal', 'large', 'xlarge'];
     const NOTES_TEMPLATE_METADATA_BLOCKLIST = new Set(['type', 'mode', 'audience']);
     const NOTES_PAGE_TEMPLATES = Object.freeze([
         Object.freeze({
@@ -3124,6 +3126,8 @@ GUIDELINES:
 - Use plain strings for text-like blocks and structured objects for todo, callout, code, math, mermaid, image, ai_image, bookmark, database, and ai blocks.
 - You may include formatting on text-like blocks using {bold, italic, underline, strikethrough, code}.
 - You may include children on blocks when nested content improves the page, especially under toggles.
+- You may include fontFamily on blocks using: ${NOTES_FONT_FAMILY_OPTIONS.join(', ')}.
+- You may include fontSize on blocks using: ${NOTES_FONT_SIZE_OPTIONS.join(', ')}.
 - Do not invent block IDs - only use IDs that exist in the page
 - Keep assistant_reply concise unless the user asks for detailed explanation
 - When the user asks for a redesign, dashboard, brief, report, or polished layout, consider updating the page title, icon, or cover with update_page in addition to the blocks.
@@ -3327,6 +3331,7 @@ GUIDELINES:
 - Do not write markdown syntax into a block when the block type already expresses the structure. Use heading blocks for headings, list blocks for bullets, todo blocks for checkboxes, callout blocks for highlighted notes, and \`formatting\` instead of raw \`**bold**\` markers.
 - Use \`heading_3\` when a short label or mini-section should sit on its own line. Do not bury those labels inline at the start of paragraph text.
 - You may include \`formatting\` on text-like blocks using \`{bold, italic, underline, strikethrough, code}\`.
+- You may include \`fontFamily\` (\`${NOTES_FONT_FAMILY_OPTIONS.join('`, `')}\`) and \`fontSize\` (\`${NOTES_FONT_SIZE_OPTIONS.join('`, `')}\`) for deliberate typography.
 - You may include \`children\` on blocks when nested content improves the page, especially under toggles.
 - Do not invent block IDs - only use IDs that exist in the page
 - Keep assistant_reply concise unless user asks for detailed explanation
@@ -3342,6 +3347,7 @@ GUIDELINES:
 - Use ai_image with source: "ai" for generated illustrations, posters, covers, concept art, mockups, and diagrams.
 - Use ai_image with source: "unsplash" for real photography, mood boards, people, offices, products, and reference imagery.
 - You may optionally add "color" and "textColor" to any inserted/replaced block using: ${NOTES_COLOR_OPTIONS.join(', ')}.
+- You may optionally add "fontFamily" and "fontSize" to any inserted/replaced text-like block using supported font options.
 - Use styling intentionally for hierarchy and variety, for example yellow or blue callouts, gray supporting notes, red warnings, and green status summaries.
 - For structured blocks (todo, callout, code, math, mermaid, image, ai_image, bookmark, database, ai), use structured objects rather than plain strings.
 - When the user asks for a redesign, dashboard, brief, report, or polished layout, consider updating the page title/icon/cover with update_page in addition to the blocks.
@@ -3425,6 +3431,14 @@ GUIDELINES:
             display_mode: 'displayMode',
             textcolor: 'textColor',
             text_color: 'textColor',
+            backgroundcolor: 'backgroundColor',
+            background_color: 'backgroundColor',
+            bgcolor: 'bgColor',
+            bg_color: 'bgColor',
+            fontfamily: 'fontFamily',
+            font_family: 'fontFamily',
+            fontsize: 'fontSize',
+            font_size: 'fontSize',
             unsplashresults: 'unsplashResults',
             unsplash_results: 'unsplashResults',
             selectedunsplashid: 'selectedUnsplashId',
@@ -4857,10 +4871,120 @@ GUIDELINES:
         }
 
         normalized.type = type;
+        const normalizedColor = normalizeNotesColor(
+            Object.prototype.hasOwnProperty.call(normalized, 'color')
+                ? normalized.color
+                : (normalized.backgroundColor ?? normalized.bgColor)
+        );
+        if (normalizedColor) {
+            normalized.color = normalizedColor;
+        } else {
+            delete normalized.color;
+        }
+
+        const normalizedTextColor = normalizeNotesColor(normalized.textColor);
+        if (normalizedTextColor) {
+            normalized.textColor = normalizedTextColor;
+        } else {
+            delete normalized.textColor;
+        }
+
+        const normalizedFontFamily = normalizeNotesFontFamily(normalized.fontFamily);
+        if (normalizedFontFamily) {
+            normalized.fontFamily = normalizedFontFamily;
+        } else {
+            delete normalized.fontFamily;
+        }
+
+        const normalizedFontSize = normalizeNotesFontSize(normalized.fontSize);
+        if (normalizedFontSize) {
+            normalized.fontSize = normalizedFontSize;
+        } else {
+            delete normalized.fontSize;
+        }
         if (Array.isArray(normalized.children) && normalized.children.length > 0) {
             normalized.children = normalized.children.map((child) => normalizeMarkdownLikeBlockDefinition(child));
         }
         return normalized;
+    }
+
+    function normalizeNotesColor(value) {
+        const token = normalizeLooseStructuredToken(value || '', {
+            lowercase: true,
+            spacesToUnderscore: true,
+        });
+        if (!token || token === 'default' || token === 'none' || token === 'null') {
+            return null;
+        }
+
+        if (NOTES_COLOR_OPTIONS.includes(token)) {
+            return token;
+        }
+
+        const compact = token.replace(/_/g, '');
+        const matchedColor = NOTES_COLOR_OPTIONS.find((color) => (
+            compact === `${color}background`
+            || compact === `${color}bg`
+            || compact === `${color}text`
+            || compact === `${color}color`
+            || compact.includes(color)
+        ));
+        return matchedColor || null;
+    }
+
+    function normalizeNotesFontFamily(value) {
+        const token = normalizeLooseStructuredToken(value || '', {
+            lowercase: true,
+            spacesToUnderscore: true,
+        });
+        if (!token || token === 'default' || token === 'none' || token === 'null') {
+            return null;
+        }
+
+        const compact = token.replace(/_/g, '');
+        const aliases = {
+            sans: 'sans',
+            sansserif: 'sans',
+            system: 'sans',
+            default: null,
+            serif: 'serif',
+            georgia: 'serif',
+            editorial: 'serif',
+            mono: 'mono',
+            monospace: 'mono',
+            code: 'mono',
+        };
+        return NOTES_FONT_FAMILY_OPTIONS.includes(token)
+            ? token
+            : (aliases[compact] || null);
+    }
+
+    function normalizeNotesFontSize(value) {
+        const token = normalizeLooseStructuredToken(value || '', {
+            lowercase: true,
+            spacesToUnderscore: true,
+        });
+        if (!token || token === 'default' || token === 'none' || token === 'null') {
+            return null;
+        }
+
+        const compact = token.replace(/_/g, '');
+        const aliases = {
+            small: 'small',
+            sm: 'small',
+            normal: 'normal',
+            regular: 'normal',
+            medium: 'normal',
+            large: 'large',
+            lg: 'large',
+            xlarge: 'xlarge',
+            xl: 'xlarge',
+            extralarge: 'xlarge',
+            display: 'xlarge',
+        };
+        return NOTES_FONT_SIZE_OPTIONS.includes(token)
+            ? token
+            : (aliases[compact] || null);
     }
 
     function normalizeMarkdownLikeBlockDefinitions(blockDefinitions = []) {
@@ -6185,8 +6309,10 @@ Silently verify the lead cluster, section order, and final polish before returni
         const block = Blocks.createBlock(type, normalizeActionContent(type, contentInput), {
             children: [],
             formatting: definition.formatting || {},
-            color: definition.color || null,
-            textColor: definition.textColor || null,
+            color: normalizeNotesColor(definition.color ?? definition.backgroundColor ?? definition.bgColor),
+            textColor: normalizeNotesColor(definition.textColor),
+            fontFamily: normalizeNotesFontFamily(definition.fontFamily),
+            fontSize: normalizeNotesFontSize(definition.fontSize),
             expanded: definition.expanded,
             icon: definition.icon
         });
@@ -7375,6 +7501,12 @@ Silently verify the lead cluster, section order, and final polish before returni
                             textColor: Object.prototype.hasOwnProperty.call(rawAction, 'textColor')
                                 ? rawAction.textColor
                                 : existing.textColor,
+                            fontFamily: Object.prototype.hasOwnProperty.call(rawAction, 'fontFamily')
+                                ? rawAction.fontFamily
+                                : existing.fontFamily,
+                            fontSize: Object.prototype.hasOwnProperty.call(rawAction, 'fontSize')
+                                ? rawAction.fontSize
+                                : existing.fontSize,
                             icon: Object.prototype.hasOwnProperty.call(rawAction, 'icon')
                                 ? rawAction.icon
                                 : existing.icon
