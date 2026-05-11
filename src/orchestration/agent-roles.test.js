@@ -59,6 +59,11 @@ describe('agent role frontend sandbox detection', () => {
     expect(promptText).toContain('first viewport must communicate the product');
     expect(promptText).toContain('real controls, states, and interactions');
     expect(promptText).toContain('visual assets that reveal the actual product');
+    expect(promptText).toContain('<sandbox_frontend_technology_ladder>');
+    expect(promptText).toContain('React/Vite modules');
+    expect(promptText).toContain('/api/sandbox-libraries/three/three.module.js');
+    expect(promptText).toContain('<local_to_live_build_stages>');
+    expect(promptText).toContain('managed-app iterate');
     expect(promptText).toContain('desktop and mobile screenshots');
     expect(promptText).toContain('iteration pass after the first render');
     expect(promptText).toContain('metadata.handoff');

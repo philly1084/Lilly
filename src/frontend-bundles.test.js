@@ -41,6 +41,8 @@ describe('frontend bundle styling safety net', () => {
 
         expect(readme).toContain('Play');
         expect(readme).toContain('http://localhost:8000/index.html');
+        expect(readme).toContain('Promote');
+        expect(readme).toContain('managed-app iterate');
         expect(manifest.images).toEqual([
             expect.objectContaining({
                 src: './assets/hero.jpg',

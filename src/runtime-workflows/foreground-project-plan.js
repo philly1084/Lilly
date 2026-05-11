@@ -97,7 +97,7 @@ function hasSubstantialProjectIntent(text = '') {
     }
 
     return [
-        /\b(plan|planning|refactor|implement|implementation|build|create|generate|draft|design|deploy|migration|migrate|rewrite|organize|set up|setup|fix|debug|investigate|audit|review|research|compare|write|update|change)\b/,
+        /\b(plan|planning|refactor|implement|implementation|build|builds|create|generate|draft|design|deploy|migration|migrate|rewrite|organize|set up|setup|fix|debug|investigate|audit|review|research|compare|write|update|change|supercharge)\b/,
     ].some((pattern) => pattern.test(normalized));
 }
 
@@ -119,10 +119,12 @@ function hasConceptToBuildLifecycleIntent(text = '') {
     }
 
     const conceptCue = /\b(idea|concept|product idea|app idea|mvp|prototype|proof of concept|poc|normal|natural)\b/.test(normalized);
-    const softwareCue = /\b(software|development|app|application|site|website|web app|dashboard|frontend|tool|product|feature|page|repo|repository)\b/.test(normalized);
+    const softwareCue = /\b(software|development|app|application|site|website|websites|webpage|webpages|web app|dashboard|frontend|tool|product|feature|page|repo|repository)\b/.test(normalized);
     const journeyCue = /\b(sandbox|local|locally|remote cli|remote-cli|deploy|publish|ship|git|github|gitlab|repo work|repository work|many sessions|over many sessions|next round|flow|flows)\b/.test(normalized);
+    const localToLiveCue = /\b(local builds?|local sandbox|sandbox designs?|sandboxed builds?)\b[\s\S]{0,140}\b(remote builds?|remote cli|remote-cli|live|deploy|publish|promotion|move local to live|local to live)\b/.test(normalized)
+        || /\b(remote builds?|remote cli|remote-cli)\b[\s\S]{0,140}\b(local builds?|local sandbox|sandbox designs?|sandboxed builds?|move local to live|local to live)\b/.test(normalized);
 
-    return conceptCue && softwareCue && journeyCue;
+    return (conceptCue && softwareCue && journeyCue) || (softwareCue && localToLiveCue);
 }
 
 function deriveProjectTitle(objective = '') {
@@ -197,10 +199,10 @@ function buildMilestonesFromObjective(objective = '') {
 
     if (hasConceptToBuildLifecycleIntent(normalized)) {
         return [
-            createMilestone('shape-build-idea', 'Shape the idea into a compact build brief', 'in_progress'),
+            createMilestone('shape-build-idea', 'Shape the idea or goal into a compact build brief', 'in_progress'),
             createMilestone('sandbox-local-prototype', 'Build and review a local sandbox prototype'),
-            createMilestone('promote-remote-cli', 'Promote the prototype through the remote CLI agent'),
-            createMilestone('deploy-and-verify', 'Deploy and verify the remote result'),
+            createMilestone('promote-remote-cli', 'Promote the local prototype to a remote build candidate'),
+            createMilestone('deploy-and-verify', 'Deploy live and verify the remote result'),
             createMilestone('save-git-and-continue-repo', 'Save Git state and continue repo work'),
         ];
     }

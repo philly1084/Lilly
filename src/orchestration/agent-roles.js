@@ -26,6 +26,24 @@ const IMPRESSIVE_FRONTEND_QUALITY_BAR = Object.freeze({
   ],
 });
 
+const FRONTEND_TECH_STACK_GUIDANCE = Object.freeze({
+  promptTag: 'sandbox_frontend_technology_ladder',
+  localBuildLane: [
+    'Use `code-sandbox` project mode for local builds; prefer `language:"vite"` for multi-file apps, games, simulations, dashboards, 3D scenes, and stateful workflows.',
+    'Use plain static HTML only for simple read-only pages, document previews, or tiny snippets. If the user asks for an app, game, dashboard, interactive website, simulation, data explorer, or 3D experience, choose React/Vite modules or purpose-built browser libraries.',
+    'For React previews, keep the entry browser-runnable without npm install by using ESM CDN or bundled browser imports in `index.html`, while still including `package.json`, `vite.config.js`, and `src/` files for repo handoff when useful.',
+    'For 3D, WebGL, spatial data, generative visuals, or immersive scenes, use the local Three.js import map from `/api/sandbox-libraries/three/three.module.js` plus `/api/sandbox-libraries/three/addons/` when available.',
+    'For motion, games, physics, sketches, and rich data, prefer the installed sandbox library routes for GSAP, Matter.js, p5.js, D3, Chart.js, ECharts, Plotly, Cytoscape, force-graph, or 3D Force Graph before external CDNs.',
+    'Include real state and interaction plumbing: component state, event handlers, generated/mock data adapters, loading and empty states, keyboard/pointer/touch controls when relevant, and visible status feedback.',
+  ],
+  stageContract: [
+    'Stage 1 local prototype: build a previewable sandbox bundle with source files, a clear entry point, and an `AGENT_SANDBOX_BUILD.md` or metadata.handoff note covering goal, assumptions, acceptance checks, and checks run.',
+    'Stage 2 visual QA: open the preview URL, capture desktop and mobile screenshots, check console errors, contrast, overflow, broken assets, clipped text, opened controls, and nonblank canvas/WebGL pixels when relevant.',
+    'Stage 3 remote build candidate: when the user wants it live, promote the local bundle into a managed app or repository lane rather than rebuilding from scratch; pass artifact IDs, source files, QA notes, and design intent to `managed-app iterate` or `remote-cli-agent`.',
+    'Stage 4 live promotion: do not call it live until there is Git/source evidence, build or image evidence, rollout/deploy evidence, public URL, and browser/UI-check proof.',
+  ],
+});
+
 function normalizeText(value = '') {
   return String(value || '').trim();
 }
@@ -102,6 +120,8 @@ function formatFrontendQualityBarForPrompt({
   includeWrapper = true,
   includeCanvasHandoff = false,
   includeGameAddendum = false,
+  includeTechnologyLadder = true,
+  includePromotionPath = true,
 } = {}) {
   const tag = IMPRESSIVE_FRONTEND_QUALITY_BAR.promptTag;
   const lines = [];
@@ -115,8 +135,24 @@ function formatFrontendQualityBarForPrompt({
     lines.push(`- ${practice}`);
   });
 
+  if (includeTechnologyLadder) {
+    lines.push(`<${FRONTEND_TECH_STACK_GUIDANCE.promptTag}>`);
+    FRONTEND_TECH_STACK_GUIDANCE.localBuildLane.forEach((practice) => {
+      lines.push(`- ${practice}`);
+    });
+    lines.push(`</${FRONTEND_TECH_STACK_GUIDANCE.promptTag}>`);
+  }
+
+  if (includePromotionPath) {
+    lines.push('<local_to_live_build_stages>');
+    FRONTEND_TECH_STACK_GUIDANCE.stageContract.forEach((practice) => {
+      lines.push(`- ${practice}`);
+    });
+    lines.push('</local_to_live_build_stages>');
+  }
+
   if (includeCanvasHandoff) {
-    lines.push('- Include a verification plan in metadata.handoff: desktop/mobile screenshot checks, opened interactive states to inspect, broken-image and console-error checks, contrast/overflow checks, clipped-text checks, and any remaining assumptions.');
+    lines.push('- Include a verification and promotion plan in metadata.handoff: targetFramework, componentMap, local sandbox checks, desktop/mobile screenshot checks, opened interactive states to inspect, broken-image and console-error checks, contrast/overflow checks, clipped-text checks, live-promotion assumptions, and any remaining blockers.');
   }
 
   if (includeGameAddendum) {
@@ -207,7 +243,7 @@ function inferAgentRolePipeline({
       outputContract: {
         format: websiteBuild ? 'sandbox-project' : 'document-artifact',
         required: websiteBuild
-          ? ['workspacePath', 'previewUrl', 'files', 'interactiveStates', 'responsivePlan']
+          ? ['workspacePath', 'previewUrl', 'files', 'technologyChoice', 'interactiveStates', 'responsivePlan', 'qaEvidence', 'promotionPlan']
           : ['artifactUrl', 'format'],
       },
     }));
@@ -256,6 +292,8 @@ function inferAgentRolePipeline({
         required: true,
         mode: 'project',
         reason: 'Website and dashboard artifacts should be built as previewable project workspaces, not only template text.',
+        technologyLadder: FRONTEND_TECH_STACK_GUIDANCE.localBuildLane,
+        promotionStages: FRONTEND_TECH_STACK_GUIDANCE.stageContract,
       }
       : {
         required: false,
@@ -294,6 +332,7 @@ function formatAgentRolePipelineForPrompt(pipeline = null) {
 
 module.exports = {
   ROLE_IDS,
+  FRONTEND_TECH_STACK_GUIDANCE,
   IMPRESSIVE_FRONTEND_QUALITY_BAR,
   formatFrontendQualityBarForPrompt,
   formatAgentRolePipelineForPrompt,

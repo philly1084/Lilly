@@ -562,6 +562,13 @@ function buildFrontendBundleReadme(bundle = null, title = 'Frontend Bundle', ima
         '```',
         '',
         `Then visit \`http://localhost:8000/${normalized.entry || 'index.html'}\`.`,
+        '',
+        '## Promote',
+        '',
+        '- Keep this sandbox as the local prototype and visual reference.',
+        '- Move the bundle files into a managed app or repository before live work; preserve `AGENT_SANDBOX_BUILD.md` and this README as handoff context.',
+        '- For remote builds, pass the artifact or bundle ID, source files, technology choice, and QA notes to `managed-app iterate` or `remote-cli-agent` instead of rebuilding from scratch.',
+        '- Treat live promotion as incomplete until there is source/Git evidence, build or image evidence, rollout/deploy evidence, a public URL, and browser/UI-check proof.',
         imageNote,
         '## Files',
         '',
@@ -645,16 +652,17 @@ function normalizeFrontendHandoff(handoff = null, metadata = {}, content = '') {
         integrationSteps: integrationSteps.length > 0
             ? integrationSteps
             : [
-                'Keep the generated demo as a visual reference first, then split it into project components.',
-                'Move shared colors, spacing, and typography into your design system tokens.',
+                'Review the sandbox preview as the local prototype before moving it into a live repository.',
+                'Split reusable pieces into project components, preserving the generated design tokens, interaction states, and data adapter boundaries.',
                 'Replace demo copy, mock data, and inline scripts with live project data and components.',
+                'Promote through managed-app or remote-cli-agent with the bundle/artifact IDs, source files, technology choice, and QA notes attached.',
             ],
         qaPlan: qaPlan.length > 0
             ? qaPlan
             : [
                 'Open the bundle entry page from a static server and check for console errors.',
                 'Capture desktop and mobile screenshots, including any primary interactive states.',
-                'Run contrast, horizontal overflow, broken image, and clipped text checks before handoff.',
+                'Run contrast, horizontal overflow, broken image, clipped text, opened-control, and canvas/WebGL render checks before handoff.',
             ],
         entryFile: normalizeBundlePath(handoff?.entryFile || 'index.html') || 'index.html',
         sourceType: /<html\b/i.test(String(content || '')) ? 'standalone-html' : 'markup-fragment',

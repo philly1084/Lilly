@@ -60,7 +60,7 @@ describe('foreground project plan', () => {
             milestones: [
                 expect.objectContaining({
                     id: 'shape-build-idea',
-                    title: 'Shape the idea into a compact build brief',
+                    title: 'Shape the idea or goal into a compact build brief',
                     status: 'in_progress',
                 }),
                 expect.objectContaining({
@@ -70,12 +70,12 @@ describe('foreground project plan', () => {
                 }),
                 expect.objectContaining({
                     id: 'promote-remote-cli',
-                    title: 'Promote the prototype through the remote CLI agent',
+                    title: 'Promote the local prototype to a remote build candidate',
                     status: 'planned',
                 }),
                 expect.objectContaining({
                     id: 'deploy-and-verify',
-                    title: 'Deploy and verify the remote result',
+                    title: 'Deploy live and verify the remote result',
                     status: 'planned',
                 }),
                 expect.objectContaining({
@@ -84,6 +84,31 @@ describe('foreground project plan', () => {
                     status: 'planned',
                 }),
             ],
+        }));
+    });
+
+    test('creates the lifecycle plan for local builds, remote builds, and local-to-live promotion wording', () => {
+        const plan = inferForegroundProjectPlan({
+            objective: 'Supercharge sandbox designs for webpages with React and Three.js so we have local builds, remote builds, and the ability to move local to live.',
+        });
+
+        expect(plan).toEqual(expect.objectContaining({
+            kind: FOREGROUND_PROJECT_PLAN_KIND,
+            status: ACTIVE_PROJECT_PLAN_STATUS,
+            milestones: expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'sandbox-local-prototype',
+                    title: 'Build and review a local sandbox prototype',
+                }),
+                expect.objectContaining({
+                    id: 'promote-remote-cli',
+                    title: 'Promote the local prototype to a remote build candidate',
+                }),
+                expect.objectContaining({
+                    id: 'deploy-and-verify',
+                    title: 'Deploy live and verify the remote result',
+                }),
+            ]),
         }));
     });
 

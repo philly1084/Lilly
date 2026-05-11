@@ -11,7 +11,7 @@
     --accent-hover: #9693e8;
     --selection-color: #a8a5ff;
     --selection-bg: rgba(168, 165, 255, 0.1);
-    --danger-color: #ff6b6b;
+    --danger-color: #b42318;
     --success-color: #51cf66;
     --toolbar-bg: #ffffff;
     --panel-bg: #ffffff;
@@ -1093,6 +1093,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    color: transparent;
 }
 
 .color-btn:hover {
@@ -1640,7 +1641,7 @@ html, body {
 }
 
 .action-btn.danger:hover {
-    background: rgba(255, 107, 107, 0.1);
+    background: rgba(180, 35, 24, 0.1);
 }
 
 .action-btn.active {

@@ -45,10 +45,16 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('do not duplicate the same multi-file project');
         expect(instructions).toContain('content field may be a short preview summary');
         expect(instructions).toContain('metadata.handoff');
+        expect(instructions).toContain('metadata.buildPipeline');
         expect(instructions).toContain('qaPlan');
         expect(instructions).toContain('<frontend_format_router>');
+        expect(instructions).toContain('<frontend_technology_router>');
+        expect(instructions).toContain('react-vite');
+        expect(instructions).toContain('three-webgl');
+        expect(instructions).toContain('AGENT_SANDBOX_BUILD.md');
         expect(instructions).toContain('documentation-site');
         expect(instructions).toContain('<impressive_frontend_website_standard>');
+        expect(instructions).toContain('<local_to_live_build_stages>');
         expect(instructions).toContain('opened UI surfaces');
         expect(instructions).toContain('Existing demo');
     });
