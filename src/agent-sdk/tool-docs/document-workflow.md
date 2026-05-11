@@ -19,7 +19,7 @@ Current runtime formats:
 Quality defaults:
 
 - Every AI-backed generation request receives the built-in document quality standard: strategy architecture, background art direction, evidence editing, accessibility review, and final polish.
-- Default PDF exports to portrait `11.33in x 14.67in` with room for borders, using margins around `0.72in 0.65in 0.68in` unless the user asks for a different size or the document is explicitly a landscape slide/deck.
+- PDF-oriented HTML should declare its intended page geometry with an explicit `@page size` and `margin` rule, and the design should be composed around that page size before export. Use the source HTML or design-plan geometry as the authority; only fall back to the default portrait `11.33in x 14.67in` with margins around `0.72in 0.65in 0.68in` when the source/design does not specify a page.
 - Use a Kimi K2.6-style creation loop for document work: lock the user intent, separate known context from safe assumptions and blockers, architect the artifact, build it, critique the rendered result, repair issues, and hand off proof.
 - The generated artifact or handoff should carry a compact user-alignment snapshot: user goal, audience, target format, purpose, assumptions, open questions, acceptance checks, verification plan, checks run, and checks still needed.
 - Treat design-sensitive documents and sandbox websites as a Symphony-style build loop: plan the surface, generate the artifact, review rendered output, then iterate before final delivery when the review exposes template sameness, broken layout, auth walls, low contrast, missing assets, or thin content.

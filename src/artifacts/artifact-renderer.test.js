@@ -62,6 +62,60 @@ describe('normalizeMermaidSource', () => {
         }));
     });
 
+    test('honors explicit source HTML page size and margins', () => {
+        const options = inferPdfPageOptionsFromHtml(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <style>
+                  @page { size: Letter landscape; margin: 0.4in 0.55in 0.5in; }
+                </style>
+              </head>
+              <body><main>Designed for a wide printed page.</main></body>
+            </html>
+        `);
+
+        expect(options).toEqual(expect.objectContaining({
+            explicitCssPageSize: true,
+            landscape: true,
+            width: '11in',
+            height: '8.5in',
+            preferCSSPageSize: true,
+            margin: {
+                top: '0.4in',
+                right: '0.55in',
+                bottom: '0.5in',
+                left: '0.55in',
+            },
+        }));
+    });
+
+    test('uses design plan PDF geometry when HTML does not declare @page size', () => {
+        const options = inferPdfPageOptionsFromHtml(
+            '<!DOCTYPE html><html><body><main>Custom plan.</main></body></html>',
+            {
+                designPlan: {
+                    pdf: {
+                        pageSize: { width: 612, height: 792 },
+                        pageMargins: [36, 48, 36, 42],
+                    },
+                },
+            },
+        );
+
+        expect(options).toEqual(expect.objectContaining({
+            width: '8.5in',
+            height: '11in',
+            margin: {
+                top: '0.667in',
+                right: '0.5in',
+                bottom: '0.583in',
+                left: '0.5in',
+            },
+            preferCSSPageSize: true,
+        }));
+    });
+
     test('splits collapsed flowchart statements onto separate lines', () => {
         const input = 'flowchart LR    A[Kitten<br/>0-6 months] --> B[Junior<br/>6 months - 2 years]    B --> C[Prime<br/>3-6 years]    C --> D[Mature<br/>7-10 years]    D --> E[Senior<br/>11-14 years]    E --> F[Geriatric<br/>15+ years]    style A fill:#FFB6C1    style B fill:#FFD700';
 

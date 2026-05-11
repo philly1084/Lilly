@@ -861,6 +861,7 @@ Return JSON:
       '- Avoid white or near-white text unless the surface behind it is explicitly dark.',
       '- Avoid dark text on dark panels; normal body text should have strong contrast and muted text must still be readable.',
       '- For HTML, PDF, and presentation-oriented outputs, assume the renderer will be visually checked on desktop and mobile and keep layouts free of overlapping or clipped text.',
+      '- For PDF outputs, choose the intended page geometry before writing CSS, declare it with @page size and margin, and compose the layout to that page rather than relying on export-time scaling.',
       '</visual_safety>',
       '<output_contract>',
       'Return a JSON object with this exact structure:',

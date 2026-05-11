@@ -69,6 +69,7 @@ const FORMAT_FOCUS = {
   ],
   pdf: [
     'Use browser-renderable HTML discipline first, then print-safe surfaces with dark text on light pages unless a dark panel is explicit.',
+    'Declare the intended PDF page geometry in source HTML with an explicit @page size and margin rule; design sections, tables, images, and page breaks for that geometry instead of assuming a later converter will resize or crop safely.',
     'Keep page density balanced: no tiny tables, clipped labels, or decorative backgrounds that print poorly.',
     'Use executive summary, evidence blocks, and references/caveats where the document type calls for them.',
   ],

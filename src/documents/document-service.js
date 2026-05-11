@@ -1670,7 +1670,9 @@ class DocumentService {
       const renderedHtml = this.renderTextDocument(structuredContent, 'html', designPlan);
       const previewHtml = renderedHtml.content;
       const extractedText = stripHtml(previewHtml);
-      const browserBuffer = await renderPdfViaBrowser(previewHtml, structuredContent.title || title);
+      const browserBuffer = await renderPdfViaBrowser(previewHtml, structuredContent.title || title, {
+        designPlan,
+      });
 
       if (browserBuffer) {
         return {

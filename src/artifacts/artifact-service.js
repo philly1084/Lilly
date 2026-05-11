@@ -870,6 +870,7 @@ function buildVisualSafetyInstructions() {
         'Use named CSS variables for text, muted text, surfaces, panels, accents, borders, and warning states so palette changes remain coherent.',
         'Check desktop and mobile composition for clipped text, overlapping cards, unreadable buttons, and horizontal overflow.',
         'For PDF-oriented HTML, keep print styles high-contrast and avoid white text unless the printed background is explicitly dark.',
+        'For PDF-oriented HTML, declare the intended page size and margins with @page and design content to that physical page to avoid widescreen cropping or accidental portrait slicing.',
     ].join('\n');
 }
 
@@ -2077,7 +2078,7 @@ class ArtifactService {
                 'Treat any provided template or sample as reference material, not copy to preserve verbatim.',
                 normalizedFormat === 'html'
                     ? 'For HTML outputs, add web-document affordances such as sticky wayfinding, details/summary disclosures, source cards, tasteful CSS motion, and responsive controls when they improve comprehension.'
-                    : 'For PDF outputs, keep the HTML print-safe while still visually composed.',
+                    : 'For PDF outputs, choose the target page geometry up front, declare it in CSS with an explicit @page size and margin rule, and keep the HTML print-safe while still visually composed.',
                 'Before finalizing, silently run a quality pass for content depth, visual originality, responsive behavior, contrast, and asset integrity. Revise weak or templated sections instead of describing them.',
                 normalizedFormat === 'html' ? buildSandboxBrowserLibraryInstructions() : '',
             ].filter(Boolean).join('\n\n');

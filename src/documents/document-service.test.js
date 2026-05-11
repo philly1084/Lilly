@@ -91,6 +91,11 @@ describe('DocumentService', () => {
     expect(renderPdfViaBrowser).toHaveBeenCalledWith(
       expect.stringContaining('<!DOCTYPE html>'),
       'Q2 Decision Brief',
+      expect.objectContaining({
+        designPlan: expect.objectContaining({
+          blueprint: expect.objectContaining({ id: 'executive-brief' }),
+        }),
+      }),
     );
     expect(service.generators.pdf.generateFromContent).not.toHaveBeenCalled();
     expect(document.metadata).toEqual(expect.objectContaining({

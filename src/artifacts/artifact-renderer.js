@@ -28,6 +28,13 @@ const DEFAULT_PORTRAIT_PDF_MARGIN = {
     bottom: '0.68in',
     left: '0.65in',
 };
+const NAMED_PDF_PAGE_SIZES = {
+    a4: { width: '8.27in', height: '11.69in' },
+    letter: { width: '8.5in', height: '11in' },
+    legal: { width: '8.5in', height: '14in' },
+    tabloid: { width: '11in', height: '17in' },
+    ledger: { width: '17in', height: '11in' },
+};
 const GENERATED_ARTIFACT_BASE_CSS = `
     :root {
       --kb-bg: #f5f7fb;
@@ -561,13 +568,13 @@ function injectArtifactBaseForPdf(html = '') {
     return `${baseTag}\n${source}`;
 }
 
-function injectPdfRuntimeStyle(html = '') {
+function injectPdfRuntimeStyle(html = '', options = {}) {
     const source = String(html || '');
     if (source.includes(PDF_RUNTIME_STYLE_MARKER)) {
         return source;
     }
 
-    const runtimeCss = buildPdfRuntimeStyleOverrides(inferPdfPageOptionsFromHtml(source));
+    const runtimeCss = buildPdfRuntimeStyleOverrides(inferPdfPageOptionsFromHtml(source, options));
     if (!runtimeCss) {
         return source;
     }
@@ -1022,11 +1029,11 @@ async function resolveBrowserPath() {
     return null;
 }
 
-function getBrowserArgs(outputPath, inputPath, html = '') {
+function getBrowserArgs(outputPath, inputPath, html = '', options = {}) {
     const extraArgs = splitArgs(config.artifacts.browserArgs);
     const htmlSource = String(html || '');
     const imageCount = (htmlSource.match(/<img\b/ig) || []).length;
-    const pageOptions = inferPdfPageOptionsFromHtml(htmlSource);
+    const pageOptions = inferPdfPageOptionsFromHtml(htmlSource, options);
     let virtualTimeBudget = 5000;
     if (/class="mermaid"|cdn\.jsdelivr\.net\/npm\/mermaid/i.test(htmlSource)) {
         virtualTimeBudget = Math.max(virtualTimeBudget, 10000);
@@ -1050,9 +1057,214 @@ function getBrowserArgs(outputPath, inputPath, html = '') {
     ];
 }
 
-function inferPdfPageOptionsFromHtml(html = '') {
+function normalizeCssLength(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    const match = normalized.match(/^(\d+(?:\.\d+)?)(in|cm|mm|px|pt)$/i);
+    if (!match) {
+        return null;
+    }
+    return `${match[1]}${match[2].toLowerCase()}`;
+}
+
+function cssLengthToInches(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    const match = normalized.match(/^(\d+(?:\.\d+)?)(in|cm|mm|px|pt)$/i);
+    if (!match) {
+        return null;
+    }
+    const amount = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return null;
+    }
+    if (unit === 'in') return amount;
+    if (unit === 'cm') return amount / 2.54;
+    if (unit === 'mm') return amount / 25.4;
+    if (unit === 'pt') return amount / 72;
+    if (unit === 'px') return amount / 96;
+    return null;
+}
+
+function normalizePdfPageLength(value = '') {
+    const cssLength = normalizeCssLength(value);
+    if (cssLength) {
+        return cssLength;
+    }
+    const points = Number(value);
+    if (Number.isFinite(points) && points > 0) {
+        return `${Number((points / 72).toFixed(3))}in`;
+    }
+    return '';
+}
+
+function expandCssMargin(value = '') {
+    const tokens = String(value || '')
+        .trim()
+        .split(/\s+/)
+        .map(normalizeCssLength)
+        .filter(Boolean);
+    if (tokens.length === 0 || tokens.length > 4) {
+        return null;
+    }
+
+    const [top, right = top, bottom = top, left = right] = tokens;
+    return { top, right, bottom, left };
+}
+
+function normalizePdfMargins(value = null) {
+    if (!value) {
+        return null;
+    }
+    if (typeof value === 'string') {
+        return expandCssMargin(value);
+    }
+    if (Array.isArray(value)) {
+        const normalized = value.map(normalizePdfPageLength).filter(Boolean);
+        if (normalized.length === 4) {
+            const [left, top, right, bottom] = normalized;
+            return { top, right, bottom, left };
+        }
+        if (normalized.length === 2) {
+            const [horizontal, vertical] = normalized;
+            return {
+                top: vertical,
+                right: horizontal,
+                bottom: vertical,
+                left: horizontal,
+            };
+        }
+        if (normalized.length === 1) {
+            const [all] = normalized;
+            return { top: all, right: all, bottom: all, left: all };
+        }
+    }
+    if (typeof value === 'object') {
+        const top = normalizePdfPageLength(value.top);
+        const right = normalizePdfPageLength(value.right);
+        const bottom = normalizePdfPageLength(value.bottom);
+        const left = normalizePdfPageLength(value.left);
+        if (top && right && bottom && left) {
+            return { top, right, bottom, left };
+        }
+    }
+    return null;
+}
+
+function extractPageRuleBlocks(html = '') {
+    return [...String(html || '').matchAll(/@page(?:\s+[\w-]+)?\s*\{([^}]*)\}/ig)]
+        .map((match) => match[1] || '')
+        .filter(Boolean);
+}
+
+function parseCssPageSizeDeclaration(value = '') {
+    const raw = String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+    if (!raw || raw === 'auto') {
+        return null;
+    }
+
+    const tokens = raw.split(/\s+/).filter(Boolean);
+    const orientation = tokens.includes('landscape')
+        ? 'landscape'
+        : (tokens.includes('portrait') ? 'portrait' : '');
+    const namedToken = tokens.find((token) => NAMED_PDF_PAGE_SIZES[token]);
+    let width = '';
+    let height = '';
+
+    if (namedToken) {
+        ({ width, height } = NAMED_PDF_PAGE_SIZES[namedToken]);
+        if ((orientation === 'landscape' && cssLengthToInches(width) < cssLengthToInches(height))
+            || (orientation === 'portrait' && cssLengthToInches(width) > cssLengthToInches(height))) {
+            [width, height] = [height, width];
+        }
+    } else {
+        const lengths = tokens.map(normalizeCssLength).filter(Boolean);
+        if (lengths.length >= 2) {
+            [width, height] = lengths;
+        } else if (orientation === 'portrait') {
+            width = DEFAULT_PORTRAIT_PDF_WIDTH;
+            height = DEFAULT_PORTRAIT_PDF_HEIGHT;
+        } else if (orientation === 'landscape') {
+            width = '13.333in';
+            height = '7.5in';
+        }
+    }
+
+    if (!width || !height) {
+        return null;
+    }
+
+    const widthInches = cssLengthToInches(width);
+    const heightInches = cssLengthToInches(height);
+    const inferredLandscape = orientation === 'landscape'
+        || (!orientation && widthInches && heightInches && widthInches > heightInches);
+
+    return {
+        width,
+        height,
+        landscape: inferredLandscape ? true : undefined,
+        explicitCssPageSize: true,
+    };
+}
+
+function inferExplicitPageOptionsFromCss(html = '') {
+    const pageBlocks = extractPageRuleBlocks(html);
+    for (const block of pageBlocks) {
+        const sizeMatch = block.match(/\bsize\s*:\s*([^;}]+)/i);
+        if (!sizeMatch) {
+            continue;
+        }
+        const parsedSize = parseCssPageSizeDeclaration(sizeMatch[1]);
+        if (!parsedSize) {
+            continue;
+        }
+        const marginMatch = block.match(/\bmargin\s*:\s*([^;}]+)/i);
+        const margin = marginMatch ? expandCssMargin(marginMatch[1]) : null;
+        return {
+            printBackground: true,
+            preferCSSPageSize: true,
+            ...parsedSize,
+            ...(margin ? { margin } : {}),
+        };
+    }
+    return null;
+}
+
+function inferPdfPageOptionsFromHtml(html = '', options = {}) {
     const source = String(html || '');
     const normalized = source.toLowerCase();
+    const explicitPageOptions = inferExplicitPageOptionsFromCss(source);
+    if (explicitPageOptions) {
+        return explicitPageOptions;
+    }
+
+    const designPdf = options?.designPlan?.pdf || options?.pdf || {};
+    if (designPdf?.pageSize?.width && designPdf?.pageSize?.height) {
+        const width = normalizePdfPageLength(designPdf.pageSize.width);
+        const height = normalizePdfPageLength(designPdf.pageSize.height);
+        if (!width || !height) {
+            return {
+                printBackground: true,
+                preferCSSPageSize: true,
+                width: DEFAULT_PORTRAIT_PDF_WIDTH,
+                height: DEFAULT_PORTRAIT_PDF_HEIGHT,
+                margin: DEFAULT_PORTRAIT_PDF_MARGIN,
+            };
+        }
+        const widthInches = cssLengthToInches(width);
+        const heightInches = cssLengthToInches(height);
+        return {
+            printBackground: true,
+            preferCSSPageSize: true,
+            width,
+            height,
+            landscape: designPdf.orientation === 'landscape' || (widthInches && heightInches && widthInches > heightInches) ? true : undefined,
+            margin: normalizePdfMargins(designPdf.margin || designPdf.margins || designPdf.pageMargins) || DEFAULT_PORTRAIT_PDF_MARGIN,
+        };
+    }
+
     const explicitPortrait = /@page[^{}]*\{[^}]*\b(?:size\s*:\s*)?(?:a4|letter)?\s*portrait\b/i.test(source);
     if (explicitPortrait) {
         return {
@@ -1091,6 +1303,13 @@ function inferPdfPageOptionsFromHtml(html = '') {
 }
 
 function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
+    if (pageOptions?.explicitCssPageSize) {
+        return `
+        html, body { overflow: visible !important; }
+        *, *::before, *::after { box-sizing: border-box; }
+    `;
+    }
+
     if (!pageOptions?.landscape) {
         return `
         @page { size: ${DEFAULT_PORTRAIT_PDF_WIDTH} ${DEFAULT_PORTRAIT_PDF_HEIGHT} portrait; margin: 0.72in 0.65in 0.68in; }
@@ -1120,6 +1339,19 @@ function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
     `;
 }
 
+function toPlaywrightPdfOptions(pageOptions = {}) {
+    const {
+        explicitCssPageSize,
+        ...pdfOptions
+    } = pageOptions || {};
+    Object.keys(pdfOptions).forEach((key) => {
+        if (pdfOptions[key] === undefined || pdfOptions[key] === null) {
+            delete pdfOptions[key];
+        }
+    });
+    return pdfOptions;
+}
+
 async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null, options = {}) {
     const loaded = loadPlaywrightPackage();
     if (!loaded) {
@@ -1131,7 +1363,7 @@ async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null, opt
     }
 
     const timeout = Math.max(1000, Number(config.artifacts.pdfTimeoutMs) || 15000);
-    const pageOptions = inferPdfPageOptionsFromHtml(options.html || '');
+    const pageOptions = inferPdfPageOptionsFromHtml(options.html || '', options);
     const launchOptions = {
         headless: true,
         timeout,
@@ -1173,7 +1405,7 @@ async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null, opt
 
         return await page.pdf({
             path: pdfPath,
-            ...pageOptions,
+            ...toPlaywrightPdfOptions(pageOptions),
         });
     } finally {
         await page?.close().catch(() => {});
@@ -1182,7 +1414,7 @@ async function renderPdfViaPlaywright(htmlPath, pdfPath, browserPath = null, opt
     }
 }
 
-async function renderPdfViaBrowser(html, title) {
+async function renderPdfViaBrowser(html, title, options = {}) {
     const browserPath = await resolveBrowserPath();
 
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lillybuilt-pdf-'));
@@ -1192,9 +1424,9 @@ async function renderPdfViaBrowser(html, title) {
 
     try {
         const resolvedHtml = await inlineRenderableImagesForPdf(html);
-        const pdfHtml = injectPdfRuntimeStyle(injectArtifactBaseForPdf(resolvedHtml));
+        const pdfHtml = injectPdfRuntimeStyle(injectArtifactBaseForPdf(resolvedHtml), options);
         await fs.writeFile(htmlPath, pdfHtml, 'utf8');
-        const playwrightBuffer = await renderPdfViaPlaywright(htmlPath, pdfPath, browserPath, { html: pdfHtml })
+        const playwrightBuffer = await renderPdfViaPlaywright(htmlPath, pdfPath, browserPath, { ...options, html: pdfHtml })
             .catch((error) => {
                 console.warn('[Artifacts] Playwright PDF rendering failed:', error.message);
                 return writePdfRenderCrashLog({
@@ -1214,7 +1446,7 @@ async function renderPdfViaBrowser(html, title) {
             return null;
         }
         try {
-            await execFileAsync(browserPath, getBrowserArgs(pdfPath, htmlPath, pdfHtml), {
+            await execFileAsync(browserPath, getBrowserArgs(pdfPath, htmlPath, pdfHtml, options), {
                 timeout: config.artifacts.pdfTimeoutMs,
                 windowsHide: true,
             });
