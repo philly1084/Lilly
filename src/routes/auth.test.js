@@ -47,4 +47,14 @@ describe('/api/auth routes', () => {
             expiresAt: expect.any(Number),
         }));
     });
+
+    test('marks auth responses as non-cacheable', async () => {
+        const app = buildApp();
+        const response = await request(app)
+            .get('/api/auth/session')
+            .expect(200);
+
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.headers.pragma).toBe('no-cache');
+    });
 });

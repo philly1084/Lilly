@@ -175,6 +175,37 @@ describe('auth service OpenCode gateway access', () => {
         expect(isAuthorizedFrontendApiRequest(req)).toBe(true);
     });
 
+    test('rejects generic WebSocket query token names when query tokens are disabled', () => {
+        config.security.allowQueryTokens = false;
+        const tokenReq = {
+            url: '/ws?token=frontend-secret',
+            method: 'GET',
+            headers: {},
+            secure: false,
+        };
+        const apiKeyReq = {
+            url: '/ws?api_key=frontend-secret',
+            method: 'GET',
+            headers: {},
+            secure: false,
+        };
+
+        expect(isAuthorizedFrontendApiRequest(tokenReq)).toBe(false);
+        expect(isAuthorizedFrontendApiRequest(apiKeyReq)).toBe(false);
+    });
+
+    test('allows generic WebSocket query token names when query tokens are explicitly enabled', () => {
+        config.security.allowQueryTokens = true;
+        const req = {
+            url: '/ws?token=frontend-secret',
+            method: 'GET',
+            headers: {},
+            secure: false,
+        };
+
+        expect(isAuthorizedFrontendApiRequest(req)).toBe(true);
+    });
+
     test('rejects frontend API query tokens on normal HTTP API routes when disabled', () => {
         config.security.allowQueryTokens = false;
         const req = {

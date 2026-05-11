@@ -183,6 +183,23 @@ function createAuthToken(username) {
     };
 }
 
+function getQueryTokenFromRequest(req, options = {}) {
+    try {
+        const parsedUrl = new URL(String(req.url || ''), 'http://localhost');
+        const parameterNames = options.parameterNames || ['access_token', 'api_key', 'token'];
+        for (const parameterName of parameterNames) {
+            const queryToken = parsedUrl.searchParams.get(parameterName);
+            if (queryToken) {
+                return String(queryToken).trim();
+            }
+        }
+    } catch (_error) {
+        // Ignore malformed request URLs and continue as unauthenticated.
+    }
+
+    return '';
+}
+
 function getTokenFromRequest(req) {
     const cookies = parseCookies(req.headers.cookie || '');
     const cookieToken = cookies[config.auth.cookieName];
@@ -208,18 +225,12 @@ function getTokenFromRequest(req) {
         return pathToken;
     }
 
-    if (config.security.allowQueryTokens || getRequestPath(req) === '/ws' || isPreviewQueryTokenRoute(req)) {
-        try {
-            const parsedUrl = new URL(String(req.url || ''), 'http://localhost');
-            const queryToken = parsedUrl.searchParams.get('access_token')
-                || parsedUrl.searchParams.get('api_key')
-                || parsedUrl.searchParams.get('token');
-            if (queryToken) {
-                return String(queryToken).trim();
-            }
-        } catch (_error) {
-            // Ignore malformed request URLs and continue as unauthenticated.
-        }
+    if (config.security.allowQueryTokens || isPreviewQueryTokenRoute(req)) {
+        return getQueryTokenFromRequest(req);
+    }
+
+    if (getRequestPath(req) === '/ws') {
+        return getQueryTokenFromRequest(req, { parameterNames: ['access_token'] });
     }
 
     return '';

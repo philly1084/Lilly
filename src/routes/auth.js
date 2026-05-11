@@ -13,6 +13,12 @@ const { config } = require('../config');
 
 const router = express.Router();
 
+router.use((_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    next();
+});
+
 router.get('/session', (req, res) => {
     const state = getAuthenticatedUser(req);
     res.json({
