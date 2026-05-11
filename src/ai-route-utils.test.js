@@ -245,6 +245,47 @@ describe('ai-route-utils', () => {
         }));
     });
 
+    test('generateOutputArtifactFromPrompt loads selected artifact content as revision source', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-source-1',
+            sessionId: 'session-1',
+            filename: 'product-brief.pdf',
+            extension: 'pdf',
+            format: 'pdf',
+            mimeType: 'application/pdf',
+            extractedText: 'Original product brief with pricing, positioning, and implementation details.',
+        });
+        artifactService.generateArtifact.mockResolvedValue({
+            responseId: 'resp-revision-1',
+            artifact: {
+                id: 'artifact-revision-1',
+                filename: 'product-brief-v2.pdf',
+            },
+            outputText: '<html><body>Revised product brief</body></html>',
+        });
+
+        await generateOutputArtifactFromPrompt({
+            sessionId: 'session-1',
+            mode: 'chat',
+            outputFormat: 'pdf',
+            prompt: 'Update this document: continue with the implementation section.',
+            artifactIds: ['artifact-source-1'],
+            existingContent: 'Caller supplied note.',
+        });
+
+        expect(artifactService.getArtifact).toHaveBeenCalledWith('artifact-source-1', { includeContent: true });
+        expect(artifactService.generateArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'session-1',
+            mode: 'chat',
+            prompt: 'Update this document: continue with the implementation section.',
+            format: 'pdf',
+            artifactIds: ['artifact-source-1'],
+            parentArtifactId: 'artifact-source-1',
+            existingContent: expect.stringContaining('Original product brief with pricing'),
+        }));
+        expect(artifactService.generateArtifact.mock.calls[0][0].existingContent).toContain('Caller supplied note.');
+    });
+
     test('generateOutputArtifactFromPrompt prefers document-workflow sandbox for project-like html artifacts', async () => {
         const toolManager = {
             getTool: jest.fn(() => ({ id: 'document-workflow' })),

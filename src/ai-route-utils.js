@@ -9,9 +9,12 @@ const { extractArtifactsFromToolEvents } = require('./runtime-artifacts');
 const settingsController = require('./routes/admin/settings.controller');
 const { parseLenientJson } = require('./utils/lenient-json');
 const { isInteractiveDocumentRequest } = require('./artifacts/artifact-experience');
+const { stripHtml } = require('./utils/text');
 
 const REMOTE_CONTINUATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+const SELECTED_ARTIFACT_REVISION_LIMIT = 60000;
+const SELECTED_ARTIFACT_REVISION_PER_FILE_LIMIT = 30000;
 const IMAGE_COUNT_WORDS = new Map([
     ['one', 1],
     ['two', 2],
@@ -33,6 +36,109 @@ const OPENAI_VISION_INPUT_MIME_TYPES = new Set([
 function normalizeReasoningEffort(value = '') {
     const normalized = String(value || '').trim().toLowerCase();
     return ALLOWED_REASONING_EFFORTS.has(normalized) ? normalized : null;
+}
+
+function truncateArtifactRevisionText(value = '', limit = SELECTED_ARTIFACT_REVISION_PER_FILE_LIMIT) {
+    const text = String(value || '').replace(/\u0000/g, '').trim();
+    if (!text || text.length <= limit) {
+        return text;
+    }
+
+    return `${text.slice(0, Math.max(0, limit - 80)).trim()}\n\n[Selected artifact content truncated for prompt size.]`;
+}
+
+function artifactBufferLooksTextual(artifact = null) {
+    const extension = String(artifact?.extension || artifact?.format || '').trim().toLowerCase();
+    const mimeType = String(artifact?.mimeType || '').trim().toLowerCase().split(';')[0];
+    return mimeType.startsWith('text/')
+        || ['html', 'htm', 'md', 'markdown', 'txt', 'json', 'xml', 'csv', 'mmd', 'mermaid', 'pq'].includes(extension);
+}
+
+function extractArtifactRevisionSource(artifact = null) {
+    if (!artifact) {
+        return '';
+    }
+
+    if (artifact.contentBuffer && artifactBufferLooksTextual(artifact)) {
+        const content = truncateArtifactRevisionText(artifact.contentBuffer.toString('utf8'));
+        if (content) {
+            return content;
+        }
+    }
+
+    const extension = String(artifact.extension || artifact.format || '').trim().toLowerCase();
+    if ((extension === 'html' || extension === 'htm') && String(artifact.previewHtml || '').trim()) {
+        return truncateArtifactRevisionText(artifact.previewHtml);
+    }
+
+    if (String(artifact.extractedText || '').trim()) {
+        return truncateArtifactRevisionText(artifact.extractedText);
+    }
+
+    if (String(artifact.previewHtml || '').trim()) {
+        return truncateArtifactRevisionText(stripHtml(artifact.previewHtml));
+    }
+
+    return '';
+}
+
+async function buildSelectedArtifactRevisionContext({
+    sessionId = '',
+    artifactIds = [],
+} = {}) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    const ids = Array.from(new Set(
+        (Array.isArray(artifactIds) ? artifactIds : [])
+            .map((artifactId) => String(artifactId || '').trim())
+            .filter(Boolean),
+    )).slice(0, 4);
+
+    if (!normalizedSessionId || ids.length === 0) {
+        return { content: '', sourceArtifactIds: [] };
+    }
+
+    const blocks = [];
+    const sourceArtifactIds = [];
+    let remaining = SELECTED_ARTIFACT_REVISION_LIMIT;
+    for (const artifactId of ids) {
+        if (remaining <= 0) {
+            break;
+        }
+
+        let artifact = null;
+        try {
+            artifact = await artifactService.getArtifact(artifactId, { includeContent: true });
+        } catch (error) {
+            console.warn(`[Artifacts] Failed to load selected artifact ${artifactId} for revision context: ${error.message}`);
+            continue;
+        }
+
+        if (!artifact || artifact.sessionId !== normalizedSessionId) {
+            continue;
+        }
+
+        const source = truncateArtifactRevisionText(extractArtifactRevisionSource(artifact), remaining);
+        if (!source) {
+            continue;
+        }
+
+        const header = [
+            `[Selected artifact to revise]`,
+            `Artifact ID: ${artifact.id}`,
+            `Filename: ${artifact.filename || 'untitled'}`,
+            `Format: ${artifact.extension || artifact.format || 'file'}`,
+            '',
+            source,
+        ].join('\n');
+        blocks.push(header);
+        sourceArtifactIds.push(artifact.id);
+        remaining -= header.length;
+    }
+
+    return {
+        content: blocks.join('\n\n---\n\n'),
+        sourceArtifactIds,
+    };
 }
 
 function resolveReasoningEffort(payload = {}, fallback = null) {
@@ -1633,22 +1739,35 @@ async function generateOutputArtifactFromPrompt({
 
     const startedAt = Date.now();
     const normalizedOutputFormat = normalizeFormat(outputFormat);
+    const selectedRevisionContext = await buildSelectedArtifactRevisionContext({
+        sessionId,
+        artifactIds,
+    });
+    const effectiveExistingContent = [
+        selectedRevisionContext.content,
+        existingContent,
+    ].filter(Boolean).join('\n\n---\n\n');
+    const effectiveParentArtifactId = parentArtifactId
+        || selectedRevisionContext.sourceArtifactIds[0]
+        || null;
 
-    try {
-        const sandboxResult = await maybeGenerateAgentSandboxArtifact({
-            sessionId,
-            prompt,
-            outputFormat,
-            model,
-            reasoningEffort,
-            toolManager,
-            toolContext,
-        });
-        if (sandboxResult) {
-            return sandboxResult;
+    if (selectedRevisionContext.sourceArtifactIds.length === 0) {
+        try {
+            const sandboxResult = await maybeGenerateAgentSandboxArtifact({
+                sessionId,
+                prompt,
+                outputFormat,
+                model,
+                reasoningEffort,
+                toolManager,
+                toolContext,
+            });
+            if (sandboxResult) {
+                return sandboxResult;
+            }
+        } catch (error) {
+            console.warn(`[Artifacts] Agent sandbox generation failed; falling back to direct artifact generation: ${error.message}`);
         }
-    } catch (error) {
-        console.warn(`[Artifacts] Agent sandbox generation failed; falling back to direct artifact generation: ${error.message}`);
     }
 
     const directGenerationStartedAt = Date.now();
@@ -1659,10 +1778,10 @@ async function generateOutputArtifactFromPrompt({
         prompt,
         format: outputFormat,
         artifactIds,
-        existingContent,
+        existingContent: effectiveExistingContent,
         model,
         reasoningEffort,
-        parentArtifactId,
+        parentArtifactId: effectiveParentArtifactId,
         contextMessages,
         recentMessages,
         toolManager,
@@ -1700,6 +1819,12 @@ async function generateOutputArtifactFromPrompt({
                 duration: Math.max(0, completedAt - startedAt),
                 artifactId: result.artifact?.id || null,
                 filename: result.artifact?.filename || result.artifact?.name || null,
+                ...(selectedRevisionContext.sourceArtifactIds.length > 0
+                ? {
+                    sourceArtifactIds: selectedRevisionContext.sourceArtifactIds,
+                    parentArtifactId: effectiveParentArtifactId,
+                }
+                : {}),
             },
             executionTrace: [directStep],
             ...(result.usage
