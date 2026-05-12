@@ -47,6 +47,23 @@ const Selection = (function() {
                 deselectAll();
             }
         });
+
+        document.addEventListener('contextmenu', (e) => {
+            const handle = e.target.closest?.('.block-handle');
+            const block = handle?.closest?.('.block');
+            const blockId = block?.dataset?.blockId;
+            if (!handle || !blockId) {
+                return;
+            }
+
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
+            e.stopPropagation();
+            e.preventDefault();
+            selectBlock(blockId);
+            showTurnIntoMenu(blockId, e);
+        }, true);
         
         // Keyboard navigation
         document.addEventListener('keydown', handleKeyDown);
@@ -354,10 +371,13 @@ const Selection = (function() {
         // Explicit right-click support on the handle itself so the block menu
         // is available even when the editable content area is too small.
         handle.addEventListener('contextmenu', (e) => {
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
             e.stopPropagation();
             e.preventDefault();
             selectBlock(blockId);
-            showContextMenu(blockId, e);
+            showTurnIntoMenu(blockId, e);
         });
         
         // Right-click on block to show context menu
@@ -697,13 +717,15 @@ const Selection = (function() {
     /**
      * Show turn into menu (block type selector)
      */
-    function showTurnIntoMenu(blockId) {
+    function showTurnIntoMenu(blockId, eventOrPoint = {}) {
         // Could show a simplified slash menu
         if (window.SlashMenu) {
             const block = document.querySelector(`.block[data-block-id="${blockId}"]`);
             if (block) {
                 const rect = block.getBoundingClientRect();
-                window.SlashMenu.show(rect.left + 100, rect.top);
+                const left = eventOrPoint.clientX || rect.left + 100;
+                const top = eventOrPoint.clientY || rect.top;
+                window.SlashMenu.show(left, top, blockId);
                 window.SlashMenu.setCallback((type) => {
                     if (callbacks.onTurnInto) {
                         callbacks.onTurnInto(blockId, type);

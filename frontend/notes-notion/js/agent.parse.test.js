@@ -356,8 +356,74 @@ Approved page plan:
         }));
         expect(parsed.actions[1].blocks).toEqual(expect.arrayContaining([
             expect.objectContaining({ type: 'heading_1', content: 'Halifax Weekend Fun - May 2026' }),
-            expect.objectContaining({ type: 'database', content: 'Best Weekend and Evening Ideas' }),
+            expect.objectContaining({
+                type: 'database',
+                content: 'Best Weekend and Evening Ideas',
+                columns: ['Plan Type', 'Best For'],
+                rows: [['Waterfront Night', 'Low-cost evening'], ['Arts and Exhibitions', 'Rainy day']],
+            }),
         ]));
+    });
+
+    test('applies database and chart blocks with structured data intact', () => {
+        jest.useFakeTimers();
+        const editor = {
+            getCurrentPage: jest.fn(() => ({ id: 'page_a', blocks: [{ id: 'block_a', type: 'text', content: 'Anchor' }] })),
+            importBlocks: jest.fn((blocks) => blocks),
+            insertBlocksAfter: jest.fn((blockId, blocks) => blocks),
+            savePage: jest.fn(),
+            focusBlock: jest.fn(),
+        };
+        const agent = loadAgent({ Editor: editor });
+
+        agent._applyNotesActions([
+            {
+                op: 'rebuild_page',
+                blocks: [
+                    {
+                        type: 'database',
+                        content: 'Best Weekend and Evening Ideas',
+                        columns: ['Plan Type', 'Best For'],
+                        rows: [['Waterfront Night', 'Low-cost evening'], ['Arts and Exhibitions', 'Rainy day']],
+                    },
+                ],
+            },
+            {
+                op: 'append_to_page',
+                blocks: [
+                    {
+                        type: 'bar_chart',
+                        title: 'Weekly Leads',
+                        labels: ['Mon', 'Tue', 'Wed'],
+                        values: [4, 7, 5],
+                        unit: '',
+                    },
+                ],
+            },
+        ]);
+
+        expect(editor.importBlocks).toHaveBeenCalledWith([
+            expect.objectContaining({
+                type: 'database',
+                content: expect.objectContaining({
+                    columns: ['Plan Type', 'Best For'],
+                    rows: [['Waterfront Night', 'Low-cost evening'], ['Arts and Exhibitions', 'Rainy day']],
+                }),
+            }),
+        ], { replace: true });
+        expect(editor.insertBlocksAfter).toHaveBeenCalledWith('block_a', [
+            expect.objectContaining({
+                type: 'chart',
+                content: expect.objectContaining({
+                    title: 'Weekly Leads',
+                    chartType: 'bar',
+                    labels: ['Mon', 'Tue', 'Wed'],
+                    values: [4, 7, 5],
+                }),
+            }),
+        ]);
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
     });
 
     test('repairs notes-actions payloads that start with a bare reply string', () => {

@@ -963,6 +963,13 @@ const Storage = (function() {
                         });
                         md += '\n';
                         break;
+                    case 'chart':
+                        md += `${indent}**${block.content.title || 'Chart'}**\n\n`;
+                        (block.content.labels || []).forEach((label, index) => {
+                            md += `${indent}- ${label}: ${(block.content.values || [])[index] ?? ''}${block.content.unit || ''}\n`;
+                        });
+                        md += '\n';
+                        break;
                 }
                 
                 // Handle nested children

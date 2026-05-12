@@ -102,6 +102,12 @@ const Blocks = (function() {
             placeholder: '',
             render: renderDatabaseBlock
         },
+        chart: {
+            name: 'Chart',
+            icon: 'Chart',
+            placeholder: '',
+            render: renderChartBlock
+        },
         math: {
             name: 'Math Equation',
             icon: 'Math',
@@ -333,6 +339,68 @@ const Blocks = (function() {
         const newContent = renderDatabaseBlock(block, isEditable);
         wrapper.replaceWith(newContent);
         return newContent;
+    }
+
+    function parseChartNumber(value) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return value;
+        }
+
+        const normalized = String(value ?? '').replace(/[$,%]/g, '').replace(/,/g, '').trim();
+        const parsed = Number.parseFloat(normalized);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function normalizeChartContent(content) {
+        const source = (content && typeof content === 'object') ? content : {};
+        let labels = [];
+        let values = [];
+
+        if (Array.isArray(source.labels) && Array.isArray(source.values)) {
+            labels = source.labels.map((label, index) => String(label || `Item ${index + 1}`));
+            values = source.values.map(parseChartNumber).map((value) => value ?? 0);
+        } else if (Array.isArray(source.data)) {
+            source.data.forEach((item, index) => {
+                if (Array.isArray(item)) {
+                    labels.push(String(item[0] || `Item ${index + 1}`));
+                    values.push(parseChartNumber(item[1]) ?? 0);
+                    return;
+                }
+
+                if (item && typeof item === 'object') {
+                    labels.push(String(item.label || item.name || item.category || `Item ${index + 1}`));
+                    values.push(parseChartNumber(item.value ?? item.count ?? item.total ?? item.amount) ?? 0);
+                }
+            });
+        } else if (Array.isArray(source.rows)) {
+            const columns = Array.isArray(source.columns) ? source.columns : [];
+            const numericColumnIndex = Math.max(1, columns.findIndex((_, index) =>
+                index > 0 && source.rows.some((row) => parseChartNumber(Array.isArray(row) ? row[index] : null) !== null)
+            ));
+
+            source.rows.forEach((row, index) => {
+                const cells = Array.isArray(row) ? row : [row];
+                labels.push(String(cells[0] || `Item ${index + 1}`));
+                values.push(parseChartNumber(cells[numericColumnIndex]) ?? 0);
+            });
+        }
+
+        const hasData = labels.length > 0 && values.some((value) => value !== 0);
+        if (!labels.length) {
+            labels = ['Item 1', 'Item 2', 'Item 3'];
+            values = [3, 5, 2];
+        }
+
+        return {
+            title: String(source.title || source.name || (typeof content === 'string' ? content : '') || 'Chart'),
+            chartType: ['bar', 'line', 'pie'].includes(String(source.chartType || source.type || '').toLowerCase())
+                ? String(source.chartType || source.type).toLowerCase()
+                : 'bar',
+            labels,
+            values: values.slice(0, labels.length),
+            unit: String(source.unit || ''),
+            hasData,
+        };
     }
 
     function normalizeCalloutContent(content, fallbackIcon = '!') {
@@ -2375,6 +2443,221 @@ const Blocks = (function() {
         wrapper.appendChild(table);
         return wrapper;
     }
+
+    function renderChartBlock(block, isEditable = true) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'block-content';
+
+        const data = normalizeChartContent(block.content);
+        block.content = data;
+
+        const chart = document.createElement('div');
+        chart.className = 'chart-block';
+
+        const header = document.createElement('div');
+        header.className = 'chart-header';
+
+        const title = document.createElement('div');
+        title.className = 'chart-title';
+        title.textContent = data.title || 'Chart';
+        header.appendChild(title);
+
+        if (isEditable) {
+            const typeSelect = document.createElement('select');
+            typeSelect.className = 'chart-type-select';
+            typeSelect.setAttribute('aria-label', 'Chart type');
+            ['bar', 'line', 'pie'].forEach((type) => {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+                option.selected = data.chartType === type;
+                typeSelect.appendChild(option);
+            });
+            typeSelect.addEventListener('change', () => {
+                data.chartType = typeSelect.value;
+                block.content = data;
+                replaceChartBlockContent(wrapper, block, isEditable);
+                if (window.Editor) window.Editor.savePage();
+            });
+            header.appendChild(typeSelect);
+        }
+
+        chart.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = `chart-body chart-${data.chartType}`;
+
+        if (!data.hasData) {
+            const empty = document.createElement('div');
+            empty.className = 'chart-empty';
+            empty.textContent = 'Add labels and values to fill this chart.';
+            body.appendChild(empty);
+        }
+
+        if (data.chartType === 'pie') {
+            body.appendChild(renderPieChart(data));
+        } else {
+            body.appendChild(renderCartesianChart(data));
+        }
+
+        chart.appendChild(body);
+
+        if (isEditable) {
+            const editor = document.createElement('textarea');
+            editor.className = 'chart-data-input';
+            editor.rows = Math.min(6, Math.max(3, data.labels.length));
+            editor.value = data.labels.map((label, index) => `${label}, ${data.values[index] ?? 0}`).join('\n');
+            editor.setAttribute('aria-label', 'Chart data as label, value rows');
+            editor.addEventListener('blur', () => {
+                const rows = editor.value.split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .map((line, index) => {
+                        const parts = line.split(',');
+                        const value = parseChartNumber(parts.pop());
+                        return {
+                            label: parts.join(',').trim() || `Item ${index + 1}`,
+                            value: value ?? 0,
+                        };
+                    });
+
+                if (!rows.length) {
+                    return;
+                }
+
+                data.labels = rows.map((row) => row.label);
+                data.values = rows.map((row) => row.value);
+                data.hasData = true;
+                block.content = data;
+                replaceChartBlockContent(wrapper, block, isEditable);
+                if (window.Editor) window.Editor.savePage();
+            });
+            chart.appendChild(editor);
+        }
+
+        wrapper.appendChild(chart);
+        return wrapper;
+    }
+
+    function replaceChartBlockContent(wrapper, block, isEditable) {
+        const newContent = renderChartBlock(block, isEditable);
+        wrapper.replaceWith(newContent);
+        return newContent;
+    }
+
+    function renderCartesianChart(data) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'chart-svg');
+        svg.setAttribute('viewBox', '0 0 520 260');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', `${data.title || 'Chart'} ${data.chartType} chart`);
+
+        const values = data.values.map((value) => Math.max(0, Number(value) || 0));
+        const maxValue = Math.max(...values, 1);
+        const plot = { left: 44, top: 18, width: 452, height: 178 };
+
+        const axis = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        axis.setAttribute('d', `M ${plot.left} ${plot.top} V ${plot.top + plot.height} H ${plot.left + plot.width}`);
+        axis.setAttribute('class', 'chart-axis');
+        svg.appendChild(axis);
+
+        if (data.chartType === 'line') {
+            const points = values.map((value, index) => {
+                const x = plot.left + (values.length === 1 ? plot.width / 2 : (index / (values.length - 1)) * plot.width);
+                const y = plot.top + plot.height - ((value / maxValue) * plot.height);
+                return { x, y, value };
+            });
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            line.setAttribute('points', points.map((point) => `${point.x},${point.y}`).join(' '));
+            line.setAttribute('class', 'chart-line');
+            svg.appendChild(line);
+
+            points.forEach((point, index) => {
+                const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                dot.setAttribute('cx', point.x);
+                dot.setAttribute('cy', point.y);
+                dot.setAttribute('r', '5');
+                dot.setAttribute('class', 'chart-point');
+                svg.appendChild(dot);
+                appendChartValueLabel(svg, point.x, point.y - 10, point.value, data.unit);
+                appendChartAxisLabel(svg, point.x, 230, data.labels[index]);
+            });
+        } else {
+            const barWidth = Math.max(18, Math.min(58, plot.width / Math.max(values.length, 1) - 16));
+            values.forEach((value, index) => {
+                const slotWidth = plot.width / Math.max(values.length, 1);
+                const x = plot.left + index * slotWidth + (slotWidth - barWidth) / 2;
+                const height = (value / maxValue) * plot.height;
+                const y = plot.top + plot.height - height;
+
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x);
+                rect.setAttribute('y', y);
+                rect.setAttribute('width', barWidth);
+                rect.setAttribute('height', Math.max(2, height));
+                rect.setAttribute('rx', '5');
+                rect.setAttribute('class', 'chart-bar');
+                svg.appendChild(rect);
+
+                appendChartValueLabel(svg, x + barWidth / 2, y - 8, value, data.unit);
+                appendChartAxisLabel(svg, x + barWidth / 2, 230, data.labels[index]);
+            });
+        }
+
+        return svg;
+    }
+
+    function appendChartValueLabel(svg, x, y, value, unit) {
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', x);
+        text.setAttribute('y', Math.max(12, y));
+        text.setAttribute('class', 'chart-value-label');
+        text.textContent = `${value}${unit || ''}`;
+        svg.appendChild(text);
+    }
+
+    function appendChartAxisLabel(svg, x, y, label) {
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', x);
+        text.setAttribute('y', y);
+        text.setAttribute('class', 'chart-axis-label');
+        text.textContent = String(label || '').slice(0, 16);
+        svg.appendChild(text);
+    }
+
+    function renderPieChart(data) {
+        const total = data.values.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0) || 1;
+        const pie = document.createElement('div');
+        pie.className = 'chart-pie-wrap';
+
+        let cursor = 0;
+        const segments = data.values.map((value, index) => {
+            const amount = Math.max(0, Number(value) || 0);
+            const start = (cursor / total) * 360;
+            cursor += amount;
+            const end = (cursor / total) * 360;
+            const color = `var(--chart-color-${(index % 6) + 1})`;
+            return `${color} ${start}deg ${end}deg`;
+        });
+
+        const disk = document.createElement('div');
+        disk.className = 'chart-pie';
+        disk.style.background = `conic-gradient(${segments.join(', ')})`;
+        pie.appendChild(disk);
+
+        const legend = document.createElement('div');
+        legend.className = 'chart-legend';
+        data.labels.forEach((label, index) => {
+            const item = document.createElement('div');
+            item.className = 'chart-legend-item';
+            item.innerHTML = `<span class="chart-legend-swatch chart-swatch-${(index % 6) + 1}"></span><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(data.values[index] ?? 0))}${escapeHtml(data.unit || '')}</strong>`;
+            legend.appendChild(item);
+        });
+        pie.appendChild(legend);
+
+        return pie;
+    }
     
     function normalizeMermaidContentV2(content) {
         const normalized = (content && typeof content === 'object')
@@ -3045,6 +3328,7 @@ const Blocks = (function() {
             ai_image: renderAIImageBlock,
             bookmark: renderBookmarkBlock,
             database: renderDatabaseBlock,
+            chart: renderChartBlock,
             ai: renderAIBlock
         }
     };

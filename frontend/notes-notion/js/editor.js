@@ -56,6 +56,14 @@ const Editor = (function() {
             if (block.type === 'database' && Array.isArray(block.content.rows)) {
                 return block.content.rows.flat().join(' ');
             }
+            if (block.type === 'chart') {
+                if (Array.isArray(block.content.labels) && Array.isArray(block.content.values)) {
+                    return block.content.labels.map((label, index) =>
+                        `${label} ${block.content.values[index] ?? ''}`
+                    ).join(' ');
+                }
+                return block.content.title || '';
+            }
             if (typeof block.content.text === 'string') return block.content.text;
             if (typeof block.content.prompt === 'string') return block.content.prompt;
             if (typeof block.content.result === 'string') return block.content.result;
@@ -146,6 +154,14 @@ const Editor = (function() {
                     sortColumn: null,
                     sortDirection: 'asc'
                 };
+            case 'chart':
+                return (Array.isArray(existing?.labels) || Array.isArray(existing?.values) || Array.isArray(existing?.data) || Array.isArray(existing?.rows)) ? existing : {
+                    title: text.trim() || 'Chart',
+                    chartType: 'bar',
+                    labels: ['Item 1', 'Item 2', 'Item 3'],
+                    values: [3, 5, 2],
+                    unit: ''
+                };
             case 'divider':
                 return '';
             default:
@@ -173,6 +189,31 @@ const Editor = (function() {
         button.setAttribute('aria-label', title);
         button.innerHTML = svg;
         return button;
+    }
+
+    function openBlockTypeMenu(blockId, eventOrPoint = {}) {
+        if (!window.SlashMenu) {
+            return;
+        }
+
+        const blockEl = document.querySelector(`.block[data-block-id="${blockId}"]`);
+        const rect = blockEl?.getBoundingClientRect?.();
+        const point = {
+            x: eventOrPoint.clientX || (rect ? rect.left + 40 : 24),
+            y: eventOrPoint.clientY || (rect ? rect.bottom : 80),
+        };
+
+        window.SlashMenu.show(point.x, point.y, blockId);
+        window.SlashMenu.setCallback((type) => {
+            const conversionInfo = getBlockConversionInfo(blockId, type);
+            if (conversionInfo?.requiresConfirmation) {
+                const confirmed = window.confirm(conversionInfo.message || 'Convert this block and drop unsupported content?');
+                if (!confirmed) {
+                    return;
+                }
+            }
+            convertBlockType(blockId, type);
+        });
     }
 
     function createBlockActions(block) {
@@ -209,22 +250,7 @@ const Editor = (function() {
                     focusBlock(block.id);
                     break;
                 case 'turn-into': {
-                    if (!window.SlashMenu) {
-                        break;
-                    }
-                    const blockEl = document.querySelector(`.block[data-block-id="${block.id}"]`);
-                    const rect = blockEl?.getBoundingClientRect?.();
-                    window.SlashMenu.show((rect?.left || event.clientX) + 40, rect?.bottom || event.clientY, block.id);
-                    window.SlashMenu.setCallback((type) => {
-                        const conversionInfo = getBlockConversionInfo(block.id, type);
-                        if (conversionInfo?.requiresConfirmation) {
-                            const confirmed = window.confirm(conversionInfo.message || 'Convert this block and drop unsupported content?');
-                            if (!confirmed) {
-                                return;
-                            }
-                        }
-                        convertBlockType(block.id, type);
-                    });
+                    openBlockTypeMenu(block.id, event);
                     break;
                 }
                 case 'move-up':
@@ -310,6 +336,11 @@ const Editor = (function() {
             case 'database':
                 if (newType !== 'database') {
                     warnings.push('the database rows and columns');
+                }
+                break;
+            case 'chart':
+                if (newType !== 'chart') {
+                    warnings.push('the chart data and configuration');
                 }
                 break;
             default:
@@ -1071,7 +1102,16 @@ const Editor = (function() {
         // Drag handle
         const handle = document.createElement('div');
         handle.className = 'block-handle';
-        handle.title = 'Drag to move, click for menu';
+        handle.title = 'Drag to move, right-click to change type';
+        handle.addEventListener('contextmenu', (event) => {
+            if (typeof event.stopImmediatePropagation === 'function') {
+                event.stopImmediatePropagation();
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            Selection.selectBlock(block.id);
+            openBlockTypeMenu(block.id, event);
+        });
         blockEl.appendChild(handle);
 
         blockEl.appendChild(createBlockActions(block));

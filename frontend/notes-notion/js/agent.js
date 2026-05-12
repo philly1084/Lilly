@@ -3066,7 +3066,7 @@ STRUCTURAL EDITING RULES:
 - When a block is the right content but the wrong kind, use update_block with type or change_block_type/set_block_type. Do not leave JSON or markdown markers inside a code/text block to imply the new type.
 - Use change_block_type/set_block_type/update_block with type to convert a block in place. Keep the existing block ID whenever possible; do not delete and recreate the block just to change its type.
 - For full-page builds, return one notes-actions payload only. Do not put the JSON payload in the visible assistant_reply, and do not add a code block containing the request at the bottom of the page.
-- Keep block type names exact: text, heading_1, heading_2, heading_3, bulleted_list, numbered_list, todo, callout, quote, divider, image, ai_image, bookmark, database, toggle, mermaid, code, math.
+- Keep block type names exact: text, heading_1, heading_2, heading_3, bulleted_list, numbered_list, todo, callout, quote, divider, image, ai_image, bookmark, database, chart, toggle, mermaid, code, math.
 
 BLOCK TYPES:
 - text: Plain text paragraph
@@ -3079,6 +3079,7 @@ BLOCK TYPES:
 - image and ai_image: visual support blocks
 - bookmark: linked source/reference block
 - database: comparison, tracker, or quick-facts table
+- chart: simple bar, line, or pie visualization for metrics
 - toggle: collapsible detail section
 - mermaid: diagram block
 - code and math: technical support blocks
@@ -3123,7 +3124,7 @@ GUIDELINES:
 - Do not ship a substantial page as only heading + text + list blocks unless the user explicitly asked for a minimal/plain layout.
 - Research pages should usually use at least one richer support block such as callout, bookmark, image, ai_image, toggle, or database when the content supports it.
 - In notes, Mermaid usually belongs as a mermaid block inside the page. Do not switch to a downloadable Mermaid artifact unless the user explicitly asks for a file, export, download, or shareable artifact.
-- Use plain strings for text-like blocks and structured objects for todo, callout, code, math, mermaid, image, ai_image, bookmark, database, and ai blocks.
+- Use plain strings for text-like blocks and structured objects for todo, callout, code, math, mermaid, image, ai_image, bookmark, database, chart, and ai blocks.
 - You may include formatting on text-like blocks using {bold, italic, underline, strikethrough, code}.
 - You may include children on blocks when nested content improves the page, especially under toggles.
 - You may include fontFamily on blocks using: ${NOTES_FONT_FAMILY_OPTIONS.join(', ')}.
@@ -3249,7 +3250,7 @@ STRUCTURAL EDITING RULES:
 - When a block is the right content but the wrong kind, use update_block with type or change_block_type/set_block_type. Do not leave JSON or markdown markers inside a code/text block to imply the new type.
 - Use change_block_type/set_block_type/update_block with type to convert a block in place. Keep the existing block ID whenever possible; do not delete and recreate the block just to change its type.
 - For full-page builds, return one notes-actions payload only. Do not put the JSON payload in the visible assistant_reply, and do not add a code block containing the request at the bottom of the page.
-- Keep block type names exact: text, heading_1, heading_2, heading_3, bulleted_list, numbered_list, todo, callout, quote, divider, image, ai_image, bookmark, database, toggle, mermaid, code, math.
+- Keep block type names exact: text, heading_1, heading_2, heading_3, bulleted_list, numbered_list, todo, callout, quote, divider, image, ai_image, bookmark, database, chart, toggle, mermaid, code, math.
 
 BLOCK TYPES:
 - text: Plain text paragraph
@@ -3327,7 +3328,7 @@ GUIDELINES:
 - It is acceptable to replace a single block with multiple blocks, or to rebuild the full page, if that is the clearest way to satisfy the request.
 - In notes, Mermaid usually belongs as a mermaid block inside the page. Do not switch to a downloadable Mermaid artifact unless the user explicitly asks for a file, export, download, or shareable artifact.
 - For text-like blocks, use plain strings for content
-- For special blocks (todo, code, mermaid, image, bookmark), use structured objects
+- For special blocks (todo, code, mermaid, image, bookmark, database, chart), use structured objects
 - Do not write markdown syntax into a block when the block type already expresses the structure. Use heading blocks for headings, list blocks for bullets, todo blocks for checkboxes, callout blocks for highlighted notes, and \`formatting\` instead of raw \`**bold**\` markers.
 - Use \`heading_3\` when a short label or mini-section should sit on its own line. Do not bury those labels inline at the start of paragraph text.
 - You may include \`formatting\` on text-like blocks using \`{bold, italic, underline, strikethrough, code}\`.
@@ -3341,6 +3342,7 @@ GUIDELINES:
   - math: equation block using {text, displayMode}
   - ai_image: use {prompt, source: "ai"|"unsplash", imageUrl, model, size, quality, style}
   - database: use {columns, rows, sortColumn, sortDirection}
+  - chart: use {title, chartType, labels, values, unit}; chartType can be bar, line, or pie
   - ai: inline AI block using {prompt, result, model}
 - For callout blocks, use structured content like {text: "...", icon: "💡"}.
 - Use image for known image URLs or uploaded/static images.
@@ -3349,7 +3351,7 @@ GUIDELINES:
 - You may optionally add "color" and "textColor" to any inserted/replaced block using: ${NOTES_COLOR_OPTIONS.join(', ')}.
 - You may optionally add "fontFamily" and "fontSize" to any inserted/replaced text-like block using supported font options.
 - Use styling intentionally for hierarchy and variety, for example yellow or blue callouts, gray supporting notes, red warnings, and green status summaries.
-- For structured blocks (todo, callout, code, math, mermaid, image, ai_image, bookmark, database, ai), use structured objects rather than plain strings.
+- For structured blocks (todo, callout, code, math, mermaid, image, ai_image, bookmark, database, chart, ai), use structured objects rather than plain strings.
 - When the user asks for a redesign, dashboard, brief, report, or polished layout, consider updating the page title/icon/cover with update_page in addition to the blocks.
 - If the user asks for color or visual design, explicitly consider both block background colors ("color") and text colors ("textColor") where they improve readability.
 - When improving layout or variety, prefer mixing headings, callouts, quotes, lists, databases, images, dividers, and tasteful color/textColor choices instead of only plain paragraphs`;
@@ -4505,7 +4507,7 @@ GUIDELINES:
             }
 
             let nextScore = score + 1;
-            if (['image', 'ai_image', 'bookmark', 'database'].includes(type)) nextScore += 8;
+            if (['image', 'ai_image', 'bookmark', 'database', 'chart'].includes(type)) nextScore += 8;
             if (['heading_1', 'heading_2', 'heading_3', 'callout', 'quote'].includes(type)) nextScore += 2;
             if (type === 'divider') nextScore += 0.5;
             if (type === 'code') nextScore -= 0.5;
@@ -4517,8 +4519,8 @@ GUIDELINES:
         if (!importedBlocks.length) return richTextBlocks;
         if (!richTextBlocks.length) return importedBlocks;
 
-        const importedHasMedia = importedBlocks.some((block) => ['image', 'ai_image', 'bookmark', 'database'].includes(block?.type));
-        const richTextHasMedia = richTextBlocks.some((block) => ['image', 'ai_image', 'bookmark', 'database'].includes(block?.type));
+        const importedHasMedia = importedBlocks.some((block) => ['image', 'ai_image', 'bookmark', 'database', 'chart'].includes(block?.type));
+        const richTextHasMedia = richTextBlocks.some((block) => ['image', 'ai_image', 'bookmark', 'database', 'chart'].includes(block?.type));
 
         if (importedHasMedia !== richTextHasMedia) {
             return importedHasMedia ? importedBlocks : richTextBlocks;
@@ -6176,6 +6178,31 @@ Silently verify the lead cluster, section order, and final polish before returni
                     sortColumn: null,
                     sortDirection: 'asc'
                 };
+            case 'chart':
+                if (value && typeof value === 'object') {
+                    return {
+                        title: String(value.title || value.name || 'Chart'),
+                        chartType: ['bar', 'line', 'pie'].includes(String(value.chartType || value.type || '').toLowerCase())
+                            ? String(value.chartType || value.type).toLowerCase()
+                            : 'bar',
+                        labels: Array.isArray(value.labels) ? value.labels : [],
+                        values: Array.isArray(value.values) ? value.values : [],
+                        data: Array.isArray(value.data) ? value.data : null,
+                        columns: Array.isArray(value.columns) ? value.columns : null,
+                        rows: Array.isArray(value.rows) ? value.rows : null,
+                        unit: String(value.unit || '')
+                    };
+                }
+                return {
+                    title: String(value || 'Chart'),
+                    chartType: 'bar',
+                    labels: [],
+                    values: [],
+                    data: null,
+                    columns: null,
+                    rows: null,
+                    unit: ''
+                };
             case 'divider':
                 return '';
             default:
@@ -6229,7 +6256,17 @@ Silently verify the lead cluster, section order, and final polish before returni
             aiimage: 'ai_image',
             image_generation: 'ai_image',
             imagegeneration: 'ai_image',
-            table: 'database'
+            table: 'database',
+            chart: 'chart',
+            charts: 'chart',
+            graph: 'chart',
+            graph_block: 'chart',
+            barchart: 'chart',
+            bar_chart: 'chart',
+            linechart: 'chart',
+            line_chart: 'chart',
+            piechart: 'chart',
+            pie_chart: 'chart'
         };
 
         const compact = normalized.replace(/_/g, '');
@@ -6246,6 +6283,36 @@ Silently verify the lead cluster, section order, and final polish before returni
         let contentInput = Object.prototype.hasOwnProperty.call(definition, 'content')
             ? definition.content
             : (Object.prototype.hasOwnProperty.call(definition, 'text') ? definition.text : '');
+
+        if (type === 'database' && definition && typeof definition === 'object'
+            && (Array.isArray(definition.columns) || Array.isArray(definition.rows))) {
+            contentInput = {
+                ...(contentInput && typeof contentInput === 'object' && !Array.isArray(contentInput)
+                    ? contentInput
+                    : {}),
+                columns: definition.columns,
+                rows: definition.rows,
+                sortColumn: definition.sortColumn,
+                sortDirection: definition.sortDirection
+            };
+        }
+
+        if (type === 'chart' && definition && typeof definition === 'object'
+            && (Array.isArray(definition.labels) || Array.isArray(definition.values) || Array.isArray(definition.data) || Array.isArray(definition.rows))) {
+            contentInput = {
+                ...(contentInput && typeof contentInput === 'object' && !Array.isArray(contentInput)
+                    ? contentInput
+                    : { title: Object.prototype.hasOwnProperty.call(definition, 'content') ? definition.content : definition.text }),
+                title: definition.title || definition.name || (typeof contentInput === 'string' ? contentInput : undefined),
+                chartType: definition.chartType || definition.chart || definition.kind,
+                labels: definition.labels,
+                values: definition.values,
+                data: definition.data,
+                columns: definition.columns,
+                rows: definition.rows,
+                unit: definition.unit
+            };
+        }
 
         if (!Object.prototype.hasOwnProperty.call(definition, 'content') && definition && typeof definition === 'object') {
             switch (type) {
@@ -6299,6 +6366,18 @@ Silently verify the lead cluster, section order, and final polish before returni
                         rows: definition.rows,
                         sortColumn: definition.sortColumn,
                         sortDirection: definition.sortDirection
+                    };
+                    break;
+                case 'chart':
+                    contentInput = {
+                        title: definition.title || definition.name || definition.text || 'Chart',
+                        chartType: definition.chartType || definition.chart || definition.kind,
+                        labels: definition.labels,
+                        values: definition.values,
+                        data: definition.data,
+                        columns: definition.columns,
+                        rows: definition.rows,
+                        unit: definition.unit
                     };
                     break;
                 default:
@@ -6646,6 +6725,7 @@ Silently verify the lead cluster, section order, and final polish before returni
             'ai_image',
             'bookmark',
             'database',
+            'chart',
             'ai',
             'toggle',
             'math',
@@ -6930,6 +7010,16 @@ Silently verify the lead cluster, section order, and final polish before returni
                 return Boolean(value.url || value.title || value.description || value.text);
             case 'database':
                 return Array.isArray(value.columns) || Array.isArray(value.rows);
+            case 'chart':
+                return Boolean(
+                    value.title ||
+                    value.name ||
+                    value.text ||
+                    Array.isArray(value.labels) ||
+                    Array.isArray(value.values) ||
+                    Array.isArray(value.data) ||
+                    Array.isArray(value.rows)
+                );
             case 'callout':
                 return Boolean(value.text || value.icon);
             case 'code':
@@ -7040,12 +7130,12 @@ Silently verify the lead cluster, section order, and final polish before returni
     }
 
     function hasLooseNotesBlockTypeMarker(text = '') {
-        return /"\s*type\s*"\s*:\s*"\s*(?:text|heading\s*(?:[_-]|\s)?\s*[123]|bulleted\s*(?:[_-]|\s)?\s*list|numbered\s*(?:[_-]|\s)?\s*list|todo|code|quote|callout|divider|mermaid|diagram|drawing|drawings|draw|sketch|illustration|image|ai\s*(?:[_-]|\s)?\s*image|bookmark|database|ai|toggle|math)\s*"/i.test(String(text || ''));
+        return /"\s*type\s*"\s*:\s*"\s*(?:text|heading\s*(?:[_-]|\s)?\s*[123]|bulleted\s*(?:[_-]|\s)?\s*list|numbered\s*(?:[_-]|\s)?\s*list|todo|code|quote|callout|divider|mermaid|diagram|drawing|drawings|draw|sketch|illustration|image|ai\s*(?:[_-]|\s)?\s*image|bookmark|database|chart|ai|toggle|math)\s*"/i.test(String(text || ''));
     }
 
     function findStructuredMarkerIndex(text = '') {
         const value = String(text || '');
-        return value.search(/```+\s*notes\s*(?:[_-]|\s)\s*actions|```+\s*json|"\s*assistant\s*(?:[_-]|\s)?\s*reply\s*"\s*:|"\s*notes\s*(?:[_-]|\s)?\s*actions\s*"\s*:|"\s*(?:actions|operations|edits)\s*"\s*:|"\s*action\s*"\s*:\s*"\s*(?:replace|append|prepend)\s*(?:[_-]|\s)?\s*content\s*"|"\s*type\s*"\s*:\s*"\s*function\s*"|"\s*name\s*"\s*:\s*"\s*update_notes_page\s*"|"\s*type\s*"\s*:\s*"\s*(?:text|heading\s*(?:[_-]|\s)?\s*[123]|bulleted\s*(?:[_-]|\s)?\s*list|numbered\s*(?:[_-]|\s)?\s*list|todo|code|quote|callout|divider|mermaid|diagram|drawing|drawings|draw|sketch|illustration|image|ai\s*(?:[_-]|\s)?\s*image|bookmark|database|ai|toggle|math)\s*"/i);
+        return value.search(/```+\s*notes\s*(?:[_-]|\s)\s*actions|```+\s*json|"\s*assistant\s*(?:[_-]|\s)?\s*reply\s*"\s*:|"\s*notes\s*(?:[_-]|\s)?\s*actions\s*"\s*:|"\s*(?:actions|operations|edits)\s*"\s*:|"\s*action\s*"\s*:\s*"\s*(?:replace|append|prepend)\s*(?:[_-]|\s)?\s*content\s*"|"\s*type\s*"\s*:\s*"\s*function\s*"|"\s*name\s*"\s*:\s*"\s*update_notes_page\s*"|"\s*type\s*"\s*:\s*"\s*(?:text|heading\s*(?:[_-]|\s)?\s*[123]|bulleted\s*(?:[_-]|\s)?\s*list|numbered\s*(?:[_-]|\s)?\s*list|todo|code|quote|callout|divider|mermaid|diagram|drawing|drawings|draw|sketch|illustration|image|ai\s*(?:[_-]|\s)?\s*image|bookmark|database|chart|ai|toggle|math)\s*"/i);
     }
 
     function hasHighConfidenceRecoveredBlocks(blocks = []) {
@@ -7061,7 +7151,7 @@ Silently verify the lead cluster, section order, and final polish before returni
         const type = canonicalizeBlockType(block?.type || 'text');
         const text = extractBlockDefinitionText(block).replace(/\s+/g, ' ').trim();
 
-        if (['mermaid', 'database', 'image', 'ai_image', 'bookmark', 'code', 'math'].includes(type)) {
+        if (['mermaid', 'database', 'chart', 'image', 'ai_image', 'bookmark', 'code', 'math'].includes(type)) {
             return Boolean(text);
         }
         if (['callout', 'quote', 'todo'].includes(type)) {
