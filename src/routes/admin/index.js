@@ -106,6 +106,7 @@ router.delete('/podcast-audio/:track', callController(podcastAudioController, 'r
 // Managed artifact storage
 router.get('/storage', callController(storageController, 'list'));
 router.post('/storage/cleanup', callController(storageController, 'cleanup'));
+router.post('/storage/bulk-delete', callController(storageController, 'bulkRemove'));
 router.delete('/storage/:category/:id', callController(storageController, 'remove'));
 
 // SDK Control

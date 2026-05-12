@@ -55,6 +55,8 @@ describe('web-chat generated image artifact previews', () => {
             parentMessageId: 'assistant-1',
             prompt: 'dashboard hero',
             model: 'gpt-image-2',
+            clientOnly: true,
+            excludeFromTranscript: true,
         }));
         expect(message.results).toHaveLength(2);
         expect(message.results[0]).toEqual(expect.objectContaining({

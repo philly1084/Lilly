@@ -43,6 +43,7 @@ class Dashboard {
         };
         
         this.charts = {};
+        this.storageSelection = new Set();
         this.ws = null;
         this.reconnectInterval = null;
         this.refreshInterval = null;
@@ -334,6 +335,9 @@ class Dashboard {
         });
         document.getElementById('runStorageCleanupBtn')?.addEventListener('click', () => {
             this.cleanupStorage({ dryRun: false });
+        });
+        document.getElementById('deleteSelectedStorageBtn')?.addEventListener('click', () => {
+            this.deleteSelectedStorageRecords();
         });
         
         document.getElementById('apiSettingsForm')?.addEventListener('submit', (e) => {
@@ -2789,6 +2793,7 @@ class Dashboard {
         }
 
         this.state.storage = data;
+        const visibleKeys = new Set();
         this.setTextContent('storageTotalCount', Number(data.totalCount || 0).toLocaleString());
         this.setTextContent('storageTotalBytes', this.formatBytes(data.totalBytes || 0));
         this.setTextContent('storageDataDirectory', data.dataDirectory || 'Server state folder');
@@ -2806,12 +2811,20 @@ class Dashboard {
                 })))
             .sort((a, b) => Date.parse(b.updatedAt || '') - Date.parse(a.updatedAt || ''));
 
+        records.slice(0, 150).forEach((record) => {
+            visibleKeys.add(this.getStorageSelectionKey(record.category, record.id));
+        });
+        this.storageSelection = new Set([...this.storageSelection].filter((key) => visibleKeys.has(key)));
+
         if (records.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="6" class="empty-state">No managed artifacts found.</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="7" class="empty-state">No managed artifacts found.</td></tr>';
+            this.updateStorageSelectionControls();
             return;
         }
 
         tableBody.innerHTML = records.slice(0, 150).map((record) => {
+            const selectionKey = this.getStorageSelectionKey(record.category, record.id);
+            const selected = this.storageSelection.has(selectionKey);
             const downloadLink = record.downloadUrl
                 ? `<a class="btn btn-ghost btn-sm storage-file-link" href="${this.escapeHtml(record.downloadUrl)}" target="_blank" rel="noopener">Download</a>`
                 : '';
@@ -2829,7 +2842,17 @@ class Dashboard {
             const deleteLabel = isChatSession ? 'Delete Chat' : 'Delete';
 
             return `
-                <tr>
+                <tr class="${selected ? 'storage-row-selected' : ''}" data-storage-key="${this.escapeHtml(selectionKey)}">
+                    <td class="storage-select-cell">
+                        <input
+                            type="checkbox"
+                            class="storage-select-record"
+                            aria-label="Select ${this.escapeHtml(record.filename || record.id)}"
+                            data-category="${this.escapeHtml(record.category)}"
+                            data-id="${this.escapeHtml(record.id)}"
+                            ${selected ? 'checked' : ''}
+                        >
+                    </td>
                     <td>
                         <div class="storage-file-name">${this.escapeHtml(record.filename || record.id)}</div>
                         <div class="storage-file-meta">${this.escapeHtml(metaParts.join(' | ') || record.id)}</div>
@@ -2854,11 +2877,134 @@ class Dashboard {
             `;
         }).join('');
 
+        const selectAll = document.getElementById('storageSelectAll');
+        if (selectAll) {
+            selectAll.checked = visibleKeys.size > 0 && this.storageSelection.size === visibleKeys.size;
+            selectAll.indeterminate = this.storageSelection.size > 0 && this.storageSelection.size < visibleKeys.size;
+            selectAll.onchange = () => {
+                if (selectAll.checked) {
+                    this.storageSelection = new Set(visibleKeys);
+                } else {
+                    this.storageSelection.clear();
+                }
+                this.renderStorageSettings(this.state.storage);
+            };
+        }
+
+        tableBody.querySelectorAll('.storage-select-record').forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+                this.toggleStorageSelection(checkbox.dataset.category, checkbox.dataset.id, checkbox.checked);
+            });
+        });
+
+        tableBody.querySelectorAll('tr[data-storage-key]').forEach((row) => {
+            row.addEventListener('click', (event) => {
+                if (event.target.closest('a, button, input')) {
+                    return;
+                }
+                const checkbox = row.querySelector('.storage-select-record');
+                if (!checkbox) {
+                    return;
+                }
+                checkbox.checked = !checkbox.checked;
+                checkbox.dispatchEvent(new Event('change'));
+            });
+        });
+
         tableBody.querySelectorAll('.storage-delete-file').forEach((button) => {
             button.addEventListener('click', () => {
                 this.deleteStorageRecord(button.dataset.category, button.dataset.id);
             });
         });
+        this.updateStorageSelectionControls();
+    }
+
+    getStorageSelectionKey(category, id) {
+        return `${category || ''}::${id || ''}`;
+    }
+
+    parseStorageSelectionKey(key = '') {
+        const divider = key.indexOf('::');
+        if (divider < 0) {
+            return null;
+        }
+        return {
+            category: key.slice(0, divider),
+            id: key.slice(divider + 2),
+        };
+    }
+
+    toggleStorageSelection(category, id, selected) {
+        const key = this.getStorageSelectionKey(category, id);
+        if (selected) {
+            this.storageSelection.add(key);
+        } else {
+            this.storageSelection.delete(key);
+        }
+
+        const row = document.querySelector(`tr[data-storage-key="${CSS.escape(key)}"]`);
+        row?.classList.toggle('storage-row-selected', selected);
+        this.updateStorageSelectionControls();
+    }
+
+    updateStorageSelectionControls() {
+        const selectedCount = this.storageSelection.size;
+        this.setTextContent('storageSelectionStatus', `${selectedCount.toLocaleString()} selected`);
+        const deleteButton = document.getElementById('deleteSelectedStorageBtn');
+        if (deleteButton) {
+            deleteButton.disabled = selectedCount === 0;
+        }
+
+        const visibleCheckboxes = Array.from(document.querySelectorAll('.storage-select-record'));
+        const selectAll = document.getElementById('storageSelectAll');
+        if (selectAll) {
+            const checkedCount = visibleCheckboxes.filter((checkbox) => checkbox.checked).length;
+            selectAll.checked = visibleCheckboxes.length > 0 && checkedCount === visibleCheckboxes.length;
+            selectAll.indeterminate = checkedCount > 0 && checkedCount < visibleCheckboxes.length;
+        }
+    }
+
+    async deleteSelectedStorageRecords() {
+        const items = [...this.storageSelection]
+            .map((key) => this.parseStorageSelectionKey(key))
+            .filter(Boolean);
+
+        if (items.length === 0) {
+            this.showToast('Select chats or artifacts to delete first', 'info');
+            return;
+        }
+
+        const chatCount = items.filter((item) => item.category === 'chatSessions').length;
+        const artifactCount = items.length - chatCount;
+        const warning = [
+            `Delete ${items.length} selected item${items.length === 1 ? '' : 's'}?`,
+            chatCount ? `${chatCount} chat${chatCount === 1 ? '' : 's'} will be permanently removed with messages, stored artifacts, and memory references.` : '',
+            artifactCount ? `${artifactCount} artifact${artifactCount === 1 ? '' : 's'} or managed file${artifactCount === 1 ? '' : 's'} will be deleted.` : '',
+            'Type yes to continue.',
+        ].filter(Boolean).join('\n\n');
+
+        if ((prompt(warning) || '').trim().toLowerCase() !== 'yes') {
+            return;
+        }
+
+        try {
+            const response = await apiClient.post('/api/admin/storage/bulk-delete', { items });
+            const result = this.unwrapApiPayload(response, {});
+            const deletedCount = Number(result.deletedCount || 0);
+            const failedCount = Number(result.failedCount || 0);
+            const deletedBytes = this.formatBytes(result.deletedBytes || 0);
+
+            this.storageSelection.clear();
+            if (failedCount > 0) {
+                this.showToast(`Deleted ${deletedCount} selected items (${deletedBytes}); ${failedCount} failed`, 'warning', 7000);
+            } else {
+                this.showToast(`Deleted ${deletedCount} selected items (${deletedBytes})`, 'success');
+            }
+            await this.loadStorage();
+        } catch (error) {
+            console.error('Error deleting selected managed items:', error);
+            this.showToast('Failed to delete selected items', 'error');
+        }
     }
 
     async cleanupStorage({ dryRun = true } = {}) {

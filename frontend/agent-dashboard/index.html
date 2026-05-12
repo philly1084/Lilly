@@ -1339,10 +1339,17 @@
                                             <button type="button" class="btn btn-secondary" id="previewStorageCleanupBtn">Preview</button>
                                             <button type="button" class="btn btn-danger" id="runStorageCleanupBtn">Delete Matched</button>
                                         </div>
+                                        <div class="storage-bulk-actions">
+                                            <span class="storage-selection-status" id="storageSelectionStatus">0 selected</span>
+                                            <button type="button" class="btn btn-danger" id="deleteSelectedStorageBtn" disabled>Delete Selected</button>
+                                        </div>
                                         <div class="table-wrapper storage-table-wrapper">
                                             <table class="logs-table storage-table">
                                                 <thead>
                                                     <tr>
+                                                        <th class="storage-select-cell">
+                                                            <input type="checkbox" id="storageSelectAll" aria-label="Select all visible storage records">
+                                                        </th>
                                                         <th>File</th>
                                                         <th>Category</th>
                                                         <th>Size</th>
@@ -1353,7 +1360,7 @@
                                                 </thead>
                                                 <tbody id="storageTableBody">
                                                     <tr>
-                                                        <td colspan="6" class="empty-state">Loading storage inventory...</td>
+                                                        <td colspan="7" class="empty-state">Loading storage inventory...</td>
                                                     </tr>
                                                 </tbody>
                                             </table>

@@ -36,6 +36,9 @@
         lastDone: null,
     };
     let previewAccessTokenCache = null;
+    let fetchArtifactsInFlight = null;
+    let fetchArtifactsBackoffUntil = 0;
+    let fetchArtifactsQueued = false;
 
     function getCurrentSessionId() {
         return String(window.sessionManager?.currentSessionId || window.apiClient?.getSessionId?.() || '').trim();
@@ -533,8 +536,24 @@
             return;
         }
 
-        try {
+        const now = Date.now();
+        if (fetchArtifactsInFlight) {
+            fetchArtifactsQueued = true;
+            return fetchArtifactsInFlight;
+        }
+        if (fetchArtifactsBackoffUntil > now) {
+            fetchArtifactsQueued = true;
+            return null;
+        }
+
+        fetchArtifactsInFlight = (async () => {
             const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/artifacts`);
+            if (response.status === 429) {
+                const retryAfter = Math.max(2, Math.min(30, Number(response.headers.get('Retry-After')) || 5));
+                fetchArtifactsBackoffUntil = Date.now() + (retryAfter * 1000);
+                fetchArtifactsQueued = true;
+                return;
+            }
             if (response.status === 404 || response.status === 503) {
                 if (!isCurrentSessionId(sessionId)) {
                     return;
@@ -556,10 +575,23 @@
                     window.fileManager.addFile(artifact, { sessionId });
                 });
             }
-            
+
             renderSelectedChips();
+        })();
+
+        try {
+            await fetchArtifactsInFlight;
         } catch (error) {
             console.error('[Artifacts] Failed to fetch:', error);
+        } finally {
+            fetchArtifactsInFlight = null;
+            if (fetchArtifactsQueued) {
+                fetchArtifactsQueued = false;
+                const delay = Math.max(0, fetchArtifactsBackoffUntil - Date.now());
+                window.setTimeout(() => {
+                    void fetchArtifacts();
+                }, delay || 250);
+            }
         }
     }
 
@@ -1114,6 +1146,8 @@
                         src="${escapeHtmlAttr(imagePreviewUrl)}"
                         alt="${escapeHtmlAttr(artifact.filename || 'Uploaded image')}"
                         loading="lazy"
+                        onerror="uiHelpers.handleImageLoadError(this)"
+                        referrerpolicy="no-referrer"
                         onclick="uiHelpers.openImageLightbox('${escapeHtmlAttr(imagePreviewUrl)}')"
                     >
                 </div>

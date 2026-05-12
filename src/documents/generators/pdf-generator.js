@@ -718,6 +718,17 @@ class PdfGenerator {
         notesLinkUrl: {
           fontSize: 9,
           color: '#3B82F6'
+        },
+        notesImageCaption: {
+          fontSize: 10,
+          color: '#334155',
+          margin: [0, 0, 0, 3]
+        },
+        notesImageSubtext: {
+          fontSize: 9,
+          color: '#64748B',
+          italics: true,
+          margin: [0, 0, 0, 2]
         }
       },
       content,
@@ -948,18 +959,57 @@ class PdfGenerator {
 
       case 'image':
       case 'ai_image': {
+        const imageExport = this.getNotesImageExport(block);
         const label = block.type === 'ai_image' ? 'AI Image' : 'Image';
-        const prompt = this.safeText(block.content?.prompt || block.content?.caption || block.content?.alt);
-        const url = this.safeText(block.content?.imageUrl || block.content?.url);
+        const imageStack = [
+          { text: label, style: 'notesCodeLabel' },
+        ];
+
+        if (imageExport.image) {
+          imageStack.push({
+            image: imageExport.image,
+            fit: [Math.max(220, DEFAULT_CONTENT_WIDTH - indent - 24), 360],
+            alignment: 'center',
+            margin: [0, 4, 0, imageExport.caption || imageExport.subtext ? 8 : 0],
+          });
+        } else {
+          imageStack.push({
+            text: imageExport.alt || imageExport.caption || 'Image preview unavailable',
+            color: '#1F2937',
+          });
+        }
+
+        if (imageExport.caption) {
+          imageStack.push({
+            text: imageExport.caption,
+            style: 'notesImageCaption',
+            alignment: 'center',
+          });
+        }
+
+        if (imageExport.subtext) {
+          imageStack.push({
+            text: imageExport.subtext,
+            style: 'notesImageSubtext',
+            alignment: 'center',
+          });
+        }
+
+        if (imageExport.link && imageExport.link !== imageExport.image) {
+          imageStack.push({
+            text: imageExport.link,
+            style: 'notesLinkUrl',
+            link: imageExport.link,
+            alignment: 'center',
+            margin: [0, 6, 0, 0],
+          });
+        }
+
         nodes.push({
           table: {
             widths: ['*'],
             body: [[{
-              stack: [
-                { text: label, style: 'notesCodeLabel' },
-                prompt ? { text: prompt, color: '#1F2937' } : null,
-                url ? { text: url, style: 'notesLinkUrl', link: url, margin: [0, 6, 0, 0] } : { text: 'No linked asset available.', style: 'notesMuted' }
-              ].filter(Boolean),
+              stack: imageStack.filter(Boolean),
               fillColor: '#F8FAFC',
               margin: [12, 10, 12, 10],
               border: [false, false, false, false]
@@ -993,6 +1043,34 @@ class PdfGenerator {
             },
             layout: 'lightHorizontalLines',
             margin: [indent, 6, 0, 14]
+          });
+        }
+        appendChildren();
+        return nodes;
+      }
+
+      case 'chart': {
+        const title = this.safeText(block.content?.title || 'Chart');
+        const summary = this.safeText(block.content?.summary || block.content?.subtext || block.content?.subtitle);
+        const labels = Array.isArray(block.content?.labels) ? block.content.labels : [];
+        const values = Array.isArray(block.content?.values) ? block.content.values : [];
+        const unit = this.safeText(block.content?.unit);
+        if (labels.length > 0 || title) {
+          nodes.push({
+            stack: [
+              { text: title, style: 'notesHeading3' },
+              summary ? { text: summary, style: 'notesMuted' } : null,
+              labels.length > 0 ? this.buildDataTable(
+                ['Label', 'Value'],
+                labels.map((label, index) => [
+                  this.safeText(label),
+                  `${this.safeText(values[index] ?? '')}${unit}`,
+                ]),
+                '',
+                resolveDocumentTheme('editorial')
+              ) : null,
+            ].filter(Boolean),
+            margin: [indent, 6, 0, 12],
           });
         }
         appendChildren();
@@ -1052,6 +1130,51 @@ class PdfGenerator {
         appendChildren();
         return nodes;
     }
+  }
+
+  getNotesImageExport(block = {}) {
+    const content = block.content && typeof block.content === 'object' ? block.content : {};
+    const rawImage = this.safeText(
+      content._exportImageDataUrl
+      || content._exportImageUrl
+      || content.dataUrl
+      || content.imageDataUrl
+      || content.imageUrl
+      || content.url
+    );
+    const image = this.isPdfEmbeddableDataImage(rawImage) ? rawImage : '';
+    const fallbackLink = this.safeText(
+      content._exportLink
+      || content.downloadUrl
+      || content.sourceUrl
+      || content.url
+      || content.imageUrl
+    );
+    const caption = this.safeText(
+      content._exportCaption
+      || content.caption
+      || content.title
+      || (block.type === 'ai_image' ? content.prompt : '')
+    );
+    const alt = this.safeText(content._exportAlt || content.alt || caption || content.prompt);
+    const subtext = this.safeText(
+      content._exportSubtext
+      || content.subtext
+      || content.subtitle
+      || content.description
+    );
+
+    return {
+      image,
+      link: fallbackLink,
+      caption,
+      subtext,
+      alt,
+    };
+  }
+
+  isPdfEmbeddableDataImage(value) {
+    return /^data:image\/(?:png|jpe?g);base64,[a-z0-9+/=]+$/i.test(String(value || '').trim());
   }
 
   extractNotesBlockText(block) {

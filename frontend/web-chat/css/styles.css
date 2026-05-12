@@ -6443,6 +6443,42 @@ body.layout-minimal #input-meta-row {
     transition: transform var(--transition-fast);
 }
 
+.image-container.is-image-load-failed,
+.image-selection-item.is-image-load-failed,
+.unsplash-result-item.is-image-load-failed,
+.artifact-image-preview.is-image-load-failed {
+    display: grid;
+    place-items: center;
+    min-height: 160px;
+    border: 1px dashed var(--border);
+    background:
+        linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(15, 23, 42, 0.16)),
+        var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.image-container.is-image-load-failed::after,
+.image-selection-item.is-image-load-failed::after,
+.unsplash-result-item.is-image-load-failed::after,
+.artifact-image-preview.is-image-load-failed::after {
+    content: attr(data-image-error-label);
+    max-width: min(28rem, 82%);
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-md);
+    background: rgba(15, 23, 42, 0.72);
+    color: #e5e7eb;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    text-align: center;
+}
+
+.image-container img.is-image-load-failed,
+.image-selection-item img.is-image-load-failed,
+.unsplash-result-item img.is-image-load-failed,
+.artifact-image-preview img.is-image-load-failed {
+    display: none;
+}
+
 .image-container:hover img {
     transform: scale(1.02);
 }

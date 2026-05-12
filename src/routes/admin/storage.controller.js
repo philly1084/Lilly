@@ -365,6 +365,28 @@ function serializeCategory(result, { includeRecords = true, limit = 100 } = {}) 
   };
 }
 
+async function deleteStorageRecord(record) {
+  if (record.category === 'chatSessions') {
+    await deleteChatSession(record.id);
+    return true;
+  }
+
+  if (record.category === 'storedArtifacts') {
+    const deleted = await artifactService.deleteArtifact(record.id);
+    if (!deleted) {
+      const error = new Error('Stored artifact not found.');
+      error.statusCode = 404;
+      throw error;
+    }
+    return true;
+  }
+
+  for (const filePath of record.files || []) {
+    await fs.rm(filePath, { force: true });
+  }
+  return true;
+}
+
 async function list(req, res, next) {
   try {
     const limit = Math.max(1, Math.min(500, safeNumber(req.query.limit, 100)));
@@ -376,6 +398,79 @@ async function list(req, res, next) {
         totalBytes: results.reduce((sum, result) => sum + result.totalBytes, 0),
         totalCount: results.reduce((sum, result) => sum + result.count, 0),
         categories: results.map((result) => serializeCategory(result, { limit })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function bulkRemove(req, res, next) {
+  try {
+    const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const uniqueItems = [];
+    const seen = new Set();
+
+    for (const item of rawItems.slice(0, 150)) {
+      const category = formatCategory(item?.category);
+      const id = String(item?.id || '').trim();
+      const key = `${category}::${id}`;
+      if (!category || !id || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      uniqueItems.push({ category, id });
+    }
+
+    if (uniqueItems.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid storage records selected.' });
+    }
+
+    const scanByCategory = new Map();
+    const deleted = [];
+    const failed = [];
+
+    for (const item of uniqueItems) {
+      try {
+        if (!scanByCategory.has(item.category)) {
+          scanByCategory.set(item.category, await scanCategory(item.category));
+        }
+
+        const result = scanByCategory.get(item.category);
+        const record = result.records.find((candidate) => candidate.id === item.id);
+        if (!record) {
+          failed.push({
+            ...item,
+            error: 'Stored file not found.',
+          });
+          continue;
+        }
+
+        await deleteStorageRecord(record);
+        deleted.push({
+          id: record.id,
+          category: record.category,
+          filename: record.filename,
+          diskBytes: record.diskBytes,
+          sessionId: record.sessionId || null,
+        });
+      } catch (error) {
+        failed.push({
+          ...item,
+          error: error.message || 'Delete failed.',
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        requestedCount: uniqueItems.length,
+        deletedCount: deleted.length,
+        failedCount: failed.length,
+        deletedBytes: deleted.reduce((sum, record) => sum + safeNumber(record.diskBytes, 0), 0),
+        records: deleted,
+        failed,
       },
     });
   } catch (error) {
@@ -397,18 +492,7 @@ async function remove(req, res, next) {
       return res.status(404).json({ success: false, error: 'Stored file not found.' });
     }
 
-    if (category === 'chatSessions') {
-      await deleteChatSession(record.id);
-    } else if (category === 'storedArtifacts') {
-      const deleted = await artifactService.deleteArtifact(id);
-      if (!deleted) {
-        return res.status(404).json({ success: false, error: 'Stored artifact not found.' });
-      }
-    } else {
-      for (const filePath of record.files) {
-        await fs.rm(filePath, { force: true });
-      }
-    }
+    await deleteStorageRecord(record);
 
     res.json({
       success: true,
@@ -506,6 +590,7 @@ async function deleteChatSession(sessionId) {
 }
 
 module.exports = {
+  bulkRemove,
   cleanup,
   list,
   remove,

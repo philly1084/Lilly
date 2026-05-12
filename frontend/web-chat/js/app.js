@@ -7327,6 +7327,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             results: files,
             sourceKind: 'generated',
             artifacts: (Array.isArray(artifacts) ? artifacts : []).filter((artifact) => artifact?.id),
+            clientOnly: true,
             excludeFromTranscript: true,
             timestamp: new Date().toISOString(),
         };
@@ -7575,6 +7576,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     currentPage: args.page || 1,
                     perPage: args.perPage || results.length || 6,
                     orientation: args.orientation || null,
+                    clientOnly: true,
                     excludeFromTranscript: true,
                     timestamp: new Date().toISOString(),
                 });
@@ -7604,6 +7606,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     results,
                     interactive: false,
                     total: results.length,
+                    clientOnly: true,
                     excludeFromTranscript: true,
                     timestamp: new Date().toISOString(),
                 });
@@ -7631,6 +7634,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     prompt: data.prompt || args.prompt || '',
                     model: data.model || '',
                     results,
+                    clientOnly: true,
                     excludeFromTranscript: true,
                     timestamp: new Date().toISOString(),
                 });
@@ -7666,6 +7670,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     prompt: data.title || data.url || args.url || '',
                     sourceHost: fallbackHost,
                     results,
+                    clientOnly: true,
                     excludeFromTranscript: true,
                     timestamp: new Date().toISOString(),
                 });
@@ -7689,6 +7694,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 query,
                 results: researchSources,
                 total: researchSources.length,
+                clientOnly: true,
                 excludeFromTranscript: true,
                 timestamp: new Date().toISOString(),
             });

@@ -3163,8 +3163,30 @@ select.form-control,
     margin-bottom: var(--space-lg);
 }
 
+.storage-bulk-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.storage-selection-status {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
 .storage-table-wrapper {
     max-height: 520px;
+}
+
+.storage-select-cell {
+    width: 42px;
+    text-align: center;
+}
+
+.storage-table tbody tr.storage-row-selected {
+    background-color: color-mix(in srgb, var(--accent-primary) 14%, transparent);
 }
 
 .storage-file-name {
@@ -3193,6 +3215,12 @@ select.form-control,
 @media (max-width: 900px) {
     .storage-cleanup-controls {
         grid-template-columns: 1fr;
+    }
+
+    .storage-bulk-actions {
+        justify-content: stretch;
+        align-items: stretch;
+        flex-direction: column;
     }
 }
 

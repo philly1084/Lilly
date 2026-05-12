@@ -25,6 +25,185 @@ const ImportExport = (function() {
         }
     };
 
+    function clonePageForExport(page) {
+        try {
+            return JSON.parse(JSON.stringify(page || {}));
+        } catch (_error) {
+            return {
+                ...(page || {}),
+                blocks: Array.isArray(page?.blocks) ? page.blocks.map(cloneBlockForExport) : []
+            };
+        }
+    }
+
+    function cloneBlockForExport(block) {
+        if (!block || typeof block !== 'object') return block;
+        return {
+            ...block,
+            content: block.content && typeof block.content === 'object'
+                ? { ...block.content }
+                : block.content,
+            children: Array.isArray(block.children) ? block.children.map(cloneBlockForExport) : []
+        };
+    }
+
+    function normalizeExportText(value) {
+        if (value === null || value === undefined) return '';
+        return String(value).replace(/\s+/g, ' ').trim();
+    }
+
+    function getImageSource(block) {
+        if (!block?.content || typeof block.content !== 'object') return '';
+        if (block.type === 'ai_image') {
+            return block.content._exportImageUrl
+                || block.content._resolvedImageUrl
+                || block.content.inlineUrl
+                || block.content.imageUrl
+                || block.content.url
+                || block.content.downloadUrl
+                || '';
+        }
+
+        return block.content._exportImageUrl
+            || block.content._resolvedImageUrl
+            || block.content.url
+            || block.content.imageUrl
+            || '';
+    }
+
+    function getImageAltText(block) {
+        if (!block?.content || typeof block.content !== 'object') return '';
+        return normalizeExportText(
+            block.content.alt
+            || block.content.caption
+            || block.content.prompt
+            || block.content.title
+            || (block.type === 'ai_image' ? 'AI generated image' : 'Image')
+        );
+    }
+
+    function getImageCaption(block) {
+        if (!block?.content || typeof block.content !== 'object') return '';
+        return normalizeExportText(
+            block.content.caption
+            || block.content.title
+            || (block.type === 'ai_image' ? block.content.prompt : '')
+        );
+    }
+
+    function getImageSubtext(block) {
+        if (!block?.content || typeof block.content !== 'object') return '';
+        const parts = [];
+        const content = block.content;
+
+        if (block.type === 'ai_image' && content.caption && content.prompt && content.caption !== content.prompt) {
+            parts.push(`Prompt: ${normalizeExportText(content.prompt)}`);
+        }
+        if (content.description || content.subtext || content.subtitle) {
+            parts.push(normalizeExportText(content.description || content.subtext || content.subtitle));
+        }
+        if (content.unsplashPhotographer) {
+            parts.push(`Photo: ${normalizeExportText(content.unsplashPhotographer)}`);
+        }
+        if (content.sourceHost) {
+            parts.push(`Source: ${normalizeExportText(content.sourceHost)}`);
+        }
+
+        return parts.filter(Boolean).join(' | ');
+    }
+
+    function getImageLink(block) {
+        if (!block?.content || typeof block.content !== 'object') return '';
+        return normalizeExportText(
+            block.content.downloadUrl
+            || block.content.sourceUrl
+            || block.content.unsplashPhotographerUrl
+            || block.content.url
+            || block.content.imageUrl
+            || ''
+        );
+    }
+
+    function getHostname(url) {
+        try {
+            return new URL(url).hostname;
+        } catch (_error) {
+            return url || '';
+        }
+    }
+
+    function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error || new Error('Failed to read image data'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    async function resolveExportImageDataUrl(sourceUrl) {
+        const source = String(sourceUrl || '').trim();
+        if (!source) return '';
+        if (/^data:image\//i.test(source)) return source;
+
+        let fetchUrl = source;
+        if (source.startsWith('asset://') && window.Storage?.resolveImageAsset) {
+            fetchUrl = await window.Storage.resolveImageAsset(source);
+        }
+
+        if (!fetchUrl || /^asset:\/\//i.test(fetchUrl)) return '';
+
+        try {
+            const response = await fetch(fetchUrl, { credentials: 'include' });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const blob = await response.blob();
+            if (!/^image\//i.test(blob.type || '')) {
+                return '';
+            }
+            return await blobToDataUrl(blob);
+        } catch (error) {
+            console.warn('Failed to prepare export image:', error.message);
+            return '';
+        }
+    }
+
+    async function prepareBlockForExport(block) {
+        if (!block || typeof block !== 'object') return block;
+
+        if ((block.type === 'image' || block.type === 'ai_image') && block.content && typeof block.content === 'object') {
+            const sourceUrl = getImageSource(block);
+            const dataUrl = await resolveExportImageDataUrl(sourceUrl);
+            const fallbackUrl = String(sourceUrl || '').startsWith('asset://')
+                ? getImageLink(block)
+                : sourceUrl;
+            block.content._exportImageUrl = dataUrl || fallbackUrl || sourceUrl;
+            block.content._exportImageDataUrl = dataUrl || '';
+            block.content._exportAlt = getImageAltText(block);
+            block.content._exportCaption = getImageCaption(block);
+            block.content._exportSubtext = getImageSubtext(block);
+            block.content._exportLink = getImageLink(block);
+        }
+
+        if (Array.isArray(block.children) && block.children.length > 0) {
+            for (const child of block.children) {
+                await prepareBlockForExport(child);
+            }
+        }
+
+        return block;
+    }
+
+    async function preparePageForExport(page) {
+        const exportPageCopy = clonePageForExport(page);
+        const blocks = Array.isArray(exportPageCopy.blocks) ? exportPageCopy.blocks : [];
+        for (const block of blocks) {
+            await prepareBlockForExport(block);
+        }
+        return exportPageCopy;
+    }
+
     /**
      * Export page to various formats
      */
@@ -33,19 +212,23 @@ const ImportExport = (function() {
             throw new Error('No page provided for export');
         }
 
+        const preparedPage = format === 'json'
+            ? clonePageForExport(page)
+            : await preparePageForExport(page);
+
         switch (format) {
             case 'docx':
-                return await exportToDOCX(page);
+                return await exportToDOCX(preparedPage);
             case 'pdf':
-                return await exportToPDF(page);
+                return await exportToPDF(preparedPage, { alreadyPrepared: true });
             case 'html':
-                return exportToHTML(page);
+                return exportToHTML(preparedPage);
             case 'md':
-                return exportToMarkdown(page);
+                return exportToMarkdown(preparedPage);
             case 'json':
-                return exportToJSON(page);
+                return exportToJSON(preparedPage);
             case 'txt':
-                return exportToTXT(page);
+                return exportToTXT(preparedPage);
             default:
                 throw new Error(`Unsupported export format: ${format}`);
         }
@@ -263,14 +446,15 @@ const ImportExport = (function() {
     /**
      * Export to a real PDF using the backend Notes PDF renderer
      */
-    async function exportToPDF(page) {
+    async function exportToPDF(page, options = {}) {
+        const exportPageData = options.alreadyPrepared ? page : await preparePageForExport(page);
         const response = await fetch('/api/documents/export-notes-page-pdf', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                page,
+                page: exportPageData,
                 options: {
                     includeOutline: true,
                     includePageNumbers: true
@@ -291,7 +475,7 @@ const ImportExport = (function() {
 
         const blob = await response.blob();
         const filename = response.headers.get('X-Document-Filename') ||
-            `${String(page?.title || 'page').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'page'}.pdf`;
+            `${String(exportPageData?.title || 'page').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'page'}.pdf`;
 
         return {
             blob,
@@ -503,8 +687,13 @@ const ImportExport = (function() {
         .todo-checked { text-decoration: line-through; color: #9ca3af; }
         .divider { border: none; border-top: 1px solid #e3e2e0; margin: 24px 0; }
         img { max-width: 100%; height: auto; border-radius: 8px; }
-        .image-wrapper { margin: 16px 0; }
-        .image-caption { text-align: center; color: #6b6b6b; font-size: 14px; margin-top: 8px; }
+        figure { margin: 20px 0; }
+        figcaption { text-align: center; color: #4b5563; font-size: 14px; margin-top: 8px; }
+        .image-wrapper { margin: 20px 0; }
+        .image-caption { text-align: center; color: #374151; font-size: 14px; margin-top: 8px; }
+        .image-subtext { text-align: center; color: #6b7280; font-size: 12px; margin-top: 4px; }
+        .image-source { text-align: center; font-size: 12px; margin-top: 4px; }
+        .image-source a { color: #2563eb; }
         table { width: 100%; border-collapse: collapse; margin: 16px 0; }
         th, td { border: 1px solid #e3e2e0; padding: 12px; text-align: left; }
         th { background: #f7f7f5; font-weight: 600; }
@@ -526,7 +715,8 @@ const ImportExport = (function() {
         .bookmark-title { font-weight: 600; margin-bottom: 4px; }
         .bookmark-desc { color: #6b6b6b; font-size: 14px; margin-bottom: 4px; }
         .bookmark-url { color: #9ca3af; font-size: 12px; }
-        .bookmark-image { width: 200px; background-size: cover; background-position: center; }
+        .bookmark-image { width: 200px; min-height: 132px; object-fit: cover; background: #f3f4f6; }
+        .chart-summary { color: #4b5563; font-size: 14px; margin: -4px 0 10px; }
         footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #e3e2e0; color: #9ca3af; font-size: 12px; }
     </style>
 </head>
@@ -589,14 +779,34 @@ const ImportExport = (function() {
                 const icon = block.icon || '💡';
                 return `<div class="callout"><span class="callout-icon">${icon}</span><div class="callout-content">${escapeHtml(content)}</div></div>`;
             case 'image':
-                if (block.content && block.content.url) {
-                    const caption = block.content.caption ? `<div class="image-caption">${escapeHtml(block.content.caption)}</div>` : '';
-                    return `<div class="image-wrapper"><img src="${escapeHtml(block.content.url)}" alt="${escapeHtml(block.content.caption || '')}">${caption}</div>`;
+                if (block.content) {
+                    const src = getImageSource(block);
+                    if (!src) return '';
+                    const caption = getImageCaption(block);
+                    const subtext = getImageSubtext(block);
+                    const link = getImageLink(block);
+                    return `<figure class="image-wrapper">
+                        <img src="${escapeHtml(src)}" alt="${escapeHtml(getImageAltText(block))}">
+                        ${caption ? `<figcaption class="image-caption">${escapeHtml(caption)}</figcaption>` : ''}
+                        ${subtext ? `<div class="image-subtext">${escapeHtml(subtext)}</div>` : ''}
+                        ${link && link !== src ? `<div class="image-source"><a href="${escapeHtml(link)}" target="_blank" rel="noopener">Image source</a></div>` : ''}
+                    </figure>`;
                 }
                 return '';
             case 'ai_image':
-                if (block.content && block.content.imageUrl) {
-                    return `<div class="image-wrapper"><img src="${escapeHtml(block.content.imageUrl)}" alt="${escapeHtml(block.content.prompt || '')}"><div class="image-caption">AI: ${escapeHtml(block.content.prompt || '')}</div></div>`;
+                if (block.content) {
+                    const src = getImageSource(block);
+                    const caption = getImageCaption(block);
+                    const subtext = getImageSubtext(block);
+                    const link = getImageLink(block);
+                    if (src) {
+                        return `<figure class="image-wrapper">
+                            <img src="${escapeHtml(src)}" alt="${escapeHtml(getImageAltText(block))}">
+                            ${caption ? `<figcaption class="image-caption">${escapeHtml(caption)}</figcaption>` : ''}
+                            ${subtext ? `<div class="image-subtext">${escapeHtml(subtext)}</div>` : ''}
+                            ${link && link !== src ? `<div class="image-source"><a href="${escapeHtml(link)}" target="_blank" rel="noopener">Image source</a></div>` : ''}
+                        </figure>`;
+                    }
                 }
                 return `<p><em>[AI Image: ${escapeHtml(block.content?.prompt || 'pending')}]</em></p>`;
             case 'bookmark':
@@ -605,9 +815,9 @@ const ImportExport = (function() {
                         <div class="bookmark-info">
                             <div class="bookmark-title">${escapeHtml(block.content.title || block.content.url)}</div>
                             ${block.content.description ? `<div class="bookmark-desc">${escapeHtml(block.content.description)}</div>` : ''}
-                            <div class="bookmark-url">${escapeHtml(new URL(block.content.url).hostname)}</div>
+                            <div class="bookmark-url">${escapeHtml(getHostname(block.content.url))}</div>
                         </div>
-                        ${block.content.image ? `<div class="bookmark-image" style="background-image: url(${escapeHtml(block.content.image)})"></div>` : ''}
+                        ${block.content.image ? `<img class="bookmark-image" src="${escapeHtml(block.content.image)}" alt="">` : ''}
                     </a>`;
                 }
                 return '';
@@ -618,6 +828,22 @@ const ImportExport = (function() {
                         `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`
                     ).join('');
                     return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+                }
+                return '';
+            case 'chart':
+                if (block.content) {
+                    const title = escapeHtml(block.content.title || 'Chart');
+                    const labels = Array.isArray(block.content.labels) ? block.content.labels : [];
+                    const values = Array.isArray(block.content.values) ? block.content.values : [];
+                    const unit = block.content.unit || '';
+                    const rows = labels.map((label, index) =>
+                        `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(`${values[index] ?? ''}${unit}`)}</td></tr>`
+                    ).join('');
+                    return `<section class="chart-export">
+                        <h4>${title}</h4>
+                        ${block.content.summary ? `<p class="chart-summary">${escapeHtml(block.content.summary)}</p>` : ''}
+                        <table><thead><tr><th>Label</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>
+                    </section>`;
                 }
                 return '';
             case 'math':
@@ -658,6 +884,10 @@ const ImportExport = (function() {
         });
 
         return markdown;
+    }
+
+    function escapeMarkdownText(text) {
+        return String(text || '').replace(/\|/g, '\\|').trim();
     }
 
     /**
@@ -703,20 +933,47 @@ const ImportExport = (function() {
                 md = `${indent}> ${icon} **Note:** ${content}\n\n`;
                 break;
             case 'image':
-                if (block.content && block.content.url) {
-                    md = `${indent}![${block.content.caption || ''}](${block.content.url})\n\n`;
+                if (block.content) {
+                    const src = getImageSource(block);
+                    if (src) {
+                        const alt = escapeMarkdownText(getImageAltText(block));
+                        const caption = getImageCaption(block);
+                        const subtext = getImageSubtext(block);
+                        const link = getImageLink(block);
+                        md = `${indent}![${alt}](${src})\n`;
+                        if (caption) md += `${indent}_${escapeMarkdownText(caption)}_\n`;
+                        if (subtext) md += `${indent}${escapeMarkdownText(subtext)}\n`;
+                        if (link && link !== src) md += `${indent}[Image source](${link})\n`;
+                        md += '\n';
+                    }
                 }
                 break;
             case 'ai_image':
-                if (block.content && block.content.imageUrl) {
-                    md = `${indent}![AI: ${block.content.prompt || ''}](${block.content.imageUrl})\n\n`;
+                if (block.content && getImageSource(block)) {
+                    const src = getImageSource(block);
+                    const alt = escapeMarkdownText(getImageAltText(block));
+                    const caption = getImageCaption(block);
+                    const subtext = getImageSubtext(block);
+                    const link = getImageLink(block);
+                    md = `${indent}![${alt}](${src})\n`;
+                    if (caption) md += `${indent}_${escapeMarkdownText(caption)}_\n`;
+                    if (subtext) md += `${indent}${escapeMarkdownText(subtext)}\n`;
+                    if (link && link !== src) md += `${indent}[Image source](${link})\n`;
+                    md += '\n';
                 } else if (block.content && block.content.prompt) {
                     md = `${indent}[AI Image: ${block.content.prompt}]\n\n`;
                 }
                 break;
             case 'bookmark':
                 if (block.content && block.content.url) {
-                    md = `${indent}[${block.content.title || block.content.url}](${block.content.url})\n\n`;
+                    md = `${indent}[${block.content.title || block.content.url}](${block.content.url})\n`;
+                    if (block.content.description) {
+                        md += `${indent}${escapeMarkdownText(block.content.description)}\n`;
+                    }
+                    if (block.content.image) {
+                        md += `${indent}![${escapeMarkdownText(block.content.title || 'Bookmark image')}](${block.content.image})\n`;
+                    }
+                    md += '\n';
                 }
                 break;
             case 'database':
@@ -725,6 +982,23 @@ const ImportExport = (function() {
                     md += `${indent}| ${block.content.columns.map(() => '---').join(' | ')} |\n`;
                     (block.content.rows || []).forEach(row => {
                         md += `${indent}| ${row.join(' | ')} |\n`;
+                    });
+                    md += '\n';
+                }
+                break;
+            case 'chart':
+                if (block.content) {
+                    const labels = Array.isArray(block.content.labels) ? block.content.labels : [];
+                    const values = Array.isArray(block.content.values) ? block.content.values : [];
+                    const unit = block.content.unit || '';
+                    md += `${indent}**${escapeMarkdownText(block.content.title || 'Chart')}**\n\n`;
+                    if (block.content.summary) {
+                        md += `${indent}${escapeMarkdownText(block.content.summary)}\n\n`;
+                    }
+                    md += `${indent}| Label | Value |\n`;
+                    md += `${indent}| --- | --- |\n`;
+                    labels.forEach((label, index) => {
+                        md += `${indent}| ${escapeMarkdownText(label)} | ${escapeMarkdownText(`${values[index] ?? ''}${unit}`)} |\n`;
                     });
                     md += '\n';
                 }
@@ -922,8 +1196,48 @@ const ImportExport = (function() {
                 text = indent + '[' + icon + '] ' + content;
                 break;
             case 'image':
+                if (block.content) {
+                    const caption = getImageCaption(block);
+                    const subtext = getImageSubtext(block);
+                    const link = getImageLink(block) || getImageSource(block);
+                    text = indent + '[Image' + (caption ? ': ' + caption : '') + ']';
+                    if (subtext) text += '\n' + indent + subtext;
+                    if (link) text += '\n' + indent + 'Source: ' + link;
+                }
+                break;
+            case 'ai_image':
+                if (block.content) {
+                    const caption = getImageCaption(block);
+                    const subtext = getImageSubtext(block);
+                    const link = getImageLink(block) || getImageSource(block);
+                    text = indent + '[AI Image' + (caption ? ': ' + caption : '') + ']';
+                    if (subtext) text += '\n' + indent + subtext;
+                    if (link) text += '\n' + indent + 'Source: ' + link;
+                }
+                break;
+            case 'bookmark':
                 if (block.content && block.content.url) {
-                    text = indent + '[Image: ' + (block.content.caption || block.content.url) + ']';
+                    text = indent + (block.content.title || block.content.url);
+                    if (block.content.description) text += '\n' + indent + block.content.description;
+                    text += '\n' + indent + block.content.url;
+                }
+                break;
+            case 'database':
+                if (block.content && block.content.columns) {
+                    const rows = [block.content.columns, ...(block.content.rows || [])];
+                    text = rows.map(row => indent + row.join(' | ')).join('\n');
+                }
+                break;
+            case 'chart':
+                if (block.content) {
+                    const labels = Array.isArray(block.content.labels) ? block.content.labels : [];
+                    const values = Array.isArray(block.content.values) ? block.content.values : [];
+                    const unit = block.content.unit || '';
+                    text = indent + (block.content.title || 'Chart');
+                    if (block.content.summary) text += '\n' + indent + block.content.summary;
+                    labels.forEach((label, index) => {
+                        text += '\n' + indent + '- ' + label + ': ' + ((values[index] ?? '') + unit);
+                    });
                 }
                 break;
             default:
@@ -1874,7 +2188,14 @@ const ImportExport = (function() {
         }
         
         if (typeof block.content === 'object' && block.content !== null) {
-            return block.content.text || block.content.prompt || '';
+            return block.content.text
+                || block.content.prompt
+                || block.content.caption
+                || block.content.title
+                || block.content.description
+                || block.content.subtext
+                || block.content.subtitle
+                || '';
         }
         
         return '';

@@ -426,4 +426,74 @@ describe('/api/admin workload routes', () => {
             listSpy.mockRestore();
         }
     });
+
+    test('bulk deletes selected old chats and stored document artifacts from the admin dashboard', async () => {
+        const listSessionsSpy = jest.spyOn(sessionStore, 'list').mockResolvedValue([
+            {
+                id: 'chat-session-bulk',
+                createdAt: '2026-05-01T00:00:00.000Z',
+                updatedAt: '2026-05-02T00:00:00.000Z',
+                messageCount: 3,
+                scopeKey: 'web-chat',
+                metadata: {
+                    ownerId: 'owner-1',
+                    recentMessages: [
+                        { role: 'user', content: 'Bulk old chat' },
+                    ],
+                },
+            },
+        ]);
+        const persistentSpy = jest.spyOn(sessionStore, 'isPersistent').mockReturnValue(true);
+        const deleteSessionSpy = jest.spyOn(sessionStore, 'delete').mockResolvedValue(true);
+        const deleteArtifactsForSessionSpy = jest.spyOn(artifactService, 'deleteArtifactsForSession').mockResolvedValue(undefined);
+        const forgetSpy = jest.spyOn(memoryService, 'forget').mockResolvedValue(undefined);
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(true);
+        const listArtifactsSpy = jest.spyOn(artifactStore, 'listAllWithSessions').mockResolvedValue([
+            {
+                id: 'artifact-db-bulk',
+                sessionId: 'session-1',
+                ownerId: 'owner-1',
+                filename: 'bulk-report.pdf',
+                extension: 'pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: 2048,
+                sourceMode: 'document',
+                metadata: { generatedBy: 'document-generator' },
+                createdAt: '2026-05-01T00:00:00.000Z',
+                updatedAt: '2026-05-02T00:00:00.000Z',
+            },
+        ]);
+        const deleteArtifactSpy = jest.spyOn(artifactService, 'deleteArtifact').mockResolvedValue(true);
+        const app = buildApp({ isAvailable: jest.fn(() => true) });
+
+        try {
+            const response = await request(app)
+                .post('/api/admin/storage/bulk-delete')
+                .send({
+                    items: [
+                        { category: 'chatSessions', id: 'chat-session-bulk' },
+                        { category: 'storedArtifacts', id: 'artifact-db-bulk' },
+                    ],
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.data.deletedCount).toBe(2);
+            expect(response.body.data.failedCount).toBe(0);
+            expect(response.body.data.deletedBytes).toBeGreaterThanOrEqual(2048);
+            expect(deleteArtifactsForSessionSpy).toHaveBeenCalledWith('chat-session-bulk');
+            expect(deleteSessionSpy).toHaveBeenCalledWith('chat-session-bulk');
+            expect(forgetSpy).toHaveBeenCalledWith('chat-session-bulk');
+            expect(deleteArtifactSpy).toHaveBeenCalledWith('artifact-db-bulk');
+        } finally {
+            deleteArtifactSpy.mockRestore();
+            listArtifactsSpy.mockRestore();
+            isEnabledSpy.mockRestore();
+            forgetSpy.mockRestore();
+            deleteArtifactsForSessionSpy.mockRestore();
+            deleteSessionSpy.mockRestore();
+            persistentSpy.mockRestore();
+            listSessionsSpy.mockRestore();
+        }
+    });
 });

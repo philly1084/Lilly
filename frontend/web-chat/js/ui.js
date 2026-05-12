@@ -1371,6 +1371,29 @@ class UIHelpers {
             .replace(/>/g, '&gt;');
     }
 
+    handleImageLoadError(imageEl) {
+        if (!imageEl) {
+            return;
+        }
+
+        const fallbackSrc = String(imageEl.dataset?.fallbackSrc || '').trim();
+        const currentSrc = String(imageEl.currentSrc || imageEl.src || '').trim();
+        if (fallbackSrc && imageEl.dataset.fallbackTried !== 'true' && fallbackSrc !== currentSrc) {
+            imageEl.dataset.fallbackTried = 'true';
+            imageEl.src = fallbackSrc;
+            return;
+        }
+
+        imageEl.classList.add('is-image-load-failed');
+        const container = imageEl.closest?.('.image-container, .image-selection-item, .unsplash-result-item, .artifact-image-preview');
+        if (container) {
+            container.classList.add('is-image-load-failed');
+            if (!container.dataset.imageErrorLabel) {
+                container.dataset.imageErrorLabel = imageEl.alt || 'Image could not be loaded';
+            }
+        }
+    }
+
     escapeRegExp(text) {
         return String(text == null ? '' : text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -4270,6 +4293,7 @@ class UIHelpers {
         const isArtifact = source === 'artifact';
         const downloadableUrl = message.downloadUrl || imageUrl;
         const shareableUrl = message.downloadUrl || imageUrl;
+        const fallbackImageUrl = downloadableUrl && downloadableUrl !== imageUrl ? downloadableUrl : '';
         const downloadFilename = this.sanitizeDownloadFilename(
             message.filename || prompt || 'generated-image.png',
             'generated-image',
@@ -4304,8 +4328,11 @@ class UIHelpers {
         ` : `
             <div class="image-container">
                 <img src="${this.escapeHtmlAttr(imageUrl)}" alt="${this.escapeHtmlAttr(prompt || 'Image')}" 
+                     ${fallbackImageUrl ? `data-fallback-src="${this.escapeHtmlAttr(fallbackImageUrl)}"` : ''}
                      onclick="uiHelpers.openImageLightbox('${this.escapeHtmlAttr(imageUrl)}')" 
                      onload="uiHelpers.scrollToBottom()"
+                     onerror="uiHelpers.handleImageLoadError(this)"
+                     referrerpolicy="no-referrer"
                      loading="lazy">
             </div>
             ${attributionHtml}
@@ -4428,6 +4455,8 @@ class UIHelpers {
                                  title="${this.escapeHtmlAttr(`Photo by ${image.author ? image.author.name : 'Unknown'} - Click to select`)}">
                                 <img src="${this.escapeHtmlAttr(image.urls.small)}"
                                      alt="${this.escapeHtmlAttr(image.altDescription || image.description || 'Unsplash image')}" 
+                                     onerror="uiHelpers.handleImageLoadError(this)"
+                                     referrerpolicy="no-referrer"
                                      loading="lazy">
                                 <div class="unsplash-result-overlay">
                                     <span class="unsplash-result-author">${image.author ? this.escapeHtml(image.author.name) : 'Unknown'}</span>
@@ -4670,13 +4699,20 @@ class UIHelpers {
         const contentHtml = results.length > 0
             ? `
                 <div class="image-selection-grid">
-                    ${results.map((image, index) => `
+                    ${results.map((image, index) => {
+                        const imageSrc = image.thumbnailUrl || image.imageUrl || '';
+                        const fallbackSrc = [image.imageUrl, image.downloadUrl]
+                            .find((candidate) => candidate && candidate !== imageSrc) || '';
+                        return `
                         <button type="button"
                             class="image-selection-item"
                             onclick="app.selectGeneratedImage('${messageId}', ${index})"
                             aria-label="Add image ${index + 1} to the conversation">
-                            <img src="${this.escapeHtmlAttr(image.thumbnailUrl || image.imageUrl)}"
+                            <img src="${this.escapeHtmlAttr(imageSrc)}"
+                                ${fallbackSrc ? `data-fallback-src="${this.escapeHtmlAttr(fallbackSrc)}"` : ''}
                                 alt="${this.escapeHtmlAttr(image.alt || prompt || (isArtifact ? 'Captured image' : 'Generated image'))}"
+                                onerror="uiHelpers.handleImageLoadError(this)"
+                                referrerpolicy="no-referrer"
                                 loading="lazy">
                             ${image.filename || image.sourceHost ? `
                             <div class="image-selection-meta">
@@ -4686,7 +4722,8 @@ class UIHelpers {
                             ` : ''}
                             <span class="image-selection-overlay">Add To Chat</span>
                         </button>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </div>
             `
             : `

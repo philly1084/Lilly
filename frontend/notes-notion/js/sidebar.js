@@ -2229,12 +2229,13 @@ const Sidebar = (function() {
             
             if (format === 'md') {
                 let allMarkdown = '';
-                allPages.forEach((page, index) => {
-                    allMarkdown += ImportExport.exportToMarkdown(page);
+                for (let index = 0; index < allPages.length; index += 1) {
+                    const page = allPages[index];
+                    allMarkdown += await ImportExport.exportPage(page, 'md');
                     if (index < allPages.length - 1) {
                         allMarkdown += '\n\n---\n\n';
                     }
-                });
+                }
                 downloadFile(allMarkdown, 'all-pages.md', 'text/markdown');
                 showToast('Exported all pages as Markdown', 'success');
                 return;
@@ -2247,20 +2248,26 @@ const Sidebar = (function() {
     <title>All Pages Export</title>
     <meta charset="UTF-8">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #37352f; line-height: 1.6; }
         .page { margin-bottom: 60px; padding-bottom: 40px; border-bottom: 2px solid #eee; }
         h1 { font-size: 32px; margin-bottom: 8px; }
         .page-icon { font-size: 48px; }
+        img { max-width: 100%; height: auto; border-radius: 8px; }
+        figure { margin: 20px 0; }
+        figcaption, .image-subtext, .image-source { text-align: center; color: #555; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
     </style>
 </head>
 <body>`;
                 
                 for (const page of allPages) {
+                    const pageHTML = await ImportExport.exportPage(page, 'html');
+                    const bodyMatch = String(pageHTML || '').match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+                    const bodyContent = bodyMatch ? bodyMatch[1] : pageHTML;
                     allHTML += `
     <div class="page">
-        ${page.icon ? `<div class="page-icon">${page.icon}</div>` : ''}
-        <h1>${escapeHtml(page.title || 'Untitled')}</h1>
-        ${page.blocks.map(b => ImportExport.exportToHTML ? '' : `<p>${escapeHtml(typeof b.content === 'string' ? b.content : '')}</p>`).join('')}
+        ${bodyContent}
     </div>`;
                 }
                 

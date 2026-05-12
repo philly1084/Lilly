@@ -99,6 +99,28 @@ function createSessionsResponse(activeSessionId = 'session-a') {
 }
 
 describe('web-chat session switching refresh guards', () => {
+    test('does not backend-sync transcript-excluded helper cards by default', () => {
+        const manager = createSessionManager(jest.fn());
+
+        expect(manager.shouldSyncMessageToBackend({
+            id: 'assistant-1-image-artifacts',
+            role: 'assistant',
+            type: 'image-selection',
+            content: 'Generated image options',
+            excludeFromTranscript: true,
+        })).toBe(false);
+
+        expect(manager.shouldSyncMessageToBackend({
+            id: 'assistant-1',
+            role: 'assistant',
+            content: 'Here is the result',
+            metadata: {
+                excludeFromTranscript: true,
+                syncExcludedToBackend: true,
+            },
+        })).toBe(true);
+    });
+
     test('preserves the visible chat during a background sessions refresh', async () => {
         const fetchMock = jest.fn(async (url) => {
             const href = String(url);

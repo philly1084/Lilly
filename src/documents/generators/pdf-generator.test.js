@@ -45,6 +45,41 @@ describe('PdfGenerator', () => {
     }));
   });
 
+  test('embeds prepared Notes image data with caption and subtext', () => {
+    const generator = new PdfGenerator();
+    const imageDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+    const definition = generator.buildNotesPageDefinition({
+      title: 'Image Notes',
+      blocks: [
+        {
+          type: 'ai_image',
+          content: {
+            prompt: 'A clean product diagram',
+            _exportImageDataUrl: imageDataUrl,
+            _exportCaption: 'Product architecture',
+            _exportSubtext: 'Prompt: A clean product diagram',
+          },
+        },
+      ],
+    });
+
+    const imageCard = definition.content.find((node) =>
+      Array.isArray(node?.table?.body)
+      && node.table.body.some((row) =>
+        row.some((cell) => cell?.stack?.some((entry) => entry?.image === imageDataUrl))
+      )
+    );
+
+    expect(imageCard).toBeTruthy();
+    const stack = imageCard.table.body[0][0].stack;
+    expect(stack).toEqual(expect.arrayContaining([
+      expect.objectContaining({ image: imageDataUrl }),
+      expect.objectContaining({ text: 'Product architecture' }),
+      expect.objectContaining({ text: 'Prompt: A clean product diagram' }),
+    ]));
+  });
+
   test('generates structured content PDF fallback buffer', async () => {
     const generator = new PdfGenerator();
 

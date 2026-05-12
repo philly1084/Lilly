@@ -1,0 +1,247 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://localhost:3000/admin/?view=settings",
+  "originalUrl": "http://localhost:3000/admin/?view=settings",
+  "authenticated": false,
+  "generatedAt": "2026-05-12T23:03:24.441Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\admin-storage-bulk-delete\\agent-sdk-admin-dashboard-desktop.png",
+      "metrics": {
+        "title": "Agent SDK Admin Dashboard",
+        "url": "http://localhost:3000/admin/?view=settings",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 1910,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 1292,
+        "bodyTextPreview": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces Lilly Wiki Settings Connected A Admin Superuser Settings Dashboard / Settings General Podcast Audio Storage Features API & Integrations Notifications Advanced General Settings Dashboard Title Timezone UTC Eastern Time Central Time Mountain Time Pacific Time London Paris Tokyo America/Halifax Date Format MM/DD/YYYY DD/MM/YYYY YYYY-MM-DD ISO 8601 YYYY-MM-DD HH:mm:ss Save Changes Agent Personality This markdow",
+        "headings": [
+          "Settings",
+          "Request Volume",
+          "Recent Activity",
+          "Model Usage",
+          "Token Usage",
+          "System Health",
+          "Prompt Library",
+          "Default Configuration",
+          "Orchestration Phase",
+          "Provider Totals",
+          "Usage Summary",
+          "Per-Model Token Usage",
+          "Workload Definitions",
+          "Run Detail",
+          "Recent Runs",
+          "Tool Catalog"
+        ],
+        "interactiveControls": 313,
+        "textContrast": {
+          "checked": 73,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\admin-storage-bulk-delete\\agent-sdk-admin-dashboard-mobile.png",
+      "metrics": {
+        "title": "Agent SDK Admin Dashboard",
+        "url": "http://localhost:3000/admin/?view=settings",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 2392,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Too",
+            "left": -260,
+            "right": 0,
+            "width": 260
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-header",
+            "text": "Agent SDK",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "logo",
+            "text": "Agent SDK",
+            "left": -236,
+            "right": -108,
+            "width": 128
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -236,
+            "right": -204,
+            "width": 32
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -233,
+            "right": -207,
+            "width": 27
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "logo-text",
+            "text": "Agent SDK",
+            "left": -196,
+            "right": -108,
+            "width": 88
+          },
+          {
+            "tag": "button",
+            "id": "sidebarToggle",
+            "className": "sidebar-toggle",
+            "text": "",
+            "left": -57,
+            "right": -25,
+            "width": 32
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -51,
+            "right": -31,
+            "width": 20
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -46,
+            "right": -36,
+            "width": 10
+          },
+          {
+            "tag": "nav",
+            "id": "",
+            "className": "sidebar-nav",
+            "text": "DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces ",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "nav-section",
+            "text": "DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "nav-label",
+            "text": "DASHBOARD",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          }
+        ],
+        "bodyTextLength": 1271,
+        "bodyTextPreview": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces Lilly Wiki Settings Connected A Admin Superuser Settings General Podcast Audio Storage Features API & Integrations Notifications Advanced General Settings Dashboard Title Timezone UTC Eastern Time Central Time Mountain Time Pacific Time London Paris Tokyo America/Halifax Date Format MM/DD/YYYY DD/MM/YYYY YYYY-MM-DD ISO 8601 YYYY-MM-DD HH:mm:ss Save Changes Agent Personality This markdown is loaded from soul",
+        "headings": [
+          "Settings",
+          "Request Volume",
+          "Recent Activity",
+          "Model Usage",
+          "Token Usage",
+          "System Health",
+          "Prompt Library",
+          "Default Configuration",
+          "Orchestration Phase",
+          "Provider Totals",
+          "Usage Summary",
+          "Per-Model Token Usage",
+          "Workload Definitions",
+          "Run Detail",
+          "Recent Runs",
+          "Tool Catalog"
+        ],
+        "interactiveControls": 313,
+        "textContrast": {
+          "checked": 70,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\admin-storage-bulk-delete\\agent-sdk-admin-dashboard-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\admin-storage-bulk-delete\\agent-sdk-admin-dashboard-mobile.png"
+    ],
+    "issues": []
+  }
+}
