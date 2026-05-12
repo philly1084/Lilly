@@ -61,6 +61,7 @@ jest.mock('../ai-route-utils', () => ({
     shouldSuppressImplicitMermaidArtifact: jest.fn(() => false),
     shouldSuppressWebChatImplicitHtmlArtifact: jest.fn(() => false),
     shouldSuppressArtifactGenerationForRemoteAction: jest.fn(() => false),
+    shouldSuppressResearchFirstArtifactGeneration: jest.fn(() => false),
     isArtifactStorageAvailable: jest.fn(() => true),
     stripInjectedNotesPageEditDirective: jest.fn((text) => text),
     resolveReasoningEffort: jest.fn(() => null),

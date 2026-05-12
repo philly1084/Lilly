@@ -17,6 +17,7 @@ const {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    shouldSuppressResearchFirstArtifactGeneration,
     isArtifactStorageAvailable,
     stripInjectedNotesPageEditDirective,
     resolveSshRequestContext,
@@ -1203,13 +1204,22 @@ router.post('/chat/completions', async (req, res, next) => {
         })) {
             effectiveOutputFormat = null;
         }
+        const recentMessagesForWorkloadPreflight = effectiveOutputFormat
+            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
+            : [];
+        if (shouldSuppressResearchFirstArtifactGeneration({
+            text: artifactIntentText,
+            outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
+            artifactIds: artifact_ids,
+            recentMessages: recentMessagesForWorkloadPreflight,
+        })) {
+            effectiveOutputFormat = null;
+        }
         if (effectiveOutputFormat && !outputFormatProvided && !isArtifactStorageAvailable()) {
             console.warn('[OpenAICompat] Artifact storage unavailable; handling implicit artifact request as normal chat.');
             effectiveOutputFormat = null;
         }
-        const recentMessagesForWorkloadPreflight = effectiveOutputFormat
-            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
-            : [];
         const workloadPreflight = resolveDeferredWorkloadPreflight({
             text: artifactIntentText,
             recentMessages: recentMessagesForWorkloadPreflight,
@@ -2335,13 +2345,22 @@ router.post('/responses', async (req, res, next) => {
         })) {
             effectiveOutputFormat = null;
         }
+        const recentMessagesForWorkloadPreflight = effectiveOutputFormat
+            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
+            : [];
+        if (shouldSuppressResearchFirstArtifactGeneration({
+            text: artifactIntentText,
+            outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
+            artifactIds: artifact_ids,
+            recentMessages: recentMessagesForWorkloadPreflight,
+        })) {
+            effectiveOutputFormat = null;
+        }
         if (effectiveOutputFormat && !outputFormatProvided && !isArtifactStorageAvailable()) {
             console.warn('[OpenAICompat] Artifact storage unavailable; handling implicit artifact request as normal response.');
             effectiveOutputFormat = null;
         }
-        const recentMessagesForWorkloadPreflight = effectiveOutputFormat
-            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
-            : [];
         const workloadPreflight = resolveDeferredWorkloadPreflight({
             text: artifactIntentText,
             recentMessages: recentMessagesForWorkloadPreflight,

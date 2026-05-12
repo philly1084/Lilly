@@ -126,16 +126,20 @@ function classifyIntent(signals = {}, outputFormat = null) {
         return 'revise_or_convert_existing_artifact';
     }
 
-    if (outputFormat || signals.artifactGeneration) {
-        return 'generate_artifact';
-    }
-
     if (signals.notesCue) {
         return 'notes_or_page_edit';
     }
 
+    if (signals.researchCue && (outputFormat || signals.artifactGeneration)) {
+        return 'research_deliverable';
+    }
+
     if (signals.researchCue) {
         return 'research_answer';
+    }
+
+    if (outputFormat || signals.artifactGeneration) {
+        return 'generate_artifact';
     }
 
     return 'chat_answer';
@@ -156,7 +160,7 @@ function choosePreferredTool(intent = '', signals = {}, executionProfile = '') {
             : null;
     }
 
-    if (intent === 'research_answer') {
+    if (intent === 'research_answer' || intent === 'research_deliverable') {
         return 'web-search';
     }
 
@@ -209,6 +213,14 @@ function buildProofExpectations(intent = '') {
         return [
             'artifact created or updated',
             'download/preview metadata returned',
+        ];
+    }
+
+    if (intent === 'research_deliverable') {
+        return [
+            'current source search completed',
+            'important pages verified before synthesis',
+            'document artifact generated only after grounded evidence exists',
         ];
     }
 

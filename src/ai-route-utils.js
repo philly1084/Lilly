@@ -501,6 +501,60 @@ function shouldSuppressArtifactGenerationForRemoteAction({
     return remoteTarget && deploymentAction && websiteTarget;
 }
 
+function hasVerifiedResearchContext(recentMessages = []) {
+    return (Array.isArray(recentMessages) ? recentMessages : []).some((message) => {
+        const text = String(message?.content || message?.text || '').toLowerCase();
+        return /\b(verified source excerpts|candidate pages|sources verified|research sources|web-search|web-fetch|citations?)\b/.test(text);
+    });
+}
+
+function shouldSuppressResearchFirstArtifactGeneration({
+    text = '',
+    outputFormat = null,
+    outputFormatProvided = false,
+    artifactIds = [],
+    recentMessages = [],
+} = {}) {
+    if (!normalizeFormat(outputFormat)) {
+        return false;
+    }
+
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    if (hasVerifiedResearchContext(recentMessages)) {
+        return false;
+    }
+
+    const hasSourceArtifact = Array.isArray(artifactIds) && artifactIds.some((artifactId) => String(artifactId || '').trim());
+    const explicitCurrentResearchCue = [
+        /\b(deep research|in-depth research|comprehensive research|thorough research)\b/,
+        /\b(do|doing|some|more|public|web|online)\s+research\b/,
+        /\bresearch\s+(?:on|into|about)\b/,
+        /\b(look up|look into|search|browse|verify|fact[-\s]?check)\b/,
+        /\b(latest|current|recent|today|news|release notes?|version|support pages?|tech support|citations?|sources?|evidence)\b/,
+    ].some((pattern) => pattern.test(normalized));
+    if (!explicitCurrentResearchCue) {
+        return false;
+    }
+
+    const hasDeliverableCue = outputFormatProvided
+        || hasExplicitArtifactGenerationIntent(normalized)
+        || /\b(document|doc|report|brief|paper|whitepaper|white paper|dossier|guide|pdf|html|training class|training material|training materials|class design|curriculum|lesson plan)\b/.test(normalized);
+    if (!hasDeliverableCue) {
+        return false;
+    }
+
+    const hasSequencedResearchCue = /\b(first|to start|start with|then|after that|once we have enough|once we know|goal is to build|building up|when we have enough data)\b/.test(normalized);
+    if (hasSourceArtifact && !hasSequencedResearchCue) {
+        return false;
+    }
+
+    return true;
+}
+
 function isArtifactStorageAvailable() {
     if (typeof artifactService.canStoreArtifacts === 'function') {
         return artifactService.canStoreArtifacts();
@@ -1885,6 +1939,7 @@ module.exports = {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    shouldSuppressResearchFirstArtifactGeneration,
     isArtifactStorageAvailable,
     isWebsiteDesignExampleRequest,
     normalizeReasoningEffort,

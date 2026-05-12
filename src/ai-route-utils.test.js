@@ -49,6 +49,7 @@ const {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    shouldSuppressResearchFirstArtifactGeneration,
 } = require('./ai-route-utils');
 
 describe('ai-route-utils', () => {
@@ -471,6 +472,24 @@ describe('ai-route-utils', () => {
         expect(inferRequestedOutputFormat('Create a research paper about penguins with images and citations.')).toBe('html');
         expect(inferRequestedOutputFormat('Make a long-form evidence document on penguin habitats.')).toBe('html');
         expect(inferRequestedOutputFormat('Do some research on AI browser tools.')).toBeNull();
+    });
+
+    test('shouldSuppressResearchFirstArtifactGeneration defers researched documents until evidence exists', () => {
+        const genetecTrainingPrompt = 'Can you do deep research on Genetec, look into their tech support pages and latest version, then build up a training class design maybe in a pdf document to start once we have enough data.';
+        expect(shouldSuppressResearchFirstArtifactGeneration({
+            text: genetecTrainingPrompt,
+            outputFormat: 'pdf',
+        })).toBe(true);
+        expect(shouldSuppressResearchFirstArtifactGeneration({
+            text: genetecTrainingPrompt,
+            outputFormat: 'pdf',
+            recentMessages: [{ content: 'Verified source excerpts for "Genetec latest version".' }],
+        })).toBe(false);
+        expect(shouldSuppressResearchFirstArtifactGeneration({
+            text: 'Create a document from the selected research notes.',
+            outputFormat: 'html',
+            artifactIds: ['artifact-1'],
+        })).toBe(false);
     });
 
     test('inferRequestedOutputFormat treats generic document creation as an artifact unless text-only is explicit', () => {

@@ -16,6 +16,7 @@ const {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    shouldSuppressResearchFirstArtifactGeneration,
     isArtifactStorageAvailable,
     stripInjectedNotesPageEditDirective,
     resolveSshRequestContext,
@@ -1107,13 +1108,22 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         })) {
             effectiveOutputFormat = null;
         }
+        const recentMessagesForWorkloadPreflight = effectiveOutputFormat
+            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
+            : [];
+        if (shouldSuppressResearchFirstArtifactGeneration({
+            text: artifactIntentText,
+            outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
+            artifactIds,
+            recentMessages: recentMessagesForWorkloadPreflight,
+        })) {
+            effectiveOutputFormat = null;
+        }
         if (effectiveOutputFormat && !outputFormatProvided && !isArtifactStorageAvailable()) {
             console.warn('[ChatRoute] Artifact storage unavailable; handling implicit artifact request as normal chat.');
             effectiveOutputFormat = null;
         }
-        const recentMessagesForWorkloadPreflight = effectiveOutputFormat
-            ? await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
-            : [];
         const workloadPreflight = resolveDeferredWorkloadPreflight({
             text: artifactIntentText,
             recentMessages: recentMessagesForWorkloadPreflight,

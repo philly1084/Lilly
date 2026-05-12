@@ -16,6 +16,7 @@ const {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    shouldSuppressResearchFirstArtifactGeneration,
     isArtifactStorageAvailable,
     resolveSshRequestContext,
     extractSshSessionMetadataFromToolEvents,
@@ -411,13 +412,22 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
     })) {
         effectiveOutputFormat = null;
     }
+    const recentMessagesForWorkloadPreflight = effectiveOutputFormat
+        ? await sessionStore.getRecentMessages(session.id, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
+        : [];
+    if (shouldSuppressResearchFirstArtifactGeneration({
+        text: message,
+        outputFormat: effectiveOutputFormat,
+        outputFormatProvided: Boolean(outputFormat),
+        artifactIds,
+        recentMessages: recentMessagesForWorkloadPreflight,
+    })) {
+        effectiveOutputFormat = null;
+    }
     if (effectiveOutputFormat && !outputFormat && !isArtifactStorageAvailable()) {
         console.warn('[WS] Artifact storage unavailable; handling implicit artifact request as normal chat.');
         effectiveOutputFormat = null;
     }
-    const recentMessagesForWorkloadPreflight = effectiveOutputFormat
-        ? await sessionStore.getRecentMessages(session.id, WORKLOAD_PREFLIGHT_RECENT_LIMIT)
-        : [];
     const workloadPreflight = resolveDeferredWorkloadPreflight({
         text: message,
         recentMessages: recentMessagesForWorkloadPreflight,

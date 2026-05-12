@@ -58,6 +58,7 @@ jest.mock('../ai-route-utils', () => ({
     shouldSuppressImplicitMermaidArtifact: jest.fn(() => false),
     shouldSuppressWebChatImplicitHtmlArtifact: jest.fn(() => false),
     shouldSuppressArtifactGenerationForRemoteAction: jest.fn(() => false),
+    shouldSuppressResearchFirstArtifactGeneration: jest.fn(() => false),
     isArtifactStorageAvailable: jest.fn(() => true),
     stripInjectedNotesPageEditDirective: jest.fn((text) => text),
     resolveSshRequestContext: jest.fn((text) => ({ effectivePrompt: text })),
@@ -136,6 +137,7 @@ const {
     generateOutputArtifactFromPrompt,
     inferRequestedOutputFormat,
     shouldSuppressNotesSurfaceArtifact,
+    shouldSuppressResearchFirstArtifactGeneration,
     stripInjectedNotesPageEditDirective,
 } = require('../ai-route-utils');
 
@@ -160,6 +162,7 @@ describe('/v1/chat/completions notes routing', () => {
         sessionStore.update.mockResolvedValue(session);
         buildInstructionsWithArtifacts.mockResolvedValue('continuity instructions');
         maybeGenerateOutputArtifact.mockResolvedValue([]);
+        shouldSuppressResearchFirstArtifactGeneration.mockReturnValue(false);
     });
 
     test('keeps inferred html requests in the normal runtime for notes page edits', async () => {
@@ -263,6 +266,49 @@ describe('/v1/chat/completions notes routing', () => {
             taskType: 'notes',
             outputFormat: 'html',
             outputFormatProvided: true,
+        }));
+    });
+
+    test('does not take the direct artifact branch for research-first document requests', async () => {
+        inferRequestedOutputFormat.mockReturnValue('pdf');
+        shouldSuppressNotesSurfaceArtifact.mockReturnValue(false);
+        shouldSuppressResearchFirstArtifactGeneration.mockReturnValue(true);
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: {
+                id: 'resp-research-first-compat',
+                output_text: 'I will research Genetec first.',
+                output: [{
+                    type: 'message',
+                    content: [{ type: 'output_text', text: 'I will research Genetec first.' }],
+                }],
+                metadata: {
+                    toolEvents: [],
+                },
+            },
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                messages: [
+                    { role: 'user', content: 'Do deep research on Genetec, look into their tech support pages and latest version, then build a training class design maybe in a PDF document to start.' },
+                ],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                session_id: 'page-session-1',
+            });
+
+        expect(response.status).toBe(200);
+        expect(generateOutputArtifactFromPrompt).not.toHaveBeenCalled();
+        expect(executeConversationRuntime).toHaveBeenCalled();
+        expect(shouldSuppressResearchFirstArtifactGeneration).toHaveBeenCalledWith(expect.objectContaining({
+            outputFormat: 'pdf',
+            text: expect.stringContaining('Genetec'),
         }));
     });
 

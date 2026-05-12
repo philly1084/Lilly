@@ -61,4 +61,21 @@ describe('request-decision-frame', () => {
         expect(metadata.routingDecision.preferredTool).toBe('artifact-service');
         expect(metadata.reasoningSummary).toContain('Routing Decision');
     });
+
+    test('routes researched document requests to research before artifact generation', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Do deep research on Genetec, look into their tech support pages and latest version, then build a training class design maybe in a PDF document to start.',
+            candidateOutputFormat: 'pdf',
+            clientSurface: 'web-chat',
+            route: '/v1/chat/completions',
+        });
+
+        expect(frame.intent).toBe('research_deliverable');
+        expect(frame.preferredTool).toBe('web-search');
+        expect(frame.candidateOutputFormat).toBe('pdf');
+        expect(frame.proofExpectations).toEqual(expect.arrayContaining([
+            'current source search completed',
+            'document artifact generated only after grounded evidence exists',
+        ]));
+    });
 });

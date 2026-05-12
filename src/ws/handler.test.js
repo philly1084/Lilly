@@ -49,6 +49,7 @@ jest.mock('../ai-route-utils', () => ({
     shouldSuppressImplicitMermaidArtifact: jest.fn(() => false),
     shouldSuppressWebChatImplicitHtmlArtifact: jest.fn(() => false),
     shouldSuppressArtifactGenerationForRemoteAction: jest.fn(() => false),
+    shouldSuppressResearchFirstArtifactGeneration: jest.fn(() => false),
     isArtifactStorageAvailable: jest.fn(() => true),
     resolveSshRequestContext: jest.fn((text) => ({ effectivePrompt: text })),
     extractSshSessionMetadataFromToolEvents: jest.fn(() => null),
