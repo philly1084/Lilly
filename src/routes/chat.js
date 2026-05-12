@@ -15,6 +15,7 @@ const {
     shouldSuppressNotesSurfaceArtifact,
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
+    shouldSuppressArtifactGenerationForRemoteAction,
     isArtifactStorageAvailable,
     stripInjectedNotesPageEditDirective,
     resolveSshRequestContext,
@@ -34,6 +35,12 @@ const { extractSaveableDocumentArtifact } = require('../artifacts/saveable-docum
 const { startRuntimeTask, completeRuntimeTask, failRuntimeTask } = require('../admin/runtime-monitor');
 const { resolveTranscriptObjectiveFromSession } = require('../conversation-continuity');
 const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-memory');
+const {
+    buildRequestDecisionFrame,
+    buildRequestDecisionMetadata,
+    buildRequestFrameProgress,
+    formatRequestDecisionFrameForPrompt,
+} = require('../request-decision-frame');
 const { buildContinuityInstructions } = require('../runtime-prompts');
 const { buildHumanCentricResponseInstructions } = require('../session-instructions');
 const { buildFrontendAssistantMetadata, buildWebChatSessionMessages } = require('../web-chat-message-state');
@@ -1066,9 +1073,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             })
             : '';
         const outputFormatProvided = Boolean(outputFormat);
-        let effectiveOutputFormat = outputFormat
+        const candidateOutputFormat = outputFormat
             || inferRequestedOutputFormat(artifactIntentText)
             || inferOutputFormatFromSession(artifactIntentText, session);
+        let effectiveOutputFormat = candidateOutputFormat;
         if (shouldSuppressImplicitMermaidArtifact({
             taskType,
             text: artifactIntentText,
@@ -1090,6 +1098,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
+        })) {
+            effectiveOutputFormat = null;
+        }
+        if (shouldSuppressArtifactGenerationForRemoteAction({
+            text: artifactIntentText,
+            outputFormat: effectiveOutputFormat,
         })) {
             effectiveOutputFormat = null;
         }
@@ -1123,6 +1137,25 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 : {}),
         };
         const effectiveArtifactIds = resolveArtifactContextIds(session, artifactIds, message);
+        const requestFrame = buildRequestDecisionFrame({
+            text: message,
+            session,
+            outputFormat: effectiveOutputFormat,
+            candidateOutputFormat,
+            outputFormatProvided,
+            artifactIds,
+            effectiveArtifactIds,
+            executionProfile,
+            taskType,
+            clientSurface,
+            route: '/api/chat',
+        });
+        const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
+        const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+        effectiveRequestMetadata = {
+            ...effectiveRequestMetadata,
+            ...requestFrameMetadata,
+        };
         const effectiveAgentInput = await buildUserInputWithImageArtifacts({
             sessionId,
             text: effectiveMessage,
@@ -1134,7 +1167,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             model: model || session?.metadata?.model || null,
             mode: 'chat',
             transport: 'http',
-            metadata: { route: '/api/chat', stream, phase: 'preflight', reasoningEffort },
+            metadata: { route: '/api/chat', stream, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
         });
 
         const podcastRequestOptions = getPodcastRequestOptions(effectiveRequestMetadata);
@@ -1359,6 +1392,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
 
             if (stream) {
                 activeSse = openSseStream(req, res, sessionId);
+                writeSseProgressPayload(activeSse, sessionId, buildRequestFrameProgress(requestFrame));
             }
 
             await sessionStore.recordResponse(sessionId, generationArtifacts.responseId);
@@ -1409,6 +1443,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 assistantText: generationArtifacts.assistantMessage,
                 toolEvents: preparedImages.toolEvents,
                 artifacts: responseArtifacts,
+                assistantMetadata: requestFrameMetadata,
             }));
             await updateSessionProjectMemory(sessionId, {
                 userText: message,
@@ -1434,6 +1469,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     outputFormat: effectiveOutputFormat,
                     artifactDirect: true,
                     toolEvents: preparedImages.toolEvents,
+                    ...requestFrameMetadata,
                     ...(generationArtifacts.metadata || {}),
                 },
             });
@@ -1446,8 +1482,8 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     responseId: generationArtifacts.responseId,
                     artifacts: responseArtifacts,
                     toolEvents: preparedImages.toolEvents,
-                    assistant_metadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
-                    assistantMetadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
+                    assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                    assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
                 })}\n\n`);
                 res.write('data: [DONE]\n\n');
                 res.end();
@@ -1460,8 +1496,8 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 message: generationArtifacts.assistantMessage,
                 artifacts: responseArtifacts,
                 toolEvents: preparedImages.toolEvents,
-                assistant_metadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
-                assistantMetadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
+                assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
             });
             return;
         }
@@ -1498,6 +1534,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             [
                 agentJournalInstructions,
                 alignmentGuidanceInstructions,
+                requestFrameInstructions,
                 buildContinuityInstructions(buildUserCheckpointInstructions(userCheckpointPolicy)),
                 naturalInstructions,
                 responseFormattingInstructions,
@@ -1507,6 +1544,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
 
         if (stream) {
             activeSse = openSseStream(req, res, sessionId);
+            writeSseProgressPayload(activeSse, sessionId, buildRequestFrameProgress(requestFrame));
 
             const toolManager = await ensureRuntimeToolManager(req.app);
             let foregroundTurn = null;

@@ -26,6 +26,11 @@ const {
     buildSkillsTreeInstructions,
 } = require('../natural-context');
 const { formatFrontendQualityBarForPrompt } = require('../orchestration/agent-roles');
+const {
+    buildRequestDecisionFrame,
+    buildRequestDecisionMetadata,
+    formatRequestDecisionFrameForPrompt,
+} = require('../request-decision-frame');
 
 const router = Router();
 
@@ -212,6 +217,21 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             buildSkillsTreeInstructions({ clientSurface, taskType: 'canvas' }),
             buildNaturalContextInstructions(naturalContext),
         ].filter(Boolean).join('\n\n');
+        const requestFrame = buildRequestDecisionFrame({
+            text: message,
+            session,
+            outputFormat,
+            candidateOutputFormat: outputFormat,
+            outputFormatProvided: Boolean(outputFormat),
+            artifactIds,
+            effectiveArtifactIds: artifactIds,
+            executionProfile,
+            taskType: 'canvas',
+            clientSurface,
+            route: '/api/canvas',
+        });
+        const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
+        const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
 
         runtimeTask = startRuntimeTask({
             sessionId,
@@ -219,11 +239,12 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             model: model || null,
             mode: 'canvas',
             transport: 'http',
-            metadata: { route: '/api/canvas', canvasType, phase: 'preflight', reasoningEffort },
+            metadata: { route: '/api/canvas', canvasType, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
         });
         const instructions = await buildInstructionsWithArtifacts(
             session,
             [
+                requestFrameInstructions,
                 buildCanvasInstructions(canvasType, existingContent, message, templateSelection.context),
                 naturalInstructions,
             ].filter(Boolean).join('\n\n'),
@@ -262,6 +283,7 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             memoryScope,
             metadata: {
                 ...effectiveRequestMetadata,
+                ...requestFrameMetadata,
                 clientSurface,
                 naturalContext,
             },
@@ -284,7 +306,7 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             }));
             await sessionStore.appendMessages(sessionId, [
                 { role: 'user', content: message },
-                { role: 'assistant', content: outputText },
+                { role: 'assistant', content: outputText, metadata: requestFrameMetadata },
             ]);
         }
         const structured = parseCanvasResponse(outputText, canvasType);
@@ -337,6 +359,7 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             duration: Date.now() - startedAt,
             metadata: {
                 canvasType,
+                ...requestFrameMetadata,
                 ...(response?.metadata || {}),
             },
         });
@@ -346,6 +369,8 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             responseId: response.id,
             canvasType,
             artifacts,
+            assistant_metadata: requestFrameMetadata,
+            assistantMetadata: requestFrameMetadata,
             templateMatches: templateSelection.matches,
             ...structured,
         });

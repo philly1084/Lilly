@@ -478,6 +478,29 @@ function shouldSuppressWebChatImplicitHtmlArtifact({
     return hasPlanningConversationIntent(text);
 }
 
+function shouldSuppressArtifactGenerationForRemoteAction({
+    text = '',
+    outputFormat = null,
+} = {}) {
+    if (!normalizeFormat(outputFormat)) {
+        return false;
+    }
+
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const explicitRemoteAgent = /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
+    const remoteTarget = explicitRemoteAgent
+        || /\b(remote server|remote site|remote host|remote machine|on the server|cluster|k3s|k8s|kubernetes|kubectl|nginx|ingress|traefik|tls|ssh)\b/.test(normalized)
+        || /\b[a-z0-9-]+\.demoserver2\.buzz\b/.test(normalized);
+    const deploymentAction = /\b(deploy|redeploy|publish|launch|ship|go live|put|place|upload|copy|install|replace|update|serve)\b/.test(normalized);
+    const websiteTarget = /\b(site|website|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|pdf|artifact|file)\b/.test(normalized);
+
+    return remoteTarget && deploymentAction && websiteTarget;
+}
+
 function isArtifactStorageAvailable() {
     if (typeof artifactService.canStoreArtifacts === 'function') {
         return artifactService.canStoreArtifacts();
@@ -1861,6 +1884,7 @@ module.exports = {
     shouldSuppressNotesSurfaceArtifact,
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
+    shouldSuppressArtifactGenerationForRemoteAction,
     isArtifactStorageAvailable,
     isWebsiteDesignExampleRequest,
     normalizeReasoningEffort,

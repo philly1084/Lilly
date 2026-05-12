@@ -16,6 +16,11 @@ const {
     resolveClientSurface,
     resolveSessionScope,
 } = require('../session-scope');
+const {
+    buildRequestDecisionFrame,
+    buildRequestDecisionMetadata,
+    formatRequestDecisionFrameForPrompt,
+} = require('../request-decision-frame');
 
 const router = Router();
 
@@ -123,6 +128,21 @@ router.post('/', validate(notationSchema), async (req, res, next) => {
             clientSurface,
         }, session);
         const sessionIsolation = isSessionIsolationEnabled(requestedSessionMetadata, session);
+        const requestFrame = buildRequestDecisionFrame({
+            text: notation,
+            session,
+            outputFormat,
+            candidateOutputFormat: outputFormat,
+            outputFormatProvided: Boolean(outputFormat),
+            artifactIds,
+            effectiveArtifactIds: artifactIds,
+            executionProfile,
+            taskType: 'notation',
+            clientSurface,
+            route: '/api/notation',
+        });
+        const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
+        const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
 
         runtimeTask = startRuntimeTask({
             sessionId,
@@ -130,11 +150,14 @@ router.post('/', validate(notationSchema), async (req, res, next) => {
             model: model || null,
             mode: 'notation',
             transport: 'http',
-            metadata: { route: '/api/notation', helperMode, phase: 'preflight', reasoningEffort },
+            metadata: { route: '/api/notation', helperMode, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
         });
         const instructions = await buildInstructionsWithArtifacts(
             session,
-            buildNotationInstructions(helperMode, context),
+            [
+                requestFrameInstructions,
+                buildNotationInstructions(helperMode, context),
+            ].filter(Boolean).join('\n\n'),
             artifactIds,
         );
 
@@ -170,6 +193,7 @@ router.post('/', validate(notationSchema), async (req, res, next) => {
             memoryScope,
             metadata: {
                 ...effectiveRequestMetadata,
+                ...requestFrameMetadata,
                 clientSurface,
             },
             ownerId,
@@ -185,6 +209,7 @@ router.post('/', validate(notationSchema), async (req, res, next) => {
 
         const outputText = extractResponseText(response);
         const assistantMetadata = buildFrontendAssistantMetadata({
+            ...requestFrameMetadata,
             ...(response?.metadata || {}),
         });
         if (!execution.handledPersistence) {
@@ -247,6 +272,7 @@ router.post('/', validate(notationSchema), async (req, res, next) => {
             duration: Date.now() - startedAt,
             metadata: {
                 helperMode,
+                ...requestFrameMetadata,
                 ...(response?.metadata || {}),
             },
         });

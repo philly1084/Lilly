@@ -196,6 +196,18 @@ function buildFrontendAssistantMetadata(metadata = null) {
         nextMetadata.taskType = metadata.taskType.trim();
     }
 
+    if (metadata.requestFrame && typeof metadata.requestFrame === 'object' && !Array.isArray(metadata.requestFrame)) {
+        nextMetadata.requestFrame = metadata.requestFrame;
+    }
+
+    if (Array.isArray(metadata.decisionTrace)) {
+        nextMetadata.decisionTrace = metadata.decisionTrace;
+    }
+
+    if (metadata.routingDecision && typeof metadata.routingDecision === 'object' && !Array.isArray(metadata.routingDecision)) {
+        nextMetadata.routingDecision = metadata.routingDecision;
+    }
+
     const reasoningSummary = String(
         metadata.reasoningSummary
         || metadata.reasoning_summary

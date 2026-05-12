@@ -16,6 +16,7 @@ const {
     shouldSuppressNotesSurfaceArtifact,
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
+    shouldSuppressArtifactGenerationForRemoteAction,
     isArtifactStorageAvailable,
     stripInjectedNotesPageEditDirective,
     resolveSshRequestContext,
@@ -44,6 +45,12 @@ const { buildContinuityInstructions: buildBaseContinuityInstructions } = require
 const { buildHumanCentricResponseInstructions } = require('../session-instructions');
 const { getSessionControlState } = require('../runtime-control-state');
 const { buildFrontendAssistantMetadata, buildWebChatSessionMessages } = require('../web-chat-message-state');
+const {
+    buildRequestDecisionFrame,
+    buildRequestDecisionMetadata,
+    buildRequestFrameProgress,
+    formatRequestDecisionFrameForPrompt,
+} = require('../request-decision-frame');
 const {
     beginForegroundTurn,
     buildForegroundTurnMessageOptions,
@@ -1162,9 +1169,10 @@ router.post('/chat/completions', async (req, res, next) => {
             requestAbortSignal = registeredForegroundRequest?.signal || null;
         }
         const outputFormatProvided = Boolean(output_format);
-        let effectiveOutputFormat = output_format
+        const candidateOutputFormat = output_format
             || inferRequestedOutputFormat(artifactIntentText)
             || inferOutputFormatFromTranscript(messages, session);
+        let effectiveOutputFormat = candidateOutputFormat;
         if (shouldSuppressImplicitMermaidArtifact({
             taskType,
             text: artifactIntentText,
@@ -1186,6 +1194,12 @@ router.post('/chat/completions', async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
+        })) {
+            effectiveOutputFormat = null;
+        }
+        if (shouldSuppressArtifactGenerationForRemoteAction({
+            text: artifactIntentText,
+            outputFormat: effectiveOutputFormat,
         })) {
             effectiveOutputFormat = null;
         }
@@ -1253,13 +1267,32 @@ router.post('/chat/completions', async (req, res, next) => {
         const chatControlState = getSessionControlState(session);
         console.log(`[OpenAICompat] chat/completions routing sessionId=${sessionId} profile=${effectiveExecutionProfile} stickyRemote=${Boolean(chatControlState?.lastToolIntent || chatControlState?.lastSshTarget?.host || chatControlState?.lastRemoteObjective)} lastRemoteObjective=${JSON.stringify(chatControlState?.lastRemoteObjective || '')}`);
         const artifactPrompt = buildArtifactPromptFromTranscript(messages, lastUserText);
+        const requestFrame = buildRequestDecisionFrame({
+            text: lastUserText,
+            session,
+            outputFormat: effectiveOutputFormat,
+            candidateOutputFormat,
+            outputFormatProvided,
+            artifactIds: artifact_ids,
+            effectiveArtifactIds,
+            executionProfile: effectiveExecutionProfile,
+            taskType,
+            clientSurface,
+            route: '/v1/chat/completions',
+        });
+        const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
+        const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+        effectiveRequestMetadata = {
+            ...effectiveRequestMetadata,
+            ...requestFrameMetadata,
+        };
         runtimeTask = startRuntimeTask({
             sessionId,
             input: lastUserText || JSON.stringify(messages),
             model: model || null,
             mode: 'openai-chat',
             transport: 'http',
-            metadata: { route: '/v1/chat/completions', stream, phase: 'preflight', reasoningEffort },
+            metadata: { route: '/v1/chat/completions', stream, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
         });
         const podcastRequestOptions = getPodcastRequestOptions(effectiveRequestMetadata);
         if (shouldUseDirectPodcastChat(lastUserText) || hasStructuredPodcastRequest(effectiveRequestMetadata)) {
@@ -1436,6 +1469,7 @@ router.post('/chat/completions', async (req, res, next) => {
             activeSse = stream
                 ? openSseStream(req, res, sessionId, '/v1/chat/completions#artifact')
                 : null;
+            writeCompatSseProgressPayload(activeSse, sessionId, buildRequestFrameProgress(requestFrame));
             const toolManager = await ensureRuntimeToolManager(req.app);
             const preparedImages = await maybePrepareImagesForArtifactPrompt({
                 toolManager,
@@ -1527,6 +1561,7 @@ router.post('/chat/completions', async (req, res, next) => {
                     assistantText: generation.assistantMessage,
                     toolEvents: artifactToolEvents,
                     artifacts: responseArtifacts,
+                    assistantMetadata: requestFrameMetadata,
                     ...buildForegroundTurnMessageOptions(pendingForegroundTurn),
                 }),
                 pendingForegroundTurn,
@@ -1548,6 +1583,7 @@ router.post('/chat/completions', async (req, res, next) => {
                     outputFormat: effectiveOutputFormat,
                     artifactDirect: true,
                     toolEvents: artifactToolEvents,
+                    ...requestFrameMetadata,
                     ...(generation.metadata || {}),
                 },
             });
@@ -1585,8 +1621,8 @@ router.post('/chat/completions', async (req, res, next) => {
                     artifacts: responseArtifacts,
                     tool_events: artifactToolEvents,
                     toolEvents: artifactToolEvents,
-                    assistant_metadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
-                    assistantMetadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
+                    assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                    assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
                 })}\n\n`);
                 activeSse?.write('data: [DONE]\n\n');
                 activeSse?.end();
@@ -1613,8 +1649,8 @@ router.post('/chat/completions', async (req, res, next) => {
                 artifacts: responseArtifacts,
                 tool_events: artifactToolEvents,
                 toolEvents: artifactToolEvents,
-                assistant_metadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
-                assistantMetadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
+                assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
             });
             return;
         }
@@ -1631,7 +1667,7 @@ router.post('/chat/completions', async (req, res, next) => {
         const instructions = await buildInstructionsWithArtifacts(
             session,
             buildContinuityInstructions(
-                [artifactInstructions, alignmentGuidanceInstructions, userCheckpointInstructions, responseFormattingInstructions]
+                [requestFrameInstructions, artifactInstructions, alignmentGuidanceInstructions, userCheckpointInstructions, responseFormattingInstructions]
                     .filter(Boolean)
                     .join('\n\n'),
             ),
@@ -1641,6 +1677,7 @@ router.post('/chat/completions', async (req, res, next) => {
 
         if (stream) {
             activeSse = openSseStream(req, res, sessionId, '/v1/chat/completions');
+            writeCompatSseProgressPayload(activeSse, sessionId, buildRequestFrameProgress(requestFrame));
             const toolManager = await ensureRuntimeToolManager(req.app);
             const persistForegroundProgress = createForegroundProgressPersister({
                 sessionStore,
@@ -2264,9 +2301,10 @@ router.post('/responses', async (req, res, next) => {
             ...(sessionIsolation ? { sessionIsolation: true } : {}),
         };
         const outputFormatProvided = Boolean(output_format);
-        let effectiveOutputFormat = output_format
+        const candidateOutputFormat = output_format
             || inferRequestedOutputFormat(artifactIntentText)
             || inferOutputFormatFromTranscript(normalizedInputMessages, session);
+        let effectiveOutputFormat = candidateOutputFormat;
         if (shouldSuppressImplicitMermaidArtifact({
             taskType,
             text: artifactIntentText,
@@ -2288,6 +2326,12 @@ router.post('/responses', async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
+        })) {
+            effectiveOutputFormat = null;
+        }
+        if (shouldSuppressArtifactGenerationForRemoteAction({
+            text: artifactIntentText,
+            outputFormat: effectiveOutputFormat,
         })) {
             effectiveOutputFormat = null;
         }
@@ -2322,13 +2366,39 @@ router.post('/responses', async (req, res, next) => {
         };
         const effectiveArtifactIds = resolveArtifactContextIds(session, artifact_ids, userInput);
         const artifactPrompt = buildArtifactPromptFromTranscript(normalizedInputMessages, userInput);
+        let effectiveExecutionProfile = inferExecutionProfile({
+            ...req.body,
+            taskType,
+            input: normalizedInputMessages,
+            memoryInput: userInput,
+            session,
+        });
+        const requestFrame = buildRequestDecisionFrame({
+            text: userInput,
+            session,
+            outputFormat: effectiveOutputFormat,
+            candidateOutputFormat,
+            outputFormatProvided,
+            artifactIds: artifact_ids,
+            effectiveArtifactIds,
+            executionProfile: effectiveExecutionProfile,
+            taskType,
+            clientSurface,
+            route: '/v1/responses',
+        });
+        const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
+        const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+        effectiveRequestMetadata = {
+            ...effectiveRequestMetadata,
+            ...requestFrameMetadata,
+        };
         runtimeTask = startRuntimeTask({
             sessionId,
             input: userInput || JSON.stringify(input),
             model: model || null,
             mode: 'openai-responses',
             transport: 'http',
-            metadata: { route: '/v1/responses', stream, phase: 'preflight', reasoningEffort },
+            metadata: { route: '/v1/responses', stream, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
         });
         if (effectiveOutputFormat) {
             setSessionHeaders(res, sessionId);
@@ -2349,6 +2419,7 @@ router.post('/responses', async (req, res, next) => {
 
             if (stream) {
                 activeSse = openSseStream(req, res, sessionId, '/v1/responses#artifact');
+                writeCompatSseProgressPayload(activeSse, sessionId, buildRequestFrameProgress(requestFrame));
             }
 
             const generation = await generateOutputArtifactFromPrompt({
@@ -2422,6 +2493,7 @@ router.post('/responses', async (req, res, next) => {
                 assistantText: generation.assistantMessage,
                 toolEvents: artifactToolEvents,
                 artifacts: responseArtifacts,
+                assistantMetadata: requestFrameMetadata,
             }));
             await updateSessionProjectMemory(sessionId, {
                 userText: userInput,
@@ -2465,6 +2537,7 @@ router.post('/responses', async (req, res, next) => {
                     outputFormat: effectiveOutputFormat,
                     artifactDirect: true,
                     toolEvents: artifactToolEvents,
+                    ...requestFrameMetadata,
                     ...(generation.metadata || {}),
                 },
             });
@@ -2480,6 +2553,8 @@ router.post('/responses', async (req, res, next) => {
                     artifacts: responseArtifacts,
                     tool_events: artifactToolEvents,
                     toolEvents: artifactToolEvents,
+                    assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                    assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
                 })}\n\n`);
                 res.end();
                 return;
@@ -2490,10 +2565,12 @@ router.post('/responses', async (req, res, next) => {
                 ...(responsesUsage ? { usage: responsesUsage } : {}),
                 gateway,
                 session_id: sessionId,
-                artifacts: responseArtifacts,
-                tool_events: artifactToolEvents,
-                toolEvents: artifactToolEvents,
-            });
+            artifacts: responseArtifacts,
+            tool_events: artifactToolEvents,
+            toolEvents: artifactToolEvents,
+            assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+            assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+        });
             return;
         }
 
@@ -2503,7 +2580,7 @@ router.post('/responses', async (req, res, next) => {
         const alignmentGuidanceInstructions = buildAlignmentGuidanceContext(session);
         const fullInstructions = await buildInstructionsWithArtifacts(
             session,
-            [buildContinuityInstructions(), alignmentGuidanceInstructions, instructions || '', artifactInstructions].filter(Boolean).join('\n\n'),
+            [buildContinuityInstructions(), requestFrameInstructions, alignmentGuidanceInstructions, instructions || '', artifactInstructions].filter(Boolean).join('\n\n'),
             effectiveArtifactIds,
         );
         const lastUserIndex = normalizedInputMessages.map((entry) => entry.role).lastIndexOf('user');
@@ -2521,7 +2598,7 @@ router.post('/responses', async (req, res, next) => {
                     ? { ...message, content: effectiveUserContent }
                     : message;
             });
-        const effectiveExecutionProfile = inferExecutionProfile({
+        effectiveExecutionProfile = inferExecutionProfile({
             ...req.body,
             taskType,
             input: runtimeInput,
@@ -2533,6 +2610,7 @@ router.post('/responses', async (req, res, next) => {
 
         if (stream) {
             activeSse = openSseStream(req, res, sessionId, '/v1/responses');
+            writeCompatSseProgressPayload(activeSse, sessionId, buildRequestFrameProgress(requestFrame));
             const toolManager = await ensureRuntimeToolManager(req.app);
             const execution = await executeConversationRuntime(req.app, {
                 input: runtimeInput,

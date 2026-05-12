@@ -24,6 +24,11 @@ const {
     recordAgentJournalTurn,
     stripAgentJournalBlocks,
 } = require('./agent-journal');
+const {
+    buildRequestDecisionFrame,
+    buildRequestDecisionMetadata,
+    formatRequestDecisionFrameForPrompt,
+} = require('./request-decision-frame');
 
 class ConversationRunService {
     constructor({
@@ -157,6 +162,22 @@ class ConversationRunService {
             throw error;
         }
         const sanitizedMessage = stripAgentJournalBlocks(message);
+        const outputFormat = String(metadata?.outputFormat || '').trim().toLowerCase()
+            || inferRequestedOutputFormat(sanitizedMessage);
+        const requestFrame = buildRequestDecisionFrame({
+            text: sanitizedMessage,
+            session: resolvedSession,
+            outputFormat,
+            candidateOutputFormat: outputFormat,
+            outputFormatProvided: Boolean(metadata?.outputFormat),
+            artifactIds: metadata?.artifactIds || [],
+            effectiveArtifactIds: [],
+            executionProfile,
+            taskType: metadata.taskType || 'chat',
+            clientSurface: metadata.clientSurface || '',
+            route: '/api/workloads',
+        });
+        const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
 
         const runtimeToolManager = await ensureRuntimeToolManager(this.app);
         const sessionIsolation = isSessionIsolationEnabled(metadata, resolvedSession);
@@ -172,6 +193,7 @@ class ConversationRunService {
         const instructions = await buildInstructionsWithArtifacts(
             resolvedSession,
             [
+                formatRequestDecisionFrameForPrompt(requestFrame),
                 agentJournalInstructions,
                 buildContinuityInstructions(),
             ].filter(Boolean).join('\n\n'),
@@ -206,7 +228,10 @@ class ConversationRunService {
             enableAutomaticToolCalls: true,
             enableConversationExecutor: true,
             taskType: metadata.taskType || 'chat',
-            metadata,
+            metadata: {
+                ...metadata,
+                ...requestFrameMetadata,
+            },
             ownerId,
             requestedToolIds,
             toolBudget: policy ? {
@@ -233,7 +258,7 @@ class ConversationRunService {
             }
             await this.sessionStore.appendMessages(sessionId, [
                 { role: 'user', content: sanitizedMessage },
-                { role: 'assistant', content: outputText },
+                { role: 'assistant', content: outputText, metadata: requestFrameMetadata },
             ]);
         }
         const sshMetadata = extractSshSessionMetadataFromToolEvents(toolEvents);

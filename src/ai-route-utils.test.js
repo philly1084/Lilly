@@ -48,6 +48,7 @@ const {
     shouldSuppressNotesSurfaceArtifact,
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
+    shouldSuppressArtifactGenerationForRemoteAction,
 } = require('./ai-route-utils');
 
 describe('ai-route-utils', () => {
@@ -477,6 +478,28 @@ describe('ai-route-utils', () => {
         expect(inferRequestedOutputFormat('Make a professional brief for the product launch.')).toBe('html');
         expect(inferRequestedOutputFormat('Draft a plain text document about onboarding new support agents.')).toBeNull();
         expect(inferRequestedOutputFormat('Create a document about onboarding new support agents, no artifact.')).toBeNull();
+    });
+
+    test('remote CLI deployment prompts do not short-circuit into direct artifact generation', () => {
+        const firstPrompt = 'can you put the amazing halifax weekend dinner guide artifact as the website in our menu.demoserver2.buzz website on the remote server. use the remote cli agent to find the nginx holding the website location and put a html with the pdf file converted in it.';
+        const secondPrompt = 'halifax-weekend-dinner-guide-curated-menu-ijh00u.pdf is the file I want you to put that as html page for the menu site. use remote cli agent to do it';
+
+        expect(inferRequestedOutputFormat(firstPrompt)).toBe('pdf');
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: firstPrompt,
+            outputFormat: 'pdf',
+        })).toBe(true);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: secondPrompt,
+            outputFormat: 'pdf',
+        })).toBe(true);
+    });
+
+    test('remote artifact suppression preserves ordinary PDF artifact creation', () => {
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'Create a PDF artifact for the Halifax weekend dinner guide.',
+            outputFormat: 'pdf',
+        })).toBe(false);
     });
 
     test('hasExplicitMermaidFileIntent only returns true for file-like Mermaid requests', () => {

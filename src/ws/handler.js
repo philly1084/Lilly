@@ -15,6 +15,7 @@ const {
     shouldSuppressNotesSurfaceArtifact,
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
+    shouldSuppressArtifactGenerationForRemoteAction,
     isArtifactStorageAvailable,
     resolveSshRequestContext,
     extractSshSessionMetadataFromToolEvents,
@@ -38,6 +39,12 @@ const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-mem
 const { buildContinuityInstructions } = require('../runtime-prompts');
 const { buildHumanCentricResponseInstructions } = require('../session-instructions');
 const { buildFrontendAssistantMetadata, buildWebChatSessionMessages } = require('../web-chat-message-state');
+const {
+    buildRequestDecisionFrame,
+    buildRequestDecisionMetadata,
+    buildRequestFrameProgress,
+    formatRequestDecisionFrameForPrompt,
+} = require('../request-decision-frame');
 const { normalizeMemoryKeywords } = require('../memory/memory-keywords');
 const { extractArtifactsFromToolEvents, mergeRuntimeArtifacts } = require('../runtime-artifacts');
 const {
@@ -370,9 +377,10 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         userCheckpointPolicy: buildUserCheckpointPolicyMetadata(userCheckpointPolicy),
         ...(sessionIsolation ? { sessionIsolation: true } : {}),
     };
-    let effectiveOutputFormat = outputFormat
+    const candidateOutputFormat = outputFormat
         || inferRequestedOutputFormat(message)
         || inferOutputFormatFromSession(message, session);
+    let effectiveOutputFormat = candidateOutputFormat;
     if (shouldSuppressImplicitMermaidArtifact({
         taskType,
         text: message,
@@ -394,6 +402,12 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         text: message,
         outputFormat: effectiveOutputFormat,
         outputFormatProvided: Boolean(outputFormat),
+    })) {
+        effectiveOutputFormat = null;
+    }
+    if (shouldSuppressArtifactGenerationForRemoteAction({
+        text: message,
+        outputFormat: effectiveOutputFormat,
     })) {
         effectiveOutputFormat = null;
     }
@@ -427,14 +441,34 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
             : {}),
     };
     const effectiveArtifactIds = resolveArtifactContextIds(session, artifactIds, message);
+    const requestFrame = buildRequestDecisionFrame({
+        text: message,
+        session,
+        outputFormat: effectiveOutputFormat,
+        candidateOutputFormat,
+        outputFormatProvided: Boolean(outputFormat),
+        artifactIds,
+        effectiveArtifactIds,
+        executionProfile,
+        taskType,
+        clientSurface,
+        route: '/ws',
+    });
+    const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
+    const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+    effectiveRequestMetadata = {
+        ...effectiveRequestMetadata,
+        ...requestFrameMetadata,
+    };
     runtimeTask = startRuntimeTask({
         sessionId: session.id,
         input: message,
         model,
         mode: 'chat',
         transport: 'ws',
-        metadata: { route: '/ws', stream: true, phase: 'preflight', reasoningEffort },
+        metadata: { route: '/ws', stream: true, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
     });
+    sendWsProgressPayload(ws, session.id, buildRequestFrameProgress(requestFrame));
 
     try {
         const runtimeToolManager = toolManager || await ensureRuntimeToolManager(ws.app);
@@ -673,6 +707,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                 assistantText: generation.assistantMessage,
                 toolEvents: preparedImages.toolEvents,
                 artifacts: responseArtifacts,
+                assistantMetadata: requestFrameMetadata,
             }));
             await updateSessionProjectMemory(session.id, {
                 userText: message,
@@ -690,6 +725,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                     outputFormat: effectiveOutputFormat,
                     artifactDirect: true,
                     toolEvents: preparedImages.toolEvents,
+                    ...requestFrameMetadata,
                     ...(generation.metadata || {}),
                 },
             });
@@ -701,8 +737,8 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                 responseId: generation.responseId,
                 artifacts: responseArtifacts,
                 toolEvents: preparedImages.toolEvents,
-                assistant_metadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
-                assistantMetadata: buildFrontendAssistantMetadata({ artifacts: responseArtifacts }),
+                assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
             });
             return;
         }
@@ -714,6 +750,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         const instructions = await buildInstructionsWithArtifacts(
             session,
             [
+                requestFrameInstructions,
                 buildContinuityInstructions(buildUserCheckpointInstructions(userCheckpointPolicy)),
                 responseFormattingInstructions,
             ].filter(Boolean).join('\n\n'),

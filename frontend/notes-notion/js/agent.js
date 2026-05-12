@@ -2901,6 +2901,12 @@ const Agent = (function() {
         const templateMatches = selectNotesPageTemplates(question, pageContext, { limit: 2 });
         const pageSetup = buildPageSetupSummary(pageContext);
         const blockMap = buildPageContentSnapshot(pageContext);
+        const agentLayerSnapshot = pageContext?.projections?.agentContext
+            ? JSON.stringify(pageContext.projections.agentContext, null, 2).slice(0, 8000)
+            : '';
+        const styleLayerSnapshot = pageContext?.projections?.styles
+            ? JSON.stringify(pageContext.projections.styles, null, 2).slice(0, 5000)
+            : '';
         const pageContent = buildFullPageContentFromContext(pageContext).slice(0, 6000);
         const topLevelLayout = buildTopLevelLayoutSnapshot(pageContext);
         const sectionEditMap = buildSectionEditMap(pageContext);
@@ -2936,6 +2942,20 @@ Reference blocks by their ID when editing or inserting content.
 
 BLOCKS IN THIS PAGE:
 ${blockMap || '(page is empty)'}
+
+AGENT QUERY LAYERS:
+Use the smallest useful layer. Prefer block IDs from the outline, sections, style table, or a grep result instead of rewriting the full page.
+- flat_text: read only text content in document order
+- outline: read heading blocks and section anchors
+- sections: read section heading IDs and their block ranges
+- styles: read block color, text color, font family, and font size
+- grep: limit visible blocks by word, block type, section, color, textColor, or block ID
+
+COMPACT AGENT SNAPSHOT:
+${agentLayerSnapshot || '(no query projection available)'}
+
+STYLE LAYER SNAPSHOT:
+${styleLayerSnapshot || '(no style projection available)'}
 
 TOP-LEVEL LAYOUT:
 ${topLevelLayout}
@@ -3017,6 +3037,8 @@ When the user asks you to edit, create, delete, or reorganize content, respond w
     { "op": "update_block", "blockId": "block_abc123", "type": "text", "content": "New content here" },
     { "op": "replace_text", "blockId": "block_abc123", "findText": "old phrase", "replaceWith": "new phrase", "replaceAll": false },
     { "op": "highlight_text", "blockId": "block_abc123", "text": "important phrase", "color": "yellow" },
+    { "op": "update_block", "blockId": "block_heading123", "type": "heading_3", "content": "Existing heading text" },
+    { "op": "update_block", "blockId": "block_heading456", "type": "heading_2", "content": "Existing heading text", "textColor": "blue", "color": "gray" },
     { "op": "replace_block", "blockId": "block_abc123", "blocks": [{ "type": "heading_2", "content": "New Section" }, { "type": "text", "content": "Fresh opening" }] },
     { "op": "replace_section", "headingBlockId": "block_heading123", "blocks": [{ "type": "heading_2", "content": "Rebuilt Section" }, { "type": "text", "content": "Only this section changed." }] },
     { "op": "move_block", "blockId": "block_abc123", "targetBlockId": "block_xyz789", "position": "before" },
@@ -8839,6 +8861,14 @@ Silently verify the lead cluster, section order, and final polish before returni
         if (!page) {
             return null;
         }
+
+        if (window.NotesQuery?.buildPageContext) {
+            try {
+                return window.NotesQuery.buildPageContext(page);
+            } catch (error) {
+                console.warn('[Notes Agent] Failed to build query-backed page context:', error);
+            }
+        }
         
         // Flatten all blocks recursively
         function flattenBlocks(blocks, depth = 0) {
@@ -9009,6 +9039,20 @@ Silently verify the lead cluster, section order, and final polish before returni
         if (!context) return [];
         return context.outline;
     }
+
+    function getPageProjection(options = {}) {
+        const page = window.Editor?.getCurrentPage?.();
+        if (!page || !window.NotesQuery?.createProjection) {
+            return null;
+        }
+
+        try {
+            return window.NotesQuery.createProjection(page, options);
+        } catch (error) {
+            console.warn('[Notes Agent] Failed to build page projection:', error);
+            return null;
+        }
+    }
     
     // ============================================
     // Page Context Helper
@@ -9023,7 +9067,14 @@ Silently verify the lead cluster, section order, and final polish before returni
      * @returns {string} Formatted page structure
      */
     function formatPageContextForAI(options = {}) {
-        const { maxContentLength = 100, includeStats = true } = options;
+        const { maxContentLength = 100, includeStats = true, mode = null } = options;
+
+        if (mode && window.NotesQuery?.createProjection) {
+            const projection = getPageProjection(options);
+            if (typeof projection === 'string') return projection;
+            if (projection) return JSON.stringify(projection, null, 2);
+        }
+
         const context = getPageContext();
         
         if (!context) {
@@ -10676,6 +10727,7 @@ Silently verify the lead cluster, section order, and final polish before returni
         getRequestUnderstanding: buildRequestUnderstanding,
         getDesignLayoutCatalog: () => window.NotesLayoutCatalog?.getPageLayouts?.() || [],
         getOutline,
+        getPageProjection,
         getPageMetadata,
         
         // Page Context Helper (new)

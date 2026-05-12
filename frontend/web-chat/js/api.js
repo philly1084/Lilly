@@ -394,6 +394,18 @@ function normalizeAssistantMetadata(value) {
         nextMetadata.taskType = value.taskType.trim();
     }
 
+    if (value.requestFrame && typeof value.requestFrame === 'object' && !Array.isArray(value.requestFrame)) {
+        nextMetadata.requestFrame = value.requestFrame;
+    }
+
+    if (Array.isArray(value.decisionTrace)) {
+        nextMetadata.decisionTrace = value.decisionTrace;
+    }
+
+    if (value.routingDecision && typeof value.routingDecision === 'object' && !Array.isArray(value.routingDecision)) {
+        nextMetadata.routingDecision = value.routingDecision;
+    }
+
     const artifacts = (Array.isArray(value.artifacts) ? value.artifacts : [])
         .filter((artifact) => artifact && typeof artifact === 'object')
         .map((artifact) => ({
