@@ -22,7 +22,7 @@
         'ai',
     ]);
 
-    const STYLE_KEYS = ['color', 'textColor', 'fontFamily', 'fontSize'];
+    const STYLE_KEYS = ['color', 'textColor', 'fontFamily', 'fontSize', 'fontWeight', 'textAlign', 'formatting'];
 
     function normalizeText(value) {
         return String(value || '').replace(/\s+/g, ' ').trim();
@@ -94,6 +94,23 @@
         return candidates.find((candidate) => typeof candidate === 'string' && candidate.trim()) || '';
     }
 
+    function getHighlights(block) {
+        const highlights = block?.formatting?.highlights;
+        if (!Array.isArray(highlights)) return [];
+        return highlights
+            .map((highlight) => {
+                if (typeof highlight === 'string') {
+                    return { text: highlight, color: 'yellow' };
+                }
+                if (!highlight || typeof highlight !== 'object') return null;
+                return {
+                    text: normalizeText(highlight.text || highlight.targetText || highlight.findText || ''),
+                    color: normalizeText(highlight.color || highlight.highlightColor || 'yellow').toLowerCase() || 'yellow',
+                };
+            })
+            .filter((highlight) => highlight && highlight.text);
+    }
+
     function flattenBlocks(blocks = [], options = {}) {
         const entries = [];
         let order = 0;
@@ -133,6 +150,9 @@
                     textColor: block.textColor || null,
                     fontFamily: block.fontFamily || null,
                     fontSize: block.fontSize || null,
+                    fontWeight: block.fontWeight || null,
+                    textAlign: block.textAlign || null,
+                    highlights: getHighlights(block),
                     headingLevel,
                     sectionIds: sectionStack.map((heading) => heading.id),
                     sectionPath: sectionStack.map((heading) => heading.text).filter(Boolean),
@@ -232,6 +252,11 @@
             if (normalizedKey === 'type') query.type = value;
             else if (normalizedKey === 'color') query.color = value;
             else if (normalizedKey === 'textcolor' || normalizedKey === 'text_color') query.textColor = value;
+            else if (normalizedKey === 'font' || normalizedKey === 'fontfamily' || normalizedKey === 'font_family') query.fontFamily = value;
+            else if (normalizedKey === 'size' || normalizedKey === 'fontsize' || normalizedKey === 'font_size') query.fontSize = value;
+            else if (normalizedKey === 'weight' || normalizedKey === 'fontweight' || normalizedKey === 'font_weight') query.fontWeight = value;
+            else if (normalizedKey === 'align' || normalizedKey === 'textalign' || normalizedKey === 'text_align') query.textAlign = value;
+            else if (normalizedKey === 'highlight' || normalizedKey === 'highlightcolor' || normalizedKey === 'highlight_color') query.highlightColor = value;
             else if (normalizedKey === 'section') query.sectionHeading = value;
             else if (normalizedKey === 'id' || normalizedKey === 'block') query.blockIds = [value];
             else query.words.push(value);
@@ -283,6 +308,34 @@
 
         if (where.textColor !== undefined) {
             entries = entries.filter((entry) => String(entry.textColor || '').toLowerCase() === String(where.textColor || '').toLowerCase());
+        }
+
+        if (where.fontFamily !== undefined) {
+            entries = entries.filter((entry) => String(entry.fontFamily || '').toLowerCase() === String(where.fontFamily || '').toLowerCase());
+        }
+
+        if (where.fontSize !== undefined) {
+            entries = entries.filter((entry) => String(entry.fontSize || '').toLowerCase() === String(where.fontSize || '').toLowerCase());
+        }
+
+        if (where.fontWeight !== undefined) {
+            entries = entries.filter((entry) => String(entry.fontWeight || '').toLowerCase() === String(where.fontWeight || '').toLowerCase());
+        }
+
+        if (where.textAlign !== undefined) {
+            entries = entries.filter((entry) => String(entry.textAlign || '').toLowerCase() === String(where.textAlign || '').toLowerCase());
+        }
+
+        if (where.hasHighlight === true) {
+            entries = entries.filter((entry) => entry.highlights.length > 0);
+        }
+
+        if (where.highlightColor !== undefined) {
+            entries = entries.filter((entry) =>
+                entry.highlights.some((highlight) =>
+                    String(highlight.color || '').toLowerCase() === String(where.highlightColor || '').toLowerCase()
+                )
+            );
         }
 
         if (where.headingLevel) {
@@ -356,6 +409,9 @@
                 textColor: entry.textColor,
                 fontFamily: entry.fontFamily,
                 fontSize: entry.fontSize,
+                fontWeight: entry.fontWeight,
+                textAlign: entry.textAlign,
+                highlights: entry.highlights,
             }));
         }
 
@@ -398,6 +454,9 @@
                 textColor: entry.textColor,
                 fontFamily: entry.fontFamily,
                 fontSize: entry.fontSize,
+                fontWeight: entry.fontWeight,
+                textAlign: entry.textAlign,
+                highlights: entry.highlights,
             })),
         };
     }
@@ -418,6 +477,9 @@
                 textColor: entry.textColor,
                 fontFamily: entry.fontFamily,
                 fontSize: entry.fontSize,
+                fontWeight: entry.fontWeight,
+                textAlign: entry.textAlign,
+                highlights: entry.highlights,
                 sectionHeadingId: entry.sectionHeadingId,
                 sectionHeadingText: entry.sectionHeadingText,
             })),
@@ -429,6 +491,11 @@
                 hasChildren: entry.hasChildren,
                 color: entry.color,
                 textColor: entry.textColor,
+                fontFamily: entry.fontFamily,
+                fontSize: entry.fontSize,
+                fontWeight: entry.fontWeight,
+                textAlign: entry.textAlign,
+                highlights: entry.highlights,
             })),
             sections: index.sections,
             blockCount: index.blockCount,
@@ -448,7 +515,7 @@
     function createBulkUpdateActions(pageOrIndex = null, spec = {}, updates = {}) {
         const entries = query(pageOrIndex, {
             ...spec,
-            select: ['id', 'type', 'text', 'color', 'textColor', 'fontFamily', 'fontSize'],
+            select: ['id', 'type', 'text', 'color', 'textColor', 'fontFamily', 'fontSize', 'fontWeight', 'textAlign'],
         });
 
         return entries.map((entry) => {
@@ -499,6 +566,59 @@
         );
     }
 
+    function createHighlightActions(pageOrIndex = null, spec = {}, highlight = {}) {
+        const targetText = normalizeText(
+            highlight.text
+            || highlight.targetText
+            || highlight.findText
+            || spec.textIncludes
+            || spec?.where?.textIncludes
+            || ''
+        );
+        if (!targetText) return [];
+
+        const entries = query(pageOrIndex, {
+            ...spec,
+            where: {
+                ...(spec.where || {}),
+                textIncludes: spec?.where?.textIncludes || spec.textIncludes || targetText,
+            },
+            select: ['id', 'text'],
+        });
+
+        return entries.map((entry) => ({
+            op: 'highlight_text',
+            blockId: entry.id,
+            text: targetText,
+            color: highlight.color || highlight.highlightColor || 'yellow',
+            caseSensitive: Boolean(highlight.caseSensitive),
+        }));
+    }
+
+    function createDatabaseUpdateAction(blockId, updates = {}) {
+        if (!blockId) return null;
+        const action = {
+            op: 'update_database',
+            blockId,
+        };
+        ['columns', 'rows', 'appendRows', 'sortColumn', 'sortDirection'].forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(updates, key)) {
+                action[key] = updates[key];
+            }
+        });
+        return action;
+    }
+
+    function createDatabaseFillAction(blockId, column, fill = {}) {
+        if (!blockId || column === undefined || column === null || column === '') return null;
+        return {
+            op: 'fill_database_column',
+            blockId,
+            column,
+            ...fill,
+        };
+    }
+
     const api = {
         buildIndex,
         buildPageContext,
@@ -513,6 +633,9 @@
         createHeadingLevelActions,
         createHeaderColorActions,
         createSectionStyleActions,
+        createHighlightActions,
+        createDatabaseUpdateAction,
+        createDatabaseFillAction,
     };
 
     root.NotesQuery = api;
@@ -521,6 +644,9 @@
         headingLevel: createHeadingLevelActions,
         headerColor: createHeaderColorActions,
         sectionStyle: createSectionStyleActions,
+        highlight: createHighlightActions,
+        databaseUpdate: createDatabaseUpdateAction,
+        databaseFill: createDatabaseFillAction,
     };
 
     if (typeof module !== 'undefined' && module.exports) {

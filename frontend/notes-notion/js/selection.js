@@ -770,8 +770,8 @@ const Selection = (function() {
         let top = rect.top;
         
         // Keep on screen
-        const pickerWidth = 200;
-        const pickerHeight = 320;
+        const pickerWidth = picker.offsetWidth || 220;
+        const pickerHeight = Math.min(picker.scrollHeight || 520, window.innerHeight - 24);
         
         if (left + pickerWidth > window.innerWidth) {
             left = rect.left - pickerWidth - 10;
@@ -834,6 +834,24 @@ const Selection = (function() {
             if (fontSize !== undefined && blockId) {
                 if (callbacks.onFontSizeChange) {
                     callbacks.onFontSizeChange(blockId, fontSize === 'default' ? null : fontSize);
+                }
+                picker.style.display = 'none';
+                return;
+            }
+
+            const fontWeight = option.dataset.fontWeight;
+            if (fontWeight !== undefined && blockId) {
+                if (callbacks.onFontWeightChange) {
+                    callbacks.onFontWeightChange(blockId, fontWeight === 'default' ? null : fontWeight);
+                }
+                picker.style.display = 'none';
+                return;
+            }
+
+            const textAlign = option.dataset.textAlign;
+            if (textAlign !== undefined && blockId) {
+                if (callbacks.onTextAlignChange) {
+                    callbacks.onTextAlignChange(blockId, textAlign === 'default' ? null : textAlign);
                 }
                 picker.style.display = 'none';
                 return;

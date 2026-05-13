@@ -3017,8 +3017,8 @@ body {
 
 .main-content {
   background:
-    linear-gradient(90deg, transparent 0, transparent calc(50% - 520px), color-mix(in oklab, var(--notes-rule), transparent 35%) calc(50% - 520px), transparent calc(50% - 519px)),
-    linear-gradient(90deg, transparent 0, transparent calc(50% + 520px), color-mix(in oklab, var(--notes-rule), transparent 35%) calc(50% + 520px), transparent calc(50% + 521px)),
+    linear-gradient(90deg, transparent 0, transparent calc(50% - 624px), color-mix(in oklab, var(--notes-rule), transparent 35%) calc(50% - 624px), transparent calc(50% - 623px)),
+    linear-gradient(90deg, transparent 0, transparent calc(50% + 624px), color-mix(in oklab, var(--notes-rule), transparent 35%) calc(50% + 624px), transparent calc(50% + 625px)),
     var(--notes-paper);
 }
 
@@ -3047,7 +3047,7 @@ body {
 }
 
 .page-workspace {
-  max-width: 1160px;
+  max-width: 1392px;
 }
 
 .editor {

@@ -8,9 +8,12 @@ const Agent = (function() {
     const LEGACY_MODEL_STORAGE_KEY = 'notes_agent_model';
     const LEGACY_MESSAGES_STORAGE_KEY = 'notes_agent_messages';
     const PAGE_MESSAGES_STORAGE_PREFIX = 'notes_agent_messages:';
-    const NOTES_COLOR_OPTIONS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
+    const NOTES_COLOR_OPTIONS = ['gray', 'brown', 'orange', 'yellow', 'amber', 'lime', 'green', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'rose', 'red'];
     const NOTES_FONT_FAMILY_OPTIONS = ['sans', 'serif', 'mono'];
     const NOTES_FONT_SIZE_OPTIONS = ['small', 'normal', 'large', 'xlarge'];
+    const NOTES_FONT_WEIGHT_OPTIONS = ['regular', 'medium', 'semibold', 'bold'];
+    const NOTES_TEXT_ALIGN_OPTIONS = ['left', 'center', 'right'];
+    const NOTES_HIGHLIGHT_COLOR_OPTIONS = ['yellow', 'amber', 'lime', 'green', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'rose', 'red', 'orange', 'brown', 'gray'];
     const NOTES_TEMPLATE_METADATA_BLOCKLIST = new Set(['type', 'mode', 'audience']);
     const NOTES_PAGE_TEMPLATES = Object.freeze([
         Object.freeze({
@@ -3147,14 +3150,20 @@ GUIDELINES:
 - Research pages should usually use at least one richer support block such as callout, bookmark, image, ai_image, toggle, or database when the content supports it.
 - In notes, Mermaid usually belongs as a mermaid block inside the page. Do not switch to a downloadable Mermaid artifact unless the user explicitly asks for a file, export, download, or shareable artifact.
 - Use plain strings for text-like blocks and structured objects for todo, callout, code, math, mermaid, image, ai_image, bookmark, database, chart, and ai blocks.
+- For existing database blocks, use update_database with {blockId, columns, rows} to replace the whole table in one logical write, or {blockId, appendRows} to add many rows at once.
+- Use fill_database_column with {blockId, column or columnIndex, start, end} for rating/score fills such as 1-5, or {values:[...]} for custom mass fills.
+- Database columns must be useful labels, not placeholders; keep row cell counts aligned with columns.
 - You may include formatting on text-like blocks using {bold, italic, underline, strikethrough, code}.
 - You may include children on blocks when nested content improves the page, especially under toggles.
 - You may include fontFamily on blocks using: ${NOTES_FONT_FAMILY_OPTIONS.join(', ')}.
 - You may include fontSize on blocks using: ${NOTES_FONT_SIZE_OPTIONS.join(', ')}.
+- You may include fontWeight on blocks using: ${NOTES_FONT_WEIGHT_OPTIONS.join(', ')}.
+- You may include textAlign on text-like blocks using: ${NOTES_TEXT_ALIGN_OPTIONS.join(', ')}.
+- highlight_text supports these highlight colors: ${NOTES_HIGHLIGHT_COLOR_OPTIONS.join(', ')}.
 - Do not invent block IDs - only use IDs that exist in the page
 - Keep assistant_reply concise unless the user asks for detailed explanation
 - When the user asks for a redesign, dashboard, brief, report, or polished layout, consider updating the page title, icon, or cover with update_page in addition to the blocks.
-- If the user asks for color or visual design, explicitly consider both block background colors ("color") and text colors ("textColor") where they improve readability.
+- If the user asks for color or visual design, explicitly consider block background colors ("color"), text colors ("textColor"), highlight colors, and per-block typography where they improve readability.
 - When improving layout or variety, prefer mixing headings, callouts, quotes, lists, databases, images, dividers, and tasteful color/textColor choices instead of only plain paragraphs`;
 
         return `You are an AI assistant editing a Lilly-style block-based document.
@@ -3354,7 +3363,7 @@ GUIDELINES:
 - Do not write markdown syntax into a block when the block type already expresses the structure. Use heading blocks for headings, list blocks for bullets, todo blocks for checkboxes, callout blocks for highlighted notes, and \`formatting\` instead of raw \`**bold**\` markers.
 - Use \`heading_3\` when a short label or mini-section should sit on its own line. Do not bury those labels inline at the start of paragraph text.
 - You may include \`formatting\` on text-like blocks using \`{bold, italic, underline, strikethrough, code}\`.
-- You may include \`fontFamily\` (\`${NOTES_FONT_FAMILY_OPTIONS.join('`, `')}\`) and \`fontSize\` (\`${NOTES_FONT_SIZE_OPTIONS.join('`, `')}\`) for deliberate typography.
+- You may include \`fontFamily\` (\`${NOTES_FONT_FAMILY_OPTIONS.join('`, `')}\`), \`fontSize\` (\`${NOTES_FONT_SIZE_OPTIONS.join('`, `')}\`), \`fontWeight\` (\`${NOTES_FONT_WEIGHT_OPTIONS.join('`, `')}\`), and \`textAlign\` (\`${NOTES_TEXT_ALIGN_OPTIONS.join('`, `')}\`) for deliberate per-block typography.
 - You may include \`children\` on blocks when nested content improves the page, especially under toggles.
 - Do not invent block IDs - only use IDs that exist in the page
 - Keep assistant_reply concise unless user asks for detailed explanation
@@ -3364,6 +3373,8 @@ GUIDELINES:
   - math: equation block using {text, displayMode}
   - ai_image: use {prompt, source: "ai"|"unsplash", imageUrl, model, size, quality, style}
   - database: use {columns, rows, sortColumn, sortDirection}
+  - existing database updates: use update_database with {blockId, columns, rows} or {blockId, appendRows} for larger writes
+  - database score/rating fills: use fill_database_column with {blockId, column or columnIndex, start, end, step} or explicit values
   - chart: use {title, chartType, labels, values, unit}; chartType can be bar, line, or pie
   - ai: inline AI block using {prompt, result, model}
 - For callout blocks, use structured content like {text: "...", icon: "💡"}.
@@ -3371,11 +3382,12 @@ GUIDELINES:
 - Use ai_image with source: "ai" for generated illustrations, posters, covers, concept art, mockups, and diagrams.
 - Use ai_image with source: "unsplash" for real photography, mood boards, people, offices, products, and reference imagery.
 - You may optionally add "color" and "textColor" to any inserted/replaced block using: ${NOTES_COLOR_OPTIONS.join(', ')}.
-- You may optionally add "fontFamily" and "fontSize" to any inserted/replaced text-like block using supported font options.
+- You may optionally add "fontFamily", "fontSize", "fontWeight", and "textAlign" to any inserted/replaced text-like block using supported typography options.
+- Use highlight_text for phrase-level emphasis with highlight colors: ${NOTES_HIGHLIGHT_COLOR_OPTIONS.join(', ')}.
 - Use styling intentionally for hierarchy and variety, for example yellow or blue callouts, gray supporting notes, red warnings, and green status summaries.
 - For structured blocks (todo, callout, code, math, mermaid, image, ai_image, bookmark, database, chart, ai), use structured objects rather than plain strings.
 - When the user asks for a redesign, dashboard, brief, report, or polished layout, consider updating the page title/icon/cover with update_page in addition to the blocks.
-- If the user asks for color or visual design, explicitly consider both block background colors ("color") and text colors ("textColor") where they improve readability.
+- If the user asks for color or visual design, explicitly consider block background colors ("color"), text colors ("textColor"), highlight colors, and per-block typography where they improve readability.
 - When improving layout or variety, prefer mixing headings, callouts, quotes, lists, databases, images, dividers, and tasteful color/textColor choices instead of only plain paragraphs`;
     }
 
@@ -3463,6 +3475,10 @@ GUIDELINES:
             font_family: 'fontFamily',
             fontsize: 'fontSize',
             font_size: 'fontSize',
+            fontweight: 'fontWeight',
+            font_weight: 'fontWeight',
+            textalign: 'textAlign',
+            text_align: 'textAlign',
             unsplashresults: 'unsplashResults',
             unsplash_results: 'unsplashResults',
             selectedunsplashid: 'selectedUnsplashId',
@@ -4926,6 +4942,20 @@ GUIDELINES:
         } else {
             delete normalized.fontSize;
         }
+
+        const normalizedFontWeight = normalizeNotesFontWeight(normalized.fontWeight);
+        if (normalizedFontWeight) {
+            normalized.fontWeight = normalizedFontWeight;
+        } else {
+            delete normalized.fontWeight;
+        }
+
+        const normalizedTextAlign = normalizeNotesTextAlign(normalized.textAlign);
+        if (normalizedTextAlign) {
+            normalized.textAlign = normalizedTextAlign;
+        } else {
+            delete normalized.textAlign;
+        }
         if (Array.isArray(normalized.children) && normalized.children.length > 0) {
             normalized.children = normalized.children.map((child) => normalizeMarkdownLikeBlockDefinition(child));
         }
@@ -5009,6 +5039,63 @@ GUIDELINES:
         return NOTES_FONT_SIZE_OPTIONS.includes(token)
             ? token
             : (aliases[compact] || null);
+    }
+
+    function normalizeNotesFontWeight(value) {
+        const token = normalizeLooseStructuredToken(value || '', {
+            lowercase: true,
+            spacesToUnderscore: true,
+        });
+        if (!token || token === 'default' || token === 'none' || token === 'null') {
+            return null;
+        }
+
+        const compact = token.replace(/_/g, '');
+        const aliases = {
+            regular: 'regular',
+            normal: 'regular',
+            medium: 'medium',
+            semibold: 'semibold',
+            semi: 'semibold',
+            strong: 'semibold',
+            bold: 'bold',
+            heavy: 'bold',
+        };
+        return NOTES_FONT_WEIGHT_OPTIONS.includes(token)
+            ? token
+            : (aliases[compact] || null);
+    }
+
+    function normalizeNotesTextAlign(value) {
+        const token = normalizeLooseStructuredToken(value || '', {
+            lowercase: true,
+            spacesToUnderscore: true,
+        });
+        if (!token || token === 'default' || token === 'none' || token === 'null') {
+            return null;
+        }
+
+        const compact = token.replace(/_/g, '');
+        const aliases = {
+            left: 'left',
+            start: 'left',
+            center: 'center',
+            centered: 'center',
+            middle: 'center',
+            right: 'right',
+            end: 'right',
+        };
+        return NOTES_TEXT_ALIGN_OPTIONS.includes(token)
+            ? token
+            : (aliases[compact] || null);
+    }
+
+    function normalizeNotesHighlightColor(value) {
+        return normalizeNotesColor(value) || (
+            NOTES_HIGHLIGHT_COLOR_OPTIONS.includes(String(value || '').toLowerCase())
+                ? String(value || '').toLowerCase()
+                : null
+        );
     }
 
     function normalizeMarkdownLikeBlockDefinitions(blockDefinitions = []) {
@@ -6414,6 +6501,8 @@ Silently verify the lead cluster, section order, and final polish before returni
             textColor: normalizeNotesColor(definition.textColor),
             fontFamily: normalizeNotesFontFamily(definition.fontFamily),
             fontSize: normalizeNotesFontSize(definition.fontSize),
+            fontWeight: normalizeNotesFontWeight(definition.fontWeight),
+            textAlign: normalizeNotesTextAlign(definition.textAlign),
             expanded: definition.expanded,
             icon: definition.icon
         });
@@ -7518,11 +7607,109 @@ Silently verify the lead cluster, section order, and final polish before returni
                 ...((Array.isArray(nextBlock.formatting?.highlights) ? nextBlock.formatting.highlights : [])),
                 {
                     text: highlightText,
-                    color: String(action.color || 'yellow')
+                    color: normalizeNotesHighlightColor(action.color || action.highlightColor || 'yellow') || 'yellow'
                 }
             ]
         };
         return nextBlock;
+    }
+
+    function normalizeDatabaseContentForAction(content = {}) {
+        const source = content && typeof content === 'object' ? content : {};
+        if (window.Blocks?.normalizeDatabaseContent) {
+            return window.Blocks.normalizeDatabaseContent(source);
+        }
+
+        const sourceRows = Array.isArray(source.rows) ? source.rows : [];
+        const maxRowWidth = sourceRows.reduce((maxWidth, row) => Math.max(maxWidth, Array.isArray(row) ? row.length : 1), 0);
+        const columns = Array.isArray(source.columns) && source.columns.length > 0
+            ? source.columns.map((column, index) => String(column || '').trim() || `Column ${index + 1}`)
+            : ['Name', 'Status', 'Notes'];
+        while (columns.length < maxRowWidth) {
+            columns.push(`Column ${columns.length + 1}`);
+        }
+        const rows = sourceRows.map((row) => {
+            const cells = Array.isArray(row) ? row.slice() : [row];
+            while (cells.length < columns.length) cells.push('');
+            if (cells.length > columns.length) cells.length = columns.length;
+            return cells.map((cell) => (cell == null ? '' : String(cell)));
+        });
+        return {
+            columns,
+            rows,
+            sortColumn: Number.isInteger(source.sortColumn) ? source.sortColumn : null,
+            sortDirection: source.sortDirection === 'desc' ? 'desc' : 'asc',
+        };
+    }
+
+    function resolveDatabaseColumnIndex(database = {}, columnRef = null) {
+        const columns = Array.isArray(database.columns) ? database.columns : [];
+        if (Number.isInteger(columnRef)) {
+            return columnRef >= 0 && columnRef < columns.length ? columnRef : -1;
+        }
+        const numeric = Number(columnRef);
+        if (Number.isInteger(numeric) && String(columnRef).trim() !== '') {
+            const zeroBased = numeric - 1;
+            return zeroBased >= 0 && zeroBased < columns.length ? zeroBased : -1;
+        }
+        const needle = String(columnRef || '').trim().toLowerCase();
+        if (!needle) return -1;
+        return columns.findIndex((column) => String(column || '').trim().toLowerCase() === needle);
+    }
+
+    function buildDatabaseUpdate(existingBlock = null, action = {}) {
+        const existing = normalizeDatabaseContentForAction(existingBlock?.content || {});
+        const rows = Array.isArray(action.rows)
+            ? action.rows
+            : existing.rows;
+        const appendRows = Array.isArray(action.appendRows) ? action.appendRows : null;
+        return normalizeDatabaseContentForAction({
+            ...existing,
+            columns: Array.isArray(action.columns) ? action.columns : existing.columns,
+            rows: appendRows ? [...existing.rows, ...appendRows] : rows,
+            sortColumn: Object.prototype.hasOwnProperty.call(action, 'sortColumn') ? action.sortColumn : existing.sortColumn,
+            sortDirection: action.sortDirection || existing.sortDirection,
+        });
+    }
+
+    function buildDatabaseFill(existingBlock = null, action = {}) {
+        const database = normalizeDatabaseContentForAction(existingBlock?.content || {});
+        const columnIndex = resolveDatabaseColumnIndex(database, action.columnIndex ?? action.column ?? action.columnName);
+        if (columnIndex < 0) return null;
+
+        const startRow = Math.max(0, Number.isInteger(action.rowStart) ? action.rowStart : Number(action.rowStart || 0));
+        const requestedCount = Number(action.count || action.rowCount || 0);
+        const values = Array.isArray(action.values)
+            ? action.values
+            : (() => {
+                const start = Number(action.start ?? action.from ?? 1);
+                const end = Number(action.end ?? action.to ?? 5);
+                if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+                const step = Number(action.step || (end >= start ? 1 : -1));
+                const generated = [];
+                if (!step) return generated;
+                for (let value = start; step > 0 ? value <= end : value >= end; value += step) {
+                    generated.push(value);
+                    if (generated.length > 500) break;
+                }
+                return generated;
+            })();
+        if (!values.length && requestedCount <= 0) return null;
+
+        const fillValues = values.length ? values : Array.from({ length: requestedCount }, (_entry, index) => index + 1);
+        const rowsNeeded = startRow + fillValues.length;
+        while (database.rows.length < rowsNeeded) {
+            database.rows.push(Array(database.columns.length).fill(''));
+        }
+        database.rows = database.rows.map((row) => {
+            const cells = Array.isArray(row) ? row.slice() : [row];
+            while (cells.length < database.columns.length) cells.push('');
+            return cells;
+        });
+        fillValues.forEach((value, offset) => {
+            database.rows[startRow + offset][columnIndex] = value == null ? '' : String(value);
+        });
+        return normalizeDatabaseContentForAction(database);
     }
 
     function shouldStageNotesActions(actions = []) {
@@ -7532,7 +7719,7 @@ Silently verify the lead cluster, section order, and final polish before returni
         if (typeof window.requestAnimationFrame !== 'function' || typeof document === 'undefined' || !document.body) {
             return false;
         }
-        return actions.some((action) => /^(replace_section|move_section|insert_after_section|insert_before_section|insert_between_sections|insert_here|delete_section|delete_here|replace_block|move_block|reorder_block|move|replace_text|highlight_text|change_block_type|set_block_type|convert_block_type)$/.test(String(action?.op || '').toLowerCase()));
+        return actions.some((action) => /^(replace_section|move_section|insert_after_section|insert_before_section|insert_between_sections|insert_here|delete_section|delete_here|replace_block|move_block|reorder_block|move|replace_text|highlight_text|update_database|fill_database_column|change_block_type|set_block_type|convert_block_type)$/.test(String(action?.op || '').toLowerCase()));
     }
 
     function getActionStageDelay(action = {}, index = 0) {
@@ -7619,6 +7806,12 @@ Silently verify the lead cluster, section order, and final polish before returni
                             fontSize: Object.prototype.hasOwnProperty.call(rawAction, 'fontSize')
                                 ? rawAction.fontSize
                                 : existing.fontSize,
+                            fontWeight: Object.prototype.hasOwnProperty.call(rawAction, 'fontWeight')
+                                ? rawAction.fontWeight
+                                : existing.fontWeight,
+                            textAlign: Object.prototype.hasOwnProperty.call(rawAction, 'textAlign')
+                                ? rawAction.textAlign
+                                : existing.textAlign,
                             icon: Object.prototype.hasOwnProperty.call(rawAction, 'icon')
                                 ? rawAction.icon
                                 : existing.icon
@@ -7634,6 +7827,33 @@ Silently verify the lead cluster, section order, and final polish before returni
                         const inserted = editor.replaceBlockWithBlocks?.(targetBlockId, [replacement]) || [];
                         if (!inserted.length) return;
                         focusBlockId = inserted[0]?.id || replacement.id || targetBlockId;
+                        appliedCount++;
+                        break;
+                    }
+                    case 'update_database': {
+                        if (!targetBlockId) return;
+                        const existing = editor.getBlock?.(targetBlockId);
+                        if (!existing || existing.type !== 'database') return;
+                        const nextContent = buildDatabaseUpdate(existing, rawAction);
+                        const updated = editor.updateDatabaseContent
+                            ? editor.updateDatabaseContent(targetBlockId, nextContent)
+                            : editor.updateBlockFields?.(targetBlockId, { content: nextContent });
+                        if (!updated) return;
+                        focusBlockId = targetBlockId;
+                        appliedCount++;
+                        break;
+                    }
+                    case 'fill_database_column': {
+                        if (!targetBlockId) return;
+                        const existing = editor.getBlock?.(targetBlockId);
+                        if (!existing || existing.type !== 'database') return;
+                        const nextContent = buildDatabaseFill(existing, rawAction);
+                        if (!nextContent) return;
+                        const updated = editor.updateDatabaseContent
+                            ? editor.updateDatabaseContent(targetBlockId, nextContent)
+                            : editor.updateBlockFields?.(targetBlockId, { content: nextContent });
+                        if (!updated) return;
+                        focusBlockId = targetBlockId;
                         appliedCount++;
                         break;
                     }

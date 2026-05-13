@@ -1229,7 +1229,7 @@ class OpenAIAPIClient extends EventTarget {
                     throw new Error('Gateway SSE helpers are unavailable');
                 }
 
-                for await (const event of streamGatewayResponse(response)) {
+                for await (const event of streamGatewayResponse(response, { emitImplicitDone: false })) {
                     if (event.type === 'error') {
                         const errorMessage = event.error?.message || event.error?.error?.message || 'Stream error';
                         throw new Error(errorMessage);
@@ -1335,6 +1335,14 @@ class OpenAIAPIClient extends EventTarget {
                             yield this.buildStatusEvent('ready', 'Reply complete');
                             yield this.buildDonePayload(pendingDone);
                             return;
+                        case 'finish':
+                            if (this.isTerminalFinishReason(event.finishReason)) {
+                                doneEmitted = true;
+                                yield this.buildStatusEvent('ready', 'Reply complete');
+                                yield this.buildDonePayload(pendingDone);
+                                return;
+                            }
+                            break;
                         default:
                             break;
                     }
@@ -1343,8 +1351,9 @@ class OpenAIAPIClient extends EventTarget {
                 // Success - reset retry count
                 this.retryCount = 0;
                 if (!doneEmitted) {
-                    yield this.buildStatusEvent('ready', 'Reply complete');
-                    yield this.buildDonePayload(pendingDone);
+                    const error = new Error('Stream ended before completion.');
+                    error.code = 'stream_incomplete';
+                    throw error;
                 }
                 return;
                 

@@ -189,6 +189,12 @@
             onFontSizeChange: (blockId, fontSize) => {
                 Editor.setBlockFontSize(blockId, fontSize);
             },
+            onFontWeightChange: (blockId, fontWeight) => {
+                Editor.setBlockFontWeight(blockId, fontWeight);
+            },
+            onTextAlignChange: (blockId, textAlign) => {
+                Editor.setBlockTextAlign(blockId, textAlign);
+            },
             onTurnInto: (blockId, type) => {
                 const conversionInfo = Editor.getBlockConversionInfo?.(blockId, type);
                 if (conversionInfo?.requiresConfirmation) {

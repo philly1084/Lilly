@@ -9436,6 +9436,14 @@ curl -fsSIL --max-time 20 "https://$host"`;
         }
 
         const normalizedMessage = String(error?.message || error || '').toLowerCase();
+        const streamEndedBeforeCompletion = String(error?.code || '').toLowerCase() === 'stream_incomplete'
+            || normalizedMessage.includes('stream ended before completion')
+            || normalizedMessage.includes('ended before completion')
+            || normalizedMessage.includes('premature');
+        if (trackedRequest.acceptedByServer && streamEndedBeforeCompletion) {
+            return true;
+        }
+
         return this.pageWasHidden && (
             normalizedMessage.includes('network')
             || normalizedMessage.includes('fetch')

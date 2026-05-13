@@ -367,6 +367,20 @@ describe('openai-sse helpers', () => {
     ]);
   });
 
+  test('can leave premature SSE EOF incomplete for caller recovery', async () => {
+    const delta = { type: 'response.output_text.delta', delta: 'Partial answer' };
+    const response = new Response(`data: ${JSON.stringify(delta)}\n\n`, {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+
+    const events = [];
+    for await (const event of streamGatewayResponse(response, { emitImplicitDone: false })) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual(['text_delta']);
+  });
+
   test('filters and selects Codex-backed models', () => {
     const models = [
       { id: 'gpt-4o' },

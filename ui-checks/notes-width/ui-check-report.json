@@ -1,0 +1,309 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/index.html",
+  "originalUrl": "file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/index.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-13T00:38:03.824Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-width\\welcome-to-notes-notes-desktop.png",
+      "metrics": {
+        "title": "Welcome to Notes - Notes",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/index.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 830,
+        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE note Welcome to Notes Outline 1 ▾ H1 Welcome to your new notes app! Trash Settings Dark mode AI Ready on this page Ask AI Ready to work this page › Welcome to Notes GPT-4o note Export Add cover + Welcome to your new notes app! + + This is a Lilly-style block-based editor with AI support. Here's what you can do: + + • Type \"/\" to see available block types including AI Image generation + + • Use markdown shortcuts like #, ##, ### for headings + + • Drag blocks",
+        "headings": [],
+        "interactiveControls": 134,
+        "textContrast": {
+          "checked": 98,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/api/sessions?taskType=notes&clientSurface=notes' from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to hydrate shared notes session: TypeError: Failed to fetch\n    at NotesAPIClient.getSessionState (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/api-client.js:1031:32)\n    at hydrateSharedConversationSession (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:658:47)\n    at file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8752:19\n    at HTMLDocument.init (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8770:11)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/health' from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/v1/models' from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to fetch models: TypeError: Failed to fetch\n    at NotesAPIClient.getModels (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/api-client.js:880:36)\n    at refreshModelsFromAPI (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8790:52)\n    at file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8757:23"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/api/sessions?taskType=notes&clientSurface=notes",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/health",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/v1/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-width\\welcome-to-notes-notes-mobile.png",
+      "metrics": {
+        "title": "Welcome to Notes - Notes",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/index.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "LB LillyBuilt New page Import PRIVATE note Welcome to Notes Outline 1 ▾ H1 Welco",
+            "left": -390,
+            "right": 0,
+            "width": 390
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-header",
+            "text": "LB LillyBuilt",
+            "left": -390,
+            "right": -1,
+            "width": 389
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "workspace-info",
+            "text": "LB LillyBuilt",
+            "left": -374,
+            "right": -47,
+            "width": 327
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "workspace-avatar",
+            "text": "LB",
+            "left": -360,
+            "right": -340,
+            "width": 20
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "workspace-name",
+            "text": "LillyBuilt",
+            "left": -330,
+            "right": -276,
+            "width": 54
+          },
+          {
+            "tag": "button",
+            "id": "sidebar-toggle",
+            "className": "icon-btn",
+            "text": "",
+            "left": -47,
+            "right": -17,
+            "width": 30
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -40,
+            "right": -24,
+            "width": 16
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -36,
+            "right": -28,
+            "width": 8
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-actions",
+            "text": "New page Import",
+            "left": -390,
+            "right": -1,
+            "width": 389
+          },
+          {
+            "tag": "button",
+            "id": "new-page-btn",
+            "className": "new-page-btn",
+            "text": "New page",
+            "left": -368,
+            "right": -23,
+            "width": 345
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -356,
+            "right": -340,
+            "width": 16
+          },
+          {
+            "tag": "button",
+            "id": "import-btn",
+            "className": "new-page-btn import-btn",
+            "text": "Import",
+            "left": -368,
+            "right": -23,
+            "width": 345
+          }
+        ],
+        "bodyTextLength": 806,
+        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE note Welcome to Notes Outline 1 ▾ H1 Welcome to your new notes app! Trash Settings Dark mode AI Ready on this page Ask AI › Welcome to Notes GPT-4o note Export Add cover + Welcome to your new notes app! + + This is a Lilly-style block-based editor with AI support. Here's what you can do: + + • Type \"/\" to see available block types including AI Image generation + + • Use markdown shortcuts like #, ##, ### for headings + + • Drag blocks using the block handle ",
+        "headings": [],
+        "interactiveControls": 135,
+        "textContrast": {
+          "checked": 98,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/api/sessions?taskType=notes&clientSurface=notes' from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to hydrate shared notes session: TypeError: Failed to fetch\n    at NotesAPIClient.getSessionState (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/api-client.js:1031:32)\n    at hydrateSharedConversationSession (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:658:47)\n    at file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8752:19\n    at HTMLDocument.init (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8770:11)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/health' from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/v1/models' from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to fetch models: TypeError: Failed to fetch\n    at NotesAPIClient.getModels (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/api-client.js:880:36)\n    at refreshModelsFromAPI (file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8790:52)\n    at file:///C:/Users/phill/KimiBuilt/frontend/notes-notion/js/agent.js:8757:23"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/api/sessions?taskType=notes&clientSurface=notes",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/health",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/v1/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-width\\welcome-to-notes-notes-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-width\\welcome-to-notes-notes-mobile.png"
+    ],
+    "issues": [
+      "cors-errors",
+      "failed-requests"
+    ]
+  }
+}

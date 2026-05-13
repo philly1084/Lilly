@@ -21,6 +21,10 @@ function samplePage() {
                 content: 'The launch needs a careful review before Friday.',
                 color: null,
                 textColor: null,
+                fontWeight: 'semibold',
+                formatting: {
+                    highlights: [{ text: 'careful review', color: 'teal' }],
+                },
                 children: [],
             },
             {
@@ -81,6 +85,8 @@ describe('NotesQuery', () => {
         expect(NotesQuery.grep(page, 'type:heading_2').map((entry) => entry.id)).toEqual(['risks', 'tasks']);
         expect(NotesQuery.grep(page, 'section:Risks').map((entry) => entry.id)).toEqual(['risks', 'risk-body']);
         expect(NotesQuery.grep(page, 'color:yellow').map((entry) => entry.id)).toEqual(['risk-body']);
+        expect(NotesQuery.grep(page, 'weight:semibold').map((entry) => entry.id)).toEqual(['intro']);
+        expect(NotesQuery.grep(page, 'highlight:teal').map((entry) => entry.id)).toEqual(['intro']);
     });
 
     test('creates style and flat text projections without raw block objects', () => {
@@ -91,6 +97,10 @@ describe('NotesQuery', () => {
         expect(styles.find((entry) => entry.id === 'risks')).toEqual(expect.objectContaining({
             type: 'heading_2',
             textColor: 'red',
+        }));
+        expect(styles.find((entry) => entry.id === 'intro')).toEqual(expect.objectContaining({
+            fontWeight: 'semibold',
+            highlights: [expect.objectContaining({ text: 'careful review', color: 'teal' })],
         }));
         expect(styles[0]).not.toHaveProperty('source');
         expect(flatText).toContain('Launch Plan');
@@ -111,5 +121,52 @@ describe('NotesQuery', () => {
             expect.objectContaining({ blockId: 'tasks', textColor: 'blue' }),
         ]);
         expect(NotesQuery.createHeaderColorActions(page, { textColor: 'blue' })[0]).not.toHaveProperty('content');
+    });
+
+    test('plans mass highlight actions from query matches', () => {
+        const page = samplePage();
+
+        expect(NotesQuery.createHighlightActions(page, {
+            where: { textIncludes: 'launch' },
+        }, {
+            text: 'launch',
+            color: 'indigo',
+        })).toEqual([
+            expect.objectContaining({
+                op: 'highlight_text',
+                blockId: 'h1',
+                text: 'launch',
+                color: 'indigo',
+            }),
+            expect.objectContaining({
+                op: 'highlight_text',
+                blockId: 'intro',
+                text: 'launch',
+                color: 'indigo',
+            }),
+        ]);
+    });
+
+    test('plans database bulk update and fill actions', () => {
+        expect(NotesQuery.createDatabaseUpdateAction('db-1', {
+            columns: ['Item', 'Rating'],
+            appendRows: [['Alpha', '']],
+        })).toEqual({
+            op: 'update_database',
+            blockId: 'db-1',
+            columns: ['Item', 'Rating'],
+            appendRows: [['Alpha', '']],
+        });
+
+        expect(NotesQuery.createDatabaseFillAction('db-1', 'Rating', {
+            start: 1,
+            end: 5,
+        })).toEqual({
+            op: 'fill_database_column',
+            blockId: 'db-1',
+            column: 'Rating',
+            start: 1,
+            end: 5,
+        });
     });
 });

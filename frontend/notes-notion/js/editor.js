@@ -817,6 +817,10 @@ const Editor = (function() {
                     <path d="m14 4 6 6"></path>
                 </svg>
             </button>
+            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#bbf7d0" title="Green highlight" style="--swatch-color: #bbf7d0;"></button>
+            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#bfdbfe" title="Blue highlight" style="--swatch-color: #bfdbfe;"></button>
+            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#ddd6fe" title="Purple highlight" style="--swatch-color: #ddd6fe;"></button>
+            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#fbcfe8" title="Pink highlight" style="--swatch-color: #fbcfe8;"></button>
             <div class="inline-toolbar-divider"></div>
             <button class="inline-toolbar-btn" data-cmd="createLink" title="Link (Ctrl+K)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -839,7 +843,7 @@ const Editor = (function() {
         
         // Position toolbar above selection
         const toolbarHeight = 40;
-        const toolbarWidth = 220;
+        const toolbarWidth = 300;
         let left = rect.left + (rect.width / 2) - (toolbarWidth / 2);
         let top = rect.top - toolbarHeight - 8;
         
@@ -856,7 +860,7 @@ const Editor = (function() {
         toolbar.style.top = `${top}px`;
         
         // Handle button clicks
-        toolbar.querySelectorAll('.inline-toolbar-btn').forEach(btn => {
+        toolbar.querySelectorAll('.inline-toolbar-btn, .inline-toolbar-swatch').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const cmd = btn.dataset.cmd;
@@ -1132,7 +1136,7 @@ const Editor = (function() {
             }
         }
 
-        if (block.fontFamily || block.fontSize) {
+        if (block.fontFamily || block.fontSize || block.fontWeight || block.textAlign) {
             const textInput = content.querySelector('.block-input, [contenteditable="true"]');
             if (textInput) {
                 if (block.fontFamily) {
@@ -1140,6 +1144,12 @@ const Editor = (function() {
                 }
                 if (block.fontSize) {
                     textInput.classList.add(`font-size-${block.fontSize}`);
+                }
+                if (block.fontWeight) {
+                    textInput.classList.add(`font-weight-${block.fontWeight}`);
+                }
+                if (block.textAlign) {
+                    textInput.classList.add(`text-align-${block.textAlign}`);
                 }
             }
         }
@@ -2494,6 +2504,91 @@ const Editor = (function() {
 
         autoSave();
     }
+
+    function setBlockFontWeight(blockId, fontWeight) {
+        if (!currentPage) return;
+
+        saveToHistory();
+
+        const location = findBlockLocation(blockId);
+        const block = location?.block;
+        if (!block) return;
+
+        block.fontWeight = fontWeight;
+
+        const blockEl = document.querySelector(`.block[data-block-id="${blockId}"]`);
+        const input = blockEl?.querySelector?.('.block-input, [contenteditable="true"]');
+        if (input) {
+            input.classList.forEach((cls) => {
+                if (cls.startsWith('font-weight-')) {
+                    input.classList.remove(cls);
+                }
+            });
+            if (fontWeight) {
+                input.classList.add(`font-weight-${fontWeight}`);
+            }
+        }
+
+        autoSave();
+    }
+
+    function setBlockTextAlign(blockId, textAlign) {
+        if (!currentPage) return;
+
+        saveToHistory();
+
+        const location = findBlockLocation(blockId);
+        const block = location?.block;
+        if (!block) return;
+
+        block.textAlign = textAlign;
+
+        const blockEl = document.querySelector(`.block[data-block-id="${blockId}"]`);
+        const input = blockEl?.querySelector?.('.block-input, [contenteditable="true"]');
+        if (input) {
+            input.classList.forEach((cls) => {
+                if (cls.startsWith('text-align-')) {
+                    input.classList.remove(cls);
+                }
+            });
+            if (textAlign) {
+                input.classList.add(`text-align-${textAlign}`);
+            }
+        }
+
+        autoSave();
+    }
+
+    function updateDatabaseContent(blockId, updates = {}) {
+        if (!currentPage || !blockId || !updates || typeof updates !== 'object') return null;
+
+        const location = findBlockLocation(blockId);
+        const block = location?.block;
+        if (!block || block.type !== 'database') return null;
+
+        const normalizeDatabase = window.Blocks?.normalizeDatabaseContent || ((content) => content);
+        const existing = normalizeDatabase(block.content || {});
+        const nextRows = Array.isArray(updates.appendRows)
+            ? [
+                ...(Array.isArray(existing.rows) ? existing.rows : []),
+                ...updates.appendRows,
+            ]
+            : (Array.isArray(updates.rows) ? updates.rows : existing.rows);
+        const nextContent = normalizeDatabase({
+            ...existing,
+            ...updates,
+            columns: Array.isArray(updates.columns) ? updates.columns : existing.columns,
+            rows: nextRows,
+            sortColumn: Object.prototype.hasOwnProperty.call(updates, 'sortColumn')
+                ? updates.sortColumn
+                : existing.sortColumn,
+            sortDirection: updates.sortDirection || existing.sortDirection,
+        });
+
+        return updateBlockFields(blockId, {
+            content: nextContent,
+        });
+    }
     
     /**
      * Reorder blocks (drag and drop)
@@ -2670,6 +2765,9 @@ const Editor = (function() {
         setTextColor,
         setBlockFontFamily,
         setBlockFontSize,
+        setBlockFontWeight,
+        setBlockTextAlign,
+        updateDatabaseContent,
         reorderBlocks,
         focusBlock,
         savePage,

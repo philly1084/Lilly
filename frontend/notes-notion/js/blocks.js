@@ -310,22 +310,32 @@ const Blocks = (function() {
 
     function normalizeDatabaseContent(content) {
         const source = (content && typeof content === 'object') ? content : {};
+        const sourceRows = Array.isArray(source.rows) ? source.rows : [];
+        const maxRowWidth = sourceRows.reduce((maxWidth, row) => {
+            if (Array.isArray(row)) return Math.max(maxWidth, row.length);
+            return Math.max(maxWidth, 1);
+        }, 0);
         const columns = Array.isArray(source.columns) && source.columns.length > 0
             ? source.columns.map((column, index) => {
                 const label = String(column || '').trim();
                 return label || `Column ${index + 1}`;
             })
             : ['Name', 'Status', 'Notes'];
+        while (columns.length < maxRowWidth) {
+            columns.push(`Column ${columns.length + 1}`);
+        }
 
-        const rows = Array.isArray(source.rows)
-            ? source.rows.map((row) => {
-                const cells = Array.isArray(row) ? row.slice(0, columns.length) : [row];
+        const rows = sourceRows
+            .map((row) => {
+                const cells = Array.isArray(row) ? row.slice() : [row];
                 while (cells.length < columns.length) {
                     cells.push('');
                 }
+                if (cells.length > columns.length) {
+                    cells.length = columns.length;
+                }
                 return cells.map((cell) => (cell == null ? '' : String(cell)));
-            })
-            : [];
+            });
 
         return {
             columns,
@@ -2279,20 +2289,40 @@ const Blocks = (function() {
         const table = document.createElement('div');
         table.className = 'database-table';
         
-        // Header with sorting
+        // Header with editable labels and sorting
         const header = document.createElement('div');
         header.className = 'database-header';
         data.columns.forEach((col, index) => {
             const cell = document.createElement('div');
             cell.className = 'database-cell database-header-cell';
-            cell.style.cursor = 'pointer';
-            cell.setAttribute('role', 'button');
-            cell.tabIndex = 0;
-            cell.setAttribute('aria-label', `Sort by ${col}`);
 
             const label = document.createElement('span');
             label.className = 'database-header-label';
             label.textContent = col;
+            if (isEditable) {
+                label.contentEditable = true;
+                label.spellcheck = false;
+                label.tabIndex = 0;
+                label.setAttribute('role', 'textbox');
+                label.setAttribute('aria-label', `Column ${index + 1} label`);
+                label.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                });
+                label.addEventListener('keydown', (event) => {
+                    event.stopPropagation();
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        label.blur();
+                    }
+                });
+                label.addEventListener('blur', () => {
+                    const nextLabel = label.textContent.trim() || `Column ${index + 1}`;
+                    data.columns[index] = nextLabel;
+                    label.textContent = nextLabel;
+                    block.content = data;
+                    if (window.Editor) window.Editor.savePage();
+                });
+            }
 
             const sortIndicator = document.createElement('span');
             sortIndicator.className = 'database-sort-indicator';
@@ -2302,7 +2332,6 @@ const Blocks = (function() {
                 cell.style.fontWeight = '700';
             }
             cell.appendChild(label);
-            cell.appendChild(sortIndicator);
 
             const sortColumn = () => {
                 // Toggle sort
@@ -2330,13 +2359,24 @@ const Blocks = (function() {
                 if (window.Editor) window.Editor.savePage();
             };
 
-            cell.addEventListener('click', sortColumn);
-            cell.addEventListener('keydown', (event) => {
+            const sortButton = document.createElement('button');
+            sortButton.type = 'button';
+            sortButton.className = 'database-sort-button';
+            sortButton.title = `Sort by ${col}`;
+            sortButton.setAttribute('aria-label', `Sort by ${col}`);
+            sortButton.appendChild(sortIndicator);
+            sortButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                sortColumn();
+            });
+            sortButton.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     sortColumn();
                 }
             });
+            cell.appendChild(sortButton);
 
             header.appendChild(cell);
         });
@@ -3308,6 +3348,7 @@ const Blocks = (function() {
         getDefaultImageModel,
         extractResponseText,
         normalizeCalloutContent,
+        normalizeDatabaseContent,
         // Expose render functions for direct use
         render: {
             text: renderTextBlock,

@@ -48,6 +48,8 @@ function loadAgent(overrides = {}) {
                 textColor: options.textColor || null,
                 fontFamily: options.fontFamily || null,
                 fontSize: options.fontSize || null,
+                fontWeight: options.fontWeight || null,
+                textAlign: options.textAlign || null,
                 icon: options.icon,
             })),
         },
@@ -1009,6 +1011,63 @@ Approved page plan:
             expect.objectContaining({ text: 'important', color: 'yellow' }),
         ]));
         expect(editor.replaceBlockWithBlocks).toHaveBeenCalledTimes(2);
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+    });
+
+    test('applies logical database bulk writes and rating fills in one block update', () => {
+        jest.useFakeTimers();
+        const blocks = {
+            db_a: {
+                id: 'db_a',
+                type: 'database',
+                content: {
+                    columns: ['Task', 'Score'],
+                    rows: [['Draft', ''], ['Review', '']],
+                    sortColumn: null,
+                    sortDirection: 'asc',
+                },
+                children: [],
+            },
+        };
+        const editor = {
+            getBlock: jest.fn((blockId) => blocks[blockId]),
+            updateDatabaseContent: jest.fn((blockId, updates) => {
+                blocks[blockId].content = {
+                    ...blocks[blockId].content,
+                    ...updates,
+                };
+                return blocks[blockId];
+            }),
+            savePage: jest.fn(),
+            focusBlock: jest.fn(),
+        };
+        const agent = loadAgent({ Editor: editor });
+
+        const result = agent._applyNotesActions([
+            {
+                op: 'update_database',
+                blockId: 'db_a',
+                columns: ['Task', 'Score', 'Owner'],
+                appendRows: [['Ship', '', 'Phil']],
+            },
+            {
+                op: 'fill_database_column',
+                blockId: 'db_a',
+                column: 'Score',
+                start: 1,
+                end: 3,
+            },
+        ]);
+
+        expect(result.appliedCount).toBe(2);
+        expect(blocks.db_a.content.columns).toEqual(['Task', 'Score', 'Owner']);
+        expect(blocks.db_a.content.rows).toEqual([
+            ['Draft', '1', ''],
+            ['Review', '2', ''],
+            ['Ship', '3', 'Phil'],
+        ]);
+        expect(editor.updateDatabaseContent).toHaveBeenCalledTimes(2);
         jest.runOnlyPendingTimers();
         jest.useRealTimers();
     });

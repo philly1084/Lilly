@@ -1142,7 +1142,7 @@
       reader.releaseLock();
     }
 
-    if (!sawDone || options.emitImplicitDone !== false) {
+    if (!sawDone && options.emitImplicitDone !== false) {
       yield { type: 'done', implicit: true };
     }
   }
