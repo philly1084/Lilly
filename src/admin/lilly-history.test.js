@@ -33,6 +33,18 @@ describe('lilly-history', () => {
 
     expect(summary.totalPulls).toBe(3);
     expect(summary.mergedPullRequests).toBe(1);
+    expect(summary.primaryCategories.reduce((sum, category) => sum + category.count, 0)).toBe(3);
+    expect(summary.recentVelocity).toMatchObject({
+      latestDate: '2026-05-02',
+      last7Days: 1,
+      last14Days: 1,
+      last30Days: 1,
+    });
+    expect(summary.phases[0]).toMatchObject({
+      percent: 33,
+      repairCount: 0,
+      growthCount: 1,
+    });
     expect(summary.tiles).toHaveLength(3);
     expect(summary.phases.map((phase) => phase.id)).toEqual([
       'ignition',

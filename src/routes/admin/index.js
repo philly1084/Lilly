@@ -42,7 +42,7 @@ router.get('/lilly-history', async (_req, res, next) => {
   try {
     const history = await buildLillyHistory({
       cwd: process.cwd(),
-      maxCount: 900,
+      maxCount: 5000,
     });
     res.json({ success: true, data: history });
   } catch (error) {

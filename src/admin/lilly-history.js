@@ -102,22 +102,62 @@ function parseGitLog(stdout = '') {
     });
 }
 
+function countSince(commits, latestDate, days) {
+  if (!latestDate) {
+    return 0;
+  }
+
+  const latest = new Date(`${latestDate}T00:00:00Z`);
+  if (Number.isNaN(latest.getTime())) {
+    return 0;
+  }
+
+  const cutoff = new Date(latest.getTime() - ((days - 1) * 24 * 60 * 60 * 1000));
+  const cutoffIso = cutoff.toISOString().slice(0, 10);
+
+  return commits.filter((commit) => commit.date >= cutoffIso && commit.date <= latestDate).length;
+}
+
 function summarizeCommits(commits = []) {
+  const orderedCommits = [...commits].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const chronologicalCommits = [...commits].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   const totalPulls = commits.length;
   const mergedPullRequests = commits.filter((commit) => /^Merge pull request #/i.test(commit.subject)).length;
   const repairPulls = commits.filter((commit) => commit.tags.includes('repair')).length;
   const growthPulls = commits.filter((commit) => commit.tags.includes('growth')).length;
-  const firstDate = commits[commits.length - 1]?.date || null;
-  const lastDate = commits[0]?.date || null;
+  const firstDate = chronologicalCommits[0]?.date || null;
+  const lastDate = orderedCommits[0]?.date || null;
+  const maintenancePulls = commits.filter((commit) => commit.tags.includes('maintenance')).length;
+  const taggedPulls = totalPulls - maintenancePulls;
+  const multiLanePulls = commits.filter((commit) => commit.tags.length > 1).length;
 
   const categories = CATEGORY_RULES.map((rule) => ({
     id: rule.id,
     label: rule.label,
     count: commits.filter((commit) => commit.tags.includes(rule.id)).length,
+    primaryCount: commits.filter((commit) => commit.primaryTag === rule.id).length,
+    percent: totalPulls ? Math.round((commits.filter((commit) => commit.tags.includes(rule.id)).length / totalPulls) * 100) : 0,
   })).filter((category) => category.count > 0);
 
+  const primaryCategories = [
+    ...CATEGORY_RULES.map((rule) => ({
+      id: rule.id,
+      label: rule.label,
+      count: commits.filter((commit) => commit.primaryTag === rule.id).length,
+    })),
+    {
+      id: 'maintenance',
+      label: 'Maintenance',
+      count: commits.filter((commit) => commit.primaryTag === 'maintenance').length,
+    },
+  ].filter((category) => category.count > 0)
+    .map((category) => ({
+      ...category,
+      percent: totalPulls ? Math.round((category.count / totalPulls) * 100) : 0,
+    }));
+
   const phases = PHASES.map((phase) => {
-    const phaseCommits = commits.filter((commit) => commit.phase === phase.id);
+    const phaseCommits = orderedCommits.filter((commit) => commit.phase === phase.id);
     const tagCounts = CATEGORY_RULES.map((rule) => ({
       id: rule.id,
       label: rule.label,
@@ -129,7 +169,20 @@ function summarizeCommits(commits = []) {
       count: phaseCommits.length,
       repairCount: phaseCommits.filter((commit) => commit.tags.includes('repair')).length,
       growthCount: phaseCommits.filter((commit) => commit.tags.includes('growth')).length,
+      percent: totalPulls ? Math.round((phaseCommits.length / totalPulls) * 100) : 0,
       tagCounts,
+      primaryTagCounts: [
+        ...CATEGORY_RULES.map((rule) => ({
+          id: rule.id,
+          label: rule.label,
+          count: phaseCommits.filter((commit) => commit.primaryTag === rule.id).length,
+        })),
+        {
+          id: 'maintenance',
+          label: 'Maintenance',
+          count: phaseCommits.filter((commit) => commit.primaryTag === 'maintenance').length,
+        },
+      ].filter((item) => item.count > 0),
       highlights: phaseCommits.slice(0, 5),
     };
   }).filter((phase) => phase.count > 0);
@@ -139,11 +192,21 @@ function summarizeCommits(commits = []) {
     mergedPullRequests,
     repairPulls,
     growthPulls,
+    maintenancePulls,
+    taggedPulls,
+    multiLanePulls,
+    recentVelocity: {
+      latestDate: lastDate,
+      last7Days: countSince(commits, lastDate, 7),
+      last14Days: countSince(commits, lastDate, 14),
+      last30Days: countSince(commits, lastDate, 30),
+    },
     firstDate,
     lastDate,
     categories,
+    primaryCategories,
     phases,
-    tiles: commits.map((commit, index) => ({
+    tiles: orderedCommits.map((commit, index) => ({
       index: totalPulls - index,
       shortHash: commit.shortHash,
       date: commit.date,
@@ -151,7 +214,7 @@ function summarizeCommits(commits = []) {
       phase: commit.phase,
       primaryTag: commit.primaryTag,
     })),
-    recent: commits.slice(0, 48),
+    recent: orderedCommits.slice(0, 48),
   };
 }
 
@@ -197,7 +260,7 @@ async function getCodexSessionSummary() {
   }
 }
 
-async function buildLillyHistory({ cwd = process.cwd(), maxCount = 900 } = {}) {
+async function buildLillyHistory({ cwd = process.cwd(), maxCount = 5000 } = {}) {
   const { stdout } = await execFileAsync('git', [
     'log',
     '--all',
