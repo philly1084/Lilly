@@ -141,6 +141,37 @@ describe('TtsService', () => {
             voiceId: '',
         });
         expect(result.provider).toBe('piper');
+        expect(result.fallback).toEqual(expect.objectContaining({
+            providerFallback: true,
+            fromProvider: 'kokoro',
+            toProvider: 'piper',
+        }));
+    });
+
+    test('does not use provider fallback when disabled for a synthesis request', async () => {
+        const timeoutError = new Error('Kokoro generation timed out.');
+        timeoutError.statusCode = 504;
+        timeoutError.code = 'tts_timeout';
+        const kokoro = createProvider('kokoro', 'ready', async () => {
+            throw timeoutError;
+        });
+        const piper = createProvider('piper');
+        const service = new TtsService({
+            provider: 'kokoro',
+            fallbackProvider: 'piper',
+        }, {
+            kokoro,
+            piper,
+        });
+
+        await expect(service.synthesize({
+            text: 'Hello there.',
+            voiceId: 'af_heart',
+            allowProviderFallback: false,
+        })).rejects.toThrow('Kokoro generation timed out.');
+
+        expect(kokoro.synthesize).toHaveBeenCalledTimes(1);
+        expect(piper.synthesize).not.toHaveBeenCalled();
     });
 
     test('falls back to Piper on provider unavailable errors', async () => {

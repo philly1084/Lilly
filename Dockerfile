@@ -11,7 +11,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 # ================================
 # Stage 2: BuildKit client
 # ================================
-FROM moby/buildkit:v0.17.2 AS buildkit
+FROM docker.io/moby/buildkit:v0.17.2 AS buildkit
 
 # ================================
 # Stage 3: Production image

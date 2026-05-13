@@ -205,7 +205,15 @@ describe('PodcastService', () => {
         processing: expect.objectContaining({
           voiceOnlyAudio: true,
           packaging: 'native-wav',
+          allowProviderFallback: false,
         }),
+        actualTurnVoices: expect.arrayContaining([
+          expect.objectContaining({
+            requestedProvider: 'kokoro',
+            providerFallbackAllowed: false,
+          }),
+        ]),
+        ttsSegments: expect.any(Array),
       }),
     }));
     expect(result.audio).toEqual(expect.objectContaining({
@@ -1100,6 +1108,44 @@ describe('PodcastService', () => {
 
     const expectedTailBytes = Math.round(parsed.sampleRate * 0.65) * parsed.numChannels * (parsed.bitsPerSample / 8);
     expect(trailingZeroBytes).toBeGreaterThanOrEqual(expectedTailBytes);
+  });
+
+  test('records actual TTS provider and voice diagnostics for synthesized podcast segments', async () => {
+    ttsService.synthesize.mockResolvedValueOnce({
+      provider: 'kokoro',
+      audioBuffer: createTestWav([1, 2, 3, 4]),
+      voice: { id: 'af_bella', provider: 'kokoro' },
+      contentType: 'audio/wav',
+      text: 'segment',
+    });
+
+    const service = new PodcastService();
+    const result = await service.synthesizeTurns(
+      [{ speaker: 'June', text: 'This is June speaking with the second host voice.' }],
+      [{ name: 'June', voiceId: 'af_bella' }],
+      {
+        silenceMs: 250,
+        chunkMaxChars: 1600,
+        returnDiagnostics: true,
+      },
+    );
+
+    expect(Buffer.isBuffer(result.audioBuffer)).toBe(true);
+    expect(ttsService.synthesize).toHaveBeenCalledWith(expect.objectContaining({
+      voiceId: 'af_bella',
+      allowProviderFallback: false,
+    }));
+    expect(result.synthesisDiagnostics).toEqual([
+      expect.objectContaining({
+        speaker: 'June',
+        requestedProvider: 'kokoro',
+        requestedVoiceId: 'af_bella',
+        actualProvider: 'kokoro',
+        actualVoiceId: 'af_bella',
+        providerFallback: false,
+        providerFallbackAllowed: false,
+      }),
+    ]);
   });
 
   test('passes podcast-specific Piper timeout settings into synthesis and retries timed out chunks with smaller splits', async () => {

@@ -4035,6 +4035,8 @@ class ToolManager {
             },
             cycleHostVoices: { type: 'boolean' },
             allowVoiceFallback: { type: 'boolean' },
+            allowProviderFallback: { type: 'boolean' },
+            allowTtsProviderFallback: { type: 'boolean' },
             artifactIds: {
               type: 'array',
               items: { type: 'string' },

@@ -52,7 +52,7 @@ spec:
             - name: OPENAI_IMAGE_BATCH_CONCURRENCY
               value: "5"
             - name: PODCAST_TTS_CONCURRENCY
-              value: "2"
+              value: "1"
           volumeMounts:
             - name: backend-state
               mountPath: /home/kimibuilt/.kimibuilt

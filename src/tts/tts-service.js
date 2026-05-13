@@ -164,11 +164,17 @@ class TtsService {
         };
     }
 
-    async synthesize({ text = '', voiceId = '', timeoutMs } = {}) {
+    async synthesize({
+        text = '',
+        voiceId = '',
+        timeoutMs,
+        allowProviderFallback = true,
+    } = {}) {
         const primaryProviderId = normalizeProviderId(this.ttsConfig.provider, 'kokoro');
         const fallbackProviderId = this.getFallbackProviderId();
         const primaryProvider = this.getProvider(primaryProviderId);
-        const fallbackProvider = this.ttsConfig.fallbackEnabled === false ? null : this.getProvider(fallbackProviderId);
+        const providerFallbackEnabled = allowProviderFallback !== false && this.ttsConfig.fallbackEnabled !== false;
+        const fallbackProvider = providerFallbackEnabled ? this.getProvider(fallbackProviderId) : null;
         const params = {
             text,
             voiceId,
@@ -187,24 +193,55 @@ class TtsService {
             }
             return params;
         };
+        const synthesizeWithFallback = async (reason = {}) => {
+            if (!fallbackProvider?.synthesize) {
+                return null;
+            }
+            const result = await fallbackProvider.synthesize(fallbackParams());
+            return {
+                ...result,
+                fallback: {
+                    providerFallback: true,
+                    fromProvider: primaryProviderId,
+                    toProvider: fallbackProviderId,
+                    requestedVoiceId: params.voiceId || '',
+                    actualVoiceId: result?.voice?.id || '',
+                    reason: {
+                        code: String(reason?.code || '').trim() || null,
+                        statusCode: Number(reason?.statusCode || reason?.status) || null,
+                        message: String(reason?.message || '').trim() || null,
+                    },
+                },
+            };
+        };
 
         if (!primaryProvider?.synthesize) {
-            if (fallbackProvider?.synthesize) {
-                return fallbackProvider.synthesize(fallbackParams());
+            const fallbackResult = await synthesizeWithFallback({
+                code: 'primary_provider_unavailable',
+                message: `Primary TTS provider "${primaryProviderId}" is unavailable.`,
+            });
+            if (fallbackResult) {
+                return fallbackResult;
             }
             throw createUnavailableError();
         }
 
         const primaryConfig = this.getProviderPublicConfig(primaryProviderId);
         if (primaryConfig?.configured === false && fallbackProvider?.synthesize) {
-            return fallbackProvider.synthesize(fallbackParams());
+            return synthesizeWithFallback({
+                code: primaryConfig?.diagnostics?.status || 'primary_provider_misconfigured',
+                message: primaryConfig?.diagnostics?.message || `Primary TTS provider "${primaryProviderId}" is misconfigured.`,
+            });
+        }
+        if (primaryConfig?.configured === false) {
+            throw createUnavailableError();
         }
 
         try {
             return await primaryProvider.synthesize(params);
         } catch (error) {
             if (fallbackProvider?.synthesize && isProviderRetryable(error)) {
-                return fallbackProvider.synthesize(fallbackParams());
+                return synthesizeWithFallback(error);
             }
             throw error;
         }

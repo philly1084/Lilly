@@ -77,6 +77,8 @@ function normalizePodcastOptions(options = {}) {
     'videoGenerateImages',
     'cycleHostVoices',
     'allowVoiceFallback',
+    'allowProviderFallback',
+    'allowTtsProviderFallback',
   ].forEach((key) => {
     const value = normalizeBooleanOption(source[key]);
     if (value !== null) {

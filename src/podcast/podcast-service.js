@@ -348,6 +348,45 @@ function logPodcastStageFailure(stage, error = {}, details = {}) {
   });
 }
 
+function summarizeTtsError(error = {}) {
+  if (!error || typeof error !== 'object') {
+    return null;
+  }
+
+  return {
+    code: String(error.code || '').trim() || null,
+    statusCode: Number(error.statusCode || error.status) || null,
+    message: String(error.message || '').trim() || null,
+  };
+}
+
+function annotatePodcastSynthesis(synthesis = {}, details = {}) {
+  const actualProvider = String(synthesis.provider || synthesis.voice?.provider || '').trim() || null;
+  const actualVoiceId = String(synthesis.voice?.id || '').trim() || null;
+  const requestedProvider = String(details.requestedProvider || '').trim() || null;
+  const requestedVoiceId = String(details.requestedVoiceId || '').trim() || null;
+  const providerFallback = synthesis.fallback?.providerFallback === true
+    || Boolean(requestedProvider && actualProvider && actualProvider !== requestedProvider);
+
+  return {
+    ...synthesis,
+    podcastSynthesis: {
+      speaker: String(details.speaker || '').trim() || null,
+      requestedProvider,
+      requestedVoiceId,
+      actualProvider,
+      actualVoiceId,
+      providerFallback,
+      providerFallbackAllowed: details.providerFallbackAllowed === true,
+      fallbackReason: synthesis.fallback?.reason || null,
+      voiceFallback: details.voiceFallback === true,
+      voiceFallbackReason: details.voiceFallbackReason || null,
+      splitDepth: Number(details.splitDepth) || 0,
+      textLength: Number(details.textLength) || 0,
+    },
+  };
+}
+
 function hasExplicitHostConfig(params = {}) {
   return ['A', 'B'].some((suffix) => (
     String(params[`host${suffix}Name`] || '').trim()
@@ -1547,6 +1586,8 @@ class PodcastService {
       return [];
     }
     const allowVoiceFallback = options.allowVoiceFallback === true;
+    const allowProviderFallback = options.allowProviderFallback === true;
+    const requestedProvider = String(options.requestedProvider || '').trim() || null;
     const candidateVoices = uniqueOrdered([
       options.voiceId,
       host?.voiceId,
@@ -1572,8 +1613,18 @@ class PodcastService {
           text: normalizedText,
           voiceId,
           timeoutMs,
+          allowProviderFallback,
         }));
-        return [synthesis];
+        return [annotatePodcastSynthesis(synthesis, {
+          speaker: resolvedHostName,
+          requestedProvider,
+          requestedVoiceId: voiceId,
+          providerFallbackAllowed: allowProviderFallback,
+          voiceFallback: attempt > 0,
+          voiceFallbackReason: attempt > 0 ? summarizeTtsError(lastError) : null,
+          splitDepth,
+          textLength: normalizedText.length,
+        })];
       } catch (error) {
         lastError = error;
         const hasMoreVoiceFallbacks = attempt < (maxVoiceAttempts - 1);
@@ -1618,6 +1669,8 @@ class PodcastService {
           voiceAttemptOffset: fallbackOffset,
           voiceIds: candidateVoices,
           allowVoiceFallback,
+          allowProviderFallback,
+          requestedProvider,
           maxTextChars,
           minimumChunkChars,
         },
@@ -1694,6 +1747,7 @@ class PodcastService {
       DEFAULT_PODCAST_TTS_CONCURRENCY,
     );
     const synthesisSegments = this.buildSynthesisSegments(turns, hosts, options);
+    const requestedProvider = String(this.ttsService?.getPublicConfig?.().provider || '').trim() || null;
     const limiter = createConcurrencyLimiter(ttsConcurrency);
     const synthesizedSegments = await mapWithConcurrency(
       synthesisSegments,
@@ -1703,6 +1757,8 @@ class PodcastService {
         voiceIds: segment.voiceIds,
         ttsTimeoutMs: options.ttsTimeoutMs,
         allowVoiceFallback: options.allowVoiceFallback === true,
+        allowProviderFallback: options.allowProviderFallback === true,
+        requestedProvider,
         maxTextChars: Number(this.ttsService?.getPublicConfig?.().maxTextChars) || 2400,
         minimumChunkChars: segment.minimumChunkChars,
         runSynthesis: (task) => limiter.run(task),
@@ -1738,7 +1794,18 @@ class PodcastService {
 
     wavBuffers.push(createSilenceWavBuffer(outputFormat, DEFAULT_FINAL_TAIL_SILENCE_MS));
 
-    return concatWavBuffers(wavBuffers);
+    const audioBuffer = concatWavBuffers(wavBuffers);
+    if (options.returnDiagnostics === true) {
+      return {
+        audioBuffer,
+        synthesisDiagnostics: orderedSyntheses.map((synthesis, index) => ({
+          segmentIndex: index,
+          ...(synthesis.podcastSynthesis || {}),
+        })),
+      };
+    }
+
+    return audioBuffer;
   }
 
   async createPodcast(params = {}, context = {}) {
@@ -1852,7 +1919,9 @@ class PodcastService {
       params.includeVideo === true && params.cycleHostVoices !== false
     );
     const allowVoiceFallback = params.allowVoiceFallback !== false;
-    const speechWavBuffer = await this.runPodcastStage('tts-synthesis', () => this.synthesizeTurns(
+    const allowProviderFallback = params.allowProviderFallback === true
+      || params.allowTtsProviderFallback === true;
+    const speechSynthesisResult = await this.runPodcastStage('tts-synthesis', () => this.synthesizeTurns(
       turnVoicePlan.plans,
       hosts,
       {
@@ -1862,6 +1931,8 @@ class PodcastService {
         ttsConcurrency: podcastTtsConcurrency,
         cycleHostVoices,
         allowVoiceFallback,
+        allowProviderFallback,
+        returnDiagnostics: true,
       },
     ), {
       sessionId,
@@ -1873,6 +1944,22 @@ class PodcastService {
       ttsTimeoutMs: podcastTtsTimeoutMs,
       ttsChunkMaxChars: podcastChunkMaxChars,
     });
+    const speechWavBuffer = speechSynthesisResult.audioBuffer;
+    const synthesisDiagnostics = Array.isArray(speechSynthesisResult.synthesisDiagnostics)
+      ? speechSynthesisResult.synthesisDiagnostics
+      : [];
+    const actualTurnVoices = synthesisDiagnostics.map((segment) => ({
+      segmentIndex: segment.segmentIndex,
+      speaker: segment.speaker,
+      requestedProvider: segment.requestedProvider,
+      requestedVoiceId: segment.requestedVoiceId,
+      actualProvider: segment.actualProvider,
+      actualVoiceId: segment.actualVoiceId,
+      providerFallback: segment.providerFallback,
+      providerFallbackAllowed: segment.providerFallbackAllowed,
+      voiceFallback: segment.voiceFallback,
+      fallbackReason: segment.fallbackReason,
+    }));
     const finalAudioBuffer = (wantsMixing || wantsEnhancement)
       ? await this.runPodcastStage('audio-post-processing', () => this.retryTransientOperation(
         () => this.audioProcessingService.composePodcastAudio({
@@ -1939,6 +2026,8 @@ class PodcastService {
           speaker: turn.speaker,
           voiceId: turn.voiceId,
         })),
+        actualTurnVoices,
+        ttsSegments: synthesisDiagnostics,
         hosts,
         sources,
         summary: script.summary,
@@ -1951,6 +2040,7 @@ class PodcastService {
           musicBedApplied: useMusicBed,
           mp3Exported: wantsMp3,
           allowVoiceFallback,
+          allowProviderFallback,
           ttsProvider: synthesisProvider,
           scriptRequestTimeoutMs: podcastScriptRequestTimeoutMs,
           researchConcurrency: podcastResearchConcurrency,
@@ -2024,6 +2114,8 @@ class PodcastService {
             speaker: turn.speaker,
             voiceId: turn.voiceId,
           })),
+          actualTurnVoices,
+          ttsSegments: synthesisDiagnostics,
           hosts,
           sources,
           summary: script.summary,
@@ -2036,6 +2128,7 @@ class PodcastService {
             musicBedApplied: useMusicBed,
             mp3Exported: true,
             allowVoiceFallback,
+            allowProviderFallback,
             ttsProvider: synthesisProvider,
             researchConcurrency: podcastResearchConcurrency,
             ttsConcurrency: podcastTtsConcurrency,
@@ -2094,6 +2187,7 @@ class PodcastService {
         musicBedApplied: useMusicBed,
         mp3Exported: wantsMp3,
         allowVoiceFallback,
+        allowProviderFallback,
         researchConcurrency: podcastResearchConcurrency,
         ttsConcurrency: podcastTtsConcurrency,
         ttsTimeoutMs: podcastTtsTimeoutMs,

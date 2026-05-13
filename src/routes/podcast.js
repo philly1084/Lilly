@@ -51,6 +51,8 @@ const generateSchema = {
   hostBVoiceIds: { required: false, type: 'array', items: { type: 'string' } },
   cycleHostVoices: { required: false, type: 'boolean' },
   allowVoiceFallback: { required: false, type: 'boolean' },
+  allowProviderFallback: { required: false, type: 'boolean' },
+  allowTtsProviderFallback: { required: false, type: 'boolean' },
   artifactIds: { required: false, type: 'array', items: { type: 'string' } },
   sourceArtifactIds: { required: false, type: 'array', items: { type: 'string' } },
   sourceDocuments: { required: false, type: 'array', items: { type: 'object' } },
