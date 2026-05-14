@@ -168,10 +168,12 @@ function buildDirectPodcastParams({
   const selectedArtifactIds = (Array.isArray(artifactIds) ? artifactIds : [])
     .map((artifactId) => String(artifactId || '').trim())
     .filter(Boolean);
-  const durationMinutes = extractRequestedPodcastDurationMinutes(text)
-    || inferQualitativePodcastDurationMinutes(text);
   const requestBrief = extractPodcastRequestBrief(text);
   const trainingPodcast = hasTrainingPodcastStyleIntent(text);
+  const explicitDurationMinutes = extractRequestedPodcastDurationMinutes(text);
+  const qualitativeDurationMinutes = inferQualitativePodcastDurationMinutes(text);
+  const durationMinutes = explicitDurationMinutes
+    || (trainingPodcast ? null : qualitativeDurationMinutes);
   const hostCount = inferPodcastHostCount(text) || (trainingPodcast ? 1 : null);
   const detailLevel = structuredOptions.detailLevel || inferPodcastDetailLevel(text) || (trainingPodcast ? 'rich' : null);
   const scriptDesign = structuredOptions.scriptDesign || inferPodcastScriptDesign(text);

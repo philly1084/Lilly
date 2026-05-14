@@ -350,6 +350,24 @@ describe('PodcastService', () => {
   });
 
   test('allows long solo training lessons and tells the writer not to skip key steps', async () => {
+    const lessonTurnText = [
+      'Start with the learning objective for this module.',
+      'Define the prerequisite term in plain language.',
+      'Show how the concept appears in the operator workflow.',
+      'Walk through a worked example with one decision point.',
+      'Name a common mistake and how to recognize it.',
+      'Close the module with a quick comprehension check.',
+    ].join(' ');
+    createResponse.mockResolvedValueOnce({
+      output_text: JSON.stringify({
+        title: 'Genetec and CCure Integration Lesson',
+        summary: 'A structured access control training class.',
+        turns: Array.from({ length: 9 }, (_, index) => ({
+          speaker: 'Maya',
+          text: `Module ${index + 1}. ${lessonTurnText}`,
+        })),
+      }),
+    });
     const service = new PodcastService();
     const executeTool = jest.fn(async (toolId) => {
       if (toolId === 'web-search') {
@@ -376,7 +394,7 @@ describe('PodcastService', () => {
       throw new Error(`Unexpected tool: ${toolId}`);
     });
 
-    await service.createPodcast({
+    const result = await service.createPodcast({
       topic: 'Genetec and CCure integration lesson',
       hostCount: 1,
       scriptDesign: 'training-podcast',
@@ -389,12 +407,15 @@ describe('PodcastService', () => {
     });
 
     const prompt = createResponse.mock.calls[0][0].input;
-    expect(prompt).toContain('Create a scripted solo-host, one-speaker podcast episode');
+    expect(prompt).toContain('Create a scripted solo-host, one-speaker technical class session for audio');
     expect(prompt).toContain('Target duration minutes: 40');
     expect(prompt).toContain('Target turn count: 68');
     expect(prompt).toContain('do not skip key steps');
-    expect(prompt).toContain('complete 20-40 minute standard class');
+    expect(prompt).toContain('not a regular podcast');
+    expect(prompt).toContain('complete 20-30 minute technical class');
+    expect(prompt).toContain('24-45 substantive instructor turns');
     expect(prompt).not.toContain('Host 2:');
+    expect(result.script.turns.length).toBeGreaterThanOrEqual(36);
   });
 
   test('annotates and logs the failing podcast stage', async () => {

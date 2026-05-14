@@ -102,6 +102,21 @@ describe('direct podcast chat intent', () => {
     }));
   });
 
+  test('does not shrink longer technical class podcasts to the generic longer episode default', () => {
+    const params = buildDirectPodcastParams({
+      text: 'Create a longer teaching podcast as a technical class on access control integrations.',
+      artifactIds: ['artifact-access-control'],
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      scriptDesign: 'training-podcast',
+      hostCount: 1,
+      durationMinutes: 30,
+      detailLevel: 'rich',
+      audience: 'technical learner',
+    }));
+  });
+
   test('allows explicit online enrichment for selected uploaded files', () => {
     const params = buildDirectPodcastParams({
       text: 'Create a teaching podcast from the uploaded Genetec and CCure files and enrich it with current online sources.',

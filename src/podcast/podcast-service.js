@@ -510,6 +510,17 @@ function estimateTurnCount(durationMinutes = DEFAULT_DURATION_MINUTES) {
   return Math.max(12, Math.min(80, Math.round(durationMinutes * 1.7)));
 }
 
+function resolveMinimumValidTurns(durationMinutes = DEFAULT_DURATION_MINUTES, scriptDesign = null) {
+  if (scriptDesign?.id !== 'training-podcast') {
+    return DEFAULT_MINIMUM_VALID_TURNS;
+  }
+
+  return Math.max(
+    DEFAULT_MINIMUM_VALID_TURNS,
+    Math.min(36, Math.round(clampNumber(durationMinutes, 3, MAX_DURATION_MINUTES, 20) * 1.1)),
+  );
+}
+
 function normalizeVariantFilename(filename = '', extension = 'wav') {
   const normalizedFilename = String(filename || '').trim();
   const normalizedExtension = String(extension || '').trim().replace(/^\./, '').toLowerCase() || 'wav';
@@ -1229,6 +1240,7 @@ function buildResearchPrompt({
     `    { "speaker": "${sanitizePodcastText(host.name)}", "text": "string" }`
   )).join(',\n');
   const design = scriptDesign && typeof scriptDesign === 'object' ? scriptDesign : null;
+  const isTrainingLesson = design?.id === 'training-podcast';
   const designSection = design ? [
     'Script presentation design:',
     `- selected: ${sanitizePodcastText(design.label || design.id || 'Custom')}`,
@@ -1254,7 +1266,7 @@ function buildResearchPrompt({
   ].filter(Boolean).join('\n')).join('\n\n');
 
   return `
-Create a scripted ${isSoloHost ? 'solo-host, one-speaker' : 'two-host'} podcast episode as strict JSON.
+Create a scripted ${isSoloHost ? 'solo-host, one-speaker' : 'two-host'} ${isTrainingLesson ? 'technical class session for audio' : 'podcast episode'} as strict JSON.
 
 Topic: ${sanitizePodcastText(topic)}
 ${requestBrief ? `User request brief: ${sanitizePodcastText(requestBrief, { preserveNewlines: true })}` : ''}
@@ -1275,13 +1287,17 @@ Treat explicitly named facts in the request brief as user-provided source materi
 Use the topic mainly as a research query. Do not replace a detailed request with a generic beginner explainer unless the user asked for one.
 Use only the sourced information below. Do not invent facts. If a point is uncertain, phrase it carefully.
 ${isSoloHost
-    ? 'Write as a single host speaking directly to the listener. Do not introduce a co-host, second speaker, interview guest, or alternating dialogue.'
+    ? (isTrainingLesson
+      ? 'Write as a single instructor speaking directly to the learner. Do not introduce a co-host, second speaker, interview guest, or alternating dialogue.'
+      : 'Write as a single host speaking directly to the listener. Do not introduce a co-host, second speaker, interview guest, or alternating dialogue.')
     : 'Write like a real podcast: light rapport, clean transitions, informative explanations, occasional reactions, but no filler overload.'}
-${design?.id === 'training-podcast'
-    ? 'For the training lesson, do not skip key steps. Teach prerequisites first, then move through each required concept in order. Use named modules, worked examples, common mistakes, comprehension checks, and recap checkpoints so the lesson feels like a complete 20-40 minute standard class rather than a short summary.'
+${isTrainingLesson
+    ? 'For the training lesson, do not skip key steps. This is a technical class, not a regular podcast: avoid banter, topical-show chatter, teaser loops, and host personality bits. Teach prerequisites first, then move through each required concept in order. Use named modules, worked examples, common mistakes, comprehension checks, and recap checkpoints so the lesson feels like a complete 20-30 minute technical class when the material warrants it, not a short summary.'
     : ''}
 Keep each turn to one paragraph. No stage directions. No markdown. No URLs in spoken text.
-Open with a strong hook and end with a concise wrap-up.
+${isTrainingLesson
+    ? 'Open with learning objectives and prerequisite framing; end with a practical recap and what the learner should be able to do next.'
+    : 'Open with a strong hook and end with a concise wrap-up.'}
 ${videoFormat ? 'Structure the episode like a YouTube information show: cold open hook, quick setup, evidence beats, why-it-matters sections, and a concrete final takeaway. Keep it conversational, but make each segment feel intentional and paced for viewers.' : ''}
 Write for speech delivery, not for reading: use contractions, shorter sentences, and natural hand-offs.
 Avoid stacked statistics, semicolons, parenthetical asides, and phrasing that sounds like a report being read aloud.
@@ -1289,7 +1305,9 @@ Spell out or rephrase awkward abbreviations and symbols so local TTS can read th
 Do not overuse self-referential process language. Avoid repeated phrases about dissecting, unpacking, breaking down, zooming out, weaving together, cadence, human rhythm, or why the hosts are talking a certain way.
 Do not make the hosts explain their own conversational design, emotional stress point, or presentation strategy. Let the structure feel natural through the content.
 Avoid repeating the same framing idea across multiple turns with only slightly different wording. Every turn must add a new fact, implication, question, contrast, or example.
-Prefer proper full scripts over short outline-like exchanges: write enough complete turns to meet the word budget and make the episode feel finished.
+${isTrainingLesson
+    ? 'Prefer a full instructor script over outline-like beats: a 20-30 minute class should usually have 24-45 substantive instructor turns, each adding a concept, example, check, mistake, or recap.'
+    : 'Prefer proper full scripts over short outline-like exchanges: write enough complete turns to meet the word budget and make the episode feel finished.'}
 
 Return exactly this JSON shape:
 {
@@ -1563,6 +1581,7 @@ class PodcastService {
       videoFormat,
     });
     const allowedSpeakers = new Set(hosts.map((host) => host.name));
+    const minimumValidTurns = resolveMinimumValidTurns(durationMinutes, scriptDesign);
     const speakerAliases = new Map([
       ['Maya', hosts[0]?.name],
       ['June', hosts[1]?.name],
@@ -1606,10 +1625,10 @@ class PodcastService {
         let turns = (Array.isArray(parsed?.turns) ? parsed.turns : [])
           .map((turn) => normalizeTurn(turn, allowedSpeakers, speakerAliases))
           .filter(Boolean);
-        turns = repairShortPodcastScriptTurns(turns, hosts, DEFAULT_MINIMUM_VALID_TURNS);
+        turns = repairShortPodcastScriptTurns(turns, hosts, minimumValidTurns);
         const representedSpeakers = new Set(turns.map((turn) => turn.speaker));
 
-        if (turns.length < DEFAULT_MINIMUM_VALID_TURNS || representedSpeakers.size < allowedSpeakers.size) {
+        if (turns.length < minimumValidTurns || representedSpeakers.size < allowedSpeakers.size) {
           throw new Error('Podcast script generation returned too few valid turns.');
         }
 

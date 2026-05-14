@@ -178,6 +178,7 @@ describe('/api/podcast', () => {
     expect(podcastService.createPodcast).toHaveBeenCalledWith(expect.objectContaining({
       scriptDesign: 'training-podcast',
       hostCount: 1,
+      durationMinutes: 30,
       detailLevel: 'rich',
       audience: 'technical learner',
       tone: 'calm, calculated, structured, human, instructional',
