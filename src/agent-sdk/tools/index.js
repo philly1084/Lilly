@@ -3929,7 +3929,7 @@ class ToolManager {
         id: 'podcast',
         name: 'Podcast',
         category: 'system',
-        description: 'Research a topic, script a user-aligned podcast episode, synthesize the host voices with local TTS, stitch the final podcast audio into a saved artifact, and optionally render an MP4 podcast video. Podcast audio is speaker-only by default; when the user asks to use admin, uploaded, saved, or configured podcast audio sources, set voiceOnlyAudio:false and includeIntro/includeOutro/includeMusicBed as requested so those admin assets are mixed before video rendering. Preserve the full creative brief separately from the topic, including solo-vs-two-host format, required angle, facts, title, exclusions, and any selected scriptDesign/scriptDesignExample. Prefer proper full scripts over short generic exchanges. Avoid repeated self-referential process language about dissecting, unpacking, cadence, or why the hosts sound human. Visual podcast requests should use storyboard mode with content-matched infographic scenes; waveform-card is the simple audio visualizer fallback.',
+        description: 'Research a topic or use supplied files/source documents, script a user-aligned podcast episode, synthesize the host voices with local TTS, stitch the final podcast audio into a saved artifact, and optionally render an MP4 podcast video. Podcast audio is speaker-only by default; when the user asks to use admin, uploaded, saved, or configured podcast audio sources, set voiceOnlyAudio:false and includeIntro/includeOutro/includeMusicBed as requested so those admin assets are mixed before video rendering. Preserve the full creative brief separately from the topic, including solo-vs-two-host format, required angle, facts, title, exclusions, and any selected scriptDesign/scriptDesignExample. For a training podcast, set scriptDesign:"training-podcast", prefer one calm instructor speaker unless the user asks for multiple speakers, use source documents/files as the curriculum, and set useOnlineResearch:false when those files are sufficient. Prefer proper full scripts over short generic exchanges. Avoid repeated self-referential process language about dissecting, unpacking, cadence, or why the hosts sound human. Visual podcast requests should use storyboard mode with content-matched infographic scenes; waveform-card is the simple audio visualizer fallback.',
         backend: {
           handler: async (params = {}, context = {}) => {
             const service = resolvePodcastService(context);
@@ -4008,7 +4008,7 @@ class ToolManager {
             },
             scriptDesign: {
               type: 'string',
-              description: 'Optional podcast presentation design id, such as classic-explainer, investigative-thread, debate-with-receipts, field-guide, documentary-narrative, technical-deep-dive, case-study, or human-impact. Use this to shape a proper full script instead of a short generic exchange.',
+              description: 'Optional podcast presentation design id, such as classic-explainer, investigative-thread, debate-with-receipts, field-guide, documentary-narrative, technical-deep-dive, training-podcast, case-study, or human-impact. Use training-podcast for calm instructor-led technical training with objectives, modules, worked examples, comprehension checks, and recap.',
             },
             scriptStyle: { type: 'string' },
             presentationDesign: { type: 'string' },
@@ -4069,6 +4069,17 @@ class ToolManager {
               type: 'array',
               items: { type: 'string' },
             },
+            useOnlineResearch: {
+              type: 'boolean',
+              description: 'Defaults to false when uploaded files/sourceDocuments are provided and true otherwise. Set true to enrich supplied files with web research.',
+            },
+            onlineResearch: { type: 'boolean' },
+            webResearch: { type: 'boolean' },
+            sourceMode: {
+              type: 'string',
+              description: 'Use source-only or files-only to rely on supplied files instead of web research; use web-research or sources-plus-web to explicitly enrich with online sources.',
+            },
+            researchMode: { type: 'string' },
             maxSources: { type: 'integer', minimum: 2, maximum: 6 },
             pauseMs: { type: 'integer', minimum: 100, maximum: 1200 },
             voiceOnlyAudio: {
@@ -4149,6 +4160,7 @@ class ToolManager {
             'podcast video',
             'mp4 podcast',
             'solo podcast',
+            'training podcast',
             'one speaker podcast',
             'two host podcast',
             'research and script audio',

@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Access-Control-Allow-Credentials: true
+Content-Length: 56
+Content-Type: application/json; charset=utf-8
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Date: Thu, 14 May 2026 00:47:39 GMT
+Etag: W/"38-+LErx+sCcU1x5SVqOJ62eXBdDOU"
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Vary: Origin
+X-Content-Type-Options: nosniff
+X-Dns-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-Xss-Protection: 0
+

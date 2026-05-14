@@ -141,14 +141,15 @@ describe('PodcastService', () => {
     settingsController.settings.models = originalModelSettings;
   });
 
-  test('exposes twenty podcast script presentation design examples', () => {
+  test('exposes podcast script presentation design examples', () => {
     const designs = getPodcastScriptDesignOptions();
 
-    expect(designs).toHaveLength(20);
+    expect(designs).toHaveLength(21);
     expect(designs.map((design) => design.id)).toEqual(expect.arrayContaining([
       'classic-explainer',
       'documentary-narrative',
       'technical-deep-dive',
+      'training-podcast',
       'human-impact',
     ]));
   });
@@ -779,15 +780,6 @@ describe('PodcastService', () => {
     ].join('\n'));
     const service = new PodcastService();
     const executeTool = jest.fn(async (toolId) => {
-      if (toolId === 'web-search') {
-        return {
-          success: false,
-          error: 'Search is temporarily unavailable.',
-          errorCode: 'web_search_unavailable',
-          statusCode: 400,
-        };
-      }
-
       throw new Error(`Unexpected tool: ${toolId}`);
     });
 
@@ -801,14 +793,55 @@ describe('PodcastService', () => {
     });
 
     expect(artifactService.buildPromptContext).toHaveBeenCalledWith('session-1', ['artifact-kubota-1']);
-    expect(executeTool).toHaveBeenCalledWith('web-search', expect.any(Object), expect.any(Object));
-    expect(executeTool).not.toHaveBeenCalledWith('web-fetch', expect.any(Object), expect.any(Object));
+    expect(executeTool).not.toHaveBeenCalled();
     expect(createResponse.mock.calls[0][0].input).toContain('Kubota loader maintenance intervals');
     expect(result.sources).toEqual(expect.arrayContaining([
       expect.objectContaining({
         url: 'session-artifacts://artifact-kubota-1',
       }),
     ]));
+  });
+
+  test('can enrich selected uploaded artifacts with online research when explicitly requested', async () => {
+    artifactService.buildPromptContext.mockResolvedValue('Uploaded training notes about pump pressure and maintenance intervals.');
+    const service = new PodcastService();
+    const executeTool = jest.fn(async (toolId) => {
+      if (toolId === 'web-search') {
+        return {
+          success: true,
+          data: {
+            results: [
+              { title: 'Hydraulic safety guide', url: 'https://example.com/hydraulics', snippet: 'Hydraulic systems require pressure checks.' },
+            ],
+          },
+        };
+      }
+
+      if (toolId === 'web-fetch') {
+        return {
+          success: true,
+          data: {
+            headers: { 'content-type': 'text/html' },
+            body: '<article><p>Hydraulic safety inspections should include hoses, fittings, and pressure relief controls.</p></article>',
+          },
+        };
+      }
+
+      throw new Error(`Unexpected tool: ${toolId}`);
+    });
+
+    await service.createPodcast({
+      topic: 'Kubota loader maintenance',
+      useOnlineResearch: true,
+    }, {
+      sessionId: 'session-1',
+      artifactIds: ['artifact-kubota-1'],
+      toolManager: { executeTool },
+    });
+
+    expect(executeTool).toHaveBeenCalledWith('web-search', expect.any(Object), expect.any(Object));
+    expect(createResponse.mock.calls[0][0].input).toContain('Uploaded training notes about pump pressure');
+    expect(createResponse.mock.calls[0][0].input).toContain('Hydraulic safety inspections');
   });
 
   test('caps source text and drops access-denied fetch bodies before script generation', async () => {

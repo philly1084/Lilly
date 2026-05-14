@@ -66,6 +66,12 @@ const PODCAST_SCRIPT_DESIGNS = Object.freeze([
     guidance: 'Use precise terms and causal chains. Break complexity into spoken chunks, and do not pad with meta explanations about why the pacing is technical.',
   },
   {
+    id: 'training-podcast',
+    label: 'Training Podcast',
+    summary: 'Calm instructor-led session with objectives, core principles, worked examples, checks for understanding, and a final recap.',
+    guidance: 'Teach from source material like a structured technical training session. Open with learning objectives, pre-teach prerequisite terms, segment the topic into named modules, use verbal signposts, explain one principle at a time, give worked examples and common mistakes, pause with brief comprehension checks, and close with a practical recap. Keep the voice calm, calculated, precise, and human; avoid hype, rambling banter, and lecture-note stiffness.',
+  },
+  {
     id: 'news-magazine',
     label: 'News Magazine',
     summary: 'Topline, background, consequences, and what to watch next.',

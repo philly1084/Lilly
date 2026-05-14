@@ -674,6 +674,53 @@ function normalizePodcastArtifactIds(params = {}, context = {}) {
   ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean));
 }
 
+function shouldUseOnlineResearch(params = {}, sourceDocuments = []) {
+  if (params.useOnlineResearch === true
+    || params.onlineResearch === true
+    || params.webResearch === true
+    || params.includeOnlineResearch === true
+    || params.includeWebResearch === true) {
+    return true;
+  }
+
+  if (params.useOnlineResearch === false
+    || params.onlineResearch === false
+    || params.webResearch === false
+    || params.includeOnlineResearch === false
+    || params.includeWebResearch === false) {
+    return false;
+  }
+
+  const sourceMode = String(params.sourceMode || params.researchMode || '').trim().toLowerCase();
+  if ([
+    'source-only',
+    'sources-only',
+    'file-only',
+    'files-only',
+    'document-only',
+    'documents-only',
+    'uploaded-files',
+    'uploaded-files-only',
+    'no-web',
+    'offline',
+  ].includes(sourceMode)) {
+    return false;
+  }
+  if ([
+    'web',
+    'online',
+    'web-research',
+    'online-research',
+    'augment',
+    'enrich',
+    'sources-plus-web',
+  ].includes(sourceMode)) {
+    return true;
+  }
+
+  return normalizePodcastSourceDocuments(sourceDocuments).length === 0;
+}
+
 function resolvePodcastScriptModelCandidates(params = {}, context = {}) {
   const requestedModel = String(params?.model || '').trim();
   const actionModel = String(
@@ -1340,17 +1387,11 @@ class PodcastService {
     searchDomains = [],
     sourceUrls = [],
     sourceDocuments = [],
+    useOnlineResearch = true,
     maxSources = DEFAULT_MAX_SOURCES,
     concurrency = DEFAULT_PODCAST_RESEARCH_CONCURRENCY,
   }, context = {}) {
     const documentSources = normalizePodcastSourceDocuments(sourceDocuments);
-    if (typeof context?.executeTool !== 'function') {
-      if (documentSources.length > 0) {
-        return documentSources.slice(0, maxSources);
-      }
-      throw new Error('Podcast research requires tool execution support.');
-    }
-
     const seededSources = (Array.isArray(sourceUrls) ? sourceUrls : [])
       .map((url) => ({
         title: url,
@@ -1359,25 +1400,42 @@ class PodcastService {
       }))
       .filter((entry) => entry.url);
 
+    if (documentSources.length > 0 && useOnlineResearch === false && seededSources.length === 0) {
+      return documentSources.slice(0, maxSources);
+    }
+
+    if (typeof context?.executeTool !== 'function') {
+      if (documentSources.length > 0) {
+        return documentSources.slice(0, maxSources);
+      }
+      throw new Error('Podcast research requires tool execution support.');
+    }
+
+    if (useOnlineResearch === false && documentSources.length === 0 && seededSources.length === 0) {
+      throw new Error('Podcast source-only mode requires uploaded files, source documents, or source URLs.');
+    }
+
     let searchData = null;
     let searchError = null;
-    try {
-      searchData = await this.runTool(context.executeTool, 'web-search', {
-        query: `${topic} explainer key facts overview`,
-        engine: 'perplexity',
-        researchMode: 'search',
-        limit: Math.max(maxSources * 2, 6),
-        timeout: DEFAULT_PODCAST_SEARCH_TIMEOUT_MS,
-        includeSnippets: true,
-        includeUrls: true,
-        domains: searchDomains,
-        region: 'us-en',
-        timeRange: 'all',
-      }, context.toolContext);
-    } catch (error) {
-      searchError = error;
-      if (seededSources.length === 0 && documentSources.length === 0) {
-        throw error;
+    if (useOnlineResearch !== false) {
+      try {
+        searchData = await this.runTool(context.executeTool, 'web-search', {
+          query: `${topic} explainer key facts overview`,
+          engine: 'perplexity',
+          researchMode: 'search',
+          limit: Math.max(maxSources * 2, 6),
+          timeout: DEFAULT_PODCAST_SEARCH_TIMEOUT_MS,
+          includeSnippets: true,
+          includeUrls: true,
+          domains: searchDomains,
+          region: 'us-en',
+          timeRange: 'all',
+        }, context.toolContext);
+      } catch (error) {
+        searchError = error;
+        if (seededSources.length === 0 && documentSources.length === 0) {
+          throw error;
+        }
       }
     }
 
@@ -1857,6 +1915,7 @@ class PodcastService {
       searchDomains: params.searchDomains || params.domains || [],
       sourceUrls: params.sourceUrls || params.urls || [],
       sourceDocuments,
+      useOnlineResearch: shouldUseOnlineResearch(params, sourceDocuments),
       maxSources,
       concurrency: podcastResearchConcurrency,
     }, {

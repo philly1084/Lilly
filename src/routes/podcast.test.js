@@ -153,6 +153,37 @@ describe('/api/podcast', () => {
     }));
   });
 
+  test('normalizes training podcast prompts into the reusable training style', async () => {
+    podcastService.createPodcast.mockResolvedValue({
+      title: 'Ingress Training',
+      audio: { artifactId: 'artifact-podcast-1' },
+      artifacts: [],
+      artifactIds: [],
+      script: { turns: [] },
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.locals.toolManager = { executeTool: jest.fn() };
+    app.use('/api/podcast', podcastRouter);
+
+    const response = await request(app)
+      .post('/api/podcast/generate')
+      .send({
+        topic: 'Create a training podcast about Kubernetes ingress debugging',
+        sessionId: 'session-1',
+      });
+
+    expect(response.status).toBe(200);
+    expect(podcastService.createPodcast).toHaveBeenCalledWith(expect.objectContaining({
+      scriptDesign: 'training-podcast',
+      hostCount: 1,
+      detailLevel: 'rich',
+      audience: 'technical learner',
+      tone: 'calm, calculated, structured, human, instructional',
+    }), expect.any(Object));
+  });
+
   test('accepts prompt as a topic alias for podcast generation', async () => {
     podcastService.createPodcast.mockResolvedValue({
       title: 'Battery Breakdown',

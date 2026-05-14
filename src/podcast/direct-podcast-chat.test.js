@@ -50,6 +50,24 @@ describe('direct podcast chat intent', () => {
     }));
   });
 
+  test('infers the training podcast style as a calm solo technical lesson', () => {
+    const params = buildDirectPodcastParams({
+      text: 'Create a training podcast from my technical data about Kubernetes ingress debugging.',
+      artifactIds: ['artifact-ingress-notes'],
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      topic: 'Kubernetes ingress debugging',
+      scriptDesign: 'training-podcast',
+      hostCount: 1,
+      durationMinutes: 12,
+      detailLevel: 'rich',
+      audience: 'technical learner',
+      tone: 'calm, calculated, structured, human, instructional',
+      artifactIds: ['artifact-ingress-notes'],
+    }));
+  });
+
   test('turns requested admin audio sources on for video podcast generation', () => {
     const params = buildDirectPodcastParams({
       text: 'make a vertical video podcast about grid batteries with generated images and use the admin audio sources',

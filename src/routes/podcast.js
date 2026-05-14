@@ -9,10 +9,12 @@ const { getPodcastScriptDesignOptions, podcastService } = require('../podcast/po
 const {
   hasExplicitPodcastIntent,
   hasExplicitPodcastVideoIntent,
+  hasTrainingPodcastStyleIntent,
   extractExplicitPodcastTopic,
   extractPodcastRequestBrief,
   inferPodcastHostCount,
   inferPodcastAudioAssetOptions,
+  inferPodcastScriptDesign,
   inferPodcastVideoOptions,
 } = require('../podcast/podcast-intent');
 const { podcastVideoService } = require('../video/podcast-video-service');
@@ -58,6 +60,11 @@ const generateSchema = {
   sourceDocuments: { required: false, type: 'array', items: { type: 'object' } },
   sourceUrls: { required: false, type: 'array', items: { type: 'string' } },
   searchDomains: { required: false, type: 'array', items: { type: 'string' } },
+  useOnlineResearch: { required: false, type: 'boolean' },
+  onlineResearch: { required: false, type: 'boolean' },
+  webResearch: { required: false, type: 'boolean' },
+  researchMode: { required: false, type: 'string' },
+  sourceMode: { required: false, type: 'string' },
   maxSources: { required: false, type: 'number' },
   pauseMs: { required: false, type: 'number' },
   voiceOnlyAudio: { required: false, type: 'boolean' },
@@ -223,9 +230,27 @@ function normalizePodcastGenerateRequest(req, _res, next) {
     }
   }
   if (req.body.hostCount == null && req.body.speakerCount == null) {
-    const inferredHostCount = inferPodcastHostCount(requestText);
+    const inferredHostCount = inferPodcastHostCount(requestText)
+      || (hasTrainingPodcastStyleIntent(requestText) ? 1 : null);
     if (inferredHostCount) {
       req.body.hostCount = inferredHostCount;
+    }
+  }
+  if (!String(req.body.scriptDesign || req.body.scriptStyle || req.body.presentationDesign || '').trim()) {
+    const inferredScriptDesign = inferPodcastScriptDesign(requestText);
+    if (inferredScriptDesign) {
+      req.body.scriptDesign = inferredScriptDesign;
+    }
+  }
+  if (hasTrainingPodcastStyleIntent(requestText)) {
+    if (!String(req.body.detailLevel || '').trim()) {
+      req.body.detailLevel = 'rich';
+    }
+    if (!String(req.body.audience || '').trim()) {
+      req.body.audience = 'technical learner';
+    }
+    if (!String(req.body.tone || '').trim()) {
+      req.body.tone = 'calm, calculated, structured, human, instructional';
     }
   }
   if (hasExplicitPodcastVideoIntent(requestText)) {

@@ -3,8 +3,10 @@ const {
   extractPodcastRequestBrief,
   hasExplicitPodcastIntent,
   hasExplicitPodcastVideoIntent,
+  hasTrainingPodcastStyleIntent,
   inferPodcastHostCount,
   inferPodcastAudioAssetOptions,
+  inferPodcastScriptDesign,
   inferPodcastVideoOptions,
 } = require('./podcast-intent');
 
@@ -79,6 +81,9 @@ function normalizePodcastOptions(options = {}) {
     'allowVoiceFallback',
     'allowProviderFallback',
     'allowTtsProviderFallback',
+    'useOnlineResearch',
+    'onlineResearch',
+    'webResearch',
   ].forEach((key) => {
     const value = normalizeBooleanOption(source[key]);
     if (value !== null) {
@@ -92,6 +97,11 @@ function normalizePodcastOptions(options = {}) {
     'videoImageMode',
     'scriptDesign',
     'scriptDesignExample',
+    'researchMode',
+    'sourceMode',
+    'audience',
+    'tone',
+    'detailLevel',
     'systemPrompt',
     'additionalSystemPrompt',
     'directContentRequest',
@@ -147,8 +157,19 @@ function buildDirectPodcastParams({
   const durationMinutes = extractRequestedPodcastDurationMinutes(text)
     || inferQualitativePodcastDurationMinutes(text);
   const requestBrief = extractPodcastRequestBrief(text);
-  const hostCount = inferPodcastHostCount(text);
-  const detailLevel = inferPodcastDetailLevel(text);
+  const trainingPodcast = hasTrainingPodcastStyleIntent(text);
+  const hostCount = inferPodcastHostCount(text) || (trainingPodcast ? 1 : null);
+  const detailLevel = structuredOptions.detailLevel || inferPodcastDetailLevel(text) || (trainingPodcast ? 'rich' : null);
+  const scriptDesign = structuredOptions.scriptDesign || inferPodcastScriptDesign(text);
+  if (scriptDesign) {
+    structuredOptions.scriptDesign = scriptDesign;
+  }
+  if (trainingPodcast && !structuredOptions.tone) {
+    structuredOptions.tone = 'calm, calculated, structured, human, instructional';
+  }
+  if (trainingPodcast && !structuredOptions.audience) {
+    structuredOptions.audience = 'technical learner';
+  }
   const videoOptions = hasExplicitPodcastVideoIntent(text)
     ? inferPodcastVideoOptions(text)
     : {};
@@ -164,7 +185,7 @@ function buildDirectPodcastParams({
     ...(requestBrief || additionalBrief ? { requestBrief: `${requestBrief}${additionalBrief}`.trim() } : {}),
     ...(hostCount ? { hostCount } : {}),
     ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
-    ...(durationMinutes ? { durationMinutes } : {}),
+    ...(durationMinutes || trainingPodcast ? { durationMinutes: durationMinutes || 12 } : {}),
     ...(detailLevel ? { detailLevel } : {}),
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),

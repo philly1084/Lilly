@@ -145,6 +145,20 @@ function inferPodcastAudioAssetOptions(text = '') {
     };
 }
 
+function hasTrainingPodcastStyleIntent(text = '') {
+    return /\btraining[- ]podcasts?\b/i.test(String(text || ''))
+        || /\bpodcasts?\b[\s\S]{0,50}\b(?:training session|technical training|instructor[- ]led|teach(?:es|ing)? core principles|structured training)\b/i.test(String(text || ''))
+        || /\b(?:training session|technical training|instructor[- ]led)\b[\s\S]{0,50}\bpodcasts?\b/i.test(String(text || ''));
+}
+
+function inferPodcastScriptDesign(text = '') {
+    if (hasTrainingPodcastStyleIntent(text)) {
+        return 'training-podcast';
+    }
+
+    return null;
+}
+
 function cleanExtractedPodcastTopic(value = '') {
     return String(value || '')
         .replace(/\b(?:with|using|use|include|add)\s+(?:the\s+)?(?:admin|uploaded|saved|configured)\s+(?:podcast\s+)?(?:audio|audio sources|audio assets|tracks)\b[\s\S]*$/i, '')
@@ -220,8 +234,10 @@ function extractExplicitPodcastTopic(text = '') {
 module.exports = {
     hasExplicitPodcastIntent,
     hasExplicitPodcastVideoIntent,
+    hasTrainingPodcastStyleIntent,
     inferPodcastVideoOptions,
     inferPodcastAudioAssetOptions,
+    inferPodcastScriptDesign,
     extractExplicitPodcastTopic,
     extractPodcastRequestBrief,
     inferPodcastHostCount,
