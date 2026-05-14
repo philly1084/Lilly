@@ -22,6 +22,7 @@ const {
 } = require('./script-designs');
 
 const DEFAULT_DURATION_MINUTES = 10;
+const MAX_DURATION_MINUTES = 40;
 const DEFAULT_TARGET_WPM = 145;
 const DEFAULT_MAX_SOURCES = 4;
 const DEFAULT_SILENCE_MS = 325;
@@ -506,7 +507,7 @@ function estimateWordBudget(durationMinutes = DEFAULT_DURATION_MINUTES) {
 }
 
 function estimateTurnCount(durationMinutes = DEFAULT_DURATION_MINUTES) {
-  return Math.max(12, Math.min(22, Math.round(durationMinutes * 1.7)));
+  return Math.max(12, Math.min(80, Math.round(durationMinutes * 1.7)));
 }
 
 function normalizeVariantFilename(filename = '', extension = 'wav') {
@@ -1276,6 +1277,9 @@ Use only the sourced information below. Do not invent facts. If a point is uncer
 ${isSoloHost
     ? 'Write as a single host speaking directly to the listener. Do not introduce a co-host, second speaker, interview guest, or alternating dialogue.'
     : 'Write like a real podcast: light rapport, clean transitions, informative explanations, occasional reactions, but no filler overload.'}
+${design?.id === 'training-podcast'
+    ? 'For the training lesson, do not skip key steps. Teach prerequisites first, then move through each required concept in order. Use named modules, worked examples, common mistakes, comprehension checks, and recap checkpoints so the lesson feels like a complete 20-40 minute standard class rather than a short summary.'
+    : ''}
 Keep each turn to one paragraph. No stage directions. No markdown. No URLs in spoken text.
 Open with a strong hook and end with a concise wrap-up.
 ${videoFormat ? 'Structure the episode like a YouTube information show: cold open hook, quick setup, evidence beats, why-it-matters sections, and a concrete final takeaway. Keep it conversational, but make each segment feel intentional and paced for viewers.' : ''}
@@ -1882,7 +1886,7 @@ class PodcastService {
       { preserveNewlines: true },
     );
 
-    const durationMinutes = clampNumber(params.durationMinutes, 3, 30, DEFAULT_DURATION_MINUTES);
+    const durationMinutes = clampNumber(params.durationMinutes, 3, MAX_DURATION_MINUTES, DEFAULT_DURATION_MINUTES);
     const audience = sanitizePodcastText(params.audience || 'general') || 'general';
     const tone = sanitizePodcastText(params.tone || 'informative, conversational') || 'informative, conversational';
     const detailLevel = sanitizePodcastText(params.detailLevel || '') || '';

@@ -146,9 +146,10 @@ function inferPodcastAudioAssetOptions(text = '') {
 }
 
 function hasTrainingPodcastStyleIntent(text = '') {
-    return /\btraining[- ]podcasts?\b/i.test(String(text || ''))
-        || /\bpodcasts?\b[\s\S]{0,50}\b(?:training session|technical training|instructor[- ]led|teach(?:es|ing)? core principles|structured training)\b/i.test(String(text || ''))
-        || /\b(?:training session|technical training|instructor[- ]led)\b[\s\S]{0,50}\bpodcasts?\b/i.test(String(text || ''));
+    return /\b(?:training|teaching|lesson|instructional)[- ]podcasts?\b/i.test(String(text || ''))
+        || /\b(?:standard|structured|technical)\s+lessons?\b[\s\S]{0,50}\bpodcasts?\b/i.test(String(text || ''))
+        || /\bpodcasts?\b[\s\S]{0,60}\b(?:training session|technical training|instructor[- ]led|teach(?:es|ing)? core principles|structured training|teaching session|standard lesson|structured lesson|instructional lesson|walk(?:s)? through|step[- ]by[- ]step)\b/i.test(String(text || ''))
+        || /\b(?:training session|technical training|instructor[- ]led|teaching session|standard lesson|structured lesson|instructional lesson|step[- ]by[- ]step lesson)\b[\s\S]{0,60}\bpodcasts?\b/i.test(String(text || ''));
 }
 
 function inferPodcastScriptDesign(text = '') {

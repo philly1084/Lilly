@@ -60,7 +60,7 @@ describe('direct podcast chat intent', () => {
       topic: 'Kubernetes ingress debugging',
       scriptDesign: 'training-podcast',
       hostCount: 1,
-      durationMinutes: 12,
+      durationMinutes: 30,
       detailLevel: 'rich',
       audience: 'technical learner',
       tone: 'calm, calculated, structured, human, instructional',
@@ -70,7 +70,7 @@ describe('direct podcast chat intent', () => {
     }));
   });
 
-  test('keeps selected uploaded files source-only unless online research is requested', () => {
+  test('keeps selected uploaded files source-only and treats teaching podcasts as solo lessons', () => {
     const params = buildDirectPodcastParams({
       text: 'Create a teaching podcast from the uploaded Genetec and CCure files.',
       artifactIds: ['artifact-genetec', 'artifact-ccure'],
@@ -79,8 +79,26 @@ describe('direct podcast chat intent', () => {
     expect(params).toEqual(expect.objectContaining({
       topic: 'Create a teaching podcast from the uploaded Genetec and CCure files',
       artifactIds: ['artifact-genetec', 'artifact-ccure'],
+      scriptDesign: 'training-podcast',
+      hostCount: 1,
+      durationMinutes: 30,
+      detailLevel: 'rich',
       sourceMode: 'uploaded-files-only',
       useOnlineResearch: false,
+    }));
+  });
+
+  test('allows lesson-style podcast durations up to forty minutes', () => {
+    const params = buildDirectPodcastParams({
+      text: 'Create a 40 minute teaching podcast from the uploaded Genetec and CCure files.',
+      artifactIds: ['artifact-genetec', 'artifact-ccure'],
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      scriptDesign: 'training-podcast',
+      hostCount: 1,
+      durationMinutes: 40,
+      detailLevel: 'rich',
     }));
   });
 

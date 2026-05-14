@@ -10,6 +10,9 @@ const {
   inferPodcastVideoOptions,
 } = require('./podcast-intent');
 
+const MAX_PODCAST_DURATION_MINUTES = 40;
+const DEFAULT_TRAINING_PODCAST_DURATION_MINUTES = 30;
+
 function extractRequestedPodcastDurationMinutes(text = '') {
   const source = String(text || '').trim();
   if (!source) {
@@ -26,7 +29,7 @@ function extractRequestedPodcastDurationMinutes(text = '') {
     return null;
   }
 
-  return Math.max(3, Math.min(30, Math.round(minutes)));
+  return Math.max(3, Math.min(MAX_PODCAST_DURATION_MINUTES, Math.round(minutes)));
 }
 
 function inferQualitativePodcastDurationMinutes(text = '') {
@@ -126,7 +129,7 @@ function normalizePodcastOptions(options = {}) {
 
   const durationMinutes = Number(source.durationMinutes);
   if (Number.isFinite(durationMinutes)) {
-    normalized.durationMinutes = Math.max(3, Math.min(30, Math.round(durationMinutes)));
+    normalized.durationMinutes = Math.max(3, Math.min(MAX_PODCAST_DURATION_MINUTES, Math.round(durationMinutes)));
   }
 
   if (normalized.voiceOnlyAudio !== true && (
@@ -203,7 +206,7 @@ function buildDirectPodcastParams({
     ...(hostCount ? { hostCount } : {}),
     ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
     ...(shouldStaySourceOnly ? { sourceMode: 'uploaded-files-only', useOnlineResearch: false } : {}),
-    ...(durationMinutes || trainingPodcast ? { durationMinutes: durationMinutes || 12 } : {}),
+    ...(durationMinutes || trainingPodcast ? { durationMinutes: durationMinutes || DEFAULT_TRAINING_PODCAST_DURATION_MINUTES } : {}),
     ...(detailLevel ? { detailLevel } : {}),
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),

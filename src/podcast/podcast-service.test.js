@@ -349,6 +349,54 @@ describe('PodcastService', () => {
     }));
   });
 
+  test('allows long solo training lessons and tells the writer not to skip key steps', async () => {
+    const service = new PodcastService();
+    const executeTool = jest.fn(async (toolId) => {
+      if (toolId === 'web-search') {
+        return {
+          success: true,
+          data: {
+            results: [
+              { title: 'Access control training source', url: 'https://example.com/access-control', snippet: 'Access control integrations need enrollment, alarms, events, and operator workflows.' },
+            ],
+          },
+        };
+      }
+
+      if (toolId === 'web-fetch') {
+        return {
+          success: true,
+          data: {
+            headers: { 'content-type': 'text/html' },
+            body: '<article><p>Operators should learn prerequisites, configuration flow, event mapping, alarm handling, troubleshooting, and recap checks.</p></article>',
+          },
+        };
+      }
+
+      throw new Error(`Unexpected tool: ${toolId}`);
+    });
+
+    await service.createPodcast({
+      topic: 'Genetec and CCure integration lesson',
+      hostCount: 1,
+      scriptDesign: 'training-podcast',
+      durationMinutes: 40,
+      detailLevel: 'rich',
+    }, {
+      sessionId: 'session-1',
+      clientSurface: 'chat',
+      toolManager: { executeTool },
+    });
+
+    const prompt = createResponse.mock.calls[0][0].input;
+    expect(prompt).toContain('Create a scripted solo-host, one-speaker podcast episode');
+    expect(prompt).toContain('Target duration minutes: 40');
+    expect(prompt).toContain('Target turn count: 68');
+    expect(prompt).toContain('do not skip key steps');
+    expect(prompt).toContain('complete 20-40 minute standard class');
+    expect(prompt).not.toContain('Host 2:');
+  });
+
   test('annotates and logs the failing podcast stage', async () => {
     const service = new PodcastService();
     const logSpy = jest.spyOn(console, 'error').mockImplementation(() => {});

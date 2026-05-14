@@ -243,6 +243,9 @@ function normalizePodcastGenerateRequest(req, _res, next) {
     }
   }
   if (hasTrainingPodcastStyleIntent(requestText)) {
+    if (req.body.durationMinutes == null) {
+      req.body.durationMinutes = 30;
+    }
     if (!String(req.body.detailLevel || '').trim()) {
       req.body.detailLevel = 'rich';
     }
