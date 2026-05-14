@@ -895,6 +895,21 @@ function hasImplicitUploadedImageArtifactReference(text = '') {
         || /\b(describe|analy[sz]e|inspect|read|look at|what'?s in|what is in)\b[\s\S]{0,30}\b(this|that|it|the upload|the attachment)\b/i.test(normalized);
 }
 
+function hasImplicitUploadedArtifactReference(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const uploadCue = /\b(uploaded|attached|selected|provided|sent|dropped|added)\b/i;
+    const sourceCue = /\b(files?|documents?|docs?|pdfs?|attachments?|uploads?|sources?|materials?|spreadsheets?|sheets?|csvs?|reports?|slides?|decks?|presentations?)\b/i;
+    return (uploadCue.test(normalized) && sourceCue.test(normalized))
+        || /\b(this|that|these|those|the|my)\b[\s\S]{0,20}\b(files?|documents?|docs?|pdfs?|attachments?|uploads?|sources?|materials?)\b/i.test(normalized)
+        || /\b(from|using|use|with|based on|turn|make|create|generate|produce)\b[\s\S]{0,50}\b(the\s+)?(uploaded|attached|provided|selected|sent)\b[\s\S]{0,40}\b(files?|documents?|docs?|pdfs?|attachments?|uploads?|sources?|materials?)\b/i.test(normalized)
+        || /\b(genetec|ccure|c[-\s]?cure)\b[\s\S]{0,60}\b(files?|documents?|docs?|pdfs?|attachments?|uploads?|sources?|materials?)\b/i.test(normalized)
+        || /\b(files?|documents?|docs?|pdfs?|attachments?|uploads?|sources?|materials?)\b[\s\S]{0,60}\b(genetec|ccure|c[-\s]?cure)\b/i.test(normalized);
+}
+
 function hasExplicitImageGenerationIntent(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized) {
@@ -1551,6 +1566,13 @@ function resolveArtifactContextIds(session = null, artifactIds = [], text = '') 
         : [];
     if (lastUploadedImageArtifactIds.length > 0 && hasImplicitUploadedImageArtifactReference(text)) {
         return lastUploadedImageArtifactIds;
+    }
+
+    const lastUploadedArtifactIds = Array.isArray(session?.metadata?.lastUploadedArtifactIds)
+        ? session.metadata.lastUploadedArtifactIds.filter((entry) => typeof entry === 'string' && entry.trim())
+        : [];
+    if (lastUploadedArtifactIds.length > 0 && hasImplicitUploadedArtifactReference(text)) {
+        return lastUploadedArtifactIds;
     }
 
     const lastGeneratedArtifactId = session?.metadata?.lastGeneratedArtifactId;

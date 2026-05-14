@@ -65,7 +65,36 @@ describe('direct podcast chat intent', () => {
       audience: 'technical learner',
       tone: 'calm, calculated, structured, human, instructional',
       artifactIds: ['artifact-ingress-notes'],
+      sourceMode: 'uploaded-files-only',
+      useOnlineResearch: false,
     }));
+  });
+
+  test('keeps selected uploaded files source-only unless online research is requested', () => {
+    const params = buildDirectPodcastParams({
+      text: 'Create a teaching podcast from the uploaded Genetec and CCure files.',
+      artifactIds: ['artifact-genetec', 'artifact-ccure'],
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      topic: 'Create a teaching podcast from the uploaded Genetec and CCure files',
+      artifactIds: ['artifact-genetec', 'artifact-ccure'],
+      sourceMode: 'uploaded-files-only',
+      useOnlineResearch: false,
+    }));
+  });
+
+  test('allows explicit online enrichment for selected uploaded files', () => {
+    const params = buildDirectPodcastParams({
+      text: 'Create a teaching podcast from the uploaded Genetec and CCure files and enrich it with current online sources.',
+      artifactIds: ['artifact-genetec', 'artifact-ccure'],
+    });
+
+    expect(params).toEqual(expect.objectContaining({
+      artifactIds: ['artifact-genetec', 'artifact-ccure'],
+    }));
+    expect(params.sourceMode).toBeUndefined();
+    expect(params.useOnlineResearch).toBeUndefined();
   });
 
   test('turns requested admin audio sources on for video podcast generation', () => {

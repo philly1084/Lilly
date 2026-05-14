@@ -1367,4 +1367,47 @@ describe('ai-route-utils', () => {
             },
         });
     });
+
+    test('resolveArtifactContextIds uses recently uploaded files when a podcast request refers to uploaded source files', () => {
+        const session = {
+            metadata: {
+                lastUploadedArtifactIds: ['artifact-genetec', 'artifact-ccure'],
+            },
+        };
+
+        expect(resolveArtifactContextIds(
+            session,
+            [],
+            'Create a teaching podcast from the uploaded Genetec and CCure files.',
+        )).toEqual(['artifact-genetec', 'artifact-ccure']);
+    });
+
+    test('resolveArtifactContextIds keeps explicit artifact ids ahead of implicit uploaded file references', () => {
+        const session = {
+            metadata: {
+                lastUploadedArtifactIds: ['artifact-genetec', 'artifact-ccure'],
+            },
+        };
+
+        expect(resolveArtifactContextIds(
+            session,
+            ['artifact-selected'],
+            'Use the uploaded files for a training podcast.',
+        )).toEqual(['artifact-selected']);
+    });
+
+    test('resolveArtifactContextIds preserves the image-specific upload path for uploaded screenshot references', () => {
+        const session = {
+            metadata: {
+                lastUploadedArtifactIds: ['artifact-genetec', 'artifact-screenshot'],
+                lastUploadedImageArtifactIds: ['artifact-screenshot'],
+            },
+        };
+
+        expect(resolveArtifactContextIds(
+            session,
+            [],
+            'Describe the uploaded screenshot.',
+        )).toEqual(['artifact-screenshot']);
+    });
 });

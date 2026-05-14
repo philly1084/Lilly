@@ -59,6 +59,17 @@ function inferPodcastDetailLevel(text = '') {
   return null;
 }
 
+function hasExplicitOnlineResearchCue(text = '') {
+  const normalized = String(text || '').toLowerCase();
+  if (!normalized.trim()) {
+    return false;
+  }
+
+  return /\b(?:online|web|internet|external|current|latest|recent)\s+(?:research|sources?|references?|information|context)\b/i.test(normalized)
+    || /\b(?:research|search|look up|look for|find)\b[\s\S]{0,40}\b(?:online|web|internet|external|current|latest|recent)\b/i.test(normalized)
+    || /\b(?:enrich|augment|supplement|combine)\b[\s\S]{0,50}\b(?:with|using)\b[\s\S]{0,30}\b(?:online|web|internet|external|current|latest|recent)\b/i.test(normalized);
+}
+
 function shouldUseDirectPodcastChat(text = '') {
   return hasExplicitPodcastIntent(text);
 }
@@ -179,12 +190,19 @@ function buildDirectPodcastParams({
     ? `\n\nDirect content request:\n${directContentRequest}`
     : '';
   delete structuredOptions.directContentRequest;
+  const hasSelectedSourceFiles = selectedArtifactIds.length > 0;
+  const shouldStaySourceOnly = hasSelectedSourceFiles
+    && structuredOptions.useOnlineResearch !== true
+    && structuredOptions.onlineResearch !== true
+    && structuredOptions.webResearch !== true
+    && !hasExplicitOnlineResearchCue(text);
 
   return {
     topic,
     ...(requestBrief || additionalBrief ? { requestBrief: `${requestBrief}${additionalBrief}`.trim() } : {}),
     ...(hostCount ? { hostCount } : {}),
     ...(selectedArtifactIds.length > 0 ? { artifactIds: selectedArtifactIds } : {}),
+    ...(shouldStaySourceOnly ? { sourceMode: 'uploaded-files-only', useOnlineResearch: false } : {}),
     ...(durationMinutes || trainingPodcast ? { durationMinutes: durationMinutes || 12 } : {}),
     ...(detailLevel ? { detailLevel } : {}),
     ...(model ? { model } : {}),
