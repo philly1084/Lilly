@@ -1,4 +1,5 @@
 const { KokoroTtsService } = require('./kokoro-tts-service');
+const EventEmitter = require('events');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -236,6 +237,65 @@ describe('KokoroTtsService', () => {
             'start:Second request.',
             'finish:Second request.',
         ]);
+    });
+
+    test('delegates warmup and synthesis to a worker when worker mode is enabled', async () => {
+        class FakeWorker extends EventEmitter {
+            constructor() {
+                super();
+                this.messages = [];
+            }
+
+            postMessage(message) {
+                this.messages.push(message);
+                if (message.action === 'warm') {
+                    setImmediate(() => this.emit('message', {
+                        id: message.id,
+                        ok: true,
+                        result: { warmed: true },
+                    }));
+                    return;
+                }
+
+                setImmediate(() => this.emit('message', {
+                    id: message.id,
+                    ok: true,
+                    result: {
+                        provider: 'kokoro',
+                        audioBuffer: Uint8Array.from(Buffer.from('RIFF-worker-audio')),
+                        contentType: 'audio/wav',
+                        text: message.payload.text,
+                        voice: { id: message.payload.voiceId, provider: 'kokoro' },
+                    },
+                }));
+            }
+        }
+
+        const worker = new FakeWorker();
+        const service = new KokoroTtsService({
+            enabled: true,
+            modelId: 'test-model',
+            defaultVoiceId: 'af_heart',
+            voices: [{ id: 'af_heart', label: 'Heart Studio' }],
+            timeoutMs: 5000,
+            workerEnabled: true,
+        }, {
+            createWorker: () => worker,
+        });
+
+        await expect(service.getModel()).resolves.toEqual({ warmed: true });
+        const result = await service.synthesize({
+            text: 'Worker synthesis',
+            voiceId: 'af_heart',
+        });
+
+        expect(worker.messages.map((message) => message.action)).toEqual(['warm', 'synthesize']);
+        expect(worker.messages[1].payload).toEqual(expect.objectContaining({
+            text: 'Worker synthesis.',
+            voiceId: 'af_heart',
+        }));
+        expect(Buffer.isBuffer(result.audioBuffer)).toBe(true);
+        expect(result.audioBuffer.equals(Buffer.from('RIFF-worker-audio'))).toBe(true);
     });
 
     test('rejects unknown voices', async () => {

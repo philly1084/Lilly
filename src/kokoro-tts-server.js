@@ -3,7 +3,10 @@ const { config } = require('./config');
 const { KokoroTtsService } = require('./tts/kokoro-tts-service');
 
 const port = parseInt(process.env.KOKORO_TTS_PORT || process.env.PORT, 10) || 3001;
-const ttsService = new KokoroTtsService(config.tts?.kokoro || {});
+const ttsService = new KokoroTtsService({
+    ...(config.tts?.kokoro || {}),
+    workerEnabled: true,
+});
 const app = express();
 
 const startupState = {
@@ -40,7 +43,11 @@ app.get('/voices', (_req, res) => {
 });
 
 app.post('/synthesize', async (req, res) => {
+    const startedAt = Date.now();
+    const textLength = String(req.body?.text || '').length;
+    const voiceId = req.body?.voiceId || '';
     try {
+        console.log(`[KokoroTTS] Synthesis started voice=${voiceId || 'default'} chars=${textLength}`);
         const result = await ttsService.synthesize({
             text: req.body?.text || '',
             voiceId: req.body?.voiceId || '',
@@ -53,8 +60,10 @@ app.post('/synthesize', async (req, res) => {
         res.setHeader('X-TTS-Voice-Id', result.voice?.id || '');
         res.setHeader('X-TTS-Voice-Label', result.voice?.label || '');
         res.send(result.audioBuffer);
+        console.log(`[KokoroTTS] Synthesis completed voice=${result.voice?.id || voiceId || 'default'} chars=${textLength} bytes=${result.audioBuffer?.length || 0} durationMs=${Date.now() - startedAt}`);
     } catch (error) {
         const statusCode = error?.statusCode || 500;
+        console.error(`[KokoroTTS] Synthesis failed voice=${voiceId || 'default'} chars=${textLength} durationMs=${Date.now() - startedAt}: ${error?.message || 'unknown error'}`);
         res.status(statusCode).json({
             error: {
                 type: error?.code || 'tts_error',

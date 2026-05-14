@@ -1,4 +1,6 @@
 const fsSync = require('fs');
+const path = require('path');
+const { Worker } = require('worker_threads');
 const { config } = require('../config');
 const { createServiceError, normalizeTextForSpeech } = require('./speech-text');
 
@@ -61,6 +63,12 @@ class KokoroTtsService {
         };
         this.importKokoro = dependencies.importKokoro || (() => require('kokoro-js'));
         this.importTransformers = dependencies.importTransformers || (() => require('@huggingface/transformers'));
+        this.workerEnabled = dependencies.workerEnabled ?? this.ttsConfig.workerEnabled === true;
+        this.createWorker = dependencies.createWorker || ((workerPath) => new Worker(workerPath));
+        this.workerPath = dependencies.workerPath || path.join(__dirname, 'kokoro-synthesis-worker.js');
+        this.worker = null;
+        this.workerRequestId = 0;
+        this.workerRequests = new Map();
         this.modelPromise = null;
         this.synthesisQueue = Promise.resolve();
         this.transformersRuntimeConfigured = false;
@@ -203,7 +211,10 @@ class KokoroTtsService {
             podcastChunkChars,
             defaultVoiceId: configured ? (defaultVoice?.id || voices[0]?.id || null) : null,
             voices,
-            diagnostics,
+            diagnostics: {
+                ...diagnostics,
+                workerEnabled: this.workerEnabled === true,
+            },
         };
     }
 
@@ -256,6 +267,9 @@ class KokoroTtsService {
 
     async getModel() {
         this.assertConfigured();
+        if (this.workerEnabled) {
+            return this.callWorker('warm', {}, Number(this.ttsConfig.timeoutMs) || 90000);
+        }
         if (!this.modelPromise) {
             const modelId = String(this.ttsConfig.modelId || DEFAULT_MODEL_ID).trim() || DEFAULT_MODEL_ID;
             this.modelPromise = Promise.resolve()
@@ -285,6 +299,121 @@ class KokoroTtsService {
         }
 
         return this.modelPromise;
+    }
+
+    getWorker() {
+        if (this.worker) {
+            return this.worker;
+        }
+
+        const worker = this.createWorker(this.workerPath);
+        this.worker = worker;
+
+        worker.on('message', (message = {}) => {
+            const request = this.workerRequests.get(message.id);
+            if (!request) {
+                return;
+            }
+            this.workerRequests.delete(message.id);
+            clearTimeout(request.timeoutId);
+
+            if (message.ok) {
+                const result = message.result || {};
+                if (result.audioBuffer && !Buffer.isBuffer(result.audioBuffer)) {
+                    result.audioBuffer = Buffer.from(result.audioBuffer);
+                }
+                request.resolve(result);
+                return;
+            }
+
+            const errorPayload = message.error || {};
+            const error = createServiceError(
+                Number(errorPayload.statusCode) || 502,
+                errorPayload.message || 'Kokoro synthesis worker failed.',
+                errorPayload.code || 'tts_failed',
+            );
+            request.reject(error);
+        });
+
+        const failPending = (error) => {
+            for (const request of this.workerRequests.values()) {
+                clearTimeout(request.timeoutId);
+                request.reject(error);
+            }
+            this.workerRequests.clear();
+        };
+
+        worker.on('error', (error) => {
+            const wrapped = createServiceError(
+                503,
+                error?.message ? `Kokoro synthesis worker failed: ${error.message}` : 'Kokoro synthesis worker failed.',
+                'tts_unavailable',
+            );
+            failPending(wrapped);
+            if (this.worker === worker) {
+                this.worker = null;
+            }
+        });
+
+        worker.on('exit', (code) => {
+            if (this.worker === worker) {
+                this.worker = null;
+            }
+            if (code !== 0) {
+                failPending(createServiceError(
+                    503,
+                    `Kokoro synthesis worker exited with code ${code}.`,
+                    'tts_unavailable',
+                ));
+            }
+        });
+
+        return worker;
+    }
+
+    async resetWorker() {
+        const worker = this.worker;
+        this.worker = null;
+        if (worker?.terminate) {
+            try {
+                await worker.terminate();
+            } catch (_error) {
+                // Best-effort recovery after a synthesis timeout.
+            }
+        }
+    }
+
+    callWorker(action, payload = {}, timeoutMs = 90000) {
+        const worker = this.getWorker();
+        const id = ++this.workerRequestId;
+        const effectiveTimeoutMs = Math.max(1000, Number(timeoutMs) || 90000);
+
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(async () => {
+                if (!this.workerRequests.has(id)) {
+                    return;
+                }
+                this.workerRequests.delete(id);
+                await this.resetWorker();
+                reject(createServiceError(
+                    504,
+                    'Kokoro synthesis worker timed out before responding.',
+                    'tts_timeout',
+                ));
+            }, effectiveTimeoutMs + 5000);
+
+            this.workerRequests.set(id, {
+                resolve,
+                reject,
+                timeoutId,
+            });
+
+            worker.postMessage({
+                id,
+                action,
+                payload,
+            });
+        });
     }
 
     enqueueSynthesis(task) {
@@ -318,6 +447,14 @@ class KokoroTtsService {
         const effectiveTimeoutMs = Math.max(1000, Number(timeoutMs) || Number(this.ttsConfig.timeoutMs) || 90000);
 
         return this.enqueueSynthesis(async () => {
+            if (this.workerEnabled) {
+                return this.callWorker('synthesize', {
+                    text: speakableText,
+                    voiceId: selectedVoice.id,
+                    timeoutMs: effectiveTimeoutMs,
+                }, effectiveTimeoutMs);
+            }
+
             try {
                 const model = await withTimeout(
                     this.getModel(),
