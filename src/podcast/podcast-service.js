@@ -764,10 +764,10 @@ function resolvePodcastScriptModelCandidates(params = {}, context = {}) {
   return uniqueOrdered([
     actionModel,
     shouldIgnoreRequestedModel ? '' : requestedModel,
+    ...PREFERRED_PODCAST_SCRIPT_MODELS,
     defaultModel,
     configuredModel,
     fallbackModel,
-    ...PREFERRED_PODCAST_SCRIPT_MODELS,
   ].filter((model) => {
     const normalized = String(model || '').trim().toLowerCase();
     if (!normalized) {

@@ -1831,7 +1831,7 @@ describe('PodcastService', () => {
     expect(result.script.turns).toHaveLength(8);
   });
 
-  test('falls back to the configured fallback model after repeated transient script-generation failures', async () => {
+  test('falls back to the preferred modern script model after repeated transient script-generation failures', async () => {
     settingsController.settings.models = {
       ...(settingsController.settings?.models || {}),
       fallbackModel: 'gpt-5.4-mini',
@@ -1895,7 +1895,7 @@ describe('PodcastService', () => {
       model: 'gemini-3.1-pro-preview',
     }));
     expect(createResponse).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      model: 'gpt-5.4-mini',
+      model: 'gpt-5.5',
     }));
     expect(result.script.summary).toBe('Fallback-model generation succeeded.');
   });
