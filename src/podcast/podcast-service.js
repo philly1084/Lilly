@@ -105,7 +105,15 @@ const PODCAST_STAGE_DETAILS_ALLOWLIST = new Set([
 ]);
 const UNSAFE_IMPLICIT_PODCAST_SCRIPT_MODELS = new Set([
   'auto',
+  'gpt-4o',
   'gpt-4o-mini',
+]);
+const PREFERRED_PODCAST_SCRIPT_MODELS = Object.freeze([
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.3-instant',
+  'gpt-4.1',
+  'kimi-for-coding',
 ]);
 const DEFAULT_HOST_ROSTER = Object.freeze([
   {
@@ -759,17 +767,18 @@ function resolvePodcastScriptModelCandidates(params = {}, context = {}) {
     defaultModel,
     configuredModel,
     fallbackModel,
+    ...PREFERRED_PODCAST_SCRIPT_MODELS,
   ].filter((model) => {
     const normalized = String(model || '').trim().toLowerCase();
     if (!normalized) {
       return false;
     }
 
-    if (!UNSAFE_IMPLICIT_PODCAST_SCRIPT_MODELS.has(normalized)) {
+    if (PREFERRED_PODCAST_SCRIPT_MODELS.includes(normalized)) {
       return true;
     }
 
-    return requestedModel && !actionModel && normalized === normalizedRequestedModel;
+    return !UNSAFE_IMPLICIT_PODCAST_SCRIPT_MODELS.has(normalized);
   }));
 }
 

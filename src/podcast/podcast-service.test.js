@@ -154,7 +154,7 @@ describe('PodcastService', () => {
     ]));
   });
 
-  test('does not use auto as the podcast script model when it comes from request context', async () => {
+  test('uses a modern podcast script model when request context only provides auto', async () => {
     const service = new PodcastService();
     artifactService.buildPromptContext.mockResolvedValue(
       'Genetec and CCure training notes covering access control architecture, alarms, credentials, and operator workflows.',
@@ -171,7 +171,7 @@ describe('PodcastService', () => {
     });
 
     expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'gpt-4o',
+      model: 'gpt-5.5',
       enableAutomaticToolCalls: false,
     }));
   });
@@ -731,7 +731,7 @@ describe('PodcastService', () => {
     }));
   });
 
-  test('uses the active chat model instead of an unsafe generated mini model', async () => {
+  test('uses a modern podcast script model instead of unsafe legacy chat models', async () => {
     const service = new PodcastService();
     const executeTool = jest.fn(async (toolId) => {
       if (toolId === 'web-search') {
@@ -767,7 +767,7 @@ describe('PodcastService', () => {
     });
 
     const usedModels = createResponse.mock.calls.map(([call]) => call.model);
-    expect(usedModels).toEqual(['gpt-4o']);
+    expect(usedModels).toEqual(['gpt-5.5']);
   });
 
   test('allows longer podcast script request budgets to be overridden per run', async () => {
@@ -1836,8 +1836,6 @@ describe('PodcastService', () => {
     createResponse
       .mockRejectedValueOnce(transientError)
       .mockRejectedValueOnce(transientError)
-      .mockRejectedValueOnce(transientError)
-      .mockRejectedValueOnce(transientError)
       .mockResolvedValueOnce({
         output_text: JSON.stringify({
           title: 'Battery Backstop',
@@ -1893,12 +1891,6 @@ describe('PodcastService', () => {
       model: 'gemini-3.1-pro-preview',
     }));
     expect(createResponse).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      model: 'gpt-4o',
-    }));
-    expect(createResponse).toHaveBeenNthCalledWith(4, expect.objectContaining({
-      model: 'gpt-4o',
-    }));
-    expect(createResponse).toHaveBeenNthCalledWith(5, expect.objectContaining({
       model: 'gpt-5.4-mini',
     }));
     expect(result.script.summary).toBe('Fallback-model generation succeeded.');
