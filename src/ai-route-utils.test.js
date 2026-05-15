@@ -1382,6 +1382,20 @@ describe('ai-route-utils', () => {
         )).toEqual(['artifact-genetec', 'artifact-ccure']);
     });
 
+    test('resolveArtifactContextIds uses recently uploaded files when a podcast request names artifacts', () => {
+        const session = {
+            metadata: {
+                lastUploadedArtifactIds: ['artifact-genetec', 'artifact-ccure'],
+            },
+        };
+
+        expect(resolveArtifactContextIds(
+            session,
+            [],
+            'Create a training podcast from the Genetec and CCure artifacts I named.',
+        )).toEqual(['artifact-genetec', 'artifact-ccure']);
+    });
+
     test('resolveArtifactContextIds keeps explicit artifact ids ahead of implicit uploaded file references', () => {
         const session = {
             metadata: {

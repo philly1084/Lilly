@@ -104,6 +104,7 @@ const PODCAST_STAGE_DETAILS_ALLOWLIST = new Set([
   'mp3Exported',
 ]);
 const UNSAFE_IMPLICIT_PODCAST_SCRIPT_MODELS = new Set([
+  'auto',
   'gpt-4o-mini',
 ]);
 const DEFAULT_HOST_ROSTER = Object.freeze([

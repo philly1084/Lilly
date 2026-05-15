@@ -154,6 +154,28 @@ describe('PodcastService', () => {
     ]));
   });
 
+  test('does not use auto as the podcast script model when it comes from request context', async () => {
+    const service = new PodcastService();
+    artifactService.buildPromptContext.mockResolvedValue(
+      'Genetec and CCure training notes covering access control architecture, alarms, credentials, and operator workflows.',
+    );
+
+    await service.createPodcast({
+      topic: 'Access control training',
+      artifactIds: ['artifact-genetec', 'artifact-ccure'],
+      sourceMode: 'uploaded-files-only',
+      useOnlineResearch: false,
+    }, {
+      sessionId: 'session-1',
+      model: 'auto',
+    });
+
+    expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'gpt-4o',
+      enableAutomaticToolCalls: false,
+    }));
+  });
+
   test('creates a researched two-host podcast and persists the final audio', async () => {
     const service = new PodcastService();
     const executeTool = jest.fn(async (toolId) => {
