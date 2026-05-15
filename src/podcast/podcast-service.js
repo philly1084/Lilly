@@ -1302,11 +1302,11 @@ ${isSoloHost
       : 'Write as a single host speaking directly to the listener. Do not introduce a co-host, second speaker, interview guest, or alternating dialogue.')
     : 'Write like a real podcast: light rapport, clean transitions, informative explanations, occasional reactions, but no filler overload.'}
 ${isTrainingLesson
-    ? 'For the training lesson, do not skip key steps. This is a technical class, not a regular podcast: avoid banter, topical-show chatter, teaser loops, and host personality bits. Teach prerequisites first, then move through each required concept in order. Use named modules, worked examples, common mistakes, comprehension checks, and recap checkpoints so the lesson feels like a complete 20-30 minute technical class when the material warrants it, not a short summary.'
+    ? 'For the training lesson, do not skip key steps. This is a technical class, not a regular podcast: avoid banter, topical-show chatter, teaser loops, and host personality bits. Teach in the order a skilled instructor would use: what the listener is about to be able to do, prerequisite idea, concrete setup step, demonstration, decision point, common mistake, correction, quick practical check, and recap. Make every check specific to the task, such as what setting to verify, what symptom to look for, or what choice to make next.'
     : ''}
 Keep each turn to one paragraph. No stage directions. No markdown. No URLs in spoken text.
 ${isTrainingLesson
-    ? 'Open with learning objectives and prerequisite framing; end with a practical recap and what the learner should be able to do next.'
+    ? 'Open with a short capability statement and prerequisite framing; end with a practical recap and the next action the listener can perform.'
     : 'Open with a strong hook and end with a concise wrap-up.'}
 ${videoFormat ? 'Structure the episode like a YouTube information show: cold open hook, quick setup, evidence beats, why-it-matters sections, and a concrete final takeaway. Keep it conversational, but make each segment feel intentional and paced for viewers.' : ''}
 Write for speech delivery, not for reading: use contractions, shorter sentences, and natural hand-offs.
@@ -1316,7 +1316,7 @@ Do not overuse self-referential process language. Avoid repeated phrases about d
 Do not make the hosts explain their own conversational design, emotional stress point, or presentation strategy. Let the structure feel natural through the content.
 Avoid repeating the same framing idea across multiple turns with only slightly different wording. Every turn must add a new fact, implication, question, contrast, or example.
 ${isTrainingLesson
-    ? 'Prefer a full instructor script over outline-like beats: a 20-30 minute class should usually have 24-45 substantive instructor turns, each adding a concept, example, check, mistake, or recap.'
+    ? 'Do not fill time by talking about the course, the act of learning, or the structure itself. Avoid repeated classroom filler such as "in this lesson", "in this module", "as we learn", "on this journey", "let us dive in", and "by the end". Prefer a full instructor script over outline-like beats: a 20-30 minute class should usually have 24-45 substantive instructor turns, each adding a concept, setup detail, demonstration step, decision point, common error, correction, practical check, or recap. Vary sentence length: use some short direct sentences, then a medium explanatory sentence; avoid long drawn-out sentences chained with multiple clauses.'
     : 'Prefer proper full scripts over short outline-like exchanges: write enough complete turns to meet the word budget and make the episode feel finished.'}
 
 Return exactly this JSON shape:

@@ -434,7 +434,11 @@ describe('PodcastService', () => {
     expect(prompt).toContain('Target turn count: 68');
     expect(prompt).toContain('do not skip key steps');
     expect(prompt).toContain('not a regular podcast');
-    expect(prompt).toContain('complete 20-30 minute technical class');
+    expect(prompt).toContain('what the listener is about to be able to do');
+    expect(prompt).toContain('Make every check specific to the task');
+    expect(prompt).toContain('Do not fill time by talking about the course');
+    expect(prompt).toContain('Avoid repeated classroom filler');
+    expect(prompt).toContain('Vary sentence length');
     expect(prompt).toContain('24-45 substantive instructor turns');
     expect(prompt).not.toContain('Host 2:');
     expect(result.script.turns.length).toBeGreaterThanOrEqual(36);
