@@ -9622,6 +9622,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             .find((message) => (
                 message?.role === 'assistant'
                 && message?.isStreaming === true
+                && message?.metadata?.staleForeground !== true
                 && (
                     message?.metadata?.pendingForeground === true
                     || Boolean(String(message?.metadata?.foregroundRequestId || '').trim())

@@ -34,6 +34,7 @@
     const panelsByKey = new Map();
     const tabsByKey = new Map();
     let activeWorkspaceKey = workspaceHelpers.DEFAULT_WORKSPACE_KEY;
+    let initialWorkspaceSource = 'default';
     let isSwitcherOpen = false;
 
     function normalizeThemeMode(value = '') {
@@ -84,7 +85,14 @@
         syncThemeMetaColor();
     }
 
-    async function loadRemoteTheme() {
+    function normalizeAllowedWorkspaceKey(value = '') {
+        const normalizedKey = workspaceHelpers.normalizeWorkspaceKey(value);
+        return workspaces.some((workspace) => workspace.key === normalizedKey)
+            ? normalizedKey
+            : '';
+    }
+
+    async function loadRemotePreferences() {
         const response = await fetch(`${API_BASE_URL}/preferences/web-chat`, {
             method: 'GET',
             headers: buildGatewayHeaders({
@@ -101,19 +109,63 @@
         const preferences = payload?.preferences && typeof payload.preferences === 'object' && !Array.isArray(payload.preferences)
             ? payload.preferences
             : {};
-        const mode = normalizeThemeMode(preferences[THEME_MODE_STORAGE_KEY]);
-
-        return {
-            mode,
-            preset: normalizeThemePreset(preferences[THEME_PRESET_STORAGE_KEY], mode),
-        };
+        return preferences;
     }
 
-    async function hydrateRemoteTheme() {
+    async function syncRemoteActiveWorkspace(key) {
+        const normalizedKey = normalizeAllowedWorkspaceKey(key);
+        if (!normalizedKey) {
+            return;
+        }
+
         try {
-            applyTheme(await loadRemoteTheme());
+            await fetch(`${API_BASE_URL}/preferences/web-chat`, {
+                method: 'PUT',
+                headers: buildGatewayHeaders({
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                }),
+                credentials: 'same-origin',
+                cache: 'no-store',
+                body: JSON.stringify({
+                    preferences: {
+                        [ACTIVE_WORKSPACE_STORAGE_KEY]: normalizedKey,
+                    },
+                }),
+            });
         } catch (_error) {
-            // Leave the seeded local theme in place when synced preferences are unavailable.
+            // Active workspace sync is a convenience; local switching should keep working offline.
+        }
+    }
+
+    async function hydrateRemoteHostState() {
+        try {
+            const preferences = await loadRemotePreferences();
+            const remoteThemeHasValue = Object.prototype.hasOwnProperty.call(preferences, THEME_MODE_STORAGE_KEY)
+                || Object.prototype.hasOwnProperty.call(preferences, THEME_PRESET_STORAGE_KEY);
+            if (remoteThemeHasValue) {
+                const mode = normalizeThemeMode(preferences[THEME_MODE_STORAGE_KEY]);
+                applyTheme({
+                    mode,
+                    preset: normalizeThemePreset(preferences[THEME_PRESET_STORAGE_KEY], mode),
+                });
+            }
+
+            const remoteWorkspaceKey = normalizeAllowedWorkspaceKey(preferences[ACTIVE_WORKSPACE_STORAGE_KEY]);
+            if (remoteWorkspaceKey && initialWorkspaceSource !== 'query') {
+                activateWorkspace(remoteWorkspaceKey, {
+                    closeMenu: false,
+                    persist: false,
+                    syncRemote: false,
+                });
+                return;
+            }
+
+            if (!remoteWorkspaceKey && initialWorkspaceSource !== 'default') {
+                await syncRemoteActiveWorkspace(activeWorkspaceKey);
+            }
+        } catch (_error) {
+            // Leave the seeded local state in place when synced preferences are unavailable.
         }
     }
 
@@ -127,30 +179,39 @@
         return workspaceNumber;
     }
 
-    function getInitialWorkspaceKey() {
+    function getInitialWorkspaceState() {
         const queryContext = workspaceHelpers.getWorkspaceContext(window.location.search);
-        const fromQuery = queryContext?.key;
-        if (fromQuery && workspaces.some((workspace) => workspace.key === fromQuery)) {
-            return fromQuery;
+        const fromQuery = normalizeAllowedWorkspaceKey(queryContext?.key);
+        if (fromQuery) {
+            return { key: fromQuery, source: 'query' };
         }
 
         try {
-            const storedKey = workspaceHelpers.normalizeWorkspaceKey(localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY));
-            if (workspaces.some((workspace) => workspace.key === storedKey)) {
-                return storedKey;
+            const storedKey = normalizeAllowedWorkspaceKey(localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY));
+            if (storedKey) {
+                return { key: storedKey, source: 'local' };
             }
         } catch (_error) {
             // Ignore storage lookup failures in privacy-restricted browsers.
         }
 
-        return workspaceHelpers.DEFAULT_WORKSPACE_KEY;
+        return { key: workspaceHelpers.DEFAULT_WORKSPACE_KEY, source: 'default' };
     }
 
-    function persistActiveWorkspace(key) {
+    function persistActiveWorkspace(key, options = {}) {
+        const normalizedKey = normalizeAllowedWorkspaceKey(key);
+        if (!normalizedKey) {
+            return;
+        }
+
         try {
-            localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, key);
+            localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, normalizedKey);
         } catch (_error) {
             // Ignore storage write failures.
+        }
+
+        if (options.syncRemote !== false) {
+            void syncRemoteActiveWorkspace(normalizedKey);
         }
     }
 
@@ -258,7 +319,7 @@
         }
     }
 
-    function activateWorkspace(workspaceKey, { closeMenu = true, restoreFocus = false } = {}) {
+    function activateWorkspace(workspaceKey, { closeMenu = true, restoreFocus = false, persist = true, syncRemote = true } = {}) {
         const workspace = workspaces.find((entry) => entry.key === workspaceKey) || workspaces[0];
         activeWorkspaceKey = workspace.key;
         ensureWorkspaceFrame(workspace);
@@ -275,7 +336,11 @@
             panel.hidden = !isActive;
         });
 
-        persistActiveWorkspace(workspace.key);
+        if (persist !== false) {
+            persistActiveWorkspace(workspace.key, { syncRemote });
+        } else {
+            persistActiveWorkspace(workspace.key, { syncRemote: false });
+        }
         updateSwitcherSummary(workspace);
         setDocumentWorkspace(workspace);
         syncAllWorkspaceStates();
@@ -380,10 +445,16 @@
         });
     }
 
+    const initialWorkspace = getInitialWorkspaceState();
+    initialWorkspaceSource = initialWorkspace.source;
+
     applyTheme(readStoredTheme());
-    void hydrateRemoteTheme();
+    void hydrateRemoteHostState();
     renderTabs();
     setupSwitcherControls();
     setupKeyboardShortcuts();
-    activateWorkspace(getInitialWorkspaceKey(), { closeMenu: false });
+    activateWorkspace(initialWorkspace.key, {
+        closeMenu: false,
+        persist: initialWorkspaceSource === 'query',
+    });
 })();

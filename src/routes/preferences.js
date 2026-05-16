@@ -17,6 +17,7 @@ const WEB_CHAT_PREFERENCE_KEYS = new Set([
     'webchat_input_hidden',
     'kimibuilt_sidebar_width',
     'kimibuilt_sidebar_collapsed',
+    'kimibuilt_web_chat_workspace_host_active',
 ]);
 
 const router = Router();

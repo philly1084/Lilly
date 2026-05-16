@@ -1,0 +1,34 @@
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+function runIndexRedirect(search = '') {
+    const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] || '';
+    const replace = jest.fn();
+    const context = {
+        URL,
+        window: {
+            location: {
+                href: `http://localhost:3000/web-chat/${search}`,
+                replace,
+            },
+        },
+    };
+
+    vm.runInNewContext(script, context, { filename: 'index.html' });
+    return replace.mock.calls[0]?.[0] || '';
+}
+
+describe('web-chat index redirect', () => {
+    test('preserves explicit workspace query while removing embedded host flags', () => {
+        const target = runIndexRedirect('?workspace=workspace-2&workspaceLabel=Workspace%202&embedded=1&foo=bar');
+        const parsed = new URL(target);
+
+        expect(parsed.pathname).toBe('/web-chat/app.html');
+        expect(parsed.searchParams.get('workspace')).toBe('workspace-2');
+        expect(parsed.searchParams.get('workspaceLabel')).toBe('Workspace 2');
+        expect(parsed.searchParams.get('foo')).toBe('bar');
+        expect(parsed.searchParams.has('embedded')).toBe(false);
+    });
+});

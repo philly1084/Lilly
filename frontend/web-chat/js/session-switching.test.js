@@ -175,4 +175,30 @@ describe('web-chat session switching refresh guards', () => {
 
         expect(manager.currentSessionId).toBe('session-a');
     });
+
+    test('settles stale persisted foreground placeholders instead of resuming them forever', () => {
+        const manager = createSessionManager(jest.fn());
+        const oldTimestamp = new Date(Date.now() - (7 * 60 * 60 * 1000)).toISOString();
+
+        const messages = manager.mergeBackendMessages('session-a', [
+            {
+                id: 'assistant-stale',
+                role: 'assistant',
+                content: 'Working in background...',
+                timestamp: oldTimestamp,
+                isStreaming: true,
+                metadata: {
+                    pendingForeground: true,
+                    foregroundRequestId: 'assistant-stale',
+                },
+            },
+        ]);
+
+        expect(messages).toHaveLength(1);
+        expect(messages[0].isStreaming).toBe(false);
+        expect(messages[0].metadata.pendingForeground).toBe(false);
+        expect(messages[0].metadata.foregroundRequestId).toBeUndefined();
+        expect(messages[0].metadata.staleForeground).toBe(true);
+        expect(messages[0].content).toContain('did not finish cleanly');
+    });
 });

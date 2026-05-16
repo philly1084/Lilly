@@ -45,6 +45,7 @@ describe('/api/preferences route', () => {
         sessionStore.patchUserPreferences.mockResolvedValue({
             kimibuilt_default_model: 'gpt-5.4',
             kimibuilt_remote_build_autonomy: 'false',
+            kimibuilt_web_chat_workspace_host_active: 'workspace-3',
         });
 
         const app = express();
@@ -61,6 +62,7 @@ describe('/api/preferences route', () => {
                 preferences: {
                     kimibuilt_default_model: 'gpt-5.4',
                     kimibuilt_remote_build_autonomy: 'false',
+                    kimibuilt_web_chat_workspace_host_active: 'workspace-3',
                     kimibuilt_models_cache: '{"ignore":true}',
                     arbitrary: 'ignore-me',
                 },
@@ -70,10 +72,12 @@ describe('/api/preferences route', () => {
         expect(sessionStore.patchUserPreferences).toHaveBeenCalledWith('phill', 'webChat', {
             kimibuilt_default_model: 'gpt-5.4',
             kimibuilt_remote_build_autonomy: 'false',
+            kimibuilt_web_chat_workspace_host_active: 'workspace-3',
         });
         expect(response.body.preferences).toEqual({
             kimibuilt_default_model: 'gpt-5.4',
             kimibuilt_remote_build_autonomy: 'false',
+            kimibuilt_web_chat_workspace_host_active: 'workspace-3',
         });
     });
 

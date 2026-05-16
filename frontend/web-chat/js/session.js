@@ -16,6 +16,8 @@ const WEB_CHAT_LOCAL_CACHE_STRING_LIMIT = 20000;
 const WEB_CHAT_LOCAL_CACHE_ARRAY_LIMIT = 80;
 const WEB_CHAT_LOCAL_CACHE_OBJECT_DEPTH_LIMIT = 5;
 const WEB_CHAT_ACTIVE_SESSION_LOCAL_HOLD_MS = 45000;
+const WEB_CHAT_STALE_FOREGROUND_MESSAGE_MS = 6 * 60 * 60 * 1000;
+const WEB_CHAT_STALE_FOREGROUND_FALLBACK = 'This background reply did not finish cleanly before the page was refreshed. You can retry from here.';
 const WEB_CHAT_LOCAL_CACHE_HEAVY_KEYS = new Set([
     'audioData',
     'audio_data',
@@ -49,6 +51,7 @@ const WEB_CHAT_SYNCED_STORAGE_KEYS = new Set([
     'webchat_input_hidden',
     'kimibuilt_sidebar_width',
     'kimibuilt_sidebar_collapsed',
+    'kimibuilt_web_chat_workspace_host_active',
 ]);
 const sessionGatewayHelpers = window.KimiBuiltGatewaySSE || {};
 const SESSION_DEFAULT_MODEL = sessionGatewayHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
@@ -235,6 +238,53 @@ function normalizeSessionMessage(message = {}) {
         metadata: mergedMetadata,
         ...(reasoningSummary ? { reasoningSummary } : {}),
         ...(reasoningAvailable ? { reasoningAvailable: true } : {}),
+    };
+}
+
+function getSessionMessageTime(message = {}) {
+    const rawTimestamp = message?.timestamp || message?.createdAt || message?.created_at || '';
+    const timestamp = new Date(rawTimestamp).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function hasForegroundMarker(message = {}) {
+    const metadata = message?.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+        ? message.metadata
+        : {};
+    return message?.isStreaming === true
+        && (
+            metadata.pendingForeground === true
+            || Boolean(String(metadata.foregroundRequestId || '').trim())
+        );
+}
+
+function isStaleForegroundMessage(message = {}, now = Date.now()) {
+    if (!hasForegroundMarker(message)) {
+        return false;
+    }
+
+    const messageTime = getSessionMessageTime(message);
+    return messageTime > 0 && now - messageTime > WEB_CHAT_STALE_FOREGROUND_MESSAGE_MS;
+}
+
+function normalizeStaleForegroundMessage(message = {}) {
+    const metadata = message?.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+        ? { ...message.metadata }
+        : {};
+    const content = String(message?.content || message?.displayContent || '').trim();
+    const looksLikePlaceholder = !content || /^working in background/i.test(content);
+    delete metadata.foregroundRequestId;
+    metadata.pendingForeground = false;
+    metadata.staleForeground = true;
+    metadata.staleForegroundResolvedAt = new Date().toISOString();
+
+    return {
+        ...message,
+        content: looksLikePlaceholder ? WEB_CHAT_STALE_FOREGROUND_FALLBACK : content,
+        displayContent: looksLikePlaceholder ? WEB_CHAT_STALE_FOREGROUND_FALLBACK : (message.displayContent || content),
+        isStreaming: false,
+        metadata,
+        liveState: null,
     };
 }
 
@@ -1129,6 +1179,15 @@ class SessionManager extends EventTarget {
         };
     }
 
+    normalizeStaleForegroundMessages(messages = []) {
+        const now = Date.now();
+        return (Array.isArray(messages) ? messages : []).map((message) => (
+            isStaleForegroundMessage(message, now)
+                ? normalizeStaleForegroundMessage(message)
+                : message
+        ));
+    }
+
     mergeBackendMessages(sessionId, backendMessages = []) {
         const localMessages = this.getMessages(sessionId);
         const mergedMessages = backendMessages.map((message) => {
@@ -1149,7 +1208,7 @@ class SessionManager extends EventTarget {
             && !backendIds.has(message.id)
         ));
 
-        return [...mergedMessages, ...preservedLocalMessages]
+        return this.normalizeStaleForegroundMessages([...mergedMessages, ...preservedLocalMessages])
             .sort((left, right) => new Date(left.timestamp || 0).getTime() - new Date(right.timestamp || 0).getTime());
     }
 
@@ -2125,6 +2184,10 @@ class SessionManager extends EventTarget {
                     this.sessionMessages = new Map(parsed.messages || []);
                 }
                 this.sessions = this.filterSessionsForCurrentWorkspace(this.sessions);
+                this.sessionMessages = new Map(Array.from(this.sessionMessages.entries()).map(([sessionId, messages]) => [
+                    sessionId,
+                    this.normalizeStaleForegroundMessages(messages),
+                ]));
             }
             
             const currentId = this.safeStorageGet(this.currentSessionKey);
