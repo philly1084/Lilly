@@ -690,6 +690,89 @@ function normalizeFrontendHandoff(handoff = null, metadata = {}, content = '') {
             }))
             .filter((entry) => entry.name && entry.purpose)
         : [];
+    const designMoves = Array.isArray(handoff?.designMoves)
+        ? handoff.designMoves
+            .map((entry) => ({
+                name: String(entry?.name || '').trim(),
+                purpose: String(entry?.purpose || '').trim(),
+                interaction: String(entry?.interaction || '').trim(),
+                effect: String(entry?.effect || '').trim(),
+                fallback: String(entry?.fallback || '').trim(),
+            }))
+            .filter((entry) => entry.name && (entry.purpose || entry.interaction || entry.effect))
+        : [];
+    const buildWorkbenchInput = handoff?.buildWorkbench && typeof handoff.buildWorkbench === 'object'
+        ? handoff.buildWorkbench
+        : {};
+    const normalizeTextList = (value) => Array.isArray(value)
+        ? value.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [];
+    const buildWorkbench = {
+        mode: String(buildWorkbenchInput.mode || 'agent-build-workbench').trim() || 'agent-build-workbench',
+        phases: Array.isArray(buildWorkbenchInput.phases)
+            ? buildWorkbenchInput.phases
+                .map((entry) => ({
+                    id: String(entry?.id || entry?.name || '').trim(),
+                    name: String(entry?.name || entry?.id || '').trim(),
+                    purpose: String(entry?.purpose || '').trim(),
+                    entryCondition: String(entry?.entryCondition || entry?.entry || '').trim(),
+                    actions: normalizeTextList(entry?.actions),
+                    exitCheck: String(entry?.exitCheck || entry?.proof || '').trim(),
+                }))
+                .filter((entry) => entry.name && (entry.purpose || entry.actions.length > 0 || entry.exitCheck))
+            : [],
+        commands: Array.isArray(buildWorkbenchInput.commands)
+            ? buildWorkbenchInput.commands
+                .map((entry) => ({
+                    name: String(entry?.name || '').trim(),
+                    purpose: String(entry?.purpose || '').trim(),
+                    when: String(entry?.when || entry?.phase || '').trim(),
+                    args: normalizeTextList(entry?.args),
+                }))
+                .filter((entry) => entry.name && (entry.purpose || entry.when || entry.args.length > 0))
+            : [],
+        hookPoints: Array.isArray(buildWorkbenchInput.hookPoints)
+            ? buildWorkbenchInput.hookPoints
+                .map((entry) => ({
+                    phase: String(entry?.phase || '').trim(),
+                    kind: String(entry?.kind || entry?.type || '').trim(),
+                    description: String(entry?.description || entry?.purpose || '').trim(),
+                    scriptOrFunction: String(entry?.scriptOrFunction || entry?.callable || '').trim(),
+                }))
+                .filter((entry) => entry.phase || entry.description || entry.scriptOrFunction)
+            : [],
+        callableHooks: Array.isArray(buildWorkbenchInput.callableHooks)
+            ? buildWorkbenchInput.callableHooks
+                .map((entry) => ({
+                    name: String(entry?.name || '').trim(),
+                    type: String(entry?.type || '').trim(),
+                    when: String(entry?.when || entry?.phase || '').trim(),
+                    input: String(entry?.input || '').trim(),
+                    output: String(entry?.output || '').trim(),
+                    proof: String(entry?.proof || '').trim(),
+                }))
+                .filter((entry) => entry.name && (entry.type || entry.when || entry.proof))
+            : [],
+        objectFactories: Array.isArray(buildWorkbenchInput.objectFactories)
+            ? buildWorkbenchInput.objectFactories
+                .map((entry) => ({
+                    name: String(entry?.name || '').trim(),
+                    purpose: String(entry?.purpose || '').trim(),
+                    creates: String(entry?.creates || entry?.output || '').trim(),
+                    placeholderStrategy: String(entry?.placeholderStrategy || entry?.fallback || '').trim(),
+                }))
+                .filter((entry) => entry.name && (entry.purpose || entry.creates || entry.placeholderStrategy))
+            : [],
+        qaGates: Array.isArray(buildWorkbenchInput.qaGates)
+            ? buildWorkbenchInput.qaGates
+                .map((entry) => ({
+                    name: String(entry?.name || '').trim(),
+                    checks: normalizeTextList(entry?.checks),
+                    onFail: String(entry?.onFail || entry?.fallback || '').trim(),
+                }))
+                .filter((entry) => entry.name && (entry.checks.length > 0 || entry.onFail))
+            : [],
+    };
 
     const integrationSteps = Array.isArray(handoff?.integrationSteps)
         ? handoff.integrationSteps
@@ -729,6 +812,61 @@ function normalizeFrontendHandoff(handoff = null, metadata = {}, content = '') {
         ).trim() || 'Portable frontend demo with a standalone preview and repo-ready file guidance.',
         targetFramework,
         componentMap,
+        buildWorkbench: (
+            buildWorkbench.phases.length > 0
+            || buildWorkbench.commands.length > 0
+            || buildWorkbench.hookPoints.length > 0
+            || buildWorkbench.callableHooks.length > 0
+            || buildWorkbench.objectFactories.length > 0
+            || buildWorkbench.qaGates.length > 0
+        ) ? buildWorkbench : {
+            mode: 'agent-build-workbench',
+            phases: [
+                {
+                    id: 'brief',
+                    name: 'Brief',
+                    purpose: 'Confirm the artifact goal, assets, missing context, and acceptance proof.',
+                    entryCondition: 'User request is ready to build.',
+                    actions: ['Capture assumptions and select the build lane.'],
+                    exitCheck: 'A previewable bundle target is named.',
+                },
+                {
+                    id: 'build',
+                    name: 'Build',
+                    purpose: 'Assemble the runnable bundle and any script/function hooks.',
+                    entryCondition: 'Technology and bundle structure are selected.',
+                    actions: ['Create source files and wire interactions or object factories.'],
+                    exitCheck: 'Entry file renders from the bundle.',
+                },
+                {
+                    id: 'qa_gate',
+                    name: 'QA Gate',
+                    purpose: 'Check rendering, interaction, accessibility, and fallback behavior.',
+                    entryCondition: 'Preview URL or bundle entry exists.',
+                    actions: ['Run browser QA and classify repair, redesign, ask, or ready.'],
+                    exitCheck: 'Fallback gate has a decision and next action.',
+                },
+            ],
+            commands: [
+                {
+                    name: 'run_preview_qa',
+                    purpose: 'Open the bundle and collect proof before promotion.',
+                    when: 'After the first runnable build.',
+                    args: ['entryFile', 'targetViewport'],
+                },
+            ],
+            hookPoints: [],
+            callableHooks: [],
+            objectFactories: [],
+            qaGates: [
+                {
+                    name: 'repair_redesign_gate',
+                    checks: ['console errors', 'blank render', 'overflow', 'missing assets', 'generic or mismatched design'],
+                    onFail: 'repair or redesign before finalizing',
+                },
+            ],
+        },
+        designMoves,
         integrationSteps: integrationSteps.length > 0
             ? integrationSteps
             : [

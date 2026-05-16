@@ -46,6 +46,9 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('content field may be a short preview summary');
         expect(instructions).toContain('metadata.handoff');
         expect(instructions).toContain('metadata.buildPipeline');
+        expect(instructions).toContain('buildWorkbench');
+        expect(instructions).toContain('Unity-like surface');
+        expect(instructions).toContain('script/function hook');
         expect(instructions).toContain('fallbackGate');
         expect(instructions).toContain('repair|redesign|ask|ready');
         expect(instructions).toContain('varied in-place placeholder objects');
@@ -58,8 +61,9 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('documentation-site');
         expect(instructions).toContain('<impressive_frontend_website_standard>');
         expect(instructions).toContain('<local_to_live_build_stages>');
-        expect(instructions).toContain('opened UI surfaces');
+        expect(instructions).toContain('agent-facing structured CLI/workbench');
         expect(instructions).toContain('<frontend_repair_redesign_gate>');
+        expect(instructions).toContain('<frontend_agent_build_workbench>');
         expect(instructions).toContain('<game_placeholder_asset_policy>');
         expect(instructions).toContain('Existing demo');
     });
@@ -108,6 +112,45 @@ describe('/api/canvas helpers', () => {
                     componentMap: [
                         { name: 'Hero', purpose: 'Top-level value proposition' },
                     ],
+                    buildWorkbench: {
+                        mode: 'agent-build-workbench',
+                        phases: [
+                            {
+                                id: 'assemble',
+                                name: 'Assemble',
+                                purpose: 'Build the scene from reusable objects.',
+                                actions: ['Create object factories', 'Attach behavior hooks'],
+                                exitCheck: 'Preview renders with no console errors.',
+                            },
+                        ],
+                        commands: [
+                            {
+                                name: 'create_scene',
+                                purpose: 'Builds the first playable scene.',
+                                when: 'After assets are mapped.',
+                                args: ['sceneSpec'],
+                            },
+                        ],
+                        callableHooks: [
+                            {
+                                name: 'generateThreatObjects',
+                                type: 'function',
+                                when: 'assemble',
+                                input: 'threat catalog',
+                                output: 'placeholder entities',
+                                proof: 'entities render with distinct roles',
+                            },
+                        ],
+                    },
+                    designMoves: [
+                        {
+                            name: 'Intent Lens',
+                            purpose: 'Shows which customer outcome the page is optimizing for.',
+                            interaction: 'User drags a small lens across proof tiles.',
+                            effect: 'Tiles reorganize by confidence and urgency.',
+                            fallback: 'Use a segmented control if drag fails.',
+                        },
+                    ],
                     qaPlan: [
                         'Capture desktop and mobile screenshots.',
                     ],
@@ -142,6 +185,24 @@ describe('/api/canvas helpers', () => {
         ]));
         expect(parsed.metadata.handoff.componentMap).toEqual([
             expect.objectContaining({ name: 'Hero' }),
+        ]);
+        expect(parsed.metadata.handoff.buildWorkbench).toEqual(expect.objectContaining({
+            mode: 'agent-build-workbench',
+            phases: [
+                expect.objectContaining({ name: 'Assemble' }),
+            ],
+            commands: [
+                expect.objectContaining({ name: 'create_scene' }),
+            ],
+            callableHooks: [
+                expect.objectContaining({ name: 'generateThreatObjects' }),
+            ],
+        }));
+        expect(parsed.metadata.handoff.designMoves).toEqual([
+            expect.objectContaining({
+                name: 'Intent Lens',
+                interaction: 'User drags a small lens across proof tiles.',
+            }),
         ]);
         expect(parsed.metadata.handoff.qaPlan).toEqual([
             'Capture desktop and mobile screenshots.',

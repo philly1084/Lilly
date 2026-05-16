@@ -17,12 +17,22 @@ const IMPRESSIVE_FRONTEND_QUALITY_BAR = Object.freeze({
     'Start from a compact brief: site type, audience, primary goals, content/data, brand mood, assets, and target devices. If details are missing, infer a tasteful direction and ask only for true blockers.',
     'Build the actual usable first screen. The first viewport must communicate the product, place, workflow, offer, or audience immediately; do not ship a generic placeholder or a static screenshot-like mockup.',
     'Match the artifact family: operational tools should be calm, dense, and scannable; documentation should prioritize wayfinding; reports should emphasize evidence; brand/editorial pages may be more expressive.',
-    'Include real controls, states, and interactions where expected: nav, filters, tabs, forms, empty/loading/error/disabled states, menus, dialogs, tooltips, drill-downs, toggles, search, or chart controls.',
+    'Build the interaction model from the user workflow instead of copying a fixed component menu. Familiar controls such as nav, filters, tabs, forms, menus, dialogs, tooltips, toggles, search, and chart controls are optional building blocks, not the goal.',
     'Use visual assets that reveal the actual product, place, workflow, state, or audience when assets are available or can be generated. Avoid vague decorative gradients, blobs, blurred stock-like backgrounds, and purely atmospheric imagery.',
-    'Design with restraint and specificity: stable responsive grids, readable typography, balanced color, explicit contrast, consistent borders/radii/spacing, no nested cards, no clipped labels, no horizontal overflow, and no one-note palettes.',
-    'Treat opened UI surfaces as first-class: dropdown lists, select options, menus, popovers, dialogs, tooltips, hover, selected, focus, disabled, and empty states must have readable text/background contrast.',
+    'Design with restraint and specificity: stable responsive grids, readable typography, balanced color, explicit contrast, consistent borders/radii/spacing, no nested cards, no clipped labels, no horizontal overflow, and no one-note palettes. Use novel effects only when they clarify state, motion, hierarchy, material, time, geography, risk, emotion, or gameplay.',
+    'Treat opened UI surfaces, scene states, build panels, object inspectors, timelines, command palettes, and generated effects as first-class. If the task benefits from a Unity-like structured CLI/workbench or custom agent command surface, design that surface rather than adding decorative controls.',
     'Verify desktop and mobile screenshots, opened interactive states, broken images, console errors, contrast, overflow, clipped text, and nonblank canvas/WebGL/3D rendering when relevant.',
-    'For non-trivial sites, expect an iteration pass after the first render; suggestions should name concrete next refinements rather than generic polish.',
+    'For non-trivial sites, expect an iteration pass after the first render; suggestions should name concrete next refinements and at least one new design move to try rather than generic polish.',
+  ],
+});
+
+const FRONTEND_AGENT_BUILD_WORKBENCH = Object.freeze({
+  promptTag: 'frontend_agent_build_workbench',
+  requiredPractices: [
+    'Treat examples as seed vocabulary, not a checklist. For complex builds, create an agent-facing structured CLI/workbench: phases, commands, hook points, scripts/functions, object factories, QA gates, and repair/redesign decisions.',
+    'Use a Unity-like mental model when it fits: scene graph, hierarchy, inspector, assets, prefabs/placeholders, behaviors, input maps, timeline, play/test loop, console, and build pipeline. Web UI controls are only one possible output of that workbench.',
+    'Allow the builder to bring in scripts, functions, adapters, generators, or sandbox libraries at explicit phase boundaries. Name what each callable does, when it runs, what input it needs, and what proof shows it worked.',
+    'Record the workbench in metadata.handoff.buildWorkbench with phases, commands, hookPoints, callableHooks, objectFactories, qaGates, and fallbackGate so later agents can continue the build without guessing.',
   ],
 });
 
@@ -176,8 +186,14 @@ function formatFrontendQualityBarForPrompt({
   }
 
   if (includeCanvasHandoff) {
-    lines.push('- Include a verification and promotion plan in metadata.handoff: targetFramework, componentMap, local sandbox checks, desktop/mobile screenshot checks, opened interactive states to inspect, broken-image and console-error checks, contrast/overflow checks, clipped-text checks, live-promotion assumptions, and any remaining blockers.');
+    lines.push('- Include a verification, build-workbench, and promotion plan in metadata.handoff: targetFramework, componentMap, buildWorkbench, designMoves when useful, local sandbox checks, desktop/mobile screenshot checks, opened interactive states to inspect, broken-image and console-error checks, contrast/overflow checks, clipped-text checks, live-promotion assumptions, and any remaining blockers.');
   }
+
+  lines.push(`<${FRONTEND_AGENT_BUILD_WORKBENCH.promptTag}>`);
+  FRONTEND_AGENT_BUILD_WORKBENCH.requiredPractices.forEach((practice) => {
+    lines.push(`- ${practice}`);
+  });
+  lines.push(`</${FRONTEND_AGENT_BUILD_WORKBENCH.promptTag}>`);
 
   lines.push(`<${FRONTEND_FALLBACK_GATE.promptTag}>`);
   FRONTEND_FALLBACK_GATE.requiredPractices.forEach((practice) => {
@@ -263,7 +279,7 @@ function inferAgentRolePipeline({
       tools: ['design-resource-search', 'image-search-unsplash', 'image-generate', 'graph-diagram'],
       outputContract: {
         format: 'design-brief',
-        required: ['audience', 'layoutPlan', 'visualDirection', 'assetPlan', 'componentMap', 'fallbackGate', 'visualQaPlan'],
+        required: ['audience', 'layoutPlan', 'visualDirection', 'assetPlan', 'componentMap', 'buildWorkbench', 'fallbackGate', 'visualQaPlan'],
       },
     }));
   }
@@ -324,6 +340,7 @@ function inferAgentRolePipeline({
     maxToolCallsHint: websiteBuild ? 10 : 7,
     qualityBar: websiteBuild ? IMPRESSIVE_FRONTEND_QUALITY_BAR : null,
     fallbackGate: websiteBuild ? FRONTEND_FALLBACK_GATE : null,
+    buildWorkbenchGuide: websiteBuild ? FRONTEND_AGENT_BUILD_WORKBENCH : null,
     placeholderAssetPolicy: gameBuild ? GAME_PLACEHOLDER_ASSET_POLICY : null,
     sandboxPolicy: websiteBuild
       ? {
@@ -358,6 +375,7 @@ function formatAgentRolePipelineForPrompt(pipeline = null) {
     sandboxPolicy: pipeline.sandboxPolicy,
     qualityBar: pipeline.qualityBar,
     fallbackGate: pipeline.fallbackGate,
+    buildWorkbenchGuide: pipeline.buildWorkbenchGuide,
     placeholderAssetPolicy: pipeline.placeholderAssetPolicy,
     roles: pipeline.roles.map((role) => ({
       id: role.id,
@@ -373,6 +391,7 @@ function formatAgentRolePipelineForPrompt(pipeline = null) {
 module.exports = {
   ROLE_IDS,
   FRONTEND_TECH_STACK_GUIDANCE,
+  FRONTEND_AGENT_BUILD_WORKBENCH,
   FRONTEND_FALLBACK_GATE,
   GAME_PLACEHOLDER_ASSET_POLICY,
   IMPRESSIVE_FRONTEND_QUALITY_BAR,

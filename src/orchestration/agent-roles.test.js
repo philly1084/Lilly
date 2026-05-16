@@ -60,7 +60,7 @@ describe('agent role frontend sandbox detection', () => {
 
     expect(promptText).toContain('<impressive_frontend_website_standard>');
     expect(promptText).toContain('first viewport must communicate the product');
-    expect(promptText).toContain('real controls, states, and interactions');
+    expect(promptText).toContain('Build the interaction model from the user workflow');
     expect(promptText).toContain('visual assets that reveal the actual product');
     expect(promptText).toContain('<sandbox_frontend_technology_ladder>');
     expect(promptText).toContain('React/Vite modules');
@@ -70,6 +70,10 @@ describe('agent role frontend sandbox detection', () => {
     expect(promptText).toContain('desktop and mobile screenshots');
     expect(promptText).toContain('iteration pass after the first render');
     expect(promptText).toContain('metadata.handoff');
+    expect(promptText).toContain('<frontend_agent_build_workbench>');
+    expect(promptText).toContain('Unity-like mental model');
+    expect(promptText).toContain('metadata.handoff.buildWorkbench');
+    expect(promptText).toContain('scripts/functions');
     expect(promptText).toContain('<frontend_repair_redesign_gate>');
     expect(promptText).toContain('repair, redesign, ask, or ready');
     expect(promptText).toContain('<game_placeholder_asset_policy>');

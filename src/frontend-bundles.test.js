@@ -143,6 +143,58 @@ describe('frontend bundle styling safety net', () => {
                     reason: 'The first pass reused a generic layout.',
                     nextAction: 'Change the information architecture before another build.',
                 },
+                buildWorkbench: {
+                    mode: 'agent-build-workbench',
+                    phases: [
+                        {
+                            id: 'qa_gate',
+                            name: 'QA Gate',
+                            purpose: 'Decide whether the build needs repair or redesign.',
+                            actions: ['Inspect preview', 'Classify fallback'],
+                            exitCheck: 'Next action is explicit.',
+                        },
+                    ],
+                    commands: [
+                        {
+                            name: 'attach_behavior_script',
+                            purpose: 'Connects a script to generated placeholder objects.',
+                            when: 'After object factories are created.',
+                            args: ['factoryName', 'scriptName'],
+                        },
+                    ],
+                    hookPoints: [
+                        {
+                            phase: 'assemble',
+                            kind: 'function',
+                            description: 'Generate placeholder objects when no real files are present.',
+                            scriptOrFunction: 'createPlaceholderObjects',
+                        },
+                    ],
+                    objectFactories: [
+                        {
+                            name: 'ThreatPlaceholderFactory',
+                            purpose: 'Creates distinct objects for hazard roles.',
+                            creates: 'cones, pulses, and patrol markers',
+                            placeholderStrategy: 'varied silhouettes and behavior labels',
+                        },
+                    ],
+                    qaGates: [
+                        {
+                            name: 'visual_quality_gate',
+                            checks: ['desktop screenshot', 'mobile screenshot'],
+                            onFail: 'redesign',
+                        },
+                    ],
+                },
+                designMoves: [
+                    {
+                        name: 'Threat Heat Dial',
+                        purpose: 'Lets users feel operational risk changing instead of reading static KPIs.',
+                        interaction: 'Drag the dial to change severity thresholds.',
+                        effect: 'Panels compress, recolor, and reprioritize incidents.',
+                        fallback: 'Use three severity buttons if drag interaction fails.',
+                    },
+                ],
                 placeholderAssets: [
                     {
                         role: 'enemy',
@@ -158,6 +210,30 @@ describe('frontend bundle styling safety net', () => {
             decision: 'redesign',
             reason: 'The first pass reused a generic layout.',
         }));
+        expect(metadata.handoff.buildWorkbench).toEqual(expect.objectContaining({
+            mode: 'agent-build-workbench',
+            phases: [
+                expect.objectContaining({ name: 'QA Gate' }),
+            ],
+            commands: [
+                expect.objectContaining({ name: 'attach_behavior_script' }),
+            ],
+            hookPoints: [
+                expect.objectContaining({ scriptOrFunction: 'createPlaceholderObjects' }),
+            ],
+            objectFactories: [
+                expect.objectContaining({ name: 'ThreatPlaceholderFactory' }),
+            ],
+            qaGates: [
+                expect.objectContaining({ name: 'visual_quality_gate' }),
+            ],
+        }));
+        expect(metadata.handoff.designMoves).toEqual([
+            expect.objectContaining({
+                name: 'Threat Heat Dial',
+                effect: 'Panels compress, recolor, and reprioritize incidents.',
+            }),
+        ]);
         expect(metadata.handoff.placeholderAssets).toEqual([
             expect.objectContaining({
                 role: 'enemy',
