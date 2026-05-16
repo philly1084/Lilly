@@ -88,6 +88,10 @@ function detectRequestSignals(text = '', {
     const artifactGeneration = Boolean(outputFormat || candidateOutputFormat);
     const researchCue = hasAny(normalized, [
         /\b(research|look up|search|sources?|citations?|verify current|latest|today)\b/,
+        /\bonline\b[\s\S]{0,80}\b(resources?|sources?|websites?|sites?)\b/,
+        /\b(?:company|companies|retailers?|shops?|stores?)\s+websites?\b/,
+        /\bagents?\s+to\s+(?:gather|collect|find|research|search|verify)\b/,
+        /\b(gather|collect|pull|compile)\b[\s\S]{0,80}\b(?:online|web|websites?|sites?|sources?|resources?|retailers?|shops?|stores?)\b/,
     ]);
     const notesCue = hasAny(normalized, [
         /\b(notes? page|current page|this page|the note|notes app)\b/,

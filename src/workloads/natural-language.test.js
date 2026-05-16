@@ -178,11 +178,27 @@ describe('workload natural language parsing', () => {
     test('detects explicit workload setup requests', () => {
         expect(hasWorkloadIntent('Set up a daily agent workload to summarize blockers every day at 11:05 PM.')).toBe(true);
         expect(hasWorkloadIntent('Set this up every day at 11:05 PM to summarize blockers.')).toBe(true);
+        expect(hasWorkloadIntent('Set this up weekly to gather local shopping deals.')).toBe(true);
         expect(hasWorkloadIntent('Run `date` on the server in 5 minutes.')).toBe(true);
         expect(hasWorkloadIntent('Set up cron jobs for security updates and security checks.')).toBe(true);
+        expect(hasWorkloadIntent('I want to make a weekly flyer for Kingston shopping deals.')).toBe(false);
         expect(hasWorkloadIntent('Explain what a cron expression is.')).toBe(false);
         expect(hasWorkloadIntent('I keep getting cron calls too quickly and every message turns into a workload.')).toBe(false);
         expect(hasWorkloadIntent('I want a planning agent to decide when something should become a job.')).toBe(false);
+    });
+
+    test('parses conservative weekly scheduling language into a weekly workload', () => {
+        const result = parseWorkloadScenario('Set this up weekly to gather local shopping deals.', {
+            timezone: 'America/Halifax',
+            now: new Date('2026-05-16T12:00:00.000Z'),
+        });
+
+        expect(result.trigger).toEqual({
+            type: 'cron',
+            expression: '0 9 * * 1',
+            timezone: 'America/Halifax',
+        });
+        expect(result.prompt).toBe('gather local shopping deals.');
     });
 
     test('infers a conservative recurring trigger from plural cron jobs', () => {

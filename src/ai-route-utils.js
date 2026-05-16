@@ -535,6 +535,10 @@ function shouldSuppressResearchFirstArtifactGeneration({
         /\bresearch\s+(?:on|into|about)\b/,
         /\b(look up|look into|search|browse|verify|fact[-\s]?check)\b/,
         /\b(latest|current|recent|today|news|release notes?|version|support pages?|tech support|citations?|sources?|evidence)\b/,
+        /\bonline\b[\s\S]{0,80}\b(resources?|sources?|websites?|sites?)\b/,
+        /\b(?:company|companies|retailers?|shops?|stores?)\s+websites?\b/,
+        /\bagents?\s+to\s+(?:gather|collect|find|research|search|verify)\b/,
+        /\b(gather|collect|pull|compile)\b[\s\S]{0,80}\b(?:online|web|websites?|sites?|sources?|resources?|retailers?|shops?|stores?)\b/,
     ].some((pattern) => pattern.test(normalized));
     if (!explicitCurrentResearchCue) {
         return false;

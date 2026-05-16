@@ -58,6 +58,7 @@ const TODAY_SCHEDULE_FRAGMENT = 'today\\b(?![\'’]s)';
 
 const SCHEDULE_TASK_VERB_FRAGMENT = '(?:run|do|check|review|research|summarize|follow\\s+up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan|call|ping)';
 const SCHEDULING_SETUP_VERB_FRAGMENT = '(?:set\\s+up|setup|schedule|queue|save|remind)';
+const WEEKLY_CADENCE_FRAGMENT = '(?:every\\s+week|each\\s+week|weekly\\s+(?:to\\b|basis\\b|automation\\b|workloads?\\b|follow-?ups?\\b|tasks?\\b|jobs?\\b|runs?\\b|checks?\\b|reminders?\\b|occurrences?\\b|recurrences?\\b))';
 
 function hasImmediateOrNoDeferCue(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
@@ -362,6 +363,10 @@ function createCronExpression(timeInfo = DEFAULT_TIME_INFO, cadence = 'daily') {
         return `${minute} ${hour} * * 1-5`;
     }
 
+    if (cadence === 'weekly') {
+        return `${minute} ${hour} * * 1`;
+    }
+
     if (WEEKDAY_TO_CRON[cadence]) {
         return `${minute} ${hour} * * ${WEEKDAY_TO_CRON[cadence]}`;
     }
@@ -558,6 +563,7 @@ function extractTaskPromptFromScenario(scenario = '') {
         : '(?:tomorrow|later today)';
     const leadingPatterns = [
         new RegExp(`^(?:every hour|hourly)(?:\\s+at\\s+${timeFragment})?[\\s,:-]*`, 'i'),
+        new RegExp(`^(?:${WEEKLY_CADENCE_FRAGMENT})(?:\\s+at\\s+${timeFragment})?[\\s,:-]*`, 'i'),
         new RegExp(`^(?:every|each)\\s+weekdays?(?:\\s+at\\s+${timeFragment})?[\\s,:-]*`, 'i'),
         new RegExp(`^(?:every|each)\\s+workdays?(?:\\s+at\\s+${timeFragment})?[\\s,:-]*`, 'i'),
         new RegExp(`^(?:daily|nightly)(?:\\s+at\\s+${timeFragment})?[\\s,:-]*`, 'i'),
@@ -569,6 +575,7 @@ function extractTaskPromptFromScenario(scenario = '') {
     ];
     const embeddedPatterns = [
         new RegExp(`\\b(?:every hour|hourly)(?:\\s+at\\s+${timeFragment})?\\b`, 'gi'),
+        new RegExp(`\\b(?:${WEEKLY_CADENCE_FRAGMENT})(?:\\s+at\\s+${timeFragment})?\\b`, 'gi'),
         new RegExp(`\\b(?:every|each)\\s+weekdays?(?:\\s+at\\s+${timeFragment})?\\b`, 'gi'),
         new RegExp(`\\b(?:every|each)\\s+workdays?(?:\\s+at\\s+${timeFragment})?\\b`, 'gi'),
         new RegExp(`\\b(?:daily|nightly)(?:\\s+at\\s+${timeFragment})?\\b`, 'gi'),
@@ -591,6 +598,7 @@ function extractTaskPromptFromScenario(scenario = '') {
         '',
     );
     taskPrompt = taskPrompt.replace(/^(?:can|could|would)\s+you\s+/i, '');
+    taskPrompt = taskPrompt.replace(/^(?:please\s+)?(?:set\s+(?:this|it)\s+up|schedule\s+(?:this|it))\s+(?:to\s+)?/i, '');
     taskPrompt = taskPrompt.replace(
         /^(?:please\s+)?(?:run|set(?:\s+(?:this|it))?\s+up|schedule(?:\s+(?:this|it))?|create|make|add|queue|save)\s+(?:(?:a|an)\s+)?cron(?:\s+jobs?)?\s*(?:later\s*)?(?:to\s+|for\s+)?/i,
         '',
@@ -666,6 +674,7 @@ function hasSchedulingCue(text = '') {
         /\bevery night\b/,
         /\bevery morning\b/,
         /\bevery evening\b/,
+        new RegExp(`\\b${WEEKLY_CADENCE_FRAGMENT}\\b`),
         /\b(?:every|each)\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)s?\b/,
         /\btomorrow\b/,
         /\blater today\b/,
@@ -692,8 +701,8 @@ function hasWorkloadIntent(text = '') {
         return false;
     }
 
-    const scheduleIntentFragment = `(?:every|daily|hourly|weekdays?|tomorrow|later today|once|at\\s+(?:1[0-2]|0?\\d)(?::[0-5]\\d)?\\s*(?:am|pm)|at\\s+(?:[01]?\\d|2[0-3]):[0-5]\\d|(?:(?:in|after)\\s+${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)(?:\\s+from\\s+now)?|${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)\\s+from\\s+now))`;
-    const timedTaskScheduleIntentFragment = `(?:every\\s+(?:day|weekday|workday|hour)|each\\s+(?:day|weekday|workday)|hourly|weekdays?|tomorrow|later today|once|at\\s+(?:1[0-2]|0?\\d)(?::[0-5]\\d)?\\s*(?:am|pm)|at\\s+(?:[01]?\\d|2[0-3]):[0-5]\\d|(?:(?:in|after)\\s+${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)(?:\\s+from\\s+now)?|${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)\\s+from\\s+now))`;
+    const scheduleIntentFragment = `(?:${WEEKLY_CADENCE_FRAGMENT}|every|daily|hourly|weekdays?|tomorrow|later today|once|at\\s+(?:1[0-2]|0?\\d)(?::[0-5]\\d)?\\s*(?:am|pm)|at\\s+(?:[01]?\\d|2[0-3]):[0-5]\\d|(?:(?:in|after)\\s+${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)(?:\\s+from\\s+now)?|${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)\\s+from\\s+now))`;
+    const timedTaskScheduleIntentFragment = `(?:${WEEKLY_CADENCE_FRAGMENT}|every\\s+(?:day|weekday|workday|hour)|each\\s+(?:day|weekday|workday)|hourly|weekdays?|tomorrow|later today|once|at\\s+(?:1[0-2]|0?\\d)(?::[0-5]\\d)?\\s*(?:am|pm)|at\\s+(?:[01]?\\d|2[0-3]):[0-5]\\d|(?:(?:in|after)\\s+${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)(?:\\s+from\\s+now)?|${RELATIVE_DELAY_AMOUNT_FRAGMENT}\\s*(?:minutes?|mins?|hours?|hrs?)\\s+from\\s+now))`;
 
     const hasExplicitWorkloadSetup = [
         /\b(set up|setup|schedule|create|make|add|queue|save)\b[\s\S]{0,24}\b(?:an?\s+|the\s+)?(?:automation|workloads?|follow-?ups?|reminders?|cron(?:\s+jobs?)?|scheduled\s+jobs?|scheduled\s+tasks?|recurring\s+jobs?|recurring\s+tasks?)\b/,
@@ -755,6 +764,7 @@ function inferDefaultRecurringTrigger(scenario = '', timezone = 'UTC') {
         /\bevery night\b/,
         /\bevery morning\b/,
         /\bevery evening\b/,
+        new RegExp(`\\b${WEEKLY_CADENCE_FRAGMENT}\\b`),
         /\b(?:every|each)\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)s?\b/,
         /\btomorrow\b/,
         /\blater today\b/,
@@ -865,7 +875,9 @@ function parseWorkloadScenario(scenario = '', options = {}) {
     const timeInfo = extractScenarioTime(normalizedScenario);
     const prompt = extractTaskPromptFromScenario(normalizedScenario) || normalizedScenario;
     const title = deriveWorkloadTitle(prompt);
-    const hasRecurringCadence = /(every hour|hourly|weekday|weekdays|every workday|each workday|daily|every day|everyday|each day|nightly|every night|every evening|every morning)/i.test(lowerScenario)
+    const hasWeeklyCadence = new RegExp(`\\b${WEEKLY_CADENCE_FRAGMENT}\\b`, 'i').test(lowerScenario);
+    const hasRecurringCadence = hasWeeklyCadence
+        || /(every hour|hourly|weekday|weekdays|every workday|each workday|daily|every day|everyday|each day|nightly|every night|every evening|every morning)/i.test(lowerScenario)
         || /\b(?:every|each)\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)s?\b/i.test(lowerScenario);
 
     let trigger = { type: 'manual' };
@@ -887,6 +899,12 @@ function parseWorkloadScenario(scenario = '', options = {}) {
         trigger = {
             type: 'cron',
             expression: createCronExpression(timeInfo, 'hourly'),
+            timezone: resolvedTimezone,
+        };
+    } else if (hasWeeklyCadence) {
+        trigger = {
+            type: 'cron',
+            expression: createCronExpression(timeInfo, 'weekly'),
             timezone: resolvedTimezone,
         };
     } else if (/(weekday|weekdays|every workday|each workday)/i.test(lowerScenario)) {

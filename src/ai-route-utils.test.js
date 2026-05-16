@@ -490,6 +490,11 @@ describe('ai-route-utils', () => {
             outputFormat: 'html',
             artifactIds: ['artifact-1'],
         })).toBe(false);
+
+        expect(shouldSuppressResearchFirstArtifactGeneration({
+            text: 'I live in Kingston Nova Scotia Canada, I want to make a weekly flyer for myself based on online Canadian resources including the companies websites. Id like agents to gather from key home use, electronic and general public shopping sites in the 100km area and make me that html based flyer.',
+            outputFormat: 'html',
+        })).toBe(true);
     });
 
     test('inferRequestedOutputFormat treats generic document creation as an artifact unless text-only is explicit', () => {

@@ -78,4 +78,16 @@ describe('request-decision-frame', () => {
             'document artifact generated only after grounded evidence exists',
         ]));
     });
+
+    test('routes online resource gathering for HTML flyers to research before artifact generation', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'I live in Kingston Nova Scotia Canada, I want to make a weekly flyer for myself based on online Canadian resources including the companies websites. Id like agents to gather from key home use, electronic and general public shopping sites in the 100km area and make me that html based flyer.',
+            candidateOutputFormat: 'html',
+            clientSurface: 'web-chat',
+            route: '/v1/chat/completions',
+        });
+
+        expect(frame.intent).toBe('research_deliverable');
+        expect(frame.preferredTool).toBe('web-search');
+    });
 });
