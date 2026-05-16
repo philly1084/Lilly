@@ -183,6 +183,32 @@ describe('/api/artifacts route', () => {
         expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
     });
 
+    test('serves PDF previews as inline PDF bytes instead of stored text fallback html', async () => {
+        const pdfBuffer = Buffer.from('%PDF-1.4\n1 0 obj\nendobj\n%%EOF', 'latin1');
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-pdf-1',
+            sessionId: 'session-1',
+            filename: 'resume.pdf',
+            extension: 'pdf',
+            mimeType: 'application/pdf',
+            previewHtml: '<pre>%PDF-1.4 raw object fallback</pre>',
+            contentBuffer: pdfBuffer,
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const response = await request(buildApp()).get('/api/artifacts/artifact-pdf-1/preview');
+
+        expect(response.status).toBe(200);
+        expect(response.headers['content-type']).toContain('application/pdf');
+        expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
+        expect(response.body).toEqual(pdfBuffer);
+        expect(response.text || '').not.toContain('raw object fallback');
+    });
+
     test('serves sandbox shells for generated previews', async () => {
         artifactService.getArtifact.mockResolvedValue({
             id: 'artifact-site-1',

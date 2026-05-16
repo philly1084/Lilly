@@ -1036,6 +1036,29 @@ describe('ArtifactService', () => {
         });
     });
 
+    test('serializeArtifact exposes preview urls for uploaded PDFs without extracted html', () => {
+        const serialized = artifactService.serializeArtifact({
+            id: 'artifact-pdf-1',
+            sessionId: 'session-1',
+            parentArtifactId: null,
+            direction: 'uploaded',
+            sourceMode: 'chat',
+            filename: 'resume.pdf',
+            extension: 'pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 2048,
+            vectorizedAt: null,
+            previewHtml: '',
+            extractedText: '',
+            metadata: {},
+            createdAt: '2026-04-08T00:00:00.000Z',
+        });
+
+        expect(serialized.previewUrl).toBe('/api/artifacts/artifact-pdf-1/preview');
+        expect(serialized.sandboxUrl).toBe('/api/artifacts/artifact-pdf-1/sandbox');
+        expect(serialized.preview).toBeNull();
+    });
+
     test('injects dashboard template guidance for dashboard html artifacts', async () => {
         createResponse.mockResolvedValueOnce({
             id: 'resp-dashboard-1',

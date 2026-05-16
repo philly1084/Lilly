@@ -114,6 +114,13 @@ function removeFrameBlockingHeaders(res) {
     res.removeHeader('X-Frame-Options');
 }
 
+function isPdfArtifact(artifact = {}) {
+    const extension = String(artifact.extension || artifact.format || '').toLowerCase();
+    const mimeType = String(artifact.mimeType || '').toLowerCase();
+    const filename = String(artifact.filename || '').toLowerCase();
+    return extension === 'pdf' || mimeType.includes('pdf') || filename.endsWith('.pdf');
+}
+
 function escapeHtmlAttribute(value = '') {
     return String(value || '')
         .replace(/&/g, '&amp;')
@@ -673,6 +680,13 @@ async function serveArtifactPreview(req, res, next, requestedPath = '', previewA
         }
 
         const previewFile = resolveMetadataBundlePreviewFile(artifact, requestedPath, previewAccessToken);
+
+        if (!previewFile && isPdfArtifact(artifact)) {
+            res.setHeader('Content-Type', artifact.mimeType || 'application/pdf');
+            applyPreviewResponseHeaders(res);
+            res.send(artifact.contentBuffer || Buffer.alloc(0));
+            return;
+        }
 
         const previewBuffer = previewFile?.contentBuffer
             || (typeof artifact.previewHtml === 'string' && artifact.previewHtml

@@ -12,6 +12,29 @@ function buildPreviewHtml(text) {
     return `<pre>${escapeHtml(text.slice(0, 12000))}</pre>`;
 }
 
+function looksLikePdfInternalText(text = '') {
+    const normalized = String(text || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    const pdfTokens = [
+        /%?PDF-\d\.\d/i,
+        /\b\d+\s+\d+\s+obj\b/i,
+        /\bendobj\b/i,
+        /\bstream\b/i,
+        /\bendstream\b/i,
+        /\bFlateDecode\b/i,
+        /\b(?:Type|Subtype)\s*\/[A-Za-z0-9]+/i,
+        /\b(?:FontDescriptor|CIDToGIDMap|ToUnicode|XRef|trailer|startxref)\b/i,
+    ];
+    const tokenHits = pdfTokens.reduce((count, pattern) => count + (pattern.test(normalized) ? 1 : 0), 0);
+    const pdfObjectLines = normalized
+        .split(/\n+/)
+        .filter((line) => /\b(?:obj|endobj|stream|endstream|xref|trailer)\b/i.test(line)).length;
+    return tokenHits >= 3 || pdfObjectLines >= 4;
+}
+
 function extractDocx(buffer) {
     const entries = readZipEntries(buffer);
     const textParts = [];
@@ -163,7 +186,10 @@ function extractPdfText(buffer) {
     }
 
     const fallback = (raw.match(/[A-Za-z0-9][A-Za-z0-9 .,;:'"()\-_/]{4,}/g) || []).slice(0, 300);
-    const extractedText = normalizeWhitespace(textParts.join('\n') || fallback.join('\n'));
+    let extractedText = normalizeWhitespace(textParts.join('\n') || fallback.join('\n'));
+    if (!textParts.length && looksLikePdfInternalText(extractedText)) {
+        extractedText = '';
+    }
 
     return {
         extractedText,

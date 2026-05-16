@@ -68,6 +68,13 @@ const COMPOSITION_META_PHRASES = [
     /\bthe final pass should\b/i,
     /\bverification date used for the build\b/i,
 ];
+
+function isPdfArtifactRecord(artifact = {}) {
+    const extension = String(artifact.extension || artifact.format || '').toLowerCase();
+    const mimeType = String(artifact.mimeType || '').toLowerCase();
+    const filename = String(artifact.filename || '').toLowerCase();
+    return extension === 'pdf' || mimeType.includes('pdf') || filename.endsWith('.pdf');
+}
 const COMPOSITION_OUTLINE_PATTERNS = [
     /\b\d+\s+sections\b/i,
     /\bstory block\b/i,
@@ -1560,7 +1567,8 @@ class ArtifactService {
             ? siteBundle.files.length
             : Number(siteBundle?.fileCount || 0);
         const hasSiteBundle = siteBundleFileCount > 1;
-        const previewUrl = (artifact.extension === 'html' || Boolean(artifact.previewHtml))
+        const hasPdfPreview = isPdfArtifactRecord(artifact);
+        const previewUrl = (artifact.extension === 'html' || Boolean(artifact.previewHtml) || hasPdfPreview)
             ? `/api/artifacts/${artifact.id}/preview`
             : null;
         const sandboxUrl = previewUrl

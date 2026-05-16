@@ -1100,6 +1100,16 @@
         return true;
     }
 
+    function getArtifactPreviewLabel(artifact = null) {
+        const format = String(artifact?.format || '').toLowerCase();
+        const mimeType = String(artifact?.mimeType || '').toLowerCase();
+        const filename = String(artifact?.filename || '').toLowerCase();
+        if (format === 'pdf' || mimeType.includes('pdf') || filename.endsWith('.pdf')) {
+            return 'PDF preview';
+        }
+        return 'File preview';
+    }
+
     function buildArtifactCardMarkup(artifact) {
         const iconClass = getFileIconClass(artifact.filename, artifact);
         const iconName = getFileIcon(artifact.filename, artifact);
@@ -1129,7 +1139,7 @@
             ? `
                 <div class="artifact-html-preview" data-preview-url="${escapeHtmlAttr(htmlPreviewUrl)}" data-preview-title="${escapeHtmlAttr(artifact.filename || 'Artifact preview')}">
                     <div class="artifact-html-preview-toolbar">
-                        <span>HTML page preview</span>
+                        <span>${escapeHtml(getArtifactPreviewLabel(artifact))}</span>
                         <span class="artifact-html-preview-status">Loading</span>
                     </div>
                     <div class="artifact-html-preview-stage">
@@ -1173,7 +1183,7 @@
         const htmlActions = htmlPreviewUrl
             ? `
                 <button class="primary" onclick="artifactManager.openArtifactPreview('${artifact.id}')">
-                    ${artifact?.bundleDownloadUrl ? 'Open Site' : 'Open Page'}
+                    ${artifact?.bundleDownloadUrl ? 'Open Site' : 'Open Preview'}
                 </button>
             `
             : '';
