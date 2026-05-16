@@ -564,6 +564,8 @@ describe('/v1/chat/completions stream forwarding', () => {
         });
 
         const app = express();
+        const documentService = { id: 'document-service' };
+        app.locals.documentService = documentService;
         app.use(express.json());
         app.use('/v1', openAiCompatRouter);
 
@@ -581,6 +583,11 @@ describe('/v1/chat/completions stream forwarding', () => {
             });
 
         expect(response.status).toBe(200);
+        expect(generateOutputArtifactFromPrompt).toHaveBeenCalledWith(expect.objectContaining({
+            toolContext: expect.objectContaining({
+                documentService,
+            }),
+        }));
         expect(response.text).toContain('"artifacts":[{"id":"artifact-singular-1"');
         expect(response.text).toContain('"displayContent":"Created frontend-demo.zip. Preview and Download below."');
         expect(sessionStore.upsertMessage).toHaveBeenCalledWith(

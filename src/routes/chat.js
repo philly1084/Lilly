@@ -1513,6 +1513,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     now: requestNow,
                     managedAppsSummary,
                     artifactIds: preparedImages.artifactIds,
+                    documentService: req.app.locals.documentService || null,
                     workloadService: req.app.locals.agentWorkloadService,
                     managedAppService: req.app.locals.managedAppService || null,
                 },

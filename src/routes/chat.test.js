@@ -858,6 +858,8 @@ describe('/api/chat route', () => {
         });
 
         const app = express();
+        const documentService = { id: 'document-service' };
+        app.locals.documentService = documentService;
         app.use(express.json());
         app.use('/api/chat', chatRouter);
 
@@ -875,6 +877,9 @@ describe('/api/chat route', () => {
             sessionId: 'session-1',
             mode: 'web-chat',
             outputFormat: 'html',
+            toolContext: expect.objectContaining({
+                documentService,
+            }),
         }));
         expect(executeConversationRuntime).not.toHaveBeenCalled();
         expect(response.body.artifacts).toEqual([

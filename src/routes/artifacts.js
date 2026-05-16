@@ -554,6 +554,7 @@ router.post('/generate', validate(generationSchema), async (req, res, next) => {
                 memoryKeywords,
                 timezone: requestTimezone,
                 now: requestNow,
+                documentService: req.app.locals.documentService || null,
                 workloadService: req.app.locals.agentWorkloadService,
             },
             executionProfile,

@@ -231,6 +231,8 @@ describe('/v1/chat/completions notes routing', () => {
         });
 
         const app = express();
+        const documentService = { id: 'document-service' };
+        app.locals.documentService = documentService;
         app.use(express.json());
         app.use('/v1', openAiCompatRouter);
 
@@ -251,6 +253,9 @@ describe('/v1/chat/completions notes routing', () => {
             sessionId: 'page-session-1',
             mode: 'notes',
             outputFormat: 'html',
+            toolContext: expect.objectContaining({
+                documentService,
+            }),
         }));
         expect(executeConversationRuntime).not.toHaveBeenCalled();
         expect(response.body.choices[0].message.content).toBe('Created the HTML document artifact (penguins.html).');
