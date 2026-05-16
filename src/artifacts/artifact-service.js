@@ -1799,6 +1799,28 @@ class ArtifactService {
             };
         }
 
+        const fileSha256 = sha256(file.buffer);
+        if (!String(extraction.extractedText || '').trim() && this.isEnabled()) {
+            try {
+                const reusable = await artifactStore.findReusableExtractionBySha?.(fileSha256);
+                if (String(reusable?.extractedText || '').trim()) {
+                    extraction = {
+                        ...extraction,
+                        extractedText: reusable.extractedText,
+                        previewHtml: reusable.previewHtml || extraction.previewHtml,
+                        metadata: {
+                            ...(extraction.metadata || {}),
+                            reusedExtractionFromArtifactId: reusable.id,
+                            reusedExtractionSha256: fileSha256,
+                        },
+                        vectorizable: true,
+                    };
+                }
+            } catch (error) {
+                console.warn('[Artifacts] Failed to reuse prior extraction for uploaded file:', error.message);
+            }
+        }
+
         const format = normalizeFormat(extraction.format || requestedFormat);
         const artifact = await this.createStoredArtifact({
             sessionId,

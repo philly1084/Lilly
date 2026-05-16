@@ -144,6 +144,32 @@ class ArtifactStore {
         return result.rows.map((row) => toArtifact(row));
     }
 
+    async findReusableExtractionBySha(sha256) {
+        const normalizedSha = String(sha256 || '').trim();
+        if (!normalizedSha) {
+            return null;
+        }
+
+        const result = await postgres.query(
+            `
+                SELECT
+                    id, session_id, parent_artifact_id, direction, source_mode,
+                    filename, extension, mime_type, size_bytes, sha256,
+                    extracted_text, preview_html, metadata, vectorized_at,
+                    created_at, updated_at
+                FROM artifacts
+                WHERE sha256 = $1
+                    AND extracted_text IS NOT NULL
+                    AND length(trim(extracted_text)) > 0
+                ORDER BY updated_at DESC
+                LIMIT 1
+            `,
+            [normalizedSha],
+        );
+
+        return toArtifact(result.rows[0]);
+    }
+
     async listAllWithSessions() {
         const result = await postgres.query(
             `

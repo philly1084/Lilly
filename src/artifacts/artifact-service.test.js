@@ -3,6 +3,7 @@ jest.mock('./artifact-store', () => ({
         create: jest.fn(),
         updateProcessing: jest.fn(),
         listBySession: jest.fn(),
+        findReusableExtractionBySha: jest.fn(),
         listAllWithSessions: jest.fn(),
         get: jest.fn(),
         delete: jest.fn(),
@@ -109,6 +110,7 @@ describe('ArtifactService', () => {
             vectorizedAt: null,
         });
         artifactStore.listBySession.mockResolvedValue([]);
+        artifactStore.findReusableExtractionBySha.mockResolvedValue(null);
         artifactStore.listAllWithSessions.mockResolvedValue([]);
         artifactStore.get.mockResolvedValue(null);
         renderArtifact.mockResolvedValue({
@@ -233,6 +235,55 @@ describe('ArtifactService', () => {
                 filename: 'kubota.csv',
             }),
         );
+    });
+
+    test('reuses prior extracted text when an uploaded duplicate PDF extracts empty', async () => {
+        const storedUpload = {
+            id: 'artifact-duplicate',
+            sessionId: 'session-1',
+            filename: 'Resume-Philip-Asplin-Cognizant.pdf',
+            extension: 'pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 64,
+            extractedText: 'Recovered resume text from earlier upload',
+            previewHtml: '<pre>Recovered resume text from earlier upload</pre>',
+            metadata: {
+                reusedExtractionFromArtifactId: 'artifact-prior',
+            },
+            vectorizedAt: null,
+        };
+        artifactStore.findReusableExtractionBySha.mockResolvedValue({
+            id: 'artifact-prior',
+            extractedText: 'Recovered resume text from earlier upload',
+            previewHtml: '<pre>Recovered resume text from earlier upload</pre>',
+        });
+        artifactStore.create.mockResolvedValue(storedUpload);
+        artifactStore.updateProcessing.mockResolvedValue(storedUpload);
+
+        const artifact = await artifactService.uploadArtifact({
+            sessionId: 'session-1',
+            mode: 'chat',
+            file: {
+                filename: 'Resume-Philip-Asplin-Cognizant.pdf',
+                mimeType: 'application/pdf',
+                buffer: Buffer.from('%PDF-1.4\n1 0 obj\nstream\nendstream\nendobj\ntrailer\nstartxref', 'latin1'),
+            },
+        });
+
+        expect(artifactStore.findReusableExtractionBySha).toHaveBeenCalledWith(expect.any(String));
+        expect(artifactStore.create).toHaveBeenCalledWith(expect.objectContaining({
+            extractedText: 'Recovered resume text from earlier upload',
+            previewHtml: '<pre>Recovered resume text from earlier upload</pre>',
+            metadata: expect.objectContaining({
+                reusedExtractionFromArtifactId: 'artifact-prior',
+            }),
+        }));
+        expect(artifact).toEqual(expect.objectContaining({
+            id: 'artifact-duplicate',
+            preview: expect.objectContaining({
+                content: '<pre>Recovered resume text from earlier upload</pre>',
+            }),
+        }));
     });
 
     test('extractResponseText handles direct output_text and mixed content item types', () => {
