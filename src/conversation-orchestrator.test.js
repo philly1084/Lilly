@@ -2516,6 +2516,62 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('tool synthesis retries compact prompt when provider fallback chain returns a blank completion error', async () => {
+        const providerError = new Error('500 Model execution failed after fallback chain: gpt-5.5 -> gpt-5.4. Last error: Provider returned a blank assistant completion.');
+        providerError.code = 'provider_error';
+        const llmClient = {
+            createResponse: jest.fn()
+                .mockRejectedValueOnce(providerError)
+                .mockResolvedValueOnce(buildResponse('Final product synthesized from verified research.', 'resp_compact_after_provider_error')),
+            complete: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: null,
+            sessionStore: null,
+            memoryService: null,
+        });
+
+        const response = await orchestrator.buildFinalResponse({
+            input: 'Research this and make the finished page.',
+            objective: 'Research this and make the finished page.',
+            reasoningEffort: 'high',
+            contextMessages: ['Large previous context that should be dropped for compact retry.'],
+            recentMessages: [{ role: 'assistant', content: 'Earlier transcript' }],
+            toolEvents: [{
+                toolCall: {
+                    function: {
+                        name: 'web-search',
+                    },
+                },
+                reason: 'Research current options.',
+                result: {
+                    success: true,
+                    toolId: 'web-search',
+                    data: {
+                        query: 'verified mower options',
+                        results: [{
+                            title: 'Verified mower option',
+                            url: 'https://example.com/mower',
+                            snippet: 'A verified option from a nearby retailer.',
+                        }],
+                    },
+                },
+            }],
+        });
+
+        const text = response.output[0].content[0].text;
+        expect(text).toBe('Final product synthesized from verified research.');
+        expect(llmClient.createResponse).toHaveBeenCalledTimes(2);
+        expect(llmClient.createResponse.mock.calls[1][0]).toEqual(expect.objectContaining({
+            input: expect.stringContaining('Write the final user-facing answer using only these verified tool results.'),
+            instructions: 'Return plain user-facing text only.',
+            contextMessages: [],
+            recentMessages: [],
+            reasoningEffort: 'low',
+        }));
+    });
+
     test('tool synthesis prompt explicitly forbids wrapped JSON answers', async () => {
         const llmClient = {
             createResponse: jest.fn().mockResolvedValue(buildResponse('Plain tool synthesis answer', 'resp_tool_synthesis_prompt')),

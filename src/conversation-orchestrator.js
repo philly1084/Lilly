@@ -7866,6 +7866,53 @@ function recoverEmptyModelResponse(response = null, {
     });
 }
 
+function isAbortLikeError(error = null) {
+    const name = String(error?.name || '').trim().toLowerCase();
+    const code = String(error?.code || '').trim().toLowerCase();
+    const message = String(error?.message || '').trim().toLowerCase();
+    return name === 'aborterror'
+        || code === 'abort_err'
+        || code === 'aborted'
+        || message.includes('aborted');
+}
+
+function isRecoverableToolSynthesisModelError(error = null) {
+    if (!error || isAbortLikeError(error)) {
+        return false;
+    }
+
+    const details = [
+        error?.message,
+        error?.code,
+        error?.type,
+        error?.status,
+        error?.statusCode,
+        error?.response?.status,
+        error?.response?.data?.error?.message,
+        error?.cause?.message,
+    ].map((value) => String(value || '').trim()).filter(Boolean).join(' ');
+
+    return /blank assistant completion/i.test(details)
+        || /provider returned a blank/i.test(details)
+        || /model execution failed after fallback chain/i.test(details)
+        || /\bprovider_error\b/i.test(details);
+}
+
+function buildToolSynthesisRetryModels(roleOptions = {}) {
+    const models = [
+        roleOptions?.model,
+        ...(Array.isArray(roleOptions?.fallbackModels) ? roleOptions.fallbackModels : []),
+    ].map((value) => String(value || '').trim()).filter(Boolean);
+
+    const unique = Array.from(new Set(models));
+    return unique.length > 0 ? unique : [null];
+}
+
+function getCompactToolSynthesisReasoningEffort(reasoningEffort = '') {
+    const normalized = String(reasoningEffort || '').trim().toLowerCase();
+    return ['high', 'xhigh', 'extra_high'].includes(normalized) ? 'low' : (normalized || 'low');
+}
+
 function getRemoteBuildAutonomyBudget() {
     return {
         maxRounds: Math.max(1, Number(config.runtime?.remoteBuildMaxAutonomousRounds) || 20),
@@ -12546,17 +12593,77 @@ class ConversationOrchestrator extends EventEmitter {
         console.log(`[ConversationOrchestrator] Tool synthesis request: toolEvents=${toolEvents.length}, autonomyApproved=${autonomyApproved}, findingsChars=${verifiedToolFindings.length}, contextMessages=${contextMessages.length}, recentMessages=${recentMessages.length}`);
 
         const synthesisStartedAt = new Date().toISOString();
-        let response = await this.requestResponse({
-            input: synthesisPrompt,
-            instructions: runtimeInstructions,
-            contextMessages,
-            recentMessages,
-            stream: false,
-            model: roleOptions.model,
-            reasoningEffort: roleOptions.reasoningEffort,
-            signal,
-            enableAutomaticToolCalls: false,
+        const compactSynthesisInput = buildCompactToolSynthesisPrompt({
+            objective,
+            taskType,
+            executionProfile,
+            toolEvents,
         });
+        const compactSynthesisInstructions = notesSurfaceTask
+            ? 'Return only a valid `notes-actions` payload or page-ready notes content for the current notes page.'
+            : 'Return plain user-facing text only.';
+        const compactSynthesisReasoningEffort = getCompactToolSynthesisReasoningEffort(roleOptions.reasoningEffort);
+        const requestCompactSynthesisResponse = async ({ reason = 'empty-output' } = {}) => {
+            const retryModels = buildToolSynthesisRetryModels(roleOptions);
+            let lastError = null;
+            for (let index = 0; index < retryModels.length; index += 1) {
+                const retryModel = retryModels[index];
+                try {
+                    return await this.requestResponse({
+                        input: compactSynthesisInput,
+                        instructions: compactSynthesisInstructions,
+                        contextMessages: [],
+                        recentMessages: [],
+                        stream: false,
+                        model: retryModel,
+                        reasoningEffort: compactSynthesisReasoningEffort,
+                        signal,
+                        enableAutomaticToolCalls: false,
+                    });
+                } catch (retryError) {
+                    if (isAbortLikeError(retryError)) {
+                        throw retryError;
+                    }
+                    lastError = retryError;
+                    console.warn(`[ConversationOrchestrator] Compact tool synthesis retry failed. reason=${reason} model=${retryModel || 'default'} attempt=${index + 1}/${retryModels.length}: ${retryError.message}`);
+                }
+            }
+
+            console.warn(`[ConversationOrchestrator] Compact tool synthesis retries exhausted; returning verified tool fallback. reason=${reason} toolEvents=${toolEvents.length}`);
+            return buildSyntheticResponse({
+                output: buildFallbackSynthesisText({ objective, toolEvents }),
+                model: retryModels[0] || roleOptions.model || null,
+                metadata: {
+                    executionProfile,
+                    runtimeMode,
+                    toolEvents,
+                    toolSynthesisModelErrorRecovered: true,
+                    toolSynthesisRetryReason: reason,
+                    toolSynthesisRetryError: truncateText(String(lastError?.message || lastError || 'Unknown synthesis retry failure'), 500),
+                },
+            });
+        };
+
+        let response;
+        try {
+            response = await this.requestResponse({
+                input: synthesisPrompt,
+                instructions: runtimeInstructions,
+                contextMessages,
+                recentMessages,
+                stream: false,
+                model: roleOptions.model,
+                reasoningEffort: roleOptions.reasoningEffort,
+                signal,
+                enableAutomaticToolCalls: false,
+            });
+        } catch (error) {
+            if (!isRecoverableToolSynthesisModelError(error)) {
+                throw error;
+            }
+            console.warn(`[ConversationOrchestrator] Tool synthesis model failed with a recoverable provider error; retrying compact prompt. toolEvents=${toolEvents.length}, autonomyApproved=${autonomyApproved}: ${error.message}`);
+            response = await requestCompactSynthesisResponse({ reason: 'provider-error' });
+        }
 
         if (!extractResponseText(response).trim()) {
             console.warn(`[ConversationOrchestrator] Tool synthesis returned empty output; retrying with compact prompt. toolEvents=${toolEvents.length}, autonomyApproved=${autonomyApproved}`);
@@ -12565,24 +12672,7 @@ class ConversationOrchestrator extends EventEmitter {
                 startedAt: synthesisStartedAt,
                 toolEvents,
             });
-            response = await this.requestResponse({
-                input: buildCompactToolSynthesisPrompt({
-                    objective,
-                    taskType,
-                    executionProfile,
-                    toolEvents,
-                }),
-                instructions: notesSurfaceTask
-                    ? 'Return only a valid `notes-actions` payload or page-ready notes content for the current notes page.'
-                    : 'Return plain user-facing text only.',
-                contextMessages: [],
-                recentMessages: [],
-                stream: false,
-                model: roleOptions.model,
-                reasoningEffort: roleOptions.reasoningEffort,
-                signal,
-                enableAutomaticToolCalls: false,
-            });
+            response = await requestCompactSynthesisResponse({ reason: 'empty-output' });
         }
 
         response = recoverEmptyModelResponse(response, {
