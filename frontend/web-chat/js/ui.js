@@ -4530,6 +4530,34 @@ class UIHelpers {
         return date.toLocaleDateString();
     }
 
+    buildResearchDropdownSummary({ icon = 'book-open', title = 'Research', meta = '', expandedLabel = 'source cards' } = {}) {
+        const safeTitle = this.escapeHtml(title);
+        const safeMeta = this.escapeHtml(meta);
+        const safeExpandedLabel = this.escapeHtml(expandedLabel);
+
+        return `
+            <summary class="research-dropdown__summary">
+                <span class="research-dropdown__summary-main">
+                    <span class="research-dropdown__icon" aria-hidden="true">
+                        <i data-lucide="${this.escapeHtmlAttr(icon)}" class="w-3.5 h-3.5"></i>
+                    </span>
+                    <span class="research-dropdown__copy">
+                        <span class="research-dropdown__eyebrow">Research</span>
+                        <span class="research-dropdown__title">${safeTitle}</span>
+                        <span class="research-dropdown__hint">
+                            <span class="research-dropdown__hint-collapsed">Click to expand ${safeExpandedLabel}</span>
+                            <span class="research-dropdown__hint-expanded">Click this header again to shrink it back</span>
+                        </span>
+                    </span>
+                </span>
+                ${safeMeta ? `<span class="research-dropdown__meta">${safeMeta}</span>` : ''}
+                <span class="research-dropdown__chevron" aria-hidden="true">
+                    <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                </span>
+            </summary>
+        `;
+    }
+
     renderSearchResultsMessage(message) {
         const messageId = message.id || this.generateMessageId();
         const time = this.formatTime(message.timestamp);
@@ -4586,19 +4614,22 @@ class UIHelpers {
             </div>
             <div class="message-content">
                 <div class="message-header">
-                    <span class="message-author">Candidate Pages</span>
+                    <span class="message-author">Research</span>
                     <span class="message-time" title="${fullTimestamp}">${time}</span>
                 </div>
                 <div class="message-selection-panel">
-                    <div class="selection-panel-info">
-                        <div class="icon" aria-hidden="true">
-                            <i data-lucide="globe" class="w-3.5 h-3.5"></i>
+                    <details class="research-dropdown">
+                        ${this.buildResearchDropdownSummary({
+                            icon: 'globe',
+                            title: `Research for: ${query || 'candidate pages'}`,
+                            meta: `${results.length} ${results.length === 1 ? 'result' : 'results'}`,
+                            expandedLabel: interactive ? 'page choices' : 'candidate pages',
+                        })}
+                        <div class="research-dropdown__body">
+                            ${query ? `<p class="selection-panel-query">"${this.escapeHtml(query)}"</p>` : ''}
+                            ${contentHtml}
                         </div>
-                        <span class="text">${interactive ? 'Choose a page' : 'Pages the agent can use'}</span>
-                        <span class="meta">${results.length} ${results.length === 1 ? 'result' : 'results'}</span>
-                    </div>
-                    ${query ? `<p class="selection-panel-query">"${this.escapeHtml(query)}"</p>` : ''}
-                    ${contentHtml}
+                    </details>
                 </div>
             </div>
         `;
@@ -4658,19 +4689,22 @@ class UIHelpers {
             </div>
             <div class="message-content">
                 <div class="message-header">
-                    <span class="message-author">Verified Sources</span>
+                    <span class="message-author">Research</span>
                     <span class="message-time" title="${fullTimestamp}">${time}</span>
                 </div>
                 <div class="message-selection-panel">
-                    <div class="selection-panel-info">
-                        <div class="icon" aria-hidden="true">
-                            <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+                    <details class="research-dropdown">
+                        ${this.buildResearchDropdownSummary({
+                            icon: 'book-open',
+                            title: `Research for: ${query || 'verified sources'}`,
+                            meta: `${results.length} ${results.length === 1 ? 'source' : 'sources'}`,
+                            expandedLabel: 'verified source cards',
+                        })}
+                        <div class="research-dropdown__body">
+                            ${query ? `<p class="selection-panel-query">"${this.escapeHtml(query)}"</p>` : ''}
+                            ${contentHtml}
                         </div>
-                        <span class="text">Verified excerpts</span>
-                        <span class="meta">${results.length} sources</span>
-                    </div>
-                    ${query ? `<p class="selection-panel-query">"${this.escapeHtml(query)}"</p>` : ''}
-                    ${contentHtml}
+                    </details>
                 </div>
             </div>
         `;

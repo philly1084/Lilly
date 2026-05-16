@@ -606,6 +606,75 @@ describe('ArtifactService', () => {
         }));
     });
 
+    test('strips assistant prose around fenced html before storing frontend bundle files', async () => {
+        createResponse.mockResolvedValueOnce({
+            id: 'resp-frontend-bundle-prose-1',
+            output: [{
+                type: 'message',
+                content: [{
+                    text: JSON.stringify({
+                        content: [
+                            'Using nearby big-box chains only, I would prioritize Canadian Tire first.',
+                            'Here is a compact HTML page you can save/use:',
+                            '```html',
+                            '<!DOCTYPE html><html><head><title>Mower Plan</title></head><body><main><h1>Mower Plan</h1></main></body></html>',
+                            '```',
+                        ].join('\n'),
+                        metadata: {
+                            title: 'Mower Plan',
+                            frameworkTarget: 'vite',
+                            bundle: {
+                                entry: 'index.html',
+                                files: [
+                                    {
+                                        path: 'index.html',
+                                        language: 'html',
+                                        purpose: 'Entry page',
+                                        content: [
+                                            'Using nearby big-box chains only, I would prioritize Canadian Tire first.',
+                                            'Here is a compact HTML page you can save/use:',
+                                            '```html',
+                                            '<!DOCTYPE html><html><head><title>Mower Plan</title></head><body><main><h1>Mower Plan</h1></main></body></html>',
+                                            '```',
+                                        ].join('\n'),
+                                    },
+                                    {
+                                        path: 'styles.css',
+                                        language: 'css',
+                                        purpose: 'Shared styles',
+                                        content: 'body { font-family: system-ui; }',
+                                    },
+                                ],
+                            },
+                        },
+                    }),
+                }],
+            }],
+        });
+
+        await artifactService.generateArtifact({
+            session: { previousResponseId: 'prev-frontend-bundle-prose', metadata: {} },
+            sessionId: 'session-1',
+            mode: 'chat',
+            prompt: 'Build a 2 page website demo for buying a mower and trimmer with Vite-ready files.',
+            format: 'html',
+            artifactIds: [],
+            existingContent: '',
+            model: 'gpt-5.3',
+        });
+
+        const createArg = artifactStore.create.mock.calls[0][0];
+        const entries = readFrontendBundleArchive(createArg.contentBuffer);
+        const indexHtml = entries.get('index.html').toString('utf8');
+
+        expect(indexHtml.trim()).toMatch(/^<!DOCTYPE html>/);
+        expect(indexHtml).toContain('<h1>Mower Plan</h1>');
+        expect(indexHtml).not.toContain('Using nearby big-box chains only');
+        expect(indexHtml).not.toContain('Here is a compact HTML page');
+        expect(indexHtml).not.toContain('```html');
+        expect(createArg.previewHtml).toBe(indexHtml);
+    });
+
     test('stores 3D scene sandbox requests as zip bundles with separate scene files', async () => {
         createResponse.mockResolvedValueOnce({
             id: 'resp-3d-scene-1',

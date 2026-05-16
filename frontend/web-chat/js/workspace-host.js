@@ -152,12 +152,21 @@
             }
 
             const remoteWorkspaceKey = normalizeAllowedWorkspaceKey(preferences[ACTIVE_WORKSPACE_STORAGE_KEY]);
-            if (remoteWorkspaceKey && initialWorkspaceSource !== 'query') {
+            if (remoteWorkspaceKey && initialWorkspaceSource === 'default') {
                 activateWorkspace(remoteWorkspaceKey, {
                     closeMenu: false,
                     persist: false,
                     syncRemote: false,
                 });
+                return;
+            }
+
+            if (
+                remoteWorkspaceKey
+                && initialWorkspaceSource === 'local'
+                && remoteWorkspaceKey !== activeWorkspaceKey
+            ) {
+                await syncRemoteActiveWorkspace(activeWorkspaceKey);
                 return;
             }
 

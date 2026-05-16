@@ -180,6 +180,58 @@ function inferBundleLanguage(filePath = '') {
     }
 }
 
+function trimStandaloneHtmlDocument(content = '') {
+    const source = String(content || '').trim();
+    if (!source) {
+        return '';
+    }
+
+    const closeMatch = source.match(/<\/html\s*>/i);
+    if (!closeMatch || !Number.isInteger(closeMatch.index)) {
+        return source.replace(/```\s*$/i, '').trim();
+    }
+
+    return source.slice(0, closeMatch.index + closeMatch[0].length).trim();
+}
+
+function extractFencedHtmlContent(content = '') {
+    const fencePattern = /```([a-z0-9_-]*)\s*([\s\S]*?)```/ig;
+    let match;
+
+    while ((match = fencePattern.exec(String(content || ''))) !== null) {
+        const language = String(match[1] || '').trim().toLowerCase();
+        const fencedContent = String(match[2] || '').trim();
+        if (!fencedContent) {
+            continue;
+        }
+
+        if (language === 'html' || /(?:<!doctype\s+html\b|<html\b|<body\b|<main\b|<section\b|<article\b|<div\b|<h1\b)/i.test(fencedContent)) {
+            return trimStandaloneHtmlDocument(fencedContent);
+        }
+    }
+
+    return '';
+}
+
+function sanitizeFrontendHtmlContent(content = '') {
+    const source = String(content || '').replace(/\r\n?/g, '\n').trim();
+    if (!source) {
+        return '';
+    }
+
+    const fencedHtml = extractFencedHtmlContent(source);
+    if (fencedHtml) {
+        return fencedHtml;
+    }
+
+    const htmlStart = source.search(/(?:<!doctype\s+html\b|<html\b|<body\b|<main\b|<section\b|<article\b|<div\b|<h1\b)/i);
+    if (htmlStart > 0) {
+        return trimStandaloneHtmlDocument(source.slice(htmlStart));
+    }
+
+    return trimStandaloneHtmlDocument(source);
+}
+
 function normalizeFrontendRouting(value = '') {
     return String(value || '').trim().toLowerCase() === 'spa'
         ? 'spa'
@@ -207,18 +259,27 @@ function normalizeFrontendBundle(bundle = null, content = '') {
                 ? entry.contentBuffer
                 : (Buffer.isBuffer(entry.buffer) ? entry.buffer : null);
             const base64Content = String(entry.contentBase64 || entry.dataBase64 || '').trim();
+            const base64Buffer = base64Content ? Buffer.from(base64Content, 'base64') : null;
             const filePath = normalizeBundlePath(entry.path || entry.name || '');
             if (!filePath || (!fileContent.trim() && !fileBuffer && !base64Content)) {
                 return;
             }
+            const isHtmlFile = /\.html?$/i.test(filePath);
+            const content = isHtmlFile
+                ? sanitizeFrontendHtmlContent(
+                    fileContent
+                    || (fileBuffer ? fileBuffer.toString('utf8') : '')
+                    || (base64Buffer ? base64Buffer.toString('utf8') : ''),
+                )
+                : fileContent;
 
             files.push({
                 path: filePath,
                 language: String(entry.language || '').trim() || inferBundleLanguage(filePath),
                 purpose: String(entry.purpose || '').trim() || null,
-                content: fileContent,
-                ...(fileBuffer ? { contentBuffer: fileBuffer } : {}),
-                ...(base64Content ? { contentBuffer: Buffer.from(base64Content, 'base64') } : {}),
+                content,
+                ...(fileBuffer && !isHtmlFile ? { contentBuffer: fileBuffer } : {}),
+                ...(base64Buffer && !isHtmlFile ? { contentBuffer: base64Buffer } : {}),
             });
         });
     } else if (source && typeof source === 'object') {
@@ -232,7 +293,7 @@ function normalizeFrontendBundle(bundle = null, content = '') {
                 path: normalizedPath,
                 language: inferBundleLanguage(normalizedPath),
                 purpose: null,
-                content: fileContent,
+                content: /\.html?$/i.test(normalizedPath) ? sanitizeFrontendHtmlContent(fileContent) : fileContent,
             });
         });
     }
@@ -242,7 +303,7 @@ function normalizeFrontendBundle(bundle = null, content = '') {
             path: 'index.html',
             language: 'html',
             purpose: 'Standalone demo entry point for preview and export.',
-            content: String(content || '').trim(),
+            content: sanitizeFrontendHtmlContent(content),
         });
     }
 
@@ -1005,4 +1066,5 @@ module.exports = {
     resolveFrontendBundleContentType,
     rewriteRootRelativeFrontendPaths,
     sanitizeFrontendArtifactMetadata,
+    sanitizeFrontendHtmlContent,
 };

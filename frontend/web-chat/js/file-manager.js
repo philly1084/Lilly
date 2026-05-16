@@ -15,6 +15,8 @@ class FileManager {
     this.retryAttempts = new Map(); // Track retry counts
     this.maxRetries = 3;
     this.downloadTimeoutMs = 5 * 60 * 1000;
+    this.isRefreshing = false;
+    this.refreshPromise = null;
     
     this.init();
   }
@@ -32,7 +34,7 @@ class FileManager {
     // Listen for visibility changes (browser sleep/wake)
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && this.isOpen) {
-        this.refreshFiles();
+        void this.refreshFiles({ announce: false });
       }
     });
   }
@@ -43,20 +45,20 @@ class FileManager {
     }
 
     window.sessionManager.addEventListener('sessionCreated', () => {
-      this.refreshFiles();
+      void this.refreshFiles({ announce: false });
     });
 
     window.sessionManager.addEventListener('sessionSwitched', () => {
       this.applySessionFiles(this.getSessionId());
-      this.refreshFiles();
+      void this.refreshFiles({ announce: false });
     });
 
     window.sessionManager.addEventListener('sessionPromoted', () => {
-      this.refreshFiles();
+      void this.refreshFiles({ announce: false });
     });
 
     window.sessionManager.addEventListener('sessionDeleted', () => {
-      this.refreshFiles();
+      void this.refreshFiles({ announce: false });
     });
   }
 
@@ -92,7 +94,7 @@ class FileManager {
             <span id="file-count-badge" class="file-count-badge">0</span>
           </div>
           <div class="file-manager-actions">
-            <button class="btn-icon" onclick="fileManager.refreshFiles()" title="Refresh" aria-label="Refresh files">
+            <button id="file-manager-refresh-btn" class="btn-icon" onclick="fileManager.refreshFiles({ announce: true })" title="Refresh" aria-label="Refresh files">
               <i data-lucide="refresh-cw" class="w-4 h-4"></i>
             </button>
             <button class="btn-icon" onclick="fileManager.close()" aria-label="Close">
@@ -215,6 +217,27 @@ class FileManager {
         display: flex;
         align-items: center;
         gap: 8px;
+      }
+
+      .file-manager-modal.is-refreshing #file-manager-refresh-btn i,
+      .file-manager-modal.is-refreshing #file-manager-refresh-btn svg {
+        animation: file-manager-spin 0.85s linear infinite;
+      }
+
+      .file-manager-modal.is-refreshing .file-list-container {
+        position: relative;
+      }
+
+      .file-manager-modal.is-refreshing .file-list-container::before {
+        content: '';
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: block;
+        height: 2px;
+        width: 100%;
+        background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        animation: file-manager-refresh-sweep 1.1s ease-in-out infinite;
       }
       
       .file-manager-body {
@@ -350,6 +373,12 @@ class FileManager {
       .file-item.selected {
         border-color: var(--accent);
         background: rgba(56, 189, 248, 0.1);
+      }
+
+      .file-item.is-new {
+        border-color: color-mix(in srgb, var(--accent) 68%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+        animation: file-manager-new-file 1.8s ease-out 1;
       }
       
       .file-item-checkbox {
@@ -514,6 +543,26 @@ class FileManager {
         height: 100%;
         background: var(--accent);
         transition: width 0.3s;
+      }
+
+      @keyframes file-manager-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      @keyframes file-manager-refresh-sweep {
+        0% { transform: translateX(-70%); opacity: 0.35; }
+        50% { opacity: 1; }
+        100% { transform: translateX(70%); opacity: 0.35; }
+      }
+
+      @keyframes file-manager-new-file {
+        0% {
+          box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 42%, transparent);
+        }
+        100% {
+          box-shadow: 0 0 0 10px transparent;
+        }
       }
       
       @media (max-width: 640px) {
@@ -690,13 +739,32 @@ class FileManager {
   /**
    * Load files from API
    */
-  async loadFiles() {
+  setRefreshing(isRefreshing) {
+    this.isRefreshing = isRefreshing === true;
+    this.modalElement?.classList.toggle('is-refreshing', this.isRefreshing);
+
+    const refreshBtn = document.getElementById('file-manager-refresh-btn');
+    if (refreshBtn) {
+      refreshBtn.disabled = this.isRefreshing;
+      refreshBtn.setAttribute('aria-busy', this.isRefreshing ? 'true' : 'false');
+      refreshBtn.setAttribute('title', this.isRefreshing ? 'Refreshing files' : 'Refresh');
+    }
+  }
+
+  async loadFiles(options = {}) {
     const sessionId = this.getSessionId();
     this.activeSessionId = String(sessionId || '').trim();
+    const previousFiles = Array.isArray(this.files) ? this.files : [];
+    const previousIds = new Set(previousFiles.map(file => String(file.id || '').trim()).filter(Boolean));
+    const selectedIds = new Set(previousFiles
+      .filter(file => file.selected)
+      .map(file => String(file.id || '').trim())
+      .filter(Boolean));
+
     if (!sessionId || window.sessionManager?.isLocalSession?.(sessionId)) {
       this.files = [];
       this.renderFiles();
-      return;
+      return { count: 0, addedCount: 0 };
     }
 
     try {
@@ -708,31 +776,60 @@ class FileManager {
         this.files = [];
         this.filesBySession.set(sessionId, []);
         this.renderFiles();
-        return;
+        return { count: 0, addedCount: 0 };
       }
       if (!response.ok) throw new Error('Failed to load files');
       
       const data = await response.json();
       if (this.getSessionId() !== sessionId) {
-        return;
+        return { count: this.files.length, addedCount: 0, stale: true };
       }
+      const shouldHighlightNew = previousIds.size > 0 && options.highlightNew !== false;
       this.files = (data.artifacts || []).map(f => ({
         ...f,
         sessionId,
         category: this.getFileCategory(f.filename),
-        selected: false,
+        selected: selectedIds.has(String(f.id || '').trim()),
         status: 'ready', // ready, downloading, error, success
-        progress: 0
+        progress: 0,
+        isNew: shouldHighlightNew && !previousIds.has(String(f.id || '').trim())
       }));
       this.filesBySession.set(sessionId, this.files.map(file => ({ ...file })));
       
       this.renderFiles();
+      const addedCount = this.files.filter(file => file.isNew).length;
+      if (addedCount > 0) {
+        setTimeout(() => {
+          const currentSessionId = this.getSessionId();
+          if (currentSessionId !== sessionId) {
+            return;
+          }
+          let changed = false;
+          this.files = this.files.map(file => {
+            if (!file.isNew) {
+              return file;
+            }
+            changed = true;
+            return { ...file, isNew: false };
+          });
+          if (changed) {
+            this.filesBySession.set(sessionId, this.files.map(file => ({ ...file })));
+            this.renderFiles(
+              document.getElementById('file-search-input')?.value || '',
+              document.querySelector('.filter-btn.active')?.dataset.filter || 'all'
+            );
+          }
+        }, 2400);
+      }
+
+      return { count: this.files.length, addedCount };
     } catch (error) {
       if (this.getSessionId() !== sessionId) {
-        return;
+        return { count: this.files.length, addedCount: 0, stale: true };
       }
       console.error('[FileManager] Failed to load files:', error);
       this.showToast('Failed to load files', 'error');
+      return { count: this.files.length, addedCount: 0, error };
     }
   }
 
@@ -843,7 +940,7 @@ class FileManager {
     }[file.status];
 
     return `
-      <div class="file-item ${file.selected ? 'selected' : ''}" data-file-id="${file.id}">
+      <div class="file-item ${file.selected ? 'selected' : ''} ${file.isNew ? 'is-new' : ''}" data-file-id="${file.id}">
         <div class="file-item-checkbox">
           <i data-lucide="check" class="w-3 h-3"></i>
         </div>
@@ -1106,7 +1203,7 @@ class FileManager {
       try {
         await window.artifactManager.uploadFile(file);
         this.showToast(`Uploaded ${file.name}`, 'success');
-        await this.refreshFiles();
+        await this.refreshFiles({ announce: false });
         return;
       } catch (error) {
         console.error('[FileManager] Upload failed:', error);
@@ -1129,7 +1226,7 @@ class FileManager {
       if (!response.ok) throw new Error('Upload failed');
 
       this.showToast(`Uploaded ${file.name}`, 'success');
-      await this.refreshFiles();
+      await this.refreshFiles({ announce: false });
     } catch (error) {
       console.error('[FileManager] Upload failed:', error);
       this.showToast(`Failed to upload ${file.name}`, 'error');
@@ -1182,7 +1279,7 @@ class FileManager {
     
     // Refresh files
     if (this.isOpen) {
-      this.refreshFiles();
+      void this.refreshFiles({ announce: false });
     }
     
     // Retry any failed downloads
@@ -1197,9 +1294,32 @@ class FileManager {
   /**
    * Refresh the file list
    */
-  async refreshFiles() {
-    await this.loadFiles();
-    this.showToast('Files refreshed', 'success');
+  async refreshFiles(options = {}) {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      this.setRefreshing(true);
+      try {
+        const result = await this.loadFiles({ highlightNew: true });
+        if (options.announce === true && !result?.error && !result?.stale) {
+          const addedCount = Number(result?.addedCount) || 0;
+          this.showToast(
+            addedCount > 0
+              ? `${addedCount} new file${addedCount === 1 ? '' : 's'} added`
+              : 'Files are up to date',
+            'success'
+          );
+        }
+        return result;
+      } finally {
+        this.setRefreshing(false);
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   /**

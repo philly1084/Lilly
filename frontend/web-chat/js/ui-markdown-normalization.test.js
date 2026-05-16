@@ -17,7 +17,20 @@ function loadUIHelpersPrototype() {
         document: {
             getElementById: () => null,
             createElement: () => {
-                const element = {};
+                const element = {
+                    dataset: {},
+                    attributes: {},
+                    classList: {
+                        add: () => {},
+                        toggle: () => {},
+                    },
+                    setAttribute(name, value) {
+                        this.attributes[name] = String(value);
+                    },
+                    getAttribute(name) {
+                        return this.attributes[name];
+                    },
+                };
                 Object.defineProperty(element, 'textContent', {
                     set(value) {
                         this._text = String(value == null ? '' : value);
@@ -25,7 +38,10 @@ function loadUIHelpersPrototype() {
                 });
                 Object.defineProperty(element, 'innerHTML', {
                     get() {
-                        return escapeHtml(this._text);
+                        return this._html || escapeHtml(this._text);
+                    },
+                    set(value) {
+                        this._html = String(value == null ? '' : value);
                     },
                 });
                 return element;
@@ -76,6 +92,53 @@ describe('web-chat markdown normalization', () => {
         });
 
         expect(html).toBe('');
+    });
+
+    test('renders verified research sources inside a closed dropdown', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.generateMessageId = () => 'research-message';
+        helper.formatTime = () => '12:00';
+        const element = helper.renderResearchSourcesMessage({
+            id: 'research-message',
+            timestamp: '2026-05-16T12:00:00.000Z',
+            query: 'AI deployment tools',
+            results: [{
+                title: 'Deployment guide',
+                url: 'https://example.com/deploy',
+                source: 'Example',
+                excerpt: 'A short verified excerpt.',
+                toolId: 'web-fetch',
+            }],
+        });
+
+        expect(element.innerHTML).toContain('<details class="research-dropdown">');
+        expect(element.innerHTML).not.toContain('<details class="research-dropdown" open');
+        expect(element.innerHTML).toContain('Research for: AI deployment tools');
+        expect(element.innerHTML).toContain('Click to expand verified source cards');
+        expect(element.innerHTML).toContain('Click this header again to shrink it back');
+        expect(element.innerHTML).toContain('Deployment guide');
+    });
+
+    test('renders candidate research pages inside a closed dropdown', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.generateMessageId = () => 'search-message';
+        helper.formatTime = () => '12:00';
+        const element = helper.renderSearchResultsMessage({
+            id: 'search-message',
+            timestamp: '2026-05-16T12:00:00.000Z',
+            query: 'AI model news',
+            results: [{
+                title: 'Model news',
+                url: 'https://example.com/model-news',
+                snippet: 'A useful candidate result.',
+            }],
+        });
+
+        expect(element.innerHTML).toContain('<details class="research-dropdown">');
+        expect(element.innerHTML).not.toContain('<details class="research-dropdown" open');
+        expect(element.innerHTML).toContain('Research for: AI model news');
+        expect(element.innerHTML).toContain('Click to expand candidate pages');
+        expect(element.innerHTML).toContain('Model news');
     });
 
     test('renders plain text fences without the code preview chrome', () => {
