@@ -701,6 +701,25 @@ function normalizeFrontendHandoff(handoff = null, metadata = {}, content = '') {
             .map((entry) => String(entry || '').trim())
             .filter(Boolean)
         : [];
+    const fallbackGateInput = handoff?.fallbackGate && typeof handoff.fallbackGate === 'object'
+        ? handoff.fallbackGate
+        : {};
+    const fallbackDecision = String(fallbackGateInput.decision || '').trim().toLowerCase();
+    const fallbackGate = {
+        decision: ['repair', 'redesign', 'ask', 'ready'].includes(fallbackDecision) ? fallbackDecision : 'ready',
+        reason: String(fallbackGateInput.reason || '').trim() || 'No fallback blocker was reported during generation.',
+        nextAction: String(fallbackGateInput.nextAction || '').trim() || 'Proceed with browser QA and revise if a blocker appears.',
+    };
+    const placeholderAssets = Array.isArray(handoff?.placeholderAssets)
+        ? handoff.placeholderAssets
+            .map((entry) => ({
+                role: String(entry?.role || entry?.name || '').trim(),
+                placeholder: String(entry?.placeholder || entry?.description || '').trim(),
+                replaces: String(entry?.replaces || entry?.targetAsset || '').trim(),
+                behavior: String(entry?.behavior || '').trim(),
+            }))
+            .filter((entry) => entry.role && entry.placeholder)
+        : [];
 
     return {
         summary: String(
@@ -725,6 +744,8 @@ function normalizeFrontendHandoff(handoff = null, metadata = {}, content = '') {
                 'Capture desktop and mobile screenshots, including any primary interactive states.',
                 'Run contrast, horizontal overflow, broken image, clipped text, opened-control, and canvas/WebGL render checks before handoff.',
             ],
+        fallbackGate,
+        ...(placeholderAssets.length > 0 ? { placeholderAssets } : {}),
         entryFile: normalizeBundlePath(handoff?.entryFile || 'index.html') || 'index.html',
         sourceType: /<html\b/i.test(String(content || '')) ? 'standalone-html' : 'markup-fragment',
     };

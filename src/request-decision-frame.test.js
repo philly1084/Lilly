@@ -90,4 +90,26 @@ describe('request-decision-frame', () => {
         expect(frame.intent).toBe('research_deliverable');
         expect(frame.preferredTool).toBe('web-search');
     });
+
+    test('routes complex frontend game design to a gated sandbox workflow with placeholder allowance', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Build a complex polished browser game. If we do not have real object files, make varied placeholder game objects in place and iterate with repair or redesign fallbacks.',
+            candidateOutputFormat: 'html',
+            clientSurface: 'web-chat',
+        });
+
+        expect(frame.intent).toBe('complex_frontend_design_build');
+        expect(frame.preferredTool).toBe('document-workflow');
+        expect(frame.blockedActions).toEqual(expect.arrayContaining([
+            'finalize_without_preview_or_qa',
+            'claim_ready_without_repair_redesign_decision',
+        ]));
+        expect(frame.proofExpectations).toEqual(expect.arrayContaining([
+            'sandbox bundle generated with source files',
+            'fallback path classified as repair, redesign, ask, or ready',
+            'desktop and mobile browser QA completed after preview exists',
+        ]));
+        expect(frame.missingContext).toContain('real_game_object_files_optional_varied_placeholders_allowed');
+        expect(frame.orchestrationHints.objective).toContain('varied in-place placeholders');
+    });
 });

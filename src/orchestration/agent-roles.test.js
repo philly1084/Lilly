@@ -16,6 +16,9 @@ describe('agent role frontend sandbox detection', () => {
     });
 
     expect(pipeline.requiresSandbox).toBe(true);
+    expect(pipeline.placeholderAssetPolicy).toEqual(expect.objectContaining({
+      promptTag: 'game_placeholder_asset_policy',
+    }));
     expect(pipeline.sandboxPolicy).toEqual(expect.objectContaining({
       required: true,
       mode: 'project',
@@ -67,6 +70,10 @@ describe('agent role frontend sandbox detection', () => {
     expect(promptText).toContain('desktop and mobile screenshots');
     expect(promptText).toContain('iteration pass after the first render');
     expect(promptText).toContain('metadata.handoff');
+    expect(promptText).toContain('<frontend_repair_redesign_gate>');
+    expect(promptText).toContain('repair, redesign, ask, or ready');
+    expect(promptText).toContain('<game_placeholder_asset_policy>');
+    expect(promptText).toContain('varied silhouettes');
     expect(promptText).toContain('nonblank render verification');
   });
 });

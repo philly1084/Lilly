@@ -8121,6 +8121,7 @@ function buildPlannerPolicyPacks({
                 `For sandbox website/dashboard/front-end/game artifacts, require the builder to follow this frontend quality bar:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`,
                 'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus complete previewable `files` or non-empty `code`. `params.prompt` alone is invalid because `code-sandbox` persists supplied files; it does not generate React/Vite code from a prompt. Use `document-workflow generate-suite` with `buildMode:"sandbox"` when generation from a prompt is needed. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
                 'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
+                'After fallback or screenshot evidence, explicitly choose repair, redesign, ask, or ready. Use repair for broken implementation or missing assets when the visual direction is sound; use redesign when the output still feels generic, samey, cheap, or mismatched. Communicate that decision in the next step or final response.',
             ]
             : [],
     };
@@ -8786,6 +8787,9 @@ class ConversationOrchestrator extends EventEmitter {
             Number(agencyProfile?.maxToolCallsHint || MAX_PLAN_STEPS),
             Number(toolPolicy?.rolePipeline?.maxToolCallsHint || MAX_PLAN_STEPS),
         );
+        const guardedAgencyDurationMs = toolPolicy?.rolePipeline?.requiresSandbox
+            ? 45000
+            : (toolPolicy?.rolePipeline?.requiresDesign || toolPolicy?.rolePipeline?.requiresBuild ? 30000 : 1000);
         const hasCustomToolBudget = Number.isFinite(Number(toolBudget?.maxDurationMs)) && Number(toolBudget.maxDurationMs) > 0;
         const budgetState = {
             maxRounds: normalizePositiveBudget(
@@ -8798,7 +8802,7 @@ class ConversationOrchestrator extends EventEmitter {
             ),
             autonomyDeadline: startedAt + normalizePositiveBudget(
                 toolBudget?.maxDurationMs,
-                autonomyApproved ? autonomyBudget.maxDurationMs : 1000,
+                autonomyApproved ? autonomyBudget.maxDurationMs : guardedAgencyDurationMs,
             ),
             extensionsUsed: 0,
         };
@@ -11798,6 +11802,8 @@ class ConversationOrchestrator extends EventEmitter {
                     'Use `design-resource-search` for the design role before generating design-sensitive websites, dashboards, documents, or page artifacts unless it has already succeeded in this run.',
                     `For website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, UI mockup, browser game, video game, and interactive sandbox builds, apply the frontend quality bar from the active role contract:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`,
                     'For website, dashboard, landing-page, frontend, game, and multi-step Vite builds, prefer the Symphony-style sequence: design/resource context, `document-workflow generate-suite` with `formats:["html"]`, `buildMode:"sandbox"`, and `useSandbox:true`, then browser QA. Direct `code-sandbox` calls must use `mode:"project"` with complete `files` or `code`; never pass only `prompt` to `code-sandbox`.',
+                    'When real game sprites, models, textures, or object files are missing, the builder may create varied procedural placeholder objects in-place. Use distinct object roles, silhouettes, materials/colors, motion, collision behavior, and labels; do not block or ship one repeated generic box for every asset.',
+                    'After every fallback, preview, or screenshot QA step, require a repair-vs-redesign gate. Repair broken rendering/imports/assets/interactions when the concept is sound; redesign the layout/system when the result still feels generic, cheap, or mismatched; ask only when user direction changes the product decision.',
                     'For slides, slide decks, presentations, and PowerPoint requests, default the final deliverable to PPTX unless the user explicitly asks for interactive or HTML output. On web-chat, include an HTML sandbox companion preview only as a design/review stage, not as a replacement for the PPTX.',
                     'For explicit PDF/PPTX/HTML/XLSX packages or multi-format document requests, use `document-workflow generate-suite` with the requested `formats`. On web-chat, include an HTML companion preview when the main deliverable is PDF, PPTX, or XLSX.',
                 ]
@@ -12754,6 +12760,8 @@ class ConversationOrchestrator extends EventEmitter {
             if (toolPolicy.rolePipeline.requiresSandbox && allowedToolIds.includes('code-sandbox')) {
                 parts.push('For website/dashboard/front-end/game/Vite outputs, produce a previewable sandbox project. Prefer `document-workflow generate-suite` with `buildMode:"sandbox"`/`useSandbox:true`, or use `code-sandbox` only in `mode:"project"` with complete `files` or non-empty `code`; `prompt` alone is not a playable sandbox input.');
                 parts.push(`Apply the frontend quality bar from the active role contract for sandbox frontend builds:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false, includeGameAddendum: true })}`);
+                parts.push('For game builds without supplied asset files, create varied procedural placeholder objects in-place and document what real object each placeholder represents. Keep gameplay roles, collision behavior, controls, and animation hooks stable for later asset replacement.');
+                parts.push('When fallback behavior is used, name whether the next move is repair, redesign, ask, or ready; do not summarize a downgraded fallback as final polish.');
             }
             if (toolPolicy.rolePipeline.requiresSandbox && allowedToolIds.includes('web-scrape')) {
                 parts.push('For website/dashboard/front-end QA, use Playwright-backed `web-scrape` with `browser:true`, `captureScreenshot:true`, and desktop plus mobile `viewport` values once a preview or public URL exists. Omit `selectors` for screenshot-only QA.');

@@ -77,7 +77,19 @@ function detectRequestSignals(text = '', {
         /\b(use|turn|convert)\b[\s\S]{0,40}\b(as|into|to)\b[\s\S]{0,30}\b(site|website|html page|page)\b/,
     ]);
     const websiteTarget = hasAny(normalized, [
-        /\b(site|website|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx)\b/,
+        /\b(site|website|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|dashboard|frontend|front end|webapp|web app|ui mockup|html prototype|microsite)\b/,
+    ]);
+    const frontendBuildTarget = websiteTarget || hasAny(normalized, [
+        /\b(app workspace|interactive sandbox|vite preview|vite sandbox|browser game|web game|video game|playable game|sandboxed game|game prototype|simulation|canvas game|webgl game)\b/,
+    ]);
+    const gameTarget = hasAny(normalized, [
+        /\b(browser game|web game|video game|playable game|sandboxed game|game prototype|game object|game objects|sprites?|models?|npc|enemy|pickup|hazard|projectile|level|scene)\b/,
+    ]);
+    const complexDesignCue = hasAny(normalized, [
+        /\b(complex|premium|high[-\s]?end|polished|sophisticated|rich|immersive|impressive|not cheap|cheap|same|generic|redesign|visual system|design system|design workflow|iterate|iteration|fallback|repair)\b/,
+    ]);
+    const placeholderAssetCue = hasAny(normalized, [
+        /\b(placeholders?|fallback asset|missing asset|no files|without files|dont have files|don't have files|make objects|game objects|in place of real ones|procedural)\b/,
     ]);
     const artifactReference = selectedArtifactIds.length > 0
         || filenames.length > 0
@@ -106,6 +118,10 @@ function detectRequestSignals(text = '', {
         remoteTarget,
         deploymentAction,
         websiteTarget,
+        frontendBuildTarget,
+        gameTarget,
+        complexDesignCue,
+        placeholderAssetCue,
         artifactReference,
         artifactGeneration,
         researchCue,
@@ -142,6 +158,12 @@ function classifyIntent(signals = {}, outputFormat = null) {
         return 'research_answer';
     }
 
+    if (signals.frontendBuildTarget && (outputFormat || signals.artifactGeneration || signals.complexDesignCue || signals.gameTarget)) {
+        return signals.complexDesignCue || signals.gameTarget
+            ? 'complex_frontend_design_build'
+            : 'frontend_design_build';
+    }
+
     if (outputFormat || signals.artifactGeneration) {
         return 'generate_artifact';
     }
@@ -168,6 +190,10 @@ function choosePreferredTool(intent = '', signals = {}, executionProfile = '') {
         return 'web-search';
     }
 
+    if (intent === 'complex_frontend_design_build' || intent === 'frontend_design_build') {
+        return 'document-workflow';
+    }
+
     if (intent === 'generate_artifact' || intent === 'revise_or_convert_existing_artifact') {
         return 'artifact-service';
     }
@@ -189,6 +215,15 @@ function buildBlockedActions(intent = '') {
         return [
             'answer_without_remote_verification',
             'claim_live_without_public_check',
+        ];
+    }
+
+    if (intent === 'complex_frontend_design_build' || intent === 'frontend_design_build') {
+        return [
+            'finalize_without_preview_or_qa',
+            'reuse_generic_landing_page_scaffold',
+            'hide_fallback_or_downgrade',
+            'claim_ready_without_repair_redesign_decision',
         ];
     }
 
@@ -220,6 +255,16 @@ function buildProofExpectations(intent = '') {
         ];
     }
 
+    if (intent === 'complex_frontend_design_build' || intent === 'frontend_design_build') {
+        return [
+            'design brief or resource context captured',
+            'sandbox bundle generated with source files',
+            'fallback path classified as repair, redesign, ask, or ready',
+            'desktop and mobile browser QA completed after preview exists',
+            'repair or redesign pass completed when QA shows blockers',
+        ];
+    }
+
     if (intent === 'research_deliverable') {
         return [
             'current source search completed',
@@ -241,7 +286,11 @@ function buildRequestDecisionCards({ intent, signals, targetDomain, preferredToo
             title: 'Understanding',
             detail: intent === 'remote_deploy_existing_artifact'
                 ? `Use ${subject} as source material for a remote website update.`
-                : `Classified request as ${intent.replace(/_/g, ' ')}.`,
+                : (intent === 'complex_frontend_design_build'
+                    ? 'Treat this as a gated complex frontend/game design build, not a cheap one-shot artifact.'
+                    : (intent === 'frontend_design_build'
+                        ? 'Treat this as a previewable frontend design build with sandbox QA.'
+                        : `Classified request as ${intent.replace(/_/g, ' ')}.`)),
         },
         {
             title: 'Context Pulled',
@@ -265,7 +314,9 @@ function buildRequestDecisionCards({ intent, signals, targetDomain, preferredToo
             title: 'Proof Needed',
             detail: intent.startsWith('remote_')
                 ? `Verify ${target} with direct remote/public evidence before calling it done.`
-                : 'Return the generated output and metadata needed by the UI.',
+                : (intent === 'complex_frontend_design_build' || intent === 'frontend_design_build'
+                    ? 'Return sandbox preview evidence, QA screenshots, and the repair-vs-redesign decision.'
+                    : 'Return the generated output and metadata needed by the UI.'),
         });
     }
 
@@ -316,13 +367,20 @@ function buildRequestDecisionFrame({
     if (intent === 'remote_deploy_existing_artifact' && sourceArtifacts.ids.length === 0 && sourceArtifacts.filenames.length === 0) {
         missingContext.push('source_artifact');
     }
+    if (intent === 'complex_frontend_design_build' && signals.placeholderAssetCue && signals.gameTarget) {
+        missingContext.push('real_game_object_files_optional_varied_placeholders_allowed');
+    }
     if (intent.startsWith('remote_') && !targetDomain && !signals.explicitRemoteAgent && !previousWork.lastRemoteTarget) {
         missingContext.push('remote_target');
     }
 
     const objective = intent === 'remote_deploy_existing_artifact'
         ? `Deploy existing artifact${sourceArtifacts.filenames[0] ? ` ${sourceArtifacts.filenames[0]}` : ''} to ${targetDomain || 'the remote website'} as HTML.`
-        : compactText(text, 180);
+        : (intent === 'complex_frontend_design_build'
+            ? `${compactText(text, 160)} Build as a gated complex frontend/game design workflow with repair-vs-redesign fallback decisions, sandbox QA, and varied in-place placeholders when real assets are missing.`
+            : (intent === 'frontend_design_build'
+                ? `${compactText(text, 170)} Build as a previewable frontend sandbox with design context and browser QA.`
+                : compactText(text, 180)));
     const userVisibleSummary = cards.map((card) => `${card.title}: ${card.detail}`).join('\n');
 
     return {

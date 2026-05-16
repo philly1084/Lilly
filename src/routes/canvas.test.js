@@ -46,6 +46,9 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('content field may be a short preview summary');
         expect(instructions).toContain('metadata.handoff');
         expect(instructions).toContain('metadata.buildPipeline');
+        expect(instructions).toContain('fallbackGate');
+        expect(instructions).toContain('repair|redesign|ask|ready');
+        expect(instructions).toContain('varied in-place placeholder objects');
         expect(instructions).toContain('qaPlan');
         expect(instructions).toContain('<frontend_format_router>');
         expect(instructions).toContain('<frontend_technology_router>');
@@ -56,6 +59,8 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('<impressive_frontend_website_standard>');
         expect(instructions).toContain('<local_to_live_build_stages>');
         expect(instructions).toContain('opened UI surfaces');
+        expect(instructions).toContain('<frontend_repair_redesign_gate>');
+        expect(instructions).toContain('<game_placeholder_asset_policy>');
         expect(instructions).toContain('Existing demo');
     });
 
@@ -106,6 +111,19 @@ describe('/api/canvas helpers', () => {
                     qaPlan: [
                         'Capture desktop and mobile screenshots.',
                     ],
+                    fallbackGate: {
+                        decision: 'repair',
+                        reason: 'Mobile menu needs interaction wiring.',
+                        nextAction: 'Fix menu state before final QA.',
+                    },
+                    placeholderAssets: [
+                        {
+                            role: 'pickup',
+                            placeholder: 'glowing diamond mesh',
+                            replaces: 'final coin sprite',
+                            behavior: 'collect on overlap',
+                        },
+                    ],
                 },
             },
             suggestions: ['Add a pricing section'],
@@ -127,6 +145,13 @@ describe('/api/canvas helpers', () => {
         ]);
         expect(parsed.metadata.handoff.qaPlan).toEqual([
             'Capture desktop and mobile screenshots.',
+        ]);
+        expect(parsed.metadata.handoff.fallbackGate).toEqual(expect.objectContaining({
+            decision: 'repair',
+            reason: 'Mobile menu needs interaction wiring.',
+        }));
+        expect(parsed.metadata.handoff.placeholderAssets).toEqual([
+            expect.objectContaining({ role: 'pickup', placeholder: 'glowing diamond mesh' }),
         ]);
         expect(parsed.suggestions).toEqual(['Add a pricing section']);
     });

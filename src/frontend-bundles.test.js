@@ -125,8 +125,45 @@ describe('frontend bundle styling safety net', () => {
             expect.stringContaining('desktop and mobile screenshots'),
             expect.stringContaining('contrast'),
         ]));
+        expect(metadata.handoff.fallbackGate).toEqual(expect.objectContaining({
+            decision: 'ready',
+            nextAction: expect.stringContaining('browser QA'),
+        }));
         expect(metadata.bundle.files).toEqual(expect.arrayContaining([
             expect.objectContaining({ path: 'index.html' }),
         ]));
+    });
+
+    test('preserves repair gates and game placeholder asset contracts in frontend handoff', () => {
+        const metadata = normalizeFrontendMetadata({
+            title: 'Playable Prototype',
+            handoff: {
+                fallbackGate: {
+                    decision: 'redesign',
+                    reason: 'The first pass reused a generic layout.',
+                    nextAction: 'Change the information architecture before another build.',
+                },
+                placeholderAssets: [
+                    {
+                        role: 'enemy',
+                        placeholder: 'red cone with patrol pulse',
+                        replaces: 'final enemy model',
+                        behavior: 'patrol and damage on contact',
+                    },
+                ],
+            },
+        }, '<!DOCTYPE html><html><head><title>Playable Prototype</title></head><body></body></html>');
+
+        expect(metadata.handoff.fallbackGate).toEqual(expect.objectContaining({
+            decision: 'redesign',
+            reason: 'The first pass reused a generic layout.',
+        }));
+        expect(metadata.handoff.placeholderAssets).toEqual([
+            expect.objectContaining({
+                role: 'enemy',
+                placeholder: 'red cone with patrol pulse',
+                behavior: 'patrol and damage on contact',
+            }),
+        ]);
     });
 });
