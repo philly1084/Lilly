@@ -200,6 +200,31 @@ class SessionStore {
             .slice(-normalizedLimit);
     }
 
+    buildMetadataRecentMessagesFallback(session = null, limit = MAX_RECENT_MESSAGES) {
+        const normalizedLimit = Math.max(0, Number(limit) || 0);
+        if (!session || normalizedLimit === 0) {
+            return [];
+        }
+
+        const recentMessages = Array.isArray(session?.metadata?.recentMessages)
+            ? session.metadata.recentMessages
+            : [];
+        if (recentMessages.length === 0) {
+            return [];
+        }
+
+        return this.normalizeStoredMessages(recentMessages)
+            .slice(-normalizedLimit)
+            .map((message, index) => this.toClientMessage({
+                ...message,
+                id: message.id || `metadata_recent_${session.id}_${index}`,
+                metadata: {
+                    ...(message.metadata || {}),
+                    recoveredFromSessionMetadata: true,
+                },
+            }));
+    }
+
     normalizeRecentMessageRow(row) {
         const normalized = this.normalizeRecentMessages([{
             role: row?.role,
@@ -1655,7 +1680,7 @@ class SessionStore {
                     [session.id, normalizedLimit],
                 );
 
-                return result.rows
+                const messages = result.rows
                     .map((row) => this.toClientMessage({
                         id: row?.id,
                         role: ['user', 'assistant', 'system', 'tool'].includes(row?.role) ? row.role : null,
@@ -1665,6 +1690,11 @@ class SessionStore {
                     }))
                     .filter((row) => row.role && row.content)
                     .reverse();
+                if (messages.length > 0) {
+                    return messages;
+                }
+
+                return this.buildMetadataRecentMessagesFallback(session, normalizedLimit);
             } catch (error) {
                 if (!(await this.switchToFallbackStorage(error))) {
                     throw error;
@@ -1673,9 +1703,14 @@ class SessionStore {
         }
 
         const transcript = this.sessionMessages.get(session.id) || [];
-        return transcript
+        const messages = transcript
             .slice(-normalizedLimit)
             .map((message) => this.toClientMessage(message));
+        if (messages.length > 0) {
+            return messages;
+        }
+
+        return this.buildMetadataRecentMessagesFallback(session, normalizedLimit);
     }
 
     async healthCheck() {

@@ -393,6 +393,41 @@ describe('SessionStore recent message continuity', () => {
         expect(recent[0]).toEqual(expect.objectContaining({ content: 'message-23' }));
     });
 
+    test('listMessages recovers metadata recent messages when no transcript rows were persisted', async () => {
+        const store = new SessionStore();
+        store.initialized = true;
+        store.usePostgres = false;
+        const session = await store.create({
+            mode: 'chat',
+            recentMessages: [
+                {
+                    role: 'user',
+                    content: 'Earlier request that only survived in session metadata.',
+                    timestamp: '2026-05-16T12:00:00.000Z',
+                },
+                {
+                    role: 'assistant',
+                    content: 'Earlier response that should still render in web chat.',
+                    timestamp: '2026-05-16T12:01:00.000Z',
+                },
+            ],
+        });
+
+        const listed = await store.listMessages(session.id, 10);
+
+        expect(listed).toHaveLength(2);
+        expect(listed[0]).toEqual(expect.objectContaining({
+            role: 'user',
+            content: 'Earlier request that only survived in session metadata.',
+            recoveredFromSessionMetadata: true,
+        }));
+        expect(listed[1]).toEqual(expect.objectContaining({
+            role: 'assistant',
+            content: 'Earlier response that should still render in web chat.',
+            recoveredFromSessionMetadata: true,
+        }));
+    });
+
     test('getRecentMessages skips transcript content already covered by session compaction', async () => {
         const store = new SessionStore();
         store.initialized = true;
