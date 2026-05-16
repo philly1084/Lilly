@@ -91,10 +91,84 @@ const {
     buildDirectPodcastParams,
     shouldUseDirectPodcastChat,
 } = require('../podcast/direct-podcast-chat');
+const { rehydrateText, sanitizeText } = require('../pii');
 
 const router = Router();
 const FINAL_SYNTHESIS_PLACEHOLDER = 'I completed the request, but the final answer could not be synthesized from the model response.';
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
+
+function compactPiiContextIds(...sources) {
+    const ids = [];
+    sources.forEach((source) => {
+        if (!source) return;
+        if (Array.isArray(source)) {
+            source.forEach((id) => ids.push(id));
+            return;
+        }
+        if (Array.isArray(source.contextIds)) {
+            source.contextIds.forEach((id) => ids.push(id));
+        }
+        if (source.contextId) {
+            ids.push(source.contextId);
+        }
+    });
+    return Array.from(new Set(ids.map((id) => String(id || '').trim()).filter(Boolean)));
+}
+
+function buildPiiCleansingMetadata(routePii = null, executionPii = null, presentation = null) {
+    const contextIds = compactPiiContextIds(routePii, executionPii);
+    const replacementCount = Number(routePii?.replacements?.length || 0)
+        + Number(executionPii?.replacementCount || 0);
+    const enabled = routePii?.policy?.enabled === true || executionPii?.enabled === true || presentation?.enabled === true;
+    if (!enabled && contextIds.length === 0 && replacementCount === 0) {
+        return null;
+    }
+    return {
+        enabled,
+        contextIds,
+        replacementCount,
+        restoredCount: Array.isArray(presentation?.restorations) ? presentation.restorations.length : 0,
+        placeholderMode: routePii?.policy?.placeholderMode || executionPii?.placeholderMode || '',
+    };
+}
+
+async function buildTrustedPiiPresentation(text = '', {
+    sessionId = '',
+    ownerId = null,
+    contextIds = [],
+    metadata = {},
+    clientSurface = '',
+    route = '',
+} = {}) {
+    try {
+        return await rehydrateText(text, {
+            sessionId,
+            ownerId,
+            contextIds,
+            metadata,
+            clientSurface,
+            route,
+            highlight: true,
+        });
+    } catch (error) {
+        console.warn(`[PII] Failed to rehydrate ${route || 'openai-compat'} presentation: ${error.message}`);
+        return { text: String(text || ''), restorations: [], enabled: false };
+    }
+}
+
+function buildAssistantUiMetadata(baseMetadata = {}, artifacts = [], piiMetadata = null, presentation = null) {
+    return buildFrontendAssistantMetadata({
+        ...(baseMetadata || {}),
+        artifacts,
+        ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+        ...(presentation?.restorations?.length > 0
+            ? {
+                displayContent: presentation.text,
+                piiRestorations: presentation.restorations,
+            }
+            : {}),
+    });
+}
 
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
@@ -1134,7 +1208,7 @@ router.post('/chat/completions', async (req, res, next) => {
             ...(sessionIsolation ? { sessionIsolation: true } : {}),
         };
         const lastUserMessage = messages.filter((message) => message.role === 'user').pop();
-        const lastUserText = normalizeMessageText(lastUserMessage?.content || '');
+        let lastUserText = normalizeMessageText(lastUserMessage?.content || '');
         const answeredCheckpointResult = await applyAnsweredUserCheckpointState(sessionId, session, lastUserText);
         session = answeredCheckpointResult.session;
         const userCheckpointPolicy = buildUserCheckpointPolicy({
@@ -1142,8 +1216,40 @@ router.post('/chat/completions', async (req, res, next) => {
             clientSurface,
         });
         const sshContext = resolveSshRequestContext(lastUserText, session);
-        const effectiveInput = sshContext.effectivePrompt || lastUserText;
+        let effectiveInput = sshContext.effectivePrompt || lastUserText;
         const artifactIntentText = stripInjectedNotesPageEditDirective(lastUserText);
+        const routePii = await sanitizeText(lastUserText, {
+            sessionId,
+            ownerId,
+            clientSurface,
+            route: '/v1/chat/completions',
+            metadata: effectiveRequestMetadata,
+        });
+        lastUserText = routePii.text;
+        if (effectiveInput !== artifactIntentText) {
+            const effectivePii = await sanitizeText(effectiveInput, {
+                sessionId,
+                ownerId,
+                clientSurface,
+                route: '/v1/chat/completions',
+                metadata: effectiveRequestMetadata,
+                policy: routePii.policy,
+            });
+            effectiveInput = effectivePii.text;
+            if (effectivePii.contextId) {
+                routePii.contextIds = compactPiiContextIds(routePii, effectivePii);
+                routePii.replacements = [
+                    ...(routePii.replacements || []),
+                    ...(effectivePii.replacements || []),
+                ];
+            }
+        } else {
+            effectiveInput = lastUserText;
+        }
+        effectiveRequestMetadata = {
+            ...effectiveRequestMetadata,
+            piiCleansing: buildPiiCleansingMetadata(routePii),
+        };
         const taskType = resolveConversationTaskType(req.body, session);
         pendingForegroundTurn = await beginForegroundTurn({
             sessionStore,
@@ -1571,7 +1677,10 @@ router.post('/chat/completions', async (req, res, next) => {
                     assistantText: generation.assistantMessage,
                     toolEvents: artifactToolEvents,
                     artifacts: responseArtifacts,
-                    assistantMetadata: requestFrameMetadata,
+                    assistantMetadata: {
+                        ...requestFrameMetadata,
+                        ...(buildPiiCleansingMetadata(routePii) ? { piiCleansing: buildPiiCleansingMetadata(routePii) } : {}),
+                    },
                     ...buildForegroundTurnMessageOptions(pendingForegroundTurn),
                 }),
                 pendingForegroundTurn,
@@ -1610,6 +1719,15 @@ router.post('/chat/completions', async (req, res, next) => {
                 metadata: generation.metadata || {},
                 usage: generation?.metadata?.usage || generation?.metadata?.tokenUsage || null,
             });
+            const piiPresentation = await buildTrustedPiiPresentation(generation.assistantMessage, {
+                sessionId,
+                ownerId,
+                contextIds: compactPiiContextIds(routePii),
+                metadata: effectiveRequestMetadata,
+                clientSurface,
+                route: '/v1/chat/completions',
+            });
+            const piiMetadata = buildPiiCleansingMetadata(routePii, null, piiPresentation);
 
             if (stream) {
                 activeSse?.write(`data: ${JSON.stringify({
@@ -1631,8 +1749,10 @@ router.post('/chat/completions', async (req, res, next) => {
                     artifacts: responseArtifacts,
                     tool_events: artifactToolEvents,
                     toolEvents: artifactToolEvents,
-                    assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
-                    assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                    displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                    piiRestorations: piiPresentation.restorations,
+                    assistant_metadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
+                    assistantMetadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
                 })}\n\n`);
                 activeSse?.write('data: [DONE]\n\n');
                 activeSse?.end();
@@ -1659,8 +1779,10 @@ router.post('/chat/completions', async (req, res, next) => {
                 artifacts: responseArtifacts,
                 tool_events: artifactToolEvents,
                 toolEvents: artifactToolEvents,
-                assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
-                assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                piiRestorations: piiPresentation.restorations,
+                assistant_metadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
+                assistantMetadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
             });
             return;
         }
@@ -1872,6 +1994,16 @@ router.post('/chat/completions', async (req, res, next) => {
                         extractArtifactsFromToolEvents(toolEvents),
                         generatedArtifacts,
                     );
+                    const piiContextIds = compactPiiContextIds(routePii, execution.pii);
+                    const piiPresentation = await buildTrustedPiiPresentation(fullText, {
+                        sessionId,
+                        ownerId,
+                        contextIds: piiContextIds,
+                        metadata: effectiveRequestMetadata,
+                        clientSurface,
+                        route: '/v1/chat/completions',
+                    });
+                    const piiMetadata = buildPiiCleansingMetadata(routePii, execution.pii, piiPresentation);
                     await updateSessionProjectMemory(sessionId, {
                         userText: lastUserText,
                         assistantText: fullText,
@@ -1890,7 +2022,10 @@ router.post('/chat/completions', async (req, res, next) => {
                                 assistantText: fullText,
                                 toolEvents,
                                 artifacts,
-                                assistantMetadata: resolvedCompletion.response?.metadata,
+                                assistantMetadata: {
+                                    ...(resolvedCompletion.response?.metadata || {}),
+                                    ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                                },
                                 ...buildForegroundTurnMessageOptions(pendingForegroundTurn),
                             }),
                             pendingForegroundTurn,
@@ -1922,14 +2057,10 @@ router.post('/chat/completions', async (req, res, next) => {
                         artifacts,
                         tool_events: toolEvents,
                         toolEvents,
-                        assistant_metadata: buildFrontendAssistantMetadata({
-                            ...(resolvedCompletion.response?.metadata || {}),
-                            artifacts,
-                        }),
-                        assistantMetadata: buildFrontendAssistantMetadata({
-                            ...(resolvedCompletion.response?.metadata || {}),
-                            artifacts,
-                        }),
+                        displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                        piiRestorations: piiPresentation.restorations,
+                        assistant_metadata: buildAssistantUiMetadata(resolvedCompletion.response?.metadata, artifacts, piiMetadata, piiPresentation),
+                        assistantMetadata: buildAssistantUiMetadata(resolvedCompletion.response?.metadata, artifacts, piiMetadata, piiPresentation),
                     })}\n\n`);
                     activeSse.write('data: [DONE]\n\n');
                 }
@@ -2080,6 +2211,16 @@ router.post('/chat/completions', async (req, res, next) => {
             extractArtifactsFromToolEvents(response?.metadata?.toolEvents || []),
             generatedArtifacts,
         );
+        const piiContextIds = compactPiiContextIds(routePii, execution.pii);
+        const piiPresentation = await buildTrustedPiiPresentation(outputText, {
+            sessionId,
+            ownerId,
+            contextIds: piiContextIds,
+            metadata: effectiveRequestMetadata,
+            clientSurface,
+            route: '/v1/chat/completions',
+        });
+        const piiMetadata = buildPiiCleansingMetadata(routePii, execution.pii, piiPresentation);
         await updateSessionProjectMemory(sessionId, {
             userText: lastUserText,
             assistantText: outputText,
@@ -2098,7 +2239,10 @@ router.post('/chat/completions', async (req, res, next) => {
                     assistantText: outputText,
                     toolEvents: response?.metadata?.toolEvents || [],
                     artifacts,
-                    assistantMetadata: response?.metadata,
+                    assistantMetadata: {
+                        ...(response?.metadata || {}),
+                        ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                    },
                     ...buildForegroundTurnMessageOptions(pendingForegroundTurn),
                 }),
                 pendingForegroundTurn,
@@ -2141,14 +2285,10 @@ router.post('/chat/completions', async (req, res, next) => {
             artifacts,
             tool_events: response?.metadata?.toolEvents || [],
             toolEvents: response?.metadata?.toolEvents || [],
-            assistant_metadata: buildFrontendAssistantMetadata({
-                ...(response?.metadata || {}),
-                artifacts,
-            }),
-            assistantMetadata: buildFrontendAssistantMetadata({
-                ...(response?.metadata || {}),
-                artifacts,
-            }),
+            displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+            piiRestorations: piiPresentation.restorations,
+            assistant_metadata: buildAssistantUiMetadata(response?.metadata, artifacts, piiMetadata, piiPresentation),
+            assistantMetadata: buildAssistantUiMetadata(response?.metadata, artifacts, piiMetadata, piiPresentation),
         });
     } catch (err) {
         if (isAbortLikeError(err, requestAbortSignal)) {
@@ -2290,11 +2430,11 @@ router.post('/responses', async (req, res, next) => {
             : (Array.isArray(input)
                 ? input.filter((item) => item?.role).map((item) => ({ role: item.role, content: item.content }))
                 : []);
-        const userInput = typeof input === 'string'
+        let userInput = typeof input === 'string'
             ? input
             : normalizeMessageText(input.filter((item) => item.role === 'user').pop()?.content || '');
         const sshContext = resolveSshRequestContext(userInput, session);
-        const effectiveUserInput = sshContext.effectivePrompt || userInput;
+        let effectiveUserInput = sshContext.effectivePrompt || userInput;
         const artifactIntentText = stripInjectedNotesPageEditDirective(userInput);
         const taskType = resolveConversationTaskType(req.body, session);
         const clientSurface = resolveClientSurface(req.body, session);
@@ -2309,6 +2449,38 @@ router.post('/responses', async (req, res, next) => {
             clientSurface,
             memoryScope,
             ...(sessionIsolation ? { sessionIsolation: true } : {}),
+        };
+        const routePii = await sanitizeText(userInput, {
+            sessionId,
+            ownerId,
+            clientSurface,
+            route: '/v1/responses',
+            metadata: effectiveRequestMetadata,
+        });
+        userInput = routePii.text;
+        if (effectiveUserInput !== artifactIntentText) {
+            const effectivePii = await sanitizeText(effectiveUserInput, {
+                sessionId,
+                ownerId,
+                clientSurface,
+                route: '/v1/responses',
+                metadata: effectiveRequestMetadata,
+                policy: routePii.policy,
+            });
+            effectiveUserInput = effectivePii.text;
+            if (effectivePii.contextId) {
+                routePii.contextIds = compactPiiContextIds(routePii, effectivePii);
+                routePii.replacements = [
+                    ...(routePii.replacements || []),
+                    ...(effectivePii.replacements || []),
+                ];
+            }
+        } else {
+            effectiveUserInput = userInput;
+        }
+        effectiveRequestMetadata = {
+            ...effectiveRequestMetadata,
+            piiCleansing: buildPiiCleansingMetadata(routePii),
         };
         const outputFormatProvided = Boolean(output_format);
         const candidateOutputFormat = output_format
@@ -2741,6 +2913,16 @@ router.post('/responses', async (req, res, next) => {
                         extractArtifactsFromToolEvents(resolvedCompletion.response?.metadata?.toolEvents || []),
                         generatedArtifacts,
                     );
+                    const piiContextIds = compactPiiContextIds(routePii, execution.pii);
+                    const piiPresentation = await buildTrustedPiiPresentation(fullText, {
+                        sessionId,
+                        ownerId,
+                        contextIds: piiContextIds,
+                        metadata: effectiveRequestMetadata,
+                        clientSurface,
+                        route: '/v1/responses',
+                    });
+                    const piiMetadata = buildPiiCleansingMetadata(routePii, execution.pii, piiPresentation);
                     await updateSessionProjectMemory(sessionId, {
                         userText: userInput,
                         assistantText: fullText,
@@ -2753,7 +2935,10 @@ router.post('/responses', async (req, res, next) => {
                             assistantText: fullText,
                             toolEvents: resolvedCompletion.response?.metadata?.toolEvents || [],
                             artifacts,
-                            assistantMetadata: resolvedCompletion.response?.metadata,
+                            assistantMetadata: {
+                                ...(resolvedCompletion.response?.metadata || {}),
+                                ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                            },
                         }));
                     }
                     completeRuntimeTask(runtimeTask?.id, {
@@ -2783,14 +2968,10 @@ router.post('/responses', async (req, res, next) => {
                         artifacts,
                         tool_events: resolvedCompletion.response?.metadata?.toolEvents || [],
                         toolEvents: resolvedCompletion.response?.metadata?.toolEvents || [],
-                        assistant_metadata: buildFrontendAssistantMetadata({
-                            ...(resolvedCompletion.response?.metadata || {}),
-                            artifacts,
-                        }),
-                        assistantMetadata: buildFrontendAssistantMetadata({
-                            ...(resolvedCompletion.response?.metadata || {}),
-                            artifacts,
-                        }),
+                        displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                        piiRestorations: piiPresentation.restorations,
+                        assistant_metadata: buildAssistantUiMetadata(resolvedCompletion.response?.metadata, artifacts, piiMetadata, piiPresentation),
+                        assistantMetadata: buildAssistantUiMetadata(resolvedCompletion.response?.metadata, artifacts, piiMetadata, piiPresentation),
                     })}\n\n`);
                 }
             }
@@ -2931,6 +3112,16 @@ router.post('/responses', async (req, res, next) => {
             extractArtifactsFromToolEvents(response?.metadata?.toolEvents || []),
             generatedArtifacts,
         );
+        const piiContextIds = compactPiiContextIds(routePii, execution.pii);
+        const piiPresentation = await buildTrustedPiiPresentation(outputText, {
+            sessionId,
+            ownerId,
+            contextIds: piiContextIds,
+            metadata: effectiveRequestMetadata,
+            clientSurface,
+            route: '/v1/responses',
+        });
+        const piiMetadata = buildPiiCleansingMetadata(routePii, execution.pii, piiPresentation);
         await updateSessionProjectMemory(sessionId, {
             userText: userInput,
             assistantText: outputText,
@@ -2943,7 +3134,10 @@ router.post('/responses', async (req, res, next) => {
                 assistantText: outputText,
                 toolEvents: response?.metadata?.toolEvents || [],
                 artifacts,
-                assistantMetadata: response?.metadata,
+                assistantMetadata: {
+                    ...(response?.metadata || {}),
+                    ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                },
             }));
         }
         completeRuntimeTask(runtimeTask?.id, {
@@ -2966,14 +3160,10 @@ router.post('/responses', async (req, res, next) => {
             gateway,
             session_id: sessionId,
             artifacts,
-            assistant_metadata: buildFrontendAssistantMetadata({
-                ...(response?.metadata || {}),
-                artifacts,
-            }),
-            assistantMetadata: buildFrontendAssistantMetadata({
-                ...(response?.metadata || {}),
-                artifacts,
-            }),
+            displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+            piiRestorations: piiPresentation.restorations,
+            assistant_metadata: buildAssistantUiMetadata(response?.metadata, artifacts, piiMetadata, piiPresentation),
+            assistantMetadata: buildAssistantUiMetadata(response?.metadata, artifacts, piiMetadata, piiPresentation),
         });
     } catch (err) {
         failRuntimeTask(runtimeTask?.id, {

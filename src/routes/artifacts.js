@@ -32,6 +32,7 @@ const {
     resolveClientSurface,
     resolveSessionScope,
 } = require('../session-scope');
+const { rehydrateHtml, rehydrateText } = require('../pii');
 
 const router = Router();
 const DEPLOYABLE_TEXT_EXTENSIONS = new Set([
@@ -203,6 +204,43 @@ function appendAccessTokenToInternalArtifactUrls(content = '', previewAccessToke
 
 function getRequestOwnerId(req) {
     return String(req.user?.username || '').trim() || null;
+}
+
+async function rehydratePreviewBuffer(buffer, artifact, req, {
+    contentType = '',
+    path: previewPath = '',
+    metadata = {},
+} = {}) {
+    const source = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || '');
+    const type = String(contentType || '').toLowerCase();
+    const filename = String(previewPath || artifact?.filename || '').toLowerCase();
+    const looksHtml = type.includes('text/html') || /\.(?:html?)$/i.test(filename);
+    const looksText = !looksHtml && (type.startsWith('text/') || /\.(?:txt|md|markdown|csv|json)$/i.test(filename));
+    if (!looksHtml && !looksText) {
+        return source;
+    }
+    const options = {
+        sessionId: artifact?.sessionId || artifact?.session_id || '',
+        ownerId: getRequestOwnerId(req),
+        metadata: {
+            ...(artifact?.metadata || {}),
+            ...(metadata || {}),
+        },
+        clientSurface: 'artifact-preview',
+        route: '/api/artifacts/:id/preview',
+        highlight: true,
+    };
+    try {
+        if (looksHtml) {
+            const result = await rehydrateHtml(source.toString('utf8'), options);
+            return Buffer.from(result.html, 'utf8');
+        }
+        const result = await rehydrateText(source.toString('utf8'), options);
+        return Buffer.from(result.text, 'utf8');
+    } catch (error) {
+        console.warn(`[Artifacts] Failed to rehydrate preview for ${artifact?.id || 'artifact'}: ${error.message}`);
+        return source;
+    }
 }
 
 async function getOwnedArtifact(req, artifactId, options = {}) {
@@ -585,7 +623,13 @@ router.get('/:id/download', async (req, res, next) => {
         if (inlineRequested) {
             applyPreviewResponseHeaders(res);
         }
-        res.send(artifact.contentBuffer);
+        const outputBuffer = inlineRequested
+            ? await rehydratePreviewBuffer(artifact.contentBuffer, artifact, req, {
+                contentType: artifact.mimeType,
+                path: artifact.filename,
+            })
+            : artifact.contentBuffer;
+        res.send(outputBuffer);
     } catch (err) {
         next(err);
     }
@@ -616,9 +660,13 @@ async function serveArtifactPreview(req, res, next, requestedPath = '', previewA
         if (zipPreview) {
             res.setHeader('Content-Type', zipPreview.contentType);
             applyPreviewResponseHeaders(res);
-            const buffer = /\.(?:html?|css|svg|js|mjs)$/i.test(zipPreview.path)
+            const tokenizedBuffer = /\.(?:html?|css|svg|js|mjs)$/i.test(zipPreview.path)
                 ? Buffer.from(appendAccessTokenToInternalArtifactUrls(zipPreview.contentBuffer.toString('utf8'), previewAccessToken), 'utf8')
                 : zipPreview.contentBuffer;
+            const buffer = await rehydratePreviewBuffer(tokenizedBuffer, artifact, req, {
+                contentType: zipPreview.contentType,
+                path: zipPreview.path,
+            });
             res.send(buffer);
             return;
         }
@@ -632,9 +680,13 @@ async function serveArtifactPreview(req, res, next, requestedPath = '', previewA
 
         res.setHeader('Content-Type', previewFile?.contentType || 'text/html; charset=utf-8');
         applyPreviewResponseHeaders(res);
-        const outputBuffer = /\.(?:html?|css|svg|js|mjs)$/i.test(previewFile?.path || 'index.html')
+        const tokenizedBuffer = /\.(?:html?|css|svg|js|mjs)$/i.test(previewFile?.path || 'index.html')
             ? Buffer.from(appendAccessTokenToInternalArtifactUrls(previewBuffer.toString('utf8'), previewAccessToken), 'utf8')
             : previewBuffer;
+        const outputBuffer = await rehydratePreviewBuffer(tokenizedBuffer, artifact, req, {
+            contentType: previewFile?.contentType || 'text/html; charset=utf-8',
+            path: previewFile?.path || 'index.html',
+        });
         res.send(outputBuffer);
     } catch (err) {
         next(err);

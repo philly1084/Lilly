@@ -18,6 +18,46 @@ const {
   writeAgentNotesFile,
 } = require('../../agent-notes');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
+const DEFAULT_PRIVACY_PII_SETTINGS = {
+  enabled: false,
+  webChatEnabled: true,
+  highlightRestored: true,
+  allowUserOverride: false,
+  placeholderMode: 'typed-random',
+  failClosed: true,
+  detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+  customPatterns: [],
+  dictionary: [],
+  enablePersonNames: false,
+};
+
+function normalizePrivacyPlaceholderMode(value = '') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+  if (['opaque', 'opaque-random', 'random'].includes(normalized)) return 'opaque-random';
+  if (['stable', 'stable-per-value', 'same-placeholder'].includes(normalized)) return 'stable-per-value';
+  if (['typed', 'typed-random', 'type-random'].includes(normalized)) return 'typed-random';
+  return 'typed-random';
+}
+
+function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    ...fallback,
+    ...source,
+    enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
+    webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
+    highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,
+    allowUserOverride: source.allowUserOverride === true,
+    placeholderMode: normalizePrivacyPlaceholderMode(source.placeholderMode || fallback.placeholderMode),
+    failClosed: source.failClosed !== undefined ? Boolean(source.failClosed) : fallback.failClosed !== false,
+    detectors: Array.isArray(source.detectors) && source.detectors.length > 0
+      ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
+      : [...fallback.detectors],
+    customPatterns: Array.isArray(source.customPatterns) ? source.customPatterns.slice(0, 50) : [],
+    dictionary: Array.isArray(source.dictionary) ? source.dictionary.slice(0, 200) : [],
+    enablePersonNames: source.enablePersonNames === true,
+  };
+}
 
 function normalizeManagedAppDeployTarget(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
@@ -129,6 +169,9 @@ class SettingsController {
         rateLimiting: true,
         rateLimit: 100, // requests per minute
         allowedIPs: []
+      },
+      privacyPii: {
+        ...DEFAULT_PRIVACY_PII_SETTINGS,
       },
       integrations: {
         ssh: {
@@ -517,8 +560,15 @@ class SettingsController {
     const gitlabUpdate = normalized.integrations?.gitlab;
     const managedAppsUpdate = normalized.integrations?.managedApps;
     const orchestrationUpdate = normalized.orchestration;
+    const privacyPiiUpdate = normalized.privacyPii;
     if (orchestrationUpdate && typeof orchestrationUpdate === 'object') {
       normalized.orchestration = this.normalizeOrchestrationSettings(orchestrationUpdate);
+    }
+    if (privacyPiiUpdate && typeof privacyPiiUpdate === 'object') {
+      normalized.privacyPii = normalizePrivacyPiiSettings(
+        privacyPiiUpdate,
+        this.settings?.privacyPii || DEFAULT_PRIVACY_PII_SETTINGS,
+      );
     }
 
     if (deployUpdate) {
@@ -746,6 +796,7 @@ class SettingsController {
       publicSettings.security.requireAuth = authEnabled;
     }
     publicSettings.orchestration = this.getEffectiveOrchestrationConfig();
+    publicSettings.privacyPii = this.getEffectivePrivacyPiiConfig();
     if (publicSettings.integrations?.opencode) {
       delete publicSettings.integrations.opencode;
     }
@@ -1022,6 +1073,15 @@ class SettingsController {
     };
   }
 
+  getEffectivePrivacyPiiConfig() {
+    const stored = this.settings?.privacyPii || {};
+    return {
+      ...normalizePrivacyPiiSettings(stored, DEFAULT_PRIVACY_PII_SETTINGS),
+      source: this.canUsePostgresSettings() ? 'postgres' : 'file',
+      vaultConfigured: Boolean(String(process.env.KIMIBUILT_PII_MASTER_KEY || '').trim()),
+    };
+  }
+
   /**
    * Get default settings
    */
@@ -1099,6 +1159,9 @@ class SettingsController {
         rateLimiting: true,
         rateLimit: 100,
         allowedIPs: []
+      },
+      privacyPii: {
+        ...DEFAULT_PRIVACY_PII_SETTINGS,
       },
       integrations: {
         ssh: {

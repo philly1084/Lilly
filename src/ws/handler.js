@@ -77,6 +77,7 @@ const {
     buildDirectPodcastParams,
     shouldUseDirectPodcastChat,
 } = require('../podcast/direct-podcast-chat');
+const { rehydrateText, sanitizeText } = require('../pii');
 
 // Admin dashboard event emitter
 const EventEmitter = require('events');
@@ -86,6 +87,54 @@ const {
     buildNotationInstructions,
     parseNotationResponse,
 } = notationRouter._private || {};
+
+function compactPiiContextIds(...sources) {
+    const ids = [];
+    sources.forEach((source) => {
+        if (!source) return;
+        if (Array.isArray(source)) {
+            source.forEach((id) => ids.push(id));
+            return;
+        }
+        if (Array.isArray(source.contextIds)) source.contextIds.forEach((id) => ids.push(id));
+        if (source.contextId) ids.push(source.contextId);
+    });
+    return Array.from(new Set(ids.map((id) => String(id || '').trim()).filter(Boolean)));
+}
+
+function buildPiiCleansingMetadata(routePii = null, executionPii = null, presentation = null) {
+    const contextIds = compactPiiContextIds(routePii, executionPii);
+    const replacementCount = Number(routePii?.replacements?.length || 0) + Number(executionPii?.replacementCount || 0);
+    const enabled = routePii?.policy?.enabled === true || executionPii?.enabled === true || presentation?.enabled === true;
+    if (!enabled && contextIds.length === 0 && replacementCount === 0) return null;
+    return {
+        enabled,
+        contextIds,
+        replacementCount,
+        restoredCount: Array.isArray(presentation?.restorations) ? presentation.restorations.length : 0,
+        placeholderMode: routePii?.policy?.placeholderMode || executionPii?.placeholderMode || '',
+    };
+}
+
+async function buildTrustedPiiPresentation(text = '', options = {}) {
+    try {
+        return await rehydrateText(text, { ...options, highlight: true });
+    } catch (error) {
+        console.warn(`[PII] Failed to rehydrate websocket presentation: ${error.message}`);
+        return { text: String(text || ''), restorations: [], enabled: false };
+    }
+}
+
+function buildAssistantUiMetadata(baseMetadata = {}, artifacts = [], piiMetadata = null, presentation = null) {
+    return buildFrontendAssistantMetadata({
+        ...(baseMetadata || {}),
+        artifacts,
+        ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+        ...(presentation?.restorations?.length > 0
+            ? { displayContent: presentation.text, piiRestorations: presentation.restorations }
+            : {}),
+    });
+}
 
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
@@ -319,7 +368,8 @@ function setupWebSocket(wss, app = null) {
 async function handleChat(ws, session, payload = {}, toolManager = null, ownerId = null) {
     let runtimeTask = null;
     const startedAt = Date.now();
-    const { message, model = null, artifactIds = [], outputFormat = null, executionProfile = null } = payload;
+    const { message: rawMessage, model = null, artifactIds = [], outputFormat = null, executionProfile = null } = payload;
+    let message = rawMessage;
     const memoryKeywords = normalizeMemoryKeywords(
         payload.memoryKeywords || payload?.metadata?.memoryKeywords || [],
     );
@@ -370,13 +420,45 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         clientSurface,
     });
     const sshContext = resolveSshRequestContext(message, session);
-    const effectiveMessage = sshContext.effectivePrompt || message;
+    let effectiveMessage = sshContext.effectivePrompt || message;
     effectiveRequestMetadata = {
         ...effectiveRequestMetadata,
         clientSurface,
         memoryScope,
         userCheckpointPolicy: buildUserCheckpointPolicyMetadata(userCheckpointPolicy),
         ...(sessionIsolation ? { sessionIsolation: true } : {}),
+    };
+    const routePii = await sanitizeText(message, {
+        sessionId: session.id,
+        ownerId,
+        clientSurface,
+        route: '/ws',
+        metadata: effectiveRequestMetadata,
+    });
+    message = routePii.text;
+    if (effectiveMessage !== rawMessage) {
+        const effectivePii = await sanitizeText(effectiveMessage, {
+            sessionId: session.id,
+            ownerId,
+            clientSurface,
+            route: '/ws',
+            metadata: effectiveRequestMetadata,
+            policy: routePii.policy,
+        });
+        effectiveMessage = effectivePii.text;
+        if (effectivePii.contextId) {
+            routePii.contextIds = compactPiiContextIds(routePii, effectivePii);
+            routePii.replacements = [
+                ...(routePii.replacements || []),
+                ...(effectivePii.replacements || []),
+            ];
+        }
+    } else {
+        effectiveMessage = message;
+    }
+    effectiveRequestMetadata = {
+        ...effectiveRequestMetadata,
+        piiCleansing: buildPiiCleansingMetadata(routePii),
     };
     const candidateOutputFormat = outputFormat
         || inferRequestedOutputFormat(message)
@@ -865,6 +947,16 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                     extractArtifactsFromToolEvents(event.response?.metadata?.toolEvents || []),
                     generatedArtifacts,
                 );
+                const piiContextIds = compactPiiContextIds(routePii, execution.pii);
+                const piiPresentation = await buildTrustedPiiPresentation(fullText, {
+                    sessionId: session.id,
+                    ownerId,
+                    contextIds: piiContextIds,
+                    metadata: effectiveRequestMetadata,
+                    clientSurface,
+                    route: '/ws',
+                });
+                const piiMetadata = buildPiiCleansingMetadata(routePii, execution.pii, piiPresentation);
                 if (artifacts.length > 0) {
                     await Promise.all(artifacts.map((artifact) => memoryService.rememberArtifactResult(session.id, {
                         artifact,
@@ -899,7 +991,10 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                         assistantText: fullText,
                         toolEvents: event.response?.metadata?.toolEvents || [],
                         artifacts,
-                        assistantMetadata: event.response?.metadata,
+                        assistantMetadata: {
+                            ...(event.response?.metadata || {}),
+                            ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                        },
                     }));
                 }
                 completeRuntimeTask(runtimeTask?.id, {
@@ -915,14 +1010,10 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                     responseId: event.response.id,
                     artifacts,
                     toolEvents: event.response?.metadata?.toolEvents || [],
-                    assistant_metadata: buildFrontendAssistantMetadata({
-                        ...(event.response?.metadata || {}),
-                        artifacts,
-                    }),
-                    assistantMetadata: buildFrontendAssistantMetadata({
-                        ...(event.response?.metadata || {}),
-                        artifacts,
-                    }),
+                    displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                    piiRestorations: piiPresentation.restorations,
+                    assistant_metadata: buildAssistantUiMetadata(event.response?.metadata, artifacts, piiMetadata, piiPresentation),
+                    assistantMetadata: buildAssistantUiMetadata(event.response?.metadata, artifacts, piiMetadata, piiPresentation),
                 });
             }
         }

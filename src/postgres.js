@@ -310,6 +310,40 @@ class PostgresManager {
         await this.query('CREATE INDEX IF NOT EXISTS idx_session_runtime_state_updated_at ON session_runtime_state(updated_at DESC)');
 
         await this.query(`
+            CREATE TABLE IF NOT EXISTS pii_contexts (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                owner_id TEXT NULL,
+                source_surface TEXT NOT NULL DEFAULT '',
+                policy_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                expires_at TIMESTAMPTZ NULL
+            )
+        `);
+
+        await this.query(`
+            CREATE TABLE IF NOT EXISTS pii_context_entries (
+                id BIGSERIAL PRIMARY KEY,
+                context_id TEXT NOT NULL REFERENCES pii_contexts(id) ON DELETE CASCADE,
+                placeholder TEXT NOT NULL,
+                pii_type TEXT NOT NULL,
+                value_index_hmac TEXT NOT NULL,
+                encrypted_value TEXT NOT NULL,
+                iv TEXT NOT NULL,
+                auth_tag TEXT NOT NULL,
+                source_range JSONB NOT NULL DEFAULT '{}'::jsonb,
+                occurrence_index INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+
+        await this.query('CREATE INDEX IF NOT EXISTS idx_pii_contexts_session_id ON pii_contexts(session_id)');
+        await this.query('CREATE INDEX IF NOT EXISTS idx_pii_contexts_owner_id ON pii_contexts(owner_id)');
+        await this.query('CREATE INDEX IF NOT EXISTS idx_pii_context_entries_context_id ON pii_context_entries(context_id)');
+        await this.query('CREATE INDEX IF NOT EXISTS idx_pii_context_entries_placeholder ON pii_context_entries(placeholder)');
+        await this.query('CREATE INDEX IF NOT EXISTS idx_pii_context_entries_value_index ON pii_context_entries(value_index_hmac)');
+
+        await this.query(`
             CREATE TABLE IF NOT EXISTS agent_workloads (
                 id TEXT PRIMARY KEY,
                 owner_id TEXT NOT NULL,

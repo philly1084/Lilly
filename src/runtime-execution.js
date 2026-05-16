@@ -5,6 +5,7 @@ const { resolveTranscriptObjectiveFromSession } = require('./conversation-contin
 const { getSessionControlState } = require('./runtime-control-state');
 const { config } = require('./config');
 const { buildScopedMemoryMetadata, isSessionIsolationEnabled, resolveProjectKey, resolveSessionScope } = require('./session-scope');
+const { sanitizeRuntimePayload } = require('./pii');
 
 const RECENT_TRANSCRIPT_LIMIT = config.memory.recentTranscriptLimit;
 const DEFAULT_EXECUTION_PROFILE = 'default';
@@ -363,10 +364,27 @@ async function executeConversationRuntime(app, params = {}) {
         || app?.locals?.agentOrchestrator
         || null;
 
+    const piiSanitized = await sanitizeRuntimePayload(params, {
+        sessionId: params.sessionId,
+        ownerId: params.ownerId || effectiveToolContext.ownerId || null,
+        clientSurface,
+        route: effectiveToolContext.route || params.metadata?.route || '',
+        metadata: params.metadata || {},
+    });
+    const effectiveParams = piiSanitized.payload;
+    const piiResult = {
+        enabled: piiSanitized.policy?.enabled === true,
+        changed: piiSanitized.changed,
+        contextIds: piiSanitized.contextIds,
+        replacementCount: piiSanitized.replacements.length,
+        placeholderMode: piiSanitized.policy?.placeholderMode || '',
+        modelFrame: piiSanitized.modelFrame || null,
+    };
+
     if (orchestrator?.executeConversation) {
         return {
             ...(await orchestrator.executeConversation({
-                ...params,
+                ...effectiveParams,
                 clientSurface,
                 memoryScope,
                 toolContext: scopedToolContext,
@@ -374,34 +392,35 @@ async function executeConversationRuntime(app, params = {}) {
             })),
             handledPersistence: true,
             runtimeMode: 'orchestrated',
+            pii: piiResult,
         };
     }
 
-    const recentMessages = params.recentMessages || (
-        params.loadRecentMessages === false
+    const recentMessages = effectiveParams.recentMessages || (
+        effectiveParams.loadRecentMessages === false
             ? []
-            : await sessionStore.getRecentMessages(params.sessionId, RECENT_TRANSCRIPT_LIMIT)
+            : await sessionStore.getRecentMessages(effectiveParams.sessionId, RECENT_TRANSCRIPT_LIMIT)
     );
-    const recallInput = params.memoryInput || extractRuntimeText(params.input || '');
+    const recallInput = effectiveParams.memoryInput || extractRuntimeText(effectiveParams.input || '');
     const continuityObjective = resolveTranscriptObjectiveFromSession(recallInput, recentMessages);
     const recallQuery = continuityObjective.objective || recallInput;
-    const contextMessages = params.contextMessages || (
-        params.loadContextMessages === false
+    const contextMessages = effectiveParams.contextMessages || (
+        effectiveParams.loadContextMessages === false
             ? []
-            : await memoryService.process(params.sessionId, recallInput, {
+            : await memoryService.process(effectiveParams.sessionId, recallInput, {
                 profile: inferRecallProfile(recallQuery),
-                ownerId: params.ownerId || null,
+                ownerId: effectiveParams.ownerId || null,
                 memoryScope,
                 sessionIsolation,
-                memoryKeywords: params.metadata?.memoryKeywords || params.toolContext?.memoryKeywords || [],
+                memoryKeywords: effectiveParams.metadata?.memoryKeywords || effectiveParams.toolContext?.memoryKeywords || [],
                 sourceSurface: clientSurface || memoryScope || null,
                 projectKey: buildScopedMemoryMetadata({
-                    ownerId: params.ownerId || null,
+                    ownerId: effectiveParams.ownerId || null,
                     memoryScope,
                     sourceSurface: clientSurface || memoryScope || null,
                     ...(projectKey ? { projectKey } : {}),
                     ...(sessionIsolation ? { sessionIsolation: true } : {}),
-                }, params.session || null).projectKey || null,
+                }, effectiveParams.session || null).projectKey || null,
                 recallQuery,
                 objective: recallQuery,
                 recentMessages,
@@ -410,17 +429,18 @@ async function executeConversationRuntime(app, params = {}) {
 
     return {
         response: await createResponse({
-            ...params,
+            ...effectiveParams,
             clientSurface,
             memoryScope,
             toolContext: scopedToolContext,
             executionProfile,
-            previousPromptState: params.previousPromptState || params.session?.metadata?.promptState || null,
+            previousPromptState: effectiveParams.previousPromptState || effectiveParams.session?.metadata?.promptState || null,
             contextMessages,
             recentMessages,
         }),
         handledPersistence: false,
         runtimeMode: 'direct',
+        pii: piiResult,
     };
 }
 

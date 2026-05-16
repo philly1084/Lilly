@@ -10,6 +10,7 @@ const {
     hasSessionScopeHints,
     resolveSessionScope,
 } = require('../session-scope');
+const { piiVaultStore, rehydrateMessage } = require('../pii');
 
 const router = Router();
 
@@ -104,6 +105,12 @@ async function deleteSessionAndCleanup(id, ownerId = null) {
         } catch (error) {
             console.warn(`[Sessions] Failed to delete artifacts for session ${id}:`, error.message);
         }
+    }
+
+    try {
+        await piiVaultStore.deleteBySession(id);
+    } catch (error) {
+        console.warn(`[Sessions] Failed to delete PII vault contexts for session ${id}:`, error.message);
     }
 
     await sessionStore.delete(id);
@@ -282,7 +289,16 @@ router.get('/:id/messages', async (req, res, next) => {
             Number.isFinite(limit) ? Math.max(1, Math.min(limit, 500)) : 100,
             getRequestOwnerId(req),
         );
-        res.json({ sessionId: req.params.id, messages, count: messages.length });
+        const ownerId = getRequestOwnerId(req);
+        const hydratedMessages = await Promise.all(messages.map((message) => rehydrateMessage(message, {
+            sessionId: req.params.id,
+            ownerId,
+            metadata: session.metadata || {},
+            clientSurface: session.metadata?.clientSurface || session.metadata?.client_surface || 'web-chat',
+            route: '/api/sessions/:id/messages',
+            highlight: true,
+        })));
+        res.json({ sessionId: req.params.id, messages: hydratedMessages, count: hydratedMessages.length });
     } catch (err) {
         next(err);
     }

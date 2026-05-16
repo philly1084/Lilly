@@ -4925,6 +4925,20 @@ class Dashboard {
             };
         }
 
+        if (featureId === 'featurePiiCleansing') {
+            const existing = this.state.settings?.privacyPii || {};
+            return {
+                privacyPii: {
+                    ...existing,
+                    enabled,
+                    webChatEnabled: existing.webChatEnabled !== false,
+                    highlightRestored: existing.highlightRestored !== false,
+                    placeholderMode: existing.placeholderMode || 'typed-random',
+                    failClosed: existing.failClosed !== false,
+                },
+            };
+        }
+
         return {
             features: {
                 [key]: enabled,
@@ -5070,6 +5084,7 @@ class Dashboard {
         const personality = settings.personality || {};
         const agentNotes = settings.agentNotes || {};
         const ssh = settings.integrations?.ssh || {};
+        const privacyPii = settings.privacyPii || {};
 
         this.setInputValue('dashboardTitle', general.appName || 'Agent SDK Admin');
         this.setInputValue('timezone', general.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -5142,6 +5157,7 @@ class Dashboard {
         this.setCheckboxValue('featureRetry', Number(api.maxRetries ?? 0) > 0);
         this.setCheckboxValue('featureSkillDiscovery', Boolean(features.enableSkills));
         this.setCheckboxValue('featureValidation', Boolean(features.enableTracing));
+        this.setCheckboxValue('featurePiiCleansing', Boolean(privacyPii.enabled));
         this.setCheckboxValue('featureDebug', Boolean(features.enableDebug));
 
         ['defaultTemperature', 'defaultTopP', 'defaultFrequencyPenalty', 'defaultPresencePenalty'].forEach((id) => {

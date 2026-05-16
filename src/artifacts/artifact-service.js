@@ -42,6 +42,7 @@ const {
     renderInteractiveArtifactInstructions,
     shouldUseInteractiveHtmlArtifact,
 } = require('./artifact-experience');
+const { sanitizeRuntimePayload } = require('../pii');
 const {
     deleteLocalGeneratedArtifact,
     deleteLocalGeneratedArtifactsBySession,
@@ -463,12 +464,21 @@ function getMissingCompletionDelta(streamedText = '', completedText = '') {
     return '';
 }
 
-function requestModelResponse(params = {}) {
+async function requestModelResponse(params = {}) {
     const { createResponse } = require('../openai-client');
     if (typeof createResponse !== 'function') {
         throw new Error('openai-client.createResponse is unavailable');
     }
-    return createResponse(params);
+    const toolContext = params.toolContext && typeof params.toolContext === 'object' ? params.toolContext : {};
+    const metadata = params.metadata && typeof params.metadata === 'object' ? params.metadata : {};
+    const piiSanitized = await sanitizeRuntimePayload(params, {
+        sessionId: toolContext.sessionId || params.sessionId || params.session?.id || '',
+        ownerId: toolContext.ownerId || params.ownerId || null,
+        clientSurface: toolContext.clientSurface || metadata.clientSurface || 'artifact-generation',
+        route: toolContext.route || metadata.route || '/api/artifacts/generate',
+        metadata,
+    });
+    return createResponse(piiSanitized.payload);
 }
 
 function unwrapCodeFence(text = '') {

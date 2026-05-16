@@ -6699,6 +6699,24 @@ body.layout-minimal #input-meta-row {
     color: var(--text-primary);
 }
 
+.markdown-content .kb-pii-restored,
+.kb-pii-restored {
+    padding: 0.06rem 0.25rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--info) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 34%, transparent);
+    color: inherit;
+}
+
+.markdown-content .kb-pii-unresolved,
+.kb-pii-unresolved {
+    padding: 0.06rem 0.25rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--warning) 16%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--warning) 42%, transparent);
+    color: inherit;
+}
+
 .markdown-content .kb-tone {
     font-weight: 600;
 }

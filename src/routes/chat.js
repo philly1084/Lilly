@@ -91,6 +91,7 @@ const {
     buildRegressionFixtureCandidate,
     evaluateAlignment,
 } = require('../alignment/evaluator-service');
+const { rehydrateText, sanitizeText } = require('../pii');
 
 const router = Router();
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
@@ -98,6 +99,79 @@ const ALIGNMENT_FEEDBACK_HISTORY_LIMIT = 12;
 const ALIGNMENT_ROUTE_PATTERN_LIMIT = 16;
 const ALIGNMENT_REGRESSION_FIXTURE_LIMIT = 24;
 const ALIGNMENT_TOOL_REINFORCEMENT_LIMIT = 32;
+
+function compactPiiContextIds(...sources) {
+    const ids = [];
+    sources.forEach((source) => {
+        if (!source) return;
+        if (Array.isArray(source)) {
+            source.forEach((id) => ids.push(id));
+            return;
+        }
+        if (Array.isArray(source.contextIds)) {
+            source.contextIds.forEach((id) => ids.push(id));
+        }
+        if (source.contextId) {
+            ids.push(source.contextId);
+        }
+    });
+    return Array.from(new Set(ids.map((id) => String(id || '').trim()).filter(Boolean)));
+}
+
+function buildPiiCleansingMetadata(routePii = null, executionPii = null, presentation = null) {
+    const contextIds = compactPiiContextIds(routePii, executionPii);
+    const replacementCount = Number(routePii?.replacements?.length || 0)
+        + Number(executionPii?.replacementCount || 0);
+    const enabled = routePii?.policy?.enabled === true || executionPii?.enabled === true || presentation?.enabled === true;
+    if (!enabled && contextIds.length === 0 && replacementCount === 0) {
+        return null;
+    }
+    return {
+        enabled,
+        contextIds,
+        replacementCount,
+        restoredCount: Array.isArray(presentation?.restorations) ? presentation.restorations.length : 0,
+        placeholderMode: routePii?.policy?.placeholderMode || executionPii?.placeholderMode || '',
+    };
+}
+
+async function buildTrustedPiiPresentation(text = '', {
+    sessionId = '',
+    ownerId = null,
+    contextIds = [],
+    metadata = {},
+    clientSurface = '',
+    route = '',
+} = {}) {
+    try {
+        return await rehydrateText(text, {
+            sessionId,
+            ownerId,
+            contextIds,
+            metadata,
+            clientSurface,
+            route,
+            highlight: true,
+        });
+    } catch (error) {
+        console.warn(`[PII] Failed to rehydrate ${route || 'chat'} presentation: ${error.message}`);
+        return { text: String(text || ''), restorations: [], enabled: false };
+    }
+}
+
+function buildAssistantUiMetadata(baseMetadata = {}, artifacts = [], piiMetadata = null, presentation = null) {
+    return buildFrontendAssistantMetadata({
+        ...(baseMetadata || {}),
+        artifacts,
+        ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+        ...(presentation?.restorations?.length > 0
+            ? {
+                displayContent: presentation.text,
+                piiRestorations: presentation.restorations,
+            }
+            : {}),
+    });
+}
 
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
@@ -985,7 +1059,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             executionProfile = null,
             metadata: requestMetadata = {},
         } = req.body;
-        const message = stripAgentJournalBlocks(rawMessage);
+        let message = stripAgentJournalBlocks(rawMessage);
         if (!message) {
             return res.status(400).json({ error: { message: 'message is required' } });
         }
@@ -1058,7 +1132,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             latestResponse: answeredCheckpointResult.response,
         });
         const sshContext = resolveSshRequestContext(message, effectiveSession);
-        const effectiveMessage = sshContext.effectivePrompt || message;
+        let effectiveMessage = sshContext.effectivePrompt || message;
         const artifactIntentText = stripInjectedNotesPageEditDirective(message);
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
@@ -1066,6 +1140,38 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             memoryScope,
             userCheckpointPolicy: buildUserCheckpointPolicyMetadata(userCheckpointPolicy),
             ...(sessionIsolation ? { sessionIsolation: true } : {}),
+        };
+        const routePii = await sanitizeText(message, {
+            sessionId,
+            ownerId,
+            clientSurface,
+            route: '/api/chat',
+            metadata: effectiveRequestMetadata,
+        });
+        message = routePii.text;
+        if (effectiveMessage === sshContext.effectivePrompt && effectiveMessage !== artifactIntentText) {
+            const effectivePii = await sanitizeText(effectiveMessage, {
+                sessionId,
+                ownerId,
+                clientSurface,
+                route: '/api/chat',
+                metadata: effectiveRequestMetadata,
+                policy: routePii.policy,
+            });
+            effectiveMessage = effectivePii.text;
+            if (effectivePii.contextId) {
+                routePii.contextIds = compactPiiContextIds(routePii, effectivePii);
+                routePii.replacements = [
+                    ...(routePii.replacements || []),
+                    ...(effectivePii.replacements || []),
+                ];
+            }
+        } else {
+            effectiveMessage = message;
+        }
+        effectiveRequestMetadata = {
+            ...effectiveRequestMetadata,
+            piiCleansing: buildPiiCleansingMetadata(routePii),
         };
         const managedAppsSummary = req.app.locals.managedAppService?.buildPromptSummary
             ? await req.app.locals.managedAppService.buildPromptSummary({
@@ -1239,6 +1345,15 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 const responseId = `podcast-${Date.now()}`;
                 const assistantText = buildDirectPodcastAssistantMessage(result.data || {});
                 const artifacts = extractArtifactsFromToolEvents(toolEvents);
+                const piiPresentation = await buildTrustedPiiPresentation(assistantText, {
+                    sessionId,
+                    ownerId,
+                    contextIds: compactPiiContextIds(routePii),
+                    metadata: effectiveRequestMetadata,
+                    clientSurface,
+                    route: '/api/chat',
+                });
+                const piiMetadata = buildPiiCleansingMetadata(routePii, null, piiPresentation);
                 await sessionStore.recordResponse(sessionId, responseId);
                 await sessionStore.update(sessionId, {
                     metadata: {
@@ -1272,7 +1387,11 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     assistantText,
                     toolEvents,
                     artifacts,
-                    assistantMetadata: { directPodcast: true, toolEvents },
+                    assistantMetadata: {
+                        directPodcast: true,
+                        toolEvents,
+                        ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                    },
                 }));
                 await updateSessionProjectMemory(sessionId, {
                     userText: message,
@@ -1309,8 +1428,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                         responseId,
                         artifacts,
                         toolEvents,
-                        assistant_metadata: buildFrontendAssistantMetadata({ directPodcast: true, artifacts }),
-                        assistantMetadata: buildFrontendAssistantMetadata({ directPodcast: true, artifacts }),
+                        displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                        piiRestorations: piiPresentation.restorations,
+                        assistant_metadata: buildAssistantUiMetadata({ directPodcast: true }, artifacts, piiMetadata, piiPresentation),
+                        assistantMetadata: buildAssistantUiMetadata({ directPodcast: true }, artifacts, piiMetadata, piiPresentation),
                     })}\n\n`);
                     res.write('data: [DONE]\n\n');
                     res.end();
@@ -1321,10 +1442,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     sessionId,
                     responseId,
                     message: assistantText,
+                    displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                    piiRestorations: piiPresentation.restorations,
                     artifacts,
                     toolEvents,
-                    assistant_metadata: buildFrontendAssistantMetadata({ directPodcast: true, artifacts }),
-                    assistantMetadata: buildFrontendAssistantMetadata({ directPodcast: true, artifacts }),
+                    assistant_metadata: buildAssistantUiMetadata({ directPodcast: true }, artifacts, piiMetadata, piiPresentation),
+                    assistantMetadata: buildAssistantUiMetadata({ directPodcast: true }, artifacts, piiMetadata, piiPresentation),
                 });
                 return;
             }
@@ -1399,6 +1522,15 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 preparedImages.artifacts,
                 generationArtifacts.artifacts,
             );
+            const piiPresentation = await buildTrustedPiiPresentation(generationArtifacts.assistantMessage, {
+                sessionId,
+                ownerId,
+                contextIds: compactPiiContextIds(routePii),
+                metadata: effectiveRequestMetadata,
+                clientSurface,
+                route: '/api/chat',
+            });
+            const piiMetadata = buildPiiCleansingMetadata(routePii, null, piiPresentation);
 
             if (stream) {
                 activeSse = openSseStream(req, res, sessionId);
@@ -1453,7 +1585,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 assistantText: generationArtifacts.assistantMessage,
                 toolEvents: preparedImages.toolEvents,
                 artifacts: responseArtifacts,
-                assistantMetadata: requestFrameMetadata,
+                assistantMetadata: {
+                    ...requestFrameMetadata,
+                    ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                },
             }));
             await updateSessionProjectMemory(sessionId, {
                 userText: message,
@@ -1492,8 +1627,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     responseId: generationArtifacts.responseId,
                     artifacts: responseArtifacts,
                     toolEvents: preparedImages.toolEvents,
-                    assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
-                    assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                    displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                    piiRestorations: piiPresentation.restorations,
+                    assistant_metadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
+                    assistantMetadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
                 })}\n\n`);
                 res.write('data: [DONE]\n\n');
                 res.end();
@@ -1504,10 +1641,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 sessionId,
                 responseId: generationArtifacts.responseId,
                 message: generationArtifacts.assistantMessage,
+                displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                piiRestorations: piiPresentation.restorations,
                 artifacts: responseArtifacts,
                 toolEvents: preparedImages.toolEvents,
-                assistant_metadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
-                assistantMetadata: buildFrontendAssistantMetadata({ ...requestFrameMetadata, artifacts: responseArtifacts }),
+                assistant_metadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
+                assistantMetadata: buildAssistantUiMetadata(requestFrameMetadata, responseArtifacts, piiMetadata, piiPresentation),
             });
             return;
         }
@@ -1721,6 +1860,16 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                         generatedArtifacts,
                         saveableDocumentArtifacts,
                     );
+                    const piiContextIds = compactPiiContextIds(routePii, execution.pii);
+                    const piiPresentation = await buildTrustedPiiPresentation(fullText, {
+                        sessionId,
+                        ownerId,
+                        contextIds: piiContextIds,
+                        metadata: effectiveRequestMetadata,
+                        clientSurface,
+                        route: '/api/chat',
+                    });
+                    const piiMetadata = buildPiiCleansingMetadata(routePii, execution.pii, piiPresentation);
                     if (artifacts.length > 0) {
                         await Promise.all(artifacts.map((artifact) => memoryService.rememberArtifactResult(sessionId, {
                             artifact,
@@ -1757,7 +1906,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                             assistantText: fullText,
                             toolEvents,
                             artifacts,
-                            assistantMetadata: event.response?.metadata,
+                            assistantMetadata: {
+                                ...(event.response?.metadata || {}),
+                                ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                            },
                             ...buildForegroundTurnMessageOptions(foregroundTurn),
                         });
                         await persistForegroundTurnMessages(
@@ -1788,14 +1940,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                         responseId: event.response.id,
                         artifacts,
                         toolEvents,
-                        assistant_metadata: buildFrontendAssistantMetadata({
-                            ...(event.response?.metadata || {}),
-                            artifacts,
-                        }),
-                        assistantMetadata: buildFrontendAssistantMetadata({
-                            ...(event.response?.metadata || {}),
-                            artifacts,
-                        }),
+                        displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                        piiRestorations: piiPresentation.restorations,
+                        assistant_metadata: buildAssistantUiMetadata(event.response?.metadata, artifacts, piiMetadata, piiPresentation),
+                        assistantMetadata: buildAssistantUiMetadata(event.response?.metadata, artifacts, piiMetadata, piiPresentation),
                     })}\n\n`);
                     res.write('data: [DONE]\n\n');
                 }
@@ -1902,6 +2050,16 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             generatedArtifacts,
             saveableDocumentArtifacts,
         );
+        const piiContextIds = compactPiiContextIds(routePii, execution.pii);
+        const piiPresentation = await buildTrustedPiiPresentation(outputText, {
+            sessionId,
+            ownerId,
+            contextIds: piiContextIds,
+            metadata: effectiveRequestMetadata,
+            clientSurface,
+            route: '/api/chat',
+        });
+        const piiMetadata = buildPiiCleansingMetadata(routePii, execution.pii, piiPresentation);
         if (artifacts.length > 0) {
             await Promise.all(artifacts.map((artifact) => memoryService.rememberArtifactResult(sessionId, {
                 artifact,
@@ -1938,7 +2096,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 assistantText: outputText,
                 toolEvents: response?.metadata?.toolEvents || [],
                 artifacts,
-                assistantMetadata: response?.metadata,
+                assistantMetadata: {
+                    ...(response?.metadata || {}),
+                    ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                },
             }));
         }
         await safeRecordAgentJournalTurn(effectiveSession, {
@@ -1962,16 +2123,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             sessionId,
             responseId: response.id,
             message: outputText,
+            displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+            piiRestorations: piiPresentation.restorations,
             artifacts,
             toolEvents: response?.metadata?.toolEvents || [],
-            assistant_metadata: buildFrontendAssistantMetadata({
-                ...(response?.metadata || {}),
-                artifacts,
-            }),
-            assistantMetadata: buildFrontendAssistantMetadata({
-                ...(response?.metadata || {}),
-                artifacts,
-            }),
+            assistant_metadata: buildAssistantUiMetadata(response?.metadata, artifacts, piiMetadata, piiPresentation),
+            assistantMetadata: buildAssistantUiMetadata(response?.metadata, artifacts, piiMetadata, piiPresentation),
         });
     } catch (err) {
         failRuntimeTask(runtimeTask?.id, {

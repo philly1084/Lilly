@@ -238,6 +238,14 @@ function buildFrontendAssistantMetadata(metadata = null) {
         nextMetadata.displayContent = displayContent;
     }
 
+    if (metadata.piiCleansing && typeof metadata.piiCleansing === 'object' && !Array.isArray(metadata.piiCleansing)) {
+        nextMetadata.piiCleansing = metadata.piiCleansing;
+    }
+
+    if (Array.isArray(metadata.piiRestorations)) {
+        nextMetadata.piiRestorations = metadata.piiRestorations;
+    }
+
     return nextMetadata;
 }
 
