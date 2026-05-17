@@ -30,6 +30,15 @@ function buildOpaquePlaceholder(stablePlaceholders = new Map()) {
   return placeholder;
 }
 
+function safeValueIndexHmac(entry = {}) {
+  if (!entry?.restorable) return null;
+  try {
+    return valueIndexHmac(entry.value, entry.type);
+  } catch (_error) {
+    return null;
+  }
+}
+
 function normalizeAction(action = '') {
   const normalized = String(action || '').trim();
   if (['vault-placeholder', 'mask', 'remove', 'ignore'].includes(normalized)) {
@@ -260,6 +269,7 @@ async function sanitizeText(text = '', {
       type: entry.type,
       action: entry.action,
       restorable: entry.restorable,
+      valueIndexHmac: safeValueIndexHmac(entry),
       start: entry.start,
       end: entry.end,
       occurrenceIndex: entry.occurrenceIndex,

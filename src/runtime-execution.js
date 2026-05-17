@@ -386,6 +386,13 @@ async function executeConversationRuntime(app, params = {}) {
         ...scopedToolContext,
         metadata: effectiveParams.metadata || params.metadata || {},
         piiCleansing: piiResult,
+        piiEntries: piiSanitized.replacements
+            .filter((entry) => entry?.placeholder && entry?.valueIndexHmac)
+            .map((entry) => ({
+                placeholder: entry.placeholder,
+                valueIndexHmac: entry.valueIndexHmac,
+                piiType: entry.type || 'PII',
+            })),
     };
 
     if (orchestrator?.executeConversation) {
