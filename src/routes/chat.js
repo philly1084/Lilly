@@ -139,6 +139,16 @@ function buildPiiCleansingMetadata(routePii = null, executionPii = null, present
     };
 }
 
+function buildPiiToolEntries(routePii = null) {
+    return (Array.isArray(routePii?.replacements) ? routePii.replacements : [])
+        .filter((entry) => entry?.placeholder && entry?.valueIndexHmac)
+        .map((entry) => ({
+            placeholder: entry.placeholder,
+            valueIndexHmac: entry.valueIndexHmac,
+            piiType: entry.type || 'PII',
+        }));
+}
+
 function shouldSuppressPiiRelationshipFormulaArtifact({
     routePii = null,
     text = '',
@@ -1791,6 +1801,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     workloadService: req.app.locals.agentWorkloadService,
                     managedAppService: req.app.locals.managedAppService || null,
                     userCheckpointPolicy,
+                    piiEntries: buildPiiToolEntries(routePii),
                 },
                 executionProfile,
                 enableAutomaticToolCalls: true,
@@ -2019,6 +2030,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 workloadService: req.app.locals.agentWorkloadService,
                 managedAppService: req.app.locals.managedAppService || null,
                 userCheckpointPolicy,
+                piiEntries: buildPiiToolEntries(routePii),
             },
             executionProfile,
             enableAutomaticToolCalls: true,

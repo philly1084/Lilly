@@ -382,17 +382,21 @@ async function executeConversationRuntime(app, params = {}) {
         relationshipCalculations: piiSanitized.policy?.relationshipCalculations || null,
         relationshipFrame: piiSanitized.relationshipFrame || null,
     };
+    const runtimePiiEntries = piiSanitized.replacements
+        .filter((entry) => entry?.placeholder && entry?.valueIndexHmac)
+        .map((entry) => ({
+            placeholder: entry.placeholder,
+            valueIndexHmac: entry.valueIndexHmac,
+            piiType: entry.type || 'PII',
+        }));
     const effectiveScopedToolContext = {
         ...scopedToolContext,
         metadata: effectiveParams.metadata || params.metadata || {},
         piiCleansing: piiResult,
-        piiEntries: piiSanitized.replacements
-            .filter((entry) => entry?.placeholder && entry?.valueIndexHmac)
-            .map((entry) => ({
-                placeholder: entry.placeholder,
-                valueIndexHmac: entry.valueIndexHmac,
-                piiType: entry.type || 'PII',
-            })),
+        piiEntries: [
+            ...(Array.isArray(scopedToolContext?.piiEntries) ? scopedToolContext.piiEntries : []),
+            ...runtimePiiEntries,
+        ],
     };
 
     if (orchestrator?.executeConversation) {
