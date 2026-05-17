@@ -350,7 +350,10 @@ describe('settings.controller personality support', () => {
       webChatEnabled: true,
       placeholderMode: 'opaque-random',
       failClosed: true,
+      enablePersonNames: true,
+      auditProfile: 'strict',
     }));
+    expect(defaults.detectors).toEqual(expect.arrayContaining(['personName', 'organization']));
   });
 
   test('upgrades old persisted PII defaults to enabled opaque protection on restart', () => {

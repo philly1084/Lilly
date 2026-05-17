@@ -28,14 +28,14 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
   placeholderMode: 'opaque-random',
   reintroductionMode: 'trusted-view',
   failClosed: true,
-  detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+  detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
   detectorActions: {},
   customPatterns: [],
   dictionary: [],
-  enablePersonNames: false,
-  auditProfile: 'baseline',
+  enablePersonNames: true,
+  auditProfile: 'strict',
   auditCriteria: {
-    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
@@ -163,6 +163,9 @@ function normalizePrivacyAuditCriteria(value = {}, fallback = {}, profile = 'bas
 
 function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const sourceDetectors = Array.isArray(source.detectors)
+    ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : null;
   const auditProfile = ['baseline', 'strict', 'custom'].includes(String(source.auditProfile || fallback.auditProfile || '').trim())
     ? String(source.auditProfile || fallback.auditProfile)
     : 'baseline';
@@ -177,13 +180,17 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
     placeholderMode: normalizePrivacyPlaceholderMode(source.placeholderMode || fallback.placeholderMode),
     reintroductionMode: normalizePrivacyReintroductionMode(source.reintroductionMode || fallback.reintroductionMode),
     failClosed: source.failClosed !== undefined ? Boolean(source.failClosed) : fallback.failClosed !== false,
-    detectors: Array.isArray(source.detectors) && source.detectors.length > 0
-      ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
+    detectors: sourceDetectors
+      ? sourceDetectors
       : [...fallback.detectors],
     detectorActions: normalizePrivacyDetectorActions(source.detectorActions, fallback.detectorActions),
     customPatterns: normalizePrivacyCustomPatterns(source.customPatterns),
     dictionary: normalizePrivacyDictionary(source.dictionary),
-    enablePersonNames: source.enablePersonNames === true,
+    enablePersonNames: source.enablePersonNames !== undefined
+      ? source.enablePersonNames === true
+      : sourceDetectors
+        ? sourceDetectors.includes('personName')
+        : fallback.enablePersonNames === true,
     auditProfile,
     auditCriteria: normalizePrivacyAuditCriteria(source.auditCriteria, fallback.auditCriteria, auditProfile),
   };

@@ -55,6 +55,18 @@ const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\
 const PERSON_FREE_PATTERN = /\b[A-Z][A-Za-z'-]*(?:\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z'-]*){1,3}\b/g;
 const DOB_VALUE_PATTERN = '(?:\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{4})';
 const DOB_LABEL_PATTERN = new RegExp(`\\b(?:DOB|D\\.O\\.B\\.|date\\s+of\\s+birth|birth\\s*date|birthdate|birthday|born(?:\\s+on)?)\\s*(?:is|was|:|#|-)?\\s*(${DOB_VALUE_PATTERN})\\b`, 'gi');
+const DOCUMENT_FILENAME_PATTERN = /\b([A-Z][A-Za-z0-9]*(?:[-_][A-Z][A-Za-z0-9]*){1,16})\.(?:pdf|docx?|rtf|txt|html?)\b/g;
+const DOCUMENT_FILENAME_PREFIXES = new Set([
+  'bio',
+  'candidate',
+  'cv',
+  'curriculum',
+  'employee',
+  'profile',
+  'resume',
+  'staff',
+  'vitae',
+]);
 
 function normalizeDetectorId(value = '') {
   const normalized = String(value || '').trim();
@@ -127,6 +139,75 @@ function isLikelyPersonName(value = '') {
     if (!cleaned || PERSON_NAME_STOPWORDS.has(cleaned)) return false;
     return /^[A-Z][A-Za-z'.:-]*$/.test(word);
   });
+}
+
+function isLikelyFilenameIdentityToken(value = '') {
+  const normalized = String(value || '').trim();
+  if (!/^[A-Z][A-Za-z']{1,}$/.test(normalized)) return false;
+  return !PERSON_NAME_STOPWORDS.has(normalized.toLowerCase());
+}
+
+function splitFilenameTokens(basename = '') {
+  const tokens = [];
+  const pattern = /[A-Za-z][A-Za-z']*/g;
+  let match;
+  while ((match = pattern.exec(String(basename || ''))) !== null) {
+    tokens.push({
+      value: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+  return tokens;
+}
+
+function findDocumentFilenameIdentityMatches(text = '', {
+  detectPersonNames = false,
+  detectOrganizations = false,
+} = {}) {
+  const matches = [];
+  const source = String(text || '');
+  let match;
+  while ((match = DOCUMENT_FILENAME_PATTERN.exec(source)) !== null) {
+    const basename = match[1] || '';
+    const tokens = splitFilenameTokens(basename)
+      .filter((token) => isLikelyFilenameIdentityToken(token.value));
+    const identityTokens = tokens.filter((token) => !DOCUMENT_FILENAME_PREFIXES.has(token.value.toLowerCase()));
+    if (identityTokens.length < 2) {
+      continue;
+    }
+
+    if (detectPersonNames) {
+      const first = identityTokens[0];
+      const second = identityTokens[1];
+      const rawValue = basename.slice(first.start, second.end);
+      const displayValue = rawValue.replace(/[-_]+/g, ' ');
+      if (isLikelyPersonName(displayValue)) {
+        matches.push({
+          type: 'personName',
+          value: rawValue,
+          start: match.index + first.start,
+          end: match.index + second.end,
+          source: 'filename',
+          grounded: true,
+        });
+      }
+    }
+
+    if (detectOrganizations && identityTokens.length > 2) {
+      identityTokens.slice(2).forEach((token) => {
+        matches.push({
+          type: 'organization',
+          value: token.value,
+          start: match.index + token.start,
+          end: match.index + token.end,
+          source: 'filename',
+          grounded: true,
+        });
+      });
+    }
+  }
+  return matches;
 }
 
 function findMatchesWithPattern(text = '', pattern, type = '') {
@@ -316,6 +397,13 @@ function detectPii(text = '', policy = {}) {
 
   if (policy.enablePersonNames === true || enabled.has('personName')) {
     matches.push(...findPersonNameMatches(source));
+  }
+
+  if (policy.enablePersonNames === true || enabled.has('personName') || enabled.has('organization')) {
+    matches.push(...findDocumentFilenameIdentityMatches(source, {
+      detectPersonNames: policy.enablePersonNames === true || enabled.has('personName'),
+      detectOrganizations: enabled.has('organization'),
+    }));
   }
 
   matches.push(...findCustomMatches(source, policy.customPatterns));

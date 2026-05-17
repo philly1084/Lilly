@@ -62,4 +62,18 @@ describe('PII detectors', () => {
       expect.objectContaining({ type: 'dateOfBirth', value: 'July 5, 1984' }),
     ]));
   });
+
+  test('detects names and workplaces embedded in resume filenames', () => {
+    const matches = detectPii('Please improve Resume-Sample-Person-Acme.pdf for me.', {
+      detectors: ['personName', 'organization'],
+      customPatterns: [],
+      dictionary: [],
+      enablePersonNames: true,
+    });
+
+    expect(matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'personName', value: 'Sample-Person', source: 'filename' }),
+      expect.objectContaining({ type: 'organization', value: 'Acme', source: 'filename' }),
+    ]));
+  });
 });

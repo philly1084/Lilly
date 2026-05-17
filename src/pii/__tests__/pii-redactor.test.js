@@ -7,7 +7,9 @@ describe('PII redactor framing', () => {
       enabled: true,
       placeholderMode: 'opaque-random',
       failClosed: true,
+      enablePersonNames: true,
     }));
+    expect(DEFAULT_PRIVACY_PII_SETTINGS.detectors).toEqual(expect.arrayContaining(['personName', 'organization']));
   });
 
   test('builds model-safe placeholder framing without raw values or type context', () => {
@@ -132,5 +134,25 @@ describe('PII redactor framing', () => {
       expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
       expect.objectContaining({ type: 'employer', action: 'mask', restorable: false }),
     ]);
+  });
+
+  test('masks identity-bearing resume filenames with default opaque IDs', async () => {
+    const result = await sanitizeText('Please improve Resume-Sample-Person-Acme.pdf.', {
+      policy: {
+        ...DEFAULT_PRIVACY_PII_SETTINGS,
+        failClosed: false,
+        hasMasterKey: false,
+        storageReady: false,
+      },
+    });
+
+    expect(result.text).toMatch(/Resume-\[\[PII:[a-f0-9]{12}\]\]-\[\[PII:[a-f0-9]{12}\]\]\.pdf/);
+    expect(result.text).not.toContain('Sample-Person');
+    expect(result.text).not.toContain('Acme');
+    expect(result.contextId).toBeNull();
+    expect(result.replacements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'organization', action: 'mask', restorable: false }),
+    ]));
   });
 });
