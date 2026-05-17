@@ -138,6 +138,7 @@ const NORMAL_PROFILE_MAX_REPLANS = 1;
 const REMOTE_BUILD_MAX_REPLANS = 3;
 const DOCUMENT_WORKFLOW_TOOL_ID = 'document-workflow';
 const DEEP_RESEARCH_PRESENTATION_TOOL_ID = 'deep-research-presentation';
+const RELATIONSHIP_CALCULATION_TOOL_ID = 'pii-relationship-calculate';
 const DISABLED_AUTONOMOUS_TOOL_IDS = new Set([]);
 const AUTONOMY_CONTINUATION_CHECKPOINT_ID_PREFIX = 'checkpoint-autonomy-continue';
 const REMOTE_COMMAND_DOC_PATH = path.join(__dirname, 'agent-sdk', 'tool-docs', 'remote-command.md');
@@ -934,6 +935,109 @@ function hasDocumentWorkflowIntentText(text = '') {
     );
 }
 
+function normalizePiiFormulaPlanColumnId(value = '') {
+    return String(value || '')
+        .trim()
+        .replace(/^['"`]+|['"`]+$/g, '')
+        .replace(/[^\w.-]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function extractPiiFormulaPlanRowsSection(text = '') {
+    const match = String(text || '').match(/\bRows\s*:\s*([\s\S]*?)(?:\n\s*Formula intent\s*:|\n\s*Target result cell\b|\n\s*Helper slots begin\b|$)/i);
+    return match ? String(match[1] || '').trim() : '';
+}
+
+function buildPiiRelationshipFormulaPlanRequest(text = '') {
+    const source = String(text || '').trim();
+    if (!/\bxlsx_formula_plan\b/i.test(source)
+        || !/\bTable id\s*:/i.test(source)
+        || !/\bColumns\s*:/i.test(source)
+        || !/\bRows\s*:/i.test(source)) {
+        return null;
+    }
+
+    const tableId = normalizePiiFormulaPlanColumnId(source.match(/\bTable id\s*:\s*([^\r\n]+)/i)?.[1] || 'table');
+    const columns = String(source.match(/\bColumns\s*:\s*([^\r\n]+)/i)?.[1] || '')
+        .split(',')
+        .map((entry) => normalizePiiFormulaPlanColumnId(entry))
+        .filter(Boolean);
+    const rows = extractPiiFormulaPlanRowsSection(source)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && line.includes('|'))
+        .map((line) => {
+            const parts = line.split('|').map((part) => part.trim());
+            const id = normalizePiiFormulaPlanColumnId(parts.shift() || '');
+            const cells = {};
+            columns.forEach((columnId, index) => {
+                cells[columnId] = parts[index] ?? '';
+            });
+            return id ? { id, cells } : null;
+        })
+        .filter(Boolean);
+    if (!tableId || columns.length === 0 || rows.length === 0) {
+        return null;
+    }
+
+    const groupBy = columns.includes('person')
+        ? 'person'
+        : columns.find((columnId) => rows.some((row) => /^\[\[PII:[^\]]+\]\]$/.test(String(row.cells?.[columnId] || '').trim())))
+            || columns[0];
+    const formulaIntent = String(source.match(/\bFormula intent\s*:\s*([^\r\n]+)/i)?.[1] || '');
+    const signedMeasures = Array.from(formulaIntent.matchAll(/([+-]?)\s*([A-Za-z_][\w.-]*)/g))
+        .map((match) => ({
+            sign: match[1] === '-' ? '-' : '+',
+            column: normalizePiiFormulaPlanColumnId(match[2]),
+        }))
+        .filter((entry) => columns.includes(entry.column) && entry.column !== groupBy);
+    const measures = Array.from(new Set(signedMeasures.filter((entry) => entry.sign !== '-').map((entry) => entry.column)));
+    const parsedSubtractMeasures = Array.from(new Set(signedMeasures.filter((entry) => entry.sign === '-').map((entry) => entry.column)));
+    const subtractMeasures = parsedSubtractMeasures.length > 0
+        ? parsedSubtractMeasures
+        : columns.filter((columnId) => /^credits?$/i.test(columnId));
+    if (measures.length === 0) {
+        return null;
+    }
+
+    const resultCell = String(source.match(/\bTarget result cell\s+([A-Za-z0-9_ -]+!\$?[A-Z]{1,3}\$?\d+)/i)?.[1]
+        || 'Presentation_Result!B5').trim();
+    const helperStartCell = String(source.match(/\bHelper slots begin at\s+([A-Za-z0-9_ -]+!\$?[A-Z]{1,3}\$?\d+)/i)?.[1]
+        || 'Presentation_Result!A12').trim();
+    const sheetName = resultCell.includes('!') ? resultCell.split('!')[0].replace(/^'+|'+$/g, '') : undefined;
+
+    return {
+        operationId: 'orchestrator-xlsx-formula-plan',
+        operation: 'xlsx_formula_plan',
+        tableId,
+        groupBy,
+        measures,
+        subtractMeasures,
+        target: {
+            resultCell,
+            helperStartCell,
+            ...(sheetName ? { sheetName } : {}),
+        },
+        limit: Math.max(1, Math.min(100, rows.length)),
+        tables: [
+            {
+                id: tableId,
+                columns: columns.map((columnId) => ({
+                    id: columnId,
+                    header: columnId,
+                    role: columnId === groupBy ? 'group_key' : 'value',
+                })),
+                rows,
+            },
+        ],
+    };
+}
+
+function hasPiiRelationshipFormulaPlanIntentText(text = '') {
+    return Boolean(buildPiiRelationshipFormulaPlanRequest(text));
+}
+
 function hasDeepResearchPresentationIntentText(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized) {
@@ -1499,6 +1603,7 @@ function buildScoredCandidateToolMap({
     hasPublicSourceIndexIntent = false,
     hasPodcastIntent = false,
     hasDocumentWorkflowIntent = false,
+    hasPiiFormulaPlanIntent = false,
     hasSubAgentIntent = false,
     hasManagedAppIntent = false,
     hasRemoteCliAgentAuthoringRequest = false,
@@ -1666,6 +1771,11 @@ function buildScoredCandidateToolMap({
     if (hasPodcastIntent) {
         adjustCandidateToolScore(scoreMap, 'podcast', 1.4, 'Explicit podcast wording should keep the podcast workflow tool in the candidate set.');
         adjustCandidateToolScore(scoreMap, 'web-search', 0.25, 'Podcast production may still need a research fallback when the podcast tool is unavailable.');
+    }
+    if (hasPiiFormulaPlanIntent) {
+        adjustCandidateToolScore(scoreMap, RELATIONSHIP_CALCULATION_TOOL_ID, 3.0, 'PII formula-plan requests must use the relationship calculator instead of artifact generation.');
+        adjustCandidateToolScore(scoreMap, DOCUMENT_WORKFLOW_TOOL_ID, -3.0, 'PII formula-plan requests must not route through document workflow.');
+        adjustCandidateToolScore(scoreMap, 'file-write', -1.0, 'PII formula-plan requests should return trusted relationship data, not write a file directly.');
     }
     if (rolePipeline?.requiresDesign || hasRole(rolePipeline, ROLE_IDS.DESIGN)) {
         adjustCandidateToolScore(scoreMap, 'design-resource-search', 1.1, 'The active role pipeline includes a design agent that needs curated design references and assets.');
@@ -10524,6 +10634,7 @@ class ConversationOrchestrator extends EventEmitter {
         const hasMigrationChangeIntent = hasMigrationIntent(prompt);
         const hasSecurityIntent = hasSecurityScanIntent(prompt);
         const hasDocumentWorkflowIntent = hasDocumentWorkflowIntentText(prompt);
+        const hasPiiFormulaPlanIntent = hasPiiRelationshipFormulaPlanIntentText(prompt);
         const hasAssetCatalogIntent = hasIndexedAssetIntentText(prompt);
         const hasResearchBucketIntent = hasResearchBucketIntentText(prompt);
         const hasPublicSourceIndexIntent = hasPublicSourceIndexIntentText(prompt);
@@ -10670,6 +10781,7 @@ class ConversationOrchestrator extends EventEmitter {
                 hasPublicSourceIndexIntent,
                 hasPodcastIntent,
                 hasDocumentWorkflowIntent,
+                hasPiiFormulaPlanIntent,
                 hasSubAgentIntent,
                 hasManagedAppIntent: hasManagedAppIntent || hasManagedAppAuthoringRequest,
                 hasRemoteCliAgentAuthoringRequest,
@@ -10772,7 +10884,10 @@ class ConversationOrchestrator extends EventEmitter {
             if (hasSecurityIntent && allowedToolIds.includes('security-scan')) {
                 candidates.add('security-scan');
             }
-            if (hasDocumentWorkflowIntent && allowedToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)) {
+            if (hasPiiFormulaPlanIntent && allowedToolIds.includes(RELATIONSHIP_CALCULATION_TOOL_ID)) {
+                candidates.add(RELATIONSHIP_CALCULATION_TOOL_ID);
+            }
+            if (hasDocumentWorkflowIntent && !hasPiiFormulaPlanIntent && allowedToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)) {
                 candidates.add(DOCUMENT_WORKFLOW_TOOL_ID);
             }
             if (hasImageIntent && allowedToolIds.includes('image-generate')) {
@@ -10968,7 +11083,10 @@ class ConversationOrchestrator extends EventEmitter {
             if (hasDeepResearchPresentationIntentText(prompt) && allowedToolIds.includes(DEEP_RESEARCH_PRESENTATION_TOOL_ID)) {
                 candidates.add(DEEP_RESEARCH_PRESENTATION_TOOL_ID);
             }
-            if (hasDocumentWorkflowIntent && allowedToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)) {
+            if (hasPiiFormulaPlanIntent && allowedToolIds.includes(RELATIONSHIP_CALCULATION_TOOL_ID)) {
+                candidates.add(RELATIONSHIP_CALCULATION_TOOL_ID);
+            }
+            if (hasDocumentWorkflowIntent && !hasPiiFormulaPlanIntent && allowedToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)) {
                 candidates.add(DOCUMENT_WORKFLOW_TOOL_ID);
             }
         }
@@ -10981,9 +11099,19 @@ class ConversationOrchestrator extends EventEmitter {
             candidates.add(USER_CHECKPOINT_TOOL_ID);
         }
 
-        const candidateToolIds = isJudgmentV2Enabled()
+        let candidateToolIds = isJudgmentV2Enabled()
             ? selectCandidateToolIdsFromScores(allowedToolIds, scoreMap)
             : allowedToolIds.filter((toolId) => candidates.has(toolId));
+        if (hasPiiFormulaPlanIntent && allowedToolIds.includes(RELATIONSHIP_CALCULATION_TOOL_ID)) {
+            candidateToolIds = [
+                RELATIONSHIP_CALCULATION_TOOL_ID,
+                ...candidateToolIds.filter((toolId) => (
+                    toolId !== RELATIONSHIP_CALCULATION_TOOL_ID
+                    && toolId !== DOCUMENT_WORKFLOW_TOOL_ID
+                    && toolId !== DEEP_RESEARCH_PRESENTATION_TOOL_ID
+                )),
+            ];
+        }
 
         const needsGitLabManagedAppObservability = hasManagedAppIntent
             || hasManagedAppAuthoringRequest
@@ -11085,6 +11213,7 @@ class ConversationOrchestrator extends EventEmitter {
         });
         const hasGroundedDocumentSources = Array.isArray(documentWorkflowParams.sources)
             && documentWorkflowParams.sources.length > 0;
+        const piiFormulaPlanRequest = buildPiiRelationshipFormulaPlanRequest(objective);
         const podcastTopic = toolPolicy.candidateToolIds.includes('podcast') && hasExplicitPodcastIntentText(objective)
             ? extractExplicitPodcastTopic(objective)
             : null;
@@ -11124,6 +11253,14 @@ class ConversationOrchestrator extends EventEmitter {
                 now: toolContext?.now || null,
             })
             : null;
+        if (piiFormulaPlanRequest
+            && toolPolicy.candidateToolIds.includes(RELATIONSHIP_CALCULATION_TOOL_ID)) {
+            return finalizeAction({
+                tool: RELATIONSHIP_CALCULATION_TOOL_ID,
+                reason: 'PII spreadsheet formula-plan requests must use the relationship calculator instead of document or artifact generation.',
+                params: piiFormulaPlanRequest,
+            });
+        }
         if (toolPolicy.candidateToolIds.includes('agent-workload')
             && !shouldForcePlannerForMultiWorkload
             && (

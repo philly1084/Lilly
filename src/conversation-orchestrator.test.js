@@ -617,6 +617,56 @@ describe('ConversationOrchestrator', () => {
         expect(toolPolicy.candidateToolIds).toContain('agent-delegate');
     });
 
+    test('routes PII XLSX formula-plan prompts through the relationship calculator instead of documents', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['document-workflow', 'pii-relationship-calculate', 'file-write'].includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const objective = [
+            'Do not create an artifact, workbook, HTML, PDF, file, or download.',
+            'Use the hidden PII relationship calculation tool only. Tool operation must be xlsx_formula_plan.',
+            'Table id: sales',
+            'Columns: person, period, baseSales, serviceFees, rebates, credits',
+            'Rows:',
+            'r1 | [[PII:a1]] | Jan | 120.50 | 12 | 3.50 | 4',
+            'r2 | [[PII:b1]] | Feb | 30 | 0 | 0 | 1',
+            'Formula intent: per-row amount is baseSales + serviceFees + rebates - credits.',
+            'Target result cell Presentation_Result!B5. Helper slots begin at Presentation_Result!A12.',
+        ].join('\n');
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+        });
+
+        expect(toolPolicy.candidateToolIds[0]).toBe('pii-relationship-calculate');
+        expect(toolPolicy.candidateToolIds).not.toContain('document-workflow');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'pii-relationship-calculate',
+            params: expect.objectContaining({
+                operation: 'xlsx_formula_plan',
+                tableId: 'sales',
+                groupBy: 'person',
+                measures: ['baseSales', 'serviceFees', 'rebates'],
+                subtractMeasures: ['credits'],
+            }),
+        }));
+    });
+
     test('does not offer deferred workloads just because instructions mention scheduling', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {
