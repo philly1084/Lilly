@@ -2030,6 +2030,9 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     }
 
     if (toolId === DOCUMENT_WORKFLOW_TOOL_ID) {
+        if (extractPiiRelationshipFormulaPlanRequest(prompt)) {
+            return false;
+        }
         return Boolean(options?.documentService || options?.toolContext?.documentService);
     }
 
@@ -3339,6 +3342,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
     });
     const availableToolIds = new Set(automaticTools.map((entry) => entry.id));
     const selectedIds = new Set();
+    const hasPiiFormulaPlanIntent = Boolean(extractPiiRelationshipFormulaPlanRequest(prompt));
     const normalizedPrompt = String(prompt || '').toLowerCase();
     const hasUrl = /https?:\/\//i.test(normalizedPrompt);
     const hasExplicitScrapeIntent = /\b(scrape|extract|selector|structured|parse)\b/i.test(normalizedPrompt);
@@ -3433,12 +3437,15 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add(DEEP_RESEARCH_PRESENTATION_TOOL_ID);
     }
 
-    if (hasDocumentWorkflowIntent && !shouldSuppressDocumentWorkflowForRemoteDeploy && availableToolIds.has(DOCUMENT_WORKFLOW_TOOL_ID)) {
+    if (hasDocumentWorkflowIntent
+        && !hasPiiFormulaPlanIntent
+        && !shouldSuppressDocumentWorkflowForRemoteDeploy
+        && availableToolIds.has(DOCUMENT_WORKFLOW_TOOL_ID)) {
         selectedIds.add(DOCUMENT_WORKFLOW_TOOL_ID);
     }
 
     if (availableToolIds.has(RELATIONSHIP_CALCULATION_TOOL_ID)
-        && hasPiiRelationshipCalculationIntent(prompt, options)) {
+        && (hasPiiFormulaPlanIntent || hasPiiRelationshipCalculationIntent(prompt, options))) {
         selectedIds.add(RELATIONSHIP_CALCULATION_TOOL_ID);
     }
 
@@ -3643,6 +3650,11 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
 
     if (explicitK3sDeployIntent && explicitGitIntent) {
         return null;
+    }
+
+    if (availableToolIds.has(RELATIONSHIP_CALCULATION_TOOL_ID)
+        && extractPiiRelationshipFormulaPlanRequest(prompt)) {
+        return RELATIONSHIP_CALCULATION_TOOL_ID;
     }
 
     const checkpointPolicy = options?.userCheckpointPolicy || options?.toolContext?.userCheckpointPolicy || {};

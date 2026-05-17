@@ -1235,6 +1235,35 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
+    test('forces PII formula-plan prompts away from document workflow tools', () => {
+        const prompt = [
+            'Do not create an artifact or workbook.',
+            'Tool operation must be xlsx_formula_plan.',
+            'Table id: sales',
+            'Columns: person, period, baseSales, serviceFees, rebates, credits',
+            'Rows:',
+            'r1 | [[PII:a1]] | Jan | 120.50 | 12 | 3.50 | 4',
+            'Formula intent: per-row amount is baseSales + serviceFees + rebates - credits.',
+            'Target result cell Presentation_Result!B5. Helper slots begin at Presentation_Result!A12.',
+        ].join('\n');
+        const selected = __testUtils.selectAutomaticToolDefinitions([
+            { id: 'document-workflow' },
+            { id: 'pii-relationship-calculate' },
+        ], prompt, {
+            metadata: {
+                piiCleansing: {
+                    relationshipCalculations: { active: true },
+                },
+            },
+        });
+
+        expect(selected.map((tool) => tool.id)).toEqual(['pii-relationship-calculate']);
+        expect(__testUtils.buildAutomaticToolChoice(selected, 'responses', { prompt })).toEqual({
+            type: 'function',
+            name: 'pii-relationship-calculate',
+        });
+    });
+
     test('builds deterministic ssh preflight actions for explicit health checks', () => {
         const actions = __testUtils.buildDeterministicPreflightActions(
             [
