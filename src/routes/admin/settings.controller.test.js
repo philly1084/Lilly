@@ -414,6 +414,37 @@ describe('settings.controller personality support', () => {
     ]);
   });
 
+  test('previews person names and DOB values from built-in detectors', () => {
+    const req = {
+      body: {
+        sampleText: 'My name is Sample Person and DOB: 1984-07-04.',
+        settings: {
+          detectors: ['personName', 'dateOfBirth'],
+          enablePersonNames: true,
+          detectorActions: {
+            personName: 'mask',
+            dateOfBirth: 'mask',
+          },
+          auditCriteria: {
+            requiredDetectors: ['personName', 'dateOfBirth'],
+          },
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    controller.previewPrivacyPii(req, res);
+
+    const payload = res.json.mock.calls[0][0].data;
+    expect(payload.sanitizedText).toContain('My name is [[PII:PERSONNAME:MASKED]]');
+    expect(payload.sanitizedText).toContain('DOB: [[PII:DATEOFBIRTH:MASKED]]');
+    expect(payload.sanitizedText).not.toContain('Sample Person');
+    expect(payload.sanitizedText).not.toContain('1984-07-04');
+  });
+
   test('applies updated podcast audio asset paths to the live mixer runtime', async () => {
     const { audioProcessingService } = require('../../audio/audio-processing-service');
     const req = {

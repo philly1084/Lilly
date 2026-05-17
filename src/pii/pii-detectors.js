@@ -24,11 +24,37 @@ const BUILTIN_PATTERNS = {
   phone: /(?<!\d)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\d)/g,
   ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
   creditCard: /\b(?:\d[ -]*?){13,19}\b/g,
-  dateOfBirth: /\b(?:DOB|date of birth|born)\s*[:#-]?\s*(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|[A-Z][a-z]+ \d{1,2}, \d{4})\b/g,
   address: /\b\d{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*){0,5}\s+(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Way|Place|Pl\.?)\b/g,
   ipAddress: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
   organization: /\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|Group|Systems|Solutions|Technologies|Tech|Labs|Security|Health|Bank|University|College)\b/g,
 };
+
+const MONTH_NAMES = [
+  'january', 'jan',
+  'february', 'feb',
+  'march', 'mar',
+  'april', 'apr',
+  'may',
+  'june', 'jun',
+  'july', 'jul',
+  'august', 'aug',
+  'september', 'sept', 'sep',
+  'october', 'oct',
+  'november', 'nov',
+  'december', 'dec',
+];
+
+const PERSON_NAME_STOPWORDS = new Set([
+  'date', 'birth', 'born', 'dob', 'email', 'phone', 'ssn', 'address',
+  'street', 'road', 'avenue', 'drive', 'court', 'place', 'company',
+  'inc', 'llc', 'corp', 'corporation', 'limited', 'ltd',
+  ...MONTH_NAMES,
+]);
+
+const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\s*(?:is|:|-)|patient\s+name\s*(?:is|:|-)|employee\s+name\s*(?:is|:|-))\s*([A-Z][A-Za-z'-]*(?:\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z'-]*){0,3})\b/g;
+const PERSON_FREE_PATTERN = /\b[A-Z][A-Za-z'-]*(?:\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z'-]*){1,3}\b/g;
+const DOB_VALUE_PATTERN = '(?:\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{4})';
+const DOB_LABEL_PATTERN = new RegExp(`\\b(?:DOB|D\\.O\\.B\\.|date\\s+of\\s+birth|birth\\s*date|birthdate|birthday|born(?:\\s+on)?)\\s*(?:is|was|:|#|-)?\\s*(${DOB_VALUE_PATTERN})\\b`, 'gi');
 
 function normalizeDetectorId(value = '') {
   const normalized = String(value || '').trim();
@@ -57,6 +83,52 @@ function isValidCreditCardCandidate(value = '') {
   return sum > 0 && sum % 10 === 0;
 }
 
+function isValidDateCandidate(value = '') {
+  const normalized = String(value || '').trim();
+  if (!normalized) return false;
+
+  const yearMatch = normalized.match(/\b(19\d{2}|20\d{2})\b/);
+  if (!yearMatch) return false;
+  const year = Number(yearMatch[1]);
+  const currentYear = new Date().getFullYear();
+  if (year < 1900 || year > currentYear) return false;
+
+  const numericParts = normalized.match(/\d{1,4}/g) || [];
+  if (numericParts.length >= 3 && !/[A-Za-z]/.test(normalized)) {
+    const first = Number(numericParts[0]);
+    const second = Number(numericParts[1]);
+    const third = Number(numericParts[2]);
+    const month = first > 31 ? second : first;
+    const day = first > 31 ? third : second;
+    return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  }
+
+  const monthRegex = new RegExp(`\\b(?:${MONTH_NAMES.join('|')})\\.?\\b`, 'i');
+  if (monthRegex.test(normalized)) {
+    const day = Number((normalized.match(/\b([0-3]?\d)(?:st|nd|rd|th)?\b/i) || [])[1]);
+    return day >= 1 && day <= 31;
+  }
+
+  return false;
+}
+
+function normalizeNameCandidate(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function isLikelyPersonName(value = '') {
+  const normalized = normalizeNameCandidate(value);
+  if (!normalized) return false;
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  if (words.length === 1 && words[0].length < 3) return false;
+  return words.every((word) => {
+    const cleaned = word.replace(/\./g, '').replace(/'/g, '').toLowerCase();
+    if (!cleaned || PERSON_NAME_STOPWORDS.has(cleaned)) return false;
+    return /^[A-Z][A-Za-z'.:-]*$/.test(word);
+  });
+}
+
 function findMatchesWithPattern(text = '', pattern, type = '') {
   const matches = [];
   if (!pattern) return matches;
@@ -80,6 +152,68 @@ function findMatchesWithPattern(text = '', pattern, type = '') {
       source: 'builtin',
     });
   }
+  return matches;
+}
+
+function findDateOfBirthMatches(text = '') {
+  const matches = [];
+  const source = String(text || '');
+  let match;
+  while ((match = DOB_LABEL_PATTERN.exec(source)) !== null) {
+    const value = match[1] || '';
+    const valueOffset = match[0].indexOf(value);
+    if (!value || valueOffset < 0 || !isValidDateCandidate(value)) {
+      continue;
+    }
+    const start = match.index + valueOffset;
+    matches.push({
+      type: 'dateOfBirth',
+      value,
+      start,
+      end: start + value.length,
+      source: 'builtin',
+    });
+  }
+  return matches;
+}
+
+function findPersonNameMatches(text = '') {
+  const matches = [];
+  const source = String(text || '');
+  let match;
+
+  while ((match = PERSON_LABEL_PATTERN.exec(source)) !== null) {
+    const value = normalizeNameCandidate(match[1] || '');
+    const valueOffset = match[0].indexOf(match[1] || '');
+    if (!value || valueOffset < 0 || !isLikelyPersonName(value)) {
+      continue;
+    }
+    const start = match.index + valueOffset;
+    matches.push({
+      type: 'personName',
+      value,
+      start,
+      end: start + (match[1] || '').length,
+      source: 'builtin',
+      grounded: true,
+    });
+  }
+
+  while ((match = PERSON_FREE_PATTERN.exec(source)) !== null) {
+    const value = normalizeNameCandidate(match[0] || '');
+    if (!isLikelyPersonName(value)) {
+      continue;
+    }
+    matches.push({
+      type: 'personName',
+      value,
+      start: match.index,
+      end: match.index + match[0].length,
+      source: 'builtin',
+      grounded: true,
+    });
+  }
+
   return matches;
 }
 
@@ -176,12 +310,12 @@ function detectPii(text = '', policy = {}) {
     }
   });
 
+  if (enabled.has('dateOfBirth')) {
+    matches.push(...findDateOfBirthMatches(source));
+  }
+
   if (policy.enablePersonNames === true || enabled.has('personName')) {
-    matches.push(...findMatchesWithPattern(
-      source,
-      /\b(?:Mr\.|Mrs\.|Ms\.|Dr\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/g,
-      'personName',
-    ));
+    matches.push(...findPersonNameMatches(source));
   }
 
   matches.push(...findCustomMatches(source, policy.customPatterns));

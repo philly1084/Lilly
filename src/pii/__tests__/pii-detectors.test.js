@@ -47,4 +47,19 @@ describe('PII detectors', () => {
       expect.objectContaining({ type: 'employer', action: 'mask', grounded: true }),
     ]);
   });
+
+  test('detects common person-name and DOB formats in admin preview text', () => {
+    const matches = detectPii('My name is Sample Person and my DOB is 1984-07-04. Born on July 5, 1984.', {
+      detectors: ['personName', 'dateOfBirth'],
+      customPatterns: [],
+      dictionary: [],
+      enablePersonNames: true,
+    });
+
+    expect(matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'personName', value: 'Sample Person' }),
+      expect.objectContaining({ type: 'dateOfBirth', value: '1984-07-04' }),
+      expect.objectContaining({ type: 'dateOfBirth', value: 'July 5, 1984' }),
+    ]));
+  });
 });
