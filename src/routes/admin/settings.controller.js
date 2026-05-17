@@ -20,11 +20,12 @@ const {
 const { detectPii } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  enabled: false,
+  defaultsVersion: 2,
+  enabled: true,
   webChatEnabled: true,
   highlightRestored: true,
   allowUserOverride: false,
-  placeholderMode: 'typed-random',
+  placeholderMode: 'opaque-random',
   reintroductionMode: 'trusted-view',
   failClosed: true,
   detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
@@ -78,7 +79,7 @@ function normalizePrivacyPlaceholderMode(value = '') {
   if (['opaque', 'opaque-random', 'random'].includes(normalized)) return 'opaque-random';
   if (['stable', 'stable-per-value', 'same-placeholder'].includes(normalized)) return 'stable-per-value';
   if (['typed', 'typed-random', 'type-random'].includes(normalized)) return 'typed-random';
-  return 'typed-random';
+  return 'opaque-random';
 }
 
 function normalizePrivacyReintroductionMode(value = '') {
@@ -168,6 +169,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
   return {
     ...fallback,
     ...source,
+    defaultsVersion: 2,
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
     webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,
@@ -202,7 +204,10 @@ function resolvePrivacyMatchAction(match = {}, settings = {}) {
   return resolvePrivacyAction(match.type, settings);
 }
 
-function buildPreviewPlaceholder(type = '', action = 'vault-placeholder', index = 0) {
+function buildPreviewPlaceholder(type = '', action = 'vault-placeholder', index = 0, settings = {}) {
+  if (settings.placeholderMode !== 'typed-random') {
+    return `[[PII:PREVIEW_${index + 1}]]`;
+  }
   const token = String(type || 'PII').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toUpperCase() || 'PII';
   if (action === 'remove') return `[[PII:${token}:REMOVED]]`;
   if (action === 'mask') return `[[PII:${token}:MASKED]]`;
@@ -475,7 +480,7 @@ class SettingsController {
             length: Math.max(0, Number(match.end || 0) - Number(match.start || 0)),
             action,
             restorable: action === 'vault-placeholder',
-            placeholder: buildPreviewPlaceholder(match.type, action, index),
+            placeholder: buildPreviewPlaceholder(match.type, action, index, candidateSettings),
           };
         })
         .filter((match) => match.action !== 'ignore');
@@ -500,6 +505,8 @@ class SettingsController {
           sanitizedText,
           changed: sanitizedText !== sampleText,
           matchCount: matches.length,
+          placeholderMode: candidateSettings.placeholderMode,
+          exposesTypeContext: candidateSettings.placeholderMode === 'typed-random',
           matches,
           countsByType,
           countsByAction,
@@ -597,6 +604,29 @@ class SettingsController {
     return result;
   }
 
+  upgradeStoredSettingsDefaults(stored = {}) {
+    const next = JSON.parse(JSON.stringify(stored || {}));
+    const privacyPii = next.privacyPii;
+    if (!privacyPii || typeof privacyPii !== 'object' || Array.isArray(privacyPii)) {
+      return next;
+    }
+
+    const defaultsVersion = Number(privacyPii.defaultsVersion || 0);
+    if (defaultsVersion >= 2) {
+      return next;
+    }
+
+    next.privacyPii = {
+      ...privacyPii,
+      defaultsVersion: 2,
+      enabled: true,
+      placeholderMode: privacyPii.placeholderMode === 'stable-per-value'
+        ? 'stable-per-value'
+        : 'opaque-random',
+    };
+    return next;
+  }
+
   /**
    * Save settings to file
    */
@@ -636,7 +666,7 @@ class SettingsController {
         const result = await postgres.query('SELECT value FROM app_settings WHERE key = $1', ['dashboard']);
         const stored = result.rows?.[0]?.value;
         if (stored && typeof stored === 'object') {
-          this.settings = this.deepMerge(this.getDefaultSettings(), stored);
+          this.settings = this.deepMerge(this.getDefaultSettings(), this.upgradeStoredSettingsDefaults(stored));
           if (this.settings?.integrations?.opencode) {
             delete this.settings.integrations.opencode;
           }
@@ -651,7 +681,7 @@ class SettingsController {
     try {
       const settingsPath = this.getSettingsPath();
       const data = await fs.readFile(settingsPath, 'utf8');
-      this.settings = this.deepMerge(this.getDefaultSettings(), JSON.parse(data));
+      this.settings = this.deepMerge(this.getDefaultSettings(), this.upgradeStoredSettingsDefaults(JSON.parse(data)));
       if (this.settings?.integrations?.opencode) {
         delete this.settings.integrations.opencode;
       }

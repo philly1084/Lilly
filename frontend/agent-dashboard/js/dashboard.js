@@ -4772,11 +4772,12 @@ class Dashboard {
 
     renderPrivacyPiiSettings(settings = this.state.settings?.privacyPii || {}) {
         const privacyPii = {
-            enabled: false,
+            defaultsVersion: 2,
+            enabled: true,
             webChatEnabled: true,
             highlightRestored: true,
             allowUserOverride: false,
-            placeholderMode: 'typed-random',
+            placeholderMode: 'opaque-random',
             reintroductionMode: 'trusted-view',
             failClosed: true,
             detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
@@ -4794,7 +4795,7 @@ class Dashboard {
         this.setCheckboxValue('piiHighlightRestored', privacyPii.highlightRestored !== false);
         this.setCheckboxValue('piiAllowUserOverride', privacyPii.allowUserOverride === true);
         this.setInputValue('piiAuditProfile', privacyPii.auditProfile || 'baseline');
-        this.setInputValue('piiPlaceholderMode', privacyPii.placeholderMode || 'typed-random');
+        this.setInputValue('piiPlaceholderMode', privacyPii.placeholderMode || 'opaque-random');
         this.setInputValue('piiReintroductionMode', privacyPii.reintroductionMode || 'trusted-view');
         this.setInputValue('piiRequiredDetectors', this.joinListForTextarea(privacyPii.auditCriteria?.requiredDetectors || []));
         this.setInputValue('piiDictionary', this.formatPrivacyDictionary(privacyPii.dictionary || []));
@@ -4928,13 +4929,14 @@ class Dashboard {
         const enablePersonNames = checkedDetectors.includes('personName');
 
         return {
+            defaultsVersion: 2,
             enabled: document.getElementById('piiEnabled')?.checked === true,
             webChatEnabled: document.getElementById('piiWebChatEnabled')?.checked !== false,
             failClosed: document.getElementById('piiFailClosed')?.checked !== false,
             highlightRestored: document.getElementById('piiHighlightRestored')?.checked !== false,
             allowUserOverride: document.getElementById('piiAllowUserOverride')?.checked === true,
             auditProfile: document.getElementById('piiAuditProfile')?.value || 'baseline',
-            placeholderMode: document.getElementById('piiPlaceholderMode')?.value || 'typed-random',
+            placeholderMode: document.getElementById('piiPlaceholderMode')?.value || 'opaque-random',
             reintroductionMode: document.getElementById('piiReintroductionMode')?.value || 'trusted-view',
             detectors: detectors.length > 0 ? detectors : ['email'],
             enablePersonNames,
@@ -5001,6 +5003,7 @@ class Dashboard {
         if (!output) return;
         const matches = Array.isArray(result.matches) ? result.matches : [];
         const summary = `${Number(result.matchCount || 0).toLocaleString()} match${Number(result.matchCount || 0) === 1 ? '' : 'es'} found`;
+        const exposeTypeContext = result.exposesTypeContext === true;
         output.innerHTML = `
             <div class="pii-preview-summary">
                 <span class="status-badge ${result.auditStatus?.pass ? 'healthy' : 'warning'}">${this.escapeHtml(result.auditStatus?.pass ? 'Audit checks pass' : 'Audit checks need work')}</span>
@@ -5008,8 +5011,8 @@ class Dashboard {
             </div>
             <pre>${this.escapeHtml(result.sanitizedText || '')}</pre>
             <div class="pii-preview-matches">
-                ${matches.length > 0 ? matches.map((match) => `
-                    <span>${this.escapeHtml(match.type)} -> ${this.escapeHtml(match.action)} (${Number(match.length || 0)} chars)</span>
+                ${matches.length > 0 ? matches.map((match, index) => `
+                    <span>${this.escapeHtml(exposeTypeContext ? match.type : `Match ${index + 1}`)} -> ${this.escapeHtml(match.action)} (${Number(match.length || 0)} chars)</span>
                 `).join('') : '<span>No configured PII found.</span>'}
             </div>
         `;
@@ -5206,10 +5209,11 @@ class Dashboard {
             return {
                 privacyPii: {
                     ...existing,
+                    defaultsVersion: 2,
                     enabled,
                     webChatEnabled: existing.webChatEnabled !== false,
                     highlightRestored: existing.highlightRestored !== false,
-                    placeholderMode: existing.placeholderMode || 'typed-random',
+                    placeholderMode: existing.placeholderMode || 'opaque-random',
                     reintroductionMode: existing.reintroductionMode || 'trusted-view',
                     failClosed: existing.failClosed !== false,
                     detectorActions: existing.detectorActions || {},

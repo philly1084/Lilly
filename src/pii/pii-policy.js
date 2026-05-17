@@ -2,11 +2,12 @@ const settingsController = require('../routes/admin/settings.controller');
 const { postgres } = require('../postgres');
 
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  enabled: false,
+  defaultsVersion: 2,
+  enabled: true,
   webChatEnabled: true,
   highlightRestored: true,
   allowUserOverride: false,
-  placeholderMode: 'typed-random',
+  placeholderMode: 'opaque-random',
   reintroductionMode: 'trusted-view',
   failClosed: true,
   detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
@@ -50,7 +51,7 @@ function normalizePlaceholderMode(value = '') {
   if (['opaque', 'opaque-random', 'random'].includes(normalized)) return 'opaque-random';
   if (['stable', 'stable-per-value', 'same-placeholder'].includes(normalized)) return 'stable-per-value';
   if (['typed', 'typed-random', 'type-random'].includes(normalized)) return 'typed-random';
-  return 'typed-random';
+  return 'opaque-random';
 }
 
 function normalizeReintroductionMode(value = '') {
@@ -140,6 +141,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
   return {
     ...fallback,
     ...source,
+    defaultsVersion: 2,
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
     webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,

@@ -341,6 +341,34 @@ describe('settings.controller personality support', () => {
     expect(controller.settings.privacyPii.auditCriteria.requiredDetectors).toEqual(['email', 'phone', 'personName']);
   });
 
+  test('defaults PII protection on with opaque placeholder IDs', () => {
+    const defaults = controller.getDefaultSettings().privacyPii;
+
+    expect(defaults).toEqual(expect.objectContaining({
+      defaultsVersion: 2,
+      enabled: true,
+      webChatEnabled: true,
+      placeholderMode: 'opaque-random',
+      failClosed: true,
+    }));
+  });
+
+  test('upgrades old persisted PII defaults to enabled opaque protection on restart', () => {
+    const upgraded = controller.upgradeStoredSettingsDefaults({
+      privacyPii: {
+        enabled: false,
+        placeholderMode: 'typed-random',
+        failClosed: true,
+      },
+    });
+
+    expect(upgraded.privacyPii).toEqual(expect.objectContaining({
+      defaultsVersion: 2,
+      enabled: true,
+      placeholderMode: 'opaque-random',
+    }));
+  });
+
   test('previews PII cleanup without echoing raw matched values', () => {
     const req = {
       body: {
@@ -368,7 +396,9 @@ describe('settings.controller personality support', () => {
       success: true,
       data: expect.objectContaining({
         matchCount: 2,
-        sanitizedText: expect.stringContaining('[[PII:EMAIL:PREVIEW_1]]'),
+        placeholderMode: 'opaque-random',
+        exposesTypeContext: false,
+        sanitizedText: expect.stringContaining('[[PII:PREVIEW_1]]'),
         countsByAction: expect.objectContaining({
           'vault-placeholder': 1,
           mask: 1,
@@ -376,6 +406,8 @@ describe('settings.controller personality support', () => {
       }),
     }));
     const payload = res.json.mock.calls[0][0].data;
+    expect(payload.sanitizedText).not.toContain('EMAIL');
+    expect(payload.sanitizedText).not.toContain('PHONE');
     expect(payload.sanitizedText).not.toContain('jane@example.com');
     expect(payload.sanitizedText).not.toContain('902-555-0199');
   });
@@ -404,8 +436,10 @@ describe('settings.controller personality support', () => {
     controller.previewPrivacyPii(req, res);
 
     const payload = res.json.mock.calls[0][0].data;
-    expect(payload.sanitizedText).toContain('[[PII:PERSONNAME:MASKED]]');
-    expect(payload.sanitizedText).toContain('[[PII:EMPLOYER:MASKED]]');
+    expect(payload.sanitizedText).toContain('[[PII:PREVIEW_1]]');
+    expect(payload.sanitizedText).toContain('[[PII:PREVIEW_2]]');
+    expect(payload.sanitizedText).not.toContain('PERSONNAME');
+    expect(payload.sanitizedText).not.toContain('EMPLOYER');
     expect(payload.sanitizedText).not.toContain('Sample Person');
     expect(payload.sanitizedText).not.toContain('Sample Employer');
     expect(payload.matches).toEqual([
@@ -439,8 +473,10 @@ describe('settings.controller personality support', () => {
     controller.previewPrivacyPii(req, res);
 
     const payload = res.json.mock.calls[0][0].data;
-    expect(payload.sanitizedText).toContain('My name is [[PII:PERSONNAME:MASKED]]');
-    expect(payload.sanitizedText).toContain('DOB: [[PII:DATEOFBIRTH:MASKED]]');
+    expect(payload.sanitizedText).toContain('My name is [[PII:PREVIEW_1]]');
+    expect(payload.sanitizedText).toContain('DOB: [[PII:PREVIEW_2]]');
+    expect(payload.sanitizedText).not.toContain('PERSONNAME');
+    expect(payload.sanitizedText).not.toContain('DATEOFBIRTH');
     expect(payload.sanitizedText).not.toContain('Sample Person');
     expect(payload.sanitizedText).not.toContain('1984-07-04');
   });

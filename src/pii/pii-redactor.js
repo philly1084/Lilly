@@ -8,11 +8,11 @@ function typeToken(type = '') {
 }
 
 function buildPlaceholder(match = {}, policy = {}, stablePlaceholders = new Map()) {
-  const mode = policy.placeholderMode || 'typed-random';
+  const mode = policy.placeholderMode || 'opaque-random';
   if (mode === 'stable-per-value') {
     const key = valueIndexHmac(match.value, match.type).slice(0, 16);
     if (stablePlaceholders.has(key)) return stablePlaceholders.get(key);
-    const placeholder = `[[PII:${typeToken(match.type)}:${key}]]`;
+    const placeholder = `[[PII:${key}]]`;
     stablePlaceholders.set(key, placeholder);
     return placeholder;
   }
@@ -21,6 +21,13 @@ function buildPlaceholder(match = {}, policy = {}, stablePlaceholders = new Map(
     return `[[PII:${suffix}]]`;
   }
   return `[[PII:${typeToken(match.type)}:${suffix}]]`;
+}
+
+function buildOpaquePlaceholder(stablePlaceholders = new Map()) {
+  const key = crypto.randomBytes(6).toString('hex');
+  const placeholder = `[[PII:${key}]]`;
+  stablePlaceholders.set(key, placeholder);
+  return placeholder;
 }
 
 function normalizeAction(action = '') {
@@ -59,39 +66,53 @@ function resolveDetectorAction(match = {}, policy = {}) {
   return action;
 }
 
-function buildNonRestorablePlaceholder(match = {}, action = 'mask') {
+function buildNonRestorablePlaceholder(match = {}, action = 'mask', policy = {}, stablePlaceholders = new Map()) {
+  const mode = policy.placeholderMode || 'opaque-random';
+  if (mode !== 'typed-random') {
+    return buildOpaquePlaceholder(stablePlaceholders);
+  }
   const type = typeToken(match.type);
   return action === 'remove'
     ? `[[PII:${type}:REMOVED]]`
     : `[[PII:${type}:MASKED]]`;
 }
 
-function buildModelFrame(replacements = []) {
+function shouldExposePlaceholderTypes(policy = {}) {
+  return policy.exposePlaceholderTypes === true || policy.placeholderMode === 'typed-random';
+}
+
+function buildModelFrame(replacements = [], policy = {}) {
+  const exposeTypes = shouldExposePlaceholderTypes(policy);
   const entries = (Array.isArray(replacements) ? replacements : [])
     .map((entry) => ({
       placeholder: entry.placeholder,
-      type: entry.type,
       occurrenceIndex: Number(entry.occurrenceIndex || 0),
       sourceRange: entry.sourceRange || { start: entry.start, end: entry.end },
+      ...(exposeTypes ? { type: entry.type } : {}),
     }))
     .filter((entry) => entry.placeholder);
   if (entries.length === 0) {
     return null;
   }
-  const countsByType = entries.reduce((acc, entry) => {
-    const key = typeToken(entry.type);
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
+  const countsByType = exposeTypes
+    ? entries.reduce((acc, entry) => {
+      const key = typeToken(entry.type);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {})
+    : null;
   return {
     instruction: [
       'Privacy gateway is active for this request.',
-      'Private values were replaced with placeholders before this model call.',
-      'Preserve placeholders exactly when the private value should appear in the answer.',
+      'Private values were replaced with opaque placeholders before this model call.',
+      'Preserve placeholders exactly when a private value should appear in the answer.',
       'Do not invent, infer, transform, or reveal the underlying private values.',
-      'Use the placeholder type as semantic context for reasoning, citations, summaries, and section-scoped search.',
+      exposeTypes
+        ? 'Typed placeholder mode is active; use placeholder labels only as minimal routing context.'
+        : 'Do not infer or expose the placeholder category, identity, source, or semantic context.',
     ].join(' '),
-    countsByType,
+    replacementCount: entries.length,
+    ...(countsByType ? { countsByType } : {}),
     placeholders: entries,
   };
 }
@@ -150,7 +171,7 @@ async function sanitizeText(text = '', {
         restorable: action === 'vault-placeholder',
         placeholder: action === 'vault-placeholder'
           ? buildPlaceholder(match, resolvedPolicy, stablePlaceholders)
-          : buildNonRestorablePlaceholder(match, action),
+          : buildNonRestorablePlaceholder(match, action, resolvedPolicy, stablePlaceholders),
         occurrenceIndex: index,
         sourceRange: { start: match.start, end: match.end },
       };
@@ -192,7 +213,7 @@ async function sanitizeText(text = '', {
     });
     await piiVaultStore.addEntries(context.id, vaultReplacements);
   }
-  const modelFrame = buildModelFrame(replacements);
+  const modelFrame = buildModelFrame(replacements, resolvedPolicy);
 
   return {
     text: sanitized,
@@ -252,7 +273,7 @@ async function sanitizeRuntimePayload(payload = {}, options = {}) {
       next[key] = await sanitizeStringValues(next[key], { ...options, policy }, state);
     }
   }
-  const modelFrame = buildModelFrame(state.replacements);
+  const modelFrame = buildModelFrame(state.replacements, policy);
   next.instructions = appendModelFrameInstruction(next.instructions, modelFrame);
   next.metadata = {
     ...(next.metadata && typeof next.metadata === 'object' ? next.metadata : {}),
