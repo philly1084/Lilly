@@ -213,13 +213,16 @@ function getContextIds(context = {}) {
 
 async function loadPlaceholderIndex(context = {}) {
   if (Array.isArray(context.piiEntries)) {
-    return new Map(context.piiEntries
+    const directEntries = context.piiEntries
       .filter((entry) => entry?.placeholder && entry?.valueIndexHmac)
       .map((entry) => [entry.placeholder, {
         placeholder: entry.placeholder,
         valueIndexHmac: entry.valueIndexHmac,
         piiType: entry.piiType || entry.pii_type || 'PII',
-      }]));
+      }]);
+    if (directEntries.length > 0) {
+      return new Map(directEntries);
+    }
   }
   const contextIds = getContextIds(context);
   if (contextIds.length === 0) return new Map();

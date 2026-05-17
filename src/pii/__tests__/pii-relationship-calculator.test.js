@@ -2,6 +2,7 @@ const {
   calculateRelationship,
   calculateRelationshipWithRepair,
 } = require('../pii-relationship-calculator');
+const { piiVaultStore } = require('../pii-vault-store');
 
 describe('PII relationship calculator', () => {
   const piiEntries = [
@@ -43,6 +44,43 @@ describe('PII relationship calculator', () => {
     }));
     expect(JSON.stringify(result)).not.toContain('Acme');
     expect(JSON.stringify(result)).not.toContain('retailer-a');
+  });
+
+  test('falls back to vault context IDs when direct PII entries are empty', async () => {
+    const listEntries = jest.spyOn(piiVaultStore, 'listEntriesForContexts').mockResolvedValue(piiEntries);
+
+    const result = await calculateRelationship({
+      operationId: 'largest-retailer',
+      operation: 'top_n',
+      tableId: 'sales',
+      groupBy: 'retailer',
+      measure: 'amount',
+      limit: 1,
+      tables: [{
+        id: 'sales',
+        columns: [
+          { id: 'retailer', header: 'Retailer', role: 'private-group-key' },
+          { id: 'amount', header: 'Amount', role: 'measure' },
+        ],
+        rows: [
+          { id: 'r1', cells: { retailer: '[[PII:a1]]', amount: '120.50' } },
+          { id: 'r2', cells: { retailer: '[[PII:a2]]', amount: '80' } },
+          { id: 'r3', cells: { retailer: '[[PII:b1]]', amount: '190' } },
+        ],
+      }],
+    }, {
+      piiEntries: [],
+      piiCleansing: { contextIds: ['ctx-live'] },
+    });
+
+    expect(listEntries).toHaveBeenCalledWith(['ctx-live'], null);
+    expect(result).toEqual(expect.objectContaining({
+      winnerPlaceholder: '[[PII:a1]]',
+      aggregateValue: 200.5,
+      sanitized: true,
+    }));
+
+    listEntries.mockRestore();
   });
 
   test('rejects raw PII and unknown group placeholders', async () => {
