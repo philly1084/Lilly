@@ -52,6 +52,7 @@ const {
     inferPodcastVideoOptions,
 } = require('./podcast/podcast-intent');
 const { extractArtifactsFromToolEvents } = require('./runtime-artifacts');
+const { RELATIONSHIP_CALCULATION_TOOL_ID } = require('./pii');
 const DOCUMENT_WORKFLOW_TOOL_ID = 'document-workflow';
 const DEEP_RESEARCH_PRESENTATION_TOOL_ID = 'deep-research-presentation';
 
@@ -295,6 +296,7 @@ const AUTO_TOOL_ALLOWLIST = new Set([
     'agent-workload',
     DOCUMENT_WORKFLOW_TOOL_ID,
     DEEP_RESEARCH_PRESENTATION_TOOL_ID,
+    RELATIONSHIP_CALCULATION_TOOL_ID,
     'git-safe',
     USER_CHECKPOINT_TOOL_ID,
     'ssh-execute',
@@ -2035,6 +2037,10 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
         return Boolean(options?.documentService || options?.toolContext?.documentService);
     }
 
+    if (toolId === RELATIONSHIP_CALCULATION_TOOL_ID) {
+        return hasPiiRelationshipCalculationIntent(prompt, options);
+    }
+
     if (toolId === USER_CHECKPOINT_TOOL_ID) {
         const checkpointPolicy = options?.userCheckpointPolicy || options?.toolContext?.userCheckpointPolicy || {};
         if (parseUserCheckpointResponseMessage(prompt)) {
@@ -2151,6 +2157,26 @@ function getToolContextMetadata(options = {}) {
         return options.toolContext.metadata;
     }
     return {};
+}
+
+function getPiiRelationshipCalculationState(options = {}) {
+    const metadata = getToolContextMetadata(options);
+    return metadata?.piiCleansing?.relationshipCalculations
+        || options?.piiCleansing?.relationshipCalculations
+        || options?.toolContext?.piiCleansing?.relationshipCalculations
+        || options?.toolContext?.metadata?.piiCleansing?.relationshipCalculations
+        || null;
+}
+
+function hasPiiRelationshipCalculationIntent(prompt = '', options = {}) {
+    const relationshipState = getPiiRelationshipCalculationState(options);
+    if (relationshipState?.active === true) {
+        return true;
+    }
+    const normalized = String(prompt || '').toLowerCase();
+    return /\b(pii|private|redacted|placeholder|\[\[pii:)/i.test(prompt)
+        && /\b(xlsx|excel|spreadsheet|workbook|sheet|table|rows?|columns?)\b/.test(normalized)
+        && /\b(sum|total|add up|count|average|rank|top|bottom|largest|smallest|highest|lowest|group|join|compare)\b/.test(normalized);
 }
 
 function hasExplicitDirectRemoteCliIntent(prompt = '') {
@@ -3272,6 +3298,11 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add(DOCUMENT_WORKFLOW_TOOL_ID);
     }
 
+    if (availableToolIds.has(RELATIONSHIP_CALCULATION_TOOL_ID)
+        && hasPiiRelationshipCalculationIntent(prompt, options)) {
+        selectedIds.add(RELATIONSHIP_CALCULATION_TOOL_ID);
+    }
+
     if (shouldOfferUserCheckpoint) {
         selectedIds.add(USER_CHECKPOINT_TOOL_ID);
     }
@@ -3687,6 +3718,12 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
         guidance.push('- Training/manual work should ask for high-impact design choices when audience, delivery mode, format mix, duration, visual style, assessment depth, or research scope is unclear. Keep intake concise and then proceed.');
         guidance.push('- When the training subject depends on facts, procedures, standards, or current guidance, ground the package in vector memory and verified research before generating final materials.');
         guidance.push('- When the user explicitly asks for parallel workers or multiple agents on a training package, split work by output surface or package part: manual, workbook, HTML, podcast script, video-podcast storyboard, source research, and QA.');
+    }
+
+    if (automaticTools.some((entry) => entry.id === RELATIONSHIP_CALCULATION_TOOL_ID)) {
+        guidance.push('- Privacy-aware spreadsheet calculation mode is active. For grouping, joining, summing, ranking, or comparing PII-bearing table rows, call `pii-relationship-calculate` instead of correlating placeholders yourself.');
+        guidance.push('- Build the relationship calculation request with table ids, row ids, column ids, placeholder cells, numeric measure columns, filters, and supported operations only. Do not include raw private values.');
+        guidance.push('- Treat placeholder identity as unknowable. The trusted PII vault layer handles private grouping and trusted-view restoration; your answer should preserve returned placeholders exactly where private labels belong.');
     }
 
     if (automaticTools.some((entry) => entry.id === 'asset-search')) {

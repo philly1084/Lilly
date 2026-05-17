@@ -133,6 +133,9 @@ function buildPiiCleansingMetadata(routePii = null, executionPii = null, present
         replacementCount,
         restoredCount: Array.isArray(presentation?.restorations) ? presentation.restorations.length : 0,
         placeholderMode: routePii?.policy?.placeholderMode || executionPii?.placeholderMode || '',
+        relationshipCalculations: routePii?.policy?.relationshipCalculations
+            || executionPii?.relationshipCalculations
+            || null,
     };
 }
 

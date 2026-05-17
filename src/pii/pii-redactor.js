@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { detectPii } = require('./pii-detectors');
-const { resolvePiiPolicy, assertPiiReady } = require('./pii-policy');
+const { resolvePiiPolicy, assertPiiReady, resolveRelationshipCalculationPolicy } = require('./pii-policy');
 const { piiVaultStore, valueIndexHmac } = require('./pii-vault-store');
 
 function typeToken(type = '') {
@@ -60,6 +60,9 @@ function resolveDetectorAction(match = {}, policy = {}) {
   const actions = policy.detectorActions && typeof policy.detectorActions === 'object' && !Array.isArray(policy.detectorActions)
     ? policy.detectorActions
     : {};
+  if (!actions[match.type] && !actions[typeToken(match.type)] && !actions.default && policy.relationshipCalculations?.active) {
+    return 'vault-placeholder';
+  }
   const defaultAction = NON_RESTORABLE_IDENTITY_TYPES.has(String(match.type || '').trim()) || match.grounded === true
     ? 'mask'
     : 'vault-placeholder';
@@ -121,6 +124,22 @@ function buildModelFrame(replacements = [], policy = {}) {
   };
 }
 
+function buildRelationshipCalculationFrame(relationshipCalculations = null) {
+  if (!relationshipCalculations?.active) {
+    return null;
+  }
+  return {
+    active: true,
+    reason: relationshipCalculations.reason || 'auto-detected',
+    instruction: [
+      'Privacy-aware spreadsheet calculation mode is active.',
+      'When grouping, joining, summing, ranking, or comparing PII-bearing table rows, use the structured relationship calculation tool instead of correlating placeholders yourself.',
+      'Provide row ids, column ids, placeholder cells, numeric measure columns, filters, and requested operations only.',
+      'Do not infer private identities or assume two placeholders represent the same value; the trusted vault layer performs private grouping and restoration.',
+    ].join(' '),
+  };
+}
+
 function appendModelFrameInstruction(instructions, frame = null) {
   if (!frame?.instruction || typeof instructions !== 'string') {
     return instructions;
@@ -137,13 +156,21 @@ async function sanitizeText(text = '', {
   policy = null,
 } = {}) {
   const source = String(text || '');
-  const resolvedPolicy = policy || resolvePiiPolicy({ metadata, clientSurface, route });
+  const basePolicy = policy || resolvePiiPolicy({ metadata, clientSurface, route });
+  const resolvedPolicy = {
+    ...basePolicy,
+    relationshipCalculations: resolveRelationshipCalculationPolicy(basePolicy, {
+      text: source,
+      metadata,
+    }),
+  };
   if (!resolvedPolicy.enabled || !source) {
     return {
       text: source,
       changed: false,
       contextId: null,
       replacements: [],
+      relationshipFrame: buildRelationshipCalculationFrame(resolvedPolicy.relationshipCalculations),
       policy: resolvedPolicy,
     };
   }
@@ -158,6 +185,7 @@ async function sanitizeText(text = '', {
       changed: false,
       contextId: null,
       replacements: [],
+      relationshipFrame: buildRelationshipCalculationFrame(resolvedPolicy.relationshipCalculations),
       policy: resolvedPolicy,
     };
   }
@@ -218,12 +246,14 @@ async function sanitizeText(text = '', {
     await piiVaultStore.addEntries(context.id, vaultReplacements);
   }
   const modelFrame = buildModelFrame(replacements, resolvedPolicy);
+  const relationshipFrame = buildRelationshipCalculationFrame(resolvedPolicy.relationshipCalculations);
 
   return {
     text: sanitized,
     changed: sanitized !== source,
     contextId: context?.id || null,
     modelFrame,
+    relationshipFrame,
     replacements: replacements.map((entry) => ({
       placeholder: entry.placeholder,
       type: entry.type,
@@ -263,7 +293,21 @@ async function sanitizeStringValues(value, options = {}, state = { contextIds: [
 }
 
 async function sanitizeRuntimePayload(payload = {}, options = {}) {
-  const policy = resolvePiiPolicy(options);
+  const basePolicy = options.policy || resolvePiiPolicy(options);
+  const requestText = typeof payload.memoryInput === 'string'
+    ? payload.memoryInput
+    : typeof payload.input === 'string'
+      ? payload.input
+      : Array.isArray(payload.input)
+        ? payload.input.map((entry) => String(entry?.content || entry?.text || '')).filter(Boolean).join('\n')
+        : '';
+  const policy = {
+    ...basePolicy,
+    relationshipCalculations: resolveRelationshipCalculationPolicy(basePolicy, {
+      text: requestText,
+      metadata: payload.metadata || options.metadata || {},
+    }),
+  };
   if (!policy.enabled) {
     return { payload, changed: false, contextIds: [], replacements: [], policy, modelFrame: null };
   }
@@ -278,7 +322,13 @@ async function sanitizeRuntimePayload(payload = {}, options = {}) {
     }
   }
   const modelFrame = buildModelFrame(state.replacements, policy);
+  const relationshipFrame = buildRelationshipCalculationFrame(policy.relationshipCalculations);
   next.instructions = appendModelFrameInstruction(next.instructions, modelFrame);
+  if (relationshipFrame?.instruction && typeof next.instructions === 'string') {
+    next.instructions = [next.instructions, `PII relationship calculation framing: ${relationshipFrame.instruction}`]
+      .filter(Boolean)
+      .join('\n\n');
+  }
   next.metadata = {
     ...(next.metadata && typeof next.metadata === 'object' ? next.metadata : {}),
     piiCleansing: {
@@ -287,6 +337,8 @@ async function sanitizeRuntimePayload(payload = {}, options = {}) {
       replacementCount: state.replacements.length,
       placeholderMode: policy.placeholderMode,
       modelFrame,
+      relationshipCalculations: policy.relationshipCalculations || null,
+      relationshipFrame,
     },
   };
   return {
@@ -296,6 +348,7 @@ async function sanitizeRuntimePayload(payload = {}, options = {}) {
     replacements: state.replacements,
     policy,
     modelFrame,
+    relationshipFrame,
   };
 }
 
@@ -304,4 +357,5 @@ module.exports = {
   sanitizeRuntimePayload,
   sanitizeStringValues,
   buildModelFrame,
+  buildRelationshipCalculationFrame,
 };

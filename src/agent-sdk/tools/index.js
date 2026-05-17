@@ -61,6 +61,11 @@ const {
 const { classifyFailureText } = require('../../orchestration/recovery-policy');
 const { validatePlanStep } = require('../../orchestration/plan-validator');
 const { getHostnameFromUrl, normalizeDomainList } = require('./categories/web/research-site-policy');
+const {
+  RELATIONSHIP_CALCULATION_TOOL_ID,
+  RELATIONSHIP_CALCULATION_SCHEMA,
+  calculateRelationshipWithRepair,
+} = require('../../pii');
 
 const MAX_VERIFIED_REFERENCE_IMAGES = 20;
 const IMAGE_REFERENCE_VERIFY_TIMEOUT_MS = 15000;
@@ -2105,6 +2110,31 @@ class ToolManager {
           exposeToFrontend: true,
           icon: 'folder-search'
         }
+      },
+      {
+        id: RELATIONSHIP_CALCULATION_TOOL_ID,
+        name: 'PII Relationship Calculator',
+        category: 'system',
+        description: 'Trusted privacy calculator for grouping, joining, summing, ranking, and filtering placeholder-safe spreadsheet tables without exposing raw PII to the model.',
+        backend: {
+          handler: async (params = {}, context = {}) => calculateRelationshipWithRepair(params, context),
+          sideEffects: ['read'],
+          timeout: 15000,
+        },
+        inputSchema: RELATIONSHIP_CALCULATION_SCHEMA,
+        skill: {
+          triggerPatterns: [
+            'pii relationship calculate',
+            'privacy aware spreadsheet calculation',
+            'spreadsheet pii totals',
+            'group placeholders',
+          ],
+          requiresConfirmation: false,
+        },
+        frontend: {
+          exposeToFrontend: false,
+          icon: 'calculator',
+        },
       },
       {
         id: 'research-bucket-list',

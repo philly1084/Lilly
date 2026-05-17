@@ -48,6 +48,7 @@ const BASE_SHARED_TOOL_IDS = Object.freeze([
     'agent-workload',
     'document-workflow',
     'deep-research-presentation',
+    'pii-relationship-calculate',
     'design-resource-search',
     'user-checkpoint',
     'git-safe',
@@ -110,6 +111,7 @@ const PROFILE_TOOL_ALLOWLISTS = Object.freeze({
 
 const HIDDEN_FRONTEND_TOOL_IDS = Object.freeze([
     'code-execute',
+    'pii-relationship-calculate',
 ]);
 
 function getAllowedToolIdsForProfile(profile = DEFAULT_EXECUTION_PROFILE) {

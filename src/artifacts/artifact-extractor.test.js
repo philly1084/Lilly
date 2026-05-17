@@ -132,5 +132,24 @@ describe('extractArtifact', () => {
         expect(result.extractedText).toContain('046 454 286');
         expect(result.extractedText).toContain('K1A 0B1');
         expect(result.extractedText).not.toContain('0 | 1 | 2');
+        expect(result.metadata.structuredTables[0]).toEqual(expect.objectContaining({
+            name: 'sheet1',
+            headers: [
+                expect.objectContaining({ id: 'c1', header: 'Name', columnIndex: 0 }),
+                expect.objectContaining({ id: 'c2', header: 'SIN', columnIndex: 1 }),
+                expect.objectContaining({ id: 'c3', header: 'Postal', columnIndex: 2 }),
+            ],
+            rows: [
+                expect.objectContaining({
+                    id: 'r1',
+                    rowIndex: 1,
+                    cells: [
+                        expect.objectContaining({ columnId: 'c1', header: 'Name', value: 'Jamie Sampleton' }),
+                        expect.objectContaining({ columnId: 'c2', header: 'SIN', value: '046 454 286' }),
+                        expect.objectContaining({ columnId: 'c3', header: 'Postal', value: 'K1A 0B1' }),
+                    ],
+                }),
+            ],
+        }));
     });
 });

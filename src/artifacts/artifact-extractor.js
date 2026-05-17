@@ -68,6 +68,16 @@ function parseSharedStrings(xml) {
     return values;
 }
 
+function columnLettersToIndex(ref = '') {
+    const letters = String(ref || '').replace(/[^A-Z]/gi, '').toUpperCase();
+    if (!letters) return null;
+    let index = 0;
+    for (const letter of letters) {
+        index = index * 26 + (letter.charCodeAt(0) - 64);
+    }
+    return index - 1;
+}
+
 function extractSheetRows(xml, sharedStrings) {
     const rows = [];
     const rowRegex = /<row[^>]*>([\s\S]*?)<\/row>/g;
@@ -80,6 +90,8 @@ function extractSheetRows(xml, sharedStrings) {
         while (cellMatch) {
             const attrs = cellMatch[1] || '';
             const type = (attrs.match(/\bt=["']([^"']+)["']/) || [])[1] || '';
+            const ref = (attrs.match(/\br=["']([^"']+)["']/) || [])[1] || '';
+            const columnIndex = columnLettersToIndex(ref);
             const body = cellMatch[2];
             const valueMatch = body.match(/<v>([\s\S]*?)<\/v>/);
             const inlineMatch = body.match(/<is>([\s\S]*?)<\/is>/);
@@ -94,18 +106,44 @@ function extractSheetRows(xml, sharedStrings) {
             }
 
             if (value) {
-                cells.push(value);
+                cells.push({
+                    columnIndex: columnIndex === null ? cells.length : columnIndex,
+                    value,
+                });
             }
             cellMatch = cellRegex.exec(rowMatch[1]);
         }
 
         if (cells.length > 0) {
-            rows.push(cells.join(' | '));
+            rows.push(cells.sort((a, b) => a.columnIndex - b.columnIndex));
         }
         rowMatch = rowRegex.exec(xml);
     }
 
     return rows;
+}
+
+function buildStructuredSheetRows(rows = []) {
+    const headers = rows[0]
+        ? rows[0].map((cell, index) => ({
+            id: `c${index + 1}`,
+            header: String(cell.value || '').trim() || `Column ${index + 1}`,
+            columnIndex: cell.columnIndex,
+        }))
+        : [];
+    return {
+        headers,
+        rows: rows.slice(1).map((row, rowIndex) => ({
+            id: `r${rowIndex + 1}`,
+            rowIndex: rowIndex + 1,
+            cells: row.map((cell, cellIndex) => ({
+                columnId: headers[cellIndex]?.id || `c${cellIndex + 1}`,
+                columnIndex: cell.columnIndex,
+                header: headers[cellIndex]?.header || `Column ${cellIndex + 1}`,
+                value: cell.value,
+            })),
+        })),
+    };
 }
 
 function extractXlsx(buffer) {
@@ -119,9 +157,15 @@ function extractXlsx(buffer) {
         if (/^xl\/worksheets\/sheet\d+\.xml$/i.test(name)) {
             const rows = extractSheetRows(content.toString('utf8'), sharedStrings);
             const sheetName = name.split('/').pop().replace('.xml', '');
-            sheets.push({ name: sheetName, rowCount: rows.length });
+            const structured = buildStructuredSheetRows(rows);
+            sheets.push({
+                name: sheetName,
+                rowCount: rows.length,
+                headers: structured.headers,
+                rows: structured.rows,
+            });
             if (rows.length > 0) {
-                textParts.push(`[${sheetName}]\n${rows.join('\n')}`);
+                textParts.push(`[${sheetName}]\n${rows.map((row) => row.map((cell) => cell.value).join(' | ')).join('\n')}`);
             }
         }
     }
@@ -130,7 +174,13 @@ function extractXlsx(buffer) {
     return {
         extractedText,
         previewHtml: buildPreviewHtml(extractedText),
-        metadata: { sheets },
+        metadata: {
+            sheets: sheets.map((sheet) => ({
+                name: sheet.name,
+                rowCount: sheet.rowCount,
+            })),
+            structuredTables: sheets,
+        },
         vectorizable: Boolean(extractedText),
     };
 }

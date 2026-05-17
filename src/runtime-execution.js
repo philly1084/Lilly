@@ -379,6 +379,13 @@ async function executeConversationRuntime(app, params = {}) {
         replacementCount: piiSanitized.replacements.length,
         placeholderMode: piiSanitized.policy?.placeholderMode || '',
         modelFrame: piiSanitized.modelFrame || null,
+        relationshipCalculations: piiSanitized.policy?.relationshipCalculations || null,
+        relationshipFrame: piiSanitized.relationshipFrame || null,
+    };
+    const effectiveScopedToolContext = {
+        ...scopedToolContext,
+        metadata: effectiveParams.metadata || params.metadata || {},
+        piiCleansing: piiResult,
     };
 
     if (orchestrator?.executeConversation) {
@@ -387,7 +394,7 @@ async function executeConversationRuntime(app, params = {}) {
                 ...effectiveParams,
                 clientSurface,
                 memoryScope,
-                toolContext: scopedToolContext,
+                toolContext: effectiveScopedToolContext,
                 executionProfile,
             })),
             handledPersistence: true,
@@ -432,7 +439,7 @@ async function executeConversationRuntime(app, params = {}) {
             ...effectiveParams,
             clientSurface,
             memoryScope,
-            toolContext: scopedToolContext,
+            toolContext: effectiveScopedToolContext,
             executionProfile,
             previousPromptState: effectiveParams.previousPromptState || effectiveParams.session?.metadata?.promptState || null,
             contextMessages,

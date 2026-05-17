@@ -1523,6 +1523,36 @@
                                                         <span class="toggle-slider"></span>
                                                     </label>
                                                 </div>
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Privacy-aware spreadsheet calculations</span>
+                                                        <span class="feature-desc">Route grouped table math through the encrypted vault instead of asking agents to correlate PII placeholders.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiRelationshipCalculationsEnabled">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Auto-detect spreadsheet math</span>
+                                                        <span class="feature-desc">Enable the relationship calculator when PII-protected table totals, rankings, joins, or comparisons are requested.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiRelationshipCalculationsAutoDetect">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Allow explicit calculation request</span>
+                                                        <span class="feature-desc">Honor metadata that forces relationship-calculation mode for a request.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiRelationshipCalculationsAllowExplicit">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
                                             </div>
 
                                             <div class="form-row">
@@ -1549,6 +1579,17 @@
                                                         <option value="admin-only">Admin only</option>
                                                         <option value="never">Never restore</option>
                                                     </select>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="piiRelationshipCalculationsMaxRows">Calculation Row Limit</label>
+                                                    <input type="number" class="form-control" id="piiRelationshipCalculationsMaxRows" min="1" max="100000" step="1">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="piiRelationshipCalculationsMaxCells">Calculation Cell Limit</label>
+                                                    <input type="number" class="form-control" id="piiRelationshipCalculationsMaxCells" min="1" max="1000000" step="1">
                                                 </div>
                                             </div>
 

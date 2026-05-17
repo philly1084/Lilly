@@ -2,7 +2,7 @@ const settingsController = require('../routes/admin/settings.controller');
 const { postgres } = require('../postgres');
 
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  defaultsVersion: 5,
+  defaultsVersion: 6,
   enabled: true,
   webChatEnabled: true,
   highlightRestored: true,
@@ -21,6 +21,13 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
+  },
+  relationshipCalculations: {
+    enabled: true,
+    autoDetect: true,
+    allowExplicitRequest: true,
+    maxRows: 1000,
+    maxCells: 20000,
   },
 };
 
@@ -133,6 +140,67 @@ function normalizeAuditCriteria(value = {}, fallback = {}, profile = 'baseline')
   };
 }
 
+function normalizeRelationshipCalculations(value = {}, fallback = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
+  const maxRows = Number(source.maxRows ?? fallbackSource.maxRows ?? 1000);
+  const maxCells = Number(source.maxCells ?? fallbackSource.maxCells ?? 20000);
+  return {
+    enabled: source.enabled !== undefined ? Boolean(source.enabled) : fallbackSource.enabled !== false,
+    autoDetect: source.autoDetect !== undefined ? Boolean(source.autoDetect) : fallbackSource.autoDetect !== false,
+    allowExplicitRequest: source.allowExplicitRequest !== undefined
+      ? Boolean(source.allowExplicitRequest)
+      : fallbackSource.allowExplicitRequest !== false,
+    maxRows: Number.isFinite(maxRows) ? Math.max(1, Math.min(Math.floor(maxRows), 100000)) : 1000,
+    maxCells: Number.isFinite(maxCells) ? Math.max(1, Math.min(Math.floor(maxCells), 1000000)) : 20000,
+  };
+}
+
+function normalizeRelationshipCalculationOverride(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+  if (['force', 'on', 'enabled', 'true', 'required'].includes(normalized)) return 'force';
+  if (['off', 'disabled', 'false', 'none'].includes(normalized)) return 'off';
+  return 'auto';
+}
+
+function hasRelationshipCalculationIntent(text = '') {
+  const normalized = String(text || '').trim().toLowerCase();
+  if (!normalized) return false;
+  const hasTableCue = /\b(xlsx|excel|spreadsheet|workbook|sheet|worksheet|csv|table|rows?|columns?|cells?)\b/.test(normalized);
+  const hasMathCue = /\b(sum|sums|total|totals|subtotal|aggregate|add up|count|average|mean|rank|ranking|top|bottom|largest|smallest|highest|lowest|greater|lesser|compare|comparison|group|grouped|by retailer|by customer|by client|by account)\b/.test(normalized);
+  return hasTableCue && hasMathCue;
+}
+
+function resolveRelationshipCalculationPolicy(policy = {}, {
+  text = '',
+  metadata = {},
+} = {}) {
+  const settings = normalizeRelationshipCalculations(
+    policy.relationshipCalculations,
+    DEFAULT_PRIVACY_PII_SETTINGS.relationshipCalculations,
+  );
+  const override = normalizeRelationshipCalculationOverride(
+    metadata?.piiRelationshipCalculations
+      ?? metadata?.pii_relationship_calculations
+      ?? metadata?.relationshipCalculations
+      ?? metadata?.relationship_calculations,
+  );
+  const callerActive = policy.relationshipCalculations?.active === true
+    || metadata?.piiCleansing?.relationshipCalculations?.active === true;
+  const explicitActive = callerActive || (settings.allowExplicitRequest && override === 'force');
+  const disabled = !settings.enabled || override === 'off';
+  const autoActive = !disabled && settings.autoDetect && hasRelationshipCalculationIntent(text);
+  const active = policy.enabled === true && !disabled && (explicitActive || autoActive);
+  return {
+    ...settings,
+    override,
+    active,
+    reason: active
+      ? (explicitActive ? 'explicit' : 'auto-detected')
+      : (disabled ? 'disabled' : 'not-detected'),
+  };
+}
+
 function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const sourceDetectors = Array.isArray(source.detectors)
@@ -144,7 +212,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
   return {
     ...fallback,
     ...source,
-    defaultsVersion: 5,
+    defaultsVersion: 6,
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
     webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,
@@ -165,6 +233,10 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
         : fallback.enablePersonNames === true,
     auditProfile,
     auditCriteria: normalizeAuditCriteria(source.auditCriteria, fallback.auditCriteria, auditProfile),
+    relationshipCalculations: normalizeRelationshipCalculations(
+      source.relationshipCalculations,
+      fallback.relationshipCalculations,
+    ),
   };
 }
 
@@ -224,6 +296,10 @@ module.exports = {
   normalizePrivacyPiiSettings,
   normalizePlaceholderMode,
   normalizeReintroductionMode,
+  normalizeRelationshipCalculations,
+  normalizeRelationshipCalculationOverride,
+  hasRelationshipCalculationIntent,
+  resolveRelationshipCalculationPolicy,
   getConfiguredPrivacyPiiSettings,
   resolvePiiPolicy,
   assertPiiReady,

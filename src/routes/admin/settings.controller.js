@@ -20,7 +20,7 @@ const {
 const { detectPii } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  defaultsVersion: 5,
+  defaultsVersion: 6,
   enabled: true,
   webChatEnabled: true,
   highlightRestored: true,
@@ -39,6 +39,13 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
+  },
+  relationshipCalculations: {
+    enabled: true,
+    autoDetect: true,
+    allowExplicitRequest: true,
+    maxRows: 1000,
+    maxCells: 20000,
   },
 };
 
@@ -165,6 +172,22 @@ function normalizePrivacyAuditCriteria(value = {}, fallback = {}, profile = 'bas
   };
 }
 
+function normalizePrivacyRelationshipCalculations(value = {}, fallback = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
+  const maxRows = Number(source.maxRows ?? fallbackSource.maxRows ?? 1000);
+  const maxCells = Number(source.maxCells ?? fallbackSource.maxCells ?? 20000);
+  return {
+    enabled: source.enabled !== undefined ? Boolean(source.enabled) : fallbackSource.enabled !== false,
+    autoDetect: source.autoDetect !== undefined ? Boolean(source.autoDetect) : fallbackSource.autoDetect !== false,
+    allowExplicitRequest: source.allowExplicitRequest !== undefined
+      ? Boolean(source.allowExplicitRequest)
+      : fallbackSource.allowExplicitRequest !== false,
+    maxRows: Number.isFinite(maxRows) ? Math.max(1, Math.min(Math.floor(maxRows), 100000)) : 1000,
+    maxCells: Number.isFinite(maxCells) ? Math.max(1, Math.min(Math.floor(maxCells), 1000000)) : 20000,
+  };
+}
+
 function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const sourceDetectors = Array.isArray(source.detectors)
@@ -176,7 +199,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
   return {
     ...fallback,
     ...source,
-    defaultsVersion: 5,
+    defaultsVersion: 6,
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
     webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,
@@ -197,6 +220,10 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
         : fallback.enablePersonNames === true,
     auditProfile,
     auditCriteria: normalizePrivacyAuditCriteria(source.auditCriteria, fallback.auditCriteria, auditProfile),
+    relationshipCalculations: normalizePrivacyRelationshipCalculations(
+      source.relationshipCalculations,
+      fallback.relationshipCalculations,
+    ),
   };
 }
 
@@ -623,7 +650,7 @@ class SettingsController {
     }
 
     const defaultsVersion = Number(privacyPii.defaultsVersion || 0);
-    if (defaultsVersion >= 5) {
+    if (defaultsVersion >= 6) {
       return next;
     }
 
@@ -652,7 +679,7 @@ class SettingsController {
 
     next.privacyPii = {
       ...privacyPii,
-      defaultsVersion: 5,
+      defaultsVersion: 6,
       enabled: true,
       placeholderMode: privacyPii.placeholderMode === 'stable-per-value'
         ? 'stable-per-value'
@@ -666,6 +693,10 @@ class SettingsController {
           : {}),
         requiredDetectors: Array.from(requiredSet),
       },
+      relationshipCalculations: normalizePrivacyRelationshipCalculations(
+        privacyPii.relationshipCalculations,
+        DEFAULT_PRIVACY_PII_SETTINGS.relationshipCalculations,
+      ),
     };
     return next;
   }

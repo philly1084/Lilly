@@ -4772,7 +4772,7 @@ class Dashboard {
 
     renderPrivacyPiiSettings(settings = this.state.settings?.privacyPii || {}) {
         const privacyPii = {
-            defaultsVersion: 2,
+            defaultsVersion: 6,
             enabled: true,
             webChatEnabled: true,
             highlightRestored: true,
@@ -4786,7 +4786,22 @@ class Dashboard {
             dictionary: [],
             auditProfile: 'baseline',
             auditCriteria: { requiredDetectors: this.getPrivacyAuditDefaults('baseline') },
+            relationshipCalculations: {
+                enabled: true,
+                autoDetect: true,
+                allowExplicitRequest: true,
+                maxRows: 1000,
+                maxCells: 20000,
+            },
             ...settings,
+        };
+        const relationshipCalculations = {
+            enabled: true,
+            autoDetect: true,
+            allowExplicitRequest: true,
+            maxRows: 1000,
+            maxCells: 20000,
+            ...(privacyPii.relationshipCalculations || {}),
         };
 
         this.setCheckboxValue('piiEnabled', Boolean(privacyPii.enabled));
@@ -4797,6 +4812,11 @@ class Dashboard {
         this.setInputValue('piiAuditProfile', privacyPii.auditProfile || 'baseline');
         this.setInputValue('piiPlaceholderMode', privacyPii.placeholderMode || 'opaque-random');
         this.setInputValue('piiReintroductionMode', privacyPii.reintroductionMode || 'trusted-view');
+        this.setCheckboxValue('piiRelationshipCalculationsEnabled', relationshipCalculations.enabled !== false);
+        this.setCheckboxValue('piiRelationshipCalculationsAutoDetect', relationshipCalculations.autoDetect !== false);
+        this.setCheckboxValue('piiRelationshipCalculationsAllowExplicit', relationshipCalculations.allowExplicitRequest !== false);
+        this.setInputValue('piiRelationshipCalculationsMaxRows', relationshipCalculations.maxRows || 1000);
+        this.setInputValue('piiRelationshipCalculationsMaxCells', relationshipCalculations.maxCells || 20000);
         this.setInputValue('piiRequiredDetectors', this.joinListForTextarea(privacyPii.auditCriteria?.requiredDetectors || []));
         this.setInputValue('piiDictionary', this.formatPrivacyDictionary(privacyPii.dictionary || []));
         this.setInputValue('piiCustomPatterns', this.formatPrivacyCustomPatterns(privacyPii.customPatterns || []));
@@ -4929,7 +4949,7 @@ class Dashboard {
         const enablePersonNames = checkedDetectors.includes('personName');
 
         return {
-            defaultsVersion: 2,
+            defaultsVersion: 6,
             enabled: document.getElementById('piiEnabled')?.checked === true,
             webChatEnabled: document.getElementById('piiWebChatEnabled')?.checked !== false,
             failClosed: document.getElementById('piiFailClosed')?.checked !== false,
@@ -4943,6 +4963,13 @@ class Dashboard {
             detectorActions,
             dictionary: this.parsePrivacyDictionary(document.getElementById('piiDictionary')?.value || ''),
             customPatterns: this.parsePrivacyCustomPatterns(document.getElementById('piiCustomPatterns')?.value || ''),
+            relationshipCalculations: {
+                enabled: document.getElementById('piiRelationshipCalculationsEnabled')?.checked !== false,
+                autoDetect: document.getElementById('piiRelationshipCalculationsAutoDetect')?.checked !== false,
+                allowExplicitRequest: document.getElementById('piiRelationshipCalculationsAllowExplicit')?.checked !== false,
+                maxRows: Number(document.getElementById('piiRelationshipCalculationsMaxRows')?.value || 1000),
+                maxCells: Number(document.getElementById('piiRelationshipCalculationsMaxCells')?.value || 20000),
+            },
             auditCriteria: {
                 requiredDetectors: this.parseDelimitedList(document.getElementById('piiRequiredDetectors')?.value || ''),
                 requireVaultKey: true,

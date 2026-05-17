@@ -345,13 +345,20 @@ describe('settings.controller personality support', () => {
     const defaults = controller.getDefaultSettings().privacyPii;
 
     expect(defaults).toEqual(expect.objectContaining({
-      defaultsVersion: 5,
+      defaultsVersion: 6,
       enabled: true,
       webChatEnabled: true,
       placeholderMode: 'opaque-random',
       failClosed: true,
       enablePersonNames: true,
       auditProfile: 'strict',
+      relationshipCalculations: expect.objectContaining({
+        enabled: true,
+        autoDetect: true,
+        allowExplicitRequest: true,
+        maxRows: 1000,
+        maxCells: 20000,
+      }),
     }));
     expect(defaults.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
   });
@@ -366,11 +373,12 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 5,
+      defaultsVersion: 6,
       enabled: true,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
+      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
@@ -392,11 +400,12 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 5,
+      defaultsVersion: 6,
       enabled: true,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
+      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
@@ -418,11 +427,12 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 5,
+      defaultsVersion: 6,
       enabled: true,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
+      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
@@ -444,11 +454,12 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 5,
+      defaultsVersion: 6,
       enabled: true,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
+      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['healthCardNumber', 'socialInsuranceNumber', 'postalCode']));

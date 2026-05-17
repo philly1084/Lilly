@@ -999,6 +999,33 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(guidance).toContain('includeContent: true');
     });
 
+    test('PII relationship calculation guidance forbids model-side placeholder correlation', () => {
+        const guidance = __testUtils.buildAutomaticToolGuidance([
+            { id: 'pii-relationship-calculate' },
+        ]);
+
+        expect(guidance).toContain('Privacy-aware spreadsheet calculation mode is active');
+        expect(guidance).toContain('call `pii-relationship-calculate` instead of correlating placeholders yourself');
+        expect(guidance).toContain('Do not include raw private values');
+        expect(guidance).toContain('trusted PII vault layer handles private grouping');
+    });
+
+    test('selects PII relationship calculator from route metadata activation', () => {
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions([
+            { id: 'pii-relationship-calculate', skill: { triggerPatterns: [] } },
+        ], 'Which retailer has the largest total in this spreadsheet?', {
+            toolContext: {
+                metadata: {
+                    piiCleansing: {
+                        relationshipCalculations: { active: true },
+                    },
+                },
+            },
+        });
+
+        expect(selectedTools.map((tool) => tool.id)).toEqual(['pii-relationship-calculate']);
+    });
+
     test('research bucket guidance explains callable durable storage', () => {
         const guidance = __testUtils.buildAutomaticToolGuidance([
             { id: 'research-bucket-list' },

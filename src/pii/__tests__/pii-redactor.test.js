@@ -1,14 +1,23 @@
 const { DEFAULT_PRIVACY_PII_SETTINGS } = require('../pii-policy');
-const { buildModelFrame, sanitizeText } = require('../pii-redactor');
+const { buildModelFrame, sanitizeRuntimePayload, sanitizeText } = require('../pii-redactor');
+const {
+  normalizePrivacyPiiSettings,
+  resolveRelationshipCalculationPolicy,
+} = require('../pii-policy');
 
 describe('PII redactor framing', () => {
   test('defaults PII protection to opaque placeholders', () => {
     expect(DEFAULT_PRIVACY_PII_SETTINGS).toEqual(expect.objectContaining({
-      defaultsVersion: 5,
+      defaultsVersion: 6,
       enabled: true,
       placeholderMode: 'opaque-random',
       failClosed: true,
       enablePersonNames: true,
+      relationshipCalculations: expect.objectContaining({
+        enabled: true,
+        autoDetect: true,
+        allowExplicitRequest: true,
+      }),
     }));
     expect(DEFAULT_PRIVACY_PII_SETTINGS.detectors).toEqual(expect.arrayContaining([
       'personName',
@@ -19,6 +28,46 @@ describe('PII redactor framing', () => {
       'socialInsuranceNumber',
       'postalCode',
     ]));
+  });
+
+  test('normalizes relationship calculation settings and auto-detects spreadsheet math', () => {
+    const settings = normalizePrivacyPiiSettings({
+      relationshipCalculations: {
+        maxRows: 25,
+        maxCells: 500,
+      },
+    });
+
+    expect(settings.relationshipCalculations).toEqual(expect.objectContaining({
+      enabled: true,
+      autoDetect: true,
+      allowExplicitRequest: true,
+      maxRows: 25,
+      maxCells: 500,
+    }));
+
+    expect(resolveRelationshipCalculationPolicy(settings, {
+      text: 'Use the spreadsheet table to add up totals by retailer.',
+    })).toEqual(expect.objectContaining({
+      active: true,
+      reason: 'auto-detected',
+    }));
+
+    expect(resolveRelationshipCalculationPolicy(settings, {
+      text: 'Use the spreadsheet table to add up totals by retailer.',
+      metadata: { piiRelationshipCalculations: 'off' },
+    })).toEqual(expect.objectContaining({
+      active: false,
+      reason: 'disabled',
+    }));
+
+    expect(resolveRelationshipCalculationPolicy(settings, {
+      text: 'Hello there.',
+      metadata: { piiRelationshipCalculations: 'force' },
+    })).toEqual(expect.objectContaining({
+      active: true,
+      reason: 'explicit',
+    }));
   });
 
   test('builds model-safe placeholder framing without raw values or type context', () => {
@@ -227,5 +276,75 @@ describe('PII redactor framing', () => {
       expect.objectContaining({ type: 'healthCardNumber', action: 'mask', restorable: false }),
       expect.objectContaining({ type: 'postalCode' }),
     ]));
+  });
+
+  test('uses vault placeholders for identity values during relationship calculations', async () => {
+    const addEntries = jest.fn();
+    const createContext = jest.fn().mockResolvedValue({ id: 'ctx-calc' });
+    jest.spyOn(require('../pii-vault-store').piiVaultStore, 'createContext').mockImplementation(createContext);
+    jest.spyOn(require('../pii-vault-store').piiVaultStore, 'addEntries').mockImplementation(addEntries);
+
+    const result = await sanitizeText('Retailer Acme had total 100.', {
+      sessionId: 'session-calc',
+      policy: {
+        ...DEFAULT_PRIVACY_PII_SETTINGS,
+        failClosed: true,
+        hasMasterKey: true,
+        storageReady: true,
+        detectors: [],
+        customPatterns: [],
+        dictionary: [
+          { type: 'organization', value: 'Acme' },
+        ],
+        relationshipCalculations: {
+          enabled: true,
+          autoDetect: true,
+          allowExplicitRequest: true,
+          maxRows: 1000,
+          maxCells: 20000,
+          active: true,
+          reason: 'auto-detected',
+        },
+      },
+    });
+
+    expect(result.text).toMatch(/\[\[PII:[a-f0-9]{12}\]\] had total 100\./);
+    expect(result.text).not.toContain('Acme');
+    expect(result.replacements[0]).toEqual(expect.objectContaining({
+      action: 'vault-placeholder',
+      restorable: true,
+    }));
+    expect(createContext).toHaveBeenCalled();
+    expect(addEntries).toHaveBeenCalledWith('ctx-calc', expect.arrayContaining([
+      expect.objectContaining({ value: expect.stringContaining('Acme'), restorable: true }),
+    ]));
+
+    require('../pii-vault-store').piiVaultStore.createContext.mockRestore();
+    require('../pii-vault-store').piiVaultStore.addEntries.mockRestore();
+  });
+
+  test('preserves relationship calculation activation through runtime payload sanitization', async () => {
+    const result = await sanitizeRuntimePayload({
+      input: 'Which retailer has the largest total in this spreadsheet table?',
+      memoryInput: 'Which retailer has the largest total in this spreadsheet table?',
+      instructions: 'Answer carefully.',
+      metadata: {
+        piiCleansing: {
+          relationshipCalculations: { active: true },
+        },
+      },
+    }, {
+      policy: {
+        ...DEFAULT_PRIVACY_PII_SETTINGS,
+        failClosed: false,
+        hasMasterKey: false,
+        storageReady: false,
+      },
+    });
+
+    expect(result.payload.metadata.piiCleansing.relationshipCalculations).toEqual(expect.objectContaining({
+      active: true,
+    }));
+    expect(result.payload.metadata.piiCleansing.relationshipFrame.instruction).toContain('structured relationship calculation tool');
   });
 });
