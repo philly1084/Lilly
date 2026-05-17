@@ -373,10 +373,12 @@ function groupRows(table = {}, params = {}, placeholderIndex = new Map()) {
     if (numeric !== null) group.aggregateValue += numeric;
   });
   return Array.from(groups.values()).map((group) => ({
-    ...group,
+    groupPlaceholder: group.groupPlaceholder,
     aggregateValue: params.operation === 'group_average'
       ? (group.rowCount > 0 ? group.aggregateValue / group.rowCount : 0)
       : group.aggregateValue,
+    rowCount: group.rowCount,
+    evidenceRowIds: group.evidenceRowIds,
   }));
 }
 

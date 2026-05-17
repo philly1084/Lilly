@@ -42,6 +42,7 @@ describe('PII relationship calculator', () => {
       sanitized: true,
     }));
     expect(JSON.stringify(result)).not.toContain('Acme');
+    expect(JSON.stringify(result)).not.toContain('retailer-a');
   });
 
   test('rejects raw PII and unknown group placeholders', async () => {
