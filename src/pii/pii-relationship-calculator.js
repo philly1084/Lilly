@@ -212,6 +212,7 @@ function getContextIds(context = {}) {
 }
 
 async function loadPlaceholderIndex(context = {}) {
+  const placeholderIndex = new Map();
   if (Array.isArray(context.piiEntries)) {
     const directEntries = context.piiEntries
       .filter((entry) => entry?.placeholder && entry?.valueIndexHmac)
@@ -220,14 +221,17 @@ async function loadPlaceholderIndex(context = {}) {
         valueIndexHmac: entry.valueIndexHmac,
         piiType: entry.piiType || entry.pii_type || 'PII',
       }]);
-    if (directEntries.length > 0) {
-      return new Map(directEntries);
-    }
+    directEntries.forEach(([placeholder, entry]) => {
+      placeholderIndex.set(placeholder, entry);
+    });
   }
   const contextIds = getContextIds(context);
-  if (contextIds.length === 0) return new Map();
+  if (contextIds.length === 0) return placeholderIndex;
   const entries = await piiVaultStore.listEntriesForContexts(contextIds, context.ownerId || context.userId || null);
-  return new Map(entries.map((entry) => [entry.placeholder, entry]));
+  entries.forEach((entry) => {
+    if (entry?.placeholder) placeholderIndex.set(entry.placeholder, entry);
+  });
+  return placeholderIndex;
 }
 
 function findTable(params = {}, tableId = '') {

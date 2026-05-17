@@ -46,7 +46,7 @@ describe('PII relationship calculator', () => {
     expect(JSON.stringify(result)).not.toContain('retailer-a');
   });
 
-  test('falls back to vault context IDs when direct PII entries are empty', async () => {
+  test('merges vault context IDs with direct PII entries', async () => {
     const listEntries = jest.spyOn(piiVaultStore, 'listEntriesForContexts').mockResolvedValue(piiEntries);
 
     const result = await calculateRelationship({
@@ -69,7 +69,9 @@ describe('PII relationship calculator', () => {
         ],
       }],
     }, {
-      piiEntries: [],
+      piiEntries: [
+        { placeholder: '[[PII:unrelated]]', valueIndexHmac: 'other-private-value', piiType: 'organization' },
+      ],
       piiCleansing: { contextIds: ['ctx-live'] },
     });
 
