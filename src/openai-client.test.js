@@ -1182,6 +1182,59 @@ describe('openai-client automatic tool orchestration helpers', () => {
         ]);
     });
 
+    test('builds deterministic PII XLSX formula-plan preflight actions', () => {
+        const prompt = [
+            'Use the hidden PII relationship calculation tool only.',
+            'Tool operation must be xlsx_formula_plan.',
+            '',
+            'PII-protected table request:',
+            'Table id: sales',
+            'Columns: person, period, baseSales, serviceFees, rebates, credits',
+            'Rows:',
+            'r1 | [[PII:a1]] | Jan | 120.50 | 12 | 3.50 | 4',
+            'r2 | [[PII:b1]] | Jan | 190 | 8 | 2 | 11',
+            'r3 | [[PII:a2]] | Feb | 80 | 4.50 | 1.25 | 0',
+            '',
+            'Formula intent: per-row amount is baseSales + serviceFees + rebates - credits.',
+            'Target result cell Presentation_Result!B5. Helper slots begin at Presentation_Result!A12.',
+        ].join('\n');
+
+        const actions = __testUtils.buildDeterministicPreflightActions(
+            [
+                { id: 'pii-relationship-calculate' },
+            ],
+            prompt,
+        );
+
+        expect(actions).toEqual([
+            {
+                toolId: 'pii-relationship-calculate',
+                params: expect.objectContaining({
+                    operation: 'xlsx_formula_plan',
+                    tableId: 'sales',
+                    groupBy: 'person',
+                    measures: ['baseSales', 'serviceFees', 'rebates'],
+                    subtractMeasures: ['credits'],
+                    target: expect.objectContaining({
+                        resultCell: 'Presentation_Result!B5',
+                        helperStartCell: 'Presentation_Result!A12',
+                    }),
+                }),
+            },
+        ]);
+        expect(actions[0].params.tables[0].rows[0]).toEqual({
+            id: 'r1',
+            cells: {
+                person: '[[PII:a1]]',
+                period: 'Jan',
+                baseSales: '120.50',
+                serviceFees: '12',
+                rebates: '3.50',
+                credits: '4',
+            },
+        });
+    });
+
     test('builds deterministic ssh preflight actions for explicit health checks', () => {
         const actions = __testUtils.buildDeterministicPreflightActions(
             [
@@ -2043,6 +2096,64 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(memoryService.rememberResearchNote).toHaveBeenCalledTimes(2);
         expect(memoryService.rememberResearchNote.mock.calls[0][1]).toContain('[Research note]');
         expect(memoryService.rememberResearchNote.mock.calls[0][1]).toContain('Query: tigers and cats differences');
+    });
+
+    test('deterministic PII formula-plan preflight calls the privacy relationship tool', async () => {
+        const prompt = [
+            'Tool operation must be xlsx_formula_plan.',
+            'Table id: sales',
+            'Columns: person, period, baseSales, serviceFees, rebates, credits',
+            'Rows:',
+            'r1 | [[PII:a1]] | Jan | 120.50 | 12 | 3.50 | 4',
+            'r2 | [[PII:b1]] | Jan | 190 | 8 | 2 | 11',
+            'Formula intent: per-row amount is baseSales + serviceFees + rebates - credits.',
+            'Target result cell Presentation_Result!B5. Helper slots begin at Presentation_Result!A12.',
+        ].join('\n');
+        const toolManager = {
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                toolId: 'pii-relationship-calculate',
+                data: {
+                    operation: 'xlsx_formula_plan',
+                    sanitized: true,
+                    formulaPlan: {
+                        privacy: {
+                            returnsWinnerToModel: false,
+                            returnsGroupRelationshipToModel: false,
+                            exposesRawPii: false,
+                        },
+                    },
+                },
+            }),
+            getTool: jest.fn(),
+        };
+
+        const result = await __testUtils.runDeterministicToolPreflight({
+            toolManager,
+            automaticTools: [
+                { id: 'pii-relationship-calculate' },
+            ],
+            prompt,
+            toolContext: {
+                piiEntries: [
+                    { placeholder: '[[PII:a1]]', valueIndexHmac: 'hmac-a' },
+                    { placeholder: '[[PII:b1]]', valueIndexHmac: 'hmac-b' },
+                ],
+            },
+        });
+
+        expect(toolManager.executeTool).toHaveBeenCalledTimes(1);
+        expect(toolManager.executeTool.mock.calls[0][0]).toBe('pii-relationship-calculate');
+        expect(toolManager.executeTool.mock.calls[0][1]).toEqual(expect.objectContaining({
+            operation: 'xlsx_formula_plan',
+            groupBy: 'person',
+            measures: ['baseSales', 'serviceFees', 'rebates'],
+            subtractMeasures: ['credits'],
+        }));
+        expect(result.toolEvents.map((event) => event.toolCall.function.name)).toEqual([
+            'pii-relationship-calculate',
+        ]);
+        expect(result.summaryMessage.content).toContain('pii-relationship-calculate');
     });
 
     test('selects image tools for generation, unsplash, and direct URL prompts', () => {

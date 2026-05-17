@@ -2576,6 +2576,135 @@ function buildImagePromptFromArtifactRequestForPreflight(text = '') {
     return cleaned;
 }
 
+function normalizeFormulaPlanColumnId(value = '') {
+    return String(value || '')
+        .trim()
+        .replace(/^['"`]+|['"`]+$/g, '')
+        .replace(/[^\w.-]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function extractFormulaPlanSection(text = '', heading = '') {
+    const source = String(text || '');
+    const match = source.match(new RegExp(`${heading}\\s*:\\s*([\\s\\S]*?)(?:\\n\\s*(?:Table id|Columns|Rows|Formula intent|Target result cell|Helper slots begin|The model|Do not|$)\\s*:|$)`, 'i'));
+    return match ? String(match[1] || '').trim() : '';
+}
+
+function extractPiiRelationshipFormulaPlanRequest(prompt = '') {
+    const source = String(prompt || '').trim();
+    if (!source || !/\bxlsx_formula_plan\b/i.test(source)) {
+        return null;
+    }
+    if (!/\bTable id\s*:/i.test(source) || !/\bColumns\s*:/i.test(source) || !/\bRows\s*:/i.test(source)) {
+        return null;
+    }
+
+    const tableId = normalizeFormulaPlanColumnId(source.match(/\bTable id\s*:\s*([^\r\n]+)/i)?.[1] || 'table');
+    const columnsLine = source.match(/\bColumns\s*:\s*([^\r\n]+)/i)?.[1] || '';
+    const columns = columnsLine
+        .split(',')
+        .map((entry) => normalizeFormulaPlanColumnId(entry))
+        .filter(Boolean);
+    if (!tableId || columns.length === 0) {
+        return null;
+    }
+
+    const rowsSection = extractFormulaPlanSection(source, 'Rows');
+    const rows = rowsSection
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && line.includes('|'))
+        .map((line) => {
+            const parts = line.split('|').map((part) => part.trim());
+            const id = normalizeFormulaPlanColumnId(parts.shift() || '');
+            const cells = {};
+            columns.forEach((columnId, index) => {
+                cells[columnId] = parts[index] ?? '';
+            });
+            return id ? { id, cells } : null;
+        })
+        .filter(Boolean);
+    if (rows.length === 0) {
+        return null;
+    }
+
+    const groupBy = columns.includes('person')
+        ? 'person'
+        : columns.find((columnId) => rows.some((row) => /^\[\[PII:[^\]]+\]\]$/.test(String(row.cells?.[columnId] || '').trim())))
+            || columns[0];
+    const formulaIntent = String(source.match(/\bFormula intent\s*:\s*([^\r\n]+)/i)?.[1] || '').trim();
+    const signedMeasures = formulaIntent
+        ? Array.from(formulaIntent.matchAll(/([+-]?)\s*([A-Za-z_][\w.-]*)/g))
+            .map((match) => ({
+                sign: match[1] === '-' ? '-' : '+',
+                column: normalizeFormulaPlanColumnId(match[2]),
+            }))
+            .filter((entry) => columns.includes(entry.column) && entry.column !== groupBy)
+        : [];
+    const measures = Array.from(new Set(
+        signedMeasures
+            .filter((entry) => entry.sign !== '-')
+            .map((entry) => entry.column),
+    ));
+    const subtractMeasures = Array.from(new Set(
+        signedMeasures
+            .filter((entry) => entry.sign === '-')
+            .map((entry) => entry.column),
+    ));
+    const fallbackNumericColumns = columns.filter((columnId) => {
+        if (columnId === groupBy || /^(row_?id|id|period|date|month)$/i.test(columnId)) {
+            return false;
+        }
+        return rows.some((row) => String(row.cells?.[columnId] || '').trim() !== ''
+            && Number.isFinite(Number(String(row.cells[columnId]).replace(/[$,%\s,]/g, ''))));
+    });
+    const additiveMeasures = measures.length > 0
+        ? measures
+        : fallbackNumericColumns.filter((columnId) => !/^credits?$/i.test(columnId));
+    const subtractiveMeasures = subtractMeasures.length > 0
+        ? subtractMeasures
+        : fallbackNumericColumns.filter((columnId) => /^credits?$/i.test(columnId));
+    if (additiveMeasures.length === 0) {
+        return null;
+    }
+
+    const resultCell = String(source.match(/\bTarget result cell\s+([A-Za-z0-9_ -]+!\$?[A-Z]{1,3}\$?\d+)/i)?.[1]
+        || source.match(/\bresult cell\s+([A-Za-z0-9_ -]+!\$?[A-Z]{1,3}\$?\d+)/i)?.[1]
+        || 'Presentation_Result!B5').trim();
+    const helperStartCell = String(source.match(/\bHelper slots begin at\s+([A-Za-z0-9_ -]+!\$?[A-Z]{1,3}\$?\d+)/i)?.[1]
+        || source.match(/\bhelper.*?\b([A-Za-z0-9_ -]+!\$?[A-Z]{1,3}\$?\d+)/i)?.[1]
+        || 'Presentation_Result!A12').trim();
+    const sheetName = resultCell.includes('!')
+        ? resultCell.split('!')[0].replace(/^'+|'+$/g, '')
+        : undefined;
+    return {
+        operationId: 'prompt-xlsx-formula-plan',
+        operation: 'xlsx_formula_plan',
+        tableId,
+        groupBy,
+        measures: additiveMeasures,
+        subtractMeasures: subtractiveMeasures,
+        target: {
+            resultCell,
+            helperStartCell,
+            ...(sheetName ? { sheetName } : {}),
+        },
+        limit: Math.max(1, Math.min(100, rows.length)),
+        tables: [
+            {
+                id: tableId,
+                columns: columns.map((columnId) => ({
+                    id: columnId,
+                    header: columnId,
+                    role: columnId === groupBy ? 'group_key' : 'value',
+                })),
+                rows,
+            },
+        ],
+    };
+}
+
 function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
     const availableToolIds = new Set(automaticTools.map((entry) => entry.id));
     if (availableToolIds.has(USER_CHECKPOINT_TOOL_ID) && hasExplicitUserCheckpointInteractionIntent(prompt)) {
@@ -2612,6 +2741,9 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
     const podcastTopic = availableToolIds.has('podcast') && hasExplicitPodcastIntent(prompt)
         ? extractExplicitPodcastTopic(prompt)
         : null;
+    const relationshipFormulaPlan = availableToolIds.has(RELATIONSHIP_CALCULATION_TOOL_ID)
+        ? extractPiiRelationshipFormulaPlanRequest(prompt)
+        : null;
 
     if (podcastTopic) {
         actions.push({
@@ -2620,6 +2752,13 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
                 topic: podcastTopic,
                 ...(hasExplicitPodcastVideoIntent(prompt) ? inferPodcastVideoOptions(prompt) : {}),
             },
+        });
+    }
+
+    if (relationshipFormulaPlan) {
+        actions.push({
+            toolId: RELATIONSHIP_CALCULATION_TOOL_ID,
+            params: relationshipFormulaPlan,
         });
     }
 
@@ -6666,6 +6805,7 @@ module.exports = {
         buildResponsesInput,
         collectInputSystemMessages,
         extractExplicitWebResearchQuery,
+        extractPiiRelationshipFormulaPlanRequest,
         extractRequestedDirectoryPath,
         formatDirectToolResultMessage,
         getResponseApiText,

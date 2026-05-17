@@ -139,6 +139,25 @@ function buildPiiCleansingMetadata(routePii = null, executionPii = null, present
     };
 }
 
+function shouldSuppressPiiRelationshipFormulaArtifact({
+    routePii = null,
+    text = '',
+    outputFormat = null,
+    outputFormatProvided = false,
+} = {}) {
+    if (outputFormatProvided || !outputFormat) {
+        return false;
+    }
+    const relationshipCalculations = routePii?.policy?.relationshipCalculations || {};
+    if (relationshipCalculations.active !== true) {
+        return false;
+    }
+    const normalized = String(text || '').toLowerCase();
+    return /\bxlsx_formula_plan\b/.test(normalized)
+        || /\bformula plan\b/.test(normalized)
+        || /\bdo not\s+(?:create|generate|make|produce|write)[\s\S]{0,80}\b(?:artifact|file|workbook|xlsx|download)\b/.test(normalized);
+}
+
 async function buildTrustedPiiPresentation(text = '', {
     sessionId = '',
     ownerId = null,
@@ -1221,6 +1240,14 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         if (shouldSuppressArtifactGenerationForRemoteAction({
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
+        })) {
+            effectiveOutputFormat = null;
+        }
+        if (shouldSuppressPiiRelationshipFormulaArtifact({
+            routePii,
+            text: artifactIntentText,
+            outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
         })) {
             effectiveOutputFormat = null;
         }
