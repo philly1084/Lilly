@@ -76,4 +76,27 @@ describe('PII detectors', () => {
       expect.objectContaining({ type: 'organization', value: 'Acme', source: 'filename' }),
     ]));
   });
+
+  test('detects FHIR patient and HL7 PID private fields', () => {
+    const sample = [
+      'FHIR Patient resource: {"resourceType":"Patient","identifier":[{"system":"urn:mrn","value":"MRN-445566"}],"name":[{"family":"Sampleton","given":["Jamie"]}],"birthDate":"1984-07-04","telecom":[{"value":"902-555-0199"}],"address":[{"line":["123 Main Street"]}]}',
+      'HL7: PID|1||MRN12345^^^HOSP^MR||Sampleton^Jamie||19840704|F|||123 Main Street^^Halifax^NS^B3J2K9||902-555-0199|',
+    ].join('\n');
+    const matches = detectPii(sample, {
+      detectors: ['personName', 'dateOfBirth', 'medicalRecordNumber', 'patientIdentifier', 'phone', 'address'],
+      customPatterns: [],
+      dictionary: [],
+      enablePersonNames: true,
+    });
+
+    expect(matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'medicalRecordNumber', value: 'MRN-445566', source: 'fhir' }),
+      expect.objectContaining({ type: 'personName', value: 'Sampleton', source: 'fhir' }),
+      expect.objectContaining({ type: 'personName', value: 'Jamie', source: 'fhir' }),
+      expect.objectContaining({ type: 'dateOfBirth', value: '1984-07-04', source: 'fhir' }),
+      expect.objectContaining({ type: 'medicalRecordNumber', value: 'MRN12345', source: 'hl7' }),
+      expect.objectContaining({ type: 'personName', value: 'Sampleton^Jamie', source: 'hl7' }),
+      expect.objectContaining({ type: 'dateOfBirth', value: '19840704', source: 'hl7' }),
+    ]));
+  });
 });

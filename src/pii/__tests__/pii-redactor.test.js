@@ -4,13 +4,18 @@ const { buildModelFrame, sanitizeText } = require('../pii-redactor');
 describe('PII redactor framing', () => {
   test('defaults PII protection to opaque placeholders', () => {
     expect(DEFAULT_PRIVACY_PII_SETTINGS).toEqual(expect.objectContaining({
-      defaultsVersion: 3,
+      defaultsVersion: 4,
       enabled: true,
       placeholderMode: 'opaque-random',
       failClosed: true,
       enablePersonNames: true,
     }));
-    expect(DEFAULT_PRIVACY_PII_SETTINGS.detectors).toEqual(expect.arrayContaining(['personName', 'organization']));
+    expect(DEFAULT_PRIVACY_PII_SETTINGS.detectors).toEqual(expect.arrayContaining([
+      'personName',
+      'organization',
+      'medicalRecordNumber',
+      'patientIdentifier',
+    ]));
   });
 
   test('builds model-safe placeholder framing without raw values or type context', () => {
@@ -154,6 +159,37 @@ describe('PII redactor framing', () => {
     expect(result.replacements).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
       expect.objectContaining({ type: 'organization', action: 'mask', restorable: false }),
+    ]));
+  });
+
+  test('masks FHIR and HL7 patient identifiers with default opaque IDs', async () => {
+    const sample = [
+      'FHIR Patient resource: {"resourceType":"Patient","identifier":[{"system":"urn:mrn","value":"MRN-445566"}],"name":[{"family":"Sampleton","given":["Jamie"]}],"birthDate":"1984-07-04","telecom":[{"value":"902-555-0199"}],"address":[{"line":["123 Main Street"],"city":"Halifax","postalCode":"B3J 2K9"}]}',
+      'HL7: PID|1||MRN12345^^^HOSP^MR||Sampleton^Jamie||19840704|F|||123 Main Street^^Halifax^NS^B3J2K9||902-555-0199|',
+    ].join('\n');
+    const result = await sanitizeText(sample, {
+      policy: {
+        ...DEFAULT_PRIVACY_PII_SETTINGS,
+        failClosed: false,
+        hasMasterKey: false,
+        storageReady: false,
+      },
+    });
+
+    expect(result.text).not.toContain('MRN-445566');
+    expect(result.text).not.toContain('MRN12345');
+    expect(result.text).not.toContain('Sampleton');
+    expect(result.text).not.toContain('Jamie');
+    expect(result.text).not.toContain('1984-07-04');
+    expect(result.text).not.toContain('19840704');
+    expect(result.text).not.toContain('902-555-0199');
+    expect(result.text).not.toContain('Halifax');
+    expect(result.text).not.toContain('B3J 2K9');
+    expect(result.text).not.toContain('B3J2K9');
+    expect(result.replacements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'medicalRecordNumber', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'dateOfBirth' }),
     ]));
   });
 });

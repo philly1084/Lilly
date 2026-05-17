@@ -47,6 +47,9 @@ const NON_RESTORABLE_IDENTITY_TYPES = new Set([
   'company',
   'clientName',
   'teamName',
+  'medicalRecordNumber',
+  'patientIdentifier',
+  'healthCardNumber',
 ]);
 
 function resolveDetectorAction(match = {}, policy = {}) {

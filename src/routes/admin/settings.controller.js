@@ -20,7 +20,7 @@ const {
 const { detectPii } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  defaultsVersion: 3,
+  defaultsVersion: 4,
   enabled: true,
   webChatEnabled: true,
   highlightRestored: true,
@@ -28,14 +28,14 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
   placeholderMode: 'opaque-random',
   reintroductionMode: 'trusted-view',
   failClosed: true,
-  detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
+  detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
   detectorActions: {},
   customPatterns: [],
   dictionary: [],
   enablePersonNames: true,
   auditProfile: 'strict',
   auditCriteria: {
-    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
@@ -61,7 +61,7 @@ const PRIVACY_PII_AUDIT_PROFILES = {
     requireRestoreHighlight: true,
   },
   strict: {
-    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
@@ -172,7 +172,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
   return {
     ...fallback,
     ...source,
-    defaultsVersion: 3,
+    defaultsVersion: 4,
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
     webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,
@@ -619,7 +619,7 @@ class SettingsController {
     }
 
     const defaultsVersion = Number(privacyPii.defaultsVersion || 0);
-    if (defaultsVersion >= 3) {
+    if (defaultsVersion >= 4) {
       return next;
     }
 
@@ -629,16 +629,20 @@ class SettingsController {
     const detectorSet = new Set(existingDetectors);
     detectorSet.add('personName');
     detectorSet.add('organization');
+    detectorSet.add('medicalRecordNumber');
+    detectorSet.add('patientIdentifier');
     const existingRequired = Array.isArray(privacyPii.auditCriteria?.requiredDetectors)
       ? privacyPii.auditCriteria.requiredDetectors.map((entry) => String(entry || '').trim()).filter(Boolean)
       : [...DEFAULT_PRIVACY_PII_SETTINGS.auditCriteria.requiredDetectors];
     const requiredSet = new Set(existingRequired);
     requiredSet.add('personName');
     requiredSet.add('organization');
+    requiredSet.add('medicalRecordNumber');
+    requiredSet.add('patientIdentifier');
 
     next.privacyPii = {
       ...privacyPii,
-      defaultsVersion: 3,
+      defaultsVersion: 4,
       enabled: true,
       placeholderMode: privacyPii.placeholderMode === 'stable-per-value'
         ? 'stable-per-value'

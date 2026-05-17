@@ -6,6 +6,8 @@ const DEFAULT_DETECTORS = [
   'dateOfBirth',
   'address',
   'ipAddress',
+  'medicalRecordNumber',
+  'patientIdentifier',
 ];
 
 const ACTIONABLE_DICTIONARY_TYPES = new Set([
@@ -48,6 +50,8 @@ const PERSON_NAME_STOPWORDS = new Set([
   'date', 'birth', 'born', 'dob', 'email', 'phone', 'ssn', 'address',
   'street', 'road', 'avenue', 'drive', 'court', 'place', 'company',
   'inc', 'llc', 'corp', 'corporation', 'limited', 'ltd',
+  'fhir', 'hl7', 'patient', 'resource', 'identifier', 'system', 'value',
+  'family', 'given', 'name',
   ...MONTH_NAMES,
 ]);
 
@@ -55,6 +59,14 @@ const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\
 const PERSON_FREE_PATTERN = /\b[A-Z][A-Za-z'-]*(?:\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z'-]*){1,3}\b/g;
 const DOB_VALUE_PATTERN = '(?:\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{4})';
 const DOB_LABEL_PATTERN = new RegExp(`\\b(?:DOB|D\\.O\\.B\\.|date\\s+of\\s+birth|birth\\s*date|birthdate|birthday|born(?:\\s+on)?)\\s*(?:is|was|:|#|-)?\\s*(${DOB_VALUE_PATTERN})\\b`, 'gi');
+const FHIR_BIRTH_DATE_PATTERN = /"birthDate"\s*:\s*"(\d{4}-\d{1,2}-\d{1,2})"/gi;
+const FHIR_PATIENT_FAMILY_PATTERN = /"family"\s*:\s*"([^"\r\n]{2,80})"/gi;
+const FHIR_PATIENT_GIVEN_PATTERN = /"given"\s*:\s*\[\s*"([^"\r\n]{2,80})"/gi;
+const FHIR_ADDRESS_LINE_PATTERN = /"line"\s*:\s*\[\s*"([^"\r\n]{3,120})"/gi;
+const FHIR_ADDRESS_CITY_PATTERN = /"city"\s*:\s*"([^"\r\n]{2,80})"/gi;
+const FHIR_ADDRESS_POSTAL_PATTERN = /"postalCode"\s*:\s*"([^"\r\n]{3,20})"/gi;
+const MEDICAL_ID_LABEL_PATTERN = /\b(?:MRN|M\.R\.N\.|medical\s+record(?:\s+number)?|medicalRecordNumber|patient\s*(?:id|identifier|number)|patientId|patientIdentifier|health\s*card(?:\s*number)?|healthCardNumber)\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9._-]{3,})\b/gi;
+const FHIR_IDENTIFIER_VALUE_PATTERN = /"system"\s*:\s*"[^"\r\n]*(?:mrn|medical[-_\s]*record|patient[-_\s]*id|health[-_\s]*card)[^"\r\n]*"[\s\S]{0,160}?"value"\s*:\s*"([^"\r\n]{4,80})"/gi;
 const DOCUMENT_FILENAME_PATTERN = /\b([A-Z][A-Za-z0-9]*(?:[-_][A-Z][A-Za-z0-9]*){1,16})\.(?:pdf|docx?|rtf|txt|html?)\b/g;
 const DOCUMENT_FILENAME_PREFIXES = new Set([
   'bio',
@@ -74,6 +86,9 @@ function normalizeDetectorId(value = '') {
   if (normalized === 'credit_card') return 'creditCard';
   if (normalized === 'date_of_birth' || normalized === 'dob') return 'dateOfBirth';
   if (normalized === 'ip' || normalized === 'ip_address') return 'ipAddress';
+  if (normalized === 'mrn' || normalized === 'medical_record_number' || normalized === 'medical-record-number') return 'medicalRecordNumber';
+  if (normalized === 'patient_id' || normalized === 'patient-id' || normalized === 'patient_identifier') return 'patientIdentifier';
+  if (normalized === 'health_card' || normalized === 'health-card' || normalized === 'health_card_number') return 'patientIdentifier';
   if (normalized === 'org' || normalized === 'org_name' || normalized === 'organization_name' || normalized === 'employer' || normalized === 'workplace') return 'organization';
   return normalized;
 }
@@ -258,6 +273,95 @@ function findDateOfBirthMatches(text = '') {
   return matches;
 }
 
+function findRegexGroupMatches(text = '', regex, type = '', {
+  group = 1,
+  source = 'builtin',
+  grounded = false,
+} = {}) {
+  const matches = [];
+  const input = String(text || '');
+  let match;
+  while ((match = regex.exec(input)) !== null) {
+    const value = match[group] || '';
+    const valueOffset = match[0].indexOf(value);
+    if (!value || valueOffset < 0) {
+      continue;
+    }
+    const start = match.index + valueOffset;
+    matches.push({
+      type,
+      value,
+      start,
+      end: start + value.length,
+      source,
+      ...(grounded ? { grounded: true } : {}),
+    });
+  }
+  return matches;
+}
+
+function findFhirPatientMatches(text = '') {
+  const matches = [];
+  matches.push(...findRegexGroupMatches(text, FHIR_BIRTH_DATE_PATTERN, 'dateOfBirth', { source: 'fhir', grounded: true }));
+  matches.push(...findRegexGroupMatches(text, FHIR_PATIENT_FAMILY_PATTERN, 'personName', { source: 'fhir', grounded: true }));
+  matches.push(...findRegexGroupMatches(text, FHIR_PATIENT_GIVEN_PATTERN, 'personName', { source: 'fhir', grounded: true }));
+  matches.push(...findRegexGroupMatches(text, FHIR_IDENTIFIER_VALUE_PATTERN, 'medicalRecordNumber', { source: 'fhir', grounded: true }));
+  matches.push(...findRegexGroupMatches(text, FHIR_ADDRESS_LINE_PATTERN, 'address', { source: 'fhir', grounded: true }));
+  matches.push(...findRegexGroupMatches(text, FHIR_ADDRESS_CITY_PATTERN, 'address', { source: 'fhir', grounded: true }));
+  matches.push(...findRegexGroupMatches(text, FHIR_ADDRESS_POSTAL_PATTERN, 'address', { source: 'fhir', grounded: true }));
+  return matches;
+}
+
+function findMedicalIdentifierMatches(text = '') {
+  return findRegexGroupMatches(text, MEDICAL_ID_LABEL_PATTERN, 'medicalRecordNumber', {
+    source: 'medicalIdentifier',
+    grounded: true,
+  });
+}
+
+function pushHl7FieldMatch(matches, segmentStart, segment, fieldValue, type, {
+  source = 'hl7',
+  grounded = true,
+  occurrenceStart = 0,
+} = {}) {
+  const value = String(fieldValue || '').trim();
+  if (!value) return;
+  const localIndex = segment.indexOf(value, occurrenceStart);
+  if (localIndex < 0) return;
+  matches.push({
+    type,
+    value,
+    start: segmentStart + localIndex,
+    end: segmentStart + localIndex + value.length,
+    source,
+    ...(grounded ? { grounded: true } : {}),
+  });
+}
+
+function findHl7PidMatches(text = '') {
+  const matches = [];
+  const source = String(text || '');
+  const pidRegex = /\bPID\|[^\r\n]*/g;
+  let match;
+  while ((match = pidRegex.exec(source)) !== null) {
+    const segment = match[0];
+    const fields = segment.split('|');
+    const patientId = String(fields[3] || '').split('^')[0];
+    const patientName = String(fields[5] || '').split('^').filter(Boolean).slice(0, 2).join('^');
+    const birthDate = String(fields[7] || '').trim();
+    const address = String(fields[11] || '').trim();
+    const phone = String(fields[13] || '').trim();
+    pushHl7FieldMatch(matches, match.index, segment, patientId, 'medicalRecordNumber');
+    pushHl7FieldMatch(matches, match.index, segment, patientName, 'personName');
+    if (/^(19|20)\d{6}$/.test(birthDate)) {
+      pushHl7FieldMatch(matches, match.index, segment, birthDate, 'dateOfBirth');
+    }
+    pushHl7FieldMatch(matches, match.index, segment, address, 'address');
+    pushHl7FieldMatch(matches, match.index, segment, phone, 'phone');
+  }
+  return matches;
+}
+
 function findPersonNameMatches(text = '') {
   const matches = [];
   const source = String(text || '');
@@ -393,10 +497,20 @@ function detectPii(text = '', policy = {}) {
 
   if (enabled.has('dateOfBirth')) {
     matches.push(...findDateOfBirthMatches(source));
+    matches.push(...findRegexGroupMatches(source, FHIR_BIRTH_DATE_PATTERN, 'dateOfBirth', { source: 'fhir', grounded: true }));
   }
 
   if (policy.enablePersonNames === true || enabled.has('personName')) {
     matches.push(...findPersonNameMatches(source));
+  }
+
+  if (enabled.has('medicalRecordNumber') || enabled.has('patientIdentifier')) {
+    matches.push(...findMedicalIdentifierMatches(source));
+  }
+
+  if (enabled.has('personName') || enabled.has('dateOfBirth') || enabled.has('medicalRecordNumber') || enabled.has('patientIdentifier')) {
+    matches.push(...findFhirPatientMatches(source));
+    matches.push(...findHl7PidMatches(source));
   }
 
   if (policy.enablePersonNames === true || enabled.has('personName') || enabled.has('organization')) {
