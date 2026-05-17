@@ -23,6 +23,32 @@ function buildPlaceholder(match = {}, policy = {}, stablePlaceholders = new Map(
   return `[[PII:${typeToken(match.type)}:${suffix}]]`;
 }
 
+function normalizeAction(action = '') {
+  const normalized = String(action || '').trim();
+  if (['vault-placeholder', 'mask', 'remove', 'ignore'].includes(normalized)) {
+    return normalized;
+  }
+  return 'vault-placeholder';
+}
+
+function resolveDetectorAction(match = {}, policy = {}) {
+  const actions = policy.detectorActions && typeof policy.detectorActions === 'object' && !Array.isArray(policy.detectorActions)
+    ? policy.detectorActions
+    : {};
+  const action = normalizeAction(actions[match.type] || actions[typeToken(match.type)] || actions.default || 'vault-placeholder');
+  if (action === 'vault-placeholder' && policy.failClosed === false && (!policy.hasMasterKey || !policy.storageReady)) {
+    return 'mask';
+  }
+  return action;
+}
+
+function buildNonRestorablePlaceholder(match = {}, action = 'mask') {
+  const type = typeToken(match.type);
+  return action === 'remove'
+    ? `[[PII:${type}:REMOVED]]`
+    : `[[PII:${type}:MASKED]]`;
+}
+
 function buildModelFrame(replacements = []) {
   const entries = (Array.isArray(replacements) ? replacements : [])
     .map((entry) => ({
@@ -79,7 +105,9 @@ async function sanitizeText(text = '', {
       policy: resolvedPolicy,
     };
   }
-  assertPiiReady(resolvedPolicy);
+  if (resolvedPolicy.failClosed !== false) {
+    assertPiiReady(resolvedPolicy);
+  }
 
   const matches = detectPii(source, resolvedPolicy);
   if (matches.length === 0) {
@@ -92,41 +120,73 @@ async function sanitizeText(text = '', {
     };
   }
 
-  const context = await piiVaultStore.createContext({
-    sessionId,
-    ownerId,
-    sourceSurface: clientSurface || route || 'unknown',
-    policySnapshot: {
-      placeholderMode: resolvedPolicy.placeholderMode,
-      detectors: resolvedPolicy.detectors,
-      customPatternCount: Array.isArray(resolvedPolicy.customPatterns) ? resolvedPolicy.customPatterns.length : 0,
-      dictionaryCount: Array.isArray(resolvedPolicy.dictionary) ? resolvedPolicy.dictionary.length : 0,
-    },
-  });
   const stablePlaceholders = new Map();
-  const replacements = matches.map((match, index) => ({
-    ...match,
-    placeholder: buildPlaceholder(match, resolvedPolicy, stablePlaceholders),
-    occurrenceIndex: index,
-    sourceRange: { start: match.start, end: match.end },
-  }));
+  const replacements = matches
+    .map((match, index) => {
+      const action = resolveDetectorAction(match, resolvedPolicy);
+      if (action === 'ignore') {
+        return null;
+      }
+      return {
+        ...match,
+        action,
+        restorable: action === 'vault-placeholder',
+        placeholder: action === 'vault-placeholder'
+          ? buildPlaceholder(match, resolvedPolicy, stablePlaceholders)
+          : buildNonRestorablePlaceholder(match, action),
+        occurrenceIndex: index,
+        sourceRange: { start: match.start, end: match.end },
+      };
+    })
+    .filter(Boolean);
+
+  if (replacements.length === 0) {
+    return {
+      text: source,
+      changed: false,
+      contextId: null,
+      replacements: [],
+      policy: resolvedPolicy,
+    };
+  }
 
   let sanitized = source;
   [...replacements].reverse().forEach((match) => {
     sanitized = `${sanitized.slice(0, match.start)}${match.placeholder}${sanitized.slice(match.end)}`;
   });
 
-  await piiVaultStore.addEntries(context.id, replacements);
+  const vaultReplacements = replacements.filter((entry) => entry.restorable);
+  let context = null;
+  if (vaultReplacements.length > 0) {
+    assertPiiReady(resolvedPolicy);
+    context = await piiVaultStore.createContext({
+      sessionId,
+      ownerId,
+      sourceSurface: clientSurface || route || 'unknown',
+      policySnapshot: {
+        placeholderMode: resolvedPolicy.placeholderMode,
+        reintroductionMode: resolvedPolicy.reintroductionMode,
+        detectors: resolvedPolicy.detectors,
+        detectorActions: resolvedPolicy.detectorActions || {},
+        customPatternCount: Array.isArray(resolvedPolicy.customPatterns) ? resolvedPolicy.customPatterns.length : 0,
+        dictionaryCount: Array.isArray(resolvedPolicy.dictionary) ? resolvedPolicy.dictionary.length : 0,
+        auditProfile: resolvedPolicy.auditProfile || 'baseline',
+      },
+    });
+    await piiVaultStore.addEntries(context.id, vaultReplacements);
+  }
   const modelFrame = buildModelFrame(replacements);
 
   return {
     text: sanitized,
     changed: sanitized !== source,
-    contextId: context.id,
+    contextId: context?.id || null,
     modelFrame,
     replacements: replacements.map((entry) => ({
       placeholder: entry.placeholder,
       type: entry.type,
+      action: entry.action,
+      restorable: entry.restorable,
       start: entry.start,
       end: entry.end,
       occurrenceIndex: entry.occurrenceIndex,
@@ -165,7 +225,9 @@ async function sanitizeRuntimePayload(payload = {}, options = {}) {
   if (!policy.enabled) {
     return { payload, changed: false, contextIds: [], replacements: [], policy, modelFrame: null };
   }
-  assertPiiReady(policy);
+  if (policy.failClosed !== false) {
+    assertPiiReady(policy);
+  }
   const state = { contextIds: [], replacements: [] };
   const next = { ...payload };
   for (const key of ['input', 'memoryInput', 'instructions', 'contextMessages', 'recentMessages']) {

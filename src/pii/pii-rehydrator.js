@@ -74,6 +74,12 @@ async function rehydrateText(text = '', {
   if (!policy.enabled || !text) {
     return { text: String(text || ''), restorations: [], enabled: policy.enabled };
   }
+  if (policy.reintroductionMode === 'never') {
+    return { text: String(text || ''), restorations: [], enabled: true };
+  }
+  if (policy.reintroductionMode === 'admin-only' && clientSurface !== 'admin' && route !== 'admin') {
+    return { text: String(text || ''), restorations: [], enabled: true };
+  }
   const entries = await loadEntries({ sessionId, ownerId, contextIds });
   const result = rehydrateWithMap(text, buildEntryMap(entries), {
     highlight: highlight === null ? policy.highlightRestored !== false : Boolean(highlight),
@@ -129,6 +135,12 @@ async function rehydrateHtml(html = '', options = {}) {
   const source = String(html || '');
   if (!policy.enabled || !source) {
     return { html: source, restorations: [], enabled: policy.enabled };
+  }
+  if (policy.reintroductionMode === 'never') {
+    return { html: source, restorations: [], enabled: true };
+  }
+  if (policy.reintroductionMode === 'admin-only' && options.clientSurface !== 'admin' && options.route !== 'admin') {
+    return { html: source, restorations: [], enabled: true };
   }
   const entries = await loadEntries(options);
   const entryMap = buildEntryMap(entries);

@@ -1129,6 +1129,7 @@
                                 <button class="settings-nav-item" data-settings="podcastAudio">Podcast Audio</button>
                                 <button class="settings-nav-item" data-settings="storage">Storage</button>
                                 <button class="settings-nav-item" data-settings="features">Features</button>
+                                <button class="settings-nav-item" data-settings="privacyPii">Privacy / PII</button>
                                 <button class="settings-nav-item" data-settings="api">API & Integrations</button>
                                 <button class="settings-nav-item" data-settings="notifications">Notifications</button>
                                 <button class="settings-nav-item" data-settings="advanced">Advanced</button>
@@ -1446,6 +1447,143 @@
                                                 </label>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Privacy / PII Settings -->
+                            <div class="settings-section" id="privacyPiiSettings">
+                                <h2>Privacy / PII Workflow</h2>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <form id="privacyPiiSettingsForm">
+                                            <div class="privacy-status-grid">
+                                                <div class="stat-card">
+                                                    <span class="stat-label">Audit Profile</span>
+                                                    <span class="stat-value" id="piiAuditProfileStatus">Baseline</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-label">Audit Readiness</span>
+                                                    <span class="stat-value" id="piiAuditPassStatus">Not checked</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-label">Vault Key</span>
+                                                    <span class="stat-value" id="piiVaultStatus">Unknown</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="feature-list privacy-feature-list">
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Enable PII cleansing gateway</span>
+                                                        <span class="feature-desc">Clean configured values before model calls and keep restorable values in the encrypted vault.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiEnabled">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Apply to web chat</span>
+                                                        <span class="feature-desc">Use this policy for browser chat requests.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiWebChatEnabled">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Fail closed</span>
+                                                        <span class="feature-desc">Block model calls when the PII vault is required but unavailable.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiFailClosed">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Highlight restored values</span>
+                                                        <span class="feature-desc">Mark locally restored values so reviewers can see what the model did not receive.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiHighlightRestored">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div class="feature-item">
+                                                    <div class="feature-info">
+                                                        <span class="feature-name">Allow user override</span>
+                                                        <span class="feature-desc">Honor request metadata that explicitly enables or disables the gateway.</span>
+                                                    </div>
+                                                    <label class="toggle">
+                                                        <input type="checkbox" id="piiAllowUserOverride">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="piiAuditProfile">Audit Profile</label>
+                                                    <select class="form-control" id="piiAuditProfile">
+                                                        <option value="baseline">Baseline audit</option>
+                                                        <option value="strict">Strict audit</option>
+                                                        <option value="custom">Custom criteria</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="piiPlaceholderMode">Placeholder Mode</label>
+                                                    <select class="form-control" id="piiPlaceholderMode">
+                                                        <option value="typed-random">Typed random</option>
+                                                        <option value="stable-per-value">Stable per value</option>
+                                                        <option value="opaque-random">Opaque random</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="piiReintroductionMode">Reintroduction</label>
+                                                    <select class="form-control" id="piiReintroductionMode">
+                                                        <option value="trusted-view">Trusted views</option>
+                                                        <option value="admin-only">Admin only</option>
+                                                        <option value="never">Never restore</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group">
+                                                <label>Detector Criteria and Actions</label>
+                                                <div class="pii-detector-grid" id="piiDetectorGrid"></div>
+                                            </div>
+
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="piiRequiredDetectors">Required Detectors</label>
+                                                    <textarea class="form-control" id="piiRequiredDetectors" rows="5" spellcheck="false" placeholder="email&#10;phone&#10;ssn"></textarea>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="piiDictionary">Dictionary Terms</label>
+                                                    <textarea class="form-control" id="piiDictionary" rows="5" spellcheck="false" placeholder="teamName: Violet Team&#10;clientCode: Client Nova"></textarea>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="piiCustomPatterns">Custom Regex Patterns</label>
+                                                    <textarea class="form-control" id="piiCustomPatterns" rows="5" spellcheck="false" placeholder="accountCode|ACCT-\\d{4}&#10;ticketId|KB-[0-9]{6}"></textarea>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group">
+                                                <label for="piiPreviewInput">Policy Preview</label>
+                                                <textarea class="form-control" id="piiPreviewInput" rows="4" spellcheck="false" placeholder="Paste synthetic or approved sample text here. Preview does not store raw values."></textarea>
+                                            </div>
+                                            <div class="form-actions">
+                                                <button type="submit" class="btn btn-primary">Save PII Workflow</button>
+                                                <button type="button" class="btn btn-secondary" id="previewPiiPolicyBtn">Preview Cleanup</button>
+                                            </div>
+                                            <div class="pii-preview-output" id="piiPreviewOutput">
+                                                <span class="text-muted">Preview results will appear here.</span>
+                                            </div>
+                                        </form>
                                     </div>
                                 </div>
                             </div>

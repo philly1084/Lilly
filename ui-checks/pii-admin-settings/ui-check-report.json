@@ -1,0 +1,684 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://localhost:3000/admin/?view=settings",
+  "originalUrl": "http://localhost:3000/admin/?view=settings",
+  "authenticated": false,
+  "generatedAt": "2026-05-17T00:35:28.708Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\pii-admin-settings\\agent-sdk-admin-dashboard-desktop.png",
+      "metrics": {
+        "title": "Agent SDK Admin Dashboard",
+        "url": "http://localhost:3000/admin/?view=settings",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 993,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 581,
+        "bodyTextPreview": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces Settings Connected A Admin Superuser Overview Dashboard / Overview 0 Total Tasks +12% vs last hour 100% Success Rate +2.5% vs last hour 0 Active Sessions 0% vs last hour 0 Skills Learned +3 this week Request Volume Last Hour Last 24 Hours Last 7 Days Last 30 Days Recent Activity View All No recent dashboard activity Waiting for agent tasks Model Usage No usage yet 0 requests 0% System Health Healthy API Lat",
+        "headings": [
+          "Overview",
+          "Request Volume",
+          "Recent Activity",
+          "Model Usage",
+          "System Health",
+          "Prompt Library",
+          "Default Configuration",
+          "Provider Totals",
+          "Usage Summary",
+          "Per-Model Token Usage",
+          "Workload Definitions",
+          "Run Detail",
+          "Recent Runs",
+          "Tool Catalog",
+          "Tool Detail",
+          "Web Fetch"
+        ],
+        "interactiveControls": 253,
+        "textContrast": {
+          "checked": 64,
+          "lowContrastCount": 14,
+          "lowContrast": [
+            {
+              "tag": "span",
+              "id": "",
+              "className": "nav-label",
+              "text": "DASHBOARD",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 80,
+              "left": 0
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "nav-label",
+              "text": "SYSTEM",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 360,
+              "left": 0
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "user-avatar",
+              "text": "A",
+              "contrast": 1.09,
+              "required": 4.5,
+              "color": "#0d1117",
+              "background": "#161b22",
+              "fontSize": 14,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 909,
+              "left": 24
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "user-role",
+              "text": "Superuser",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 926,
+              "left": 64
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "Dashboard",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 38,
+              "left": 292
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "separator",
+              "text": "/",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 38,
+              "left": 363
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 187,
+              "left": 414
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 187,
+              "left": 704
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "stat-change neutral",
+              "text": "0% vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 186,
+              "left": 951
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 187,
+              "left": 971
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "this week",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 187,
+              "left": 1254
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "activity-meta",
+              "text": "Waiting for agent tasks",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 356,
+              "left": 1117
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "model-requests",
+              "text": "0 requests",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 783,
+              "left": 317
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "toast-close",
+              "text": "×",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 18,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 99,
+              "left": 1379
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "WebSocket connection to 'ws://localhost:3000/ws' failed: Invalid frame header"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": [
+        "low-contrast-text"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\pii-admin-settings\\agent-sdk-admin-dashboard-mobile.png",
+      "metrics": {
+        "title": "Agent SDK Admin Dashboard",
+        "url": "http://localhost:3000/admin/?view=settings",
+        "viewport": {
+          "width": 425,
+          "height": 918
+        },
+        "scrollWidth": 425,
+        "scrollHeight": 1806,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Too",
+            "left": -260,
+            "right": 0,
+            "width": 260
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-header",
+            "text": "Agent SDK",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "logo",
+            "text": "Agent SDK",
+            "left": -236,
+            "right": -108,
+            "width": 128
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -236,
+            "right": -204,
+            "width": 32
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -233,
+            "right": -207,
+            "width": 27
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "logo-text",
+            "text": "Agent SDK",
+            "left": -196,
+            "right": -108,
+            "width": 88
+          },
+          {
+            "tag": "button",
+            "id": "sidebarToggle",
+            "className": "sidebar-toggle",
+            "text": "",
+            "left": -57,
+            "right": -25,
+            "width": 32
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -51,
+            "right": -31,
+            "width": 20
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -46,
+            "right": -36,
+            "width": 10
+          },
+          {
+            "tag": "nav",
+            "id": "",
+            "className": "sidebar-nav",
+            "text": "DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces ",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "nav-section",
+            "text": "DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "nav-label",
+            "text": "DASHBOARD",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          }
+        ],
+        "bodyTextLength": 580,
+        "bodyTextPreview": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces Settings Connected A Admin Superuser Overview Dashboard / Overview 0 Total Tasks +12% vs last hour 100% Success Rate +2.5% vs last hour 0 Active Sessions 0% vs last hour 0 Skills Learned +3 this week Request Volume Last Hour Last 24 Hours Last 7 Days Last 30 Days Recent Activity View All No recent dashboard activity Waiting for agent tasks Model Usage No usage yet 0 requests 0% System Health Healthy API Lat",
+        "headings": [
+          "Overview",
+          "Request Volume",
+          "Recent Activity",
+          "Model Usage",
+          "System Health",
+          "Prompt Library",
+          "Default Configuration",
+          "Provider Totals",
+          "Usage Summary",
+          "Per-Model Token Usage",
+          "Workload Definitions",
+          "Run Detail",
+          "Recent Runs",
+          "Tool Catalog",
+          "Tool Detail",
+          "Web Fetch"
+        ],
+        "interactiveControls": 253,
+        "textContrast": {
+          "checked": 64,
+          "lowContrastCount": 14,
+          "lowContrast": [
+            {
+              "tag": "span",
+              "id": "",
+              "className": "nav-label",
+              "text": "DASHBOARD",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 80,
+              "left": -260
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "nav-label",
+              "text": "SYSTEM",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 360,
+              "left": -260
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "user-avatar",
+              "text": "A",
+              "contrast": 1.09,
+              "required": 4.5,
+              "color": "#0d1117",
+              "background": "#161b22",
+              "fontSize": 14,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 867,
+              "left": -236
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "user-role",
+              "text": "Superuser",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 884,
+              "left": -196
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "Dashboard",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 38,
+              "left": 16
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "separator",
+              "text": "/",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 38,
+              "left": 87
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 171,
+              "left": 138
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 328,
+              "left": 143
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "stat-change neutral",
+              "text": "0% vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 484,
+              "left": 105
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "vs last hour",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 485,
+              "left": 125
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "",
+              "text": "this week",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 642,
+              "left": 123
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "activity-meta",
+              "text": "Waiting for agent tasks",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 1222,
+              "left": 89
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "model-requests",
+              "text": "0 requests",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 1433,
+              "left": 41
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "toast-close",
+              "text": "×",
+              "contrast": 3.77,
+              "required": 4.5,
+              "color": "#6e7681",
+              "background": "#161b22",
+              "fontSize": 18,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 99,
+              "left": 364
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "WebSocket connection to 'ws://localhost:3000/ws' failed: Invalid frame header"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": [
+        "low-contrast-text"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\pii-admin-settings\\agent-sdk-admin-dashboard-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\pii-admin-settings\\agent-sdk-admin-dashboard-mobile.png"
+    ],
+    "issues": [
+      "low-contrast-text"
+    ]
+  }
+}

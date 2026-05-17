@@ -97,6 +97,7 @@ router.get('/settings', callController(settingsController, 'getAll'));
 router.put('/settings', callController(settingsController, 'update'));
 router.post('/settings/reset', callController(settingsController, 'reset'));
 router.post('/settings/clear-cache', callController(settingsController, 'clearCache'));
+router.post('/settings/privacy-pii/preview', callController(settingsController, 'previewPrivacyPii'));
 
 // Podcast audio assets
 router.get('/podcast-audio', callController(podcastAudioController, 'list'));

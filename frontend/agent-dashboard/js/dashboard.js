@@ -44,6 +44,16 @@ class Dashboard {
         
         this.charts = {};
         this.storageSelection = new Set();
+        this.piiDetectorDefinitions = [
+            { id: 'email', label: 'Email' },
+            { id: 'phone', label: 'Phone' },
+            { id: 'ssn', label: 'SSN' },
+            { id: 'creditCard', label: 'Credit card' },
+            { id: 'dateOfBirth', label: 'Date of birth' },
+            { id: 'address', label: 'Address' },
+            { id: 'ipAddress', label: 'IP address' },
+            { id: 'personName', label: 'Person names' },
+        ];
         this.ws = null;
         this.reconnectInterval = null;
         this.refreshInterval = null;
@@ -338,6 +348,17 @@ class Dashboard {
         });
         document.getElementById('deleteSelectedStorageBtn')?.addEventListener('click', () => {
             this.deleteSelectedStorageRecords();
+        });
+
+        document.getElementById('privacyPiiSettingsForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.savePrivacyPiiSettings();
+        });
+        document.getElementById('previewPiiPolicyBtn')?.addEventListener('click', () => {
+            this.previewPrivacyPiiPolicy();
+        });
+        document.getElementById('piiAuditProfile')?.addEventListener('change', () => {
+            this.syncPrivacyAuditProfileDefaults();
         });
         
         document.getElementById('apiSettingsForm')?.addEventListener('submit', (e) => {
@@ -4739,6 +4760,255 @@ class Dashboard {
         return Array.isArray(values) ? values.join('\n') : '';
     }
 
+    getPrivacyAuditDefaults(profile = 'baseline') {
+        const profiles = {
+            baseline: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+            strict: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName'],
+            custom: [],
+        };
+        return profiles[profile] || profiles.baseline;
+    }
+
+    renderPrivacyPiiSettings(settings = this.state.settings?.privacyPii || {}) {
+        const privacyPii = {
+            enabled: false,
+            webChatEnabled: true,
+            highlightRestored: true,
+            allowUserOverride: false,
+            placeholderMode: 'typed-random',
+            reintroductionMode: 'trusted-view',
+            failClosed: true,
+            detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+            detectorActions: {},
+            customPatterns: [],
+            dictionary: [],
+            auditProfile: 'baseline',
+            auditCriteria: { requiredDetectors: this.getPrivacyAuditDefaults('baseline') },
+            ...settings,
+        };
+
+        this.setCheckboxValue('piiEnabled', Boolean(privacyPii.enabled));
+        this.setCheckboxValue('piiWebChatEnabled', privacyPii.webChatEnabled !== false);
+        this.setCheckboxValue('piiFailClosed', privacyPii.failClosed !== false);
+        this.setCheckboxValue('piiHighlightRestored', privacyPii.highlightRestored !== false);
+        this.setCheckboxValue('piiAllowUserOverride', privacyPii.allowUserOverride === true);
+        this.setInputValue('piiAuditProfile', privacyPii.auditProfile || 'baseline');
+        this.setInputValue('piiPlaceholderMode', privacyPii.placeholderMode || 'typed-random');
+        this.setInputValue('piiReintroductionMode', privacyPii.reintroductionMode || 'trusted-view');
+        this.setInputValue('piiRequiredDetectors', this.joinListForTextarea(privacyPii.auditCriteria?.requiredDetectors || []));
+        this.setInputValue('piiDictionary', this.formatPrivacyDictionary(privacyPii.dictionary || []));
+        this.setInputValue('piiCustomPatterns', this.formatPrivacyCustomPatterns(privacyPii.customPatterns || []));
+        this.renderPrivacyDetectorGrid(privacyPii);
+        this.renderPrivacyAuditStatus(privacyPii);
+    }
+
+    renderPrivacyDetectorGrid(settings = {}) {
+        const grid = document.getElementById('piiDetectorGrid');
+        if (!grid) return;
+
+        const enabled = new Set((settings.detectors || []).map((entry) => String(entry || '').trim()));
+        if (settings.enablePersonNames === true) {
+            enabled.add('personName');
+        }
+        const actions = settings.detectorActions || {};
+
+        grid.innerHTML = this.piiDetectorDefinitions.map((detector) => {
+            const checked = enabled.has(detector.id);
+            const action = actions[detector.id] || 'vault-placeholder';
+            return `
+                <div class="pii-detector-row">
+                    <label class="pii-detector-toggle">
+                        <input type="checkbox" class="pii-detector-enabled" data-detector="${this.escapeHtml(detector.id)}" ${checked ? 'checked' : ''}>
+                        <span>${this.escapeHtml(detector.label)}</span>
+                    </label>
+                    <select class="form-control pii-detector-action" data-detector="${this.escapeHtml(detector.id)}">
+                        <option value="vault-placeholder" ${action === 'vault-placeholder' ? 'selected' : ''}>Vault</option>
+                        <option value="mask" ${action === 'mask' ? 'selected' : ''}>Mask only</option>
+                        <option value="remove" ${action === 'remove' ? 'selected' : ''}>Remove</option>
+                        <option value="ignore" ${action === 'ignore' ? 'selected' : ''}>Ignore</option>
+                    </select>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderPrivacyAuditStatus(settings = {}) {
+        const status = settings.auditStatus || {};
+        this.setTextContent('piiAuditProfileStatus', this.formatPrivacyProfile(settings.auditProfile || status.profile || 'baseline'));
+        this.setTextContent('piiAuditPassStatus', status.pass ? 'Pass' : 'Needs work');
+        this.setTextContent('piiVaultStatus', settings.vaultConfigured ? 'Configured' : 'Missing');
+    }
+
+    formatPrivacyProfile(profile = '') {
+        if (profile === 'strict') return 'Strict';
+        if (profile === 'custom') return 'Custom';
+        return 'Baseline';
+    }
+
+    formatPrivacyDictionary(entries = []) {
+        return (Array.isArray(entries) ? entries : [])
+            .map((entry) => {
+                if (typeof entry === 'string') return entry;
+                return `${entry.type || entry.label || 'custom'}: ${entry.value || ''}`;
+            })
+            .join('\n');
+    }
+
+    formatPrivacyCustomPatterns(entries = []) {
+        return (Array.isArray(entries) ? entries : [])
+            .map((entry) => `${entry.type || entry.label || 'custom'}|${entry.pattern || ''}${entry.flags ? `|${entry.flags}` : ''}`)
+            .join('\n');
+    }
+
+    parsePrivacyDictionary(value = '') {
+        return String(value || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+                const divider = line.indexOf(':');
+                if (divider > 0) {
+                    return {
+                        type: line.slice(0, divider).trim() || 'custom',
+                        value: line.slice(divider + 1).trim(),
+                    };
+                }
+                return { type: 'custom', value: line };
+            })
+            .filter((entry) => entry.value);
+    }
+
+    parsePrivacyCustomPatterns(value = '') {
+        return String(value || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+                if (line.startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(line);
+                        return {
+                            type: String(parsed.type || parsed.label || 'custom').trim() || 'custom',
+                            pattern: String(parsed.pattern || '').trim(),
+                            flags: String(parsed.flags || 'gi').trim() || 'gi',
+                        };
+                    } catch (_error) {
+                        return null;
+                    }
+                }
+                const [type, pattern, flags] = line.split('|');
+                return {
+                    type: String(type || 'custom').trim() || 'custom',
+                    pattern: String(pattern || '').trim(),
+                    flags: String(flags || 'gi').trim() || 'gi',
+                };
+            })
+            .filter((entry) => entry?.pattern);
+    }
+
+    collectPrivacyPiiSettings() {
+        const detectorActions = {};
+        document.querySelectorAll('.pii-detector-action').forEach((select) => {
+            const detector = select.dataset.detector;
+            if (detector) {
+                detectorActions[detector] = select.value || 'vault-placeholder';
+            }
+        });
+
+        const checkedDetectors = Array.from(document.querySelectorAll('.pii-detector-enabled:checked'))
+            .map((checkbox) => checkbox.dataset.detector)
+            .filter(Boolean);
+        const detectors = checkedDetectors.filter((detector) => detector !== 'personName');
+        const enablePersonNames = checkedDetectors.includes('personName');
+
+        return {
+            enabled: document.getElementById('piiEnabled')?.checked === true,
+            webChatEnabled: document.getElementById('piiWebChatEnabled')?.checked !== false,
+            failClosed: document.getElementById('piiFailClosed')?.checked !== false,
+            highlightRestored: document.getElementById('piiHighlightRestored')?.checked !== false,
+            allowUserOverride: document.getElementById('piiAllowUserOverride')?.checked === true,
+            auditProfile: document.getElementById('piiAuditProfile')?.value || 'baseline',
+            placeholderMode: document.getElementById('piiPlaceholderMode')?.value || 'typed-random',
+            reintroductionMode: document.getElementById('piiReintroductionMode')?.value || 'trusted-view',
+            detectors: detectors.length > 0 ? detectors : ['email'],
+            enablePersonNames,
+            detectorActions,
+            dictionary: this.parsePrivacyDictionary(document.getElementById('piiDictionary')?.value || ''),
+            customPatterns: this.parsePrivacyCustomPatterns(document.getElementById('piiCustomPatterns')?.value || ''),
+            auditCriteria: {
+                requiredDetectors: this.parseDelimitedList(document.getElementById('piiRequiredDetectors')?.value || ''),
+                requireVaultKey: true,
+                requireFailClosed: true,
+                requireRestoreHighlight: true,
+            },
+        };
+    }
+
+    syncPrivacyAuditProfileDefaults() {
+        const profile = document.getElementById('piiAuditProfile')?.value || 'baseline';
+        if (profile !== 'custom') {
+            this.setInputValue('piiRequiredDetectors', this.joinListForTextarea(this.getPrivacyAuditDefaults(profile)));
+        }
+    }
+
+    async savePrivacyPiiSettings() {
+        try {
+            const privacyPii = this.collectPrivacyPiiSettings();
+            const response = await apiClient.put('/api/admin/settings', { privacyPii });
+            const settings = this.unwrapApiPayload(response, this.state.settings);
+            this.applySettings(settings);
+            this.showToast('PII workflow saved', 'success');
+        } catch (error) {
+            console.error('Error saving PII workflow:', error);
+            this.showToast('Failed to save PII workflow', 'error');
+        }
+    }
+
+    async previewPrivacyPiiPolicy() {
+        const output = document.getElementById('piiPreviewOutput');
+        const sampleText = document.getElementById('piiPreviewInput')?.value || '';
+        if (!sampleText.trim()) {
+            this.showToast('Add sample text before previewing', 'info');
+            return;
+        }
+        if (output) {
+            output.innerHTML = '<span class="text-muted">Running preview...</span>';
+        }
+
+        try {
+            const response = await apiClient.post('/api/admin/settings/privacy-pii/preview', {
+                sampleText,
+                settings: this.collectPrivacyPiiSettings(),
+            });
+            const result = this.unwrapApiPayload(response, {});
+            this.renderPrivacyPreview(result);
+        } catch (error) {
+            console.error('Error previewing PII workflow:', error);
+            if (output) {
+                output.innerHTML = `<span class="error">Preview failed: ${this.escapeHtml(error.message || 'unknown error')}</span>`;
+            }
+        }
+    }
+
+    renderPrivacyPreview(result = {}) {
+        const output = document.getElementById('piiPreviewOutput');
+        if (!output) return;
+        const matches = Array.isArray(result.matches) ? result.matches : [];
+        const summary = `${Number(result.matchCount || 0).toLocaleString()} match${Number(result.matchCount || 0) === 1 ? '' : 'es'} found`;
+        output.innerHTML = `
+            <div class="pii-preview-summary">
+                <span class="status-badge ${result.auditStatus?.pass ? 'healthy' : 'warning'}">${this.escapeHtml(result.auditStatus?.pass ? 'Audit checks pass' : 'Audit checks need work')}</span>
+                <span>${this.escapeHtml(summary)}</span>
+            </div>
+            <pre>${this.escapeHtml(result.sanitizedText || '')}</pre>
+            <div class="pii-preview-matches">
+                ${matches.length > 0 ? matches.map((match) => `
+                    <span>${this.escapeHtml(match.type)} -> ${this.escapeHtml(match.action)} (${Number(match.length || 0)} chars)</span>
+                `).join('') : '<span>No configured PII found.</span>'}
+            </div>
+        `;
+    }
+
     async resetPersonality() {
         if (!confirm('Reset soul.md to the default personality?')) {
             return;
@@ -4934,7 +5204,11 @@ class Dashboard {
                     webChatEnabled: existing.webChatEnabled !== false,
                     highlightRestored: existing.highlightRestored !== false,
                     placeholderMode: existing.placeholderMode || 'typed-random',
+                    reintroductionMode: existing.reintroductionMode || 'trusted-view',
                     failClosed: existing.failClosed !== false,
+                    detectorActions: existing.detectorActions || {},
+                    auditProfile: existing.auditProfile || 'baseline',
+                    auditCriteria: existing.auditCriteria || { requiredDetectors: this.getPrivacyAuditDefaults('baseline') },
                 },
             };
         }
@@ -5159,6 +5433,7 @@ class Dashboard {
         this.setCheckboxValue('featureValidation', Boolean(features.enableTracing));
         this.setCheckboxValue('featurePiiCleansing', Boolean(privacyPii.enabled));
         this.setCheckboxValue('featureDebug', Boolean(features.enableDebug));
+        this.renderPrivacyPiiSettings(privacyPii);
 
         ['defaultTemperature', 'defaultTopP', 'defaultFrequencyPenalty', 'defaultPresencePenalty'].forEach((id) => {
             this.syncRangeValue(id);

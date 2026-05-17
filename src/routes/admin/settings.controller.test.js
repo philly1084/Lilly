@@ -293,6 +293,93 @@ describe('settings.controller personality support', () => {
     }));
   });
 
+  test('normalizes privacy PII workflow criteria and detector actions', async () => {
+    const req = {
+      body: {
+        privacyPii: {
+          enabled: true,
+          webChatEnabled: true,
+          placeholderMode: 'stable',
+          reintroductionMode: 'admin',
+          failClosed: true,
+          detectors: ['email', 'phone', 'personName'],
+          detectorActions: {
+            email: 'vault-placeholder',
+            phone: 'mask',
+            personName: 'remove',
+            unknown: 'made-up',
+          },
+          enablePersonNames: true,
+          auditProfile: 'strict',
+          auditCriteria: {
+            requiredDetectors: ['email', 'phone', 'personName'],
+            requireVaultKey: true,
+          },
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    await controller.update(req, res);
+
+    expect(controller.settings.privacyPii).toEqual(expect.objectContaining({
+      enabled: true,
+      placeholderMode: 'stable-per-value',
+      reintroductionMode: 'admin-only',
+      auditProfile: 'strict',
+      enablePersonNames: true,
+      detectorActions: expect.objectContaining({
+        email: 'vault-placeholder',
+        phone: 'mask',
+        personName: 'remove',
+        unknown: 'vault-placeholder',
+      }),
+    }));
+    expect(controller.settings.privacyPii.auditCriteria.requiredDetectors).toEqual(['email', 'phone', 'personName']);
+  });
+
+  test('previews PII cleanup without echoing raw matched values', () => {
+    const req = {
+      body: {
+        sampleText: 'Email jane@example.com or call 902-555-0199.',
+        settings: {
+          detectors: ['email', 'phone'],
+          detectorActions: {
+            email: 'vault-placeholder',
+            phone: 'mask',
+          },
+          auditCriteria: {
+            requiredDetectors: ['email', 'phone'],
+          },
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    controller.previewPrivacyPii(req, res);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        matchCount: 2,
+        sanitizedText: expect.stringContaining('[[PII:EMAIL:PREVIEW_1]]'),
+        countsByAction: expect.objectContaining({
+          'vault-placeholder': 1,
+          mask: 1,
+        }),
+      }),
+    }));
+    const payload = res.json.mock.calls[0][0].data;
+    expect(payload.sanitizedText).not.toContain('jane@example.com');
+    expect(payload.sanitizedText).not.toContain('902-555-0199');
+  });
+
   test('applies updated podcast audio asset paths to the live mixer runtime', async () => {
     const { audioProcessingService } = require('../../audio/audio-processing-service');
     const req = {

@@ -7,11 +7,42 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
   highlightRestored: true,
   allowUserOverride: false,
   placeholderMode: 'typed-random',
+  reintroductionMode: 'trusted-view',
   failClosed: true,
   detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+  detectorActions: {},
   customPatterns: [],
   dictionary: [],
   enablePersonNames: false,
+  auditProfile: 'baseline',
+  auditCriteria: {
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+    requireVaultKey: true,
+    requireFailClosed: true,
+    requireRestoreHighlight: true,
+  },
+};
+
+const PRIVACY_PII_ACTIONS = new Set(['vault-placeholder', 'mask', 'remove', 'ignore']);
+const PRIVACY_PII_AUDIT_PROFILES = {
+  baseline: {
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+    requireVaultKey: true,
+    requireFailClosed: true,
+    requireRestoreHighlight: true,
+  },
+  strict: {
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName'],
+    requireVaultKey: true,
+    requireFailClosed: true,
+    requireRestoreHighlight: true,
+  },
+  custom: {
+    requiredDetectors: [],
+    requireVaultKey: false,
+    requireFailClosed: false,
+    requireRestoreHighlight: false,
+  },
 };
 
 function normalizePlaceholderMode(value = '') {
@@ -22,8 +53,48 @@ function normalizePlaceholderMode(value = '') {
   return 'typed-random';
 }
 
+function normalizeReintroductionMode(value = '') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+  if (['never', 'disabled', 'off', 'no-restore'].includes(normalized)) return 'never';
+  if (['admin-only', 'admin'].includes(normalized)) return 'admin-only';
+  return 'trusted-view';
+}
+
+function normalizeDetectorActions(value = {}, fallback = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
+  return Object.entries({ ...fallbackSource, ...source })
+    .map(([type, action]) => [
+      String(type || '').trim(),
+      String(action || '').trim(),
+    ])
+    .filter(([type]) => Boolean(type))
+    .reduce((acc, [type, action]) => {
+      acc[type] = PRIVACY_PII_ACTIONS.has(action) ? action : 'vault-placeholder';
+      return acc;
+    }, {});
+}
+
+function normalizeAuditCriteria(value = {}, fallback = {}, profile = 'baseline') {
+  const profileCriteria = PRIVACY_PII_AUDIT_PROFILES[profile] || PRIVACY_PII_AUDIT_PROFILES.baseline;
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
+  const merged = { ...profileCriteria, ...fallbackSource, ...source };
+  return {
+    requiredDetectors: Array.isArray(merged.requiredDetectors)
+      ? merged.requiredDetectors.map((entry) => String(entry || '').trim()).filter(Boolean).slice(0, 50)
+      : [...profileCriteria.requiredDetectors],
+    requireVaultKey: merged.requireVaultKey !== false,
+    requireFailClosed: merged.requireFailClosed !== false,
+    requireRestoreHighlight: merged.requireRestoreHighlight !== false,
+  };
+}
+
 function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const auditProfile = ['baseline', 'strict', 'custom'].includes(String(source.auditProfile || fallback.auditProfile || '').trim())
+    ? String(source.auditProfile || fallback.auditProfile)
+    : 'baseline';
   return {
     ...fallback,
     ...source,
@@ -33,12 +104,16 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
     allowUserOverride: source.allowUserOverride === true,
     failClosed: source.failClosed !== undefined ? Boolean(source.failClosed) : fallback.failClosed !== false,
     placeholderMode: normalizePlaceholderMode(source.placeholderMode || fallback.placeholderMode),
+    reintroductionMode: normalizeReintroductionMode(source.reintroductionMode || fallback.reintroductionMode),
     detectors: Array.isArray(source.detectors) && source.detectors.length > 0
       ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
       : [...fallback.detectors],
+    detectorActions: normalizeDetectorActions(source.detectorActions, fallback.detectorActions),
     customPatterns: Array.isArray(source.customPatterns) ? source.customPatterns.slice(0, 50) : [],
     dictionary: Array.isArray(source.dictionary) ? source.dictionary.slice(0, 200) : [],
     enablePersonNames: source.enablePersonNames === true,
+    auditProfile,
+    auditCriteria: normalizeAuditCriteria(source.auditCriteria, fallback.auditCriteria, auditProfile),
   };
 }
 
@@ -97,6 +172,7 @@ module.exports = {
   DEFAULT_PRIVACY_PII_SETTINGS,
   normalizePrivacyPiiSettings,
   normalizePlaceholderMode,
+  normalizeReintroductionMode,
   getConfiguredPrivacyPiiSettings,
   resolvePiiPolicy,
   assertPiiReady,

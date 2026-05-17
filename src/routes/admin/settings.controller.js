@@ -17,6 +17,7 @@ const {
   resetAgentNotesFile,
   writeAgentNotesFile,
 } = require('../../agent-notes');
+const { detectPii } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
   enabled: false,
@@ -24,11 +25,42 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
   highlightRestored: true,
   allowUserOverride: false,
   placeholderMode: 'typed-random',
+  reintroductionMode: 'trusted-view',
   failClosed: true,
   detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+  detectorActions: {},
   customPatterns: [],
   dictionary: [],
   enablePersonNames: false,
+  auditProfile: 'baseline',
+  auditCriteria: {
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+    requireVaultKey: true,
+    requireFailClosed: true,
+    requireRestoreHighlight: true,
+  },
+};
+
+const PRIVACY_PII_ACTIONS = new Set(['vault-placeholder', 'mask', 'remove', 'ignore']);
+const PRIVACY_PII_AUDIT_PROFILES = {
+  baseline: {
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+    requireVaultKey: true,
+    requireFailClosed: true,
+    requireRestoreHighlight: true,
+  },
+  strict: {
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName'],
+    requireVaultKey: true,
+    requireFailClosed: true,
+    requireRestoreHighlight: true,
+  },
+  custom: {
+    requiredDetectors: [],
+    requireVaultKey: false,
+    requireFailClosed: false,
+    requireRestoreHighlight: false,
+  },
 };
 
 function normalizePrivacyPlaceholderMode(value = '') {
@@ -39,8 +71,48 @@ function normalizePrivacyPlaceholderMode(value = '') {
   return 'typed-random';
 }
 
+function normalizePrivacyReintroductionMode(value = '') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+  if (['never', 'disabled', 'off', 'no-restore'].includes(normalized)) return 'never';
+  if (['admin-only', 'admin'].includes(normalized)) return 'admin-only';
+  return 'trusted-view';
+}
+
+function normalizePrivacyDetectorActions(value = {}, fallback = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
+  return Object.entries({ ...fallbackSource, ...source })
+    .map(([type, action]) => [
+      String(type || '').trim(),
+      String(action || '').trim(),
+    ])
+    .filter(([type]) => Boolean(type))
+    .reduce((acc, [type, action]) => {
+      acc[type] = PRIVACY_PII_ACTIONS.has(action) ? action : 'vault-placeholder';
+      return acc;
+    }, {});
+}
+
+function normalizePrivacyAuditCriteria(value = {}, fallback = {}, profile = 'baseline') {
+  const profileCriteria = PRIVACY_PII_AUDIT_PROFILES[profile] || PRIVACY_PII_AUDIT_PROFILES.baseline;
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
+  const merged = { ...profileCriteria, ...fallbackSource, ...source };
+  return {
+    requiredDetectors: Array.isArray(merged.requiredDetectors)
+      ? merged.requiredDetectors.map((entry) => String(entry || '').trim()).filter(Boolean).slice(0, 50)
+      : [...profileCriteria.requiredDetectors],
+    requireVaultKey: merged.requireVaultKey !== false,
+    requireFailClosed: merged.requireFailClosed !== false,
+    requireRestoreHighlight: merged.requireRestoreHighlight !== false,
+  };
+}
+
 function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const auditProfile = ['baseline', 'strict', 'custom'].includes(String(source.auditProfile || fallback.auditProfile || '').trim())
+    ? String(source.auditProfile || fallback.auditProfile)
+    : 'baseline';
   return {
     ...fallback,
     ...source,
@@ -49,13 +121,60 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,
     allowUserOverride: source.allowUserOverride === true,
     placeholderMode: normalizePrivacyPlaceholderMode(source.placeholderMode || fallback.placeholderMode),
+    reintroductionMode: normalizePrivacyReintroductionMode(source.reintroductionMode || fallback.reintroductionMode),
     failClosed: source.failClosed !== undefined ? Boolean(source.failClosed) : fallback.failClosed !== false,
     detectors: Array.isArray(source.detectors) && source.detectors.length > 0
       ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
       : [...fallback.detectors],
+    detectorActions: normalizePrivacyDetectorActions(source.detectorActions, fallback.detectorActions),
     customPatterns: Array.isArray(source.customPatterns) ? source.customPatterns.slice(0, 50) : [],
     dictionary: Array.isArray(source.dictionary) ? source.dictionary.slice(0, 200) : [],
     enablePersonNames: source.enablePersonNames === true,
+    auditProfile,
+    auditCriteria: normalizePrivacyAuditCriteria(source.auditCriteria, fallback.auditCriteria, auditProfile),
+  };
+}
+
+function resolvePrivacyAction(type = '', settings = {}) {
+  const actions = settings.detectorActions && typeof settings.detectorActions === 'object' && !Array.isArray(settings.detectorActions)
+    ? settings.detectorActions
+    : {};
+  const action = String(actions[type] || actions.default || 'vault-placeholder').trim();
+  return PRIVACY_PII_ACTIONS.has(action) ? action : 'vault-placeholder';
+}
+
+function buildPreviewPlaceholder(type = '', action = 'vault-placeholder', index = 0) {
+  const token = String(type || 'PII').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toUpperCase() || 'PII';
+  if (action === 'remove') return `[[PII:${token}:REMOVED]]`;
+  if (action === 'mask') return `[[PII:${token}:MASKED]]`;
+  return `[[PII:${token}:PREVIEW_${index + 1}]]`;
+}
+
+function buildPrivacyAuditStatus(settings = {}) {
+  const criteria = normalizePrivacyAuditCriteria(settings.auditCriteria, DEFAULT_PRIVACY_PII_SETTINGS.auditCriteria, settings.auditProfile || 'baseline');
+  const detectors = new Set((Array.isArray(settings.detectors) ? settings.detectors : []).map((entry) => String(entry || '').trim()).filter(Boolean));
+  if (settings.enablePersonNames === true) {
+    detectors.add('personName');
+  }
+
+  const missingRequiredDetectors = criteria.requiredDetectors.filter((detector) => {
+    if (!detectors.has(detector)) return true;
+    return resolvePrivacyAction(detector, settings) === 'ignore';
+  });
+  const vaultConfigured = Boolean(String(process.env.KIMIBUILT_PII_MASTER_KEY || '').trim());
+  const checks = {
+    requiredDetectors: missingRequiredDetectors.length === 0,
+    vaultKey: !criteria.requireVaultKey || vaultConfigured,
+    failClosed: !criteria.requireFailClosed || settings.failClosed !== false,
+    restoreHighlight: !criteria.requireRestoreHighlight || settings.highlightRestored !== false,
+  };
+
+  return {
+    profile: settings.auditProfile || 'baseline',
+    pass: Object.values(checks).every(Boolean),
+    checks,
+    missingRequiredDetectors,
+    criteria,
   };
 }
 
@@ -278,6 +397,59 @@ class SettingsController {
     } catch (error) {
       console.error('Error updating settings:', error);
       res.status(error.statusCode || 500).json({ success: false, error: error.message });
+    }
+  }
+
+  previewPrivacyPii(req, res) {
+    try {
+      const sampleText = String(req.body?.sampleText || req.body?.text || '').slice(0, 20000);
+      const baseSettings = this.getEffectivePrivacyPiiConfig();
+      const candidateSettings = normalizePrivacyPiiSettings(req.body?.settings || baseSettings, baseSettings);
+      const matches = detectPii(sampleText, candidateSettings)
+        .map((match, index) => {
+          const action = resolvePrivacyAction(match.type, candidateSettings);
+          return {
+            type: match.type,
+            source: match.source || 'builtin',
+            start: match.start,
+            end: match.end,
+            length: Math.max(0, Number(match.end || 0) - Number(match.start || 0)),
+            action,
+            restorable: action === 'vault-placeholder',
+            placeholder: buildPreviewPlaceholder(match.type, action, index),
+          };
+        })
+        .filter((match) => match.action !== 'ignore');
+
+      let sanitizedText = sampleText;
+      [...matches].reverse().forEach((match) => {
+        sanitizedText = `${sanitizedText.slice(0, match.start)}${match.placeholder}${sanitizedText.slice(match.end)}`;
+      });
+
+      const countsByType = matches.reduce((acc, match) => {
+        acc[match.type] = (acc[match.type] || 0) + 1;
+        return acc;
+      }, {});
+      const countsByAction = matches.reduce((acc, match) => {
+        acc[match.action] = (acc[match.action] || 0) + 1;
+        return acc;
+      }, {});
+
+      res.json({
+        success: true,
+        data: {
+          sanitizedText,
+          changed: sanitizedText !== sampleText,
+          matchCount: matches.length,
+          matches,
+          countsByType,
+          countsByAction,
+          auditStatus: buildPrivacyAuditStatus(candidateSettings),
+        },
+      });
+    } catch (error) {
+      console.error('Error previewing PII policy:', error);
+      res.status(400).json({ success: false, error: error.message });
     }
   }
 
@@ -1075,11 +1247,13 @@ class SettingsController {
 
   getEffectivePrivacyPiiConfig() {
     const stored = this.settings?.privacyPii || {};
-    return {
+    const settings = {
       ...normalizePrivacyPiiSettings(stored, DEFAULT_PRIVACY_PII_SETTINGS),
       source: this.canUsePostgresSettings() ? 'postgres' : 'file',
       vaultConfigured: Boolean(String(process.env.KIMIBUILT_PII_MASTER_KEY || '').trim()),
     };
+    settings.auditStatus = buildPrivacyAuditStatus(settings);
+    return settings;
   }
 
   /**
