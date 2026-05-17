@@ -2,7 +2,7 @@ const settingsController = require('../routes/admin/settings.controller');
 const { postgres } = require('../postgres');
 
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  defaultsVersion: 2,
+  defaultsVersion: 3,
   enabled: true,
   webChatEnabled: true,
   highlightRestored: true,

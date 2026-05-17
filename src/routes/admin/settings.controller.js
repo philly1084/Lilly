@@ -20,7 +20,7 @@ const {
 const { detectPii } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  defaultsVersion: 2,
+  defaultsVersion: 3,
   enabled: true,
   webChatEnabled: true,
   highlightRestored: true,
@@ -172,7 +172,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
   return {
     ...fallback,
     ...source,
-    defaultsVersion: 2,
+    defaultsVersion: 3,
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
     webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,
@@ -619,17 +619,39 @@ class SettingsController {
     }
 
     const defaultsVersion = Number(privacyPii.defaultsVersion || 0);
-    if (defaultsVersion >= 2) {
+    if (defaultsVersion >= 3) {
       return next;
     }
 
+    const existingDetectors = Array.isArray(privacyPii.detectors)
+      ? privacyPii.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
+      : [...DEFAULT_PRIVACY_PII_SETTINGS.detectors];
+    const detectorSet = new Set(existingDetectors);
+    detectorSet.add('personName');
+    detectorSet.add('organization');
+    const existingRequired = Array.isArray(privacyPii.auditCriteria?.requiredDetectors)
+      ? privacyPii.auditCriteria.requiredDetectors.map((entry) => String(entry || '').trim()).filter(Boolean)
+      : [...DEFAULT_PRIVACY_PII_SETTINGS.auditCriteria.requiredDetectors];
+    const requiredSet = new Set(existingRequired);
+    requiredSet.add('personName');
+    requiredSet.add('organization');
+
     next.privacyPii = {
       ...privacyPii,
-      defaultsVersion: 2,
+      defaultsVersion: 3,
       enabled: true,
       placeholderMode: privacyPii.placeholderMode === 'stable-per-value'
         ? 'stable-per-value'
         : 'opaque-random',
+      detectors: Array.from(detectorSet),
+      enablePersonNames: true,
+      auditProfile: privacyPii.auditProfile === 'custom' ? 'custom' : 'strict',
+      auditCriteria: {
+        ...(privacyPii.auditCriteria && typeof privacyPii.auditCriteria === 'object' && !Array.isArray(privacyPii.auditCriteria)
+          ? privacyPii.auditCriteria
+          : {}),
+        requiredDetectors: Array.from(requiredSet),
+      },
     };
     return next;
   }

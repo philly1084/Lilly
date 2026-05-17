@@ -345,7 +345,7 @@ describe('settings.controller personality support', () => {
     const defaults = controller.getDefaultSettings().privacyPii;
 
     expect(defaults).toEqual(expect.objectContaining({
-      defaultsVersion: 2,
+      defaultsVersion: 3,
       enabled: true,
       webChatEnabled: true,
       placeholderMode: 'opaque-random',
@@ -356,7 +356,7 @@ describe('settings.controller personality support', () => {
     expect(defaults.detectors).toEqual(expect.arrayContaining(['personName', 'organization']));
   });
 
-  test('upgrades old persisted PII defaults to enabled opaque protection on restart', () => {
+  test('upgrades old persisted PII defaults to enabled opaque identity protection on restart', () => {
     const upgraded = controller.upgradeStoredSettingsDefaults({
       privacyPii: {
         enabled: false,
@@ -366,10 +366,40 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 2,
+      defaultsVersion: 3,
       enabled: true,
       placeholderMode: 'opaque-random',
+      enablePersonNames: true,
+      auditProfile: 'strict',
     }));
+    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['personName', 'organization']));
+    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization']));
+  });
+
+  test('upgrades persisted v2 PII defaults to include names and organizations', () => {
+    const upgraded = controller.upgradeStoredSettingsDefaults({
+      privacyPii: {
+        defaultsVersion: 2,
+        enabled: true,
+        placeholderMode: 'opaque-random',
+        detectors: ['email', 'phone', 'dateOfBirth'],
+        enablePersonNames: false,
+        auditProfile: 'baseline',
+        auditCriteria: {
+          requiredDetectors: ['email', 'phone', 'dateOfBirth'],
+        },
+      },
+    });
+
+    expect(upgraded.privacyPii).toEqual(expect.objectContaining({
+      defaultsVersion: 3,
+      enabled: true,
+      placeholderMode: 'opaque-random',
+      enablePersonNames: true,
+      auditProfile: 'strict',
+    }));
+    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization']));
+    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization']));
   });
 
   test('previews PII cleanup without echoing raw matched values', () => {

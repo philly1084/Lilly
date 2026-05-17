@@ -4,6 +4,7 @@ const { buildModelFrame, sanitizeText } = require('../pii-redactor');
 describe('PII redactor framing', () => {
   test('defaults PII protection to opaque placeholders', () => {
     expect(DEFAULT_PRIVACY_PII_SETTINGS).toEqual(expect.objectContaining({
+      defaultsVersion: 3,
       enabled: true,
       placeholderMode: 'opaque-random',
       failClosed: true,
