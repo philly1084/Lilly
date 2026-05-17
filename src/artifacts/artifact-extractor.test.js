@@ -1,4 +1,5 @@
 const { extractArtifact, extractPdfText } = require('./artifact-extractor');
+const { buildXlsxBufferFromWorkbookSpec } = require('./artifact-renderer');
 
 describe('extractArtifact', () => {
     test('preserves Mermaid line breaks for preview and reuse', async () => {
@@ -107,5 +108,29 @@ describe('extractArtifact', () => {
 
         expect(result.extractedText).toContain('Philip ResumePDF');
         expect(result.vectorizable).toBe(true);
+    });
+
+    test('extracts XLSX shared strings as cell text instead of indexes', async () => {
+        const buffer = buildXlsxBufferFromWorkbookSpec({
+            title: 'Shared Strings Smoke',
+            sheets: [{
+                name: 'Patients',
+                rows: [
+                    ['Name', 'SIN', 'Postal'],
+                    ['Jamie Sampleton', '046 454 286', 'K1A 0B1'],
+                ],
+            }],
+        });
+
+        const result = await extractArtifact({
+            filename: 'patients.xlsx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            buffer,
+        });
+
+        expect(result.extractedText).toContain('Jamie Sampleton');
+        expect(result.extractedText).toContain('046 454 286');
+        expect(result.extractedText).toContain('K1A 0B1');
+        expect(result.extractedText).not.toContain('0 | 1 | 2');
     });
 });

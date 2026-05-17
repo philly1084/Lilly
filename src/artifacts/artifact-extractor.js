@@ -75,10 +75,11 @@ function extractSheetRows(xml, sharedStrings) {
 
     while (rowMatch) {
         const cells = [];
-        const cellRegex = /<c[^>]*?(?:t=\"([^\"]+)\")?[^>]*>([\s\S]*?)<\/c>/g;
+        const cellRegex = /<c\b([^>]*)>([\s\S]*?)<\/c>/g;
         let cellMatch = cellRegex.exec(rowMatch[1]);
         while (cellMatch) {
-            const type = cellMatch[1] || '';
+            const attrs = cellMatch[1] || '';
+            const type = (attrs.match(/\bt=["']([^"']+)["']/) || [])[1] || '';
             const body = cellMatch[2];
             const valueMatch = body.match(/<v>([\s\S]*?)<\/v>/);
             const inlineMatch = body.match(/<is>([\s\S]*?)<\/is>/);
