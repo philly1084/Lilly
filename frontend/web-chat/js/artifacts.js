@@ -904,6 +904,13 @@
             || /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
     }
 
+    function isPdfArtifact(artifact = null) {
+        const format = String(artifact?.format || '').toLowerCase();
+        const mimeType = String(artifact?.mimeType || '').toLowerCase();
+        const filename = String(artifact?.filename || '').toLowerCase();
+        return format === 'pdf' || mimeType.includes('pdf') || filename.endsWith('.pdf');
+    }
+
     function getArtifactImagePreviewUrl(artifact) {
         if (!isImageArtifact(artifact)) {
             return '';
@@ -1090,6 +1097,10 @@
 
     function shouldRenderInlineArtifactPreview(artifact) {
         if (!getArtifactPreviewUrl(artifact)) {
+            return false;
+        }
+
+        if (isPdfArtifact(artifact)) {
             return false;
         }
 
@@ -1766,6 +1777,27 @@
         document.body.classList.add('site-preview-open');
     }
 
+    async function openArtifactPreviewUrl(artifact, previewUrl) {
+        if (!isPdfArtifact(artifact)) {
+            await openSitePreviewModal(artifact, previewUrl);
+            return;
+        }
+
+        const previewWindow = window.open('', '_blank');
+        try {
+            const absolutePreviewUrl = await resolveAuthenticatedPreviewUrl(previewUrl);
+            if (previewWindow) {
+                previewWindow.opener = null;
+                previewWindow.location.href = absolutePreviewUrl;
+                return;
+            }
+            window.location.href = absolutePreviewUrl;
+        } catch (error) {
+            previewWindow?.close?.();
+            throw error;
+        }
+    }
+
     function getInlineArtifactPreviewElements(target) {
         const wrapper = target?.classList?.contains?.('artifact-html-preview')
             ? target
@@ -1918,7 +1950,7 @@
             }
 
             try {
-                await openSitePreviewModal(artifact, previewUrl);
+                await openArtifactPreviewUrl(artifact, previewUrl);
             } catch (error) {
                 if (window.uiHelpers?.showToast) {
                     uiHelpers.showToast(error.message || 'Preview authentication failed', 'error');
