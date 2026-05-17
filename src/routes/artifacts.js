@@ -631,12 +631,10 @@ router.get('/:id/download', async (req, res, next) => {
         if (inlineRequested) {
             applyPreviewResponseHeaders(res);
         }
-        const outputBuffer = inlineRequested
-            ? await rehydratePreviewBuffer(artifact.contentBuffer, artifact, req, {
-                contentType: artifact.mimeType,
-                path: artifact.filename,
-            })
-            : artifact.contentBuffer;
+        const outputBuffer = await rehydratePreviewBuffer(artifact.contentBuffer, artifact, req, {
+            contentType: artifact.mimeType,
+            path: artifact.filename,
+        });
         res.send(outputBuffer);
     } catch (err) {
         next(err);
@@ -760,7 +758,13 @@ router.post('/:id/managed-app', async (req, res, next) => {
             });
         }
 
-        const files = extractArtifactSiteFilesForManagedApp(artifact);
+        const files = await Promise.all(extractArtifactSiteFilesForManagedApp(artifact).map(async (file) => ({
+            ...file,
+            content: (await rehydratePreviewBuffer(Buffer.from(file.content || '', 'utf8'), artifact, req, {
+                contentType: resolveFrontendBundleContentType(file.path),
+                path: file.path,
+            })).toString('utf8'),
+        })));
         if (files.length === 0) {
             return res.status(400).json({
                 error: {
@@ -840,7 +844,11 @@ router.get('/:id/site/*', async (req, res, next) => {
 
         res.setHeader('Content-Type', resolved.contentType);
         applyPreviewResponseHeaders(res);
-        res.send(resolved.contentBuffer);
+        const outputBuffer = await rehydratePreviewBuffer(resolved.contentBuffer, artifact, req, {
+            contentType: resolved.contentType,
+            path: requestedPath || 'index.html',
+        });
+        res.send(outputBuffer);
     } catch (err) {
         next(err);
     }

@@ -933,6 +933,29 @@ async function persistWorkflowDocumentArtifact(document = null, context = {}, op
   const extractedText = String(document?.extractedText || '').trim()
     || (previewHtml ? stripHtml(previewHtml) : '')
     || (isTextualDocumentMimeType(document?.mimeType, document?.filename) ? buffer.toString('utf8').slice(0, 12000) : '');
+  const hasPiiPlaceholders = /\[\[PII:[^\]\r\n]+?\]\]/.test(previewHtml || extractedText || '');
+  if (format === 'pdf'
+    && hasPiiPlaceholders
+    && previewHtml
+    && typeof artifactService.storeGeneratedArtifactFromContent === 'function') {
+    return artifactService.storeGeneratedArtifactFromContent({
+      sessionId: context.sessionId,
+      session: context.session || null,
+      mode: context.clientSurface || 'chat',
+      format: 'pdf',
+      content: previewHtml,
+      title: document?.metadata?.title || document?.title || document?.filename || 'document',
+      metadata: {
+        ...(document?.metadata || {}),
+        originalDocumentId: document?.id || null,
+        originalDownloadUrl: document?.downloadUrl || null,
+        persistedFrom: 'document-workflow',
+        rerenderedFromRestoredPiiPlaceholders: true,
+        toolId: DOCUMENT_WORKFLOW_TOOL_ID,
+      },
+      ownerId: context.ownerId || context.userId || null,
+    });
+  }
 
   try {
     const stored = await artifactService.createStoredArtifact({

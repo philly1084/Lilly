@@ -42,7 +42,7 @@ const {
     renderInteractiveArtifactInstructions,
     shouldUseInteractiveHtmlArtifact,
 } = require('./artifact-experience');
-const { sanitizeRuntimePayload } = require('../pii');
+const { sanitizeRuntimePayload, rehydrateText } = require('../pii');
 const {
     deleteLocalGeneratedArtifact,
     deleteLocalGeneratedArtifactsBySession,
@@ -485,7 +485,201 @@ async function requestModelResponse(params = {}) {
         route: toolContext.route || metadata.route || '/api/artifacts/generate',
         metadata,
     });
-    return createResponse(piiSanitized.payload);
+    const response = await createResponse(piiSanitized.payload);
+    if (response && typeof response === 'object') {
+        response._kimibuiltPiiCleansing = {
+            enabled: piiSanitized.policy?.enabled === true,
+            changed: piiSanitized.changed === true,
+            contextIds: Array.from(new Set(piiSanitized.contextIds || [])),
+            replacementCount: Array.isArray(piiSanitized.replacements) ? piiSanitized.replacements.length : 0,
+            placeholderMode: piiSanitized.policy?.placeholderMode || '',
+            modelFrame: piiSanitized.modelFrame || null,
+        };
+    }
+    return response;
+}
+
+function hasPiiPlaceholders(value = '') {
+    return /\[\[PII:[^\]\r\n]+?\]\]/.test(String(value || ''));
+}
+
+function normalizePiiCleansingMetadata(value = null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+    const contextIds = Array.isArray(value.contextIds)
+        ? value.contextIds.map((id) => String(id || '').trim()).filter(Boolean)
+        : [];
+    return {
+        enabled: value.enabled === true,
+        changed: value.changed === true,
+        contextIds,
+        replacementCount: Number(value.replacementCount || 0) || 0,
+        restoredCount: Number(value.restoredCount || 0) || 0,
+        placeholderMode: String(value.placeholderMode || '').trim(),
+        modelFrame: value.modelFrame || null,
+    };
+}
+
+function mergePiiCleansingMetadata(...values) {
+    const entries = values
+        .map(normalizePiiCleansingMetadata)
+        .filter(Boolean);
+    if (entries.length === 0) {
+        return null;
+    }
+
+    const contextIds = new Set();
+    let enabled = false;
+    let changed = false;
+    let replacementCount = 0;
+    let restoredCount = 0;
+    let placeholderMode = '';
+    const modelFrames = [];
+
+    entries.forEach((entry) => {
+        enabled = enabled || entry.enabled;
+        changed = changed || entry.changed;
+        replacementCount += entry.replacementCount;
+        restoredCount += entry.restoredCount;
+        if (!placeholderMode && entry.placeholderMode) {
+            placeholderMode = entry.placeholderMode;
+        }
+        entry.contextIds.forEach((id) => contextIds.add(id));
+        if (entry.modelFrame) {
+            modelFrames.push(entry.modelFrame);
+        }
+    });
+
+    if (!enabled && contextIds.size === 0 && replacementCount === 0 && restoredCount === 0) {
+        return null;
+    }
+
+    return {
+        enabled,
+        changed,
+        contextIds: Array.from(contextIds),
+        replacementCount,
+        restoredCount,
+        placeholderMode,
+        ...(modelFrames.length === 1 ? { modelFrame: modelFrames[0] } : {}),
+        ...(modelFrames.length > 1 ? { modelFrames } : {}),
+    };
+}
+
+function resolveArtifactOwnerId({ ownerId = null, session = null, metadata = {} } = {}) {
+    return String(
+        ownerId
+        || metadata?.ownerId
+        || metadata?.owner_id
+        || session?.metadata?.ownerId
+        || session?.metadata?.owner_id
+        || ''
+    ).trim() || null;
+}
+
+async function restoreGeneratedPiiPlaceholders(text = '', {
+    sessionId = '',
+    session = null,
+    ownerId = null,
+    metadata = {},
+    piiCleansing = null,
+    clientSurface = 'artifact-generation',
+    route = '/api/artifacts/generate',
+} = {}) {
+    const source = String(text || '');
+    if (!source || !hasPiiPlaceholders(source)) {
+        return { text: source, restorations: [] };
+    }
+
+    const normalizedPii = mergePiiCleansingMetadata(piiCleansing, metadata?.piiCleansing);
+    try {
+        const result = await rehydrateText(source, {
+            sessionId,
+            ownerId: resolveArtifactOwnerId({ ownerId, session, metadata }),
+            contextIds: normalizedPii?.contextIds || [],
+            metadata: {
+                ...(metadata || {}),
+                ...(normalizedPii ? { piiCleansing: normalizedPii } : {}),
+            },
+            clientSurface,
+            route,
+            highlight: false,
+        });
+        return {
+            text: result.text,
+            restorations: Array.isArray(result.restorations) ? result.restorations : [],
+        };
+    } catch (error) {
+        console.warn(`[PII] Failed to restore generated artifact placeholders: ${error.message}`);
+        return { text: source, restorations: [] };
+    }
+}
+
+async function restoreFrontendPayloadPii(payload = null, options = {}) {
+    if (!payload || typeof payload !== 'object') {
+        return { payload, restorations: [] };
+    }
+
+    const restorations = [];
+    const next = {
+        ...payload,
+        metadata: payload.metadata && typeof payload.metadata === 'object'
+            ? { ...payload.metadata }
+            : {},
+    };
+
+    if (typeof next.content === 'string') {
+        const result = await restoreGeneratedPiiPlaceholders(next.content, options);
+        next.content = result.text;
+        restorations.push(...result.restorations);
+    }
+
+    const bundle = next.metadata?.bundle && typeof next.metadata.bundle === 'object'
+        ? { ...next.metadata.bundle }
+        : null;
+    if (bundle && Array.isArray(bundle.files)) {
+        bundle.files = [];
+        for (const file of next.metadata.bundle.files) {
+            const nextFile = file && typeof file === 'object' ? { ...file } : file;
+            if (nextFile && typeof nextFile.content === 'string') {
+                const result = await restoreGeneratedPiiPlaceholders(nextFile.content, options);
+                nextFile.content = result.text;
+                restorations.push(...result.restorations);
+            }
+            bundle.files.push(nextFile);
+        }
+        next.metadata.bundle = bundle;
+    }
+
+    return { payload: next, restorations };
+}
+
+function buildPiiArtifactMetadata(piiCleansing = null, restorations = []) {
+    const merged = mergePiiCleansingMetadata(piiCleansing, {
+        enabled: piiCleansing?.enabled === true,
+        restoredCount: Array.isArray(restorations) ? restorations.length : 0,
+    });
+    if (!merged) {
+        return null;
+    }
+    return {
+        ...merged,
+        restoredInGeneratedArtifact: (Array.isArray(restorations) ? restorations.length : 0) > 0,
+    };
+}
+
+function isTextArtifactPayload({ extension = '', mimeType = '', filename = '' } = {}) {
+    const normalizedExtension = String(extension || '').replace(/^\./, '').toLowerCase();
+    const normalizedMime = String(mimeType || '').toLowerCase();
+    const normalizedFilename = String(filename || '').toLowerCase();
+    return normalizedMime.startsWith('text/')
+        || normalizedMime.includes('json')
+        || normalizedMime.includes('xml')
+        || normalizedMime.includes('javascript')
+        || normalizedMime.includes('svg')
+        || ['html', 'htm', 'css', 'csv', 'js', 'jsx', 'json', 'md', 'markdown', 'mjs', 'svg', 'txt', 'ts', 'tsx', 'xml', 'yaml', 'yml'].includes(normalizedExtension)
+        || /\.(?:html?|css|csv|js|jsx|json|md|markdown|mjs|svg|txt|ts|tsx|xml|ya?ml)$/i.test(normalizedFilename);
 }
 
 function unwrapCodeFence(text = '') {
@@ -1712,9 +1906,58 @@ class ArtifactService {
         extractedText = '',
         previewHtml = '',
         metadata = {},
+        ownerId = null,
+        vectorizeText = null,
         vectorize = true,
         deferVectorization = false,
     }) {
+        let storedBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || '');
+        let storedExtractedText = String(extractedText || '');
+        let storedPreviewHtml = String(previewHtml || '');
+        let storedMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+            ? { ...metadata }
+            : {};
+        const textPayload = isTextArtifactPayload({ extension, mimeType, filename });
+        const safeVectorText = typeof vectorizeText === 'string'
+            ? vectorizeText
+            : (storedExtractedText || (textPayload ? storedBuffer.toString('utf8') : ''));
+
+        if (direction === 'generated') {
+            const restoreOptions = {
+                sessionId,
+                session,
+                ownerId,
+                metadata: storedMetadata,
+                piiCleansing: storedMetadata.piiCleansing || null,
+                clientSurface: sourceMode || 'artifact-generation',
+                route: storedMetadata.route || '/api/artifacts/generate',
+            };
+            const restorations = [];
+            if (storedPreviewHtml) {
+                const result = await restoreGeneratedPiiPlaceholders(storedPreviewHtml, restoreOptions);
+                storedPreviewHtml = result.text;
+                restorations.push(...result.restorations);
+            }
+            if (storedExtractedText) {
+                const result = await restoreGeneratedPiiPlaceholders(storedExtractedText, restoreOptions);
+                storedExtractedText = result.text;
+                restorations.push(...result.restorations);
+            }
+            if (textPayload && hasPiiPlaceholders(storedBuffer.toString('utf8'))) {
+                const result = await restoreGeneratedPiiPlaceholders(storedBuffer.toString('utf8'), restoreOptions);
+                storedBuffer = Buffer.from(result.text, 'utf8');
+                restorations.push(...result.restorations);
+            }
+            const piiArtifactMetadata = buildPiiArtifactMetadata(storedMetadata.piiCleansing || null, restorations);
+            if (piiArtifactMetadata) {
+                storedMetadata.piiCleansing = {
+                    ...piiArtifactMetadata,
+                    restoredInGeneratedArtifact: piiArtifactMetadata.restoredInGeneratedArtifact
+                        || Boolean(storedMetadata.piiCleansing?.restoredInGeneratedArtifact),
+                };
+            }
+        }
+
         if (!this.isEnabled()) {
             return persistGeneratedArtifactLocally({
                 sessionId,
@@ -1724,10 +1967,10 @@ class ArtifactService {
                 filename,
                 extension,
                 mimeType,
-                buffer,
-                extractedText,
-                previewHtml,
-                metadata,
+                buffer: storedBuffer,
+                extractedText: storedExtractedText,
+                previewHtml: storedPreviewHtml,
+                metadata: storedMetadata,
             });
         }
 
@@ -1743,24 +1986,24 @@ class ArtifactService {
                 filename,
                 extension,
                 mimeType,
-                sizeBytes: buffer.length,
-                sha256: sha256(buffer),
-                contentBuffer: buffer,
-                extractedText,
-                previewHtml,
-                metadata,
+                sizeBytes: storedBuffer.length,
+                sha256: sha256(storedBuffer),
+                contentBuffer: storedBuffer,
+                extractedText: storedExtractedText,
+                previewHtml: storedPreviewHtml,
+                metadata: storedMetadata,
                 vectorizedAt: null,
             });
 
             let vectorizedAt = null;
-            if (vectorize && extractedText && !deferVectorization) {
-                vectorizedAt = await this.vectorizeArtifactText(artifact, extractedText);
+            if (vectorize && safeVectorText && !deferVectorization) {
+                vectorizedAt = await this.vectorizeArtifactText(artifact, safeVectorText);
             }
 
             const storedArtifact = await artifactStore.updateProcessing(artifact.id, {
-                extractedText,
-                previewHtml,
-                metadata,
+                extractedText: storedExtractedText,
+                previewHtml: storedPreviewHtml,
+                metadata: storedMetadata,
                 vectorizedAt,
             });
             try {
@@ -1769,10 +2012,10 @@ class ArtifactService {
                 console.warn('[Artifacts] Failed to index stored artifact:', error.message);
             }
 
-            if (vectorize && extractedText && deferVectorization) {
-                this.deferArtifactVectorization(storedArtifact, extractedText, {
-                    previewHtml,
-                    metadata,
+            if (vectorize && safeVectorText && deferVectorization) {
+                this.deferArtifactVectorization(storedArtifact, safeVectorText, {
+                    previewHtml: storedPreviewHtml,
+                    metadata: storedMetadata,
                     session,
                 });
             }
@@ -2212,6 +2455,7 @@ class ArtifactService {
             rawOutputText: extractRawResponseText(response),
             model: response.model || model || null,
             usage: extractResponseUsageMetadata(response),
+            piiCleansing: normalizePiiCleansingMetadata(response._kimibuiltPiiCleansing),
         };
     }
 
@@ -2577,6 +2821,11 @@ class ArtifactService {
                 expansionPass.usage,
                 compositionPass.usage,
             ),
+            piiCleansing: mergePiiCleansingMetadata(
+                planPass.piiCleansing,
+                expansionPass.piiCleansing,
+                compositionPass.piiCleansing,
+            ),
             metadata: {
                 generationStrategy: 'multi-pass',
                 generationPasses: ['plan', 'expand', 'compose'],
@@ -2749,10 +2998,22 @@ class ArtifactService {
         const outputText = frontendDemoRequest
             ? (generated.rawOutputText || generated.outputText)
             : generated.outputText;
+        const generatedPiiCleansing = mergePiiCleansingMetadata(generated.piiCleansing);
+        const piiRestoreOptions = {
+            sessionId,
+            session,
+            ownerId: toolContext?.ownerId || null,
+            metadata: {
+                piiCleansing: generatedPiiCleansing,
+            },
+            piiCleansing: generatedPiiCleansing,
+            clientSurface: toolContext?.clientSurface || 'artifact-generation',
+            route: toolContext?.route || '/api/artifacts/generate',
+        };
         const frontendPayload = frontendDemoRequest
             ? buildFrontendArtifactPayload(outputText)
             : null;
-        const normalizedFrontendPayload = frontendPayload
+        const normalizedFrontendPayloadBase = frontendPayload
             ? {
                 ...frontendPayload,
                 content: diversifyHtmlImageReferences(frontendPayload.content, imageReferences),
@@ -2762,6 +3023,10 @@ class ArtifactService {
                 },
             }
             : null;
+        const restoredFrontendPayload = normalizedFrontendPayloadBase
+            ? await restoreFrontendPayloadPii(normalizedFrontendPayloadBase, piiRestoreOptions)
+            : null;
+        const normalizedFrontendPayload = restoredFrontendPayload?.payload || normalizedFrontendPayloadBase;
         const hasFrontendBundleFiles = Array.isArray(normalizedFrontendPayload?.metadata?.bundle?.files)
             && normalizedFrontendPayload.metadata.bundle.files.length > 0;
         const hasFrontendBundleArchive = Boolean(normalizedFrontendPayload)
@@ -2772,9 +3037,18 @@ class ArtifactService {
                 || String(normalizedFrontendPayload.metadata?.frameworkTarget || '').trim().toLowerCase() === 'vite'
                 ))
             );
-        const renderSource = normalizedFrontendPayload
+        const rawRenderSource = normalizedFrontendPayload
             ? normalizedFrontendPayload.content
             : diversifyHtmlImageReferences(unwrapCodeFence(outputText), imageReferences);
+        const restoredRenderSource = normalizedFrontendPayload
+            ? { text: rawRenderSource, restorations: [] }
+            : await restoreGeneratedPiiPlaceholders(rawRenderSource, piiRestoreOptions);
+        const renderSource = restoredRenderSource.text;
+        const piiRestorations = [
+            ...(restoredFrontendPayload?.restorations || []),
+            ...(restoredRenderSource.restorations || []),
+        ];
+        const piiArtifactMetadata = buildPiiArtifactMetadata(generatedPiiCleansing, piiRestorations);
         const title = normalizedFrontendPayload?.metadata?.title
             || generated.title
             || `${normalizedFormat}-${new Date().toISOString().slice(0, 10)}`;
@@ -2838,7 +3112,11 @@ class ArtifactService {
                 ...dashboardMetadata,
                 ...(generated.metadata || {}),
                 ...artifactExperienceMetadata,
+                ...(piiArtifactMetadata ? { piiCleansing: piiArtifactMetadata } : {}),
             },
+            vectorizeText: ['html', 'pdf'].includes(normalizedFormat)
+                ? stripHtml(rawRenderSource)
+                : String(rawRenderSource || ''),
             vectorize: Boolean(rendered.extractedText),
         });
 
@@ -2859,13 +3137,25 @@ class ArtifactService {
         title = 'generated-artifact',
         parentArtifactId = null,
         metadata = {},
+        ownerId = null,
+        session = null,
         workbookSpec = null,
     }) {
         const normalizedFormat = normalizeFormat(format);
+        const restoredContent = await restoreGeneratedPiiPlaceholders(content, {
+            sessionId,
+            session,
+            ownerId,
+            metadata,
+            piiCleansing: metadata?.piiCleansing || null,
+            clientSurface: mode || 'artifact-generation',
+            route: metadata?.route || '/api/artifacts/generate',
+        });
+        const piiArtifactMetadata = buildPiiArtifactMetadata(metadata?.piiCleansing || null, restoredContent.restorations);
         const rendered = await renderArtifact({
             format: normalizedFormat,
             title,
-            content,
+            content: restoredContent.text,
             workbookSpec,
         });
 
@@ -2880,7 +3170,13 @@ class ArtifactService {
             buffer: rendered.buffer,
             extractedText: rendered.extractedText,
             previewHtml: rendered.previewHtml,
-            metadata: { ...rendered.metadata, ...metadata },
+            metadata: {
+                ...rendered.metadata,
+                ...metadata,
+                ...(piiArtifactMetadata ? { piiCleansing: piiArtifactMetadata } : {}),
+            },
+            ownerId,
+            vectorizeText: String(content || ''),
             vectorize: Boolean(rendered.extractedText),
         });
 

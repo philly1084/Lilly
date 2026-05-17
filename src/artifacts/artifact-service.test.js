@@ -19,6 +19,22 @@ jest.mock('../openai-client', () => ({
     createResponse: jest.fn(),
 }));
 
+jest.mock('../pii', () => ({
+    sanitizeRuntimePayload: jest.fn(async (payload) => ({
+        payload,
+        changed: false,
+        contextIds: [],
+        replacements: [],
+        policy: { enabled: false },
+        modelFrame: null,
+    })),
+    rehydrateText: jest.fn(async (text) => ({
+        text,
+        restorations: [],
+        enabled: false,
+    })),
+}));
+
 jest.mock('../unsplash-client', () => ({
     searchImages: jest.fn(),
     isConfigured: jest.fn(() => false),
@@ -64,6 +80,7 @@ const { postgres } = require('../postgres');
 const { vectorStore } = require('../memory/vector-store');
 const { renderArtifact } = require('./artifact-renderer');
 const { createResponse } = require('../openai-client');
+const { sanitizeRuntimePayload, rehydrateText } = require('../pii');
 const { searchImages, isConfigured } = require('../unsplash-client');
 const { persistGeneratedArtifactLocally } = require('../generated-file-artifacts');
 const { readFrontendBundleArchive } = require('../frontend-bundles');
@@ -71,6 +88,19 @@ const { readFrontendBundleArchive } = require('../frontend-bundles');
 describe('ArtifactService', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        sanitizeRuntimePayload.mockImplementation(async (payload) => ({
+            payload,
+            changed: false,
+            contextIds: [],
+            replacements: [],
+            policy: { enabled: false },
+            modelFrame: null,
+        }));
+        rehydrateText.mockImplementation(async (text) => ({
+            text,
+            restorations: [],
+            enabled: false,
+        }));
         postgres.enabled = true;
         isConfigured.mockReturnValue(false);
         persistGeneratedArtifactLocally.mockResolvedValue({
@@ -422,6 +452,109 @@ describe('ArtifactService', () => {
             }),
         }));
         expect(result.responseId).toBe('resp-compose');
+    });
+
+    test('restores PII placeholders before rendering generated PDF artifacts', async () => {
+        sanitizeRuntimePayload.mockImplementationOnce(async (payload) => ({
+            payload: {
+                ...payload,
+                input: 'Create a PDF for [[PII:EMAIL:ctx1]].',
+            },
+            changed: true,
+            contextIds: ['ctx-1'],
+            replacements: [{
+                placeholder: '[[PII:EMAIL:ctx1]]',
+                type: 'email',
+                restorable: true,
+            }],
+            policy: { enabled: true, placeholderMode: 'typed-random' },
+            modelFrame: {
+                instruction: 'Preserve placeholders.',
+                placeholders: [{ placeholder: '[[PII:EMAIL:ctx1]]', type: 'email' }],
+            },
+        }));
+        rehydrateText.mockImplementationOnce(async (text, options) => ({
+            text: String(text).replace(/\[\[PII:EMAIL:ctx1\]\]/g, 'jane@example.com'),
+            restorations: [{
+                placeholder: '[[PII:EMAIL:ctx1]]',
+                type: 'email',
+                restored: true,
+            }],
+            enabled: true,
+            options,
+        }));
+        createResponse
+            .mockResolvedValueOnce({
+                id: 'resp-pii-plan',
+                output: [{
+                    type: 'message',
+                    content: [{ text: JSON.stringify({
+                        title: 'Private Contact PDF',
+                        sections: [
+                            { heading: 'Contact', purpose: 'Show the contact email', keyPoints: ['[[PII:EMAIL:ctx1]]'], targetLength: 'short' },
+                        ],
+                    }) }],
+                }],
+            })
+            .mockResolvedValueOnce({
+                id: 'resp-pii-expand',
+                output: [{
+                    type: 'message',
+                    content: [{ text: JSON.stringify({
+                        title: 'Private Contact PDF',
+                        sections: [
+                            { heading: 'Contact', content: 'Email [[PII:EMAIL:ctx1]]', level: 1 },
+                        ],
+                    }) }],
+                }],
+            })
+            .mockResolvedValueOnce({
+                id: 'resp-pii-compose',
+                output: [{
+                    type: 'message',
+                    content: [{ text: '<!DOCTYPE html><html><body>Email [[PII:EMAIL:ctx1]]</body></html>' }],
+                }],
+            });
+
+        await artifactService.generateArtifact({
+            session: { id: 'session-1', previousResponseId: 'prev-1', metadata: { ownerId: 'phill' } },
+            sessionId: 'session-1',
+            mode: 'chat',
+            prompt: 'Create a PDF for jane@example.com.',
+            format: 'pdf',
+            artifactIds: [],
+            existingContent: '',
+            model: 'gpt-5.3',
+            toolContext: {
+                ownerId: 'phill',
+                clientSurface: 'web-chat',
+                route: '/api/artifacts/generate',
+            },
+        });
+
+        expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            format: 'pdf',
+            content: expect.stringContaining('jane@example.com'),
+        }));
+        expect(renderArtifact.mock.calls[0][0].content).not.toContain('[[PII:EMAIL:ctx1]]');
+        expect(rehydrateText).toHaveBeenCalledWith(
+            expect.stringContaining('[[PII:EMAIL:ctx1]]'),
+            expect.objectContaining({
+                contextIds: ['ctx-1'],
+                ownerId: 'phill',
+                highlight: false,
+            }),
+        );
+        expect(artifactStore.create).toHaveBeenCalledWith(expect.objectContaining({
+            metadata: expect.objectContaining({
+                piiCleansing: expect.objectContaining({
+                    contextIds: ['ctx-1'],
+                    replacementCount: 1,
+                    restoredCount: 1,
+                    restoredInGeneratedArtifact: true,
+                }),
+            }),
+        }));
     });
 
     test('threads recalled context, recent transcript, and response chaining through multi-pass artifact generation', async () => {
