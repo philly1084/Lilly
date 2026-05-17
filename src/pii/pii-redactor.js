@@ -31,11 +31,28 @@ function normalizeAction(action = '') {
   return 'vault-placeholder';
 }
 
+const NON_RESTORABLE_IDENTITY_TYPES = new Set([
+  'personName',
+  'organization',
+  'orgName',
+  'employer',
+  'workplace',
+  'company',
+  'clientName',
+  'teamName',
+]);
+
 function resolveDetectorAction(match = {}, policy = {}) {
+  if (match.action) {
+    return normalizeAction(match.action);
+  }
   const actions = policy.detectorActions && typeof policy.detectorActions === 'object' && !Array.isArray(policy.detectorActions)
     ? policy.detectorActions
     : {};
-  const action = normalizeAction(actions[match.type] || actions[typeToken(match.type)] || actions.default || 'vault-placeholder');
+  const defaultAction = NON_RESTORABLE_IDENTITY_TYPES.has(String(match.type || '').trim()) || match.grounded === true
+    ? 'mask'
+    : 'vault-placeholder';
+  const action = normalizeAction(actions[match.type] || actions[typeToken(match.type)] || actions.default || defaultAction);
   if (action === 'vault-placeholder' && policy.failClosed === false && (!policy.hasMasterKey || !policy.storageReady)) {
     return 'mask';
   }

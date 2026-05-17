@@ -380,6 +380,40 @@ describe('settings.controller personality support', () => {
     expect(payload.sanitizedText).not.toContain('902-555-0199');
   });
 
+  test('previews grounded identity dictionary terms as non-restorable masks', () => {
+    const req = {
+      body: {
+        sampleText: 'Sample Person works at Sample Employer.',
+        settings: {
+          detectors: [],
+          dictionary: [
+            { type: 'personName', value: 'Sample Person', action: 'mask' },
+            { type: 'employer', value: 'Sample Employer', action: 'mask' },
+          ],
+          auditCriteria: {
+            requiredDetectors: [],
+          },
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    controller.previewPrivacyPii(req, res);
+
+    const payload = res.json.mock.calls[0][0].data;
+    expect(payload.sanitizedText).toContain('[[PII:PERSONNAME:MASKED]]');
+    expect(payload.sanitizedText).toContain('[[PII:EMPLOYER:MASKED]]');
+    expect(payload.sanitizedText).not.toContain('Sample Person');
+    expect(payload.sanitizedText).not.toContain('Sample Employer');
+    expect(payload.matches).toEqual([
+      expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'employer', action: 'mask', restorable: false }),
+    ]);
+  });
+
   test('applies updated podcast audio asset paths to the live mixer runtime', async () => {
     const { audioProcessingService } = require('../../audio/audio-processing-service');
     const req = {

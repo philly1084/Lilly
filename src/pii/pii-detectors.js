@@ -8,6 +8,17 @@ const DEFAULT_DETECTORS = [
   'ipAddress',
 ];
 
+const ACTIONABLE_DICTIONARY_TYPES = new Set([
+  'personName',
+  'organization',
+  'orgName',
+  'employer',
+  'workplace',
+  'company',
+  'clientName',
+  'teamName',
+]);
+
 const BUILTIN_PATTERNS = {
   email: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
   phone: /(?<!\d)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\d)/g,
@@ -16,6 +27,7 @@ const BUILTIN_PATTERNS = {
   dateOfBirth: /\b(?:DOB|date of birth|born)\s*[:#-]?\s*(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|[A-Z][a-z]+ \d{1,2}, \d{4})\b/g,
   address: /\b\d{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*){0,5}\s+(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Way|Place|Pl\.?)\b/g,
   ipAddress: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
+  organization: /\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|Group|Systems|Solutions|Technologies|Tech|Labs|Security|Health|Bank|University|College)\b/g,
 };
 
 function normalizeDetectorId(value = '') {
@@ -24,6 +36,7 @@ function normalizeDetectorId(value = '') {
   if (normalized === 'credit_card') return 'creditCard';
   if (normalized === 'date_of_birth' || normalized === 'dob') return 'dateOfBirth';
   if (normalized === 'ip' || normalized === 'ip_address') return 'ipAddress';
+  if (normalized === 'org' || normalized === 'org_name' || normalized === 'organization_name' || normalized === 'employer' || normalized === 'workplace') return 'organization';
   return normalized;
 }
 
@@ -86,6 +99,7 @@ function findCustomMatches(text = '', customPatterns = []) {
   const matches = [];
   (Array.isArray(customPatterns) ? customPatterns : []).forEach((entry) => {
     const type = String(entry.type || entry.label || 'custom').trim() || 'custom';
+    const action = String(entry.action || '').trim();
     const regex = buildCustomRegex(entry);
     if (!regex) return;
     let match;
@@ -101,6 +115,7 @@ function findCustomMatches(text = '', customPatterns = []) {
         start: match.index,
         end: match.index + value.length,
         source: 'customPattern',
+        ...(action ? { action } : {}),
       });
     }
   });
@@ -112,6 +127,7 @@ function findDictionaryMatches(text = '', dictionary = []) {
   (Array.isArray(dictionary) ? dictionary : []).forEach((entry) => {
     const value = typeof entry === 'string' ? entry : entry?.value;
     const type = typeof entry === 'string' ? 'custom' : (entry?.type || entry?.label || 'custom');
+    const action = typeof entry === 'string' ? '' : String(entry?.action || '').trim();
     const normalized = String(value || '').trim();
     if (!normalized) return;
     const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -124,6 +140,8 @@ function findDictionaryMatches(text = '', dictionary = []) {
         start: match.index,
         end: match.index + match[0].length,
         source: 'dictionary',
+        ...(action ? { action } : {}),
+        grounded: ACTIONABLE_DICTIONARY_TYPES.has(String(type || '').trim()),
       });
     }
   });

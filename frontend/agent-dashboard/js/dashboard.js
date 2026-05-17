@@ -53,6 +53,7 @@ class Dashboard {
             { id: 'address', label: 'Address' },
             { id: 'ipAddress', label: 'IP address' },
             { id: 'personName', label: 'Person names' },
+            { id: 'organization', label: 'Organizations' },
         ];
         this.ws = null;
         this.reconnectInterval = null;
@@ -4763,7 +4764,7 @@ class Dashboard {
     getPrivacyAuditDefaults(profile = 'baseline') {
         const profiles = {
             baseline: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
-            strict: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName'],
+            strict: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
             custom: [],
         };
         return profiles[profile] || profiles.baseline;
@@ -4849,14 +4850,14 @@ class Dashboard {
         return (Array.isArray(entries) ? entries : [])
             .map((entry) => {
                 if (typeof entry === 'string') return entry;
-                return `${entry.type || entry.label || 'custom'}: ${entry.value || ''}`;
+                return `${entry.type || entry.label || 'custom'}: ${entry.value || ''}${entry.action ? ` | ${entry.action}` : ''}`;
             })
             .join('\n');
     }
 
     formatPrivacyCustomPatterns(entries = []) {
         return (Array.isArray(entries) ? entries : [])
-            .map((entry) => `${entry.type || entry.label || 'custom'}|${entry.pattern || ''}${entry.flags ? `|${entry.flags}` : ''}`)
+            .map((entry) => `${entry.type || entry.label || 'custom'}|${entry.pattern || ''}${entry.flags ? `|${entry.flags}` : ''}${entry.action ? `|${entry.action}` : ''}`)
             .join('\n');
     }
 
@@ -4868,9 +4869,12 @@ class Dashboard {
             .map((line) => {
                 const divider = line.indexOf(':');
                 if (divider > 0) {
+                    const rawValue = line.slice(divider + 1).trim();
+                    const [value, action] = rawValue.split('|').map((part) => part.trim());
                     return {
                         type: line.slice(0, divider).trim() || 'custom',
-                        value: line.slice(divider + 1).trim(),
+                        value,
+                        ...(action ? { action } : {}),
                     };
                 }
                 return { type: 'custom', value: line };
@@ -4891,16 +4895,18 @@ class Dashboard {
                             type: String(parsed.type || parsed.label || 'custom').trim() || 'custom',
                             pattern: String(parsed.pattern || '').trim(),
                             flags: String(parsed.flags || 'gi').trim() || 'gi',
+                            action: String(parsed.action || '').trim(),
                         };
                     } catch (_error) {
                         return null;
                     }
                 }
-                const [type, pattern, flags] = line.split('|');
+                const [type, pattern, flags, action] = line.split('|');
                 return {
                     type: String(type || 'custom').trim() || 'custom',
                     pattern: String(pattern || '').trim(),
                     flags: String(flags || 'gi').trim() || 'gi',
+                    ...(action ? { action: String(action || '').trim() } : {}),
                 };
             })
             .filter((entry) => entry?.pattern);

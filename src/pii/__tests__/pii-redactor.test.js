@@ -48,4 +48,33 @@ describe('PII redactor framing', () => {
       restorable: false,
     }));
   });
+
+  test('masks grounded names and workplaces without creating restorable vault entries', async () => {
+    const result = await sanitizeText('Sample Person works at Sample Employer.', {
+      policy: {
+        enabled: true,
+        failClosed: false,
+        hasMasterKey: false,
+        storageReady: false,
+        detectors: [],
+        detectorActions: {},
+        customPatterns: [],
+        dictionary: [
+          { type: 'personName', value: 'Sample Person', action: 'mask' },
+          { type: 'employer', value: 'Sample Employer', action: 'mask' },
+        ],
+        placeholderMode: 'typed-random',
+      },
+    });
+
+    expect(result.text).toContain('[[PII:PERSONNAME:MASKED]]');
+    expect(result.text).toContain('[[PII:EMPLOYER:MASKED]]');
+    expect(result.text).not.toContain('Sample Person');
+    expect(result.text).not.toContain('Sample Employer');
+    expect(result.contextId).toBeNull();
+    expect(result.replacements).toEqual([
+      expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'employer', action: 'mask', restorable: false }),
+    ]);
+  });
 });

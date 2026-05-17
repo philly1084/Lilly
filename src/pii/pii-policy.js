@@ -32,7 +32,7 @@ const PRIVACY_PII_AUDIT_PROFILES = {
     requireRestoreHighlight: true,
   },
   strict: {
-    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName'],
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
@@ -75,6 +75,48 @@ function normalizeDetectorActions(value = {}, fallback = {}) {
     }, {});
 }
 
+function normalizeDictionary(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const value = entry.trim();
+        return value ? { type: 'custom', value } : null;
+      }
+      if (!entry || typeof entry !== 'object') return null;
+      const type = String(entry.type || entry.label || 'custom').trim() || 'custom';
+      const value = String(entry.value || '').trim();
+      if (!value) return null;
+      const action = String(entry.action || '').trim();
+      return {
+        type,
+        value,
+        ...(PRIVACY_PII_ACTIONS.has(action) ? { action } : {}),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 200);
+}
+
+function normalizeCustomPatterns(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const type = String(entry.type || entry.label || 'custom').trim() || 'custom';
+      const pattern = String(entry.pattern || '').trim();
+      if (!pattern) return null;
+      const flags = String(entry.flags || 'gi').trim() || 'gi';
+      const action = String(entry.action || '').trim();
+      return {
+        type,
+        pattern,
+        flags,
+        ...(PRIVACY_PII_ACTIONS.has(action) ? { action } : {}),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
 function normalizeAuditCriteria(value = {}, fallback = {}, profile = 'baseline') {
   const profileCriteria = PRIVACY_PII_AUDIT_PROFILES[profile] || PRIVACY_PII_AUDIT_PROFILES.baseline;
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -109,8 +151,8 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
       ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
       : [...fallback.detectors],
     detectorActions: normalizeDetectorActions(source.detectorActions, fallback.detectorActions),
-    customPatterns: Array.isArray(source.customPatterns) ? source.customPatterns.slice(0, 50) : [],
-    dictionary: Array.isArray(source.dictionary) ? source.dictionary.slice(0, 200) : [],
+    customPatterns: normalizeCustomPatterns(source.customPatterns),
+    dictionary: normalizeDictionary(source.dictionary),
     enablePersonNames: source.enablePersonNames === true,
     auditProfile,
     auditCriteria: normalizeAuditCriteria(source.auditCriteria, fallback.auditCriteria, auditProfile),

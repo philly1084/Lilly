@@ -31,4 +31,20 @@ describe('PII detectors', () => {
 
     expect(matches.map((match) => match.type)).toEqual(['accountCode', 'teamName']);
   });
+
+  test('carries dictionary actions for grounded private identities', () => {
+    const matches = detectPii('Sample Person works at Sample Employer.', {
+      detectors: [],
+      customPatterns: [],
+      dictionary: [
+        { type: 'personName', value: 'Sample Person', action: 'mask' },
+        { type: 'employer', value: 'Sample Employer', action: 'mask' },
+      ],
+    });
+
+    expect(matches).toEqual([
+      expect.objectContaining({ type: 'personName', action: 'mask', grounded: true }),
+      expect.objectContaining({ type: 'employer', action: 'mask', grounded: true }),
+    ]);
+  });
 });

@@ -42,6 +42,16 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
 };
 
 const PRIVACY_PII_ACTIONS = new Set(['vault-placeholder', 'mask', 'remove', 'ignore']);
+const NON_RESTORABLE_IDENTITY_TYPES = new Set([
+  'personName',
+  'organization',
+  'orgName',
+  'employer',
+  'workplace',
+  'company',
+  'clientName',
+  'teamName',
+]);
 const PRIVACY_PII_AUDIT_PROFILES = {
   baseline: {
     requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
@@ -50,7 +60,7 @@ const PRIVACY_PII_AUDIT_PROFILES = {
     requireRestoreHighlight: true,
   },
   strict: {
-    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName'],
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
@@ -93,6 +103,48 @@ function normalizePrivacyDetectorActions(value = {}, fallback = {}) {
     }, {});
 }
 
+function normalizePrivacyDictionary(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const value = entry.trim();
+        return value ? { type: 'custom', value } : null;
+      }
+      if (!entry || typeof entry !== 'object') return null;
+      const type = String(entry.type || entry.label || 'custom').trim() || 'custom';
+      const value = String(entry.value || '').trim();
+      if (!value) return null;
+      const action = String(entry.action || '').trim();
+      return {
+        type,
+        value,
+        ...(PRIVACY_PII_ACTIONS.has(action) ? { action } : {}),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 200);
+}
+
+function normalizePrivacyCustomPatterns(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const type = String(entry.type || entry.label || 'custom').trim() || 'custom';
+      const pattern = String(entry.pattern || '').trim();
+      if (!pattern) return null;
+      const flags = String(entry.flags || 'gi').trim() || 'gi';
+      const action = String(entry.action || '').trim();
+      return {
+        type,
+        pattern,
+        flags,
+        ...(PRIVACY_PII_ACTIONS.has(action) ? { action } : {}),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
 function normalizePrivacyAuditCriteria(value = {}, fallback = {}, profile = 'baseline') {
   const profileCriteria = PRIVACY_PII_AUDIT_PROFILES[profile] || PRIVACY_PII_AUDIT_PROFILES.baseline;
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -127,8 +179,8 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
       ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
       : [...fallback.detectors],
     detectorActions: normalizePrivacyDetectorActions(source.detectorActions, fallback.detectorActions),
-    customPatterns: Array.isArray(source.customPatterns) ? source.customPatterns.slice(0, 50) : [],
-    dictionary: Array.isArray(source.dictionary) ? source.dictionary.slice(0, 200) : [],
+    customPatterns: normalizePrivacyCustomPatterns(source.customPatterns),
+    dictionary: normalizePrivacyDictionary(source.dictionary),
     enablePersonNames: source.enablePersonNames === true,
     auditProfile,
     auditCriteria: normalizePrivacyAuditCriteria(source.auditCriteria, fallback.auditCriteria, auditProfile),
@@ -139,8 +191,15 @@ function resolvePrivacyAction(type = '', settings = {}) {
   const actions = settings.detectorActions && typeof settings.detectorActions === 'object' && !Array.isArray(settings.detectorActions)
     ? settings.detectorActions
     : {};
-  const action = String(actions[type] || actions.default || 'vault-placeholder').trim();
+  const defaultAction = NON_RESTORABLE_IDENTITY_TYPES.has(String(type || '').trim()) ? 'mask' : 'vault-placeholder';
+  const action = String(actions[type] || actions.default || defaultAction).trim();
   return PRIVACY_PII_ACTIONS.has(action) ? action : 'vault-placeholder';
+}
+
+function resolvePrivacyMatchAction(match = {}, settings = {}) {
+  const action = String(match.action || '').trim();
+  if (PRIVACY_PII_ACTIONS.has(action)) return action;
+  return resolvePrivacyAction(match.type, settings);
 }
 
 function buildPreviewPlaceholder(type = '', action = 'vault-placeholder', index = 0) {
@@ -407,7 +466,7 @@ class SettingsController {
       const candidateSettings = normalizePrivacyPiiSettings(req.body?.settings || baseSettings, baseSettings);
       const matches = detectPii(sampleText, candidateSettings)
         .map((match, index) => {
-          const action = resolvePrivacyAction(match.type, candidateSettings);
+          const action = resolvePrivacyMatchAction(match, candidateSettings);
           return {
             type: match.type,
             source: match.source || 'builtin',
