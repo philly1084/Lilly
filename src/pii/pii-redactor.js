@@ -135,6 +135,7 @@ function buildRelationshipCalculationFrame(relationshipCalculations = null) {
       'Privacy-aware spreadsheet calculation mode is active.',
       'When grouping, joining, summing, ranking, or comparing PII-bearing table rows, use the structured relationship calculation tool instead of correlating placeholders yourself.',
       'Provide row ids, column ids, placeholder cells, numeric measure columns, filters, and requested operations only.',
+      'When the user needs an XLSX/workbook to calculate a private winner without revealing the winner to the model, request an xlsx_formula_plan instead of top_n.',
       'Do not infer private identities or assume two placeholders represent the same value; the trusted vault layer performs private grouping and restoration.',
     ].join(' '),
   };

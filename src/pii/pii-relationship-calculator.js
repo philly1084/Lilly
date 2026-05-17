@@ -12,6 +12,7 @@ const SUPPORTED_OPERATIONS = new Set([
   'bottom_n',
   'filter',
   'join',
+  'xlsx_formula_plan',
 ]);
 
 const FILTER_OPERATORS = new Set(['equals', 'not_equals', 'gt', 'gte', 'lt', 'lte', 'contains']);
@@ -28,6 +29,27 @@ const RELATIONSHIP_CALCULATION_SCHEMA = {
     tableId: { type: 'string', maxLength: 80 },
     groupBy: { type: 'string', maxLength: 80 },
     measure: { type: 'string', maxLength: 80 },
+    measures: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 12,
+      items: { type: 'string', maxLength: 80 },
+    },
+    subtractMeasures: {
+      type: 'array',
+      maxItems: 12,
+      items: { type: 'string', maxLength: 80 },
+    },
+    target: {
+      type: 'object',
+      required: ['resultCell', 'helperStartCell'],
+      properties: {
+        resultCell: { type: 'string', maxLength: 80 },
+        helperStartCell: { type: 'string', maxLength: 80 },
+        sheetName: { type: 'string', maxLength: 80 },
+      },
+      additionalProperties: false,
+    },
     limit: { type: 'integer', minimum: 1, maximum: 100 },
     filters: {
       type: 'array',
@@ -216,10 +238,18 @@ function getColumnIds(table = {}) {
   return new Set((Array.isArray(table.columns) ? table.columns : []).map((column) => column.id));
 }
 
+function getFormulaMeasureColumns(params = {}) {
+  return Array.from(new Set([
+    ...(Array.isArray(params.measures) ? params.measures : []),
+    ...(Array.isArray(params.subtractMeasures) ? params.subtractMeasures : []),
+  ].map((entry) => normalizeId(entry)).filter(Boolean)));
+}
+
 function validateRows(table = {}, params = {}, placeholderIndex = new Map(), policy = {}) {
   const errors = [];
   const columnIds = getColumnIds(table);
   const referencedColumns = [params.groupBy, params.measure]
+    .concat(getFormulaMeasureColumns(params))
     .concat((params.filters || []).map((filter) => filter.column))
     .filter(Boolean);
   referencedColumns.forEach((columnId) => {
@@ -304,6 +334,13 @@ function validateRelationshipCalculationRequest(params = {}, context = {}, place
   if (['group_sum', 'group_average', 'top_n', 'bottom_n'].includes(params.operation)) {
     if (!params.groupBy) errors.push(`${params.operation} requires groupBy.`);
     if (!params.measure) errors.push(`${params.operation} requires measure.`);
+  }
+  if (params.operation === 'xlsx_formula_plan') {
+    if (!params.groupBy) errors.push('xlsx_formula_plan requires groupBy.');
+    if (!Array.isArray(params.measures) || params.measures.length === 0) {
+      errors.push('xlsx_formula_plan requires at least one additive measure column.');
+    }
+    if (!params.target) errors.push('xlsx_formula_plan requires target result/helper cells.');
   }
   if (params.operation === 'group_count' && !params.groupBy) errors.push('group_count requires groupBy.');
   if (params.operation === 'join' && !params.join) errors.push('join requires join metadata.');
@@ -424,6 +461,129 @@ function executeJoin(params = {}, placeholderIndex = new Map()) {
   return results;
 }
 
+function toColumnLetter(index) {
+  let value = Number(index) + 1;
+  let output = '';
+  while (value > 0) {
+    const modulo = (value - 1) % 26;
+    output = `${String.fromCharCode(65 + modulo)}${output}`;
+    value = Math.floor((value - modulo) / 26);
+  }
+  return output;
+}
+
+function parseCellReference(cell = '') {
+  const match = String(cell || '').trim().match(/^([^!]+!)?(\$?[A-Z]{1,3})(\$?\d+)$/i);
+  if (!match) return null;
+  const column = match[2].replace(/\$/g, '').toUpperCase();
+  const row = Number(match[3].replace(/\$/g, ''));
+  let columnIndex = 0;
+  for (const char of column) {
+    columnIndex = columnIndex * 26 + (char.charCodeAt(0) - 64);
+  }
+  return {
+    sheetPrefix: match[1] || '',
+    column,
+    row,
+    columnIndex: columnIndex - 1,
+  };
+}
+
+function buildFormulaRange(startCell = '', rowCount = 1, columnOffset = 0) {
+  const parsed = parseCellReference(startCell);
+  if (!parsed) return null;
+  const column = toColumnLetter(parsed.columnIndex + columnOffset);
+  const start = `${parsed.sheetPrefix}${column}${parsed.row}`;
+  const end = `${column}${parsed.row + Math.max(0, rowCount - 1)}`;
+  return rowCount > 1 ? `${start}:${end}` : start;
+}
+
+function quoteSheetName(name = '') {
+  const normalized = String(name || 'Trusted_XLSX_Calc').replace(/'/g, "''");
+  return `'${normalized}'`;
+}
+
+function buildColumnRange(sheetName, columnId, rowStart, rowEnd) {
+  return `${quoteSheetName(sheetName)}[${columnId}]`;
+}
+
+function buildSumifsFormula(params = {}, helperStartCell = 'A12') {
+  const trustedSheetName = params.trustedSheetName || params.trustedSheet || 'Trusted_XLSX_Calc';
+  const groupRange = buildColumnRange(trustedSheetName, params.groupBy);
+  const additions = (Array.isArray(params.measures) ? params.measures : [])
+    .map((column) => `SUMIFS(${buildColumnRange(trustedSheetName, column)}, ${groupRange}, ${helperStartCell})`);
+  const subtractions = (Array.isArray(params.subtractMeasures) ? params.subtractMeasures : [])
+    .map((column) => `SUMIFS(${buildColumnRange(trustedSheetName, column)}, ${groupRange}, ${helperStartCell})`);
+  return [
+    '=',
+    additions.join('\n + '),
+    ...(subtractions.length ? [`\n - ${subtractions.join('\n - ')}`] : []),
+  ].join('');
+}
+
+function executeXlsxFormulaPlan(table = {}, params = {}) {
+  const target = params.target || {};
+  const helperStartCell = target.helperStartCell || 'A12';
+  const resultCell = target.resultCell || 'B5';
+  const groupCount = Math.max(1, Math.min(100, Number(params.limit || 20)));
+  const groupSlotRange = buildFormulaRange(helperStartCell, groupCount, 0);
+  const totalRange = buildFormulaRange(helperStartCell, groupCount, 1);
+  const labelRange = buildFormulaRange(helperStartCell, groupCount, 2);
+  const totalStartCell = buildFormulaRange(helperStartCell, 1, 1) || 'B12';
+  const labelStartCell = buildFormulaRange(helperStartCell, 1, 2) || 'C12';
+  const trustedSheetName = params.trustedSheetName || params.trustedSheet || 'Trusted_XLSX_Calc';
+  const displayLabelColumn = params.displayLabelColumn || 'restored_display_label';
+  const groupRange = buildColumnRange(trustedSheetName, params.groupBy);
+  const displayRange = buildColumnRange(trustedSheetName, displayLabelColumn);
+  const sumifsFormula = buildSumifsFormula(params, helperStartCell);
+  const labelFormula = `=INDEX(${displayRange}, MATCH(${helperStartCell}, ${groupRange}, 0))`;
+  const winnerFormula = `=INDEX(${labelRange}, MATCH(MAX(${totalRange}), ${totalRange}, 0)) & " | " & TEXT(MAX(${totalRange}), "$#,##0.00")`;
+
+  return {
+    formulaPlan: {
+      type: 'xlsx_formula_plan',
+      targetCells: [
+        totalRange,
+        labelRange,
+        resultCell,
+      ],
+      helperInput: {
+        range: groupSlotRange,
+        source: 'trusted-vault-group-slots',
+        note: 'The trusted workbook writer fills this range; it is not model-facing.',
+      },
+      formulas: [
+        {
+          targetCell: totalStartCell,
+          fillRange: totalRange,
+          formula: sumifsFormula,
+          purpose: 'Compute per-group total from multiple additive and subtractive measure columns.',
+        },
+        {
+          targetCell: labelStartCell,
+          fillRange: labelRange,
+          formula: labelFormula,
+          purpose: 'Restore the display label inside the trusted workbook surface.',
+        },
+        {
+          targetCell: resultCell,
+          formula: winnerFormula,
+          purpose: 'Compute the top group inside the XLSX presentation layer.',
+        },
+      ],
+      privacy: {
+        returnsWinnerToModel: false,
+        returnsGroupRelationshipToModel: false,
+        exposesRawPii: false,
+      },
+      tableId: table.id,
+      groupBy: params.groupBy,
+      additiveMeasures: params.measures || [],
+      subtractiveMeasures: params.subtractMeasures || [],
+    },
+  };
+}
+
 async function calculateRelationship(params = {}, context = {}) {
   const placeholderIndex = await loadPlaceholderIndex(context);
   const validation = validateRelationshipCalculationRequest(params, context, placeholderIndex);
@@ -449,6 +609,14 @@ async function calculateRelationship(params = {}, context = {}) {
       operation: params.operation,
       sanitized: true,
       results: executeFilter(table, params),
+    };
+  }
+  if (params.operation === 'xlsx_formula_plan') {
+    return {
+      operationId,
+      operation: params.operation,
+      sanitized: true,
+      ...executeXlsxFormulaPlan(table, params),
     };
   }
   let results = groupRows(table, params, placeholderIndex);

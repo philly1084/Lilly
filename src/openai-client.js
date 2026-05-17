@@ -3723,6 +3723,7 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
     if (automaticTools.some((entry) => entry.id === RELATIONSHIP_CALCULATION_TOOL_ID)) {
         guidance.push('- Privacy-aware spreadsheet calculation mode is active. For grouping, joining, summing, ranking, or comparing PII-bearing table rows, call `pii-relationship-calculate` instead of correlating placeholders yourself.');
         guidance.push('- Build the relationship calculation request with table ids, row ids, column ids, placeholder cells, numeric measure columns, filters, and supported operations only. Do not include raw private values.');
+        guidance.push('- If the user wants an XLSX/workbook to compute a private winner without exposing the winner to the model, request operation `xlsx_formula_plan`; return the formula plan, not a winner placeholder or ranked result.');
         guidance.push('- Treat placeholder identity as unknowable. The trusted PII vault layer handles private grouping and trusted-view restoration; your answer should preserve returned placeholders exactly where private labels belong.');
     }
 

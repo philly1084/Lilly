@@ -194,4 +194,62 @@ describe('PII relationship calculator', () => {
       code: 'pii_relationship_invalid_request',
     });
   });
+
+  test('returns an XLSX formula plan without exposing the highest private individual', async () => {
+    const result = await calculateRelationship({
+      operationId: 'formula-only-highest-individual',
+      operation: 'xlsx_formula_plan',
+      tableId: 'sales',
+      groupBy: 'person',
+      measures: ['baseSales', 'serviceFees', 'rebates'],
+      subtractMeasures: ['credits'],
+      limit: 4,
+      target: {
+        helperStartCell: 'Presentation_Result!A12',
+        resultCell: 'Presentation_Result!B5',
+      },
+      tables: [{
+        id: 'sales',
+        columns: [
+          { id: 'person', header: 'Person', role: 'private-group-key' },
+          { id: 'baseSales', header: 'Base Sales', role: 'measure' },
+          { id: 'serviceFees', header: 'Service Fees', role: 'measure' },
+          { id: 'rebates', header: 'Rebates', role: 'measure' },
+          { id: 'credits', header: 'Credits', role: 'measure' },
+        ],
+        rows: [
+          { id: 'r1', cells: { person: '[[PII:a1]]', baseSales: '120.50', serviceFees: '12', rebates: '3.5', credits: '4' } },
+          { id: 'r2', cells: { person: '[[PII:a2]]', baseSales: '80', serviceFees: '4.5', rebates: '1.25', credits: '0' } },
+          { id: 'r3', cells: { person: '[[PII:b1]]', baseSales: '190', serviceFees: '8', rebates: '2', credits: '11' } },
+        ],
+      }],
+    }, { piiEntries });
+
+    expect(result).toEqual(expect.objectContaining({
+      operationId: 'formula-only-highest-individual',
+      operation: 'xlsx_formula_plan',
+      sanitized: true,
+    }));
+    expect(result.formulaPlan).toEqual(expect.objectContaining({
+      type: 'xlsx_formula_plan',
+      targetCells: [
+        'Presentation_Result!B12:B15',
+        'Presentation_Result!C12:C15',
+        'Presentation_Result!B5',
+      ],
+      privacy: {
+        returnsWinnerToModel: false,
+        returnsGroupRelationshipToModel: false,
+        exposesRawPii: false,
+      },
+    }));
+    expect(result.formulaPlan.formulas[0].formula).toContain('SUMIFS');
+    expect(result.formulaPlan.formulas[0].formula).toContain('+ SUMIFS');
+    expect(result.formulaPlan.formulas[0].formula).toContain('- SUMIFS');
+    expect(result).not.toHaveProperty('winnerPlaceholder');
+    expect(result).not.toHaveProperty('aggregateValue');
+    expect(JSON.stringify(result)).not.toContain('retailer-a');
+    expect(JSON.stringify(result)).not.toContain('[[PII:a1]]');
+    expect(JSON.stringify(result)).not.toContain('Private Individual');
+  });
 });
