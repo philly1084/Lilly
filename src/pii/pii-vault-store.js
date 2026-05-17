@@ -53,7 +53,13 @@ function decryptValue(entry = {}) {
 }
 
 function valueIndexHmac(value = '', type = '') {
-  const key = assertVaultReady();
+  const key = getMasterKey();
+  if (!key) {
+    const error = new Error('KIMIBUILT_PII_MASTER_KEY is required for PII vault indexing.');
+    error.statusCode = 503;
+    error.code = 'pii_master_key_missing';
+    throw error;
+  }
   return crypto
     .createHmac('sha256', key)
     .update(`${String(type || '').toLowerCase()}\0${String(value || '')}`)

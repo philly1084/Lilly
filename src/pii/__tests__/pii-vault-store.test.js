@@ -35,4 +35,10 @@ describe('PII vault crypto', () => {
     expect(first).toBe(second);
     expect(first).not.toContain('jane');
   });
+
+  test('creates HMAC indexes without requiring vault storage readiness', () => {
+    postgres.getStatus = () => ({ initialized: false });
+    const hmac = valueIndexHmac('jane@example.com', 'email');
+    expect(hmac).toMatch(/^[a-f0-9]{64}$/);
+  });
 });
