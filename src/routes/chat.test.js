@@ -68,6 +68,7 @@ jest.mock('../ai-route-utils', () => ({
     resolveSshRequestContext: jest.fn(),
     extractSshSessionMetadataFromToolEvents: jest.fn(() => null),
     inferOutputFormatFromSession: jest.fn(() => null),
+    inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
 }));
@@ -233,6 +234,7 @@ describe('/api/chat route', () => {
         memoryService.process.mockResolvedValue({ contextMessages: [] });
         routeUtils.inferRequestedOutputFormat.mockReturnValue(null);
         routeUtils.inferOutputFormatFromSession.mockReturnValue(null);
+        routeUtils.inferOutputFormatFromArtifactContext.mockResolvedValue(null);
         routeUtils.resolveArtifactContextIds.mockReturnValue([]);
         shouldSuppressNotesSurfaceArtifact.mockReturnValue(false);
         shouldSuppressImplicitMermaidArtifact.mockReturnValue(false);
@@ -889,6 +891,57 @@ describe('/api/chat route', () => {
                 downloadUrl: '/api/artifacts/html-artifact-1/download',
             }),
         ]);
+    });
+
+    test('routes selected uploaded PDF update turns through artifact revision even without explicit output format', async () => {
+        const routeUtils = require('../ai-route-utils');
+        ensureRuntimeToolManager.mockResolvedValue({
+            getTool: jest.fn(),
+        });
+        resolveSshRequestContext.mockReturnValue({
+            effectivePrompt: 'Update this document with the missing pricing section.',
+        });
+        routeUtils.resolveArtifactContextIds.mockReturnValue(['artifact-upload-pdf-1']);
+        routeUtils.inferOutputFormatFromArtifactContext.mockResolvedValue('pdf');
+        maybePrepareImagesForArtifactPrompt.mockImplementation(async ({ artifactIds = [] } = {}) => ({
+            artifactIds,
+            artifacts: [],
+            toolEvents: [],
+            imagePrompt: null,
+        }));
+        generateOutputArtifactFromPrompt.mockResolvedValue({
+            responseId: 'resp-pdf-update-1',
+            artifact: { id: 'pdf-artifact-v2', filename: 'uploaded-plan-v2.pdf' },
+            artifacts: [{ id: 'pdf-artifact-v2', filename: 'uploaded-plan-v2.pdf' }],
+            assistantMessage: 'Created the PDF artifact (uploaded-plan-v2.pdf).',
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat')
+            .send({
+                sessionId: 'session-1',
+                message: 'Update this document with the missing pricing section.',
+                stream: false,
+                artifactIds: ['artifact-upload-pdf-1'],
+                metadata: { clientSurface: 'web-chat' },
+            });
+
+        expect(response.status).toBe(200);
+        expect(routeUtils.inferOutputFormatFromArtifactContext).toHaveBeenCalledWith({
+            sessionId: 'session-1',
+            artifactIds: ['artifact-upload-pdf-1'],
+            text: 'Update this document with the missing pricing section.',
+        });
+        expect(generateOutputArtifactFromPrompt).toHaveBeenCalledWith(expect.objectContaining({
+            outputFormat: 'pdf',
+            artifactIds: ['artifact-upload-pdf-1'],
+            prompt: 'Update this document with the missing pricing section.',
+        }));
+        expect(executeConversationRuntime).not.toHaveBeenCalled();
     });
 
     test('persists save-as HTML responses as session artifacts when normal chat returns them', async () => {

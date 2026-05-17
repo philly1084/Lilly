@@ -23,6 +23,7 @@ const {
     resolveSshRequestContext,
     extractSshSessionMetadataFromToolEvents,
     inferOutputFormatFromSession,
+    inferOutputFormatFromArtifactContext,
     resolveArtifactContextIds,
     buildUserInputWithImageArtifacts,
     resolveReasoningEffort,
@@ -1275,9 +1276,15 @@ router.post('/chat/completions', async (req, res, next) => {
             });
             requestAbortSignal = registeredForegroundRequest?.signal || null;
         }
+        const effectiveArtifactIds = resolveArtifactContextIds(session, artifact_ids, lastUserText);
         const outputFormatProvided = Boolean(output_format);
         const candidateOutputFormat = output_format
             || inferRequestedOutputFormat(artifactIntentText)
+            || await inferOutputFormatFromArtifactContext({
+                sessionId,
+                artifactIds: effectiveArtifactIds,
+                text: artifactIntentText,
+            })
             || inferOutputFormatFromTranscript(messages, session);
         let effectiveOutputFormat = candidateOutputFormat;
         if (shouldSuppressImplicitMermaidArtifact({
@@ -1317,7 +1324,7 @@ router.post('/chat/completions', async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
-            artifactIds: artifact_ids,
+            artifactIds: effectiveArtifactIds,
             recentMessages: recentMessagesForWorkloadPreflight,
         })) {
             effectiveOutputFormat = null;
@@ -1361,7 +1368,6 @@ router.post('/chat/completions', async (req, res, next) => {
                 }
                 : {}),
         };
-        const effectiveArtifactIds = resolveArtifactContextIds(session, artifact_ids, lastUserText);
         const effectiveLastUserContent = await buildUserInputWithImageArtifacts({
             sessionId,
             text: effectiveInput,
@@ -2483,9 +2489,15 @@ router.post('/responses', async (req, res, next) => {
             ...effectiveRequestMetadata,
             piiCleansing: buildPiiCleansingMetadata(routePii),
         };
+        const effectiveArtifactIds = resolveArtifactContextIds(session, artifact_ids, userInput);
         const outputFormatProvided = Boolean(output_format);
         const candidateOutputFormat = output_format
             || inferRequestedOutputFormat(artifactIntentText)
+            || await inferOutputFormatFromArtifactContext({
+                sessionId,
+                artifactIds: effectiveArtifactIds,
+                text: artifactIntentText,
+            })
             || inferOutputFormatFromTranscript(normalizedInputMessages, session);
         let effectiveOutputFormat = candidateOutputFormat;
         if (shouldSuppressImplicitMermaidArtifact({
@@ -2525,7 +2537,7 @@ router.post('/responses', async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
-            artifactIds: artifact_ids,
+            artifactIds: effectiveArtifactIds,
             recentMessages: recentMessagesForWorkloadPreflight,
         })) {
             effectiveOutputFormat = null;
@@ -2556,7 +2568,6 @@ router.post('/responses', async (req, res, next) => {
                 }
                 : {}),
         };
-        const effectiveArtifactIds = resolveArtifactContextIds(session, artifact_ids, userInput);
         const artifactPrompt = buildArtifactPromptFromTranscript(normalizedInputMessages, userInput);
         let effectiveExecutionProfile = inferExecutionProfile({
             ...req.body,

@@ -1,5 +1,5 @@
 const { artifactService } = require('./artifacts/artifact-service');
-const { normalizeFormat } = require('./artifacts/constants');
+const { inferFormat, normalizeFormat, SUPPORTED_GENERATION_FORMATS } = require('./artifacts/constants');
 const { buildSessionInstructions } = require('./session-instructions');
 const { config } = require('./config');
 const { getSessionControlState } = require('./runtime-control-state');
@@ -80,6 +80,70 @@ function extractArtifactRevisionSource(artifact = null) {
     }
 
     return '';
+}
+
+function hasArtifactRevisionActionIntent(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const revisionVerb = '(?:continue|finish|refine|revise|update|improve|polish|expand|edit|redo|rework)';
+    return new RegExp(`^${revisionVerb}\\b`, 'i').test(normalized)
+        || new RegExp(`\\b${revisionVerb}\\b[\\s\\S]{0,60}\\b(?:artifact|file|document|doc|pdf|html|page|report|brief|spreadsheet|workbook|diagram|mermaid)\\b`, 'i').test(normalized)
+        || new RegExp(`\\b${revisionVerb}\\b[\\s\\S]{0,30}\\b(?:it|this|that|same one|selected|upload|uploaded)\\b`, 'i').test(normalized)
+        || /\b(?:add|remove|change|replace|insert)\b[\s\S]{0,80}\b(?:in|on|to|from)\b[\s\S]{0,40}\b(?:artifact|file|document|doc|pdf|html|page|report|brief|spreadsheet|workbook|diagram|mermaid)\b/i.test(normalized);
+}
+
+function normalizeArtifactRevisionOutputFormat(artifact = null) {
+    const explicitFormat = artifact?.extension
+        || artifact?.format
+        || artifact?.metadata?.format
+        || inferFormat(artifact?.filename || '', artifact?.mimeType || '');
+    const format = normalizeFormat(explicitFormat);
+
+    if (SUPPORTED_GENERATION_FORMATS.has(format)) {
+        return format;
+    }
+    if (format === 'docx' || format === 'doc') {
+        return 'html';
+    }
+    return null;
+}
+
+async function inferOutputFormatFromArtifactContext({
+    sessionId = '',
+    artifactIds = [],
+    text = '',
+} = {}) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    const ids = Array.from(new Set(
+        (Array.isArray(artifactIds) ? artifactIds : [])
+            .map((artifactId) => String(artifactId || '').trim())
+            .filter(Boolean),
+    )).slice(0, 4);
+
+    if (!normalizedSessionId || ids.length === 0 || !hasArtifactRevisionActionIntent(text)) {
+        return null;
+    }
+
+    for (const artifactId of ids) {
+        try {
+            const artifact = await artifactService.getArtifact(artifactId);
+            if (!artifact || artifact.sessionId !== normalizedSessionId) {
+                continue;
+            }
+
+            const format = normalizeArtifactRevisionOutputFormat(artifact);
+            if (format) {
+                return format;
+            }
+        } catch (error) {
+            console.warn(`[Artifacts] Failed to infer output format from selected artifact ${artifactId}: ${error.message}`);
+        }
+    }
+
+    return null;
 }
 
 async function buildSelectedArtifactRevisionContext({
@@ -1957,6 +2021,7 @@ module.exports = {
     extractRequestedImageCount,
     hasExplicitImageGenerationIntent,
     inferRequestedOutputFormat,
+    inferOutputFormatFromArtifactContext,
     isArtifactContinuationPrompt,
     buildImagePromptFromArtifactRequest,
     hasExplicitArtifactDeliveryIntent,

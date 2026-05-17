@@ -64,6 +64,7 @@ jest.mock('../ai-route-utils', () => ({
     resolveSshRequestContext: jest.fn((text) => ({ effectivePrompt: text })),
     extractSshSessionMetadataFromToolEvents: jest.fn(() => null),
     inferOutputFormatFromSession: jest.fn(() => null),
+    inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
     resolveReasoningEffort: jest.fn(() => null),

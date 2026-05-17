@@ -65,6 +65,7 @@ jest.mock('../ai-route-utils', () => ({
     resolveSshRequestContext: jest.fn((text) => ({ effectivePrompt: text })),
     extractSshSessionMetadataFromToolEvents: jest.fn(() => null),
     inferOutputFormatFromSession: jest.fn(() => null),
+    inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
     resolveReasoningEffort: jest.fn(() => null),
@@ -152,6 +153,10 @@ describe('/v1/chat/completions stream forwarding', () => {
         sessionStore.get.mockResolvedValue(session);
         sessionStore.getRecentMessages.mockResolvedValue([]);
         sessionStore.update.mockResolvedValue(session);
+        aiRouteUtils.inferRequestedOutputFormat.mockReturnValue(null);
+        aiRouteUtils.inferOutputFormatFromArtifactContext.mockResolvedValue(null);
+        aiRouteUtils.inferOutputFormatFromSession.mockReturnValue(null);
+        aiRouteUtils.resolveArtifactContextIds.mockReturnValue([]);
     });
 
     test('forwards reasoning deltas through chat completion chunks alongside tool events', async () => {
@@ -606,6 +611,55 @@ describe('/v1/chat/completions stream forwarding', () => {
                 }),
             }),
         );
+    });
+
+    test('infers PDF artifact revision output from selected uploaded artifacts on web-chat updates', async () => {
+        aiRouteUtils.resolveArtifactContextIds.mockReturnValue(['artifact-upload-pdf-1']);
+        aiRouteUtils.inferOutputFormatFromArtifactContext.mockResolvedValue('pdf');
+        generateOutputArtifactFromPrompt.mockResolvedValue({
+            responseId: 'resp-pdf-revision-1',
+            model: 'gpt-4o',
+            assistantMessage: 'Created the PDF artifact (uploaded-plan-v2.pdf).',
+            metadata: {},
+            artifact: {
+                id: 'artifact-generated-pdf-1',
+                filename: 'uploaded-plan-v2.pdf',
+                format: 'pdf',
+                mimeType: 'application/pdf',
+                downloadUrl: '/api/artifacts/artifact-generated-pdf-1/download',
+            },
+            artifacts: [],
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                messages: [
+                    { role: 'user', content: 'Update this document with the missing pricing section.' },
+                ],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                stream: false,
+                session_id: 'web-chat-stream-1',
+                artifact_ids: ['artifact-upload-pdf-1'],
+            });
+
+        expect(response.status).toBe(200);
+        expect(aiRouteUtils.inferOutputFormatFromArtifactContext).toHaveBeenCalledWith({
+            sessionId: 'web-chat-stream-1',
+            artifactIds: ['artifact-upload-pdf-1'],
+            text: 'Update this document with the missing pricing section.',
+        });
+        expect(generateOutputArtifactFromPrompt).toHaveBeenCalledWith(expect.objectContaining({
+            outputFormat: 'pdf',
+            artifactIds: ['artifact-upload-pdf-1'],
+            prompt: 'Update this document with the missing pricing section.',
+        }));
+        expect(executeConversationRuntime).not.toHaveBeenCalled();
     });
 
     test('keeps continuation labels out of artifact generation prompt lead text', async () => {

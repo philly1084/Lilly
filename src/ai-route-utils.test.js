@@ -36,6 +36,7 @@ const {
     stripInjectedNotesPageEditDirective,
     inferRequestedOutputFormat,
     inferOutputFormatFromSession,
+    inferOutputFormatFromArtifactContext,
     maybePrepareImagesForArtifactPrompt,
     getPreferredRemoteToolId,
     resolveDeferredWorkloadPreflight,
@@ -689,6 +690,58 @@ describe('ai-route-utils', () => {
                 lastGeneratedArtifactId: 'artifact-1',
             },
         })).toBeNull();
+    });
+
+    test('inferOutputFormatFromArtifactContext uses selected uploaded PDFs for revision turns', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-upload-1',
+            sessionId: 'session-1',
+            filename: 'uploaded-plan.pdf',
+            extension: 'pdf',
+            mimeType: 'application/pdf',
+        });
+
+        await expect(inferOutputFormatFromArtifactContext({
+            sessionId: 'session-1',
+            artifactIds: ['artifact-upload-1'],
+            text: 'Update this document with the new timeline.',
+        })).resolves.toBe('pdf');
+
+        expect(artifactService.getArtifact).toHaveBeenCalledWith('artifact-upload-1');
+    });
+
+    test('inferOutputFormatFromArtifactContext treats short selected-artifact update turns as revisions', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-upload-1',
+            sessionId: 'session-1',
+            filename: 'uploaded-plan.pdf',
+            extension: 'pdf',
+            mimeType: 'application/pdf',
+        });
+
+        await expect(inferOutputFormatFromArtifactContext({
+            sessionId: 'session-1',
+            artifactIds: ['artifact-upload-1'],
+            text: 'then update it',
+        })).resolves.toBe('pdf');
+    });
+
+    test('inferOutputFormatFromArtifactContext does not turn read-only PDF questions into artifact revisions', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-upload-1',
+            sessionId: 'session-1',
+            filename: 'uploaded-plan.pdf',
+            extension: 'pdf',
+            mimeType: 'application/pdf',
+        });
+
+        await expect(inferOutputFormatFromArtifactContext({
+            sessionId: 'session-1',
+            artifactIds: ['artifact-upload-1'],
+            text: 'What is in this pdf?',
+        })).resolves.toBeNull();
+
+        expect(artifactService.getArtifact).not.toHaveBeenCalled();
     });
 
     test('resolveArtifactContextIds falls back to the last generated artifact on continuation turns', () => {

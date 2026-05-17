@@ -73,6 +73,7 @@ jest.mock('../ai-route-utils', () => ({
     })),
     extractSshSessionMetadataFromToolEvents: jest.fn(() => null),
     inferOutputFormatFromSession: jest.fn(() => null),
+    inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
 }));

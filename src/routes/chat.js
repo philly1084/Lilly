@@ -22,6 +22,7 @@ const {
     resolveSshRequestContext,
     extractSshSessionMetadataFromToolEvents,
     inferOutputFormatFromSession,
+    inferOutputFormatFromArtifactContext,
     resolveArtifactContextIds,
     buildUserInputWithImageArtifacts,
     resolveReasoningEffort,
@@ -1179,9 +1180,15 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 maxApps: 4,
             })
             : '';
+        const effectiveArtifactIds = resolveArtifactContextIds(session, artifactIds, message);
         const outputFormatProvided = Boolean(outputFormat);
         const candidateOutputFormat = outputFormat
             || inferRequestedOutputFormat(artifactIntentText)
+            || await inferOutputFormatFromArtifactContext({
+                sessionId,
+                artifactIds: effectiveArtifactIds,
+                text: artifactIntentText,
+            })
             || inferOutputFormatFromSession(artifactIntentText, session);
         let effectiveOutputFormat = candidateOutputFormat;
         if (shouldSuppressImplicitMermaidArtifact({
@@ -1221,7 +1228,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
-            artifactIds,
+            artifactIds: effectiveArtifactIds,
             recentMessages: recentMessagesForWorkloadPreflight,
         })) {
             effectiveOutputFormat = null;
@@ -1252,7 +1259,6 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 }
                 : {}),
         };
-        const effectiveArtifactIds = resolveArtifactContextIds(session, artifactIds, message);
         const requestFrame = buildRequestDecisionFrame({
             text: message,
             session,

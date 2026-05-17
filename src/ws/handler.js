@@ -21,6 +21,7 @@ const {
     resolveSshRequestContext,
     extractSshSessionMetadataFromToolEvents,
     inferOutputFormatFromSession,
+    inferOutputFormatFromArtifactContext,
     resolveArtifactContextIds,
     resolveReasoningEffort,
 } = require('../ai-route-utils');
@@ -460,15 +461,22 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         ...effectiveRequestMetadata,
         piiCleansing: buildPiiCleansingMetadata(routePii),
     };
+    const effectiveArtifactIds = resolveArtifactContextIds(session, artifactIds, message);
+    const outputFormatProvided = Boolean(outputFormat);
     const candidateOutputFormat = outputFormat
         || inferRequestedOutputFormat(message)
+        || await inferOutputFormatFromArtifactContext({
+            sessionId: session.id,
+            artifactIds: effectiveArtifactIds,
+            text: message,
+        })
         || inferOutputFormatFromSession(message, session);
     let effectiveOutputFormat = candidateOutputFormat;
     if (shouldSuppressImplicitMermaidArtifact({
         taskType,
         text: message,
         outputFormat: effectiveOutputFormat,
-        outputFormatProvided: Boolean(outputFormat),
+        outputFormatProvided,
     })) {
         effectiveOutputFormat = null;
     }
@@ -476,7 +484,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         taskType,
         text: message,
         outputFormat: effectiveOutputFormat,
-        outputFormatProvided: Boolean(outputFormat),
+        outputFormatProvided,
     })) {
         effectiveOutputFormat = null;
     }
@@ -484,7 +492,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         clientSurface,
         text: message,
         outputFormat: effectiveOutputFormat,
-        outputFormatProvided: Boolean(outputFormat),
+        outputFormatProvided,
     })) {
         effectiveOutputFormat = null;
     }
@@ -500,8 +508,8 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
     if (shouldSuppressResearchFirstArtifactGeneration({
         text: message,
         outputFormat: effectiveOutputFormat,
-        outputFormatProvided: Boolean(outputFormat),
-        artifactIds,
+        outputFormatProvided,
+        artifactIds: effectiveArtifactIds,
         recentMessages: recentMessagesForWorkloadPreflight,
     })) {
         effectiveOutputFormat = null;
@@ -532,13 +540,12 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
             }
             : {}),
     };
-    const effectiveArtifactIds = resolveArtifactContextIds(session, artifactIds, message);
     const requestFrame = buildRequestDecisionFrame({
         text: message,
         session,
         outputFormat: effectiveOutputFormat,
         candidateOutputFormat,
-        outputFormatProvided: Boolean(outputFormat),
+        outputFormatProvided,
         artifactIds,
         effectiveArtifactIds,
         executionProfile,
