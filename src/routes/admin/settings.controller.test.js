@@ -345,7 +345,7 @@ describe('settings.controller personality support', () => {
     const defaults = controller.getDefaultSettings().privacyPii;
 
     expect(defaults).toEqual(expect.objectContaining({
-      defaultsVersion: 4,
+      defaultsVersion: 5,
       enabled: true,
       webChatEnabled: true,
       placeholderMode: 'opaque-random',
@@ -353,7 +353,7 @@ describe('settings.controller personality support', () => {
       enablePersonNames: true,
       auditProfile: 'strict',
     }));
-    expect(defaults.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier']));
+    expect(defaults.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
   });
 
   test('upgrades old persisted PII defaults to enabled opaque identity protection on restart', () => {
@@ -366,17 +366,17 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 4,
+      defaultsVersion: 5,
       enabled: true,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
     }));
-    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier']));
-    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier']));
+    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
+    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
   });
 
-  test('upgrades persisted v2 PII defaults to include names and medical identifiers', () => {
+  test('upgrades persisted v2 PII defaults to include names and Canadian medical identifiers', () => {
     const upgraded = controller.upgradeStoredSettingsDefaults({
       privacyPii: {
         defaultsVersion: 2,
@@ -392,17 +392,17 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 4,
+      defaultsVersion: 5,
       enabled: true,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
     }));
-    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier']));
-    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier']));
+    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
+    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
   });
 
-  test('upgrades persisted v3 PII defaults to include medical identifiers', () => {
+  test('upgrades persisted v3 PII defaults to include medical and Canadian identifiers', () => {
     const upgraded = controller.upgradeStoredSettingsDefaults({
       privacyPii: {
         defaultsVersion: 3,
@@ -418,14 +418,40 @@ describe('settings.controller personality support', () => {
     });
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
-      defaultsVersion: 4,
+      defaultsVersion: 5,
       enabled: true,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
     }));
-    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier']));
-    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier']));
+    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
+    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
+  });
+
+  test('upgrades persisted v4 PII defaults to include Canadian identifiers', () => {
+    const upgraded = controller.upgradeStoredSettingsDefaults({
+      privacyPii: {
+        defaultsVersion: 4,
+        enabled: true,
+        placeholderMode: 'opaque-random',
+        detectors: ['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
+        enablePersonNames: true,
+        auditProfile: 'strict',
+        auditCriteria: {
+          requiredDetectors: ['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
+        },
+      },
+    });
+
+    expect(upgraded.privacyPii).toEqual(expect.objectContaining({
+      defaultsVersion: 5,
+      enabled: true,
+      placeholderMode: 'opaque-random',
+      enablePersonNames: true,
+      auditProfile: 'strict',
+    }));
+    expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
+    expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
   });
 
   test('previews PII cleanup without echoing raw matched values', () => {

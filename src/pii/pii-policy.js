@@ -2,7 +2,7 @@ const settingsController = require('../routes/admin/settings.controller');
 const { postgres } = require('../postgres');
 
 const DEFAULT_PRIVACY_PII_SETTINGS = {
-  defaultsVersion: 4,
+  defaultsVersion: 5,
   enabled: true,
   webChatEnabled: true,
   highlightRestored: true,
@@ -10,14 +10,14 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
   placeholderMode: 'opaque-random',
   reintroductionMode: 'trusted-view',
   failClosed: true,
-  detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
+  detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'postalCode', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber'],
   detectorActions: {},
   customPatterns: [],
   dictionary: [],
   enablePersonNames: true,
   auditProfile: 'strict',
   auditCriteria: {
-    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'postalCode', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber'],
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
@@ -33,7 +33,7 @@ const PRIVACY_PII_AUDIT_PROFILES = {
     requireRestoreHighlight: true,
   },
   strict: {
-    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier'],
+    requiredDetectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'postalCode', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber'],
     requireVaultKey: true,
     requireFailClosed: true,
     requireRestoreHighlight: true,
@@ -144,7 +144,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
   return {
     ...fallback,
     ...source,
-    defaultsVersion: 4,
+    defaultsVersion: 5,
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : Boolean(fallback.enabled),
     webChatEnabled: source.webChatEnabled !== undefined ? Boolean(source.webChatEnabled) : fallback.webChatEnabled !== false,
     highlightRestored: source.highlightRestored !== undefined ? Boolean(source.highlightRestored) : fallback.highlightRestored !== false,

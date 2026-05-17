@@ -50,6 +50,7 @@ const NON_RESTORABLE_IDENTITY_TYPES = new Set([
   'medicalRecordNumber',
   'patientIdentifier',
   'healthCardNumber',
+  'socialInsuranceNumber',
 ]);
 
 function resolveDetectorAction(match = {}, policy = {}) {

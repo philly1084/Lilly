@@ -4,7 +4,7 @@ const { buildModelFrame, sanitizeText } = require('../pii-redactor');
 describe('PII redactor framing', () => {
   test('defaults PII protection to opaque placeholders', () => {
     expect(DEFAULT_PRIVACY_PII_SETTINGS).toEqual(expect.objectContaining({
-      defaultsVersion: 4,
+      defaultsVersion: 5,
       enabled: true,
       placeholderMode: 'opaque-random',
       failClosed: true,
@@ -15,6 +15,9 @@ describe('PII redactor framing', () => {
       'organization',
       'medicalRecordNumber',
       'patientIdentifier',
+      'healthCardNumber',
+      'socialInsuranceNumber',
+      'postalCode',
     ]));
   });
 
@@ -190,6 +193,39 @@ describe('PII redactor framing', () => {
       expect.objectContaining({ type: 'medicalRecordNumber', action: 'mask', restorable: false }),
       expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
       expect.objectContaining({ type: 'dateOfBirth' }),
+    ]));
+  });
+
+  test('masks Canadian PII with default opaque IDs', async () => {
+    const sample = [
+      'Canadian intake:',
+      'Name: Jamie Sampleton',
+      'DOB: 1984-07-04',
+      'SIN: 046 454 286',
+      'OHIP: 1234-567-890 AB',
+      'Health card number: PEI-99887766',
+      'Address: 123 Main Street, Ottawa ON K1A 0B1',
+    ].join('\n');
+    const result = await sanitizeText(sample, {
+      policy: {
+        ...DEFAULT_PRIVACY_PII_SETTINGS,
+        failClosed: false,
+        hasMasterKey: false,
+        storageReady: false,
+      },
+    });
+
+    expect(result.text).not.toContain('Jamie Sampleton');
+    expect(result.text).not.toContain('1984-07-04');
+    expect(result.text).not.toContain('046 454 286');
+    expect(result.text).not.toContain('1234-567-890 AB');
+    expect(result.text).not.toContain('PEI-99887766');
+    expect(result.text).not.toContain('123 Main Street');
+    expect(result.text).not.toContain('K1A 0B1');
+    expect(result.replacements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'socialInsuranceNumber', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'healthCardNumber', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'postalCode' }),
     ]));
   });
 });

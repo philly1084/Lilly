@@ -6,8 +6,11 @@ const DEFAULT_DETECTORS = [
   'dateOfBirth',
   'address',
   'ipAddress',
+  'postalCode',
   'medicalRecordNumber',
   'patientIdentifier',
+  'healthCardNumber',
+  'socialInsuranceNumber',
 ];
 
 const ACTIONABLE_DICTIONARY_TYPES = new Set([
@@ -28,6 +31,7 @@ const BUILTIN_PATTERNS = {
   creditCard: /\b(?:\d[ -]*?){13,19}\b/g,
   address: /\b\d{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*){0,5}\s+(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Way|Place|Pl\.?)\b/g,
   ipAddress: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
+  postalCode: /\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b/gi,
   organization: /\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|Group|Systems|Solutions|Technologies|Tech|Labs|Security|Health|Bank|University|College)\b/g,
 };
 
@@ -55,8 +59,8 @@ const PERSON_NAME_STOPWORDS = new Set([
   ...MONTH_NAMES,
 ]);
 
-const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\s*(?:is|:|-)|patient\s+name\s*(?:is|:|-)|employee\s+name\s*(?:is|:|-))\s*([A-Z][A-Za-z'-]*(?:\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z'-]*){0,3})\b/g;
-const PERSON_FREE_PATTERN = /\b[A-Z][A-Za-z'-]*(?:\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z'-]*){1,3}\b/g;
+const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\s*(?:is|:|-)|patient\s+name\s*(?:is|:|-)|employee\s+name\s*(?:is|:|-))\s*([A-Z][A-Za-z'-]*(?:[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z'-]*){0,3})\b/gi;
+const PERSON_FREE_PATTERN = /\b[A-Z][A-Za-z'-]*(?:[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z'-]*){1,3}\b/g;
 const DOB_VALUE_PATTERN = '(?:\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{4})';
 const DOB_LABEL_PATTERN = new RegExp(`\\b(?:DOB|D\\.O\\.B\\.|date\\s+of\\s+birth|birth\\s*date|birthdate|birthday|born(?:\\s+on)?)\\s*(?:is|was|:|#|-)?\\s*(${DOB_VALUE_PATTERN})\\b`, 'gi');
 const FHIR_BIRTH_DATE_PATTERN = /"birthDate"\s*:\s*"(\d{4}-\d{1,2}-\d{1,2})"/gi;
@@ -65,7 +69,10 @@ const FHIR_PATIENT_GIVEN_PATTERN = /"given"\s*:\s*\[\s*"([^"\r\n]{2,80})"/gi;
 const FHIR_ADDRESS_LINE_PATTERN = /"line"\s*:\s*\[\s*"([^"\r\n]{3,120})"/gi;
 const FHIR_ADDRESS_CITY_PATTERN = /"city"\s*:\s*"([^"\r\n]{2,80})"/gi;
 const FHIR_ADDRESS_POSTAL_PATTERN = /"postalCode"\s*:\s*"([^"\r\n]{3,20})"/gi;
-const MEDICAL_ID_LABEL_PATTERN = /\b(?:MRN|M\.R\.N\.|medical\s+record(?:\s+number)?|medicalRecordNumber|patient\s*(?:id|identifier|number)|patientId|patientIdentifier|health\s*card(?:\s*number)?|healthCardNumber)\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9._-]{3,})\b/gi;
+const MEDICAL_ID_LABEL_PATTERN = /\b(?:MRN|M\.R\.N\.|medical\s+record(?:\s+number)?|medicalRecordNumber|patient\s*(?:id|identifier|number)|patientId|patientIdentifier|PHN|ULI|MSI)\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9._-]{3,})\b/gi;
+const HEALTH_CARD_LABEL_PATTERN = /\b(?:health\s*card(?:\s*number)?|healthCardNumber|OHIP|RAMQ|PHN|provincial\s+health\s+(?:number|id|card)|health\s+services\s+(?:number|card))\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9 ._-]{5,30}[A-Z0-9])\b/gi;
+const SIN_LABEL_PATTERN = /\b(?:SIN|S\.I\.N\.|social\s+insurance\s+number)\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([0-9][0-9 -]{7,15}[0-9])\b/gi;
+const SIN_FORMATTED_PATTERN = /\b\d{3}[- ]\d{3}[- ]\d{3}\b/g;
 const FHIR_IDENTIFIER_VALUE_PATTERN = /"system"\s*:\s*"[^"\r\n]*(?:mrn|medical[-_\s]*record|patient[-_\s]*id|health[-_\s]*card)[^"\r\n]*"[\s\S]{0,160}?"value"\s*:\s*"([^"\r\n]{4,80})"/gi;
 const DOCUMENT_FILENAME_PATTERN = /\b([A-Z][A-Za-z0-9]*(?:[-_][A-Z][A-Za-z0-9]*){1,16})\.(?:pdf|docx?|rtf|txt|html?)\b/g;
 const DOCUMENT_FILENAME_PREFIXES = new Set([
@@ -86,9 +93,11 @@ function normalizeDetectorId(value = '') {
   if (normalized === 'credit_card') return 'creditCard';
   if (normalized === 'date_of_birth' || normalized === 'dob') return 'dateOfBirth';
   if (normalized === 'ip' || normalized === 'ip_address') return 'ipAddress';
+  if (normalized === 'postal' || normalized === 'postal_code' || normalized === 'postal-code' || normalized === 'canadian_postal_code') return 'postalCode';
   if (normalized === 'mrn' || normalized === 'medical_record_number' || normalized === 'medical-record-number') return 'medicalRecordNumber';
   if (normalized === 'patient_id' || normalized === 'patient-id' || normalized === 'patient_identifier') return 'patientIdentifier';
-  if (normalized === 'health_card' || normalized === 'health-card' || normalized === 'health_card_number') return 'patientIdentifier';
+  if (normalized === 'health_card' || normalized === 'health-card' || normalized === 'health_card_number' || normalized === 'health-card-number' || normalized === 'ohip' || normalized === 'ramq' || normalized === 'phn') return 'healthCardNumber';
+  if (normalized === 'sin' || normalized === 's.i.n.' || normalized === 'social_insurance_number' || normalized === 'social-insurance-number') return 'socialInsuranceNumber';
   if (normalized === 'org' || normalized === 'org_name' || normalized === 'organization_name' || normalized === 'employer' || normalized === 'workplace') return 'organization';
   return normalized;
 }
@@ -106,6 +115,21 @@ function isValidCreditCardCandidate(value = '') {
     }
     sum += digit;
     doubleDigit = !doubleDigit;
+  }
+  return sum > 0 && sum % 10 === 0;
+}
+
+function isValidCanadianSinCandidate(value = '') {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!/^\d{9}$/.test(digits)) return false;
+  let sum = 0;
+  for (let index = 0; index < digits.length; index += 1) {
+    let digit = Number(digits[index]);
+    if (index % 2 === 1) {
+      digit *= 2;
+      if (digit > 9) digit = Math.floor(digit / 10) + (digit % 10);
+    }
+    sum += digit;
   }
   return sum > 0 && sum % 10 === 0;
 }
@@ -313,10 +337,44 @@ function findFhirPatientMatches(text = '') {
 }
 
 function findMedicalIdentifierMatches(text = '') {
-  return findRegexGroupMatches(text, MEDICAL_ID_LABEL_PATTERN, 'medicalRecordNumber', {
+  const matches = findRegexGroupMatches(text, MEDICAL_ID_LABEL_PATTERN, 'medicalRecordNumber', {
     source: 'medicalIdentifier',
     grounded: true,
   });
+  matches.push(...findRegexGroupMatches(text, HEALTH_CARD_LABEL_PATTERN, 'healthCardNumber', {
+    source: 'canadianHealthCard',
+    grounded: true,
+  }));
+  return matches;
+}
+
+function findCanadianSinMatches(text = '') {
+  const matches = [];
+  const source = String(text || '');
+  const pushIfValid = (match, value) => {
+    const rawValue = String(value || '');
+    if (!rawValue || !isValidCanadianSinCandidate(rawValue)) return;
+    const valueOffset = match[0].indexOf(rawValue);
+    if (valueOffset < 0) return;
+    const start = match.index + valueOffset;
+    matches.push({
+      type: 'socialInsuranceNumber',
+      value: rawValue,
+      start,
+      end: start + rawValue.length,
+      source: 'canadianSin',
+      grounded: true,
+    });
+  };
+
+  let match;
+  while ((match = SIN_LABEL_PATTERN.exec(source)) !== null) {
+    pushIfValid(match, match[1]);
+  }
+  while ((match = SIN_FORMATTED_PATTERN.exec(source)) !== null) {
+    pushIfValid(match, match[0]);
+  }
+  return matches;
 }
 
 function pushHl7FieldMatch(matches, segmentStart, segment, fieldValue, type, {
@@ -504,11 +562,15 @@ function detectPii(text = '', policy = {}) {
     matches.push(...findPersonNameMatches(source));
   }
 
-  if (enabled.has('medicalRecordNumber') || enabled.has('patientIdentifier')) {
+  if (enabled.has('medicalRecordNumber') || enabled.has('patientIdentifier') || enabled.has('healthCardNumber')) {
     matches.push(...findMedicalIdentifierMatches(source));
   }
 
-  if (enabled.has('personName') || enabled.has('dateOfBirth') || enabled.has('medicalRecordNumber') || enabled.has('patientIdentifier')) {
+  if (enabled.has('socialInsuranceNumber')) {
+    matches.push(...findCanadianSinMatches(source));
+  }
+
+  if (enabled.has('personName') || enabled.has('dateOfBirth') || enabled.has('medicalRecordNumber') || enabled.has('patientIdentifier') || enabled.has('healthCardNumber')) {
     matches.push(...findFhirPatientMatches(source));
     matches.push(...findHl7PidMatches(source));
   }
@@ -531,4 +593,5 @@ module.exports = {
   detectPii,
   normalizeDetectorId,
   isValidCreditCardCandidate,
+  isValidCanadianSinCandidate,
 };

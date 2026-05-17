@@ -99,4 +99,26 @@ describe('PII detectors', () => {
       expect.objectContaining({ type: 'dateOfBirth', value: '19840704', source: 'hl7' }),
     ]));
   });
+
+  test('detects Canadian SIN, health card, and postal code fields', () => {
+    const sample = [
+      'Canadian intake:',
+      'SIN: 046 454 286',
+      'OHIP: 1234-567-890 AB',
+      'Health card number: PEI-99887766',
+      'Postal code: K1A 0B1',
+    ].join('\n');
+    const matches = detectPii(sample, {
+      detectors: ['socialInsuranceNumber', 'healthCardNumber', 'postalCode'],
+      customPatterns: [],
+      dictionary: [],
+    });
+
+    expect(matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'socialInsuranceNumber', value: '046 454 286', source: 'canadianSin' }),
+      expect.objectContaining({ type: 'healthCardNumber', value: '1234-567-890 AB', source: 'canadianHealthCard' }),
+      expect.objectContaining({ type: 'healthCardNumber', value: 'PEI-99887766', source: 'canadianHealthCard' }),
+      expect.objectContaining({ type: 'postalCode', value: 'K1A 0B1', source: 'builtin' }),
+    ]));
+  });
 });
