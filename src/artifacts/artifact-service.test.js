@@ -1124,6 +1124,67 @@ describe('ArtifactService', () => {
         expect(instructions).toContain('ATS-friendly readability');
     });
 
+    test('treats updating a resume into html as a conservative revision without stock images', async () => {
+        isConfigured.mockReturnValue(true);
+        artifactStore.get.mockResolvedValueOnce({
+            id: 'source-pdf',
+            sessionId: 'session-1',
+            filename: 'Resume-Philip-Asplin-Cognizant.pdf',
+            extension: 'pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 91806,
+            metadata: {},
+        });
+        createResponse
+            .mockResolvedValueOnce({
+                id: 'resp-plan',
+                output: [{
+                    type: 'message',
+                    content: [{ text: JSON.stringify({
+                        title: 'Philip Asplin Resume',
+                        sections: [
+                            { heading: 'Profile', purpose: 'Update the resume profile', keyPoints: ['Technical leadership'], targetLength: 'short' },
+                        ],
+                    }) }],
+                }],
+            })
+            .mockResolvedValueOnce({
+                id: 'resp-expand',
+                output: [{
+                    type: 'message',
+                    content: [{ text: JSON.stringify({
+                        title: 'Philip Asplin Resume',
+                        sections: [
+                            { heading: 'Profile', content: 'Technical leadership resume profile.', level: 1 },
+                        ],
+                    }) }],
+                }],
+            })
+            .mockResolvedValueOnce({
+                id: 'resp-compose',
+                output: [{
+                    type: 'message',
+                    content: [{ text: '<!DOCTYPE html><html><body><h1>Philip Asplin</h1><p>Technical leadership resume profile.</p></body></html>' }],
+                }],
+            });
+
+        await artifactService.generateArtifact({
+            session: { previousResponseId: 'prev-1', metadata: {} },
+            sessionId: 'session-1',
+            mode: 'chat',
+            prompt: 'please make me a new html page by updating this file I gave you with new font and look. Resume-Philip-Asplin-Cognizant.pdf',
+            format: 'html',
+            artifactIds: ['source-pdf'],
+            existingContent: '',
+            model: 'gpt-5.3',
+        });
+
+        expect(searchImages).not.toHaveBeenCalled();
+        const instructions = createResponse.mock.calls.map((call) => call[0]?.instructions || '').join('\n\n---\n\n');
+        expect(instructions).toContain('[Conservative document revision]');
+        expect(instructions).toContain('Do not add stock photography');
+    });
+
     test('injects dashboard template guidance for dashboard html artifacts', async () => {
         createResponse.mockResolvedValueOnce({
             id: 'resp-dashboard-1',

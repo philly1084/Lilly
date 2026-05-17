@@ -457,6 +457,8 @@ describe('ai-route-utils', () => {
         expect(inferRequestedOutputFormat('Make me a video game about collecting blocks')).toBe('html');
         expect(inferRequestedOutputFormat('Build a sandboxed game with restart controls')).toBe('html');
         expect(inferRequestedOutputFormat('Make a multi-step frontend sandbox for an onboarding flow')).toBe('html');
+        expect(inferRequestedOutputFormat('please make me a new html page by updating this file I gave you with new font and look. Resume-Philip-Asplin-Cognizant.pdf')).toBe('html');
+        expect(inferRequestedOutputFormat('Make a PDF from this HTML page')).toBe('pdf');
     });
 
     test('inferRequestedOutputFormat defaults slide deck requests to pptx unless html or interactive is explicit', () => {

@@ -888,7 +888,7 @@ function isConservativeDocumentRevisionRequest(prompt = '', existingContent = ''
         return false;
     }
 
-    const revisionIntent = /\b(update|revise|refine|improve|polish|refresh|redo|rework|edit)\b/.test(request);
+    const revisionIntent = /\b(updat(?:e|ing)|revis(?:e|ing)|refin(?:e|ing)|improv(?:e|ing)|polish(?:ing)?|refresh(?:ing)?|redo|rework(?:ing)?|edit(?:ing)?)\b/.test(request);
     if (!revisionIntent) {
         return false;
     }

@@ -755,6 +755,16 @@ function inferRequestedOutputFormat(text = '') {
     const hasSandboxPreviewCue = /\b(sandbox|preview|browser preview|live preview|full screen preview|fullscreen preview)\b/.test(normalized);
     const hasPrototypeHtmlCue = /\b(demo|prototype|mockup|mock-up|wireframe|microsite)\b/.test(normalized);
     const hasExplicitHtmlCue = /\bhtml\b/.test(normalized);
+    const hasExplicitHtmlOutputCue = hasExplicitHtmlCue
+        && (
+            hasWebsiteArtifactSubject
+            || /\bhtml\s+(?:page|file|document|artifact|site|website|preview|output)\b/.test(normalized)
+            || /\b(?:page|file|document|artifact|site|website|preview|output)\s+(?:as|in|to|into)\s+html\b/.test(normalized)
+        );
+    const hasExplicitPdfOutputCue = /\bpdf\s+(?:file|artifact|document|output|export|download|version|copy|report|brief)\b/.test(normalized)
+        || /\b(?:as|to|into|in)\s+(?:a\s+)?pdf\b/.test(normalized)
+        || /\bexport\s+(?:this\s+)?(?:as\s+)?(?:a\s+)?pdf\b/.test(normalized)
+        || /\bmake\s+(?:me\s+)?(?:a\s+)?pdf\b/.test(normalized);
     const hasExplicitPptxCue = /\b(powerpoint|pptx?|\.(pptx|ppt)\b)\b/.test(normalized);
     const hasSlideDeckSubject = /\b(slide deck|slides?|presentation|deck)\b/.test(normalized);
     const hasInteractiveCue = /\b(interactive|clickable|animated|browser-native|web-native|playable|gameplay)\b/.test(normalized);
@@ -773,7 +783,14 @@ function inferRequestedOutputFormat(text = '') {
         return 'xlsx';
     }
 
+    if (hasExplicitHtmlOutputCue && (hasBuildIntent || hasArtifactIntent || hasSandboxPreviewCue) && !hasExplicitPdfOutputCue) {
+        return 'html';
+    }
+
     if (/\bpdf\b/.test(normalized) && hasArtifactIntent) {
+        if (hasExplicitHtmlOutputCue && !hasExplicitPdfOutputCue) {
+            return 'html';
+        }
         return 'pdf';
     }
 
