@@ -736,9 +736,9 @@ function buildArtifactPromptFromTranscript(messages = [], fallbackPrompt = '') {
     }
 
     return [
-        'Continue or refine the same artifact request using this recent conversation context.',
+        lastUserText || fallbackPrompt,
+        'Recent conversation context for continuity only; do not use this context label as the document title, filename, heading, or visible prose.',
         transcript,
-        `Current request: ${lastUserText || fallbackPrompt}`,
     ].filter(Boolean).join('\n\n');
 }
 

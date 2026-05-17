@@ -877,6 +877,42 @@ function buildDocumentImageInstructions() {
     ].join('\n');
 }
 
+function isConservativeDocumentRevisionRequest(prompt = '', existingContent = '', format = '') {
+    const normalizedFormat = normalizeFormat(format);
+    if (!MULTI_PASS_DOCUMENT_FORMATS.has(normalizedFormat)) {
+        return false;
+    }
+
+    const request = String(prompt || '').trim().toLowerCase();
+    if (!request) {
+        return false;
+    }
+
+    const revisionIntent = /\b(update|revise|refine|improve|polish|refresh|redo|rework|edit)\b/.test(request);
+    if (!revisionIntent) {
+        return false;
+    }
+
+    const combined = `${request}\n${String(existingContent || '').slice(0, 8000).toLowerCase()}`;
+    const resumeLike = /\b(resume|résumé|cv|curriculum vitae|ats|cover letter|professional staffing|linkedin profile)\b/.test(combined);
+    const explicitImageRichRequest = /\b(image-rich|image rich|photo|photos|photography|pictures?|unsplash|hero image|stock image|magazine|editorial feature|visual field guide|portfolio showcase)\b/.test(request);
+    return resumeLike && !explicitImageRichRequest;
+}
+
+function buildConservativeDocumentRevisionInstructions(prompt = '', existingContent = '', format = '') {
+    if (!isConservativeDocumentRevisionRequest(prompt, existingContent, format)) {
+        return '';
+    }
+
+    return [
+        '[Conservative document revision]',
+        'This is a resume/CV/professional document revision. Preserve the original document genre and user intent.',
+        'Improve typography, hierarchy, spacing, section order, and ATS-friendly readability without turning it into an editorial article, field guide, brochure, or image-heavy report.',
+        'Do not add stock photography, Unsplash images, galleries, hero photos, source labels, or decorative visual sections unless the user explicitly asks for images.',
+        'Use compact resume-appropriate sections and keep the filename/title grounded in the person and role, not in workflow or continuation wording.',
+    ].join('\n');
+}
+
 function buildVisualSafetyInstructions() {
     return [
         '[Artifact visual safety]',
@@ -2008,6 +2044,7 @@ class ArtifactService {
         const visualSafetyInstructions = ['html', 'pdf'].includes(normalizedFormat)
             ? buildVisualSafetyInstructions()
             : '';
+        const conservativeRevisionInstructions = buildConservativeDocumentRevisionInstructions(requestPrompt, existingContent, normalizedFormat);
         const researchBackedRequest = isResearchBackedArtifactRequest(requestPrompt, normalizedFormat);
         const diagramHeavyRequest = isDiagramHeavyArtifactRequest(requestPrompt, normalizedFormat);
         const baseContext = [
@@ -2023,6 +2060,7 @@ class ArtifactService {
                 ? 'For graph-heavy or diagram-heavy documents, use graph-diagram to create native graph JSON plus reusable SVG image artifacts, then embed those SVG artifact URLs or inline SVGs in the final document. If the active model is GPT-5.5 or newer, prefer custom SVG diagrams over plain Mermaid-only output while preserving native graph data when useful.'
                 : '',
             visualSafetyInstructions,
+            conservativeRevisionInstructions,
             'Do not mention environment limitations, permissions, API keys, or inability to create files.',
             'The platform will render, store, and deliver the file artifact for the user.',
             promptContext,
@@ -2179,6 +2217,7 @@ class ArtifactService {
 
     getArtifactPlanInstructions(format, promptContext = '', existingContent = '', creativityPacket = null) {
         const creativityContext = renderCreativityPromptContext(creativityPacket);
+        const conservativeRevisionInstructions = buildConservativeDocumentRevisionInstructions(promptContext, existingContent, format);
         return [
             'You are planning a high-quality business document generation workflow.',
             'Return JSON only. No markdown fences.',
@@ -2189,6 +2228,7 @@ class ArtifactService {
             'If the request needs graphs, diagrams, charts, process maps, or architecture visuals, plan where graph-diagram SVG artifacts or inline SVGs should be used. For GPT-5.5 or newer models, prefer direct custom SVG diagrams when the visual requires precision or polish.',
             'Do not mirror placeholder headings or sample copy from provided templates.',
             'Treat instruction blocks such as <creative_direction>, <sample_handling>, <continuity>, [Verified image references], and [Research workflow] as guidance only. Never copy them into the document plan.',
+            conservativeRevisionInstructions,
             existingContent ? `Existing content to revise:\n${existingContent}` : '',
             promptContext,
             creativityContext,
@@ -2222,6 +2262,7 @@ class ArtifactService {
 
     getArtifactExpansionInstructions(format, promptContext = '', existingContent = '', creativityPacket = null) {
         const creativityContext = renderCreativityPromptContext(creativityPacket);
+        const conservativeRevisionInstructions = buildConservativeDocumentRevisionInstructions(promptContext, existingContent, format);
         return [
             'You are expanding an approved document outline into full section content.',
             'Return JSON only. No markdown fences.',
@@ -2234,6 +2275,7 @@ class ArtifactService {
             'For sections that need diagrams, reference the intended graph-diagram output by purpose rather than writing raw diagram source into prose.',
             'Do not echo placeholder copy, sample headings, or tutorial language from the scaffold.',
             'Never quote or reproduce instruction-only metadata such as [Verified image references], [Research workflow], Source: tool, Source: unsplash, or creative-direction labels in the section content.',
+            conservativeRevisionInstructions,
             existingContent ? `Existing content to revise:\n${existingContent}` : '',
             promptContext,
             creativityContext,
@@ -2257,6 +2299,7 @@ class ArtifactService {
 
     getArtifactCompositionInstructions(format, promptContext = '', creativityPacket = null) {
         const creativityContext = renderCreativityPromptContext(creativityPacket);
+        const conservativeRevisionInstructions = buildConservativeDocumentRevisionInstructions(promptContext, '', format);
         return [
             'You are composing the final document artifact from an expanded section draft.',
             'Return valid standalone HTML only. No markdown fences.',
@@ -2274,6 +2317,7 @@ class ArtifactService {
             'Do not output a layout plan, source register instructions, build checklist, editorial note, or any meta-document that describes how a future document should be assembled.',
             'The output must be the finished document itself, not instructions for building it.',
             'Do not print workflow labels, source metadata, tool notes, or image search descriptions verbatim in the body or captions.',
+            conservativeRevisionInstructions,
             buildDocumentImageInstructions(),
             promptContext,
             creativityContext,
@@ -2385,8 +2429,12 @@ class ArtifactService {
         enableAutomaticToolCalls = false,
         executionProfile = 'default',
     }) {
-        const resolvedImageReferences = Array.isArray(imageReferences) ? imageReferences : [];
+        const conservativeDocumentRevision = isConservativeDocumentRevisionRequest(prompt, existingContent, format);
+        const resolvedImageReferences = conservativeDocumentRevision
+            ? []
+            : (Array.isArray(imageReferences) ? imageReferences : []);
         const resolvedImageReferenceContext = imageReferenceContext || this.formatImageReferenceContext(resolvedImageReferences);
+        const conservativeRevisionInstructions = buildConservativeDocumentRevisionInstructions(prompt, existingContent, format);
         const canUseResearchTools = enableAutomaticToolCalls && Boolean(toolManager?.executeTool);
         const researchToolContext = canUseResearchTools && isResearchBackedArtifactRequest(prompt, format)
             ? [
@@ -2395,7 +2443,7 @@ class ArtifactService {
                 'Prefer verified real image sources from Unsplash or direct image URLs over AI-generated illustrations unless the user explicitly asks for generated art.',
             ].join('\n')
             : '';
-        const enrichedPromptContext = [promptContext, resolvedImageReferenceContext, researchToolContext].filter(Boolean).join('\n\n');
+        const enrichedPromptContext = [promptContext, conservativeRevisionInstructions, resolvedImageReferenceContext, researchToolContext].filter(Boolean).join('\n\n');
         const planPass = await this.runGenerationPass({
             session,
             input: prompt,
@@ -2583,6 +2631,8 @@ class ArtifactService {
         }
 
         const promptContext = await this.buildPromptContext(sessionId, artifactIds);
+        const combinedExistingContent = [template, existingContent].filter(Boolean).join('\n\n');
+        const conservativeDocumentRevision = isConservativeDocumentRevisionRequest(prompt, combinedExistingContent, normalizedFormat);
         const selectedArtifacts = artifactIds.length > 0
             ? (await Promise.all(artifactIds.slice(0, 8).map(async (artifactId) => {
                 if (isLocalGeneratedArtifactId(artifactId)) {
@@ -2591,13 +2641,14 @@ class ArtifactService {
                 return postgres.enabled ? artifactStore.get(artifactId) : null;
             }))).filter(Boolean)
             : [];
-        const imageReferences = await this.resolveImageReferences(session, prompt, {
-            desiredCount: (MULTI_PASS_DOCUMENT_FORMATS.has(normalizedFormat) || frontendDemoRequest) ? DEFAULT_DOCUMENT_IMAGE_TARGET : 3,
-            preferVisualDefaults: MULTI_PASS_DOCUMENT_FORMATS.has(normalizedFormat) || frontendDemoRequest,
-            selectedArtifacts,
-        });
+        const imageReferences = conservativeDocumentRevision
+            ? []
+            : await this.resolveImageReferences(session, prompt, {
+                desiredCount: (MULTI_PASS_DOCUMENT_FORMATS.has(normalizedFormat) || frontendDemoRequest) ? DEFAULT_DOCUMENT_IMAGE_TARGET : 3,
+                preferVisualDefaults: MULTI_PASS_DOCUMENT_FORMATS.has(normalizedFormat) || frontendDemoRequest,
+                selectedArtifacts,
+            });
         const imageReferenceContext = this.formatImageReferenceContext(imageReferences);
-        const combinedExistingContent = [template, existingContent].filter(Boolean).join('\n\n');
         const artifactExperienceMetadata = buildArtifactExperienceMetadata({
             prompt,
             format: normalizedFormat,

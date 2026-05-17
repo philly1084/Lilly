@@ -130,7 +130,8 @@ jest.mock('../user-checkpoints', () => ({
 const { sessionStore } = require('../session-store');
 const { executeConversationRuntime } = require('../runtime-execution');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
-const { generateOutputArtifactFromPrompt } = require('../ai-route-utils');
+const aiRouteUtils = require('../ai-route-utils');
+const { generateOutputArtifactFromPrompt } = aiRouteUtils;
 const openAiCompatRouter = require('./openai-compat');
 
 describe('/v1/chat/completions stream forwarding', () => {
@@ -605,5 +606,53 @@ describe('/v1/chat/completions stream forwarding', () => {
                 }),
             }),
         );
+    });
+
+    test('keeps continuation labels out of artifact generation prompt lead text', async () => {
+        aiRouteUtils.inferRequestedOutputFormat.mockReturnValue('pdf');
+        aiRouteUtils.isArtifactContinuationPrompt.mockReturnValue(true);
+        aiRouteUtils.resolveArtifactContextIds.mockReturnValue(['artifact-source-1']);
+        generateOutputArtifactFromPrompt.mockResolvedValue({
+            responseId: 'resp-artifact-1',
+            model: 'gpt-5.4',
+            assistantMessage: 'Created the PDF artifact (resume-refresh.pdf).',
+            metadata: {},
+            artifact: {
+                id: 'artifact-generated-1',
+                filename: 'resume-refresh.pdf',
+                format: 'pdf',
+                mimeType: 'application/pdf',
+                downloadUrl: '/api/artifacts/artifact-generated-1/download',
+            },
+            artifacts: [{
+                id: 'artifact-generated-1',
+                filename: 'resume-refresh.pdf',
+                format: 'pdf',
+                mimeType: 'application/pdf',
+                downloadUrl: '/api/artifacts/artifact-generated-1/download',
+            }],
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                messages: [
+                    { role: 'user', content: 'Update this document (Resume-Philip-Asplin-Professional-Staffing.pdf): improve the layout and font' },
+                ],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                stream: false,
+                session_id: 'web-chat-stream-1',
+            });
+
+        expect(response.status).toBe(200);
+        const generationCall = generateOutputArtifactFromPrompt.mock.calls.at(-1)?.[0] || {};
+        expect(generationCall.prompt).toMatch(/^Update this document/);
+        expect(generationCall.prompt.split(/\n+/)[0]).not.toContain('Continue or refine');
+        expect(generationCall.artifactIds).toEqual(['artifact-source-1']);
     });
 });

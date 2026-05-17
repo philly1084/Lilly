@@ -1110,6 +1110,20 @@ describe('ArtifactService', () => {
         expect(serialized.preview).toBeNull();
     });
 
+    test('adds conservative instructions for resume PDF revisions', () => {
+        const instructions = artifactService.getGenerationInstructions(
+            'pdf',
+            'Philip Asplin resume with technical solutions and security systems experience.',
+            '',
+            null,
+            'Update this document (Resume-Philip-Asplin-Professional-Staffing.pdf): improve the layout and font',
+        );
+
+        expect(instructions).toContain('[Conservative document revision]');
+        expect(instructions).toContain('Do not add stock photography');
+        expect(instructions).toContain('ATS-friendly readability');
+    });
+
     test('injects dashboard template guidance for dashboard html artifacts', async () => {
         createResponse.mockResolvedValueOnce({
             id: 'resp-dashboard-1',
