@@ -494,6 +494,9 @@ async function requestModelResponse(params = {}) {
             replacementCount: Array.isArray(piiSanitized.replacements) ? piiSanitized.replacements.length : 0,
             placeholderMode: piiSanitized.policy?.placeholderMode || '',
             modelFrame: piiSanitized.modelFrame || null,
+            sanitizedInput: typeof piiSanitized.payload?.input === 'string'
+                ? piiSanitized.payload.input
+                : '',
         };
     }
     return response;
@@ -518,6 +521,7 @@ function normalizePiiCleansingMetadata(value = null) {
         restoredCount: Number(value.restoredCount || 0) || 0,
         placeholderMode: String(value.placeholderMode || '').trim(),
         modelFrame: value.modelFrame || null,
+        sanitizedInput: String(value.sanitizedInput || '').trim(),
     };
 }
 
@@ -535,6 +539,7 @@ function mergePiiCleansingMetadata(...values) {
     let replacementCount = 0;
     let restoredCount = 0;
     let placeholderMode = '';
+    let sanitizedInput = '';
     const modelFrames = [];
 
     entries.forEach((entry) => {
@@ -544,6 +549,9 @@ function mergePiiCleansingMetadata(...values) {
         restoredCount += entry.restoredCount;
         if (!placeholderMode && entry.placeholderMode) {
             placeholderMode = entry.placeholderMode;
+        }
+        if (!sanitizedInput && entry.sanitizedInput) {
+            sanitizedInput = entry.sanitizedInput;
         }
         entry.contextIds.forEach((id) => contextIds.add(id));
         if (entry.modelFrame) {
@@ -562,9 +570,19 @@ function mergePiiCleansingMetadata(...values) {
         replacementCount,
         restoredCount,
         placeholderMode,
+        sanitizedInput,
         ...(modelFrames.length === 1 ? { modelFrame: modelFrames[0] } : {}),
         ...(modelFrames.length > 1 ? { modelFrames } : {}),
     };
+}
+
+function resolveStoredSourcePrompt(prompt = '', piiCleansing = null) {
+    const original = String(prompt || '');
+    const sanitized = String(piiCleansing?.sanitizedInput || '').trim();
+    if (piiCleansing?.changed === true) {
+        return sanitized || '[PII-cleaned prompt omitted]';
+    }
+    return original;
 }
 
 function resolveArtifactOwnerId({ ownerId = null, session = null, metadata = {} } = {}) {
@@ -3104,7 +3122,7 @@ class ArtifactService {
             previewHtml: rendered.previewHtml,
             metadata: {
                 format: normalizedFormat,
-                sourcePrompt: prompt,
+                sourcePrompt: resolveStoredSourcePrompt(prompt, generatedPiiCleansing),
                 artifactIds,
                 ...(normalizedFrontendPayload?.metadata || {}),
                 ...rendered.metadata,

@@ -472,6 +472,7 @@ describe('ArtifactService', () => {
                 instruction: 'Preserve placeholders.',
                 placeholders: [{ placeholder: '[[PII:EMAIL:ctx1]]', type: 'email' }],
             },
+            sanitizedInput: 'Create a PDF for [[PII:EMAIL:ctx1]].',
         }));
         rehydrateText.mockImplementationOnce(async (text, options) => ({
             text: String(text).replace(/\[\[PII:EMAIL:ctx1\]\]/g, 'jane@example.com'),
@@ -547,6 +548,7 @@ describe('ArtifactService', () => {
         );
         expect(artifactStore.create).toHaveBeenCalledWith(expect.objectContaining({
             metadata: expect.objectContaining({
+                sourcePrompt: 'Create a PDF for [[PII:EMAIL:ctx1]].',
                 piiCleansing: expect.objectContaining({
                     contextIds: ['ctx-1'],
                     replacementCount: 1,
