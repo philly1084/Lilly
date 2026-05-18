@@ -20,14 +20,27 @@
         'kimibuilt_message_draft_time',
     ]);
 
-    function normalizeWorkspaceKey(value = '') {
+    function parseWorkspaceKey(value = '') {
         const normalized = String(value || '')
             .trim()
             .toLowerCase()
             .replace(/[^a-z0-9-]+/g, '-')
             .replace(/^-+|-+$/g, '');
+        const workspaceMatch = normalized.match(/^workspace-(\d+)$/);
+        if (!workspaceMatch) {
+            return null;
+        }
 
-        return normalized || DEFAULT_WORKSPACE_KEY;
+        const workspaceNumber = Number(workspaceMatch[1]);
+        if (!Number.isInteger(workspaceNumber) || workspaceNumber < 1 || workspaceNumber > WORKSPACE_COUNT) {
+            return null;
+        }
+
+        return `workspace-${workspaceNumber}`;
+    }
+
+    function normalizeWorkspaceKey(value = '') {
+        return parseWorkspaceKey(value) || DEFAULT_WORKSPACE_KEY;
     }
 
     function resolveWorkspaceLabel(workspaceKey = DEFAULT_WORKSPACE_KEY, explicitLabel = '') {
@@ -81,10 +94,13 @@
     }
 
     function createWorkspaceContext(input = {}) {
-        const workspaceKey = normalizeWorkspaceKey(input.key || input.workspaceKey || DEFAULT_WORKSPACE_KEY);
+        const rawWorkspaceKey = input.key || input.workspaceKey || DEFAULT_WORKSPACE_KEY;
+        const parsedWorkspaceKey = parseWorkspaceKey(rawWorkspaceKey);
+        const workspaceKey = parsedWorkspaceKey || DEFAULT_WORKSPACE_KEY;
+        const explicitLabel = parsedWorkspaceKey ? (input.label || input.workspaceLabel || '') : '';
         return {
             key: workspaceKey,
-            label: resolveWorkspaceLabel(workspaceKey, input.label || input.workspaceLabel || ''),
+            label: resolveWorkspaceLabel(workspaceKey, explicitLabel),
             scopeKey: resolveWorkspaceScopeKey(workspaceKey),
             longTermMemoryEnabled: true,
             persistentMemoryEnabled: true,
@@ -93,7 +109,8 @@
     }
 
     function getWorkspaceContext(search = null) {
-        if (typeof window !== 'undefined' && window.__kimibuiltWebChatWorkspaceContext) {
+        const hasExplicitSearch = typeof search === 'string';
+        if (!hasExplicitSearch && typeof window !== 'undefined' && window.__kimibuiltWebChatWorkspaceContext) {
             return window.__kimibuiltWebChatWorkspaceContext;
         }
 
@@ -115,7 +132,7 @@
             embedded,
         });
 
-        if (typeof window !== 'undefined') {
+        if (!hasExplicitSearch && typeof window !== 'undefined') {
             window.__kimibuiltWebChatWorkspaceContext = context;
         }
 

@@ -179,6 +179,56 @@ describe('web-chat session switching refresh guards', () => {
         expect(manager.currentSessionId).toBe('session-a');
     });
 
+    test('deduplicates backend sessions and filters them to the current workspace', async () => {
+        const fetchMock = jest.fn(async (url) => {
+            const href = String(url);
+            if (href.includes('/preferences/web-chat')) {
+                return { ok: true, json: async () => ({ preferences: {} }) };
+            }
+            if (href.includes('/sessions?')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        activeSessionId: 'session-a',
+                        sessions: [
+                            {
+                                id: 'session-a',
+                                title: 'Current workspace',
+                                createdAt: '2026-05-11T10:00:00.000Z',
+                                updatedAt: '2026-05-11T10:00:00.000Z',
+                                metadata: { memoryScope: 'web-chat' },
+                                scopeKey: 'web-chat',
+                            },
+                            {
+                                id: 'session-a',
+                                title: 'Duplicate current workspace',
+                                createdAt: '2026-05-11T10:00:00.000Z',
+                                updatedAt: '2026-05-11T10:00:00.000Z',
+                                metadata: { memoryScope: 'web-chat' },
+                                scopeKey: 'web-chat',
+                            },
+                            {
+                                id: 'session-other',
+                                title: 'Other workspace',
+                                createdAt: '2026-05-11T10:02:00.000Z',
+                                updatedAt: '2026-05-11T10:02:00.000Z',
+                                metadata: { memoryScope: 'web-chat-workspace-2' },
+                                scopeKey: 'web-chat-workspace-2',
+                            },
+                        ],
+                    }),
+                };
+            }
+            return { ok: true, json: async () => ({}) };
+        });
+        const manager = createSessionManager(fetchMock);
+
+        await manager.loadSessions();
+
+        expect(manager.sessions).toHaveLength(1);
+        expect(manager.sessions[0].id).toBe('session-a');
+    });
+
     test('settles stale persisted foreground placeholders instead of resuming them forever', () => {
         const manager = createSessionManager(jest.fn());
         const oldTimestamp = new Date(Date.now() - (7 * 60 * 60 * 1000)).toISOString();
