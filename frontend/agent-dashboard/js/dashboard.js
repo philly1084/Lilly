@@ -352,6 +352,9 @@ class Dashboard {
         document.getElementById('runStorageCleanupBtn')?.addEventListener('click', () => {
             this.cleanupStorage({ dryRun: false });
         });
+        document.getElementById('clearAllStorageBtn')?.addEventListener('click', () => {
+            this.clearAllStorage();
+        });
         document.getElementById('deleteSelectedStorageBtn')?.addEventListener('click', () => {
             this.deleteSelectedStorageRecords();
         });
@@ -3157,6 +3160,31 @@ class Dashboard {
         } catch (error) {
             console.error('Error cleaning managed storage:', error);
             this.showToast('Storage cleanup failed', 'error');
+        }
+    }
+
+    async clearAllStorage() {
+        const warning = [
+            'Clear all managed storage?',
+            'This permanently deletes old chats, chat messages, stored documents, generated artifacts, generated audio, generated video, and memory references tied to those chats.',
+            'Type yes to continue.',
+        ].join('\n\n');
+        if ((prompt(warning) || '').trim().toLowerCase() !== 'yes') {
+            return;
+        }
+
+        try {
+            const response = await apiClient.post('/api/admin/storage/cleanup', {
+                clearAll: true,
+                dryRun: false,
+            });
+            const result = this.unwrapApiPayload(response, {});
+            this.storageSelection.clear();
+            this.showToast(`Cleared ${result.deletedCount || 0} managed items`, 'success');
+            await this.loadStorage();
+        } catch (error) {
+            console.error('Error clearing managed storage:', error);
+            this.showToast('Failed to clear managed storage', 'error');
         }
     }
 

@@ -470,11 +470,40 @@ describe('/api/sessions route', () => {
 
             expect(response.status).toBe(204);
             expect(sessionStore.delete).toHaveBeenCalledWith('session-1');
+            expect(artifactService.deleteArtifactsForSession).toHaveBeenCalledWith('session-1');
             expect(memoryService.forget).toHaveBeenCalledWith('session-1');
             expect(sessionStore.setActiveSession).toHaveBeenCalledWith('phill', null, 'web-chat');
         } finally {
             warnSpy.mockRestore();
         }
+    });
+
+    test('deleting a file-backed chat still removes local generated files', async () => {
+        sessionStore.isPersistent.mockReturnValue(false);
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-local',
+            scopeKey: 'web-chat',
+            metadata: { ownerId: 'phill', memoryScope: 'web-chat' },
+        });
+        sessionStore.getActiveOwnedSession.mockResolvedValue(null);
+        sessionStore.delete.mockResolvedValue(true);
+        artifactService.deleteArtifactsForSession.mockResolvedValue(undefined);
+        memoryService.forget.mockResolvedValue(undefined);
+
+        const app = express();
+        app.use((req, _res, next) => {
+            req.user = { username: 'phill' };
+            next();
+        });
+        app.use('/api/sessions', sessionsRouter);
+
+        const response = await request(app).delete('/api/sessions/session-local');
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(response.status).toBe(204);
+        expect(artifactService.deleteArtifactsForSession).toHaveBeenCalledWith('session-local');
+        expect(sessionStore.delete).toHaveBeenCalledWith('session-local');
+        expect(memoryService.forget).toHaveBeenCalledWith('session-local');
     });
 
     test('permanently deletes all sessions in a requested workspace scope', async () => {

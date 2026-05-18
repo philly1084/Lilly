@@ -665,6 +665,11 @@ class UIHelpers {
         this.ttsManager = window.WebChatTtsManager
             ? new window.WebChatTtsManager()
             : null;
+        this.speechHighlightState = {
+            messageId: '',
+            lastSearchOffset: 0,
+            lastChunkIndex: -1,
+        };
         this.updateModelUI();
         this.updateReasoningUI();
         this.updateRemoteBuildAutonomyUI();
@@ -6852,7 +6857,7 @@ class UIHelpers {
             || null;
     }
 
-    clearSpeechHighlights(messageId = '') {
+    clearSpeechHighlights(messageId = '', options = {}) {
         const messageEl = messageId ? this.getMessageElementById(messageId) : null;
         const root = messageEl || document;
         if (!root?.querySelectorAll) {
@@ -6869,6 +6874,14 @@ class UIHelpers {
             parent.removeChild(highlight);
             parent.normalize?.();
         });
+
+        if (options.preserveState !== true) {
+            this.speechHighlightState = {
+                messageId: '',
+                lastSearchOffset: 0,
+                lastChunkIndex: -1,
+            };
+        }
     }
 
     shouldSkipSpeechHighlightNode(node = null) {
@@ -6924,7 +6937,7 @@ class UIHelpers {
         };
     }
 
-    findSpeechHighlightRange(root = null, chunkText = '') {
+    findSpeechHighlightRange(root = null, chunkText = '', options = {}) {
         const normalizedChunk = this.normalizeSpeechHighlightText(chunkText).toLowerCase();
         if (!root || !normalizedChunk) {
             return null;
@@ -6935,16 +6948,20 @@ class UIHelpers {
             return null;
         }
 
+        const preferredStartIndex = Math.max(0, Number(options.startIndex) || 0);
         const candidates = [
             normalizedChunk,
             normalizedChunk.length > 96 ? normalizedChunk.slice(0, 96).trim() : '',
             normalizedChunk.split(' ').slice(0, 10).join(' '),
         ].filter((candidate, index, list) => (
-            candidate.length >= 12 && list.indexOf(candidate) === index
+            candidate.length >= 3 && list.indexOf(candidate) === index
         ));
 
         for (const candidate of candidates) {
-            const matchIndex = textMap.text.indexOf(candidate);
+            let matchIndex = textMap.text.indexOf(candidate, preferredStartIndex);
+            if (matchIndex < 0 && preferredStartIndex > 0) {
+                matchIndex = textMap.text.indexOf(candidate);
+            }
             if (matchIndex < 0) {
                 continue;
             }
@@ -6958,13 +6975,52 @@ class UIHelpers {
             const range = document.createRange();
             range.setStart(start.node, start.offset);
             range.setEnd(end.node, end.offset + 1);
-            return range;
+            return {
+                range,
+                endIndex: matchIndex + candidate.length,
+            };
         }
 
         return null;
     }
 
-    highlightSpeechChunk(messageId = '', chunkText = '') {
+    findSpeechSentenceRangeByIndex(root = null, chunkIndex = -1) {
+        if (!root || !Number.isFinite(Number(chunkIndex)) || Number(chunkIndex) < 0) {
+            return null;
+        }
+
+        const textMap = this.buildSpeechHighlightTextMap(root);
+        if (!textMap.text || textMap.positions.length === 0) {
+            return null;
+        }
+
+        const sentences = Array.from(textMap.text.matchAll(/[^.!?]+(?:[.!?]+|$)/g))
+            .map((match) => ({
+                index: match.index,
+                text: String(match[0] || '').trim(),
+            }))
+            .filter((entry) => entry.text);
+        const sentence = sentences[Math.min(sentences.length - 1, Number(chunkIndex))];
+        if (!sentence) {
+            return null;
+        }
+
+        const start = textMap.positions[sentence.index];
+        const end = textMap.positions[Math.min(textMap.positions.length - 1, sentence.index + sentence.text.length - 1)];
+        if (!start?.node || !end?.node) {
+            return null;
+        }
+
+        const range = document.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset + 1);
+        return {
+            range,
+            endIndex: sentence.index + sentence.text.length,
+        };
+    }
+
+    highlightSpeechChunk(messageId = '', chunkText = '', options = {}) {
         const normalizedMessageId = String(messageId || '').trim();
         if (!normalizedMessageId || normalizedMessageId.startsWith('tts-preview:')) {
             return false;
@@ -6976,9 +7032,24 @@ class UIHelpers {
             return false;
         }
 
-        this.clearSpeechHighlights();
-        const range = this.findSpeechHighlightRange(textRoot, chunkText);
-        if (!range) {
+        const chunkIndex = Number(options.chunkIndex);
+        if (
+            this.speechHighlightState.messageId !== normalizedMessageId
+            || chunkIndex === 0
+            || chunkIndex <= this.speechHighlightState.lastChunkIndex
+        ) {
+            this.speechHighlightState = {
+                messageId: normalizedMessageId,
+                lastSearchOffset: 0,
+                lastChunkIndex: -1,
+            };
+        }
+
+        this.clearSpeechHighlights('', { preserveState: true });
+        const match = this.findSpeechHighlightRange(textRoot, chunkText, {
+            startIndex: this.speechHighlightState.lastSearchOffset,
+        }) || this.findSpeechSentenceRangeByIndex(textRoot, chunkIndex);
+        if (!match?.range) {
             return false;
         }
 
@@ -6986,9 +7057,14 @@ class UIHelpers {
         highlight.className = 'tts-reading-highlight';
         highlight.dataset.ttsReading = 'true';
         try {
-            const contents = range.extractContents();
+            const contents = match.range.extractContents();
             highlight.appendChild(contents);
-            range.insertNode(highlight);
+            match.range.insertNode(highlight);
+            this.speechHighlightState = {
+                messageId: normalizedMessageId,
+                lastSearchOffset: Math.max(this.speechHighlightState.lastSearchOffset, Number(match.endIndex) || 0),
+                lastChunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : this.speechHighlightState.lastChunkIndex,
+            };
             highlight.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
             return true;
         } catch (error) {
@@ -7000,7 +7076,9 @@ class UIHelpers {
 
     handleTtsChunkStart(event = null) {
         const detail = event?.detail || {};
-        this.highlightSpeechChunk(detail.messageId || '', detail.chunkText || '');
+        this.highlightSpeechChunk(detail.messageId || '', detail.chunkText || '', {
+            chunkIndex: detail.chunkIndex,
+        });
     }
 
     handleTtsChunkEnd(event = null) {

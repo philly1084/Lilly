@@ -99,12 +99,10 @@ async function deleteSessionAndCleanup(id, ownerId = null) {
 
     const deletedScopeKey = session?.scopeKey || session?.scope_key || session?.metadata?.memoryScope || null;
 
-    if (typeof sessionStore.isPersistent === 'function' && sessionStore.isPersistent()) {
-        try {
-            await artifactService.deleteArtifactsForSession(id);
-        } catch (error) {
-            console.warn(`[Sessions] Failed to delete artifacts for session ${id}:`, error.message);
-        }
+    try {
+        await artifactService.deleteArtifactsForSession(id);
+    } catch (error) {
+        console.warn(`[Sessions] Failed to delete artifacts for session ${id}:`, error.message);
     }
 
     try {

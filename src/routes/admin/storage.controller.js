@@ -517,14 +517,20 @@ async function cleanup(req, res, next) {
   try {
     const category = formatCategory(req.body?.category || req.query.category || '');
     const categories = category ? [category] : Object.keys(CATEGORIES);
-    const olderThanDays = Math.max(1, Math.min(3650, safeNumber(req.body?.olderThanDays, 30)));
+    const clearAll = req.body?.clearAll === true || req.query.clearAll === 'true';
+    const olderThanDays = clearAll
+      ? 0
+      : Math.max(1, Math.min(3650, safeNumber(req.body?.olderThanDays, 30)));
     const dryRun = req.body?.dryRun !== false;
-    const cutoff = Date.now() - (olderThanDays * 24 * 60 * 60 * 1000);
+    const cutoff = clearAll ? Number.POSITIVE_INFINITY : Date.now() - (olderThanDays * 24 * 60 * 60 * 1000);
     const deleted = [];
 
     for (const currentCategory of categories) {
       const result = await scanCategory(currentCategory);
       const expired = result.records.filter((record) => {
+        if (clearAll) {
+          return true;
+        }
         const timestamp = Date.parse(record.updatedAt || record.createdAt || '');
         return Number.isFinite(timestamp) && timestamp < cutoff;
       });
@@ -554,6 +560,7 @@ async function cleanup(req, res, next) {
       success: true,
       data: {
         dryRun,
+        clearAll,
         olderThanDays,
         deletedCount: dryRun ? 0 : deleted.length,
         matchedCount: deleted.length,
@@ -567,12 +574,10 @@ async function cleanup(req, res, next) {
 }
 
 async function deleteChatSession(sessionId) {
-  if (typeof sessionStore.isPersistent === 'function' && sessionStore.isPersistent()) {
-    try {
-      await artifactService.deleteArtifactsForSession(sessionId);
-    } catch (error) {
-      console.warn(`[AdminStorage] Failed to delete artifacts for chat session ${sessionId}:`, error.message);
-    }
+  try {
+    await artifactService.deleteArtifactsForSession(sessionId);
+  } catch (error) {
+    console.warn(`[AdminStorage] Failed to delete artifacts for chat session ${sessionId}:`, error.message);
   }
 
   const deleted = await sessionStore.delete(sessionId);

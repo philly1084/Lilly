@@ -107,10 +107,15 @@ describe('splitTextIntoSpeechChunks', () => {
             });
 
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three.']);
+            expect(preparedTexts).toEqual(['One.', 'Two.']);
             expect(startedAt).toEqual([]);
 
-            resolvers.forEach((resolve) => resolve());
+            resolvers[0]();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three.']);
+
+            resolvers.slice(1).forEach((resolve) => resolve());
             await expect(playbackPromise).resolves.toBe(true);
             expect(startedAt).toHaveLength(3);
         } finally {

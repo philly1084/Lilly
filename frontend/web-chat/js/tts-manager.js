@@ -5,6 +5,7 @@ const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
 const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 1;
 const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 4;
+const DEFAULT_TTS_SYNTHESIS_LANES = 2;
 const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 2;
 const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.35;
 const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 1800;
@@ -1291,10 +1292,13 @@ class WebChatTtsManager extends EventTarget {
         }
 
         const preparedChunkPromises = new Map();
+        const preparingChunkIndexes = new Set();
         let activePlaybackContext = playbackContext;
         let nextChunkToPrepare = 0;
+        let preparedWindowAnchor = 0;
         let scheduledEndTime = 0;
         const synthesisLookahead = Math.max(1, DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD);
+        const synthesisLanes = Math.max(1, DEFAULT_TTS_SYNTHESIS_LANES);
         activePlaybackContext = activePlaybackContext || await this.preparePlayback();
         const bufferedChunkResults = new Map();
 
@@ -1303,17 +1307,24 @@ class WebChatTtsManager extends EventTarget {
                 return;
             }
 
-            preparedChunkPromises.set(index, this.synthesizeAndPrepareMessageAudio(chunks[index], normalizedMessageId, {
+            preparingChunkIndexes.add(index);
+            const chunkPromise = this.synthesizeAndPrepareMessageAudio(chunks[index], normalizedMessageId, {
                 showLoading: index === 0,
                 resetCurrentMessage: index === 0,
                 playbackContext: activePlaybackContext,
-            }));
+            }).finally(() => {
+                preparingChunkIndexes.delete(index);
+                fillPreparedWindow(preparedWindowAnchor);
+            });
+            preparedChunkPromises.set(index, chunkPromise);
         };
 
         const fillPreparedWindow = (currentIndex) => {
+            preparedWindowAnchor = Math.max(preparedWindowAnchor, Number(currentIndex) || 0);
             while (
                 nextChunkToPrepare < chunks.length
-                && nextChunkToPrepare <= (currentIndex + synthesisLookahead)
+                && nextChunkToPrepare <= (preparedWindowAnchor + synthesisLookahead)
+                && preparingChunkIndexes.size < synthesisLanes
             ) {
                 prepareChunk(nextChunkToPrepare);
                 nextChunkToPrepare += 1;
@@ -1410,6 +1421,14 @@ class WebChatTtsManager extends EventTarget {
         await primeInitialPlaybackBuffer();
 
         for (let index = 0; index < chunks.length; index += 1) {
+            fillPreparedWindow(index);
+            while (!bufferedChunkResults.has(index) && !preparedChunkPromises.has(index)) {
+                if (!this.isPlaybackRequestActive(playbackToken)) {
+                    return false;
+                }
+                await wait(10);
+                fillPreparedWindow(index);
+            }
             const chunkPromise = bufferedChunkResults.has(index)
                 ? Promise.resolve(bufferedChunkResults.get(index))
                 : preparedChunkPromises.get(index);

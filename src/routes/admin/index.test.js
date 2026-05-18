@@ -427,6 +427,104 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('permanently deletes file-backed chat artifacts through the admin dashboard', async () => {
+        const listSpy = jest.spyOn(sessionStore, 'list').mockResolvedValue([
+            {
+                id: 'chat-session-file-backed',
+                createdAt: '2026-05-01T00:00:00.000Z',
+                updatedAt: '2026-05-02T00:00:00.000Z',
+                messageCount: 2,
+                scopeKey: 'web-chat',
+                metadata: {
+                    ownerId: 'owner-1',
+                    recentMessages: [
+                        { role: 'user', content: 'File backed chat to remove' },
+                    ],
+                },
+            },
+        ]);
+        const persistentSpy = jest.spyOn(sessionStore, 'isPersistent').mockReturnValue(false);
+        const deleteSpy = jest.spyOn(sessionStore, 'delete').mockResolvedValue(true);
+        const deleteArtifactsSpy = jest.spyOn(artifactService, 'deleteArtifactsForSession').mockResolvedValue(undefined);
+        const forgetSpy = jest.spyOn(memoryService, 'forget').mockResolvedValue(undefined);
+        const app = buildApp({ isAvailable: jest.fn(() => true) });
+
+        try {
+            const response = await request(app).delete('/api/admin/storage/chatSessions/chat-session-file-backed');
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.data.deleted).toBe(1);
+            expect(deleteArtifactsSpy).toHaveBeenCalledWith('chat-session-file-backed');
+            expect(deleteSpy).toHaveBeenCalledWith('chat-session-file-backed');
+            expect(forgetSpy).toHaveBeenCalledWith('chat-session-file-backed');
+        } finally {
+            forgetSpy.mockRestore();
+            deleteArtifactsSpy.mockRestore();
+            deleteSpy.mockRestore();
+            persistentSpy.mockRestore();
+            listSpy.mockRestore();
+        }
+    });
+
+    test('clear-all storage cleanup deletes current chats too', async () => {
+        const previousDataDir = process.env.KIMIBUILT_DATA_DIR;
+        const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kimibuilt-admin-storage-clear-all-'));
+        process.env.KIMIBUILT_DATA_DIR = dataDir;
+        const listSpy = jest.spyOn(sessionStore, 'list').mockResolvedValue([
+            {
+                id: 'chat-session-current',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                messageCount: 1,
+                scopeKey: 'web-chat',
+                metadata: {
+                    ownerId: 'owner-1',
+                    recentMessages: [
+                        { role: 'user', content: 'Brand new chat' },
+                    ],
+                },
+            },
+        ]);
+        const persistentSpy = jest.spyOn(sessionStore, 'isPersistent').mockReturnValue(false);
+        const deleteSpy = jest.spyOn(sessionStore, 'delete').mockResolvedValue(true);
+        const deleteArtifactsSpy = jest.spyOn(artifactService, 'deleteArtifactsForSession').mockResolvedValue(undefined);
+        const forgetSpy = jest.spyOn(memoryService, 'forget').mockResolvedValue(undefined);
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
+        const app = buildApp({ isAvailable: jest.fn(() => true) });
+
+        try {
+            const response = await request(app)
+                .post('/api/admin/storage/cleanup')
+                .send({ clearAll: true, dryRun: false });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.data.clearAll).toBe(true);
+            expect(response.body.data.deletedCount).toBe(1);
+            expect(response.body.data.records[0]).toEqual(expect.objectContaining({
+                id: 'chat-session-current',
+                category: 'chatSessions',
+            }));
+            expect(deleteArtifactsSpy).toHaveBeenCalledWith('chat-session-current');
+            expect(deleteSpy).toHaveBeenCalledWith('chat-session-current');
+            expect(forgetSpy).toHaveBeenCalledWith('chat-session-current');
+        } finally {
+            isEnabledSpy.mockRestore();
+            forgetSpy.mockRestore();
+            deleteArtifactsSpy.mockRestore();
+            deleteSpy.mockRestore();
+            persistentSpy.mockRestore();
+            listSpy.mockRestore();
+            if (previousDataDir === undefined) {
+                delete process.env.KIMIBUILT_DATA_DIR;
+            } else {
+                process.env.KIMIBUILT_DATA_DIR = previousDataDir;
+            }
+            await fs.rm(dataDir, { recursive: true, force: true });
+        }
+    });
+
     test('bulk deletes selected old chats and stored document artifacts from the admin dashboard', async () => {
         const listSessionsSpy = jest.spyOn(sessionStore, 'list').mockResolvedValue([
             {
