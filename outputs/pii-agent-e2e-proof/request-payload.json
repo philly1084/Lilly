@@ -1,0 +1,11 @@
+{
+  "stream": false,
+  "enableConversationExecutor": true,
+  "metadata": {
+    "clientSurface": "web-chat",
+    "piiRelationshipCalculations": "force",
+    "testName": "pii_formula_only_agent_tool_e2e",
+    "requestedOutputFormat": "text"
+  },
+  "message": "E2E agent tool smoke. Do not create an artifact, workbook, HTML, PDF, file, or download. Do not calculate the answer yourself. Use the hidden PII relationship calculation tool only. Tool operation must be xlsx_formula_plan. Return only a short text summary of the tool result: operation, targetCells, privacy flags, and formula summary. Do not return the highest individual, winnerPlaceholder, aggregateValue, ranked result, raw names, or placeholder relationships.\n\nPII-protected table request:\nTable id: sales\nColumns: person, period, baseSales, serviceFees, rebates, credits\nRows:\nr1 | Alice Johnson | Jan | 120.50 | 12 | 3.50 | 4\nr2 | Priya Singh | Jan | 190 | 8 | 2 | 11\nr3 | Alice Johnson | Feb | 80 | 4.50 | 1.25 | 0\nr4 | Marcus Lee | Feb | 155.25 | 13 | 0 | 8.50\nr5 | Priya Singh | Mar | 10 | 0 | 0 | 0\nr6 | Alice Johnson | Mar | 25.75 | 6 | 2 | 1\n\nFormula intent: per-row amount is baseSales + serviceFees + rebates - credits. Aggregate by private person. Target result cell Presentation_Result!B5. Helper slots begin at Presentation_Result!A12. The model must not learn or output who wins."
+}

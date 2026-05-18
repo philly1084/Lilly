@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PII Relationship Calculation E2E Proof</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --text: #18202b;
+      --muted: #5d6878;
+      --border: #d8dee8;
+      --good: #0f7b4f;
+      --warn: #9a5b00;
+      --ink: #111827;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    header, section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    h1, h2 {
+      margin: 0 0 12px;
+      line-height: 1.2;
+    }
+    h1 { font-size: 28px; }
+    h2 { font-size: 19px; }
+    p { margin: 0 0 12px; }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      color: var(--ink);
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: #f0f3f7;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin: 8px 0 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #eef2f7; }
+    .pass { color: var(--good); font-weight: 700; }
+    .note { color: var(--muted); }
+    .warn { color: var(--warn); font-weight: 700; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .fact {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+    .fact strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>PII Relationship Calculation E2E Proof</h1>
+      <p class="pass">Result: PASS. The live agent route used the hidden relationship calculator and returned a formula plan without exposing the private winner, aggregate value, raw synthetic names, or HMAC indexes.</p>
+      <p class="note">Test time: 2026-05-17. Route: <code>POST /api/chat</code>. Live image: <code>ghcr.io/philly1084/lilly:sha-f6ec40f</code>.</p>
+    </header>
+
+    <section>
+      <h2>Deployment Evidence</h2>
+      <div class="grid">
+        <div class="fact"><strong>Build run</strong><code>26005376450</code><br><span class="pass">success</span></div>
+        <div class="fact"><strong>Deploy run</strong><code>26005610887</code><br><span class="pass">success</span></div>
+        <div class="fact"><strong>Pod health</strong><code>/live</code> and <code>/ready</code><br><span class="pass">ready</span></div>
+        <div class="fact"><strong>HTTP smoke status</strong><code>200</code><br><span class="pass">ok</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Agent Prompt Shape</h2>
+      <p>The smoke prompt used synthetic PII-like names in the user request, forced <code>metadata.piiRelationshipCalculations = "force"</code>, and instructed the agent to use only <code>pii-relationship-calculate</code> with operation <code>xlsx_formula_plan</code>.</p>
+      <pre>E2E agent tool smoke. Do not create an artifact, workbook, HTML, PDF, file, or download.
+Do not calculate the answer yourself. Use the hidden PII relationship calculation tool only.
+Tool operation must be xlsx_formula_plan.
+Return only: operation, targetCells, privacy flags, and formula summary.
+Do not return the highest individual, winnerPlaceholder, aggregateValue, raw names, or placeholder relationships.
+
+Formula intent: per-row amount is baseSales + serviceFees + rebates - credits.
+Aggregate by private person.
+Target result cell Presentation_Result!B5.
+Helper slots begin at Presentation_Result!A12.
+The model must not learn or output who wins.</pre>
+      <p class="note">The raw synthetic names are preserved in <code>request-payload.json</code> as test input only; the tool call below shows the sanitized model/tool-facing contract.</p>
+    </section>
+
+    <section>
+      <h2>Hidden Tool Call</h2>
+      <table>
+        <thead><tr><th>Field</th><th>Observed value</th></tr></thead>
+        <tbody>
+          <tr><td>Tool</td><td><code>pii-relationship-calculate</code></td></tr>
+          <tr><td>Operation</td><td><code>xlsx_formula_plan</code></td></tr>
+          <tr><td>Target result cell</td><td><code>Presentation_Result!B5</code></td></tr>
+          <tr><td>Helper start cell</td><td><code>Presentation_Result!A12</code></td></tr>
+          <tr><td>Grouping key</td><td><code>person</code> column with opaque <code>[[PII:...]]</code> placeholders</td></tr>
+          <tr><td>Formula</td><td><code>baseSales + serviceFees + rebates - credits</code></td></tr>
+        </tbody>
+      </table>
+      <pre>{"operation":"xlsx_formula_plan","tableId":"sales","groupBy":"person","measures":["baseSales","serviceFees","rebates"],"subtractMeasures":["credits"],"target":{"resultCell":"Presentation_Result!B5","helperStartCell":"Presentation_Result!A12","sheetName":"Presentation_Result"},"rows":"r1-r6 with opaque [[PII:...]] person placeholders"}</pre>
+    </section>
+
+    <section>
+      <h2>Response Preview</h2>
+      <pre>Operation: xlsx_formula_plan
+Target cells: Presentation_Result!B5 (final aggregated result); helper slots beginning at Presentation_Result!A12 through row 17
+Privacy flags: pii_protected, suppress_winner, suppress_aggregate_leak, vault_computed_grouping
+Formula summary: Helper formulas compute each row's amount as baseSales + serviceFees + rebates - credits; aggregation groups by private person; the final value is emitted to Presentation_Result!B5 without model-visible evaluation.</pre>
+    </section>
+
+    <section>
+      <h2>Pass Checks</h2>
+      <table>
+        <thead><tr><th>Check</th><th>Observed</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>HTTP status</td><td><code>200</code></td><td class="pass">PASS</td></tr>
+          <tr><td>Hidden tool selected</td><td><code>["pii-relationship-calculate"]</code></td><td class="pass">PASS</td></tr>
+          <tr><td>Tool success</td><td><code>true</code></td><td class="pass">PASS</td></tr>
+          <tr><td>Artifacts created by chat route</td><td><code>0</code></td><td class="pass">PASS</td></tr>
+          <tr><td>Relationship calculation active</td><td><code>true</code></td><td class="pass">PASS</td></tr>
+          <tr><td>Raw synthetic names in response JSON</td><td><code>false</code></td><td class="pass">PASS</td></tr>
+          <tr><td><code>winnerPlaceholder</code> exposed</td><td><code>false</code></td><td class="pass">PASS</td></tr>
+          <tr><td><code>aggregateValue</code> exposed</td><td><code>false</code></td><td class="pass">PASS</td></tr>
+          <tr><td>HMAC/index terms exposed</td><td><code>false</code></td><td class="pass">PASS</td></tr>
+          <tr><td>Formula plan returned</td><td><code>true</code></td><td class="pass">PASS</td></tr>
+          <tr><td>Target cell returned</td><td><code>Presentation_Result!B5</code></td><td class="pass">PASS</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Files</h2>
+      <p><code>live-response.json</code> contains the raw live API response from the successful smoke test. <code>request-payload.json</code> contains the exact synthetic request payload used for the smoke test.</p>
+    </section>
+  </main>
+</body>
+</html>

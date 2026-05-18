@@ -1,0 +1,115 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "file:///C:/Users/phill/KimiBuilt/outputs/pii-agent-e2e-proof/pii-agent-e2e-proof.html",
+  "originalUrl": "file:///C:/Users/phill/KimiBuilt/outputs/pii-agent-e2e-proof/pii-agent-e2e-proof.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-17T23:24:06.505Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\outputs\\pii-agent-e2e-proof\\ui-check-file\\pii-relationship-calculation-e2e-proof-desktop.png",
+      "metrics": {
+        "title": "PII Relationship Calculation E2E Proof",
+        "url": "file:///C:/Users/phill/KimiBuilt/outputs/pii-agent-e2e-proof/pii-agent-e2e-proof.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 2596,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 3286,
+        "bodyTextPreview": "PII Relationship Calculation E2E Proof Result: PASS. The live agent route used the hidden relationship calculator and returned a formula plan without exposing the private winner, aggregate value, raw synthetic names, or HMAC indexes. Test time: 2026-05-17. Route: POST /api/chat. Live image: ghcr.io/philly1084/lilly:sha-f6ec40f. Deployment Evidence Build run 26005376450 success Deploy run 26005610887 success Pod health /live and /ready ready HTTP smoke status 200 ok Agent Prompt Shape The smoke p",
+        "headings": [
+          "PII Relationship Calculation E2E Proof",
+          "Deployment Evidence",
+          "Agent Prompt Shape",
+          "Hidden Tool Call",
+          "Response Preview",
+          "Pass Checks",
+          "Files"
+        ],
+        "interactiveControls": 0,
+        "textContrast": {
+          "checked": 91,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\outputs\\pii-agent-e2e-proof\\ui-check-file\\pii-relationship-calculation-e2e-proof-mobile.png",
+      "metrics": {
+        "title": "PII Relationship Calculation E2E Proof",
+        "url": "file:///C:/Users/phill/KimiBuilt/outputs/pii-agent-e2e-proof/pii-agent-e2e-proof.html",
+        "viewport": {
+          "width": 448,
+          "height": 970
+        },
+        "scrollWidth": 448,
+        "scrollHeight": 4340,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 3286,
+        "bodyTextPreview": "PII Relationship Calculation E2E Proof Result: PASS. The live agent route used the hidden relationship calculator and returned a formula plan without exposing the private winner, aggregate value, raw synthetic names, or HMAC indexes. Test time: 2026-05-17. Route: POST /api/chat. Live image: ghcr.io/philly1084/lilly:sha-f6ec40f. Deployment Evidence Build run 26005376450 success Deploy run 26005610887 success Pod health /live and /ready ready HTTP smoke status 200 ok Agent Prompt Shape The smoke p",
+        "headings": [
+          "PII Relationship Calculation E2E Proof",
+          "Deployment Evidence",
+          "Agent Prompt Shape",
+          "Hidden Tool Call",
+          "Response Preview",
+          "Pass Checks",
+          "Files"
+        ],
+        "interactiveControls": 0,
+        "textContrast": {
+          "checked": 91,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\outputs\\pii-agent-e2e-proof\\ui-check-file\\pii-relationship-calculation-e2e-proof-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\outputs\\pii-agent-e2e-proof\\ui-check-file\\pii-relationship-calculation-e2e-proof-mobile.png"
+    ],
+    "issues": []
+  }
+}

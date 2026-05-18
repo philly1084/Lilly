@@ -3,8 +3,8 @@ const DEFAULT_BROWSER_VOICE_ID = 'browser:default';
 const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 520;
 const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
-const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 6;
-const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 2;
+const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 1;
+const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 3;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
 
 function normalizeSpeechSentence(line = '') {
@@ -342,6 +342,10 @@ class WebChatTtsManager extends EventTarget {
     }
 
     storageGet(key) {
+        if (typeof window === 'undefined') {
+            return null;
+        }
+
         if (window.sessionManager?.safeStorageGet) {
             return window.sessionManager.safeStorageGet(key);
         }
@@ -350,6 +354,10 @@ class WebChatTtsManager extends EventTarget {
     }
 
     storageSet(key, value) {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+
         if (window.sessionManager?.safeStorageSet) {
             return window.sessionManager.safeStorageSet(key, value);
         }
@@ -1230,6 +1238,7 @@ class WebChatTtsManager extends EventTarget {
         let nextChunkToPrepare = 0;
         let scheduledEndTime = 0;
         const synthesisLookahead = Math.max(1, DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD);
+        activePlaybackContext = activePlaybackContext || await this.preparePlayback();
 
         const prepareChunk = (index) => {
             if (index < 0 || index >= chunks.length || preparedChunkPromises.has(index)) {
@@ -1244,7 +1253,10 @@ class WebChatTtsManager extends EventTarget {
         };
 
         const fillPreparedWindow = (currentIndex) => {
-            while (nextChunkToPrepare < chunks.length && nextChunkToPrepare <= (currentIndex + synthesisLookahead)) {
+            while (
+                nextChunkToPrepare < chunks.length
+                && nextChunkToPrepare <= (currentIndex + synthesisLookahead)
+            ) {
                 prepareChunk(nextChunkToPrepare);
                 nextChunkToPrepare += 1;
             }
