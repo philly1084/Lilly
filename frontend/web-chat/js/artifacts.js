@@ -407,6 +407,17 @@
                 white-space: pre-wrap;
             }
 
+            .artifact-generated-card .artifact-privacy-preview-note {
+                margin-bottom: 12px;
+                padding: 12px;
+                border: 1px solid rgba(14, 165, 233, 0.24);
+                border-radius: 12px;
+                background: rgba(14, 165, 233, 0.08);
+                color: var(--text-secondary);
+                font-size: 13px;
+                line-height: 1.45;
+            }
+
             .site-preview-modal {
                 position: fixed;
                 inset: 0;
@@ -911,7 +922,17 @@
         return format === 'pdf' || mimeType.includes('pdf') || filename.endsWith('.pdf');
     }
 
+    function isPrivacyPreviewSuppressed(artifact = null) {
+        return artifact?.metadata?.privacyPreviewSuppressed === true
+            || artifact?.metadata?.piiCleansing?.uploadPreviewSuppressed === true
+            || artifact?.preview?.type === 'privacy-hidden';
+    }
+
     function getArtifactImagePreviewUrl(artifact) {
+        if (isPrivacyPreviewSuppressed(artifact)) {
+            return '';
+        }
+
         if (!isImageArtifact(artifact)) {
             return '';
         }
@@ -924,7 +945,7 @@
     }
 
     function getArtifactTextPreview(artifact) {
-        if (!artifact || isMermaidArtifact(artifact) || isImageArtifact(artifact)) {
+        if (!artifact || isPrivacyPreviewSuppressed(artifact) || isMermaidArtifact(artifact) || isImageArtifact(artifact)) {
             return '';
         }
         const format = String(artifact.format || '').toLowerCase();
@@ -1032,6 +1053,10 @@
     }
 
     function getArtifactPreviewUrl(artifact, options = {}) {
+        if (isPrivacyPreviewSuppressed(artifact)) {
+            return '';
+        }
+
         const absolute = options && options.absolute === true;
         const preferSandbox = options && options.sandbox === true;
 
@@ -1178,6 +1203,9 @@
         const textPreview = textPreviewContent
             ? `<pre class="artifact-text-preview">${escapeHtml(textPreviewContent.slice(0, 2400))}</pre>`
             : '';
+        const privacyPreviewNote = isPrivacyPreviewSuppressed(artifact)
+            ? '<div class="artifact-privacy-preview-note">Preview hidden while PII protection is enabled. The file can still be used as protected context.</div>'
+            : '';
         const mermaidActions = mermaidArtifact
             ? `
                 <button
@@ -1232,6 +1260,7 @@
                 ${mermaidPreview}
                 ${htmlPreview}
                 ${textPreview}
+                ${privacyPreviewNote}
                 <div class="file-actions">
                     ${htmlActions}
                     <button class="${htmlPreviewUrl ? 'is-secondary' : 'primary'}" onclick="artifactManager.downloadArtifact('${artifact.id}', '${escapeHtml(artifact.filename)}')">

@@ -33,6 +33,7 @@ jest.mock('../pii', () => ({
         restorations: [],
         enabled: false,
     })),
+    resolvePiiPolicy: jest.fn(() => ({ enabled: false })),
 }));
 
 jest.mock('../unsplash-client', () => ({
@@ -80,7 +81,7 @@ const { postgres } = require('../postgres');
 const { vectorStore } = require('../memory/vector-store');
 const { renderArtifact } = require('./artifact-renderer');
 const { createResponse } = require('../openai-client');
-const { sanitizeRuntimePayload, rehydrateText } = require('../pii');
+const { sanitizeRuntimePayload, rehydrateText, resolvePiiPolicy } = require('../pii');
 const { searchImages, isConfigured } = require('../unsplash-client');
 const { persistGeneratedArtifactLocally } = require('../generated-file-artifacts');
 const { readFrontendBundleArchive } = require('../frontend-bundles');
@@ -101,6 +102,7 @@ describe('ArtifactService', () => {
             restorations: [],
             enabled: false,
         }));
+        resolvePiiPolicy.mockReturnValue({ enabled: false });
         postgres.enabled = true;
         isConfigured.mockReturnValue(false);
         persistGeneratedArtifactLocally.mockResolvedValue({
@@ -1222,7 +1224,9 @@ describe('ArtifactService', () => {
         });
     });
 
-    test('serializeArtifact exposes preview urls for uploaded PDFs without extracted html', () => {
+    test('serializeArtifact suppresses uploaded-file previews while PII protection is enabled', () => {
+        resolvePiiPolicy.mockReturnValue({ enabled: true });
+
         const serialized = artifactService.serializeArtifact({
             id: 'artifact-pdf-1',
             sessionId: 'session-1',
@@ -1240,9 +1244,15 @@ describe('ArtifactService', () => {
             createdAt: '2026-04-08T00:00:00.000Z',
         });
 
-        expect(serialized.previewUrl).toBe('/api/artifacts/artifact-pdf-1/preview');
-        expect(serialized.sandboxUrl).toBe('/api/artifacts/artifact-pdf-1/sandbox');
+        expect(serialized.previewUrl).toBeNull();
+        expect(serialized.sandboxUrl).toBeNull();
         expect(serialized.preview).toBeNull();
+        expect(serialized.metadata).toEqual(expect.objectContaining({
+            privacyPreviewSuppressed: true,
+            piiCleansing: expect.objectContaining({
+                uploadPreviewSuppressed: true,
+            }),
+        }));
     });
 
     test('adds conservative instructions for resume PDF revisions', () => {

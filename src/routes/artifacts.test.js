@@ -183,6 +183,32 @@ describe('/api/artifacts route', () => {
         expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
     });
 
+    test('hides uploaded-file previews when PII protection is enabled', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-upload-1',
+            sessionId: 'session-1',
+            direction: 'uploaded',
+            filename: 'patients.csv',
+            extension: 'csv',
+            mimeType: 'text/csv',
+            previewHtml: '<pre>Jane Patient,123-45-6789</pre>',
+            contentBuffer: Buffer.from('Jane Patient,123-45-6789'),
+            metadata: {},
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const response = await request(buildApp()).get('/api/artifacts/artifact-upload-1/preview');
+
+        expect(response.status).toBe(200);
+        expect(response.headers['content-type']).toContain('text/html');
+        expect(response.text).toContain('Preview hidden');
+        expect(response.text).not.toContain('Jane Patient');
+        expect(response.text).not.toContain('123-45-6789');
+    });
+
     test('serves PDF previews as inline PDF bytes instead of stored text fallback html', async () => {
         const pdfBuffer = Buffer.from('%PDF-1.4\n1 0 obj\nendobj\n%%EOF', 'latin1');
         artifactService.getArtifact.mockResolvedValue({

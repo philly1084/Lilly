@@ -42,7 +42,7 @@ const {
     renderInteractiveArtifactInstructions,
     shouldUseInteractiveHtmlArtifact,
 } = require('./artifact-experience');
-const { sanitizeRuntimePayload, rehydrateText } = require('../pii');
+const { sanitizeRuntimePayload, rehydrateText, resolvePiiPolicy } = require('../pii');
 const {
     deleteLocalGeneratedArtifact,
     deleteLocalGeneratedArtifactsBySession,
@@ -68,6 +68,22 @@ const COMPOSITION_META_PHRASES = [
     /\bthe final pass should\b/i,
     /\bverification date used for the build\b/i,
 ];
+
+function shouldSuppressUploadedArtifactPreview(artifact = {}) {
+    if (String(artifact?.direction || '').toLowerCase() !== 'uploaded') {
+        return false;
+    }
+
+    try {
+        return resolvePiiPolicy({
+            metadata: artifact.metadata || {},
+            clientSurface: 'web-chat',
+            route: '/api/artifacts/preview',
+        }).enabled === true;
+    } catch (_error) {
+        return false;
+    }
+}
 
 function isPdfArtifactRecord(artifact = {}) {
     const extension = String(artifact.extension || artifact.format || '').toLowerCase();
@@ -1816,7 +1832,8 @@ class ArtifactService {
             : Number(siteBundle?.fileCount || 0);
         const hasSiteBundle = siteBundleFileCount > 1;
         const hasPdfPreview = isPdfArtifactRecord(artifact);
-        const previewUrl = (artifact.extension === 'html' || Boolean(artifact.previewHtml) || hasPdfPreview)
+        const privacyPreviewSuppressed = shouldSuppressUploadedArtifactPreview(artifact);
+        const previewUrl = !privacyPreviewSuppressed && (artifact.extension === 'html' || Boolean(artifact.previewHtml) || hasPdfPreview)
             ? `/api/artifacts/${artifact.id}/preview`
             : null;
         const sandboxUrl = previewUrl
@@ -1825,12 +1842,24 @@ class ArtifactService {
         const bundleDownloadUrl = hasSiteBundle
             ? `/api/artifacts/${artifact.id}/bundle`
             : null;
-        const serializedMetadata = frontendMetadata
+        let serializedMetadata = frontendMetadata
             ? sanitizeFrontendArtifactMetadata({
                 ...metadata,
                 ...frontendMetadata,
             }, artifact.previewHtml || artifact.extractedText || '')
             : metadata;
+        if (privacyPreviewSuppressed) {
+            serializedMetadata = {
+                ...serializedMetadata,
+                privacyPreviewSuppressed: true,
+                piiCleansing: {
+                    ...(serializedMetadata.piiCleansing && typeof serializedMetadata.piiCleansing === 'object'
+                        ? serializedMetadata.piiCleansing
+                        : {}),
+                    uploadPreviewSuppressed: true,
+                },
+            };
+        }
 
         return {
             id: artifact.id,
@@ -1848,7 +1877,9 @@ class ArtifactService {
             previewUrl,
             sandboxUrl,
             bundleDownloadUrl,
-            preview: hasSiteBundle
+            preview: privacyPreviewSuppressed
+                ? null
+                : hasSiteBundle
                 ? {
                     type: 'site',
                     entry: siteBundle.entry,

@@ -90,4 +90,34 @@ describe('web-chat artifact PDF previews', () => {
         expect(markup).toContain('artifact-html-preview');
         expect(markup).toContain('Loading page preview');
     });
+
+    test('hides uploaded artifact previews when PII preview suppression is flagged', () => {
+        const artifactManager = loadArtifactManager();
+
+        const markup = artifactManager.buildGalleryMarkup([{
+            id: 'upload-1',
+            filename: 'patients.csv',
+            format: 'csv',
+            mimeType: 'text/csv',
+            sizeBytes: 1024,
+            downloadUrl: '/api/artifacts/upload-1/download',
+            previewUrl: '/api/artifacts/upload-1/preview',
+            preview: {
+                type: 'text',
+                content: 'Jane Patient,123-45-6789',
+            },
+            metadata: {
+                privacyPreviewSuppressed: true,
+                piiCleansing: {
+                    uploadPreviewSuppressed: true,
+                },
+            },
+        }]);
+
+        expect(markup).toContain('Preview hidden while PII protection is enabled');
+        expect(markup).not.toContain('Open Preview');
+        expect(markup).not.toContain('artifact-html-preview');
+        expect(markup).not.toContain('Jane Patient');
+        expect(markup).not.toContain('123-45-6789');
+    });
 });

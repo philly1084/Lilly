@@ -32,7 +32,7 @@ const {
     resolveClientSurface,
     resolveSessionScope,
 } = require('../session-scope');
-const { rehydrateHtml, rehydrateText } = require('../pii');
+const { rehydrateHtml, rehydrateText, resolvePiiPolicy } = require('../pii');
 
 const router = Router();
 const DEPLOYABLE_TEXT_EXTENSIONS = new Set([
@@ -82,6 +82,53 @@ function applyPreviewResponseHeaders(res) {
             ].join('; '),
         );
     }
+}
+
+function shouldSuppressUploadedArtifactPreview(req, artifact = {}) {
+    if (String(artifact?.direction || '').toLowerCase() !== 'uploaded') {
+        return false;
+    }
+
+    try {
+        return resolvePiiPolicy({
+            metadata: {
+                ...(artifact.metadata || {}),
+                clientSurface: 'web-chat',
+            },
+            clientSurface: 'web-chat',
+            route: req?.path || '/api/artifacts/preview',
+        }).enabled === true;
+    } catch (_error) {
+        return false;
+    }
+}
+
+function sendSuppressedUploadedArtifactPreview(res) {
+    applyPreviewResponseHeaders(res);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview hidden</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; color: #172033; background: #f8fafc; }
+    main { min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+    section { max-width: 520px; border: 1px solid #d8e0ea; background: #ffffff; border-radius: 8px; padding: 22px; box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08); }
+    h1 { margin: 0 0 8px; font-size: 18px; line-height: 1.3; }
+    p { margin: 0; font-size: 14px; line-height: 1.55; color: #536176; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>Preview hidden</h1>
+      <p>PII protection is enabled, so uploaded-file previews are not displayed in web chat. The file can still be used as protected context.</p>
+    </section>
+  </main>
+</body>
+</html>`);
 }
 
 function applySandboxShellHeaders(res) {
@@ -608,6 +655,10 @@ async function serveArtifactSandbox(req, res, next, previewAccessToken = '') {
             return res.status(404).json({ error: { message: 'Artifact not found' } });
         }
 
+        if (shouldSuppressUploadedArtifactPreview(req, artifact)) {
+            return sendSuppressedUploadedArtifactPreview(res);
+        }
+
         applySandboxShellHeaders(res);
         res.send(buildTokenizedSandboxPreviewShell(req.params.id, previewAccessToken));
     } catch (err) {
@@ -623,6 +674,9 @@ router.get('/:id/download', async (req, res, next) => {
         }
 
         const inlineRequested = ['1', 'true', 'yes'].includes(String(req.query.inline || '').toLowerCase());
+        if (inlineRequested && shouldSuppressUploadedArtifactPreview(req, artifact)) {
+            return sendSuppressedUploadedArtifactPreview(res);
+        }
         res.setHeader('Content-Type', artifact.mimeType);
         res.setHeader(
             'Content-Disposition',
@@ -658,6 +712,10 @@ async function serveArtifactPreview(req, res, next, requestedPath = '', previewA
         const artifact = await getOwnedArtifact(req, req.params.id, { includeContent: true });
         if (!artifact) {
             return res.status(404).json({ error: { message: 'Artifact not found' } });
+        }
+
+        if (shouldSuppressUploadedArtifactPreview(req, artifact)) {
+            return sendSuppressedUploadedArtifactPreview(res);
         }
 
         const zipPreview = resolveArtifactFrontendBundleFile(artifact, requestedPath, {
