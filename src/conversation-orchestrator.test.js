@@ -6123,6 +6123,46 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('uses pro-search and expanded budgets for daily news research', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    toolId === 'web-search'
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Please research daily news about Canadian AI regulation and gather article sources.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+        });
+
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'web-search',
+            params: expect.objectContaining({
+                engine: 'perplexity',
+                researchMode: 'pro-search',
+                maxTokens: expect.any(Number),
+                maxTokensPerPage: expect.any(Number),
+                searchContextSize: 'medium',
+                maxOutputTokens: expect.any(Number),
+                maxSteps: 4,
+            }),
+        }));
+    });
+
     test('forces a direct Perplexity-backed web-search action for current-info prompts like weather', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {

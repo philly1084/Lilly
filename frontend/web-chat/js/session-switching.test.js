@@ -99,7 +99,7 @@ function createSessionsResponse(activeSessionId = 'session-a') {
 }
 
 describe('web-chat session switching refresh guards', () => {
-    test('does not backend-sync transcript-excluded helper cards by default', () => {
+    test('syncs opted-in helper cards for refresh while keeping default helper cards local', () => {
         const manager = createSessionManager(jest.fn());
 
         expect(manager.shouldSyncMessageToBackend({
@@ -107,13 +107,16 @@ describe('web-chat session switching refresh guards', () => {
             role: 'assistant',
             type: 'image-selection',
             content: 'Generated image options',
+            clientOnly: true,
             excludeFromTranscript: true,
         })).toBe(false);
 
         expect(manager.shouldSyncMessageToBackend({
-            id: 'assistant-1',
+            id: 'assistant-1-research-sources',
             role: 'assistant',
-            content: 'Here is the result',
+            type: 'research-sources',
+            content: 'Verified source excerpts',
+            clientOnly: true,
             metadata: {
                 excludeFromTranscript: true,
                 syncExcludedToBackend: true,

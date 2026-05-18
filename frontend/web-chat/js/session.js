@@ -514,10 +514,12 @@ class SessionManager extends EventTarget {
             || metadata.excludeFromTranscript === true;
         const syncExcludedToBackend = message.syncExcludedToBackend === true
             || metadata.syncExcludedToBackend === true;
+        const clientOnly = message.clientOnly === true
+            || metadata.clientOnly === true;
 
         return Boolean(
             message.id
-            && message.clientOnly !== true
+            && (!clientOnly || syncExcludedToBackend)
             && (!excludeFromTranscript || syncExcludedToBackend)
             && !syncSuppressed
             && ['user', 'assistant', 'system', 'tool'].includes(message.role)

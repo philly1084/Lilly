@@ -73,7 +73,7 @@ const DOCUMENT_WORKFLOW_TOOL_ID = 'document-workflow';
 const DEEP_RESEARCH_PRESENTATION_TOOL_ID = 'deep-research-presentation';
 const MAX_DOCUMENT_SOURCES = 20;
 const MAX_DOCUMENT_SUITE_FORMATS = 8;
-const MAX_DOCUMENT_SOURCE_CHARS = 4000;
+const MAX_DOCUMENT_SOURCE_CHARS = 8000;
 const DEFAULT_DEEP_RESEARCH_PASSES = 3;
 const MAX_DEEP_RESEARCH_PASSES = 6;
 const MAX_DEEP_RESEARCH_SEARCH_LIMIT = Math.max(
@@ -1514,7 +1514,7 @@ function summarizeDeepResearchSourceForMemory(source = {}) {
     return '';
   }
 
-  const limit = Math.max(300, Math.min(Number(config.memory?.researchSourceExcerptChars || 2000), 1400));
+  const limit = Math.max(300, Math.min(Number(config.memory?.researchSourceExcerptChars || 4000), MAX_DOCUMENT_SOURCE_CHARS));
   return content.length > limit ? `${content.slice(0, limit)}...` : content;
 }
 
@@ -3353,11 +3353,14 @@ class ToolManager {
                   engine: 'perplexity',
                   researchMode,
                   limit: searchLimit,
-                  region: 'us-en',
+                  region: String(params.region || 'ca-en').trim() || 'ca-en',
                   timeRange: String(params.timeRange || 'all').trim().toLowerCase() || 'all',
                   includeSnippets: true,
                   includeUrls: true,
                   domains: searchDomains,
+                  maxTokens: Math.max(10000, Number(config.search?.defaultMaxTokens || 50000)),
+                  maxTokensPerPage: Math.max(1024, Number(config.search?.defaultMaxTokensPerPage || 4096)),
+                  userLocation: params.userLocation || { country: 'CA' },
                 });
               } catch (error) {
                 researchPasses.push({

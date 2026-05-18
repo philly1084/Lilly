@@ -736,12 +736,30 @@ const config = {
             8,
             parseInt(process.env.WEB_SEARCH_MAX_LIMIT, 10) || 20,
         ),
+        defaultMaxTokens: Math.max(
+            10000,
+            parseInt(process.env.WEB_SEARCH_DEFAULT_MAX_TOKENS, 10)
+                || parseInt(process.env.PERPLEXITY_SEARCH_MAX_TOKENS, 10)
+                || 50000,
+        ),
+        defaultMaxTokensPerPage: Math.max(
+            1024,
+            parseInt(process.env.WEB_SEARCH_DEFAULT_MAX_TOKENS_PER_PAGE, 10)
+                || parseInt(process.env.PERPLEXITY_SEARCH_MAX_TOKENS_PER_PAGE, 10)
+                || 4096,
+        ),
+        defaultMaxOutputTokens: Math.max(
+            1200,
+            parseInt(process.env.WEB_SEARCH_DEFAULT_MAX_OUTPUT_TOKENS, 10)
+                || parseInt(process.env.PERPLEXITY_MAX_OUTPUT_TOKENS, 10)
+                || 3200,
+        ),
     },
 
     scrape: {
         contentCharLimit: Math.max(
             500,
-            parseInt(process.env.WEB_SCRAPE_CONTENT_CHAR_LIMIT, 10) || 12000,
+            parseInt(process.env.WEB_SCRAPE_CONTENT_CHAR_LIMIT, 10) || 24000,
         ),
         respectRobotsTxt: process.env.WEB_SCRAPE_RESPECT_ROBOTS_TXT !== 'false',
         robotsTimeoutMs: Math.max(
@@ -789,15 +807,15 @@ const config = {
         ),
         researchFollowupPages: Math.max(
             1,
-            parseInt(process.env.WEB_RESEARCH_FOLLOWUP_PAGES, 10) || 6,
+            parseInt(process.env.WEB_RESEARCH_FOLLOWUP_PAGES, 10) || 8,
         ),
         researchSourceExcerptChars: Math.max(
             500,
-            parseInt(process.env.WEB_RESEARCH_SOURCE_EXCERPT_CHARS, 10) || 2000,
+            parseInt(process.env.WEB_RESEARCH_SOURCE_EXCERPT_CHARS, 10) || 4000,
         ),
         toolResultCharLimit: Math.max(
             1000,
-            parseInt(process.env.TOOL_RESULT_CHAR_LIMIT, 10) || 18000,
+            parseInt(process.env.TOOL_RESULT_CHAR_LIMIT, 10) || 32000,
         ),
         debugTrace: process.env.MEMORY_DEBUG_TRACE === 'true',
     },

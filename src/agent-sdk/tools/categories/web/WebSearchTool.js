@@ -7,9 +7,9 @@ const { config } = require('../../../../config');
 const { normalizeDomainList } = require('./research-site-policy');
 
 const DEFAULT_SEARCH_LIMIT = Math.min(config.search.defaultLimit, config.search.maxLimit);
-const DEFAULT_MAX_TOKENS = 10000;
-const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1800;
+const DEFAULT_MAX_TOKENS = Math.max(10000, Number(config.search.defaultMaxTokens) || 50000);
+const DEFAULT_MAX_TOKENS_PER_PAGE = Math.max(1024, Number(config.search.defaultMaxTokensPerPage) || 4096);
+const DEFAULT_MAX_OUTPUT_TOKENS = Math.max(1200, Number(config.search.defaultMaxOutputTokens) || 3200);
 const DEFAULT_DEEP_RESEARCH_OUTPUT_TOKENS = 7000;
 const DEFAULT_SEARCH_REGION = 'ca-en';
 const DEFAULT_SEARCH_COUNTRY = 'CA';
@@ -1053,7 +1053,7 @@ class WebSearchTool extends ToolBase {
     }
 
     if (researchMode === 'sonar-pro' || researchMode === 'sonar-reasoning-pro') {
-      return 2400;
+      return Math.max(DEFAULT_MAX_OUTPUT_TOKENS, 3600);
     }
 
     return DEFAULT_MAX_OUTPUT_TOKENS;

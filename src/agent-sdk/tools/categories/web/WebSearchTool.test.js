@@ -5,6 +5,9 @@ jest.mock('../../../../config', () => ({
       perplexityBaseURL: 'https://api.perplexity.ai',
       defaultLimit: 12,
       maxLimit: 20,
+      defaultMaxTokens: 50000,
+      defaultMaxTokensPerPage: 4096,
+      defaultMaxOutputTokens: 3200,
     },
   },
 }));
@@ -128,6 +131,8 @@ describe('WebSearchTool', () => {
 
     expect(payload).toEqual(expect.objectContaining({
       country: 'CA',
+      max_tokens: 50000,
+      max_tokens_per_page: 4096,
     }));
   });
 

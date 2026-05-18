@@ -1182,6 +1182,31 @@ describe('openai-client automatic tool orchestration helpers', () => {
         ]);
     });
 
+    test('uses pro-search and expanded collection params for daily news preflight', () => {
+        const actions = __testUtils.buildDeterministicPreflightActions(
+            [
+                { id: 'web-search' },
+            ],
+            'Please research daily news about Canadian AI regulation and gather article sources.',
+        );
+
+        expect(actions).toEqual([
+            {
+                toolId: 'web-search',
+                params: expect.objectContaining({
+                    query: 'research daily news about Canadian AI regulation and gather article sources',
+                    engine: 'perplexity',
+                    researchMode: 'pro-search',
+                    maxTokens: expect.any(Number),
+                    maxTokensPerPage: expect.any(Number),
+                    searchContextSize: 'medium',
+                    maxOutputTokens: expect.any(Number),
+                    maxSteps: 4,
+                }),
+            },
+        ]);
+    });
+
     test('builds deterministic PII XLSX formula-plan preflight actions', () => {
         const prompt = [
             'Use the hidden PII relationship calculation tool only.',

@@ -485,6 +485,7 @@ function buildUserCheckpointInstructions(policy = {}) {
         'After a checkpoint answer, do not ask a fresh checkpoint unless the user explicitly asks for more intake or a new high-impact blocker appears.',
         'For research, web-search, web-fetch, or web-scrape work, avoid multi-step intake forms and example-heavy scrape surveys.',
         'Do not use a checkpoint just to ask which public websites to scrape for routine research-backed slides, reports, or deep research. Discover candidate URLs with Perplexity-backed search, choose the strongest sites yourself, verify them with `web-fetch` first, and only scrape when the page needs rendered or structured extraction.',
+        'For daily news, article roundups, source-backed briefings, and gathered research data, use the richer research path yourself instead of asking the user for source lists.',
         'If research or scraping truly needs clarification, use one short choice checkpoint with 2 to 4 concrete options as a quick hotlist, then continue the work after the answer.',
     ];
 

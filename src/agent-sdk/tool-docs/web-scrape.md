@@ -39,3 +39,4 @@ Notes:
 - Good for tags, ids, classes, and repeated simple fields.
 - Not the default follow-up for ordinary research verification; prefer `web-fetch` when simple page retrieval is enough.
 - For search-follow-up research, use `researchSafe: true` and `approvedDomains` so the backend can skip pages that are outside the approved source set or explicitly disallow bots in `robots.txt`.
+- Use `web-scrape` after `web-fetch` fails, when article text is rendered by JavaScript, or when the task needs specific fields such as article headline, byline, date, price, event details, or repeated listings.

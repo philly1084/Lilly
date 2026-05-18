@@ -20,6 +20,11 @@ function loadChatAppContext() {
         uiHelpers: {
             isMinimalistMode: () => false,
             reinitializeIcons: () => {},
+            renderSessionsList: () => {},
+        },
+        sessionManager: {
+            currentSessionId: 'session-1',
+            sessions: [],
         },
         URL,
         console,
@@ -35,6 +40,66 @@ function loadChatAppPrototype() {
 }
 
 describe('web-chat project viewport helpers', () => {
+    test('persists research helper cards as transcript-excluded session UI state', () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        app.upsertSessionMessage = jest.fn((_sessionId, message) => message);
+        app.persistSessionMessageIfNeeded = jest.fn();
+        app.isVisibleSession = () => false;
+
+        app.appendToolSelectionMessages('assistant-1', [
+            {
+                toolCall: {
+                    function: {
+                        name: 'web-search',
+                        arguments: JSON.stringify({ query: 'agent research' }),
+                    },
+                },
+                result: {
+                    success: true,
+                    data: {
+                        query: 'agent research',
+                        results: [{
+                            title: 'Agent article',
+                            url: 'https://example.com/agent',
+                            snippet: 'Useful article summary.',
+                            source: 'Example',
+                        }],
+                    },
+                },
+            },
+            {
+                toolCall: {
+                    function: {
+                        name: 'web-fetch',
+                        arguments: JSON.stringify({ url: 'https://example.com/agent' }),
+                    },
+                },
+                result: {
+                    success: true,
+                    data: {
+                        url: 'https://example.com/agent',
+                        title: 'Agent article',
+                        body: '<article>Verified article excerpt with enough detail.</article>',
+                    },
+                },
+            },
+        ], { sessionId: 'session-1' });
+
+        expect(app.upsertSessionMessage).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            id: 'assistant-1-research-sources',
+            type: 'research-sources',
+            clientOnly: true,
+            excludeFromTranscript: true,
+            syncExcludedToBackend: true,
+        }));
+        expect(app.persistSessionMessageIfNeeded).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            id: 'assistant-1-research-sources',
+            type: 'research-sources',
+            syncExcludedToBackend: true,
+        }));
+    });
+
     test('normalizes managed app public hosts into live HTTPS preview URLs', () => {
         const app = Object.create(loadChatAppPrototype());
 

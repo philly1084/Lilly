@@ -43,9 +43,10 @@ Notes:
 - Use `search` for URL hotlisting, scraping prep, Playwright candidate pages, and routine public research when the local agent can fetch/verify pages itself.
 - Use `sonar` or `sonar-pro` for one-shot grounded answers. Use `sonar-pro` for complex comparisons.
 - Use `returnImages: true` with optional `imageDomains` and `imageFormats` for image URL hotlisting. Use `returnVideos: true` only when video sources materially help.
-- Use `pro-search` when a single Perplexity call should plan, search, and fetch autonomously.
+- Use `pro-search` when a single Perplexity call should plan, search, and fetch autonomously. Prefer it for daily news, article roundups, source-backed briefings, and research collection where headlines/snippets alone would be too thin but full deep research is not justified.
 - Use `sonar-deep-research` only when the user explicitly asks for deep, comprehensive, or long-form research that justifies higher cost.
 - Use `domains` to bias Perplexity toward official docs, publishers, or an approved source family.
 - For Canadian current-info requests, use authoritative Canadian domains when obvious, such as `weather.gc.ca` for weather.
-- Use `web-fetch` first on a result URL for direct verification.
-- Use `web-scrape` only when deeper rendered or structured extraction is needed.
+- Use larger extraction budgets for research-heavy work: default `maxTokens` is 50,000 across results and `maxTokensPerPage` is 4,096 unless overridden by environment/config.
+- Use `web-fetch` first on result URLs for direct verification, especially before composing news, reports, slides, or researched HTML.
+- Use `web-scrape` only when deeper rendered or structured extraction is needed, or when `web-fetch` cannot read the page.

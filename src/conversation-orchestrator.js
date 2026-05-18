@@ -2383,11 +2383,48 @@ function inferPerplexityResearchModeFromText(text = '') {
         return 'pro-search';
     }
 
+    if (/\b(daily news|news roundup|news digest|briefing|newsletter|article roundup|articles?|coverage|current events?|gather(?:ed|ing)? sources?|collect(?:ed|ing)? sources?|research data|source-backed)\b/.test(normalized)) {
+        return 'pro-search';
+    }
+
     if (/\b(grounded answer|answer with citations|one-shot answer|one shot answer|with citations)\b/.test(normalized)) {
         return 'sonar-pro';
     }
 
     return 'search';
+}
+
+function inferExpandedResearchParamsFromText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    const base = {
+        maxTokens: Math.max(10000, Number(config.search?.defaultMaxTokens || 50000)),
+        maxTokensPerPage: Math.max(1024, Number(config.search?.defaultMaxTokensPerPage || 4096)),
+    };
+
+    if (!normalized) {
+        return base;
+    }
+
+    const needsGatheredResearch = /\b(daily news|news roundup|news digest|briefing|newsletter|articles?|coverage|current events?|gather(?:ed|ing)?|collect(?:ed|ing)?|source-backed|citations?|sources?|research data)\b/.test(normalized);
+    const needsDeepResearch = /\b(deep research|in-depth research|comprehensive research|exhaustive research|thorough research|advanced deep research|institutional(?:-|\s)grade research)\b/.test(normalized);
+
+    return {
+        ...base,
+        ...(needsGatheredResearch || needsDeepResearch
+            ? {
+                searchContextSize: needsDeepResearch ? 'high' : 'medium',
+                maxOutputTokens: needsDeepResearch
+                    ? 7000
+                    : Math.max(3200, Number(config.search?.defaultMaxOutputTokens || 3200)),
+                maxSteps: needsDeepResearch ? 8 : 4,
+                instructions: [
+                    'Prefer authoritative primary sources, reputable publishers, and pages with dates or bylines.',
+                    'Gather enough page-level evidence to support synthesis; avoid relying on headlines or snippets alone.',
+                    'Call out uncertainty, conflicting coverage, or paywalled/blocked pages instead of smoothing over gaps.',
+                ].join(' '),
+            }
+            : {}),
+    };
 }
 
 function inferWebSearchLocaleParamsFromText(text = '', query = '') {
@@ -11424,6 +11461,7 @@ class ConversationOrchestrator extends EventEmitter {
             && toolPolicy.candidateToolIds.includes('web-search')
             && searchQuery) {
             const localeParams = inferWebSearchLocaleParamsFromText(objective, searchQuery);
+            const expandedResearchParams = inferExpandedResearchParamsFromText(objective);
             return finalizeAction({
                 tool: 'web-search',
                 reason: researchQuery
@@ -11438,6 +11476,7 @@ class ConversationOrchestrator extends EventEmitter {
                     timeRange: inferResearchTimeRangeFromText(objective),
                     includeSnippets: true,
                     includeUrls: true,
+                    ...expandedResearchParams,
                     ...(localeParams.domains ? { domains: localeParams.domains } : {}),
                     userLocation: localeParams.userLocation || { country: 'CA' },
                 },
@@ -11731,6 +11770,7 @@ class ConversationOrchestrator extends EventEmitter {
         if (toolPolicy.candidateToolIds.includes('web-search') && hasExplicitWebResearchIntentText(prompt)) {
             const query = extractExplicitWebResearchQuery(prompt) || prompt;
             const localeParams = inferWebSearchLocaleParamsFromText(prompt, query);
+            const expandedResearchParams = inferExpandedResearchParamsFromText(prompt);
             return [{
                 tool: 'web-search',
                 reason: 'Fallback for explicit research intent.',
@@ -11743,6 +11783,7 @@ class ConversationOrchestrator extends EventEmitter {
                     timeRange: 'all',
                     includeSnippets: true,
                     includeUrls: true,
+                    ...expandedResearchParams,
                     ...(localeParams.domains ? { domains: localeParams.domains } : {}),
                     userLocation: localeParams.userLocation || { country: 'CA' },
                 },

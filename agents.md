@@ -43,6 +43,7 @@ Clients (CLI / Web Chat / Canvas / Notation)
 ## Research Defaults
 
 - For routine public web research, start with Perplexity-backed `web-search`
+- For daily news, article roundups, source-backed briefings, and gathered research data, use Perplexity `pro-search` or expanded `web-search` extraction budgets so source context is not reduced to headlines/snippets
 - Keep user intake minimal; unless the user explicitly constrains the source list, the agent should choose candidate sites and domains itself
 - Verify selected pages with `web-fetch` first; use `web-scrape` only for explicit extraction requests, JS-rendered pages, or structured field capture
 

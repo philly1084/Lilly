@@ -16,4 +16,5 @@ Key params:
 
 Notes:
 - Best for simple HTTP/HTTPS fetches.
+- For research follow-up, fetch the strongest candidate pages after `web-search` so synthesis has verified page text, not just headlines or snippets.
 - For rendered or JavaScript-heavy pages, prefer `web-scrape` with `browser: true`.

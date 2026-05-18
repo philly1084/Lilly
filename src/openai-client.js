@@ -2233,6 +2233,7 @@ function hasExplicitWebResearchIntent(prompt = '') {
         /\bbrowse (?:the )?web\b/i,
         /\bsearch online\b/i,
         /\bbrowse online\b/i,
+        /\b(news|headlines?|current events?)\b/i,
     ].some((pattern) => pattern.test(text));
 }
 
@@ -2336,6 +2337,59 @@ function extractExplicitWebResearchQuery(prompt = '') {
         .replace(/^(please|can you|could you|would you|help me|i need you to)\s+/i, '')
         .replace(/[.?!]+$/g, '')
         .trim();
+}
+
+function inferPerplexityResearchModeForPreflight(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return 'search';
+    }
+
+    if (/\b(advanced deep research|institutional(?:-|\s)grade research|maximum depth research|maximum-depth research)\b/.test(normalized)) {
+        return 'advanced-deep-research';
+    }
+
+    if (/\b(deep research|in-depth research|comprehensive research|exhaustive research|thorough research)\b/.test(normalized)) {
+        return 'sonar-deep-research';
+    }
+
+    if (/\b(pro search|agentic research|autonomous research|multi-tool research|plan\s*\+\s*search\s*\+\s*fetch|one-call research|one call research|daily news|news roundup|news digest|briefing|newsletter|article roundup|articles?|coverage|current events?|gather(?:ed|ing)? sources?|collect(?:ed|ing)? sources?|research data|source-backed)\b/.test(normalized)) {
+        return 'pro-search';
+    }
+
+    if (/\b(grounded answer|answer with citations|one-shot answer|one shot answer|with citations)\b/.test(normalized)) {
+        return 'sonar-pro';
+    }
+
+    return 'search';
+}
+
+function inferExpandedResearchParamsForPreflight(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    const base = {
+        maxTokens: Math.max(10000, Number(config.search?.defaultMaxTokens || 50000)),
+        maxTokensPerPage: Math.max(1024, Number(config.search?.defaultMaxTokensPerPage || 4096)),
+    };
+    const needsGatheredResearch = /\b(daily news|news roundup|news digest|briefing|newsletter|articles?|coverage|current events?|gather(?:ed|ing)?|collect(?:ed|ing)?|source-backed|citations?|sources?|research data)\b/.test(normalized);
+    const needsDeepResearch = /\b(deep research|in-depth research|comprehensive research|exhaustive research|thorough research|advanced deep research|institutional(?:-|\s)grade research)\b/.test(normalized);
+
+    return {
+        ...base,
+        ...(needsGatheredResearch || needsDeepResearch
+            ? {
+                searchContextSize: needsDeepResearch ? 'high' : 'medium',
+                maxOutputTokens: needsDeepResearch
+                    ? 7000
+                    : Math.max(3200, Number(config.search?.defaultMaxOutputTokens || 3200)),
+                maxSteps: needsDeepResearch ? 8 : 4,
+                instructions: [
+                    'Prefer authoritative primary sources, reputable publishers, and pages with dates or bylines.',
+                    'Gather enough page-level evidence to support synthesis; avoid relying on headlines or snippets alone.',
+                    'Call out uncertainty, conflicting coverage, or blocked pages instead of smoothing over gaps.',
+                ].join(' '),
+            }
+            : {}),
+    };
 }
 
 function cleanExtractedPathLikeValue(value = '') {
@@ -2770,6 +2824,8 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
             toolId: 'web-search',
             params: {
                 query: webQuery,
+                engine: 'perplexity',
+                researchMode: inferPerplexityResearchModeForPreflight(prompt),
                 limit: normalizeResearchSearchResultCount(),
                 region: 'ca-en',
                 userLocation: {
@@ -2778,6 +2834,7 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
                 timeRange: 'all',
                 includeSnippets: true,
                 includeUrls: true,
+                ...inferExpandedResearchParamsForPreflight(prompt),
             },
         });
     }
@@ -3103,7 +3160,7 @@ async function runResearchFollowupPreflight({
             toolId = 'web-fetch';
             params = {
                 url: candidate.url,
-                timeout: 20000,
+                timeout: 30000,
                 cache: true,
             };
             result = await executeAutomaticToolCall(toolManager, {
@@ -3117,11 +3174,15 @@ async function runResearchFollowupPreflight({
         }
 
         if ((!result || result.success === false) && canScrape) {
+            const approvedHost = deriveResearchSourceLabel(candidate.url, candidate.source || '');
             toolId = 'web-scrape';
             params = {
                 url: candidate.url,
                 browser: true,
-                timeout: 20000,
+                timeout: 30000,
+                researchSafe: true,
+                approvedDomains: approvedHost ? [approvedHost] : [],
+                respectRobotsTxt: true,
             };
             result = await executeAutomaticToolCall(toolManager, {
                 id: `research_scrape_${followupEvents.length + 1}`,
@@ -3814,7 +3875,8 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
         guidance.push('- For URL discovery, scraping prep, Playwright candidate pages, and routine public research, use `web-search` with `researchMode: "search"` first. It uses Perplexity raw Search without an LLM pass.');
         guidance.push('- For a one-shot grounded answer with citations, use `web-search` with `researchMode: "sonar"` or `"sonar-pro"`; use `"sonar-pro"` for complex comparisons.');
         guidance.push('- For image URL hotlisting, use `web-search` with `researchMode: "sonar"`, `returnImages: true`, and optional `imageDomains` / `imageFormats` filters. Use `returnVideos: true` only when videos materially help.');
-        guidance.push('- For autonomous one-call research that should plan, search, and fetch itself, use `researchMode: "pro-search"`; for explicit long-form deep research use `researchMode: "sonar-deep-research"` and keep it reserved for requests that justify the extra cost.');
+        guidance.push('- For autonomous one-call research that should plan, search, and fetch itself, use `researchMode: "pro-search"`; prefer this middle tier for daily news, article roundups, source-backed briefings, and gathered research data where snippets/headlines are too thin but full deep research is not justified.');
+        guidance.push('- For explicit long-form deep research use `researchMode: "sonar-deep-research"` and keep it reserved for requests that justify the extra cost.');
         guidance.push('- For research-backed slides, reports, and deep-research work, use Perplexity-backed `web-search` to discover candidate source URLs yourself. Choose the strongest sites yourself, verify them with `web-fetch` first, and only use `web-scrape` when a page needs rendered or structured extraction instead of asking the user which websites to scrape.');
         guidance.push('- Use `domains` on `web-search` when the user wants official docs, a known publisher family, or a tighter authoritative source set.');
         guidance.push('- For explicit research requests, do not stop at search snippets. Verify the strongest search results with `web-fetch` first and only escalate to `web-scrape` when simple retrieval is insufficient.');

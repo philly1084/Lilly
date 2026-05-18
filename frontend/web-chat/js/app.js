@@ -7578,6 +7578,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     orientation: args.orientation || null,
                     clientOnly: true,
                     excludeFromTranscript: true,
+                    syncExcludedToBackend: true,
                     timestamp: new Date().toISOString(),
                 });
                 return;
@@ -7608,6 +7609,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     total: results.length,
                     clientOnly: true,
                     excludeFromTranscript: true,
+                    syncExcludedToBackend: true,
                     timestamp: new Date().toISOString(),
                 });
                 return;
@@ -7636,6 +7638,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     results,
                     clientOnly: true,
                     excludeFromTranscript: true,
+                    syncExcludedToBackend: true,
                     timestamp: new Date().toISOString(),
                 });
                 return;
@@ -7672,6 +7675,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     results,
                     clientOnly: true,
                     excludeFromTranscript: true,
+                    syncExcludedToBackend: true,
                     timestamp: new Date().toISOString(),
                 });
             }
@@ -7696,6 +7700,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 total: researchSources.length,
                 clientOnly: true,
                 excludeFromTranscript: true,
+                syncExcludedToBackend: true,
                 timestamp: new Date().toISOString(),
             });
         }
@@ -7707,6 +7712,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const isVisibleSession = this.isVisibleSession(sessionId);
         nextMessages.forEach((message) => {
             const savedMessage = this.upsertSessionMessage(sessionId, message);
+            this.persistSessionMessageIfNeeded(sessionId, savedMessage || message);
             if (isVisibleSession) {
                 this.renderOrReplaceMessage(savedMessage || message);
             }
