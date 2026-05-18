@@ -679,11 +679,17 @@ class UIHelpers {
             this.updateTtsPreviewButtons();
             this.updateMessageSpeechButtons();
         });
-        this.ttsManager?.addEventListener('statechange', () => {
+        this.ttsManager?.addEventListener('statechange', (event) => {
             this.updateTtsUI();
             this.updateTtsPreviewButtons();
             this.updateMessageSpeechButtons();
+            if (!event?.detail?.currentMessageId) {
+                this.clearSpeechHighlights();
+            }
         });
+        this.ttsManager?.addEventListener('chunkstart', (event) => this.handleTtsChunkStart(event));
+        this.ttsManager?.addEventListener('chunkend', (event) => this.handleTtsChunkEnd(event));
+        this.ttsManager?.addEventListener('playbackstop', () => this.clearSpeechHighlights());
         void this.initializeTts();
         
         // Track last focused element for focus management
@@ -6827,6 +6833,183 @@ class UIHelpers {
 
     stopSpeechPlayback() {
         this.ttsManager?.stop?.();
+    }
+
+    normalizeSpeechHighlightText(text = '') {
+        return String(text || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    getMessageElementById(messageId = '') {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedMessageId || !document?.querySelectorAll) {
+            return null;
+        }
+
+        return Array.from(document.querySelectorAll('.message[data-message-id]'))
+            .find((element) => String(element?.dataset?.messageId || '').trim() === normalizedMessageId)
+            || null;
+    }
+
+    clearSpeechHighlights(messageId = '') {
+        const messageEl = messageId ? this.getMessageElementById(messageId) : null;
+        const root = messageEl || document;
+        if (!root?.querySelectorAll) {
+            return;
+        }
+
+        root.querySelectorAll('.tts-reading-highlight').forEach((highlight) => {
+            const parent = highlight.parentNode;
+            if (!parent) {
+                return;
+            }
+            const children = Array.from(highlight.childNodes);
+            children.forEach((child) => parent.insertBefore(child, highlight));
+            parent.removeChild(highlight);
+            parent.normalize?.();
+        });
+    }
+
+    shouldSkipSpeechHighlightNode(node = null) {
+        const parentElement = node?.parentElement || null;
+        if (!parentElement) {
+            return true;
+        }
+
+        return Boolean(parentElement.closest(
+            'pre, code, kbd, samp, script, style, textarea, input, button, svg, .message-actions, .tts-reading-highlight',
+        ));
+    }
+
+    buildSpeechHighlightTextMap(root = null) {
+        if (!root || !document?.createTreeWalker || typeof NodeFilter === 'undefined') {
+            return {
+                text: '',
+                positions: [],
+            };
+        }
+
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode: (node) => (
+                this.shouldSkipSpeechHighlightNode(node) || !String(node.nodeValue || '').trim()
+                    ? NodeFilter.FILTER_REJECT
+                    : NodeFilter.FILTER_ACCEPT
+            ),
+        });
+        let text = '';
+        const positions = [];
+
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            const value = String(node.nodeValue || '');
+            for (let offset = 0; offset < value.length; offset += 1) {
+                const char = value[offset];
+                if (/\s/.test(char)) {
+                    if (text && !text.endsWith(' ')) {
+                        text += ' ';
+                        positions.push({ node, offset });
+                    }
+                    continue;
+                }
+
+                text += char.toLowerCase();
+                positions.push({ node, offset });
+            }
+        }
+
+        return {
+            text: text.trim(),
+            positions,
+        };
+    }
+
+    findSpeechHighlightRange(root = null, chunkText = '') {
+        const normalizedChunk = this.normalizeSpeechHighlightText(chunkText).toLowerCase();
+        if (!root || !normalizedChunk) {
+            return null;
+        }
+
+        const textMap = this.buildSpeechHighlightTextMap(root);
+        if (!textMap.text || textMap.positions.length === 0) {
+            return null;
+        }
+
+        const candidates = [
+            normalizedChunk,
+            normalizedChunk.length > 96 ? normalizedChunk.slice(0, 96).trim() : '',
+            normalizedChunk.split(' ').slice(0, 10).join(' '),
+        ].filter((candidate, index, list) => (
+            candidate.length >= 12 && list.indexOf(candidate) === index
+        ));
+
+        for (const candidate of candidates) {
+            const matchIndex = textMap.text.indexOf(candidate);
+            if (matchIndex < 0) {
+                continue;
+            }
+
+            const start = textMap.positions[matchIndex];
+            const end = textMap.positions[Math.min(textMap.positions.length - 1, matchIndex + candidate.length - 1)];
+            if (!start?.node || !end?.node) {
+                continue;
+            }
+
+            const range = document.createRange();
+            range.setStart(start.node, start.offset);
+            range.setEnd(end.node, end.offset + 1);
+            return range;
+        }
+
+        return null;
+    }
+
+    highlightSpeechChunk(messageId = '', chunkText = '') {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedMessageId || normalizedMessageId.startsWith('tts-preview:')) {
+            return false;
+        }
+
+        const messageEl = this.getMessageElementById(normalizedMessageId);
+        const textRoot = messageEl?.querySelector?.('.message-text');
+        if (!textRoot) {
+            return false;
+        }
+
+        this.clearSpeechHighlights();
+        const range = this.findSpeechHighlightRange(textRoot, chunkText);
+        if (!range) {
+            return false;
+        }
+
+        const highlight = document.createElement('span');
+        highlight.className = 'tts-reading-highlight';
+        highlight.dataset.ttsReading = 'true';
+        try {
+            const contents = range.extractContents();
+            highlight.appendChild(contents);
+            range.insertNode(highlight);
+            highlight.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+            return true;
+        } catch (error) {
+            console.warn('[WebChatUI] Failed to highlight spoken text:', error);
+            this.clearSpeechHighlights();
+            return false;
+        }
+    }
+
+    handleTtsChunkStart(event = null) {
+        const detail = event?.detail || {};
+        this.highlightSpeechChunk(detail.messageId || '', detail.chunkText || '');
+    }
+
+    handleTtsChunkEnd(event = null) {
+        const detail = event?.detail || {};
+        const chunkIndex = Number(detail.chunkIndex);
+        const chunkCount = Number(detail.chunkCount);
+        if (Number.isFinite(chunkIndex) && Number.isFinite(chunkCount) && chunkCount > 0 && chunkIndex >= chunkCount - 1) {
+            setTimeout(() => this.clearSpeechHighlights(detail.messageId || ''), 120);
+        }
     }
 
     getCurrentModel() {

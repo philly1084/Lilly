@@ -275,8 +275,9 @@ function resolveSessionScope(value = {}, session = null) {
   const source = getPlainObject(value);
   const nested = getPlainObject(source.metadata);
   const sessionMetadata = getPlainObject(session?.metadata);
+  const clientSurface = resolveClientSurface(source, session);
 
-  return normalizeWebChatWorkspaceScopeKey(firstNormalizedValue([
+  const resolvedScope = normalizeWebChatWorkspaceScopeKey(firstNormalizedValue([
     source.memoryScope,
     source.memory_scope,
     source.projectScope,
@@ -316,7 +317,7 @@ function resolveSessionScope(value = {}, session = null) {
     sessionMetadata.workspaceKey,
     sessionMetadata.workspace_key,
     sessionMetadata.namespace,
-    resolveClientSurface(source, session),
+    clientSurface,
     source.taskType,
     source.task_type,
     nested.taskType,
@@ -327,6 +328,15 @@ function resolveSessionScope(value = {}, session = null) {
     nested.mode,
     sessionMetadata.mode,
   ]) || DEFAULT_SESSION_SCOPE);
+
+  if (
+    clientSurface === 'web-chat'
+    && [DEFAULT_SESSION_SCOPE, 'global', 'default', 'chat'].includes(resolvedScope)
+  ) {
+    return 'web-chat';
+  }
+
+  return resolvedScope;
 }
 
 function defaultShareAcrossSurfaces(memoryClass = DEFAULT_MEMORY_CLASS) {
@@ -500,6 +510,17 @@ function sessionMatchesScope(session = null, scopeKey = DEFAULT_SESSION_SCOPE) {
     || normalizedScopeKey.startsWith('web-chat-workspace-');
 
   if (explicitWebChatWorkspaceScope && isWebChatWorkspaceScope && explicitWebChatWorkspaceScope !== normalizedScopeKey) {
+    return false;
+  }
+
+  if (
+    isWebChatWorkspaceScope
+    && !explicitWebChatWorkspaceScope
+    && [sessionScope, inferredWorkspaceScope, explicitWorkspaceScope]
+      .filter(Boolean)
+      .map((candidate) => normalizeWebChatWorkspaceScopeKey(candidate))
+      .some((candidate) => [DEFAULT_SESSION_SCOPE, 'global', 'default', 'chat'].includes(candidate))
+  ) {
     return false;
   }
 

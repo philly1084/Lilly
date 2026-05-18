@@ -79,6 +79,10 @@ const {
     shouldUseDirectPodcastChat,
 } = require('../podcast/direct-podcast-chat');
 const { rehydrateText, sanitizeText } = require('../pii');
+const {
+    buildFrontendFallbackMetadata,
+    normalizeFrontendMetadata,
+} = require('../frontend-bundles');
 
 // Admin dashboard event emitter
 const EventEmitter = require('events');
@@ -88,6 +92,57 @@ const {
     buildNotationInstructions,
     parseNotationResponse,
 } = notationRouter._private || {};
+
+function buildWsCanvasInstructions(canvasType = 'document', existingContent = '', requestPrompt = '') {
+    const base = [
+        'You are an AI assistant working in canvas mode.',
+        'Return valid JSON only: { "content": "...", "metadata": {...}, "suggestions": [...] }.',
+        'Use the provided interactionContract metadata to respect the active canvas type, selected text, context source, and expected apply target.',
+    ].join('\n');
+    const typeGuides = {
+        code: 'Generate working code. Include metadata.language and suggestions for concrete follow-up edits.',
+        document: 'Generate markdown. Include metadata.title and suggestions for useful expansions or revisions.',
+        diagram: 'Generate Mermaid syntax. Include metadata.type and suggestions for diagram refinements.',
+        frontend: 'Generate a portable frontend. Treat metadata.bundle.files as the source of truth for complete projects, include metadata.frameworkTarget, metadata.previewMode, and metadata.handoff when useful. Keep content short when the full runnable project is present in metadata.bundle.files.',
+    };
+    return [
+        base,
+        typeGuides[canvasType] || typeGuides.document,
+        requestPrompt ? `User request: ${requestPrompt}` : '',
+        existingContent ? `Existing content:\n\`\`\`\n${existingContent}\n\`\`\`` : '',
+    ].filter(Boolean).join('\n\n');
+}
+
+function parseWsCanvasResponse(text = '', canvasType = 'document') {
+    try {
+        const parsed = JSON.parse(String(text || ''));
+        const parsedContent = typeof parsed.content === 'string'
+            ? parsed.content
+            : String(parsed.content || '');
+        const metadata = canvasType === 'frontend'
+            ? normalizeFrontendMetadata(parsed.metadata, parsedContent)
+            : (parsed.metadata || { type: canvasType });
+        return {
+            content: parsedContent || String(text || ''),
+            metadata,
+            suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        };
+    } catch (_error) {
+        if (canvasType === 'frontend') {
+            return {
+                content: String(text || ''),
+                metadata: buildFrontendFallbackMetadata(String(text || '')),
+                suggestions: [],
+            };
+        }
+
+        return {
+            content: String(text || ''),
+            metadata: { type: canvasType },
+            suggestions: [],
+        };
+    }
+}
 
 function compactPiiContextIds(...sources) {
     const ids = [];
@@ -1068,23 +1123,43 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
         return;
     }
 
+    const requestFrame = buildRequestDecisionFrame({
+        text: message,
+        session,
+        outputFormat,
+        candidateOutputFormat: outputFormat,
+        outputFormatProvided: Boolean(outputFormat),
+        artifactIds,
+        effectiveArtifactIds: artifactIds,
+        executionProfile,
+        taskType: 'canvas',
+        clientSurface,
+        route: '/ws',
+    });
+    const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
+    const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+    const canvasInstructions = buildWsCanvasInstructions(canvasType, existingContent, message);
+
     runtimeTask = startRuntimeTask({
         sessionId: session.id,
         input: message,
         model,
         mode: 'canvas',
         transport: 'ws',
-        metadata: { route: '/ws', canvasType, phase: 'preflight', reasoningEffort },
+        metadata: { route: '/ws', canvasType, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
     });
 
     try {
         const instructions = await buildInstructionsWithArtifacts(
             session,
-            `You are an AI canvas assistant generating ${canvasType} content. Respond with valid JSON: { "content": "...", "metadata": {...}, "suggestions": [...] }${existingContent ? `\n\nExisting content:\n${existingContent}` : ''}`,
+            [
+                requestFrameInstructions,
+                canvasInstructions,
+            ].filter(Boolean).join('\n\n'),
             artifactIds,
         );
         const execution = await executeConversationRuntime(ws.app, {
-            input: existingContent ? `${message}\n\nExisting content:\n${existingContent}` : message,
+            input: message,
             session,
             sessionId: session.id,
             memoryInput: message,
@@ -1102,6 +1177,7 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
                 ...(payload?.metadata && typeof payload.metadata === 'object' ? payload.metadata : {}),
                 ...(memoryKeywords.length > 0 ? { memoryKeywords } : {}),
                 clientSurface,
+                ...requestFrameMetadata,
             },
             ownerId,
             toolContext: {
@@ -1127,6 +1203,7 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
         }
 
         const outputText = extractResponseText(response);
+        const structured = parseWsCanvasResponse(outputText, canvasType);
         if (!execution.handledPersistence) {
             memoryService.rememberResponse(session.id, outputText, buildOwnerMemoryMetadata(ownerId, memoryScope, {
                 sourceSurface: clientSurface || 'canvas',
@@ -1134,7 +1211,7 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
             }));
             await sessionStore.appendMessages(session.id, [
                 { role: 'user', content: message },
-                { role: 'assistant', content: outputText },
+                { role: 'assistant', content: outputText, metadata: requestFrameMetadata },
             ]);
         }
         const generatedArtifacts = await maybeGenerateOutputArtifact({
@@ -1142,9 +1219,9 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
             session,
             mode: 'canvas',
             outputFormat,
-            content: outputText,
+            content: structured.content,
             prompt: message,
-            title: `canvas-${canvasType}`,
+            title: structured.metadata?.title || `canvas-${canvasType}`,
             responseId: response.id,
             artifactIds,
             existingContent,
@@ -1160,7 +1237,7 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
             await Promise.all(artifacts.map((artifact) => memoryService.rememberArtifactResult(session.id, {
                 artifact,
                 summary: `Created the ${artifact.format || outputFormat || 'generated'} artifact (${artifact.filename}).`,
-                sourceText: outputText,
+                sourceText: structured.content,
                 metadata: buildOwnerMemoryMetadata(ownerId, memoryScope, {
                     sourceSurface: clientSurface || 'canvas',
                     memoryKeywords,
@@ -1169,7 +1246,7 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
             })));
             await memoryService.rememberLearnedSkill(session.id, {
                 objective: message,
-                assistantText: outputText,
+                assistantText: structured.content,
                 toolEvents: response?.metadata?.toolEvents || [],
                 artifact: artifacts[artifacts.length - 1],
                 metadata: buildOwnerMemoryMetadata(ownerId, memoryScope, {
@@ -1180,11 +1257,12 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
         }
         completeRuntimeTask(runtimeTask?.id, {
             responseId: response.id,
-            output: outputText,
+            output: structured.content,
             model: response.model || model || null,
             duration: Date.now() - startedAt,
             metadata: {
                 canvasType,
+                ...requestFrameMetadata,
                 ...(response?.metadata || {}),
             },
         });
@@ -1194,8 +1272,12 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
             sessionId: session.id,
             responseId: response.id,
             canvasType,
-            content: outputText,
+            content: structured.content,
+            metadata: structured.metadata || { type: canvasType },
+            suggestions: structured.suggestions || [],
             artifacts,
+            assistant_metadata: requestFrameMetadata,
+            assistantMetadata: requestFrameMetadata,
         });
     } catch (error) {
         failRuntimeTask(runtimeTask?.id, {

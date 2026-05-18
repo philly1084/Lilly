@@ -11,7 +11,14 @@ class AIAssistant {
         this.status = document.getElementById('aiStatus');
         this.conversation = document.getElementById('aiConversation');
         this.conversationEmpty = document.getElementById('aiConversationEmpty');
+        this.scopeSelect = document.getElementById('aiScopeSelect');
+        this.groundingTitle = document.getElementById('aiGroundingTitle');
+        this.groundingState = document.getElementById('aiGroundingState');
+        this.boardSummary = document.getElementById('aiBoardSummary');
+        this.selectionSummary = document.getElementById('aiSelectionSummary');
+        this.applySummary = document.getElementById('aiApplySummary');
         this.isGenerating = false;
+        this.scope = 'auto';
         
         // Mode: 'chat' | 'diagram' | 'image'
         this.mode = 'chat';
@@ -66,11 +73,32 @@ class AIAssistant {
                 this.generate();
             });
         });
+
+        this.scopeSelect?.addEventListener('change', (event) => {
+            this.scope = event.target.value || 'auto';
+            this.updateGroundingPanel();
+        });
+
+        document.querySelectorAll('[data-ai-context-prompt], [data-ai-local-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (btn.dataset.aiLocalAction) {
+                    this.handleLocalAction(btn.dataset.aiLocalAction);
+                    return;
+                }
+                this.setMode('chat');
+                this.showPanel();
+                if (this.input) {
+                    this.input.value = btn.dataset.aiContextPrompt || '';
+                    this.input.focus();
+                }
+            });
+        });
         
         // Fetch models on init
         this.fetchModels();
         this.setMode('chat');
         this.restoreSharedConversation();
+        this.updateGroundingPanel();
     }
     
     async fetchModels() {
@@ -123,6 +151,11 @@ class AIAssistant {
     }
     
     togglePanel() {
+        const willOpen = !this.panel?.classList.contains('active');
+        if (willOpen) {
+            document.getElementById('toolbar')?.classList.remove('active');
+            document.getElementById('propertiesPanel')?.classList.remove('active');
+        }
         this.panel?.classList.toggle('active');
         if (this.panel?.classList.contains('active')) {
             this.input?.focus();
@@ -130,6 +163,8 @@ class AIAssistant {
     }
 
     showPanel() {
+        document.getElementById('toolbar')?.classList.remove('active');
+        document.getElementById('propertiesPanel')?.classList.remove('active');
         if (!this.panel?.classList.contains('active')) {
             this.panel?.classList.add('active');
         }
@@ -138,6 +173,248 @@ class AIAssistant {
     
     hidePanel() {
         this.panel?.classList.remove('active');
+    }
+
+    getEffectiveScope() {
+        const selectedCount = window.infiniteCanvas?.selectedElements?.length || 0;
+        if (this.scope === 'auto') {
+            return selectedCount > 0 ? 'selection' : 'board';
+        }
+        return this.scope || 'board';
+    }
+
+    summarizeTypeCounts(elements = []) {
+        const counts = elements.reduce((acc, element) => {
+            const type = element?.type || 'unknown';
+            acc[type] = (acc[type] || 0) + 1;
+            return acc;
+        }, {});
+
+        return Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4)
+            .map(([type, count]) => `${count} ${type}`)
+            .join(', ');
+    }
+
+    cloneElementForAI(element = {}) {
+        const clone = {
+            id: element.id,
+            type: element.type,
+            x: Math.round(Number(element.x) || 0),
+            y: Math.round(Number(element.y) || 0),
+            width: Math.round(Number(element.width) || 0),
+            height: Math.round(Number(element.height) || 0),
+            text: element.text || '',
+            name: element.name || '',
+            strokeColor: element.strokeColor,
+            backgroundColor: element.backgroundColor,
+            strokeWidth: element.strokeWidth,
+            strokeStyle: element.strokeStyle,
+            opacity: element.opacity,
+            fontSize: element.fontSize,
+            fontFamily: element.fontFamily,
+        };
+
+        if (Array.isArray(element.points)) {
+            clone.points = element.points.slice(0, 16).map((point) => ({
+                x: Math.round(Number(point.x) || 0),
+                y: Math.round(Number(point.y) || 0),
+            }));
+        }
+
+        return clone;
+    }
+
+    getElementBounds(element = {}) {
+        if (Array.isArray(element.points) && element.points.length > 0) {
+            const xs = element.points.map((point) => Number(point.x) || 0);
+            const ys = element.points.map((point) => Number(point.y) || 0);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+            return {
+                left: minX,
+                top: minY,
+                right: maxX,
+                bottom: maxY,
+                width: Math.max(1, maxX - minX),
+                height: Math.max(1, maxY - minY),
+            };
+        }
+
+        const width = Math.max(1, Number(element.width) || 1);
+        const height = Math.max(1, Number(element.height) || 1);
+        const x = Number(element.x) || 0;
+        const y = Number(element.y) || 0;
+        return {
+            left: x - width / 2,
+            top: y - height / 2,
+            right: x + width / 2,
+            bottom: y + height / 2,
+            width,
+            height,
+        };
+    }
+
+    getViewportBounds() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas?.canvas) {
+            return null;
+        }
+
+        const topLeft = canvas.screenToWorld(0, 0);
+        const bottomRight = canvas.screenToWorld(canvas.canvas.width, canvas.canvas.height);
+        return {
+            x: Math.round(topLeft.x),
+            y: Math.round(topLeft.y),
+            width: Math.round(bottomRight.x - topLeft.x),
+            height: Math.round(bottomRight.y - topLeft.y),
+            zoom: Number(canvas.scale || 1).toFixed(2),
+        };
+    }
+
+    getElementsInViewport() {
+        const canvas = window.infiniteCanvas;
+        const bounds = this.getViewportBounds();
+        if (!canvas || !bounds) {
+            return [];
+        }
+
+        const right = bounds.x + bounds.width;
+        const bottom = bounds.y + bounds.height;
+        return canvas.elements.filter((element) => {
+            const elementBounds = this.getElementBounds(element);
+            return elementBounds.right >= bounds.x
+                && elementBounds.left <= right
+                && elementBounds.bottom >= bounds.y
+                && elementBounds.top <= bottom;
+        });
+    }
+
+    buildCanvasContext() {
+        const canvas = window.infiniteCanvas;
+        const elements = canvas?.elements || [];
+        const selected = canvas?.selectedElements || [];
+        const scope = this.getEffectiveScope();
+        const scopedElements = scope === 'selection'
+            ? selected
+            : (scope === 'viewport' ? this.getElementsInViewport() : elements);
+
+        return {
+            surface: 'canvas-excalidraw',
+            scope,
+            board: {
+                elementCount: elements.length,
+                typeCounts: this.summarizeTypeCounts(elements),
+            },
+            selection: {
+                count: selected.length,
+                ids: selected.map((element) => element.id),
+                typeCounts: this.summarizeTypeCounts(selected),
+                elements: selected.slice(0, 20).map((element) => this.cloneElementForAI(element)),
+            },
+            viewport: this.getViewportBounds(),
+            elements: scopedElements.slice(-60).map((element) => ({
+                ...this.cloneElementForAI(element),
+                bounds: this.getElementBounds(element),
+            })),
+            allowedActions: ['add', 'update', 'delete', 'select'],
+            instruction: 'Ground your answer in selected objects when scope is selection. Preserve element ids for updates. Use actions for canvas edits.',
+        };
+    }
+
+    updateGroundingPanel() {
+        const context = this.buildCanvasContext();
+        const selectedCount = context.selection.count;
+        const scope = context.scope;
+        const scopeLabel = scope === 'selection'
+            ? 'Selection'
+            : (scope === 'viewport' ? 'Visible area' : 'Whole board');
+        const selectedTypes = context.selection.typeCounts || '';
+
+        if (this.scopeSelect && this.scopeSelect.value !== this.scope) {
+            this.scopeSelect.value = this.scope;
+        }
+        if (this.groundingTitle) {
+            this.groundingTitle.textContent = scopeLabel;
+        }
+        if (this.groundingState) {
+            this.groundingState.textContent = `${selectedCount} selected`;
+        }
+        if (this.boardSummary) {
+            this.boardSummary.textContent = `${context.board.elementCount} object${context.board.elementCount === 1 ? '' : 's'}`;
+            this.boardSummary.title = context.board.typeCounts || 'No objects yet';
+        }
+        if (this.selectionSummary) {
+            this.selectionSummary.textContent = selectedCount > 0 ? selectedTypes || `${selectedCount} objects` : 'None';
+            this.selectionSummary.title = selectedCount > 0 ? context.selection.ids.join(', ') : 'No selected objects';
+        }
+        if (this.applySummary) {
+            this.applySummary.textContent = scope === 'selection' ? 'Backend + selected objects' : (scope === 'viewport' ? 'Backend + visible objects' : 'Backend + board');
+        }
+    }
+
+    handleLocalAction(action) {
+        if (action === 'tidy-selection') {
+            this.tidySelection();
+        }
+    }
+
+    tidySelection() {
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        if (!canvas || selected.length < 2) {
+            this.showStatus('Select two or more objects to tidy the layout.', 'error');
+            return;
+        }
+
+        const bounds = selected.map((element) => this.getElementBounds(element));
+        const minLeft = Math.min(...bounds.map((entry) => entry.left));
+        const maxRight = Math.max(...bounds.map((entry) => entry.right));
+        const minTop = Math.min(...bounds.map((entry) => entry.top));
+        const maxBottom = Math.max(...bounds.map((entry) => entry.bottom));
+        const spreadX = maxRight - minLeft;
+        const spreadY = maxBottom - minTop;
+        const horizontal = spreadX >= spreadY;
+        const sorted = [...selected].sort((a, b) => horizontal ? a.x - b.x : a.y - b.y);
+        const averageCrossAxis = horizontal
+            ? sorted.reduce((sum, element) => sum + (Number(element.y) || 0), 0) / sorted.length
+            : sorted.reduce((sum, element) => sum + (Number(element.x) || 0), 0) / sorted.length;
+        const gap = 48;
+        let cursor = horizontal ? minLeft : minTop;
+
+        sorted.forEach((element) => {
+            const elementBounds = this.getElementBounds(element);
+            const nextPosition = {};
+            if (horizontal) {
+                nextPosition.x = cursor + elementBounds.width / 2;
+                nextPosition.y = averageCrossAxis;
+                cursor += elementBounds.width + gap;
+            } else {
+                nextPosition.x = averageCrossAxis;
+                nextPosition.y = cursor + elementBounds.height / 2;
+                cursor += elementBounds.height + gap;
+            }
+
+            const deltaX = nextPosition.x - (Number(element.x) || 0);
+            const deltaY = nextPosition.y - (Number(element.y) || 0);
+            element.x = nextPosition.x;
+            element.y = nextPosition.y;
+            if (Array.isArray(element.points)) {
+                element.points = element.points.map((point) => ({
+                    x: (Number(point.x) || 0) + deltaX,
+                    y: (Number(point.y) || 0) + deltaY,
+                }));
+            }
+        });
+
+        window.historyManager?.pushState(canvas.elements);
+        canvas.render();
+        this.updateGroundingPanel();
+        window.app?.showToast?.('Tidied selected objects');
+        this.showStatus('Tidied selected objects locally. Ask the agent for labels or deeper restructuring.', 'success');
     }
     
     setMode(mode) {
@@ -223,13 +500,27 @@ class AIAssistant {
         this.addConversationMessage('user', prompt);
 
         try {
-            const messages = this.buildChatMessages();
-            const response = await window.apiManager.chat(messages);
+            const canvasContext = this.buildCanvasContext();
+            let response;
+            try {
+                response = await window.apiManager.requestCanvasAgent({
+                    message: prompt,
+                    canvasContext,
+                    mode: 'chat',
+                });
+            } catch (primaryError) {
+                console.warn('Canvas agent route failed, falling back to OpenAI-compatible chat:', primaryError);
+                const messages = this.buildChatMessages(canvasContext);
+                response = await window.apiManager.chat(messages, canvasContext);
+            }
             const content = response.content || 'No response received.';
-            this.chatHistory.push({ role: 'assistant', content });
+            const structured = this.parseStructuredCanvasResponse(content);
+            const applied = this.applyCanvasActions(structured);
+            const assistantText = structured?.message || content;
+            this.chatHistory.push({ role: 'assistant', content: assistantText });
             this.trimChatHistory();
-            this.addConversationMessage('assistant', content);
-            this.showStatus('Agent response ready.', 'success');
+            this.addConversationMessage('assistant', assistantText);
+            this.showStatus(applied > 0 ? `Applied ${applied} canvas action${applied === 1 ? '' : 's'}.` : 'Agent response ready.', 'success');
             this.input.value = '';
         } catch (error) {
             console.error('Agent chat error:', error);
@@ -250,11 +541,22 @@ class AIAssistant {
         
         try {
             // Get current canvas state for context
-            const existingContent = JSON.stringify(window.infiniteCanvas.elements);
+            const canvasContext = this.buildCanvasContext();
+            const existingContent = JSON.stringify(canvasContext.elements);
             this.addConversationMessage('user', prompt);
             
-            // Use OpenAI SDK via apiManager
-            const response = await window.apiManager.generateDiagram(prompt, existingContent);
+            let response;
+            try {
+                response = await window.apiManager.requestCanvasAgent({
+                    message: prompt,
+                    canvasContext,
+                    mode: 'diagram',
+                    existingContent,
+                });
+            } catch (primaryError) {
+                console.warn('Canvas agent route failed, falling back to OpenAI-compatible diagram generation:', primaryError);
+                response = await window.apiManager.generateDiagram(prompt, existingContent, canvasContext);
+            }
             
             if (response.content) {
                 this.processGeneratedContent(response);
@@ -528,13 +830,242 @@ class AIAssistant {
             styleGroup.style.display = styles.length > 0 ? '' : 'none';
         }
     }
+
+    extractJsonCandidate(content = '') {
+        const text = String(content || '').trim();
+        if (!text) {
+            return '';
+        }
+
+        const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (fenced) {
+            return fenced[1].trim();
+        }
+
+        const firstObject = text.indexOf('{');
+        const lastObject = text.lastIndexOf('}');
+        if (firstObject !== -1 && lastObject > firstObject) {
+            return text.slice(firstObject, lastObject + 1);
+        }
+
+        const firstArray = text.indexOf('[');
+        const lastArray = text.lastIndexOf(']');
+        if (firstArray !== -1 && lastArray > firstArray) {
+            return text.slice(firstArray, lastArray + 1);
+        }
+
+        return text;
+    }
+
+    parseStructuredCanvasResponse(content = '') {
+        const candidate = this.extractJsonCandidate(content);
+        if (!candidate) {
+            return { message: String(content || '').trim(), actions: [], elements: [] };
+        }
+
+        try {
+            const parsed = JSON.parse(candidate);
+            if (Array.isArray(parsed)) {
+                return { message: '', actions: [], elements: parsed };
+            }
+            if (parsed && typeof parsed === 'object') {
+                if (!Array.isArray(parsed.actions) && !Array.isArray(parsed.elements) && parsed.content) {
+                    if (typeof parsed.content === 'string') {
+                        return this.parseStructuredCanvasResponse(parsed.content);
+                    }
+                    if (typeof parsed.content === 'object') {
+                        return {
+                            message: typeof parsed.content.message === 'string' ? parsed.content.message : '',
+                            actions: Array.isArray(parsed.content.actions) ? parsed.content.actions : [],
+                            elements: Array.isArray(parsed.content.elements) ? parsed.content.elements : [],
+                        };
+                    }
+                }
+                return {
+                    message: typeof parsed.message === 'string' ? parsed.message : '',
+                    actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+                    elements: Array.isArray(parsed.elements) ? parsed.elements : [],
+                };
+            }
+        } catch {}
+
+        return { message: String(content || '').trim(), actions: [], elements: [] };
+    }
+
+    normalizeGeneratedElement(element = {}) {
+        const allowedTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame', 'image']);
+        const normalized = {
+            ...element,
+            id: window.toolManager?.generateId?.() || `el-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            type: allowedTypes.has(element.type) ? element.type : 'rectangle',
+            x: Number.isFinite(Number(element.x)) ? Number(element.x) : 0,
+            y: Number.isFinite(Number(element.y)) ? Number(element.y) : 0,
+            width: Number.isFinite(Number(element.width)) && Number(element.width) > 0 ? Number(element.width) : 140,
+            height: Number.isFinite(Number(element.height)) && Number(element.height) > 0 ? Number(element.height) : 80,
+            strokeColor: element.strokeColor || window.toolManager?.defaultProperties?.strokeColor || '#000000',
+            backgroundColor: element.backgroundColor || window.toolManager?.defaultProperties?.backgroundColor || 'transparent',
+            strokeWidth: element.strokeWidth || window.toolManager?.defaultProperties?.strokeWidth || 2,
+            strokeStyle: element.strokeStyle || window.toolManager?.defaultProperties?.strokeStyle || 'solid',
+            roughness: element.roughness ?? window.toolManager?.defaultProperties?.roughness ?? 1,
+            opacity: element.opacity ?? window.toolManager?.defaultProperties?.opacity ?? 1,
+        };
+
+        if (Array.isArray(element.points)) {
+            normalized.points = element.points.map((point) => ({
+                x: Number(point.x) || 0,
+                y: Number(point.y) || 0,
+            }));
+        }
+
+        return normalized;
+    }
+
+    sanitizeElementPatch(patch = {}) {
+        const allowed = new Set([
+            'type',
+            'x',
+            'y',
+            'width',
+            'height',
+            'text',
+            'name',
+            'strokeColor',
+            'backgroundColor',
+            'strokeWidth',
+            'strokeStyle',
+            'roughness',
+            'opacity',
+            'fontSize',
+            'fontFamily',
+            'points',
+        ]);
+        const safePatch = {};
+
+        Object.entries(patch).forEach(([key, value]) => {
+            if (!allowed.has(key)) {
+                return;
+            }
+
+            if (['x', 'y', 'width', 'height', 'strokeWidth', 'roughness', 'opacity', 'fontSize'].includes(key)) {
+                const numberValue = Number(value);
+                if (!Number.isFinite(numberValue)) {
+                    return;
+                }
+                safePatch[key] = ['width', 'height'].includes(key) ? Math.max(1, numberValue) : numberValue;
+                return;
+            }
+
+            if (key === 'points') {
+                if (!Array.isArray(value)) {
+                    return;
+                }
+                safePatch.points = value.slice(0, 120).map((point) => ({
+                    x: Number(point?.x) || 0,
+                    y: Number(point?.y) || 0,
+                }));
+                return;
+            }
+
+            safePatch[key] = value;
+        });
+
+        return safePatch;
+    }
+
+    applyCanvasActions(structured = {}) {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return 0;
+        }
+
+        const actions = Array.isArray(structured.actions) ? structured.actions : [];
+        const elements = Array.isArray(structured.elements) ? structured.elements : [];
+        let applied = 0;
+        const nextSelectionIds = new Set();
+
+        actions.forEach((action) => {
+            if (!action || typeof action !== 'object') {
+                return;
+            }
+
+            const type = String(action.type || '').toLowerCase();
+            if (type === 'add' && action.element) {
+                const element = this.normalizeGeneratedElement(action.element);
+                canvas.addElement(element);
+                nextSelectionIds.add(element.id);
+                applied += 1;
+                return;
+            }
+
+            if (type === 'update' && action.id && action.patch && typeof action.patch === 'object') {
+                const element = canvas.elements.find((entry) => entry.id === action.id);
+                if (!element) {
+                    return;
+                }
+                const safePatch = this.sanitizeElementPatch(action.patch);
+                Object.assign(element, safePatch);
+                nextSelectionIds.add(element.id);
+                applied += 1;
+                return;
+            }
+
+            if (type === 'delete' && action.id) {
+                const before = canvas.elements.length;
+                canvas.removeElement(action.id);
+                if (canvas.elements.length !== before) {
+                    applied += 1;
+                }
+                return;
+            }
+
+            if (type === 'select' && Array.isArray(action.ids)) {
+                action.ids.forEach((id) => nextSelectionIds.add(id));
+                applied += 1;
+            }
+        });
+
+        elements.forEach((element) => {
+            if (!element || typeof element !== 'object' || !element.type) {
+                return;
+            }
+            const normalized = this.normalizeGeneratedElement(element);
+            canvas.addElement(normalized);
+            nextSelectionIds.add(normalized.id);
+            applied += 1;
+        });
+
+        if (nextSelectionIds.size > 0) {
+            const selected = canvas.elements.filter((element) => nextSelectionIds.has(element.id));
+            if (selected.length > 0) {
+                canvas.selectElements(selected);
+            }
+        }
+
+        if (applied > 0) {
+            window.historyManager?.pushState(canvas.elements);
+            canvas.render();
+            this.updateGroundingPanel();
+        }
+
+        return applied;
+    }
     
     processGeneratedContent(response) {
         const canvas = window.infiniteCanvas;
+        const structured = this.parseStructuredCanvasResponse(response.content || '');
+        const actionCount = this.applyCanvasActions(structured);
+        if (actionCount > 0) {
+            if (structured.message) {
+                this.addConversationMessage('assistant', structured.message);
+            }
+            return;
+        }
         
         // Parse the response content
         let elements = [];
-        let content = response.content || '';
+        let content = structured.elements.length > 0
+            ? JSON.stringify(structured.elements)
+            : (response.content || '');
         
         // Try to extract JSON from markdown code blocks
         const jsonBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -924,28 +1455,22 @@ class AIAssistant {
         }
     }
 
-    buildChatMessages(prompt) {
-        const canvasContext = JSON.stringify(
-            window.infiniteCanvas?.elements?.slice(-30).map((element) => ({
-                id: element.id,
-                type: element.type,
-                text: element.text || '',
-                name: element.name || '',
-                x: element.x,
-                y: element.y,
-                width: element.width,
-                height: element.height,
-            })) || []
-        );
-
+    buildChatMessages(canvasContext = this.buildCanvasContext()) {
         return [
             {
                 role: 'system',
-                content: 'You are a canvas agent helping the user reason about and improve a visual whiteboard. Be concise, concrete, and reference the current canvas state when useful. If the user asks you to change the canvas, explain what you would change so they can then switch to diagram or image generation.',
+                content: [
+                    'You are a canvas agent helping the user reason about and improve a visual Excalidraw-style whiteboard.',
+                    'Be concise and ground every answer in the provided canvas context.',
+                    'When the user asks you to change the canvas, return strict JSON with this shape:',
+                    '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"update","id":"existing-id","patch":{...}},{"type":"delete","id":"existing-id"},{"type":"select","ids":["existing-id"]}]}',
+                    'Use selected element ids for updates. Do not invent ids for existing objects. Keep geometry changes modest unless asked for a large rewrite.',
+                    'For discussion-only answers, plain text is fine.',
+                ].join(' '),
             },
             {
                 role: 'system',
-                content: `Current canvas snapshot: ${canvasContext}`,
+                content: `Current canvas grounding: ${JSON.stringify(canvasContext)}`,
             },
             ...this.chatHistory,
         ];

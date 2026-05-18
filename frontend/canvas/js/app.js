@@ -25,6 +25,9 @@ class CanvasApp {
             lastSaved: null,
             selectedModel: 'gpt-4o',
             reasoningEffort: '',
+            applyTarget: 'full',
+            lastSelection: null,
+            lastRequestContract: null,
         };
 
         // Auto-save timer
@@ -45,6 +48,7 @@ class CanvasApp {
         this.setupTemplateChips();
         this.loadModels();
         this.updateUI();
+        this.updateGroundingPanel();
         
         // Try to connect WebSocket
         this.api.connectWebSocket().catch(() => {
@@ -340,8 +344,10 @@ class CanvasApp {
         // Subscribe to editor changes for auto-save and diagram auto-render
         this.editor.onChange((value) => {
             this.state.content = value;
+            this.captureSelectionSnapshot();
             this.scheduleAutoSave();
             this.updateStatusBar();
+            this.updateGroundingPanel();
             
             // Auto-render diagram with debounce
             if (this.state.canvasType === 'diagram' && (this.state.isPreviewMode || this.state.isSplitView)) {
@@ -359,8 +365,10 @@ class CanvasApp {
 
         // Subscribe to cursor activity
         this.editor.onCursorActivity((position) => {
+            this.captureSelectionSnapshot();
             document.getElementById('cursor-position').textContent = 
                 `Ln ${position.line}, Col ${position.ch}`;
+            this.updateGroundingPanel();
         });
 
         // Push initial state to history
@@ -426,12 +434,54 @@ class CanvasApp {
         document.getElementById('clear-btn').addEventListener('click', () => {
             document.getElementById('prompt-input').value = '';
             document.getElementById('context-input').value = '';
+            this.updateGroundingPanel();
         });
+
+        const contextInput = document.getElementById('context-input');
+        if (contextInput) {
+            contextInput.addEventListener('input', () => this.updateGroundingPanel());
+        }
 
         // Use current content as context
         document.getElementById('use-current-content').addEventListener('click', () => {
             document.getElementById('context-input').value = this.editor.getValue();
+            this.updateGroundingPanel();
         });
+
+        const useSelectionBtn = document.getElementById('use-selection-context');
+        if (useSelectionBtn) {
+            useSelectionBtn.addEventListener('click', () => {
+                this.captureSelectionSnapshot();
+                if (!this.state.lastSelection?.text) {
+                    this.showToast('Select text in the canvas first', 'warning');
+                    return;
+                }
+                document.getElementById('context-input').value = this.state.lastSelection.text;
+                const applyTarget = document.getElementById('apply-target-select');
+                if (applyTarget) {
+                    applyTarget.value = 'selection';
+                    this.state.applyTarget = 'selection';
+                }
+                this.updateGroundingPanel();
+            });
+        }
+
+        const refreshGroundingBtn = document.getElementById('refresh-grounding');
+        if (refreshGroundingBtn) {
+            refreshGroundingBtn.addEventListener('click', () => {
+                this.captureSelectionSnapshot();
+                this.updateGroundingPanel();
+            });
+        }
+
+        const applyTargetSelect = document.getElementById('apply-target-select');
+        if (applyTargetSelect) {
+            applyTargetSelect.addEventListener('change', (event) => {
+                this.state.applyTarget = event.target.value === 'selection' ? 'selection' : 'full';
+                this.updateGroundingPanel();
+                this.saveToLocalStorage();
+            });
+        }
 
         // Apply AI response
         document.getElementById('apply-btn').addEventListener('click', () => {
@@ -735,6 +785,105 @@ class CanvasApp {
         return validation;
     }
 
+    captureSelectionSnapshot() {
+        const selection = this.editor?.getSelectionInfo ? this.editor.getSelectionInfo() : null;
+        if (selection?.text) {
+            this.state.lastSelection = selection;
+        } else if (!this.editor?.getSelection?.()) {
+            this.state.lastSelection = null;
+        }
+        return this.state.lastSelection;
+    }
+
+    getApplyTarget() {
+        const target = document.getElementById('apply-target-select')?.value || this.state.applyTarget || 'full';
+        return target === 'selection' ? 'selection' : 'full';
+    }
+
+    getGroundingSnapshot(context = '') {
+        const content = this.editor.getValue();
+        const selection = this.captureSelectionSnapshot();
+        const explicitContext = String(context || document.getElementById('context-input')?.value || '');
+        const contextSource = explicitContext.trim()
+            ? (selection?.text && explicitContext === selection.text ? 'selection' : 'custom')
+            : 'canvas';
+        const sourceText = explicitContext.trim() || content;
+        const applyTarget = this.getApplyTarget();
+
+        return {
+            canvasType: this.state.canvasType,
+            applyTarget,
+            contextSource,
+            selection,
+            contentLength: content.length,
+            contextLength: sourceText.length,
+            hasExplicitContext: Boolean(explicitContext.trim()),
+            model: this.state.selectedModel || document.getElementById('model-select')?.value || '',
+            reasoningEffort: this.state.reasoningEffort || document.getElementById('reasoning-effort-select')?.value || '',
+        };
+    }
+
+    updateGroundingPanel() {
+        const snapshot = this.getGroundingSnapshot();
+        const selectionLabel = snapshot.selection?.text
+            ? `${snapshot.selection.startLine}:${snapshot.selection.startColumn}-${snapshot.selection.endLine}:${snapshot.selection.endColumn}`
+            : 'None';
+        const contextLabel = snapshot.contextSource === 'custom'
+            ? `Custom (${snapshot.contextLength} chars)`
+            : (snapshot.contextSource === 'selection'
+                ? `Selection (${snapshot.contextLength} chars)`
+                : `Canvas (${snapshot.contentLength} chars)`);
+
+        const values = {
+            'grounding-scope': snapshot.canvasType,
+            'grounding-selection': selectionLabel,
+            'grounding-context': contextLabel,
+            'grounding-apply': snapshot.applyTarget === 'selection' ? 'Current selection' : 'Full canvas',
+            'grounding-transport': this.api.isConnected() ? 'WS ready' : 'HTTP',
+        };
+
+        Object.entries(values).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        });
+
+        const selectionOption = document.querySelector('#apply-target-select option[value="selection"]');
+        if (selectionOption) {
+            selectionOption.disabled = !snapshot.selection?.text;
+        }
+    }
+
+    buildInteractionContract(prompt = '', context = '') {
+        const snapshot = this.getGroundingSnapshot(context);
+        const selectedText = snapshot.selection?.text || '';
+        return {
+            version: 1,
+            surface: 'canvas',
+            endpoint: '/api/canvas',
+            canvasType: snapshot.canvasType,
+            intentText: prompt,
+            contextSource: snapshot.contextSource,
+            contextLength: snapshot.contextLength,
+            canvasContentLength: snapshot.contentLength,
+            selection: snapshot.selection ? {
+                text: selectedText,
+                startLine: snapshot.selection.startLine,
+                startColumn: snapshot.selection.startColumn,
+                endLine: snapshot.selection.endLine,
+                endColumn: snapshot.selection.endColumn,
+                characterCount: snapshot.selection.characterCount,
+            } : null,
+            expectedApplyTarget: snapshot.applyTarget,
+            responseContract: {
+                content: 'candidate canvas replacement or selected-range replacement',
+                metadata: 'title, language, handoff, bundle, and request-decision details when available',
+                suggestions: 'concrete next grounded edits',
+            },
+        };
+    }
+
     /**
      * Send prompt to AI
      */
@@ -745,12 +894,16 @@ class CanvasApp {
         const reasoningSelect = document.getElementById('reasoning-effort-select');
         const selectedModel = modelSelect ? modelSelect.value : this.state.selectedModel;
         const reasoningEffort = reasoningSelect ? reasoningSelect.value : this.state.reasoningEffort;
+        const existingContent = context || this.editor.getValue();
+        const interactionContract = this.buildInteractionContract(prompt, context);
 
         if (!prompt) {
             this.showToast('Please enter a prompt', 'warning');
             return;
         }
 
+        this.state.lastRequestContract = interactionContract;
+        this.updateGroundingPanel();
         this.showLoading(true);
 
         try {
@@ -758,11 +911,12 @@ class CanvasApp {
                 message: prompt,
                 sessionId: this.state.sessionId,
                 canvasType: this.state.canvasType,
-                existingContent: context || this.editor.getValue(),
+                existingContent,
                 model: selectedModel,
                 reasoningEffort,
                 metadata: {
-                    naturalContext: this.buildNaturalContextSnapshot(context || this.editor.getValue()),
+                    naturalContext: this.buildNaturalContextSnapshot(existingContent),
+                    interactionContract,
                 },
             });
 
@@ -777,7 +931,8 @@ class CanvasApp {
     }
 
     buildNaturalContextSnapshot(content = '') {
-        const selectedText = this.editor?.getSelection ? this.editor.getSelection() : '';
+        const selection = this.captureSelectionSnapshot();
+        const selectedText = selection?.text || '';
         const cursor = this.editor?.getCursorPosition ? this.editor.getCursorPosition() : null;
         const metadata = this.state.metadata || {};
 
@@ -790,6 +945,12 @@ class CanvasApp {
                 language: metadata.language || '',
                 selectedText,
                 selectionLabel: selectedText ? 'current selection' : '',
+                selectionRange: selection ? {
+                    startLine: selection.startLine,
+                    startColumn: selection.startColumn,
+                    endLine: selection.endLine,
+                    endColumn: selection.endColumn,
+                } : null,
                 cursorLine: cursor?.line || null,
                 contentExcerpt: String(content || '').slice(0, 2400),
                 contentLength: String(content || '').length,
@@ -826,6 +987,11 @@ class CanvasApp {
         
         responseSection.classList.remove('hidden');
         responsePreview.textContent = this.buildResponsePreview(response);
+        this.updateResponseInspector(response);
+        const applyTarget = document.getElementById('apply-target-select');
+        if (applyTarget) {
+            applyTarget.value = this.state.lastSelection?.text ? this.state.applyTarget : 'full';
+        }
 
         // Update suggestions
         this.updateSuggestions(response.suggestions || []);
@@ -853,11 +1019,82 @@ class CanvasApp {
         return content.slice(0, 500) + (content.length > 500 ? '...' : '');
     }
 
+    resolveResponseContentForCanvas(response = null) {
+        if (!response) {
+            return '';
+        }
+
+        if (response.canvasType === 'frontend') {
+            const bundle = response.metadata?.bundle || {};
+            const files = Array.isArray(bundle.files) ? bundle.files : [];
+            const entryPath = String(bundle.entry || 'index.html').trim();
+            const entryFile = files.find((file) => file?.path === entryPath)
+                || files.find((file) => /\.html?$/i.test(String(file?.path || '')));
+            if (typeof entryFile?.content === 'string' && entryFile.content.trim()) {
+                return entryFile.content;
+            }
+        }
+
+        return String(response.content || '');
+    }
+
+    updateResponseInspector(response) {
+        const inspector = document.getElementById('response-inspector');
+        if (!inspector) return;
+
+        inspector.innerHTML = '';
+        const metadata = response?.metadata || {};
+        const assistantMetadata = response?.assistantMetadata || response?.assistant_metadata || {};
+        const handoff = metadata.handoff || {};
+        const bundleFiles = Array.isArray(metadata.bundle?.files) ? metadata.bundle.files : [];
+        const contract = this.state.lastRequestContract || {};
+        const items = [
+            { label: 'Type', value: response?.canvasType || this.state.canvasType },
+            { label: 'Title', value: metadata.title || 'Untitled' },
+            { label: 'Apply', value: contract.expectedApplyTarget === 'selection' ? 'Selection' : 'Full canvas' },
+            { label: 'Grounding', value: contract.contextSource || 'canvas' },
+        ];
+
+        if (metadata.language) {
+            items.push({ label: 'Language', value: metadata.language });
+        }
+        if (metadata.frameworkTarget) {
+            items.push({ label: 'Framework', value: metadata.frameworkTarget });
+        }
+        if (bundleFiles.length > 0) {
+            items.push({ label: 'Bundle', value: `${bundleFiles.length} files` });
+        }
+        if (assistantMetadata?.requestDecision?.outputFormat || assistantMetadata?.outputFormat) {
+            items.push({
+                label: 'Output',
+                value: assistantMetadata.requestDecision?.outputFormat || assistantMetadata.outputFormat,
+            });
+        }
+
+        items.forEach((item) => {
+            const node = document.createElement('div');
+            node.className = 'response-inspector-item';
+            node.innerHTML = `<span></span><strong></strong>`;
+            node.querySelector('span').textContent = item.label;
+            node.querySelector('strong').textContent = String(item.value || '-');
+            inspector.appendChild(node);
+        });
+
+        const summary = handoff.summary || metadata.summary || '';
+        if (summary) {
+            const summaryNode = document.createElement('div');
+            summaryNode.className = 'response-inspector-summary';
+            summaryNode.textContent = summary;
+            inspector.appendChild(summaryNode);
+        }
+    }
+
     /**
      * Apply AI response to canvas
      */
     applyAIResponse() {
-        if (!this.state.aiResponse?.content) {
+        const content = this.resolveResponseContentForCanvas(this.state.aiResponse);
+        if (!content) {
             this.showToast('No AI response to apply', 'warning');
             return;
         }
@@ -866,9 +1103,20 @@ class CanvasApp {
         this.pushToHistory();
 
         // Apply content
-        const content = this.state.aiResponse.content;
-        this.editor.setValue(content);
-        this.state.content = content;
+        const applyTarget = this.getApplyTarget();
+        const appliedSelection = applyTarget === 'selection' && this.state.lastSelection?.text
+            ? this.editor.replaceRange(content, this.state.lastSelection)
+            : false;
+
+        if (applyTarget === 'selection' && !appliedSelection) {
+            this.showToast('No saved selection to replace; applying to full canvas', 'warning');
+        }
+
+        if (!appliedSelection) {
+            this.editor.setValue(content);
+        }
+        this.state.content = this.editor.getValue();
+        this.animateCanvasApply(appliedSelection ? 'selection' : 'full');
 
         // Update metadata if available
         if (this.state.metadata?.language) {
@@ -889,7 +1137,20 @@ class CanvasApp {
         }
 
         this.saveToLocalStorage();
-        this.showToast('Content applied to canvas', 'success');
+        this.updateGroundingPanel();
+        this.showToast(appliedSelection ? 'Selection updated from AI response' : 'Content applied to canvas', 'success');
+    }
+
+    animateCanvasApply(target = 'full') {
+        const wrapper = document.getElementById('editor-wrapper');
+        if (!wrapper) return;
+
+        wrapper.classList.remove('apply-flash-selection', 'apply-flash-full');
+        void wrapper.offsetWidth;
+        wrapper.classList.add(target === 'selection' ? 'apply-flash-selection' : 'apply-flash-full');
+        setTimeout(() => {
+            wrapper.classList.remove('apply-flash-selection', 'apply-flash-full');
+        }, 900);
     }
 
     /**
@@ -1002,6 +1263,9 @@ class CanvasApp {
         this.state.content = '';
         this.state.metadata = {};
         this.state.aiResponse = null;
+        this.state.lastSelection = null;
+        this.state.lastRequestContract = null;
+        this.state.applyTarget = 'full';
         this.history.clear();
 
         // Clear API session
@@ -1013,6 +1277,10 @@ class CanvasApp {
         document.getElementById('context-input').value = '';
         document.getElementById('ai-response-section').classList.add('hidden');
         document.getElementById('suggestions-panel').classList.add('hidden');
+        const applyTarget = document.getElementById('apply-target-select');
+        if (applyTarget) {
+            applyTarget.value = 'full';
+        }
 
         // Set default content
         const handler = this.typeManager.getCurrentHandler();
@@ -1022,6 +1290,7 @@ class CanvasApp {
         localStorage.removeItem('canvas-session');
 
         this.showToast('New session started', 'success');
+        this.updateGroundingPanel();
     }
 
     /**
@@ -1228,6 +1497,7 @@ class CanvasApp {
             metadata: this.state.metadata,
             selectedModel: this.state.selectedModel || '',
             reasoningEffort: this.state.reasoningEffort || '',
+            applyTarget: this.state.applyTarget || 'full',
             timestamp: Date.now()
         };
 
@@ -1262,6 +1532,7 @@ class CanvasApp {
                 this.state.reasoningEffort = ['low', 'medium', 'high', 'xhigh'].includes(data.reasoningEffort)
                     ? data.reasoningEffort
                     : '';
+                this.state.applyTarget = data.applyTarget === 'selection' ? 'selection' : 'full';
 
                 // Restore API session
                 if (data.sessionId) {
@@ -1302,6 +1573,11 @@ class CanvasApp {
         const reasoningSelect = document.getElementById('reasoning-effort-select');
         if (reasoningSelect) {
             reasoningSelect.value = this.state.reasoningEffort || '';
+        }
+
+        const applyTargetSelect = document.getElementById('apply-target-select');
+        if (applyTargetSelect) {
+            applyTargetSelect.value = this.state.applyTarget || 'full';
         }
 
         // Update session ID

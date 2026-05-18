@@ -24,6 +24,10 @@
     --accent-hover: #3d8dff;
     --accent-light: rgba(88, 166, 255, 0.14);
     --accent-glow: rgba(88, 166, 255, 0.28);
+    --tts-highlight-bg: color-mix(in srgb, var(--accent) 28%, rgba(8, 15, 26, 0.72));
+    --tts-highlight-text: var(--text-primary);
+    --tts-highlight-border: color-mix(in srgb, var(--accent) 62%, transparent);
+    --tts-highlight-shadow: 0 0 0 1px var(--tts-highlight-border), 0 8px 22px color-mix(in srgb, var(--accent) 18%, transparent);
     
     --user-message-bg: #4f8df6;
     --user-message-text: #ffffff;
@@ -125,6 +129,10 @@
     --accent-hover: #2e78e5;
     --accent-light: rgba(61, 141, 255, 0.1);
     --accent-glow: rgba(61, 141, 255, 0.18);
+    --tts-highlight-bg: color-mix(in srgb, var(--accent) 22%, #ffffff);
+    --tts-highlight-text: var(--text-primary);
+    --tts-highlight-border: color-mix(in srgb, var(--accent) 48%, transparent);
+    --tts-highlight-shadow: 0 0 0 1px var(--tts-highlight-border), 0 8px 18px color-mix(in srgb, var(--accent) 14%, transparent);
     
     --user-message-bg: #3d8dff;
     --user-message-text: #ffffff;
@@ -5160,6 +5168,21 @@ body.layout-minimal #input-meta-row {
     line-height: 1.6;
     word-wrap: break-word;
     overflow-wrap: anywhere;
+}
+
+.tts-reading-highlight {
+    color: var(--tts-highlight-text);
+    background: var(--tts-highlight-bg);
+    box-shadow: var(--tts-highlight-shadow);
+    border-radius: 0.32em;
+    padding: 0.02em 0.14em;
+    margin: 0 -0.02em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    transition:
+        background-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        color var(--transition-fast);
 }
 
 /* User message specific */

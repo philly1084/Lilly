@@ -264,6 +264,44 @@ describe('/api/canvas helpers', () => {
         ]));
     });
 
+    test('parseCanvasResponse preserves direct diagram canvas actions', () => {
+        const parsed = parseCanvasResponse(JSON.stringify({
+            message: 'Aligned the selected boxes.',
+            actions: [
+                {
+                    type: 'update',
+                    id: 'box-1',
+                    patch: { x: 100, y: 120 },
+                },
+                {
+                    type: 'select',
+                    ids: ['box-1'],
+                },
+            ],
+            elements: [],
+            metadata: {
+                surface: 'canvas-excalidraw',
+                actionContract: 'excalidraw-actions-v1',
+            },
+            suggestions: ['Add connecting arrows'],
+        }), 'diagram');
+
+        expect(JSON.parse(parsed.content)).toMatchObject({
+            message: 'Aligned the selected boxes.',
+            actions: [
+                expect.objectContaining({ type: 'update', id: 'box-1' }),
+                expect.objectContaining({ type: 'select', ids: ['box-1'] }),
+            ],
+            elements: [],
+        });
+        expect(parsed.metadata).toMatchObject({
+            type: 'diagram',
+            surface: 'canvas-excalidraw',
+            actionContract: 'excalidraw-actions-v1',
+        });
+        expect(parsed.suggestions).toEqual(['Add connecting arrows']);
+    });
+
     test('buildFrontendFallbackMetadata creates a repo-handoff shell for raw html', () => {
         const metadata = buildFrontendFallbackMetadata('<!DOCTYPE html><html><body><h1>Orbit Launch</h1></body></html>');
 

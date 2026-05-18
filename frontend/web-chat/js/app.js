@@ -10,6 +10,7 @@ const AMBIENT_REASONING_TYPE_TICK_MS = 120;
 const REAL_REASONING_DISPLAY_HOLD_MS = 40000;
 const SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
+const STREAM_RENDER_BUFFER_MS = 90;
 const webChatWorkspaceHelpers = window.KimiBuiltWebChatWorkspace || null;
 const webChatWorkspaceEmbedHelpers = window.KimiBuiltWebChatWorkspaceEmbed || null;
 const WEB_CHAT_APP_WORKSPACE_CONTEXT = typeof webChatWorkspaceHelpers?.getWorkspaceContext === 'function'
@@ -444,6 +445,8 @@ class ChatApp {
         this.deferredSessionDetailsSessionId = null;
         this.isSavingWorkload = false;
         this.sharedSessionSyncTimer = null;
+        this.sharedSessionRefreshInFlight = false;
+        this.pendingStreamingRenders = new Map();
         this.activeStreamRequest = null;
         this.pendingStreamResync = null;
         this.resumeSyncTimer = null;
@@ -1599,6 +1602,7 @@ class ChatApp {
     }
 
     renderMessages(messages) {
+        this.clearBufferedStreamingRenders();
         uiHelpers.clearMessages();
         
         if (messages.length === 0) {
@@ -1620,6 +1624,45 @@ class ChatApp {
         uiHelpers.updateMessageSpeechButtons(this.messagesContainer);
         uiHelpers.highlightCodeBlocks(this.messagesContainer);
         uiHelpers.scrollToBottom(false);
+        this.updateAudioControls();
+    }
+
+    reconcileVisibleMessages(previousMessages = [], nextMessages = []) {
+        const nextList = Array.isArray(nextMessages) ? nextMessages : [];
+        if (nextList.length === 0) {
+            this.renderMessages(nextList);
+            return;
+        }
+
+        const existingEls = Array.from(this.messagesContainer.querySelectorAll('.message[data-message-id]'));
+        const existingIds = existingEls.map((entry) => String(entry.dataset.messageId || entry.id || '').trim());
+        const nextIds = nextList.map((message) => String(message?.id || '').trim());
+        const canPatchInPlace = existingIds.length === nextIds.length
+            && nextIds.every((id, index) => id && id === existingIds[index]);
+
+        if (!canPatchInPlace) {
+            this.renderMessages(nextList);
+            return;
+        }
+
+        const previousById = new Map(
+            (Array.isArray(previousMessages) ? previousMessages : [])
+                .filter((message) => message?.id)
+                .map((message) => [message.id, this.buildMessageRefreshSignature([message])]),
+        );
+
+        nextList.forEach((message) => {
+            if (!message?.id) {
+                return;
+            }
+            const previousSignature = previousById.get(message.id);
+            const nextSignature = this.buildMessageRefreshSignature([message]);
+            if (previousSignature !== nextSignature) {
+                uiHelpers.updateMessageContent(message.id, message, message.isStreaming === true);
+            }
+        });
+
+        uiHelpers.updateMessageSpeechButtons(this.messagesContainer);
         this.updateAudioControls();
     }
 
@@ -2616,7 +2659,7 @@ class ChatApp {
         await this.loadSessionWorkloads(sessionId, { force: true });
         await this.refreshSessionSummaries();
 
-        if (sessionManager.currentSessionId === sessionId) {
+        if (sessionManager.currentSessionId === sessionId && !this.isSessionProcessing(sessionId)) {
             await this.loadSessionMessages(sessionId);
         }
     }
@@ -4056,10 +4099,12 @@ class ChatApp {
 
         if (sessionManager.currentSessionId === sessionId) {
             const previousMessages = [...sessionManager.getMessages(sessionId)];
-            await this.loadSessionMessages(sessionId, {
-                notifyNewAssistant: true,
-                previousMessages,
-            });
+            if (!this.isSessionProcessing(sessionId)) {
+                await this.loadSessionMessages(sessionId, {
+                    notifyNewAssistant: true,
+                    previousMessages,
+                });
+            }
             await this.loadSessionWorkloads(sessionId, { force: true });
         }
     }
@@ -6425,6 +6470,66 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return nextEl;
     }
 
+    clearBufferedStreamingRenders() {
+        for (const entry of this.pendingStreamingRenders.values()) {
+            if (entry?.timer) {
+                clearTimeout(entry.timer);
+            }
+        }
+        this.pendingStreamingRenders.clear();
+    }
+
+    flushBufferedStreamingRender(messageId = '') {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedMessageId) {
+            return false;
+        }
+
+        const entry = this.pendingStreamingRenders.get(normalizedMessageId);
+        if (!entry) {
+            return false;
+        }
+
+        if (entry.timer) {
+            clearTimeout(entry.timer);
+        }
+        this.pendingStreamingRenders.delete(normalizedMessageId);
+        if (!entry.message || !this.isVisibleSession(entry.sessionId)) {
+            return false;
+        }
+
+        uiHelpers.updateMessageContent(normalizedMessageId, entry.message, entry.message.isStreaming === true);
+        if (entry.scroll === true) {
+            uiHelpers.scrollToBottom();
+        }
+        return true;
+    }
+
+    scheduleBufferedStreamingRender(sessionId = '', message = null, options = {}) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const messageId = String(message?.id || '').trim();
+        if (!normalizedSessionId || !messageId || !message) {
+            return false;
+        }
+
+        const existing = this.pendingStreamingRenders.get(messageId);
+        const nextEntry = {
+            sessionId: normalizedSessionId,
+            message,
+            scroll: existing?.scroll === true || options.scroll === true,
+            timer: existing?.timer || null,
+        };
+
+        if (!nextEntry.timer) {
+            nextEntry.timer = setTimeout(() => {
+                this.flushBufferedStreamingRender(messageId);
+            }, STREAM_RENDER_BUFFER_MS);
+        }
+
+        this.pendingStreamingRenders.set(messageId, nextEntry);
+        return true;
+    }
+
     parseToolArguments(rawArgs) {
         if (!rawArgs) {
             return {};
@@ -8007,6 +8112,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             isStreaming: normalizedPhase !== 'ready',
         }, {
             render: normalizedPhase !== 'ready',
+            buffer: true,
             scroll: false,
         });
     }
@@ -8067,9 +8173,14 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
         const savedMessage = this.upsertSessionMessage(sessionId, nextMessage);
         if ((options.render ?? true) && savedMessage && this.isVisibleSession(sessionId)) {
-            uiHelpers.updateMessageContent(messageId, savedMessage, savedMessage.isStreaming === true);
+            if (options.buffer === true) {
+                this.scheduleBufferedStreamingRender(sessionId, savedMessage, options);
+            } else {
+                this.flushBufferedStreamingRender(messageId);
+                uiHelpers.updateMessageContent(messageId, savedMessage, savedMessage.isStreaming === true);
+            }
         }
-        if (options.scroll === true && this.isVisibleSession(sessionId)) {
+        if (options.scroll === true && options.buffer !== true && this.isVisibleSession(sessionId)) {
             uiHelpers.scrollToBottom();
         }
 
@@ -8103,6 +8214,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             isStreaming: true,
         }, {
             render: true,
+            buffer: true,
             scroll: false,
         });
     }
@@ -8132,6 +8244,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             isStreaming: true,
         }, {
             render: true,
+            buffer: true,
             scroll: false,
         });
     }
@@ -8168,6 +8281,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             isStreaming: true,
         }, {
             render: true,
+            buffer: true,
             scroll: true,
         });
     }
@@ -8239,6 +8353,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
     handleDone(chunk = {}) {
         if (!this.currentStreamingMessageId) return;
 
+        this.flushBufferedStreamingRender(this.currentStreamingMessageId);
         this.clearAmbientReasoningTimer();
         this.clearPendingStreamResync();
         
@@ -9429,8 +9544,24 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return true;
         }
 
+        const normalizedMessage = String(error?.message || error || '').toLowerCase();
+        const streamEndedBeforeCompletion = String(error?.code || '').toLowerCase() === 'stream_incomplete'
+            || normalizedMessage.includes('stream ended before completion')
+            || normalizedMessage.includes('ended before completion')
+            || normalizedMessage.includes('premature');
+        const transientStreamFailure = streamEndedBeforeCompletion
+            || normalizedMessage.includes('network')
+            || normalizedMessage.includes('fetch')
+            || normalizedMessage.includes('timeout')
+            || normalizedMessage.includes('disconnect')
+            || normalizedMessage.includes('connection');
+
+        if (trackedRequest.acceptedByServer && streamEndedBeforeCompletion) {
+            return true;
+        }
+
         if (trackedRequest.acceptedByServer) {
-            return hidden || !online || this.pageWasHidden || this.connectionStatus === 'disconnected';
+            return hidden || !online || this.pageWasHidden || this.connectionStatus === 'disconnected' || transientStreamFailure;
         }
 
         if (hidden) {
@@ -9438,15 +9569,6 @@ curl -fsSIL --max-time 20 "https://$host"`;
         }
 
         if (!online) {
-            return true;
-        }
-
-        const normalizedMessage = String(error?.message || error || '').toLowerCase();
-        const streamEndedBeforeCompletion = String(error?.code || '').toLowerCase() === 'stream_incomplete'
-            || normalizedMessage.includes('stream ended before completion')
-            || normalizedMessage.includes('ended before completion')
-            || normalizedMessage.includes('premature');
-        if (trackedRequest.acceptedByServer && streamEndedBeforeCompletion) {
             return true;
         }
 
@@ -9750,7 +9872,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             const messages = this.syncAnnotatedSurveyStates(sessionId);
             if (this.hasRecoveredInterruptedStream(messages, trackedRequest)) {
                 if (this.isVisibleSession(sessionId)) {
-                    this.renderMessages(messages);
+                    this.reconcileVisibleMessages(trackedRequest.previousMessages, messages);
                     this.playCueForNewAssistantMessages(trackedRequest.previousMessages, messages);
                     this.updateSessionInfo();
                 }
@@ -9952,52 +10074,60 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (this.isProcessing && options.allowWhileProcessing !== true) {
             return;
         }
+        if (this.sharedSessionRefreshInFlight) {
+            return;
+        }
 
+        this.sharedSessionRefreshInFlight = true;
         const previousSessionId = sessionManager.currentSessionId;
         const previousMessages = previousSessionId ? sessionManager.getMessages(previousSessionId) : [];
         const previousMessageCount = previousMessages.length;
         const previousLastTimestamp = previousMessages[previousMessages.length - 1]?.timestamp || '';
         const previousSignature = this.buildMessageRefreshSignature(previousMessages);
 
-        await sessionManager.loadSessions({ preserveCurrentSession: true });
+        try {
+            await sessionManager.loadSessions({ preserveCurrentSession: true });
 
-        const currentSessionId = sessionManager.currentSessionId;
-        apiClient.setSessionId(currentSessionId || null);
+            const currentSessionId = sessionManager.currentSessionId;
+            apiClient.setSessionId(currentSessionId || null);
 
-        if (!currentSessionId) {
-            if (previousSessionId) {
-                uiHelpers.clearMessages();
-                this.subscribeToSessionUpdates(null);
-                this.currentSessionWorkloads = [];
-                this.workloadRunsById.clear();
-                this.hiddenCompletedWorkloadCount = 0;
-                this.renderWorkloadsPanel();
+            if (!currentSessionId) {
+                if (previousSessionId) {
+                    uiHelpers.clearMessages();
+                    this.subscribeToSessionUpdates(null);
+                    this.currentSessionWorkloads = [];
+                    this.workloadRunsById.clear();
+                    this.hiddenCompletedWorkloadCount = 0;
+                    this.renderWorkloadsPanel();
+                    this.updateSessionInfo();
+                }
+                return;
+            }
+
+            if (currentSessionId !== previousSessionId) {
+                await this.loadSessionMessages(currentSessionId);
+                this.subscribeToSessionUpdates(currentSessionId);
+                await this.loadSessionWorkloads(currentSessionId, { force: true });
+                this.updateSessionInfo();
+                return;
+            }
+
+            await sessionManager.loadSessionMessagesFromBackend(currentSessionId);
+            const messages = this.syncAnnotatedSurveyStates(currentSessionId);
+            const refreshedCount = messages.length;
+            const refreshedLastTimestamp = messages[messages.length - 1]?.timestamp || '';
+            const refreshedSignature = this.buildMessageRefreshSignature(messages);
+
+            if (refreshedCount !== previousMessageCount
+                || refreshedLastTimestamp !== previousLastTimestamp
+                || refreshedSignature !== previousSignature) {
+                this.reconcileVisibleMessages(previousMessages, messages);
+                this.resumePersistedBackgroundStream(currentSessionId, messages);
+                this.playCueForNewAssistantMessages(previousMessages, messages);
                 this.updateSessionInfo();
             }
-            return;
-        }
-
-        if (currentSessionId !== previousSessionId) {
-            await this.loadSessionMessages(currentSessionId);
-            this.subscribeToSessionUpdates(currentSessionId);
-            await this.loadSessionWorkloads(currentSessionId, { force: true });
-            this.updateSessionInfo();
-            return;
-        }
-
-        await sessionManager.loadSessionMessagesFromBackend(currentSessionId);
-        const messages = this.syncAnnotatedSurveyStates(currentSessionId);
-        const refreshedCount = messages.length;
-        const refreshedLastTimestamp = messages[messages.length - 1]?.timestamp || '';
-        const refreshedSignature = this.buildMessageRefreshSignature(messages);
-
-        if (refreshedCount !== previousMessageCount
-            || refreshedLastTimestamp !== previousLastTimestamp
-            || refreshedSignature !== previousSignature) {
-            this.renderMessages(messages);
-            this.resumePersistedBackgroundStream(currentSessionId, messages);
-            this.playCueForNewAssistantMessages(previousMessages, messages);
-            this.updateSessionInfo();
+        } finally {
+            this.sharedSessionRefreshInFlight = false;
         }
     }
     

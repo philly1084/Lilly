@@ -127,6 +127,39 @@
                         <div class="session-id" id="session-id">New Session</div>
                     </div>
 
+                    <!-- Grounding Snapshot -->
+                    <div class="grounding-panel" id="grounding-panel">
+                        <div class="grounding-header">
+                            <div>
+                                <span class="section-label grounding-title">AI Grounding</span>
+                                <span class="grounding-subtitle" id="grounding-endpoint">/api/canvas</span>
+                            </div>
+                            <span class="grounding-pill" id="grounding-transport">HTTP</span>
+                        </div>
+                        <div class="grounding-grid">
+                            <div class="grounding-item">
+                                <span>Scope</span>
+                                <strong id="grounding-scope">Full canvas</strong>
+                            </div>
+                            <div class="grounding-item">
+                                <span>Selection</span>
+                                <strong id="grounding-selection">None</strong>
+                            </div>
+                            <div class="grounding-item">
+                                <span>Context</span>
+                                <strong id="grounding-context">Canvas</strong>
+                            </div>
+                            <div class="grounding-item">
+                                <span>Apply</span>
+                                <strong id="grounding-apply">Full canvas</strong>
+                            </div>
+                        </div>
+                        <div class="grounding-actions">
+                            <button id="use-selection-context" class="mini-btn" type="button">Use selection</button>
+                            <button id="refresh-grounding" class="mini-btn" type="button">Refresh</button>
+                        </div>
+                    </div>
+
                     <!-- Quick Templates -->
                     <div class="templates-section" id="templates-section">
                         <label class="section-label">Quick Templates</label>
@@ -135,15 +168,15 @@
                                 <span class="category-badge code">Code</span>
                                 <div class="category-chips">
                                     <button class="template-chip" data-prompt="Create a React component with props and TypeScript interfaces" data-type="code">
-                                        <span class="chip-icon">⚛️</span>
+                                        <span class="chip-icon">JS</span>
                                         <span>React Component</span>
                                     </button>
                                     <button class="template-chip" data-prompt="Write a Python function with docstring and type hints" data-type="code">
-                                        <span class="chip-icon">🐍</span>
+                                        <span class="chip-icon">Py</span>
                                         <span>Python Function</span>
                                     </button>
                                     <button class="template-chip" data-prompt="Create an API endpoint with Express.js including error handling" data-type="code">
-                                        <span class="chip-icon">🌐</span>
+                                        <span class="chip-icon">API</span>
                                         <span>API Endpoint</span>
                                     </button>
                                 </div>
@@ -152,7 +185,7 @@
                                 <span class="category-badge document">Doc</span>
                                 <div class="category-chips">
                                     <button class="template-chip" data-prompt="Write a comprehensive README.md for a project" data-type="document">
-                                        <span class="chip-icon">📝</span>
+                                        <span class="chip-icon">Md</span>
                                         <span>README</span>
                                     </button>
                                 </div>
@@ -161,11 +194,11 @@
                                 <span class="category-badge diagram">Diagram</span>
                                 <div class="category-chips">
                                     <button class="template-chip" data-prompt="Create a flowchart diagram showing user authentication flow" data-type="diagram">
-                                        <span class="chip-icon">📊</span>
+                                        <span class="chip-icon">Flow</span>
                                         <span>Auth Flow</span>
                                     </button>
                                     <button class="template-chip" data-prompt="Design a database schema with relationships" data-type="diagram">
-                                        <span class="chip-icon">🗄️</span>
+                                        <span class="chip-icon">DB</span>
                                         <span>DB Schema</span>
                                     </button>
                                 </div>
@@ -222,7 +255,15 @@
                     <!-- AI Response Preview -->
                     <div id="ai-response-section" class="ai-response-section hidden">
                         <label class="section-label">AI Response</label>
+                        <div class="response-inspector" id="response-inspector"></div>
                         <div class="response-preview" id="response-preview"></div>
+                        <div class="apply-controls">
+                            <label for="apply-target-select">Apply target</label>
+                            <select id="apply-target-select" class="apply-target-select">
+                                <option value="full">Full canvas</option>
+                                <option value="selection">Current selection</option>
+                            </select>
+                        </div>
                         <button id="apply-btn" class="btn btn-accent">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="20 6 9 17 4 12"></polyline>

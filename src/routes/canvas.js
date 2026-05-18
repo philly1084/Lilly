@@ -482,6 +482,25 @@ Always respond with valid JSON in this format:
 function parseCanvasResponse(text, canvasType) {
     try {
         const parsed = JSON.parse(text);
+        if (
+            canvasType === 'diagram'
+            && (Array.isArray(parsed.actions) || Array.isArray(parsed.elements))
+            && parsed.content === undefined
+        ) {
+            return {
+                content: JSON.stringify({
+                    message: typeof parsed.message === 'string' ? parsed.message : '',
+                    actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+                    elements: Array.isArray(parsed.elements) ? parsed.elements : [],
+                }),
+                metadata: {
+                    type: canvasType,
+                    surface: parsed?.metadata?.surface || parsed?.surface || 'canvas',
+                    actionContract: parsed?.metadata?.actionContract || parsed?.actionContract || 'canvas-actions',
+                },
+                suggestions: parsed.suggestions || [],
+            };
+        }
         const parsedContent = typeof parsed.content === 'string'
             ? parsed.content
             : String(parsed.content || '');

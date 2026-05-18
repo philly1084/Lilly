@@ -35,7 +35,18 @@ class CanvasAPI {
         return `${this.baseURL}${path}`;
     }
 
-    async sendCanvasRequest({ message, sessionId, canvasType = 'code', existingContent, model, reasoningEffort, metadata = {} }) {
+    async sendCanvasRequest({
+        message,
+        sessionId,
+        canvasType = 'code',
+        existingContent,
+        model,
+        reasoningEffort,
+        metadata = {},
+        artifactIds,
+        outputFormat,
+        executionProfile,
+    }) {
         const payload = {
             message,
             sessionId: sessionId || this.sessionId,
@@ -43,6 +54,18 @@ class CanvasAPI {
             existingContent,
             metadata,
         };
+
+        if (Array.isArray(artifactIds) && artifactIds.length > 0) {
+            payload.artifactIds = artifactIds;
+        }
+
+        if (outputFormat) {
+            payload.outputFormat = outputFormat;
+        }
+
+        if (executionProfile) {
+            payload.executionProfile = executionProfile;
+        }
 
         if (model) {
             payload.model = model;
@@ -148,7 +171,18 @@ class CanvasAPI {
         }
     }
 
-    sendWebSocketMessage({ message, sessionId, canvasType = 'code', existingContent, model, reasoningEffort }) {
+    sendWebSocketMessage({
+        message,
+        sessionId,
+        canvasType = 'code',
+        existingContent,
+        model,
+        reasoningEffort,
+        metadata = {},
+        artifactIds,
+        outputFormat,
+        executionProfile,
+    }) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             console.error('WebSocket is not connected');
             return false;
@@ -163,6 +197,10 @@ class CanvasAPI {
                 existingContent,
                 ...(model ? { model } : {}),
                 ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+                ...(metadata && Object.keys(metadata).length > 0 ? { metadata } : {}),
+                ...(Array.isArray(artifactIds) && artifactIds.length > 0 ? { artifactIds } : {}),
+                ...(outputFormat ? { outputFormat } : {}),
+                ...(executionProfile ? { executionProfile } : {}),
             },
         };
 

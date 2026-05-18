@@ -1,0 +1,355 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/index.html",
+  "originalUrl": "file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/index.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-18T13:43:54.146Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-excalidraw-mobile-menus\\lilly-canvas-desktop.png",
+      "metrics": {
+        "title": "Lilly Canvas",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/index.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 542,
+        "bodyTextPreview": "Lilly Canvas 100% − + GPT-4o GPT-4o Mini Claude 3.5 Sonnet Claude 3.7 Sonnet V BASIC R O D 📌 LINES L A DRAW P E CONTENT X F I AI ✨ G Z PROPERTIES Snap to Grid STROKE Choose Stroke Color ✓ ✓ ✓ ✓ ✓ ✓ Custom Color BACKGROUND Choose Fill Style ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ Custom Color STROKE WIDTH STROKE STYLE OPACITY 100% FONT SIZE S M L XL FONT Sans Serif Mono Display Script TEXT ALIGN TEXT STYLE TEXT TRANSFORM Aa AA aa Aa LETTER SPACING 0PX LINE HEIGHT 1.4 TEXT SHADOW De",
+        "headings": [
+          "Layers",
+          "PROPERTIES",
+          "Stickers & Icons",
+          "Templates",
+          "AI Assistant",
+          "Export",
+          "Import",
+          "Exporting...",
+          "Keyboard Shortcuts",
+          "Drop files to import"
+        ],
+        "interactiveControls": 280,
+        "textContrast": {
+          "checked": 108,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///v1/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to fetch models: TypeError: Failed to fetch\n    at OpenAICanvasAPI.getModels (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/api.js:264:40)\n    at AIAssistant.fetchModels (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:102:47)\n    at AIAssistant.init (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:94:14)\n    at new AIAssistant (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:43:1"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/sessions?taskType=canvas&clientSurface=canvas-excalidraw' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to restore shared canvas conversation: TypeError: Failed to fetch\n    at OpenAICanvasAPI.getSessionState (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/api.js:362:32)\n    at AIAssistant.restoreSharedConversation (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:1306:58)\n    at AIAssistant.init (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:96:14)\n    at new AIAssistant (file:///C:/Users/phill/KimiBuilt/fronten"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///v1/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to fetch image models: Failed to fetch"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "file:///C:/api/sandbox-libraries/rough/rough.js",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///v1/models",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/sessions?taskType=canvas&clientSurface=canvas-excalidraw",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///v1/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-excalidraw-mobile-menus\\lilly-canvas-mobile.png",
+      "metrics": {
+        "title": "Lilly Canvas",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/index.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "propertiesPanel",
+            "className": "properties-panel",
+            "text": "PROPERTIES Snap to Grid STROKE Choose Stroke Color ✓ ✓ ✓ ✓ ✓ ✓ Custom Color BACK",
+            "left": 440,
+            "right": 780,
+            "width": 340
+          },
+          {
+            "tag": "button",
+            "id": "mobilePropertiesClose",
+            "className": "mobile-properties-close",
+            "text": "",
+            "left": 739,
+            "right": 771,
+            "width": 32
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": 745,
+            "right": 765,
+            "width": 20
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": 749,
+            "right": 761,
+            "width": 12
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "panel-header",
+            "text": "PROPERTIES",
+            "left": 441,
+            "right": 779,
+            "width": 338
+          },
+          {
+            "tag": "h3",
+            "id": "",
+            "className": "",
+            "text": "PROPERTIES",
+            "left": 461,
+            "right": 759,
+            "width": 298
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "panel-content",
+            "text": "Snap to Grid STROKE Choose Stroke Color ✓ ✓ ✓ ✓ ✓ ✓ Custom Color BACKGROUND Choo",
+            "left": 441,
+            "right": 779,
+            "width": 338
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "property-group",
+            "text": "Snap to Grid",
+            "left": 461,
+            "right": 759,
+            "width": 298
+          },
+          {
+            "tag": "button",
+            "id": "snapToGridBtn",
+            "className": "action-btn",
+            "text": "Snap to Grid",
+            "left": 461,
+            "right": 759,
+            "width": 298
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": 476,
+            "right": 490,
+            "width": 14
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": 477,
+            "right": 489,
+            "width": 12
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "property-group",
+            "text": "STROKE Choose Stroke Color ✓ ✓ ✓ ✓ ✓ ✓ Custom Color",
+            "left": 461,
+            "right": 759,
+            "width": 298
+          }
+        ],
+        "bodyTextLength": 457,
+        "bodyTextPreview": "Lilly Canvas 100% − + V R O D 📌 L A P E X F I G Z PROPERTIES Snap to Grid STROKE Choose Stroke Color ✓ ✓ ✓ ✓ ✓ ✓ Custom Color BACKGROUND Choose Fill Style ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ Custom Color STROKE WIDTH STROKE STYLE OPACITY 100% FONT SIZE S M L XL FONT Sans Serif Mono Display Script TEXT ALIGN TEXT STYLE TEXT TRANSFORM Aa AA aa Aa LETTER SPACING 0PX LINE HEIGHT 1.4 TEXT SHADOW Delete Duplicate Bring to Front Send to Back",
+        "headings": [
+          "Layers",
+          "PROPERTIES",
+          "Stickers & Icons",
+          "Templates",
+          "AI Assistant",
+          "Export",
+          "Import",
+          "Exporting...",
+          "Keyboard Shortcuts",
+          "Drop files to import"
+        ],
+        "interactiveControls": 280,
+        "textContrast": {
+          "checked": 106,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///v1/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to fetch models: TypeError: Failed to fetch\n    at OpenAICanvasAPI.getModels (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/api.js:264:40)\n    at AIAssistant.fetchModels (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:102:47)\n    at AIAssistant.init (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:94:14)\n    at new AIAssistant (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:43:1"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///api/sessions?taskType=canvas&clientSurface=canvas-excalidraw' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to restore shared canvas conversation: TypeError: Failed to fetch\n    at OpenAICanvasAPI.getSessionState (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/api.js:362:32)\n    at AIAssistant.restoreSharedConversation (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:1306:58)\n    at AIAssistant.init (file:///C:/Users/phill/KimiBuilt/frontend/canvas-excalidraw/js/ai-assistant.js:96:14)\n    at new AIAssistant (file:///C:/Users/phill/KimiBuilt/fronten"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///v1/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to fetch image models: Failed to fetch"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "file:///C:/api/sandbox-libraries/rough/rough.js",
+          "failure": "net::ERR_FILE_NOT_FOUND"
+        },
+        {
+          "url": "file:///v1/models",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///api/sessions?taskType=canvas&clientSurface=canvas-excalidraw",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "file:///v1/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-excalidraw-mobile-menus\\lilly-canvas-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-excalidraw-mobile-menus\\lilly-canvas-mobile.png"
+    ],
+    "issues": [
+      "cors-errors",
+      "failed-requests"
+    ]
+  }
+}

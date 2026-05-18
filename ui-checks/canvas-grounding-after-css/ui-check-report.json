@@ -1,0 +1,377 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+  "originalUrl": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-18T13:33:43.930Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding-after-css\\lillybuilt-canvas-desktop.png",
+      "metrics": {
+        "title": "LillyBuilt Canvas",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "div",
+            "id": "",
+            "className": "CodeMirror-scroll",
+            "text": "1 // Start coding here... 2 ​",
+            "left": 324,
+            "right": 1490,
+            "width": 1166
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "CodeMirror-sizer",
+            "text": "1 // Start coding here... 2 ​",
+            "left": 353,
+            "right": 1490,
+            "width": 1137
+          }
+        ],
+        "bodyTextLength": 709,
+        "bodyTextPreview": "LillyBuilt Canvas Code Document Diagram Frontend GPT-4o GPT-4o Mini o3-mini Reasoning: Default Reasoning: Low Reasoning: Medium Reasoning: High Reasoning: XHigh SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None CONTEXT Canvas (24 chars) APPLY Full canvas Use selection Refresh Quick Templates CODE JS React Component Py Python Function API API Endpoint DOC Md README DIAGRAM Flow Auth Flow DB DB Schema FRONTEND UI Landing Page PX Microsite Prompt Context (Optional) Use ",
+        "headings": [
+          "Keyboard Shortcuts",
+          "General",
+          "Editor",
+          "Canvas"
+        ],
+        "interactiveControls": 43,
+        "textContrast": {
+          "checked": 87,
+          "lowContrastCount": 3,
+          "lowContrast": [
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "1",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 88,
+              "left": 324
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "cm-comment",
+              "text": "// Start coding here...",
+              "contrast": 3.03,
+              "required": 4.5,
+              "color": "#6272a4",
+              "background": "#282a36",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 89,
+              "left": 357
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "2",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 109,
+              "left": 324
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///C:/api/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/json/json.min.js",
+          "failure": "net::ERR_BLOCKED_BY_ORB"
+        },
+        {
+          "url": "file:///C:/api/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "low-contrast-text",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding-after-css\\lillybuilt-canvas-mobile.png",
+      "metrics": {
+        "title": "LillyBuilt Canvas",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None C",
+            "left": -320,
+            "right": 0,
+            "width": 320
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-content",
+            "text": "SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None C",
+            "left": -320,
+            "right": -1,
+            "width": 319
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "session-info",
+            "text": "SESSION ID New Session",
+            "left": -304,
+            "right": -17,
+            "width": 287
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "session-label",
+            "text": "SESSION ID",
+            "left": -291,
+            "right": -30,
+            "width": 261
+          },
+          {
+            "tag": "div",
+            "id": "session-id",
+            "className": "session-id",
+            "text": "New Session",
+            "left": -291,
+            "right": -30,
+            "width": 261
+          },
+          {
+            "tag": "div",
+            "id": "grounding-panel",
+            "className": "grounding-panel",
+            "text": "AI Grounding /api/canvas HTTP SCOPE code SELECTION None CONTEXT Canvas (24 chars",
+            "left": -304,
+            "right": -17,
+            "width": 287
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "grounding-header",
+            "text": "AI Grounding /api/canvas HTTP",
+            "left": -291,
+            "right": -30,
+            "width": 261
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "",
+            "text": "AI Grounding /api/canvas",
+            "left": -291,
+            "right": -215,
+            "width": 76
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "section-label grounding-title",
+            "text": "AI Grounding",
+            "left": -291,
+            "right": -215,
+            "width": 76
+          },
+          {
+            "tag": "span",
+            "id": "grounding-endpoint",
+            "className": "grounding-subtitle",
+            "text": "/api/canvas",
+            "left": -291,
+            "right": -215,
+            "width": 76
+          },
+          {
+            "tag": "span",
+            "id": "grounding-transport",
+            "className": "grounding-pill",
+            "text": "HTTP",
+            "left": -78,
+            "right": -30,
+            "width": 48
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "grounding-grid",
+            "text": "SCOPE code SELECTION None CONTEXT Canvas (24 chars) APPLY Full canvas",
+            "left": -291,
+            "right": -30,
+            "width": 261
+          }
+        ],
+        "bodyTextLength": 548,
+        "bodyTextPreview": "SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None CONTEXT Canvas (24 chars) APPLY Full canvas Use selection Refresh Quick Templates CODE JS React Component Py Python Function API API Endpoint DOC Md README DIAGRAM Flow Auth Flow DB DB Schema FRONTEND UI Landing Page PX Microsite Prompt Context (Optional) Use current content Artifacts Upload File No file output HTML PDF XML Mermaid XLSX Power Query Send to AI Clear Untitled 1 // Start coding here... 2 ​ Code | Ln 1, C",
+        "headings": [
+          "Keyboard Shortcuts",
+          "General",
+          "Editor",
+          "Canvas"
+        ],
+        "interactiveControls": 43,
+        "textContrast": {
+          "checked": 80,
+          "lowContrastCount": 3,
+          "lowContrast": [
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "1",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 88,
+              "left": 0
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "cm-comment",
+              "text": "// Start coding here...",
+              "contrast": 3.03,
+              "required": 4.5,
+              "color": "#6272a4",
+              "background": "#282a36",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 89,
+              "left": 33
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "2",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 109,
+              "left": 0
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///C:/api/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/json/json.min.js",
+          "failure": "net::ERR_BLOCKED_BY_ORB"
+        },
+        {
+          "url": "file:///C:/api/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "low-contrast-text",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding-after-css\\lillybuilt-canvas-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding-after-css\\lillybuilt-canvas-mobile.png"
+    ],
+    "issues": [
+      "cors-errors",
+      "low-contrast-text",
+      "failed-requests"
+    ]
+  }
+}

@@ -4,7 +4,10 @@ const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 520;
 const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
 const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 1;
-const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 3;
+const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 4;
+const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 2;
+const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.35;
+const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 1800;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
 
 function normalizeSpeechSentence(line = '') {
@@ -365,9 +368,33 @@ class WebChatTtsManager extends EventTarget {
         return false;
     }
 
+    createCustomEvent(eventName, detail = {}) {
+        if (typeof CustomEvent === 'function') {
+            return new CustomEvent(eventName, {
+                detail,
+            });
+        }
+
+        const event = new Event(eventName);
+        event.detail = detail;
+        return event;
+    }
+
     emitStateChange(eventName = 'statechange') {
-        this.dispatchEvent(new CustomEvent(eventName, {
-            detail: this.getState(),
+        this.dispatchEvent(this.createCustomEvent(eventName, this.getState()));
+    }
+
+    emitPlaybackEvent(eventName = '', detail = {}) {
+        if (!eventName) {
+            return;
+        }
+
+        this.dispatchEvent(this.createCustomEvent(eventName, {
+            messageId: String(detail.messageId || '').trim(),
+            chunkText: String(detail.chunkText || '').trim(),
+            chunkIndex: Number.isFinite(Number(detail.chunkIndex)) ? Number(detail.chunkIndex) : -1,
+            chunkCount: Number.isFinite(Number(detail.chunkCount)) ? Number(detail.chunkCount) : 0,
+            playbackToken: Number(detail.playbackToken) || 0,
         }));
     }
 
@@ -740,6 +767,9 @@ class WebChatTtsManager extends EventTarget {
         }
 
         Array.from(this.activePlaybackNodes).forEach((playbackNode) => {
+            if (playbackNode.startTimer) {
+                clearTimeout(playbackNode.startTimer);
+            }
             try {
                 playbackNode.sourceNode.onended = null;
             } catch (_error) {
@@ -805,6 +835,9 @@ class WebChatTtsManager extends EventTarget {
         this.currentUtterance = null;
         this.currentMessageId = '';
         this.loadingMessageId = '';
+        this.emitPlaybackEvent('playbackstop', {
+            playbackToken: this.playbackToken,
+        });
         this.emitStateChange();
     }
 
@@ -1177,6 +1210,7 @@ class WebChatTtsManager extends EventTarget {
         const playbackNode = {
             sourceNode,
             gainNode,
+            startTimer: null,
         };
         this.activePlaybackNodes.add(playbackNode);
         this.currentSourceNode = sourceNode;
@@ -1185,8 +1219,29 @@ class WebChatTtsManager extends EventTarget {
         this.loadingMessageId = '';
         this.emitStateChange();
 
+        const playbackEventDetail = {
+            messageId,
+            chunkText: options.chunkText || '',
+            chunkIndex: options.chunkIndex,
+            chunkCount: options.chunkCount,
+            playbackToken: options.playbackToken,
+        };
+        const startDelayMs = Math.max(0, Math.round((scheduledStartTime - context.currentTime) * 1000));
+        playbackNode.startTimer = setTimeout(() => {
+            playbackNode.startTimer = null;
+            if (!this.activePlaybackNodes.has(playbackNode) || !this.isPlaybackRequestActive(options.playbackToken)) {
+                return;
+            }
+            this.emitPlaybackEvent('chunkstart', playbackEventDetail);
+        }, startDelayMs);
+        playbackNode.startTimer?.unref?.();
+
         sourceNode.onended = () => {
             this.activePlaybackNodes.delete(playbackNode);
+            if (playbackNode.startTimer) {
+                clearTimeout(playbackNode.startTimer);
+                playbackNode.startTimer = null;
+            }
             try {
                 sourceNode.disconnect();
             } catch (_error) {
@@ -1208,6 +1263,8 @@ class WebChatTtsManager extends EventTarget {
             if (!this.isPlaybackRequestActive(options.playbackToken)) {
                 return;
             }
+
+            this.emitPlaybackEvent('chunkend', playbackEventDetail);
 
             if (options.isFinalChunk === true) {
                 this.loadingMessageId = '';
@@ -1239,6 +1296,7 @@ class WebChatTtsManager extends EventTarget {
         let scheduledEndTime = 0;
         const synthesisLookahead = Math.max(1, DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD);
         activePlaybackContext = activePlaybackContext || await this.preparePlayback();
+        const bufferedChunkResults = new Map();
 
         const prepareChunk = (index) => {
             if (index < 0 || index >= chunks.length || preparedChunkPromises.has(index)) {
@@ -1262,6 +1320,85 @@ class WebChatTtsManager extends EventTarget {
             }
         };
 
+        const wait = (ms) => new Promise((resolve) => {
+            const timer = setTimeout(resolve, Math.max(0, Number(ms) || 0));
+            timer?.unref?.();
+        });
+
+        const waitForPreparedChunk = async (index, timeoutMs = 0) => {
+            if (bufferedChunkResults.has(index)) {
+                return {
+                    timedOut: false,
+                    result: bufferedChunkResults.get(index),
+                };
+            }
+
+            const chunkPromise = preparedChunkPromises.get(index);
+            if (!chunkPromise) {
+                return {
+                    timedOut: true,
+                    result: null,
+                };
+            }
+
+            if (!timeoutMs || timeoutMs <= 0) {
+                const result = await chunkPromise;
+                bufferedChunkResults.set(index, result);
+                return {
+                    timedOut: false,
+                    result,
+                };
+            }
+
+            return Promise.race([
+                chunkPromise.then((result) => {
+                    bufferedChunkResults.set(index, result);
+                    return {
+                        timedOut: false,
+                        result,
+                    };
+                }),
+                wait(timeoutMs).then(() => ({
+                    timedOut: true,
+                    result: null,
+                })),
+            ]);
+        };
+
+        const primeInitialPlaybackBuffer = async () => {
+            const firstChunk = await waitForPreparedChunk(0);
+            if (!firstChunk.result || !this.isPlaybackRequestActive(playbackToken)) {
+                return;
+            }
+
+            const maxInitialChunks = Math.min(chunks.length, DEFAULT_TTS_INITIAL_BUFFER_CHUNKS);
+            const deadline = Date.now() + DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS;
+            let bufferedDuration = Number(firstChunk.result.decodedBuffer?.duration) || 0;
+
+            for (let index = 1; index < maxInitialChunks; index += 1) {
+                if (
+                    bufferedChunkResults.size >= maxInitialChunks
+                    || bufferedDuration >= DEFAULT_TTS_INITIAL_BUFFER_SECONDS
+                    || !this.isPlaybackRequestActive(playbackToken)
+                ) {
+                    break;
+                }
+
+                const remainingMs = deadline - Date.now();
+                if (remainingMs <= 0) {
+                    break;
+                }
+
+                const nextChunk = await waitForPreparedChunk(index, remainingMs);
+                if (nextChunk.timedOut || !nextChunk.result) {
+                    break;
+                }
+
+                bufferedDuration += Number(nextChunk.result.decodedBuffer?.duration) || 0;
+                fillPreparedWindow(index + 1);
+            }
+        };
+
         prepareChunk(0);
         nextChunkToPrepare = 1;
         fillPreparedWindow(0);
@@ -1270,9 +1407,14 @@ class WebChatTtsManager extends EventTarget {
             this.currentPlaybackWaiter = { resolve };
         });
 
+        await primeInitialPlaybackBuffer();
+
         for (let index = 0; index < chunks.length; index += 1) {
-            const chunkPromise = preparedChunkPromises.get(index);
+            const chunkPromise = bufferedChunkResults.has(index)
+                ? Promise.resolve(bufferedChunkResults.get(index))
+                : preparedChunkPromises.get(index);
             preparedChunkPromises.delete(index);
+            bufferedChunkResults.delete(index);
             const chunkResult = await chunkPromise;
             if (!this.isPlaybackRequestActive(playbackToken)) {
                 return false;
@@ -1285,6 +1427,9 @@ class WebChatTtsManager extends EventTarget {
                 playbackContext: activePlaybackContext,
                 scheduledStartTime: scheduledEndTime,
                 playbackToken,
+                chunkText: chunks[index],
+                chunkIndex: index,
+                chunkCount: chunks.length,
                 isFinalChunk: index === (chunks.length - 1),
             });
             scheduledEndTime = scheduledChunk.endTime;

@@ -406,6 +406,8 @@ class App {
         const mobileToolbarClose = document.getElementById('mobileToolbarClose');
         
         mobileToolbarToggle?.addEventListener('click', () => {
+            document.getElementById('propertiesPanel')?.classList.remove('active');
+            window.aiAssistant?.hidePanel();
             toolbar?.classList.add('active');
         });
         
@@ -419,6 +421,8 @@ class App {
         const mobilePropertiesClose = document.getElementById('mobilePropertiesClose');
         
         mobilePropertiesToggle?.addEventListener('click', () => {
+            document.getElementById('toolbar')?.classList.remove('active');
+            window.aiAssistant?.hidePanel();
             propertiesPanel?.classList.add('active');
         });
         
@@ -1017,6 +1021,7 @@ class App {
         
         // Update properties panel
         window.propertiesManager?.updateForSelection();
+        window.aiAssistant?.updateGroundingPanel();
         
         // Selection box update is now handled in canvas.render()
         // which is called after selection changes

@@ -109,6 +109,16 @@ describe('session scope memory routing', () => {
     }));
   });
 
+  test('normalizes legacy global web-chat session metadata back to the web-chat scope', () => {
+    expect(buildScopedSessionMetadata({
+      clientSurface: 'web-chat',
+      memoryScope: 'global',
+    })).toEqual(expect.objectContaining({
+      memoryScope: 'web-chat',
+      sessionIsolation: true,
+    }));
+  });
+
   test('routes memory into session-local namespace when no project key exists', () => {
     expect(buildScopedMemoryMetadata({
       ownerId: 'phill',
@@ -144,6 +154,20 @@ describe('session scope memory routing', () => {
 
     expect(sessionMatchesScope(workspaceTwoSession, 'web-chat')).toBe(false);
     expect(sessionMatchesScope(workspaceTwoSession, 'web-chat-workspace-2')).toBe(true);
+  });
+
+  test('does not let global sessions masquerade as the web-chat workgroup through clientSurface alone', () => {
+    const globalWebChatSession = {
+      id: 'global-web-chat-session',
+      scopeKey: 'global',
+      metadata: {
+        clientSurface: 'web-chat',
+        memoryScope: 'global',
+      },
+    };
+
+    expect(sessionMatchesScope(globalWebChatSession, 'web-chat')).toBe(false);
+    expect(sessionMatchesScope(globalWebChatSession, 'global')).toBe(true);
   });
 
   test('maps raw legacy workspace keys to durable web-chat workspace scopes', () => {

@@ -1,0 +1,587 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+  "originalUrl": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-18T13:31:51.915Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding\\lillybuilt-canvas-desktop.png",
+      "metrics": {
+        "title": "LillyBuilt Canvas",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "div",
+            "id": "",
+            "className": "CodeMirror-scroll",
+            "text": "1 // Start coding here... 2 ​",
+            "left": 324,
+            "right": 1490,
+            "width": 1166
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "CodeMirror-sizer",
+            "text": "1 // Start coding here... 2 ​",
+            "left": 353,
+            "right": 1490,
+            "width": 1137
+          }
+        ],
+        "bodyTextLength": 709,
+        "bodyTextPreview": "LillyBuilt Canvas Code Document Diagram Frontend GPT-4o GPT-4o Mini o3-mini Reasoning: Default Reasoning: Low Reasoning: Medium Reasoning: High Reasoning: XHigh SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None CONTEXT Canvas (24 chars) APPLY Full canvas Use selection Refresh Quick Templates CODE JS React Component Py Python Function API API Endpoint DOC Md README DIAGRAM Flow Auth Flow DB DB Schema FRONTEND UI Landing Page PX Microsite Prompt Context (Optional) Use ",
+        "headings": [
+          "Keyboard Shortcuts",
+          "General",
+          "Editor",
+          "Canvas"
+        ],
+        "interactiveControls": 43,
+        "textContrast": {
+          "checked": 87,
+          "lowContrastCount": 10,
+          "lowContrast": [
+            {
+              "tag": "button",
+              "id": "sidebar-toggle",
+              "className": "icon-btn",
+              "text": "",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 8,
+              "left": 12
+            },
+            {
+              "tag": "button",
+              "id": "theme-toggle",
+              "className": "icon-btn",
+              "text": "",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 8,
+              "left": 1352
+            },
+            {
+              "tag": "button",
+              "id": "new-session-btn",
+              "className": "icon-btn",
+              "text": "",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 8,
+              "left": 1396
+            },
+            {
+              "tag": "label",
+              "id": "",
+              "className": "section-label",
+              "text": "Quick Templates",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 397,
+              "left": 16
+            },
+            {
+              "tag": "label",
+              "id": "",
+              "className": "section-label",
+              "text": "Prompt",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 749,
+              "left": 16
+            },
+            {
+              "tag": "label",
+              "id": "",
+              "className": "section-label",
+              "text": "Context (Optional) Use current content",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 896,
+              "left": 16
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "1",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 88,
+              "left": 324
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "cm-comment",
+              "text": "// Start coding here...",
+              "contrast": 3.03,
+              "required": 4.5,
+              "color": "#6272a4",
+              "background": "#282a36",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 89,
+              "left": 357
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "2",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 109,
+              "left": 324
+            },
+            {
+              "tag": "span",
+              "id": "canvas-type-badge",
+              "className": "status-badge",
+              "text": "Code",
+              "contrast": 3.56,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#268ed4",
+              "fontSize": 11,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 938,
+              "left": 336
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///C:/api/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/json/json.min.js",
+          "failure": "net::ERR_BLOCKED_BY_ORB"
+        },
+        {
+          "url": "file:///C:/api/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "low-contrast-text",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding\\lillybuilt-canvas-mobile.png",
+      "metrics": {
+        "title": "LillyBuilt Canvas",
+        "url": "file:///C:/Users/phill/KimiBuilt/frontend/canvas/index.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "div",
+            "id": "",
+            "className": "header-right",
+            "text": "GPT-4o GPT-4o Mini o3-mini Reasoning: Default Reasoning: Low Reasoning: Medium R",
+            "left": 318,
+            "right": 652,
+            "width": 334
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "model-selector",
+            "text": "GPT-4o GPT-4o Mini o3-mini",
+            "left": 318,
+            "right": 421,
+            "width": 103
+          },
+          {
+            "tag": "select",
+            "id": "model-select",
+            "className": "model-select",
+            "text": "GPT-4o GPT-4o Mini o3-mini",
+            "left": 318,
+            "right": 421,
+            "width": 103
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "reasoning-selector",
+            "text": "Reasoning: Default Reasoning: Low Reasoning: Medium Reasoning: High Reasoning: X",
+            "left": 429,
+            "right": 572,
+            "width": 143
+          },
+          {
+            "tag": "select",
+            "id": "reasoning-effort-select",
+            "className": "reasoning-select",
+            "text": "Reasoning: Default Reasoning: Low Reasoning: Medium Reasoning: High Reasoning: X",
+            "left": 429,
+            "right": 572,
+            "width": 143
+          },
+          {
+            "tag": "button",
+            "id": "theme-toggle",
+            "className": "icon-btn",
+            "text": "",
+            "left": 580,
+            "right": 612,
+            "width": 32
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": 586,
+            "right": 606,
+            "width": 20
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": 588,
+            "right": 603,
+            "width": 15
+          },
+          {
+            "tag": "button",
+            "id": "new-session-btn",
+            "className": "icon-btn",
+            "text": "",
+            "left": 620,
+            "right": 652,
+            "width": 32
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": 626,
+            "right": 646,
+            "width": 20
+          },
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None C",
+            "left": -320,
+            "right": 0,
+            "width": 320
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-content",
+            "text": "SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None C",
+            "left": -320,
+            "right": -1,
+            "width": 319
+          }
+        ],
+        "bodyTextLength": 678,
+        "bodyTextPreview": "LillyBuilt Canvas GPT-4o GPT-4o Mini o3-mini Reasoning: Default Reasoning: Low Reasoning: Medium Reasoning: High Reasoning: XHigh SESSION ID New Session AI Grounding /api/canvas HTTP SCOPE code SELECTION None CONTEXT Canvas (24 chars) APPLY Full canvas Use selection Refresh Quick Templates CODE JS React Component Py Python Function API API Endpoint DOC Md README DIAGRAM Flow Auth Flow DB DB Schema FRONTEND UI Landing Page PX Microsite Prompt Context (Optional) Use current content Artifacts Uploa",
+        "headings": [
+          "Keyboard Shortcuts",
+          "General",
+          "Editor",
+          "Canvas"
+        ],
+        "interactiveControls": 43,
+        "textContrast": {
+          "checked": 83,
+          "lowContrastCount": 10,
+          "lowContrast": [
+            {
+              "tag": "button",
+              "id": "sidebar-toggle",
+              "className": "icon-btn",
+              "text": "",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 8,
+              "left": 12
+            },
+            {
+              "tag": "button",
+              "id": "theme-toggle",
+              "className": "icon-btn",
+              "text": "",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 8,
+              "left": 580
+            },
+            {
+              "tag": "button",
+              "id": "new-session-btn",
+              "className": "icon-btn",
+              "text": "",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 13.3,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 8,
+              "left": 620
+            },
+            {
+              "tag": "label",
+              "id": "",
+              "className": "section-label",
+              "text": "Quick Templates",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 519,
+              "left": -304
+            },
+            {
+              "tag": "label",
+              "id": "",
+              "className": "section-label",
+              "text": "Prompt",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 871,
+              "left": -304
+            },
+            {
+              "tag": "label",
+              "id": "",
+              "className": "section-label",
+              "text": "Context (Optional) Use current content",
+              "contrast": 4.15,
+              "required": 4.5,
+              "color": "#858585",
+              "background": "#252526",
+              "fontSize": 12,
+              "fontWeight": 600,
+              "largeText": false,
+              "top": 1018,
+              "left": -304
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "1",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 88,
+              "left": 0
+            },
+            {
+              "tag": "span",
+              "id": "",
+              "className": "cm-comment",
+              "text": "// Start coding here...",
+              "contrast": 3.03,
+              "required": 4.5,
+              "color": "#6272a4",
+              "background": "#282a36",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 89,
+              "left": 33
+            },
+            {
+              "tag": "div",
+              "id": "",
+              "className": "CodeMirror-linenumber CodeMirror-gutter-elt",
+              "text": "2",
+              "contrast": 3.83,
+              "required": 4.5,
+              "color": "#6d8a88",
+              "background": "#282a36",
+              "fontSize": 12,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 109,
+              "left": 0
+            },
+            {
+              "tag": "span",
+              "id": "canvas-type-badge",
+              "className": "status-badge",
+              "text": "Code",
+              "contrast": 3.56,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#268ed4",
+              "fontSize": 11,
+              "fontWeight": 500,
+              "largeText": false,
+              "top": 822,
+              "left": 12
+            }
+          ]
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Access to fetch at 'file:///C:/api/models' from origin 'null' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-extension, chrome-untrusted, data, http, https, isolated-app."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/json/json.min.js",
+          "failure": "net::ERR_BLOCKED_BY_ORB"
+        },
+        {
+          "url": "file:///C:/api/models",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "low-contrast-text",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding\\lillybuilt-canvas-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\canvas-grounding\\lillybuilt-canvas-mobile.png"
+    ],
+    "issues": [
+      "cors-errors",
+      "low-contrast-text",
+      "failed-requests"
+    ]
+  }
+}

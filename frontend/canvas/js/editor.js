@@ -232,6 +232,31 @@ class EditorManager {
     }
 
     /**
+     * Get selected text plus stable editor coordinates.
+     * @returns {Object|null}
+     */
+    getSelectionInfo() {
+        if (!this.editor) return null;
+
+        const text = this.editor.getSelection();
+        if (!text) return null;
+
+        const from = this.editor.getCursor('from');
+        const to = this.editor.getCursor('to');
+
+        return {
+            text,
+            from: { line: from.line, ch: from.ch },
+            to: { line: to.line, ch: to.ch },
+            startLine: from.line + 1,
+            startColumn: from.ch + 1,
+            endLine: to.line + 1,
+            endColumn: to.ch + 1,
+            characterCount: text.length,
+        };
+    }
+
+    /**
      * Replace selection with text
      * @param {string} text 
      */
@@ -239,6 +264,22 @@ class EditorManager {
         if (this.editor) {
             this.editor.replaceSelection(text);
         }
+    }
+
+    /**
+     * Replace a saved range with text.
+     * @param {string} text
+     * @param {Object} range
+     */
+    replaceRange(text, range) {
+        if (!this.editor || !range?.from || !range?.to) return false;
+
+        this.editor.replaceRange(
+            text,
+            { line: range.from.line, ch: range.from.ch },
+            { line: range.to.line, ch: range.to.ch },
+        );
+        return true;
     }
 
     /**

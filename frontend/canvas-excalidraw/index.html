@@ -1215,6 +1215,44 @@
             
             <p class="ai-description">Chat with the canvas agent about the current board, then ask it to make changes.</p>
 
+            <div class="ai-grounding-panel" id="aiGroundingPanel">
+                <div class="ai-grounding-header">
+                    <div>
+                        <span class="ai-grounding-kicker">Grounding</span>
+                        <strong id="aiGroundingTitle">Whole board</strong>
+                    </div>
+                    <span class="ai-grounding-pill" id="aiGroundingState">0 selected</span>
+                </div>
+                <div class="ai-grounding-grid">
+                    <label>
+                        <span>Scope</span>
+                        <select id="aiScopeSelect" class="ai-select">
+                            <option value="auto">Auto</option>
+                            <option value="selection">Selection</option>
+                            <option value="board">Whole board</option>
+                            <option value="viewport">Visible area</option>
+                        </select>
+                    </label>
+                    <div class="ai-grounding-fact">
+                        <span>Board</span>
+                        <strong id="aiBoardSummary">0 objects</strong>
+                    </div>
+                    <div class="ai-grounding-fact">
+                        <span>Selection</span>
+                        <strong id="aiSelectionSummary">None</strong>
+                    </div>
+                    <div class="ai-grounding-fact">
+                        <span>Apply</span>
+                        <strong id="aiApplySummary">Actions + messages</strong>
+                    </div>
+                </div>
+                <div class="ai-grounding-actions">
+                    <button type="button" class="ai-context-btn" data-ai-context-prompt="What is selected and what should I improve first?">Inspect selection</button>
+                    <button type="button" class="ai-context-btn" data-ai-local-action="tidy-selection">Tidy layout</button>
+                    <button type="button" class="ai-context-btn" data-ai-context-prompt="Add concise labels or notes to make the selected area easier to understand.">Label</button>
+                </div>
+            </div>
+
             <div class="ai-conversation" id="aiConversation">
                 <div class="ai-conversation-empty" id="aiConversationEmpty">
                     Start a chat with the canvas agent or ask it to generate something directly on the board.

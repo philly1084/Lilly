@@ -6,6 +6,12 @@
 const CANVAS_EXCALIDRAW_TASK_TYPE = 'canvas';
 const CANVAS_EXCALIDRAW_CLIENT_SURFACE = 'canvas-excalidraw';
 const CANVAS_DEFAULT_IMAGE_MODEL = 'gpt-image-2';
+const CANVAS_EXCALIDRAW_ACTION_CONTRACT = [
+    'Return /api/canvas-compatible JSON. Put board edits inside the top-level content string using this inner shape:',
+    '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"update","id":"element-id","patch":{...}},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[]}',
+    'The full response shape should be {"content":"<inner board-edit JSON string>","metadata":{"type":"diagram","surface":"canvas-excalidraw"},"suggestions":[]}.',
+    'Use existing selected ids for updates. Keep changes modest unless the user asks for a rewrite.',
+].join(' ');
 const canvasGatewayHelpers = window.KimiBuiltGatewaySSE || {};
 const buildCanvasGatewayHeaders = canvasGatewayHelpers.buildGatewayHeaders || ((headers = {}) => ({
     ...headers,
@@ -61,7 +67,71 @@ class OpenAICanvasAPI {
         return this.selectedModel;
     }
 
-    async chat(messages) {
+    getBackendBaseURL() {
+        return this.baseURL.replace(/\/v1\/?$/, '');
+    }
+
+    async requestCanvasAgent({
+        message,
+        canvasContext = null,
+        mode = 'chat',
+        existingContent = '',
+    }) {
+        const contextText = canvasContext ? JSON.stringify(canvasContext) : '';
+        const prompt = [
+            message,
+            '',
+            CANVAS_EXCALIDRAW_ACTION_CONTRACT,
+            'You are working inside the Lilly Canvas Excalidraw-style whiteboard, so reason about layout, labels, spacing, arrows, and selected objects as real editable canvas objects.',
+            mode === 'diagram'
+                ? 'The user expects you to draw or modify diagram objects on the board.'
+                : 'The user may want either advice or direct board edits. Use plain text only for discussion-only answers.',
+            contextText ? `Canvas grounding:\n${contextText}` : '',
+        ].filter(Boolean).join('\n');
+
+        const response = await fetch(`${this.getBackendBaseURL()}/api/canvas`, {
+            method: 'POST',
+            headers: buildCanvasGatewayHeaders({
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+            }),
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                message: prompt,
+                sessionId: this.sessionId,
+                canvasType: 'diagram',
+                existingContent: existingContent || contextText,
+                model: this.selectedModel,
+                metadata: {
+                    taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
+                    clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+                    surfaceMode: mode,
+                    canvasContext,
+                    actionContract: 'excalidraw-actions-v1',
+                },
+            }),
+        });
+
+        if (!response.ok) {
+            throw await this.buildRequestError(response);
+        }
+
+        const data = await response.json();
+        if (data.sessionId) {
+            this.sessionId = data.sessionId;
+        }
+
+        return {
+            content: data.content || '',
+            suggestions: data.suggestions || [],
+            metadata: data.metadata || {},
+            sessionId: this.sessionId,
+            responseId: data.responseId,
+            raw: data,
+        };
+    }
+
+    async chat(messages, canvasContext = null) {
         const params = {
             model: this.selectedModel,
             messages,
@@ -71,6 +141,7 @@ class OpenAICanvasAPI {
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+                canvasContext,
             },
         };
 
@@ -114,17 +185,25 @@ class OpenAICanvasAPI {
     }
 
     // Generate diagram (uses chat completions with special prompt)
-    async generateDiagram(message, existingContent = null) {
+    async generateDiagram(message, existingContent = null, canvasContext = null) {
         const messages = [
             {
                 role: 'system',
-                content: 'You are an AI canvas assistant. Generate structured content for a canvas interface. Respond with valid JSON containing elements array.'
+                content: [
+                    'You are an AI visual canvas assistant for an Excalidraw-style whiteboard.',
+                    'Respond with strict JSON only.',
+                    'Use this shape: {"message":"short human summary","actions":[{"type":"add","element":{...}},{"type":"update","id":"element-id","patch":{...}},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[...]}',
+                    'Prefer actions when changing existing selected objects. Use elements for newly generated diagrams.',
+                    'Element types: rectangle, diamond, ellipse, arrow, line, freedraw, text, sticky, frame, image.',
+                ].join(' ')
             },
             {
                 role: 'user',
-                content: existingContent 
-                    ? `${message}\n\nExisting content:\n${existingContent}`
-                    : message
+                content: [
+                    message,
+                    canvasContext ? `\nCanvas grounding:\n${JSON.stringify(canvasContext)}` : '',
+                    existingContent ? `\nExisting content:\n${existingContent}` : '',
+                ].filter(Boolean).join('\n')
             }
         ];
 
@@ -137,6 +216,7 @@ class OpenAICanvasAPI {
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+                canvasContext,
             },
         };
 
