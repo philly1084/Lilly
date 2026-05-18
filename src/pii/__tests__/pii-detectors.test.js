@@ -138,4 +138,30 @@ describe('PII detectors', () => {
       expect.objectContaining({ type: 'postalCode', value: 'K1A 0B1', source: 'builtin' }),
     ]));
   });
+
+  test('normalizes detector aliases and catches common label misspellings', () => {
+    const sample = [
+      'patinet name: jane sample',
+      'brith date: 10/08/84',
+      'socail security number: 123 45 6789',
+      'helth card num: PEI-99887766',
+      'medcal record num: MRN-445566',
+      '123 main street',
+    ].join('\n');
+    const matches = detectPii(sample, {
+      detectors: ['Person Name', 'DOB', 'social security number', 'health card number', 'medical record no', 'Adress'],
+      customPatterns: [],
+      dictionary: [],
+      enablePersonNames: true,
+    });
+
+    expect(matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'personName', value: 'jane sample' }),
+      expect.objectContaining({ type: 'dateOfBirth', value: '10/08/84' }),
+      expect.objectContaining({ type: 'ssn', value: '123 45 6789', source: 'ssnLabel' }),
+      expect.objectContaining({ type: 'healthCardNumber', value: 'PEI-99887766' }),
+      expect.objectContaining({ type: 'medicalRecordNumber', value: 'MRN-445566' }),
+      expect.objectContaining({ type: 'address', value: '123 main street' }),
+    ]));
+  });
 });

@@ -341,6 +341,100 @@ describe('settings.controller personality support', () => {
     expect(controller.settings.privacyPii.auditCriteria.requiredDetectors).toEqual(['email', 'phone', 'personName']);
   });
 
+  test('canonicalizes loose PII admin detector names, actions, regex flags, and numeric limits', async () => {
+    const req = {
+      body: {
+        privacyPii: {
+          enabled: true,
+          detectors: ['Email', 'phone number', 'DOB', 'credit-card', 'person name', 'social insurance number'],
+          detectorActions: {
+            'Person Name': 'Mask',
+            'credit-card': 'vault',
+            DOB: 'redact',
+            'social insurance number': 'remove',
+          },
+          dictionary: [
+            { type: 'Person Name', value: 'Jane Doe', action: 'Mask' },
+            { type: 'Company', value: 'Acme Labs', action: 'redact' },
+          ],
+          customPatterns: [
+            { type: 'Patient ID', pattern: 'PAT-[0-9]{4}', flags: 'GI', action: 'Vault' },
+          ],
+          relationshipCalculations: {
+            maxRows: '1,250',
+            maxCells: '25000.9',
+          },
+          auditCriteria: {
+            requiredDetectors: ['EMAIL', 'person name', 'credit card', 'DOB'],
+          },
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    await controller.update(req, res);
+
+    expect(controller.settings.privacyPii.detectors).toEqual([
+      'email',
+      'phone',
+      'dateOfBirth',
+      'creditCard',
+      'personName',
+      'socialInsuranceNumber',
+    ]);
+    expect(controller.settings.privacyPii.detectorActions).toEqual(expect.objectContaining({
+      personName: 'mask',
+      creditCard: 'vault-placeholder',
+      dateOfBirth: 'mask',
+      socialInsuranceNumber: 'remove',
+    }));
+    expect(controller.settings.privacyPii.dictionary).toEqual([
+      { type: 'personName', value: 'Jane Doe', action: 'mask' },
+      { type: 'organization', value: 'Acme Labs', action: 'mask' },
+    ]);
+    expect(controller.settings.privacyPii.customPatterns).toEqual([
+      { type: 'patientIdentifier', pattern: 'PAT-[0-9]{4}', flags: 'gi', action: 'vault-placeholder' },
+    ]);
+    expect(controller.settings.privacyPii.relationshipCalculations).toEqual(expect.objectContaining({
+      maxRows: 1250,
+      maxCells: 25000,
+    }));
+    expect(controller.settings.privacyPii.auditCriteria.requiredDetectors).toEqual([
+      'email',
+      'personName',
+      'creditCard',
+      'dateOfBirth',
+    ]);
+  });
+
+  test('rejects invalid PII custom regex patterns instead of saving dead rules', async () => {
+    const req = {
+      body: {
+        privacyPii: {
+          customPatterns: [
+            { type: 'accountCode', pattern: 'ACCT-(', flags: 'GI' },
+          ],
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    await controller.update(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      error: expect.stringContaining('Invalid PII custom regex'),
+    }));
+    expect(controller.settings.privacyPii.customPatterns).toEqual([]);
+  });
+
   test('defaults PII protection on with opaque placeholder IDs', () => {
     const defaults = controller.getDefaultSettings().privacyPii;
 
@@ -540,7 +634,7 @@ describe('settings.controller personality support', () => {
     expect(payload.sanitizedText).not.toContain('Sample Employer');
     expect(payload.matches).toEqual([
       expect.objectContaining({ type: 'personName', action: 'mask', restorable: false }),
-      expect.objectContaining({ type: 'employer', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'organization', action: 'mask', restorable: false }),
     ]);
   });
 

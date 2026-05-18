@@ -17,7 +17,7 @@ const {
   resetAgentNotesFile,
   writeAgentNotesFile,
 } = require('../../agent-notes');
-const { detectPii } = require('../../pii/pii-detectors');
+const { detectPii, normalizeDetectorId } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
   defaultsVersion: 6,
@@ -94,6 +94,58 @@ const PRIVACY_PII_AUDIT_PROFILES = {
   },
 };
 
+function normalizePrivacyType(value = '', fallback = 'custom') {
+  const normalized = normalizeDetectorId(String(value || '').trim());
+  return normalized || fallback;
+}
+
+function normalizePrivacyAction(value = '', fallback = 'vault-placeholder') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-');
+  if (['vault', 'placeholder', 'vault-placeholder', 'vaulted', 'tokenize', 'tokenise'].includes(normalized)) {
+    return 'vault-placeholder';
+  }
+  if (['mask', 'masked', 'redact', 'redacted', 'redaction'].includes(normalized)) {
+    return 'mask';
+  }
+  if (['remove', 'removed', 'delete', 'drop', 'strip'].includes(normalized)) {
+    return 'remove';
+  }
+  if (['ignore', 'ignored', 'skip', 'none', 'off'].includes(normalized)) {
+    return 'ignore';
+  }
+  return PRIVACY_PII_ACTIONS.has(fallback) ? fallback : 'vault-placeholder';
+}
+
+function normalizeRegexFlags(value = 'gi') {
+  const raw = String(value || 'gi').trim().toLowerCase() || 'gi';
+  const flags = Array.from(new Set(`${raw}gi`.split('').filter((flag) => 'dgimsuy'.includes(flag)))).join('');
+  return flags || 'gi';
+}
+
+function assertValidPrivacyRegex(pattern = '', flags = 'gi') {
+  try {
+    new RegExp(pattern, flags);
+  } catch (error) {
+    const validationError = new Error(`Invalid PII custom regex "${String(pattern || '').slice(0, 80)}": ${error.message}`);
+    validationError.statusCode = 400;
+    validationError.code = 'invalid_pii_custom_regex';
+    throw validationError;
+  }
+}
+
+function parseBoundedPositiveInteger(value, fallback, max) {
+  const raw = String(value ?? '').trim();
+  const numeric = raw
+    ? Number(raw.replace(/[,\s]+/g, ''))
+    : Number(value);
+  const parsed = Number.isFinite(numeric) ? numeric : parseInt(raw.replace(/,/g, ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(Math.floor(parsed), max));
+}
+
 function normalizePrivacyPlaceholderMode(value = '') {
   const normalized = String(value || '').trim().toLowerCase().replace(/_/g, '-');
   if (['opaque', 'opaque-random', 'random'].includes(normalized)) return 'opaque-random';
@@ -119,7 +171,7 @@ function normalizePrivacyDetectorActions(value = {}, fallback = {}) {
     ])
     .filter(([type]) => Boolean(type))
     .reduce((acc, [type, action]) => {
-      acc[type] = PRIVACY_PII_ACTIONS.has(action) ? action : 'vault-placeholder';
+      acc[normalizePrivacyType(type)] = normalizePrivacyAction(action);
       return acc;
     }, {});
 }
@@ -132,34 +184,40 @@ function normalizePrivacyDictionary(entries = []) {
         return value ? { type: 'custom', value } : null;
       }
       if (!entry || typeof entry !== 'object') return null;
-      const type = String(entry.type || entry.label || 'custom').trim() || 'custom';
+      const type = normalizePrivacyType(entry.type || entry.label || 'custom');
       const value = String(entry.value || '').trim();
       if (!value) return null;
-      const action = String(entry.action || '').trim();
+      const action = normalizePrivacyAction(entry.action || '');
       return {
         type,
         value,
-        ...(PRIVACY_PII_ACTIONS.has(action) ? { action } : {}),
+        ...(entry.action !== undefined ? { action } : {}),
       };
     })
     .filter(Boolean)
     .slice(0, 200);
 }
 
-function normalizePrivacyCustomPatterns(entries = []) {
+function normalizePrivacyCustomPatterns(entries = [], { strict = false } = {}) {
   return (Array.isArray(entries) ? entries : [])
     .map((entry) => {
       if (!entry || typeof entry !== 'object') return null;
-      const type = String(entry.type || entry.label || 'custom').trim() || 'custom';
+      const type = normalizePrivacyType(entry.type || entry.label || 'custom');
       const pattern = String(entry.pattern || '').trim();
       if (!pattern) return null;
-      const flags = String(entry.flags || 'gi').trim() || 'gi';
-      const action = String(entry.action || '').trim();
+      const flags = normalizeRegexFlags(entry.flags || 'gi');
+      try {
+        assertValidPrivacyRegex(pattern, flags);
+      } catch (error) {
+        if (strict) throw error;
+        return null;
+      }
+      const action = normalizePrivacyAction(entry.action || '');
       return {
         type,
         pattern,
         flags,
-        ...(PRIVACY_PII_ACTIONS.has(action) ? { action } : {}),
+        ...(entry.action !== undefined ? { action } : {}),
       };
     })
     .filter(Boolean)
@@ -173,7 +231,7 @@ function normalizePrivacyAuditCriteria(value = {}, fallback = {}, profile = 'bas
   const merged = { ...profileCriteria, ...fallbackSource, ...source };
   return {
     requiredDetectors: Array.isArray(merged.requiredDetectors)
-      ? merged.requiredDetectors.map((entry) => String(entry || '').trim()).filter(Boolean).slice(0, 50)
+      ? Array.from(new Set(merged.requiredDetectors.map((entry) => normalizePrivacyType(entry, '')).filter(Boolean))).slice(0, 50)
       : [...profileCriteria.requiredDetectors],
     requireVaultKey: merged.requireVaultKey !== false,
     requireFailClosed: merged.requireFailClosed !== false,
@@ -184,23 +242,23 @@ function normalizePrivacyAuditCriteria(value = {}, fallback = {}, profile = 'bas
 function normalizePrivacyRelationshipCalculations(value = {}, fallback = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
-  const maxRows = Number(source.maxRows ?? fallbackSource.maxRows ?? 1000);
-  const maxCells = Number(source.maxCells ?? fallbackSource.maxCells ?? 20000);
+  const maxRows = parseBoundedPositiveInteger(source.maxRows ?? fallbackSource.maxRows ?? 1000, 1000, 100000);
+  const maxCells = parseBoundedPositiveInteger(source.maxCells ?? fallbackSource.maxCells ?? 20000, 20000, 1000000);
   return {
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : fallbackSource.enabled !== false,
     autoDetect: source.autoDetect !== undefined ? Boolean(source.autoDetect) : fallbackSource.autoDetect !== false,
     allowExplicitRequest: source.allowExplicitRequest !== undefined
       ? Boolean(source.allowExplicitRequest)
       : fallbackSource.allowExplicitRequest !== false,
-    maxRows: Number.isFinite(maxRows) ? Math.max(1, Math.min(Math.floor(maxRows), 100000)) : 1000,
-    maxCells: Number.isFinite(maxCells) ? Math.max(1, Math.min(Math.floor(maxCells), 1000000)) : 20000,
+    maxRows,
+    maxCells,
   };
 }
 
-function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS) {
+function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_SETTINGS, options = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const sourceDetectors = Array.isArray(source.detectors)
-    ? source.detectors.map((entry) => String(entry || '').trim()).filter(Boolean)
+    ? Array.from(new Set(source.detectors.map((entry) => normalizePrivacyType(entry, '')).filter(Boolean)))
     : null;
   const auditProfile = ['baseline', 'strict', 'custom'].includes(String(source.auditProfile || fallback.auditProfile || '').trim())
     ? String(source.auditProfile || fallback.auditProfile)
@@ -220,7 +278,7 @@ function normalizePrivacyPiiSettings(value = {}, fallback = DEFAULT_PRIVACY_PII_
       ? sourceDetectors
       : [...fallback.detectors],
     detectorActions: normalizePrivacyDetectorActions(source.detectorActions, fallback.detectorActions),
-    customPatterns: normalizePrivacyCustomPatterns(source.customPatterns),
+    customPatterns: normalizePrivacyCustomPatterns(source.customPatterns, { strict: options.strictCustomPatterns === true }),
     dictionary: normalizePrivacyDictionary(source.dictionary),
     enablePersonNames: source.enablePersonNames !== undefined
       ? source.enablePersonNames === true
@@ -240,14 +298,13 @@ function resolvePrivacyAction(type = '', settings = {}) {
   const actions = settings.detectorActions && typeof settings.detectorActions === 'object' && !Array.isArray(settings.detectorActions)
     ? settings.detectorActions
     : {};
-  const defaultAction = NON_RESTORABLE_IDENTITY_TYPES.has(String(type || '').trim()) ? 'mask' : 'vault-placeholder';
-  const action = String(actions[type] || actions.default || defaultAction).trim();
-  return PRIVACY_PII_ACTIONS.has(action) ? action : 'vault-placeholder';
+  const canonicalType = normalizePrivacyType(type, '');
+  const defaultAction = NON_RESTORABLE_IDENTITY_TYPES.has(canonicalType) ? 'mask' : 'vault-placeholder';
+  return normalizePrivacyAction(actions[canonicalType] || actions[type] || actions.default || defaultAction, defaultAction);
 }
 
 function resolvePrivacyMatchAction(match = {}, settings = {}) {
-  const action = String(match.action || '').trim();
-  if (PRIVACY_PII_ACTIONS.has(action)) return action;
+  if (match.action !== undefined) return normalizePrivacyAction(match.action);
   return resolvePrivacyAction(match.type, settings);
 }
 
@@ -263,7 +320,7 @@ function buildPreviewPlaceholder(type = '', action = 'vault-placeholder', index 
 
 function buildPrivacyAuditStatus(settings = {}) {
   const criteria = normalizePrivacyAuditCriteria(settings.auditCriteria, DEFAULT_PRIVACY_PII_SETTINGS.auditCriteria, settings.auditProfile || 'baseline');
-  const detectors = new Set((Array.isArray(settings.detectors) ? settings.detectors : []).map((entry) => String(entry || '').trim()).filter(Boolean));
+  const detectors = new Set((Array.isArray(settings.detectors) ? settings.detectors : []).map((entry) => normalizePrivacyType(entry, '')).filter(Boolean));
   if (settings.enablePersonNames === true) {
     detectors.add('personName');
   }
@@ -515,7 +572,9 @@ class SettingsController {
     try {
       const sampleText = String(req.body?.sampleText || req.body?.text || '').slice(0, 20000);
       const baseSettings = this.getEffectivePrivacyPiiConfig();
-      const candidateSettings = normalizePrivacyPiiSettings(req.body?.settings || baseSettings, baseSettings);
+      const candidateSettings = normalizePrivacyPiiSettings(req.body?.settings || baseSettings, baseSettings, {
+        strictCustomPatterns: true,
+      });
       const matches = detectPii(sampleText, candidateSettings)
         .map((match, index) => {
           const action = resolvePrivacyMatchAction(match, candidateSettings);
@@ -912,6 +971,7 @@ class SettingsController {
       normalized.privacyPii = normalizePrivacyPiiSettings(
         privacyPiiUpdate,
         this.settings?.privacyPii || DEFAULT_PRIVACY_PII_SETTINGS,
+        { strictCustomPatterns: true },
       );
     }
 

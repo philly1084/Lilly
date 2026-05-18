@@ -38,10 +38,10 @@ const BUILTIN_PATTERNS = {
   phone: /(?<!\d)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\d)/g,
   ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
   creditCard: /\b(?:\d[ -]*?){13,19}\b/g,
-  address: /\b\d{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*){0,5}\s+(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Way|Place|Pl\.?)\b/g,
+  address: /\b\d{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*){0,5}\s+(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Way|Place|Pl\.?)\b/gi,
   ipAddress: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
   postalCode: /\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b/gi,
-  organization: /\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|Group|Systems|Solutions|Technologies|Tech|Labs|Security|Health|Bank|University|College)\b/g,
+  organization: /\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|Group|Systems|Solutions|Technologies|Tech|Labs|Security|Health|Bank|University|College)\b/gi,
 };
 
 const MONTH_NAMES = [
@@ -75,6 +75,7 @@ const MONTH_NUMBER_BY_NAME = new Map([
 ]);
 
 const PERSON_NAME_STOPWORDS = new Set([
+  'and', 'my', 'is', 'was', 'the', 'a', 'an',
   'date', 'birth', 'born', 'dob', 'email', 'phone', 'ssn', 'address',
   'street', 'road', 'avenue', 'drive', 'court', 'place', 'company',
   'inc', 'llc', 'corp', 'corporation', 'limited', 'ltd',
@@ -83,10 +84,10 @@ const PERSON_NAME_STOPWORDS = new Set([
   ...MONTH_NAMES,
 ]);
 
-const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\s*(?:is|:|-)|patient\s+name\s*(?:is|:|-)|employee\s+name\s*(?:is|:|-))\s*([A-Z][A-Za-z'-]*(?:[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z'-]*){0,3})\b/gi;
+const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\s*(?:is|:|-)|patient\s+name\s*(?:is|:|-)|pat(?:ient|inet|ietn|ientt)\s+name\s*(?:is|:|-)|employee\s+name\s*(?:is|:|-)|client\s+name\s*(?:is|:|-)|contact\s+name\s*(?:is|:|-))\s*([A-Za-z][A-Za-z'-]*(?:[ \t]+(?:[A-Za-z]\.?[ \t]+)?[A-Za-z][A-Za-z'-]*){0,3})\b/gi;
 const PERSON_FREE_PATTERN = /\b[A-Z][A-Za-z'-]*(?:[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z'-]*){1,3}\b/g;
 const DOB_VALUE_PATTERN = '(?:\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{2,4})';
-const DOB_LABEL_PATTERN = new RegExp(`\\b(?:DOB|D\\.O\\.B\\.|date\\s+of\\s+birth|birth\\s*date|birthdate|birthday|born(?:\\s+on)?)\\s*(?:is|was|:|#|-)?\\s*(${DOB_VALUE_PATTERN})\\b`, 'gi');
+const DOB_LABEL_PATTERN = new RegExp(`\\b(?:DOB|D\\.O\\.B\\.|date\\s+of\\s+b(?:irth|rith|irht)|birth\\s*date|brith\\s*date|birthdate|birthday|birth\\s*day|birhtday|born(?:\\s+on)?)\\s*(?:is|was|:|#|-)?\\s*(${DOB_VALUE_PATTERN})\\b`, 'gi');
 const SHORT_NUMERIC_DOB_PATTERN = /(?<!\d)(\d{1,2}[/-]\d{1,2}[/-]\d{2})(?!\d)/g;
 const FHIR_BIRTH_DATE_PATTERN = /"birthDate"\s*:\s*"(\d{4}-\d{1,2}-\d{1,2})"/gi;
 const FHIR_PATIENT_FAMILY_PATTERN = /"family"\s*:\s*"([^"\r\n]{2,80})"/gi;
@@ -94,10 +95,11 @@ const FHIR_PATIENT_GIVEN_PATTERN = /"given"\s*:\s*\[\s*"([^"\r\n]{2,80})"/gi;
 const FHIR_ADDRESS_LINE_PATTERN = /"line"\s*:\s*\[\s*"([^"\r\n]{3,120})"/gi;
 const FHIR_ADDRESS_CITY_PATTERN = /"city"\s*:\s*"([^"\r\n]{2,80})"/gi;
 const FHIR_ADDRESS_POSTAL_PATTERN = /"postalCode"\s*:\s*"([^"\r\n]{3,20})"/gi;
-const MEDICAL_ID_LABEL_PATTERN = /\b(?:MRN|M\.R\.N\.|medical\s+record(?:\s+number)?|medicalRecordNumber|patient\s*(?:id|identifier|number)|patientId|patientIdentifier|PHN|ULI|MSI)\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9._-]{3,})\b/gi;
-const HEALTH_CARD_LABEL_PATTERN = /\b(?:health\s*card(?:\s*number)?|healthCardNumber|OHIP|RAMQ|PHN|provincial\s+health\s+(?:number|id|card)|health\s+services\s+(?:number|card))\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9 ._-]{5,30}[A-Z0-9])\b/gi;
-const SIN_LABEL_PATTERN = /\b(?:SIN|S\.I\.N\.|social\s+insurance\s+number)\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([0-9][0-9 -]{7,15}[0-9])\b/gi;
+const MEDICAL_ID_LABEL_PATTERN = /\b(?:MRN|M\.R\.N\.|medical\s+record(?:\s+(?:number|num|no))?|med(?:ical)?\s+rec(?:ord)?(?:\s+(?:number|num|no))?|medcal\s+record(?:\s+(?:number|num|no))?|medicalRecordNumber|patient\s*(?:id|identifier|number)|pat(?:ient|inet|ietn)\s*(?:id|identifier|number)|patientId|patientIdentifier|PHN|ULI|MSI|chart\s*(?:number|num|no|#))\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9._-]{3,})\b/gi;
+const HEALTH_CARD_LABEL_PATTERN = /\b(?:health\s*card(?:\s*(?:number|num|no))?|helth\s*card(?:\s*(?:number|num|no))?|heath\s*card(?:\s*(?:number|num|no))?|healthCardNumber|OHIP|RAMQ|PHN|provincial\s+health\s+(?:number|id|card)|health\s+services\s+(?:number|card))\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([A-Z0-9][A-Z0-9 ._-]{5,30}[A-Z0-9])\b/gi;
+const SIN_LABEL_PATTERN = /\b(?:SIN|S\.I\.N\.|social\s+insurance\s+number|socail\s+insurance\s+number|social\s+insurnace\s+number)\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([0-9][0-9 -]{7,15}[0-9])\b/gi;
 const SIN_FORMATTED_PATTERN = /\b\d{3}[- ]\d{3}[- ]\d{3}\b/g;
+const SSN_LABEL_PATTERN = /\b(?:SSN|S\.S\.N\.|social\s+security\s+number|socail\s+security\s+number|social\s+sec(?:urity)?\s*(?:number|num|no))\b\s*(?:is|was|["']?\s*[:#=-]\s*["']?)?\s*([0-9][0-9 -]{7,15}[0-9])\b/gi;
 const FHIR_IDENTIFIER_VALUE_PATTERN = /"system"\s*:\s*"[^"\r\n]*(?:mrn|medical[-_\s]*record|patient[-_\s]*id|health[-_\s]*card)[^"\r\n]*"[\s\S]{0,160}?"value"\s*:\s*"([^"\r\n]{4,80})"/gi;
 const DOCUMENT_FILENAME_PATTERN = /\b([A-Z][A-Za-z0-9]*(?:[-_][A-Z][A-Za-z0-9]*){1,16})\.(?:pdf|docx?|rtf|txt|html?)\b/g;
 const DOCUMENT_FILENAME_PREFIXES = new Set([
@@ -112,19 +114,89 @@ const DOCUMENT_FILENAME_PREFIXES = new Set([
   'vitae',
 ]);
 
+function normalizeLooseKey(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+const DETECTOR_ALIASES = new Map([
+  ['email', 'email'],
+  ['phone', 'phone'],
+  ['creditcard', 'creditCard'],
+  ['dateofbirth', 'dateOfBirth'],
+  ['address', 'address'],
+  ['ipaddress', 'ipAddress'],
+  ['postalcode', 'postalCode'],
+  ['personname', 'personName'],
+  ['organization', 'organization'],
+  ['medicalrecordnumber', 'medicalRecordNumber'],
+  ['patientidentifier', 'patientIdentifier'],
+  ['healthcardnumber', 'healthCardNumber'],
+  ['socialinsurancenumber', 'socialInsuranceNumber'],
+  ['emailaddress', 'email'],
+  ['mail', 'email'],
+  ['phonenumber', 'phone'],
+  ['telephone', 'phone'],
+  ['cell', 'phone'],
+  ['mobile', 'phone'],
+  ['ssn', 'ssn'],
+  ['socialsecuritynumber', 'ssn'],
+  ['creditcard', 'creditCard'],
+  ['creditcardnumber', 'creditCard'],
+  ['cardnumber', 'creditCard'],
+  ['dob', 'dateOfBirth'],
+  ['dateofbirth', 'dateOfBirth'],
+  ['birthdate', 'dateOfBirth'],
+  ['birthday', 'dateOfBirth'],
+  ['address', 'address'],
+  ['adress', 'address'],
+  ['addres', 'address'],
+  ['ip', 'ipAddress'],
+  ['ipaddress', 'ipAddress'],
+  ['internetprotocoladdress', 'ipAddress'],
+  ['postal', 'postalCode'],
+  ['postalcode', 'postalCode'],
+  ['zipcode', 'postalCode'],
+  ['zip', 'postalCode'],
+  ['canadianpostalcode', 'postalCode'],
+  ['personname', 'personName'],
+  ['name', 'personName'],
+  ['patientname', 'personName'],
+  ['clientname', 'personName'],
+  ['organization', 'organization'],
+  ['organisation', 'organization'],
+  ['org', 'organization'],
+  ['orgname', 'organization'],
+  ['organizationname', 'organization'],
+  ['employer', 'organization'],
+  ['workplace', 'organization'],
+  ['company', 'organization'],
+  ['mrn', 'medicalRecordNumber'],
+  ['medicalrecordnumber', 'medicalRecordNumber'],
+  ['medicalrecordnum', 'medicalRecordNumber'],
+  ['medicalrecordno', 'medicalRecordNumber'],
+  ['medrec', 'medicalRecordNumber'],
+  ['chartnumber', 'medicalRecordNumber'],
+  ['patientid', 'patientIdentifier'],
+  ['patientidentifier', 'patientIdentifier'],
+  ['patientnumber', 'patientIdentifier'],
+  ['patinetid', 'patientIdentifier'],
+  ['healthcard', 'healthCardNumber'],
+  ['healthcardnumber', 'healthCardNumber'],
+  ['helthcardnumber', 'healthCardNumber'],
+  ['heathcardnumber', 'healthCardNumber'],
+  ['ohip', 'healthCardNumber'],
+  ['ramq', 'healthCardNumber'],
+  ['phn', 'healthCardNumber'],
+  ['sin', 'socialInsuranceNumber'],
+  ['socialinsurancenumber', 'socialInsuranceNumber'],
+  ['socailinsurancenumber', 'socialInsuranceNumber'],
+  ['socialinsurnacenumber', 'socialInsuranceNumber'],
+]);
+
 function normalizeDetectorId(value = '') {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
-  if (normalized === 'credit_card') return 'creditCard';
-  if (normalized === 'date_of_birth' || normalized === 'dob') return 'dateOfBirth';
-  if (normalized === 'ip' || normalized === 'ip_address') return 'ipAddress';
-  if (normalized === 'postal' || normalized === 'postal_code' || normalized === 'postal-code' || normalized === 'canadian_postal_code') return 'postalCode';
-  if (normalized === 'mrn' || normalized === 'medical_record_number' || normalized === 'medical-record-number') return 'medicalRecordNumber';
-  if (normalized === 'patient_id' || normalized === 'patient-id' || normalized === 'patient_identifier') return 'patientIdentifier';
-  if (normalized === 'health_card' || normalized === 'health-card' || normalized === 'health_card_number' || normalized === 'health-card-number' || normalized === 'ohip' || normalized === 'ramq' || normalized === 'phn') return 'healthCardNumber';
-  if (normalized === 'sin' || normalized === 's.i.n.' || normalized === 'social_insurance_number' || normalized === 'social-insurance-number') return 'socialInsuranceNumber';
-  if (normalized === 'org' || normalized === 'org_name' || normalized === 'organization_name' || normalized === 'employer' || normalized === 'workplace') return 'organization';
-  return normalized;
+  return DETECTOR_ALIASES.get(normalizeLooseKey(normalized)) || normalized;
 }
 
 function isValidCreditCardCandidate(value = '') {
@@ -227,7 +299,7 @@ function normalizeNameCandidate(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
-function isLikelyPersonName(value = '') {
+function isLikelyPersonName(value = '', { allowLowercase = false } = {}) {
   const normalized = normalizeNameCandidate(value);
   if (!normalized) return false;
   const words = normalized.split(/\s+/).filter(Boolean);
@@ -236,7 +308,9 @@ function isLikelyPersonName(value = '') {
   return words.every((word) => {
     const cleaned = word.replace(/\./g, '').replace(/'/g, '').toLowerCase();
     if (!cleaned || PERSON_NAME_STOPWORDS.has(cleaned)) return false;
-    return /^[A-Z][A-Za-z'.:-]*$/.test(word);
+    return allowLowercase
+      ? /^[A-Za-z][A-Za-z'.:-]*$/.test(word)
+      : /^[A-Z][A-Za-z'.:-]*$/.test(word);
   });
 }
 
@@ -453,6 +527,33 @@ function findCanadianSinMatches(text = '') {
   return matches;
 }
 
+function findSsnMatches(text = '') {
+  const matches = [];
+  const source = String(text || '');
+  const pushIfValid = (match, value, sourceName) => {
+    const rawValue = String(value || '');
+    const digits = rawValue.replace(/\D/g, '');
+    if (!/^\d{9}$/.test(digits)) return;
+    const valueOffset = match[0].indexOf(rawValue);
+    if (valueOffset < 0) return;
+    const start = match.index + valueOffset;
+    matches.push({
+      type: 'ssn',
+      value: rawValue,
+      start,
+      end: start + rawValue.length,
+      source: sourceName,
+      grounded: true,
+    });
+  };
+
+  let match;
+  while ((match = SSN_LABEL_PATTERN.exec(source)) !== null) {
+    pushIfValid(match, match[1], 'ssnLabel');
+  }
+  return matches;
+}
+
 function pushHl7FieldMatch(matches, segmentStart, segment, fieldValue, type, {
   source = 'hl7',
   grounded = true,
@@ -504,7 +605,7 @@ function findPersonNameMatches(text = '') {
   while ((match = PERSON_LABEL_PATTERN.exec(source)) !== null) {
     const value = normalizeNameCandidate(match[1] || '');
     const valueOffset = match[0].indexOf(match[1] || '');
-    if (!value || valueOffset < 0 || !isLikelyPersonName(value)) {
+    if (!value || valueOffset < 0 || !isLikelyPersonName(value, { allowLowercase: true })) {
       continue;
     }
     const start = match.index + valueOffset;
@@ -540,8 +641,8 @@ function buildCustomRegex(entry = {}) {
   const pattern = String(entry.pattern || '').trim();
   if (!pattern) return null;
   try {
-    const rawFlags = String(entry.flags || 'gi').trim() || 'gi';
-    const flags = Array.from(new Set(`${rawFlags}g`.split(''))).join('');
+    const rawFlags = String(entry.flags || 'gi').trim().toLowerCase() || 'gi';
+    const flags = Array.from(new Set(`${rawFlags}gi`.split('').filter((flag) => 'dgimsuy'.includes(flag)))).join('');
     return new RegExp(pattern, flags);
   } catch (_error) {
     return null;
@@ -628,6 +729,10 @@ function detectPii(text = '', policy = {}) {
       matches.push(...findMatchesWithPattern(source, pattern, type));
     }
   });
+
+  if (enabled.has('ssn')) {
+    matches.push(...findSsnMatches(source));
+  }
 
   if (enabled.has('dateOfBirth')) {
     matches.push(...findDateOfBirthMatches(source));
