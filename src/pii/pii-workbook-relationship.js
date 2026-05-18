@@ -1,5 +1,6 @@
 const { sanitizeText } = require('./pii-redactor');
 const { DEFAULT_PRIVACY_PII_SETTINGS } = require('./pii-policy');
+const { postgres } = require('../postgres');
 
 const SAFE_ID_PATTERN = /^[a-z][a-z0-9_-]{0,79}$/i;
 const PLACEHOLDER_PATTERN = /^\[\[PII:[^\]]+\]\]$/;
@@ -187,6 +188,8 @@ function buildPolicy(policy = {}) {
   return {
     ...DEFAULT_PRIVACY_PII_SETTINGS,
     ...source,
+    hasMasterKey: source.hasMasterKey ?? Boolean(String(process.env.KIMIBUILT_PII_MASTER_KEY || '').trim()),
+    storageReady: source.storageReady ?? Boolean(postgres?.getStatus?.().initialized),
     relationshipCalculations: {
       ...DEFAULT_PRIVACY_PII_SETTINGS.relationshipCalculations,
       ...(source.relationshipCalculations || {}),
