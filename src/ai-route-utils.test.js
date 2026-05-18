@@ -51,6 +51,7 @@ const {
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
     shouldSuppressResearchFirstArtifactGeneration,
+    buildPiiWorkbookRelationshipToolContext,
 } = require('./ai-route-utils');
 
 describe('ai-route-utils', () => {
@@ -527,6 +528,53 @@ describe('ai-route-utils', () => {
             text: 'Create a PDF artifact for the Halifax weekend dinner guide.',
             outputFormat: 'pdf',
         })).toBe(false);
+    });
+
+    test('buildPiiWorkbookRelationshipToolContext accepts stored artifacts with snake_case session ids', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-xlsx-1',
+            session_id: 'session-1',
+            format: 'xlsx',
+            filename: 'ledger.xlsx',
+            metadata: {
+                structuredTables: [{
+                    headers: [
+                        { id: 'c1', header: 'Patient Key', columnIndex: 0 },
+                        { id: 'c2', header: 'Patient Balance', columnIndex: 1 },
+                    ],
+                    rows: [{
+                        id: 'r1',
+                        cells: [
+                            { columnId: 'c1', columnIndex: 0, header: 'Patient Key', value: '[[PII:patient-1]]' },
+                            { columnId: 'c2', columnIndex: 1, header: 'Patient Balance', value: '250' },
+                        ],
+                    }],
+                }],
+            },
+        });
+
+        const context = await buildPiiWorkbookRelationshipToolContext({
+            sessionId: 'session-1',
+            artifactIds: ['artifact-xlsx-1'],
+            text: 'Which patient has the highest patient balance?',
+            ownerId: 'owner-1',
+            clientSurface: 'chat',
+            route: '/api/chat',
+            policy: { enabled: false },
+        });
+
+        expect(context).toEqual(expect.objectContaining({
+            artifactIds: ['artifact-xlsx-1'],
+            tableCount: 1,
+            rowCount: 1,
+            request: expect.objectContaining({
+                operation: 'top_n',
+                tableId: 't1',
+                groupBy: 'c1',
+                measure: 'c2',
+            }),
+        }));
+        expect(context.context.piiEntries).toEqual([]);
     });
 
     test('hasExplicitMermaidFileIntent only returns true for file-like Mermaid requests', () => {

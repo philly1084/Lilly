@@ -278,7 +278,8 @@ async function buildPiiWorkbookRelationshipToolContext({
             console.warn(`[PII] Failed to inspect workbook artifact ${artifactId}: ${error.message}`);
             continue;
         }
-        if (!artifact || artifact.sessionId !== normalizedSessionId || !isWorkbookArtifact(artifact)) {
+        const artifactSessionId = String(artifact.sessionId || artifact.session_id || '').trim();
+        if (!artifact || artifactSessionId !== normalizedSessionId || !isWorkbookArtifact(artifact)) {
             continue;
         }
         const artifactTables = Array.isArray(artifact.metadata?.structuredTables)
