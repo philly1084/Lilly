@@ -667,6 +667,56 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('routes prepared PII workbook requests through the relationship calculator', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['document-workflow', 'pii-relationship-calculate', 'asset-search'].includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+        const workbookRequest = {
+            operationId: 'workbook-top-balance',
+            operation: 'top_n',
+            tableId: 't1',
+            groupBy: 'c10',
+            measure: 'c39',
+            limit: 1,
+            tables: [{ id: 't1', columns: [], rows: [] }],
+        };
+        const toolContext = {
+            artifactIds: ['artifact-xlsx'],
+            piiWorkbookRelationship: {
+                request: workbookRequest,
+            },
+        };
+        const objective = 'Calculate from the selected XLSX structured table: top patient UID by Patient Balance.';
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+            toolContext,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+            toolContext,
+        });
+
+        expect(toolPolicy.candidateToolIds[0]).toBe('pii-relationship-calculate');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'pii-relationship-calculate',
+            params: workbookRequest,
+        }));
+    });
+
     test('does not offer deferred workloads just because instructions mention scheduling', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {
