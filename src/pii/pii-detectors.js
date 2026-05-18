@@ -19,9 +19,18 @@ const ACTIONABLE_DICTIONARY_TYPES = new Set([
   'orgName',
   'employer',
   'workplace',
+  'business',
+  'businessName',
   'company',
   'clientName',
   'teamName',
+  'vendor',
+  'brand',
+  'brandName',
+  'product',
+  'productName',
+  'service',
+  'serviceName',
 ]);
 
 const BUILTIN_PATTERNS = {
@@ -50,6 +59,21 @@ const MONTH_NAMES = [
   'december', 'dec',
 ];
 
+const MONTH_NUMBER_BY_NAME = new Map([
+  ['january', 1], ['jan', 1],
+  ['february', 2], ['feb', 2],
+  ['march', 3], ['mar', 3],
+  ['april', 4], ['apr', 4],
+  ['may', 5],
+  ['june', 6], ['jun', 6],
+  ['july', 7], ['jul', 7],
+  ['august', 8], ['aug', 8],
+  ['september', 9], ['sept', 9], ['sep', 9],
+  ['october', 10], ['oct', 10],
+  ['november', 11], ['nov', 11],
+  ['december', 12], ['dec', 12],
+]);
+
 const PERSON_NAME_STOPWORDS = new Set([
   'date', 'birth', 'born', 'dob', 'email', 'phone', 'ssn', 'address',
   'street', 'road', 'avenue', 'drive', 'court', 'place', 'company',
@@ -61,8 +85,9 @@ const PERSON_NAME_STOPWORDS = new Set([
 
 const PERSON_LABEL_PATTERN = /\b(?:my\s+name\s+is|name\s*(?:is|:|-)|full\s+name\s*(?:is|:|-)|patient\s+name\s*(?:is|:|-)|employee\s+name\s*(?:is|:|-))\s*([A-Z][A-Za-z'-]*(?:[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z'-]*){0,3})\b/gi;
 const PERSON_FREE_PATTERN = /\b[A-Z][A-Za-z'-]*(?:[ \t]+(?:[A-Z]\.?[ \t]+)?[A-Z][A-Za-z'-]*){1,3}\b/g;
-const DOB_VALUE_PATTERN = '(?:\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{4})';
+const DOB_VALUE_PATTERN = '(?:\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{2,4})';
 const DOB_LABEL_PATTERN = new RegExp(`\\b(?:DOB|D\\.O\\.B\\.|date\\s+of\\s+birth|birth\\s*date|birthdate|birthday|born(?:\\s+on)?)\\s*(?:is|was|:|#|-)?\\s*(${DOB_VALUE_PATTERN})\\b`, 'gi');
+const SHORT_NUMERIC_DOB_PATTERN = /(?<!\d)(\d{1,2}[/-]\d{1,2}[/-]\d{2})(?!\d)/g;
 const FHIR_BIRTH_DATE_PATTERN = /"birthDate"\s*:\s*"(\d{4}-\d{1,2}-\d{1,2})"/gi;
 const FHIR_PATIENT_FAMILY_PATTERN = /"family"\s*:\s*"([^"\r\n]{2,80})"/gi;
 const FHIR_PATIENT_GIVEN_PATTERN = /"given"\s*:\s*\[\s*"([^"\r\n]{2,80})"/gi;
@@ -134,30 +159,65 @@ function isValidCanadianSinCandidate(value = '') {
   return sum > 0 && sum % 10 === 0;
 }
 
+function resolveBirthYear(value = '') {
+  const raw = String(value || '').trim();
+  if (!/^\d{2}(?:\d{2})?$/.test(raw)) return null;
+  const numeric = Number(raw);
+  if (raw.length === 4) return numeric;
+  const currentYear = new Date().getFullYear();
+  const currentCentury = Math.floor(currentYear / 100) * 100;
+  const currentCandidate = currentCentury + numeric;
+  return currentCandidate > currentYear ? currentCandidate - 100 : currentCandidate;
+}
+
+function isValidDateParts(year, month, day) {
+  const currentYear = new Date().getFullYear();
+  if (!Number.isInteger(year) || year < 1900 || year > currentYear) return false;
+  if (!Number.isInteger(month) || month < 1 || month > 12) return false;
+  if (!Number.isInteger(day) || day < 1 || day > 31) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+function findMonthNumber(value = '') {
+  const monthMatch = String(value || '').match(new RegExp(`\\b(${MONTH_NAMES.join('|')})\\.?\\b`, 'i'));
+  if (!monthMatch) return null;
+  return MONTH_NUMBER_BY_NAME.get(monthMatch[1].toLowerCase()) || null;
+}
+
 function isValidDateCandidate(value = '') {
   const normalized = String(value || '').trim();
   if (!normalized) return false;
 
-  const yearMatch = normalized.match(/\b(19\d{2}|20\d{2})\b/);
-  if (!yearMatch) return false;
-  const year = Number(yearMatch[1]);
-  const currentYear = new Date().getFullYear();
-  if (year < 1900 || year > currentYear) return false;
-
   const numericParts = normalized.match(/\d{1,4}/g) || [];
   if (numericParts.length >= 3 && !/[A-Za-z]/.test(normalized)) {
-    const first = Number(numericParts[0]);
-    const second = Number(numericParts[1]);
-    const third = Number(numericParts[2]);
-    const month = first > 31 ? second : first;
-    const day = first > 31 ? third : second;
-    return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+    const [firstRaw, secondRaw, thirdRaw] = numericParts;
+    const first = Number(firstRaw);
+    const second = Number(secondRaw);
+    const third = Number(thirdRaw);
+    if (firstRaw.length === 4) {
+      return isValidDateParts(resolveBirthYear(firstRaw), second, third);
+    }
+    const year = resolveBirthYear(thirdRaw);
+    if (!year) return false;
+    const candidates = [
+      { month: first, day: second },
+      { month: second, day: first },
+    ];
+    return candidates.some((candidate) => isValidDateParts(year, candidate.month, candidate.day));
   }
 
-  const monthRegex = new RegExp(`\\b(?:${MONTH_NAMES.join('|')})\\.?\\b`, 'i');
-  if (monthRegex.test(normalized)) {
-    const day = Number((normalized.match(/\b([0-3]?\d)(?:st|nd|rd|th)?\b/i) || [])[1]);
-    return day >= 1 && day <= 31;
+  const monthAlternation = MONTH_NAMES.join('|');
+  const monthFirst = normalized.match(new RegExp(`\\b(?:${monthAlternation})\\.?\\s+([0-3]?\\d)(?:st|nd|rd|th)?,?\\s+(\\d{2,4})\\b`, 'i'));
+  if (monthFirst) {
+    return isValidDateParts(resolveBirthYear(monthFirst[2]), findMonthNumber(normalized), Number(monthFirst[1]));
+  }
+
+  const dayFirst = normalized.match(new RegExp(`\\b([0-3]?\\d)(?:st|nd|rd|th)?\\s+(?:${monthAlternation})\\.?\\s+(\\d{2,4})\\b`, 'i'));
+  if (dayFirst) {
+    return isValidDateParts(resolveBirthYear(dayFirst[2]), findMonthNumber(normalized), Number(dayFirst[1]));
   }
 
   return false;
@@ -292,6 +352,22 @@ function findDateOfBirthMatches(text = '') {
       start,
       end: start + value.length,
       source: 'builtin',
+    });
+  }
+  while ((match = SHORT_NUMERIC_DOB_PATTERN.exec(source)) !== null) {
+    const value = match[1] || '';
+    const valueOffset = match[0].indexOf(value);
+    if (!value || valueOffset < 0 || !isValidDateCandidate(value)) {
+      continue;
+    }
+    const start = match.index + valueOffset;
+    matches.push({
+      type: 'dateOfBirth',
+      value,
+      start,
+      end: start + value.length,
+      source: 'dateLiteral',
+      grounded: true,
     });
   }
   return matches;

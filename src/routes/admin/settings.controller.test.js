@@ -547,7 +547,7 @@ describe('settings.controller personality support', () => {
   test('previews person names and DOB values from built-in detectors', () => {
     const req = {
       body: {
-        sampleText: 'My name is Sample Person and DOB: 1984-07-04.',
+        sampleText: 'My name is Sample Person and DOB: 10/08/84.',
         settings: {
           detectors: ['personName', 'dateOfBirth'],
           enablePersonNames: true,
@@ -574,7 +574,40 @@ describe('settings.controller personality support', () => {
     expect(payload.sanitizedText).not.toContain('PERSONNAME');
     expect(payload.sanitizedText).not.toContain('DATEOFBIRTH');
     expect(payload.sanitizedText).not.toContain('Sample Person');
-    expect(payload.sanitizedText).not.toContain('1984-07-04');
+    expect(payload.sanitizedText).not.toContain('10/08/84');
+  });
+
+  test('previews future business and product dictionary identities as non-restorable masks', () => {
+    const req = {
+      body: {
+        sampleText: 'Sample Business ships Sample Product.',
+        settings: {
+          detectors: [],
+          dictionary: [
+            { type: 'businessName', value: 'Sample Business' },
+            { type: 'productName', value: 'Sample Product' },
+          ],
+          auditCriteria: {
+            requiredDetectors: [],
+          },
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    controller.previewPrivacyPii(req, res);
+
+    const payload = res.json.mock.calls[0][0].data;
+    expect(payload.sanitizedText).toContain('[[PII:PREVIEW_1]] ships [[PII:PREVIEW_2]]');
+    expect(payload.sanitizedText).not.toContain('Sample Business');
+    expect(payload.sanitizedText).not.toContain('Sample Product');
+    expect(payload.matches).toEqual([
+      expect.objectContaining({ type: 'businessName', action: 'mask', restorable: false }),
+      expect.objectContaining({ type: 'productName', action: 'mask', restorable: false }),
+    ]);
   });
 
   test('applies updated podcast audio asset paths to the live mixer runtime', async () => {

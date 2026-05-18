@@ -33,23 +33,25 @@ describe('PII detectors', () => {
   });
 
   test('carries dictionary actions for grounded private identities', () => {
-    const matches = detectPii('Sample Person works at Sample Employer.', {
+    const matches = detectPii('Sample Person works at Sample Employer on Sample Product.', {
       detectors: [],
       customPatterns: [],
       dictionary: [
         { type: 'personName', value: 'Sample Person', action: 'mask' },
         { type: 'employer', value: 'Sample Employer', action: 'mask' },
+        { type: 'productName', value: 'Sample Product', action: 'mask' },
       ],
     });
 
     expect(matches).toEqual([
       expect.objectContaining({ type: 'personName', action: 'mask', grounded: true }),
       expect.objectContaining({ type: 'employer', action: 'mask', grounded: true }),
+      expect.objectContaining({ type: 'productName', action: 'mask', grounded: true }),
     ]);
   });
 
   test('detects common person-name and DOB formats in admin preview text', () => {
-    const matches = detectPii('My name is Sample Person and my DOB is 1984-07-04. Born on July 5, 1984.', {
+    const matches = detectPii('My name is Sample Person and my DOB is 1984-07-04. Born on July 5, 84. DOB: 10/08/84.', {
       detectors: ['personName', 'dateOfBirth'],
       customPatterns: [],
       dictionary: [],
@@ -59,8 +61,23 @@ describe('PII detectors', () => {
     expect(matches).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'personName', value: 'Sample Person' }),
       expect.objectContaining({ type: 'dateOfBirth', value: '1984-07-04' }),
-      expect.objectContaining({ type: 'dateOfBirth', value: 'July 5, 1984' }),
+      expect.objectContaining({ type: 'dateOfBirth', value: 'July 5, 84' }),
+      expect.objectContaining({ type: 'dateOfBirth', value: '10/08/84' }),
     ]));
+  });
+
+  test('detects short numeric DOB literals and rejects impossible dates', () => {
+    const matches = detectPii('Birth date 31/12/84. DOB: 02/31/84. Reference 99/99/84.', {
+      detectors: ['dateOfBirth'],
+      customPatterns: [],
+      dictionary: [],
+    });
+
+    expect(matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'dateOfBirth', value: '31/12/84', source: 'builtin' }),
+    ]));
+    expect(matches.some((match) => match.value === '02/31/84')).toBe(false);
+    expect(matches.some((match) => match.value === '99/99/84')).toBe(false);
   });
 
   test('detects names and workplaces embedded in resume filenames', () => {

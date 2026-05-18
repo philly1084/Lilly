@@ -52,8 +52,13 @@ class Dashboard {
             { id: 'dateOfBirth', label: 'Date of birth' },
             { id: 'address', label: 'Address' },
             { id: 'ipAddress', label: 'IP address' },
+            { id: 'postalCode', label: 'Postal code' },
             { id: 'personName', label: 'Person names' },
             { id: 'organization', label: 'Organizations' },
+            { id: 'medicalRecordNumber', label: 'Medical record number' },
+            { id: 'patientIdentifier', label: 'Patient identifier' },
+            { id: 'healthCardNumber', label: 'Health card number' },
+            { id: 'socialInsuranceNumber', label: 'Social insurance number' },
         ];
         this.ws = null;
         this.reconnectInterval = null;
@@ -4764,7 +4769,7 @@ class Dashboard {
     getPrivacyAuditDefaults(profile = 'baseline') {
         const profiles = {
             baseline: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
-            strict: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'personName', 'organization'],
+            strict: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'postalCode', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber'],
             custom: [],
         };
         return profiles[profile] || profiles.baseline;
@@ -4780,12 +4785,12 @@ class Dashboard {
             placeholderMode: 'opaque-random',
             reintroductionMode: 'trusted-view',
             failClosed: true,
-            detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress'],
+            detectors: ['email', 'phone', 'ssn', 'creditCard', 'dateOfBirth', 'address', 'ipAddress', 'postalCode', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber'],
             detectorActions: {},
             customPatterns: [],
             dictionary: [],
-            auditProfile: 'baseline',
-            auditCriteria: { requiredDetectors: this.getPrivacyAuditDefaults('baseline') },
+            auditProfile: 'strict',
+            auditCriteria: { requiredDetectors: this.getPrivacyAuditDefaults('strict') },
             relationshipCalculations: {
                 enabled: true,
                 autoDetect: true,
@@ -5236,16 +5241,17 @@ class Dashboard {
             return {
                 privacyPii: {
                     ...existing,
-                    defaultsVersion: 2,
+                    defaultsVersion: 6,
                     enabled,
                     webChatEnabled: existing.webChatEnabled !== false,
                     highlightRestored: existing.highlightRestored !== false,
                     placeholderMode: existing.placeholderMode || 'opaque-random',
                     reintroductionMode: existing.reintroductionMode || 'trusted-view',
                     failClosed: existing.failClosed !== false,
+                    detectors: existing.detectors || this.getPrivacyAuditDefaults('strict'),
                     detectorActions: existing.detectorActions || {},
-                    auditProfile: existing.auditProfile || 'baseline',
-                    auditCriteria: existing.auditCriteria || { requiredDetectors: this.getPrivacyAuditDefaults('baseline') },
+                    auditProfile: existing.auditProfile || 'strict',
+                    auditCriteria: existing.auditCriteria || { requiredDetectors: this.getPrivacyAuditDefaults('strict') },
                 },
             };
         }
