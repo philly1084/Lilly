@@ -1,5 +1,6 @@
 const { extractArtifact, extractPdfText } = require('./artifact-extractor');
 const { buildXlsxBufferFromWorkbookSpec } = require('./artifact-renderer');
+const { createZip } = require('../utils/zip');
 
 describe('extractArtifact', () => {
     test('preserves Mermaid line breaks for preview and reuse', async () => {
@@ -147,6 +148,62 @@ describe('extractArtifact', () => {
                         expect.objectContaining({ columnId: 'c1', header: 'Name', value: 'Jamie Sampleton' }),
                         expect.objectContaining({ columnId: 'c2', header: 'SIN', value: '046 454 286' }),
                         expect.objectContaining({ columnId: 'c3', header: 'Postal', value: 'K1A 0B1' }),
+                    ],
+                }),
+            ],
+        }));
+    });
+
+    test('extracts namespaced XLSX sheets with title rows before the real header', async () => {
+        const buffer = createZip([
+            {
+                name: 'xl/sharedStrings.xml',
+                data: [
+                    '<?xml version="1.0" encoding="utf-8"?>',
+                    '<x:sst xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+                    '<x:si><x:t>Report Title</x:t></x:si>',
+                    '<x:si><x:t>Note row</x:t></x:si>',
+                    '<x:si><x:t>Patient Key</x:t></x:si>',
+                    '<x:si><x:t>Total Charge</x:t></x:si>',
+                    '<x:si><x:t>P001</x:t></x:si>',
+                    '</x:sst>',
+                ].join(''),
+            },
+            {
+                name: 'xl/worksheets/sheet1.xml',
+                data: [
+                    '<?xml version="1.0" encoding="utf-8"?>',
+                    '<x:worksheet xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+                    '<x:sheetData>',
+                    '<x:row r="1"><x:c r="A1" t="s"><x:v>0</x:v></x:c></x:row>',
+                    '<x:row r="2"><x:c r="A2" t="s"><x:v>1</x:v></x:c></x:row>',
+                    '<x:row r="3"><x:c r="A3" t="s"><x:v>2</x:v></x:c><x:c r="B3" t="s"><x:v>3</x:v></x:c></x:row>',
+                    '<x:row r="4"><x:c r="A4" t="s"><x:v>4</x:v></x:c><x:c r="B4"><x:v>1280</x:v></x:c></x:row>',
+                    '</x:sheetData>',
+                    '</x:worksheet>',
+                ].join(''),
+            },
+        ]);
+
+        const result = await extractArtifact({
+            filename: 'namespaced.xlsx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            buffer,
+        });
+
+        expect(result.extractedText).toContain('Patient Key | Total Charge');
+        expect(result.metadata.structuredTables[0]).toEqual(expect.objectContaining({
+            headers: [
+                expect.objectContaining({ header: 'Patient Key', columnIndex: 0 }),
+                expect.objectContaining({ header: 'Total Charge', columnIndex: 1 }),
+            ],
+            rows: [
+                expect.objectContaining({
+                    id: 'r1',
+                    rowIndex: 3,
+                    cells: [
+                        expect.objectContaining({ columnId: 'c1', header: 'Patient Key', value: 'P001' }),
+                        expect.objectContaining({ columnId: 'c2', header: 'Total Charge', value: '1280' }),
                     ],
                 }),
             ],

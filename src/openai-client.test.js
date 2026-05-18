@@ -1026,6 +1026,46 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(selectedTools.map((tool) => tool.id)).toEqual(['pii-relationship-calculate']);
     });
 
+    test('selects and preflights PII relationship calculator from prepared workbook request', () => {
+        const preparedRequest = {
+            operation: 'top_n',
+            tableId: 't1',
+            groupBy: 'c1',
+            measure: 'c2',
+            limit: 1,
+            tables: [{
+                id: 't1',
+                columns: [
+                    { id: 'c1', header: 'Patient Key', role: 'private-group-key' },
+                    { id: 'c2', header: 'Patient Balance', role: 'measure' },
+                ],
+                rows: [
+                    { id: 't1_r1', cells: { c1: '[[PII:abc]]', c2: 120 } },
+                ],
+            }],
+        };
+        const toolContext = {
+            piiWorkbookRelationship: {
+                request: preparedRequest,
+            },
+        };
+
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions([
+            { id: 'pii-relationship-calculate', skill: { triggerPatterns: [] } },
+        ], 'Which patient has the highest balance?', { toolContext });
+        const actions = __testUtils.buildDeterministicPreflightActions(
+            selectedTools,
+            'Which patient has the highest balance?',
+            toolContext,
+        );
+
+        expect(selectedTools.map((tool) => tool.id)).toEqual(['pii-relationship-calculate']);
+        expect(actions).toEqual([{
+            toolId: 'pii-relationship-calculate',
+            params: preparedRequest,
+        }]);
+    });
+
     test('research bucket guidance explains callable durable storage', () => {
         const guidance = __testUtils.buildAutomaticToolGuidance([
             { id: 'research-bucket-list' },

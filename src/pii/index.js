@@ -9,6 +9,10 @@ const {
   calculateRelationshipWithRepair,
   validateRelationshipCalculationRequest,
 } = require('./pii-relationship-calculator');
+const {
+  prepareWorkbookRelationshipInput,
+  inferWorkbookRelationshipCalculationRequest,
+} = require('./pii-workbook-relationship');
 
 module.exports = {
   sanitizeText,
@@ -26,4 +30,6 @@ module.exports = {
   calculateRelationship,
   calculateRelationshipWithRepair,
   validateRelationshipCalculationRequest,
+  prepareWorkbookRelationshipInput,
+  inferWorkbookRelationshipCalculationRequest,
 };

@@ -202,6 +202,24 @@ function extractRuntimeText(input = '') {
         .join('\n');
 }
 
+function compactPiiContextIds(...sources) {
+    const ids = [];
+    sources.forEach((source) => {
+        if (!source) return;
+        if (Array.isArray(source)) {
+            source.forEach((id) => ids.push(id));
+            return;
+        }
+        if (Array.isArray(source.contextIds)) {
+            source.contextIds.forEach((id) => ids.push(id));
+        }
+        if (source.contextId) {
+            ids.push(source.contextId);
+        }
+    });
+    return Array.from(new Set(ids.map((id) => String(id || '').trim()).filter(Boolean)));
+}
+
 function inferExecutionProfile(payload = {}) {
     const taskType = String(
         payload?.taskType
@@ -372,14 +390,36 @@ async function executeConversationRuntime(app, params = {}) {
         metadata: params.metadata || {},
     });
     const effectiveParams = piiSanitized.payload;
+    const callerPiiCleansing = effectiveToolContext.piiCleansing
+        || params.metadata?.piiCleansing
+        || effectiveParams.metadata?.piiCleansing
+        || null;
+    const mergedPiiContextIds = compactPiiContextIds(
+        callerPiiCleansing,
+        piiSanitized.contextIds,
+    );
+    const mergedRelationshipCalculations = piiSanitized.policy?.relationshipCalculations
+        || callerPiiCleansing?.relationshipCalculations
+        || null;
+    if (effectiveParams.metadata && typeof effectiveParams.metadata === 'object') {
+        effectiveParams.metadata = {
+            ...effectiveParams.metadata,
+            piiCleansing: {
+                ...(callerPiiCleansing && typeof callerPiiCleansing === 'object' ? callerPiiCleansing : {}),
+                ...(effectiveParams.metadata.piiCleansing || {}),
+                contextIds: mergedPiiContextIds,
+                relationshipCalculations: mergedRelationshipCalculations,
+            },
+        };
+    }
     const piiResult = {
         enabled: piiSanitized.policy?.enabled === true,
         changed: piiSanitized.changed,
-        contextIds: piiSanitized.contextIds,
+        contextIds: mergedPiiContextIds,
         replacementCount: piiSanitized.replacements.length,
         placeholderMode: piiSanitized.policy?.placeholderMode || '',
         modelFrame: piiSanitized.modelFrame || null,
-        relationshipCalculations: piiSanitized.policy?.relationshipCalculations || null,
+        relationshipCalculations: mergedRelationshipCalculations,
         relationshipFrame: piiSanitized.relationshipFrame || null,
     };
     const runtimePiiEntries = piiSanitized.replacements

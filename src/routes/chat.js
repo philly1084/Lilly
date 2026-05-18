@@ -25,6 +25,7 @@ const {
     inferOutputFormatFromArtifactContext,
     resolveArtifactContextIds,
     buildUserInputWithImageArtifacts,
+    buildPiiWorkbookRelationshipToolContext,
     resolveReasoningEffort,
 } = require('../ai-route-utils');
 const {
@@ -1213,6 +1214,32 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             })
             : '';
         const effectiveArtifactIds = resolveArtifactContextIds(session, artifactIds, message);
+        const piiWorkbookRelationship = await buildPiiWorkbookRelationshipToolContext({
+            sessionId,
+            artifactIds: effectiveArtifactIds,
+            text: artifactIntentText,
+            ownerId,
+            clientSurface,
+            route: '/api/chat',
+            metadata: effectiveRequestMetadata,
+            policy: routePii.policy,
+        });
+        if (piiWorkbookRelationship) {
+            routePii.contextIds = compactPiiContextIds(routePii, piiWorkbookRelationship.context?.piiCleansing?.contextIds);
+            routePii.replacements = [
+                ...(routePii.replacements || []),
+                ...(piiWorkbookRelationship.context?.piiEntries || []).map((entry) => ({
+                    placeholder: entry.placeholder,
+                    type: entry.piiType || entry.type || 'PII',
+                    valueIndexHmac: entry.valueIndexHmac,
+                    restorable: true,
+                })),
+            ];
+            effectiveRequestMetadata = {
+                ...effectiveRequestMetadata,
+                piiCleansing: buildPiiCleansingMetadata(routePii),
+            };
+        }
         const outputFormatProvided = Boolean(outputFormat);
         const candidateOutputFormat = outputFormat
             || inferRequestedOutputFormat(artifactIntentText)
@@ -1801,7 +1828,11 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     workloadService: req.app.locals.agentWorkloadService,
                     managedAppService: req.app.locals.managedAppService || null,
                     userCheckpointPolicy,
-                    piiEntries: buildPiiToolEntries(routePii),
+                    piiEntries: [
+                        ...buildPiiToolEntries(routePii),
+                        ...(piiWorkbookRelationship?.context?.piiEntries || []),
+                    ],
+                    piiWorkbookRelationship,
                 },
                 executionProfile,
                 enableAutomaticToolCalls: true,
@@ -2030,7 +2061,11 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 workloadService: req.app.locals.agentWorkloadService,
                 managedAppService: req.app.locals.managedAppService || null,
                 userCheckpointPolicy,
-                piiEntries: buildPiiToolEntries(routePii),
+                piiEntries: [
+                    ...buildPiiToolEntries(routePii),
+                    ...(piiWorkbookRelationship?.context?.piiEntries || []),
+                ],
+                piiWorkbookRelationship,
             },
             executionProfile,
             enableAutomaticToolCalls: true,

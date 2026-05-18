@@ -2171,6 +2171,15 @@ function getPiiRelationshipCalculationState(options = {}) {
         || null;
 }
 
+function getPiiWorkbookRelationshipRequest(options = {}) {
+    const request = options?.toolContext?.piiWorkbookRelationship?.request
+        || options?.piiWorkbookRelationship?.request
+        || options?.toolContext?.piiRelationshipCalculationRequest
+        || options?.piiRelationshipCalculationRequest
+        || null;
+    return request && typeof request === 'object' && !Array.isArray(request) ? request : null;
+}
+
 function hasPiiRelationshipCalculationIntent(prompt = '', options = {}) {
     const relationshipState = getPiiRelationshipCalculationState(options);
     if (relationshipState?.active === true) {
@@ -2762,7 +2771,7 @@ function extractPiiRelationshipFormulaPlanRequest(prompt = '') {
     };
 }
 
-function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
+function buildDeterministicPreflightActions(automaticTools = [], prompt = '', toolContext = {}) {
     const availableToolIds = new Set(automaticTools.map((entry) => entry.id));
     if (availableToolIds.has(USER_CHECKPOINT_TOOL_ID) && hasExplicitUserCheckpointInteractionIntent(prompt)) {
         return [];
@@ -2801,6 +2810,9 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
     const relationshipFormulaPlan = availableToolIds.has(RELATIONSHIP_CALCULATION_TOOL_ID)
         ? extractPiiRelationshipFormulaPlanRequest(prompt)
         : null;
+    const relationshipWorkbookRequest = availableToolIds.has(RELATIONSHIP_CALCULATION_TOOL_ID)
+        ? getPiiWorkbookRelationshipRequest({ toolContext })
+        : null;
 
     if (podcastTopic) {
         actions.push({
@@ -2812,7 +2824,12 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '') {
         });
     }
 
-    if (relationshipFormulaPlan) {
+    if (relationshipWorkbookRequest) {
+        actions.push({
+            toolId: RELATIONSHIP_CALCULATION_TOOL_ID,
+            params: relationshipWorkbookRequest,
+        });
+    } else if (relationshipFormulaPlan) {
         actions.push({
             toolId: RELATIONSHIP_CALCULATION_TOOL_ID,
             params: relationshipFormulaPlan,
@@ -3403,7 +3420,8 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
     });
     const availableToolIds = new Set(automaticTools.map((entry) => entry.id));
     const selectedIds = new Set();
-    const hasPiiFormulaPlanIntent = Boolean(extractPiiRelationshipFormulaPlanRequest(prompt));
+    const hasPiiFormulaPlanIntent = Boolean(extractPiiRelationshipFormulaPlanRequest(prompt))
+        || Boolean(getPiiWorkbookRelationshipRequest(options));
     const normalizedPrompt = String(prompt || '').toLowerCase();
     const hasUrl = /https?:\/\//i.test(normalizedPrompt);
     const hasExplicitScrapeIntent = /\b(scrape|extract|selector|structured|parse)\b/i.test(normalizedPrompt);
@@ -4707,7 +4725,7 @@ async function runDeterministicToolPreflight({
     toolContext = {},
 }) {
     throwIfAborted(toolContext?.signal);
-    const actions = buildDeterministicPreflightActions(automaticTools, prompt);
+    const actions = buildDeterministicPreflightActions(automaticTools, prompt, toolContext);
 
     if (!actions.length) {
         return {
@@ -5084,7 +5102,7 @@ async function runDirectRequiredToolAction({
         });
     }
 
-    const actions = buildDeterministicPreflightActions(selectedTools, prompt)
+    const actions = buildDeterministicPreflightActions(selectedTools, prompt, toolContext)
         .filter((action) => action.toolId === requiredToolId);
 
     if (!actions.length && !['remote-cli-agent', 'image-generate'].includes(requiredToolId)) {

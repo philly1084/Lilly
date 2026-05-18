@@ -26,6 +26,7 @@ const {
     inferOutputFormatFromArtifactContext,
     resolveArtifactContextIds,
     buildUserInputWithImageArtifacts,
+    buildPiiWorkbookRelationshipToolContext,
     resolveReasoningEffort,
 } = require('../ai-route-utils');
 const {
@@ -133,6 +134,26 @@ function buildPiiCleansingMetadata(routePii = null, executionPii = null, present
         relationshipCalculations: routePii?.policy?.relationshipCalculations
             || executionPii?.relationshipCalculations
             || null,
+    };
+}
+
+function buildPiiToolEntries(routePii = null) {
+    return (Array.isArray(routePii?.replacements) ? routePii.replacements : [])
+        .filter((entry) => entry?.placeholder && entry?.valueIndexHmac)
+        .map((entry) => ({
+            placeholder: entry.placeholder,
+            valueIndexHmac: entry.valueIndexHmac,
+            piiType: entry.type || 'PII',
+        }));
+}
+
+function buildPiiToolContext(routePii = null, piiWorkbookRelationship = null) {
+    return {
+        piiEntries: [
+            ...buildPiiToolEntries(routePii),
+            ...(piiWorkbookRelationship?.context?.piiEntries || []),
+        ],
+        ...(piiWorkbookRelationship ? { piiWorkbookRelationship } : {}),
     };
 }
 
@@ -1280,6 +1301,32 @@ router.post('/chat/completions', async (req, res, next) => {
             requestAbortSignal = registeredForegroundRequest?.signal || null;
         }
         const effectiveArtifactIds = resolveArtifactContextIds(session, artifact_ids, lastUserText);
+        const piiWorkbookRelationship = await buildPiiWorkbookRelationshipToolContext({
+            sessionId,
+            artifactIds: effectiveArtifactIds,
+            text: artifactIntentText,
+            ownerId,
+            clientSurface,
+            route: '/v1/chat/completions',
+            metadata: effectiveRequestMetadata,
+            policy: routePii.policy,
+        });
+        if (piiWorkbookRelationship) {
+            routePii.contextIds = compactPiiContextIds(routePii, piiWorkbookRelationship.context?.piiCleansing?.contextIds);
+            routePii.replacements = [
+                ...(routePii.replacements || []),
+                ...(piiWorkbookRelationship.context?.piiEntries || []).map((entry) => ({
+                    placeholder: entry.placeholder,
+                    type: entry.piiType || entry.type || 'PII',
+                    valueIndexHmac: entry.valueIndexHmac,
+                    restorable: true,
+                })),
+            ];
+            effectiveRequestMetadata = {
+                ...effectiveRequestMetadata,
+                piiCleansing: buildPiiCleansingMetadata(routePii),
+            };
+        }
         const outputFormatProvided = Boolean(output_format);
         const candidateOutputFormat = output_format
             || inferRequestedOutputFormat(artifactIntentText)
@@ -1855,6 +1902,7 @@ router.post('/chat/completions', async (req, res, next) => {
                     now: requestNow,
                     workloadService: req.app.locals.agentWorkloadService,
                     userCheckpointPolicy,
+                    ...buildPiiToolContext(routePii, piiWorkbookRelationship),
                 },
                 executionProfile: effectiveExecutionProfile,
                 enableAutomaticToolCalls: true,
@@ -2111,6 +2159,7 @@ router.post('/chat/completions', async (req, res, next) => {
                 now: requestNow,
                 workloadService: req.app.locals.agentWorkloadService,
                 userCheckpointPolicy,
+                ...buildPiiToolContext(routePii, piiWorkbookRelationship),
             },
             executionProfile: effectiveExecutionProfile,
             enableAutomaticToolCalls: true,
@@ -2175,6 +2224,7 @@ router.post('/chat/completions', async (req, res, next) => {
                     now: requestNow,
                     workloadService: req.app.locals.agentWorkloadService,
                     userCheckpointPolicy,
+                    ...buildPiiToolContext(routePii, piiWorkbookRelationship),
                 },
                 executionProfile: 'remote-build',
                 enableAutomaticToolCalls: true,
@@ -2493,6 +2543,32 @@ router.post('/responses', async (req, res, next) => {
             piiCleansing: buildPiiCleansingMetadata(routePii),
         };
         const effectiveArtifactIds = resolveArtifactContextIds(session, artifact_ids, userInput);
+        const piiWorkbookRelationship = await buildPiiWorkbookRelationshipToolContext({
+            sessionId,
+            artifactIds: effectiveArtifactIds,
+            text: artifactIntentText,
+            ownerId,
+            clientSurface,
+            route: '/v1/responses',
+            metadata: effectiveRequestMetadata,
+            policy: routePii.policy,
+        });
+        if (piiWorkbookRelationship) {
+            routePii.contextIds = compactPiiContextIds(routePii, piiWorkbookRelationship.context?.piiCleansing?.contextIds);
+            routePii.replacements = [
+                ...(routePii.replacements || []),
+                ...(piiWorkbookRelationship.context?.piiEntries || []).map((entry) => ({
+                    placeholder: entry.placeholder,
+                    type: entry.piiType || entry.type || 'PII',
+                    valueIndexHmac: entry.valueIndexHmac,
+                    restorable: true,
+                })),
+            ];
+            effectiveRequestMetadata = {
+                ...effectiveRequestMetadata,
+                piiCleansing: buildPiiCleansingMetadata(routePii),
+            };
+        }
         const outputFormatProvided = Boolean(output_format);
         const candidateOutputFormat = output_format
             || inferRequestedOutputFormat(artifactIntentText)
@@ -2845,6 +2921,7 @@ router.post('/responses', async (req, res, next) => {
                     timezone: requestTimezone,
                     now: requestNow,
                     workloadService: req.app.locals.agentWorkloadService,
+                    ...buildPiiToolContext(routePii, piiWorkbookRelationship),
                 },
                 executionProfile: effectiveExecutionProfile,
                 enableAutomaticToolCalls: true,
@@ -3024,6 +3101,7 @@ router.post('/responses', async (req, res, next) => {
                 timezone: requestTimezone,
                 now: requestNow,
                 workloadService: req.app.locals.agentWorkloadService,
+                ...buildPiiToolContext(routePii, piiWorkbookRelationship),
             },
             executionProfile: effectiveExecutionProfile,
             enableAutomaticToolCalls: true,
@@ -3084,6 +3162,7 @@ router.post('/responses', async (req, res, next) => {
                     timezone: requestTimezone,
                     now: requestNow,
                     workloadService: req.app.locals.agentWorkloadService,
+                    ...buildPiiToolContext(routePii, piiWorkbookRelationship),
                 },
                 executionProfile: 'remote-build',
                 enableAutomaticToolCalls: true,

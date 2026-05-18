@@ -59,7 +59,7 @@ function extractDocx(buffer) {
 
 function parseSharedStrings(xml) {
     const values = [];
-    const regex = /<si[^>]*>([\s\S]*?)<\/si>/g;
+    const regex = /<(?:\w+:)?si\b[^>]*>([\s\S]*?)<\/(?:\w+:)?si>/g;
     let match = regex.exec(xml);
     while (match) {
         values.push(xmlToText(match[1]));
@@ -80,12 +80,12 @@ function columnLettersToIndex(ref = '') {
 
 function extractSheetRows(xml, sharedStrings) {
     const rows = [];
-    const rowRegex = /<row[^>]*>([\s\S]*?)<\/row>/g;
+    const rowRegex = /<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g;
     let rowMatch = rowRegex.exec(xml);
 
     while (rowMatch) {
         const cells = [];
-        const cellRegex = /<c\b([^>]*)>([\s\S]*?)<\/c>/g;
+        const cellRegex = /<(?:\w+:)?c\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?c>/g;
         let cellMatch = cellRegex.exec(rowMatch[1]);
         while (cellMatch) {
             const attrs = cellMatch[1] || '';
@@ -93,8 +93,8 @@ function extractSheetRows(xml, sharedStrings) {
             const ref = (attrs.match(/\br=["']([^"']+)["']/) || [])[1] || '';
             const columnIndex = columnLettersToIndex(ref);
             const body = cellMatch[2];
-            const valueMatch = body.match(/<v>([\s\S]*?)<\/v>/);
-            const inlineMatch = body.match(/<is>([\s\S]*?)<\/is>/);
+            const valueMatch = body.match(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/);
+            const inlineMatch = body.match(/<(?:\w+:)?is>([\s\S]*?)<\/(?:\w+:)?is>/);
             let value = '';
 
             if (type === 's' && valueMatch) {
@@ -123,23 +123,44 @@ function extractSheetRows(xml, sharedStrings) {
     return rows;
 }
 
+function findHeaderRowIndex(rows = []) {
+    const candidates = rows.slice(0, 12)
+        .map((row, index) => ({ index, width: Array.isArray(row) ? row.length : 0 }))
+        .filter((entry) => entry.width > 1);
+    if (candidates.length === 0) {
+        return rows[0] ? 0 : -1;
+    }
+    const widest = candidates.reduce((best, entry) => (
+        entry.width > best.width ? entry : best
+    ), candidates[0]);
+    return widest.index;
+}
+
 function buildStructuredSheetRows(rows = []) {
-    const headers = rows[0]
-        ? rows[0].map((cell, index) => ({
+    const headerRowIndex = findHeaderRowIndex(rows);
+    const headerRow = headerRowIndex >= 0 ? rows[headerRowIndex] : null;
+    const headers = headerRow
+        ? headerRow.map((cell, index) => ({
             id: `c${index + 1}`,
             header: String(cell.value || '').trim() || `Column ${index + 1}`,
             columnIndex: cell.columnIndex,
         }))
         : [];
+    const headersByColumnIndex = headers.reduce((acc, header) => {
+        if (Number.isInteger(header.columnIndex)) {
+            acc.set(header.columnIndex, header);
+        }
+        return acc;
+    }, new Map());
     return {
         headers,
-        rows: rows.slice(1).map((row, rowIndex) => ({
+        rows: rows.slice(headerRowIndex + 1).map((row, rowIndex) => ({
             id: `r${rowIndex + 1}`,
-            rowIndex: rowIndex + 1,
+            rowIndex: headerRowIndex + rowIndex + 1,
             cells: row.map((cell, cellIndex) => ({
-                columnId: headers[cellIndex]?.id || `c${cellIndex + 1}`,
+                columnId: headersByColumnIndex.get(cell.columnIndex)?.id || headers[cellIndex]?.id || `c${cellIndex + 1}`,
                 columnIndex: cell.columnIndex,
-                header: headers[cellIndex]?.header || `Column ${cellIndex + 1}`,
+                header: headersByColumnIndex.get(cell.columnIndex)?.header || headers[cellIndex]?.header || `Column ${cellIndex + 1}`,
                 value: cell.value,
             })),
         })),

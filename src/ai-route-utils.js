@@ -10,6 +10,10 @@ const settingsController = require('./routes/admin/settings.controller');
 const { parseLenientJson } = require('./utils/lenient-json');
 const { isInteractiveDocumentRequest } = require('./artifacts/artifact-experience');
 const { stripHtml } = require('./utils/text');
+const {
+    prepareWorkbookRelationshipInput,
+    inferWorkbookRelationshipCalculationRequest,
+} = require('./pii');
 
 const REMOTE_CONTINUATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
@@ -234,6 +238,87 @@ async function buildInstructionsWithArtifacts(session, baseInstructions = '', ar
         session,
         [baseInstructions, artifactContext].filter(Boolean).join('\n\n'),
     );
+}
+
+function isWorkbookArtifact(artifact = {}) {
+    const extension = String(artifact.extension || artifact.format || '').trim().toLowerCase();
+    const mimeType = String(artifact.mimeType || artifact.mime_type || '').trim().toLowerCase();
+    return extension === 'xlsx'
+        || mimeType.includes('spreadsheetml.sheet')
+        || String(artifact.filename || '').toLowerCase().endsWith('.xlsx');
+}
+
+async function buildPiiWorkbookRelationshipToolContext({
+    sessionId = '',
+    artifactIds = [],
+    text = '',
+    ownerId = null,
+    clientSurface = '',
+    route = '',
+    metadata = {},
+    policy = null,
+} = {}) {
+    const normalizedSessionId = String(sessionId || '').trim();
+    const ids = Array.from(new Set(
+        (Array.isArray(artifactIds) ? artifactIds : [])
+            .map((artifactId) => String(artifactId || '').trim())
+            .filter(Boolean),
+    )).slice(0, 4);
+    if (!normalizedSessionId || ids.length === 0) {
+        return null;
+    }
+
+    const structuredTables = [];
+    const workbookArtifactIds = [];
+    for (const artifactId of ids) {
+        let artifact = null;
+        try {
+            artifact = await artifactService.getArtifact(artifactId, { includeContent: false });
+        } catch (error) {
+            console.warn(`[PII] Failed to inspect workbook artifact ${artifactId}: ${error.message}`);
+            continue;
+        }
+        if (!artifact || artifact.sessionId !== normalizedSessionId || !isWorkbookArtifact(artifact)) {
+            continue;
+        }
+        const artifactTables = Array.isArray(artifact.metadata?.structuredTables)
+            ? artifact.metadata.structuredTables
+            : [];
+        if (artifactTables.length === 0) {
+            continue;
+        }
+        structuredTables.push(...artifactTables);
+        workbookArtifactIds.push(artifactId);
+    }
+
+    if (structuredTables.length === 0) {
+        return null;
+    }
+
+    const prepared = await prepareWorkbookRelationshipInput({
+        structuredTables,
+        sessionId: normalizedSessionId,
+        ownerId,
+        clientSurface: clientSurface || 'web-chat',
+        route: route || '/api/chat',
+        metadata,
+        policy,
+    });
+    const request = inferWorkbookRelationshipCalculationRequest({
+        text,
+        tables: prepared.tables,
+    });
+    if (!request) {
+        return null;
+    }
+
+    return {
+        request,
+        context: prepared.context,
+        artifactIds: workbookArtifactIds,
+        tableCount: prepared.tables.length,
+        rowCount: prepared.tables.reduce((count, table) => count + (Array.isArray(table.rows) ? table.rows.length : 0), 0),
+    };
 }
 
 async function maybeGenerateOutputArtifact({
@@ -2063,5 +2148,6 @@ module.exports = {
     resolveArtifactContextIds,
     buildUserInputWithImageArtifacts,
     maybePrepareImagesForArtifactPrompt,
+    buildPiiWorkbookRelationshipToolContext,
 };
 
