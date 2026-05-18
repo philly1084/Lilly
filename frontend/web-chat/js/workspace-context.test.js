@@ -67,4 +67,18 @@ describe('workspace-context', () => {
                 embedded: true,
             }));
     });
+
+    test('falls back to the default workspace for unbounded workspace query values', () => {
+        expect(createWorkspaceContext({ key: 'workspace-999' })).toEqual(expect.objectContaining({
+            key: 'workspace-1',
+            label: 'Workspace 1',
+            scopeKey: 'web-chat',
+        }));
+        expect(getWorkspaceContext('?workspace=touched-card-42&workspaceLabel=Repeated'))
+            .toEqual(expect.objectContaining({
+                key: 'workspace-1',
+                label: 'Workspace 1',
+                scopeKey: 'web-chat',
+            }));
+    });
 });

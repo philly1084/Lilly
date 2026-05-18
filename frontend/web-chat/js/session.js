@@ -865,17 +865,24 @@ class SessionManager extends EventTarget {
 
     filterSessionsForCurrentWorkspace(sessions = []) {
         const allowedSessionIds = new Set();
+        const seenSessionIds = new Set();
         const deletedSessionIds = this.getDeletedSessionIds();
-        const filteredSessions = (Array.isArray(sessions) ? sessions : []).filter((session) => {
-            if (session?.id && deletedSessionIds.has(session.id)) {
-                return false;
+        const filteredSessions = [];
+
+        (Array.isArray(sessions) ? sessions : []).forEach((session) => {
+            const sessionId = String(session?.id || '').trim();
+            if (!sessionId || deletedSessionIds.has(sessionId) || seenSessionIds.has(sessionId)) {
+                return;
             }
 
             const belongs = this.sessionBelongsToCurrentWorkspace(session);
-            if (belongs && session?.id) {
-                allowedSessionIds.add(session.id);
+            if (!belongs) {
+                return;
             }
-            return belongs;
+
+            seenSessionIds.add(sessionId);
+            allowedSessionIds.add(sessionId);
+            filteredSessions.push(session);
         });
 
         for (const sessionId of this.sessionMessages.keys()) {
@@ -1024,8 +1031,9 @@ class SessionManager extends EventTarget {
             const data = await response.json();
             const storedSessions = new Map(this.sessions.map((session) => [session.id, session]));
             const deletedSessionIds = this.getDeletedSessionIds();
-            const backendSessions = (Array.isArray(data.sessions) ? data.sessions : [])
-                .filter((session) => !session?.id || !deletedSessionIds.has(session.id));
+            const backendSessions = this.filterSessionsForCurrentWorkspace(
+                Array.isArray(data.sessions) ? data.sessions : [],
+            );
 
             this.sessions = backendSessions.map((session) => {
                 const stored = storedSessions.get(session.id);
@@ -1084,6 +1092,11 @@ class SessionManager extends EventTarget {
                     continue;
                 }
                 if (deletedSessionIds.has(sessionId)) {
+                    this.sessionMessages.delete(sessionId);
+                    continue;
+                }
+
+                if (!this.sessionBelongsToCurrentWorkspace(storedSession)) {
                     this.sessionMessages.delete(sessionId);
                     continue;
                 }
