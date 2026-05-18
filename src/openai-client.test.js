@@ -1053,12 +1053,19 @@ describe('openai-client automatic tool orchestration helpers', () => {
         const selectedTools = __testUtils.selectAutomaticToolDefinitions([
             { id: 'pii-relationship-calculate', skill: { triggerPatterns: [] } },
         ], 'Which patient has the highest balance?', { toolContext });
+        const canAutoUse = __testUtils.shouldAutoUseTool(
+            'pii-relationship-calculate',
+            'Which patient has the highest balance?',
+            { triggerPatterns: [] },
+            { toolContext },
+        );
         const actions = __testUtils.buildDeterministicPreflightActions(
             selectedTools,
             'Which patient has the highest balance?',
             toolContext,
         );
 
+        expect(canAutoUse).toBe(true);
         expect(selectedTools.map((tool) => tool.id)).toEqual(['pii-relationship-calculate']);
         expect(actions).toEqual([{
             toolId: 'pii-relationship-calculate',

@@ -2041,7 +2041,8 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     }
 
     if (toolId === RELATIONSHIP_CALCULATION_TOOL_ID) {
-        return hasPiiRelationshipCalculationIntent(prompt, options);
+        return Boolean(getPiiWorkbookRelationshipRequest(options))
+            || hasPiiRelationshipCalculationIntent(prompt, options);
     }
 
     if (toolId === USER_CHECKPOINT_TOOL_ID) {
