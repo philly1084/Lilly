@@ -273,7 +273,7 @@ async function buildPiiWorkbookRelationshipToolContext({
     for (const artifactId of ids) {
         let artifact = null;
         try {
-            artifact = await artifactService.getArtifact(artifactId, { includeContent: false });
+            artifact = await artifactService.getArtifact(artifactId, { includeContent: true });
         } catch (error) {
             console.warn(`[PII] Failed to inspect workbook artifact ${artifactId}: ${error.message}`);
             continue;

@@ -574,6 +574,7 @@ describe('ai-route-utils', () => {
                 measure: 'c2',
             }),
         }));
+        expect(artifactService.getArtifact).toHaveBeenCalledWith('artifact-xlsx-1', { includeContent: true });
         expect(context.context.piiEntries).toEqual([]);
     });
 
