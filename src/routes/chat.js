@@ -227,6 +227,22 @@ function formatTrustedPiiRelationshipMessage(result = {}) {
     });
 }
 
+function buildTrustedPiiRelationshipWorkbookContent(result = {}) {
+    const data = result?.data && typeof result.data === 'object' ? result.data : result;
+    const evidenceRowIds = Array.isArray(data?.evidenceRowIds)
+        ? data.evidenceRowIds.join(', ')
+        : '';
+    return [
+        'patient_uid | total_patient_balance | contributing_row_count | evidence_row_ids',
+        [
+            data?.winnerPlaceholder || '',
+            typeof data?.aggregateValue === 'number' ? data.aggregateValue : '',
+            typeof data?.rowCount === 'number' ? data.rowCount : '',
+            evidenceRowIds,
+        ].join(' | '),
+    ].join('\n');
+}
+
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
     const options = source.podcastOptions || source.podcastProduction || null;
@@ -1428,6 +1444,29 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 route: '/api/chat',
             });
             const piiMetadata = buildPiiCleansingMetadata(routePii, null, piiPresentation);
+            const artifacts = [];
+            if (String(effectiveOutputFormat || '').toLowerCase() === 'xlsx') {
+                try {
+                    const artifact = await artifactService.storeGeneratedArtifactFromContent({
+                        sessionId,
+                        session: effectiveSession,
+                        ownerId,
+                        mode: taskType || 'chat',
+                        format: 'xlsx',
+                        content: buildTrustedPiiRelationshipWorkbookContent(result),
+                        title: 'pii-vault-calculation-result',
+                        metadata: {
+                            sourceResponseId: responseId,
+                            source: 'trusted-pii-relationship-calculation',
+                            route: '/api/chat',
+                            piiCleansing: piiMetadata || effectiveRequestMetadata.piiCleansing || null,
+                        },
+                    });
+                    artifacts.push(artifact);
+                } catch (error) {
+                    console.warn('[ChatRoute] Failed to persist trusted PII relationship XLSX result:', error.message);
+                }
+            }
             await sessionStore.recordResponse(sessionId, responseId);
             memoryService.rememberResponse(sessionId, assistantText, buildOwnerMemoryMetadata(ownerId, memoryScope, {
                 sourceSurface: clientSurface || taskType,
@@ -1438,7 +1477,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 userText: message,
                 assistantText,
                 toolEvents,
-                artifacts: [],
+                artifacts,
                 assistantMetadata: {
                     directPiiRelationshipCalculation: true,
                     toolEvents,
@@ -1449,7 +1488,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 userText: message,
                 assistantText,
                 toolEvents,
-                artifacts: [],
+                artifacts,
             }, ownerId);
             await safeRecordAgentJournalTurn(effectiveSession, {
                 ownerId,
@@ -1457,7 +1496,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 userText: message,
                 assistantText,
                 toolEvents,
-                artifacts: [],
+                artifacts,
             });
             completeRuntimeTask(runtimeTask?.id, {
                 responseId,
@@ -1478,12 +1517,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     type: 'done',
                     sessionId,
                     responseId,
-                    artifacts: [],
+                    artifacts,
                     toolEvents,
                     displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
                     piiRestorations: piiPresentation.restorations,
-                    assistant_metadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
-                    assistantMetadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
+                    assistant_metadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, artifacts, piiMetadata, piiPresentation),
+                    assistantMetadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, artifacts, piiMetadata, piiPresentation),
                 })}\n\n`);
                 res.write('data: [DONE]\n\n');
                 res.end();
@@ -1496,10 +1535,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 message: assistantText,
                 displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
                 piiRestorations: piiPresentation.restorations,
-                artifacts: [],
+                artifacts,
                 toolEvents,
-                assistant_metadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
-                assistantMetadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
+                assistant_metadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, artifacts, piiMetadata, piiPresentation),
+                assistantMetadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, artifacts, piiMetadata, piiPresentation),
             });
             return;
         }

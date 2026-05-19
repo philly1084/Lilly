@@ -616,6 +616,12 @@ describe('/api/chat route', () => {
             getTool: jest.fn(),
         };
         ensureRuntimeToolManager.mockResolvedValue(toolManager);
+        const storeSpy = jest.spyOn(artifactService, 'storeGeneratedArtifactFromContent').mockResolvedValue({
+            id: 'artifact-result-xlsx',
+            filename: 'pii-vault-calculation-result.xlsx',
+            format: 'xlsx',
+            downloadUrl: '/api/artifacts/artifact-result-xlsx/download',
+        });
 
         const app = express();
         app.use(express.json());
@@ -628,6 +634,7 @@ describe('/api/chat route', () => {
                 message: 'Find the highest total Patient Balance from the selected XLSX.',
                 stream: false,
                 model: 'auto',
+                outputFormat: 'xlsx',
                 artifactIds: ['artifact-xlsx'],
                 metadata: {
                     clientSurface: 'web-chat',
@@ -650,6 +657,21 @@ describe('/api/chat route', () => {
             }),
         );
         expect(executeConversationRuntime).not.toHaveBeenCalled();
+        expect(storeSpy).toHaveBeenCalledWith(expect.objectContaining({
+            format: 'xlsx',
+            title: 'pii-vault-calculation-result',
+            content: expect.stringContaining('[[PII:patientIdentifier:abc]] | 42 | 1 | t1_r1'),
+            metadata: expect.objectContaining({
+                source: 'trusted-pii-relationship-calculation',
+                piiCleansing: expect.any(Object),
+            }),
+        }));
+        expect(response.body.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-result-xlsx',
+                format: 'xlsx',
+            }),
+        ]);
         expect(response.body.message).toContain('[[PII:patientIdentifier:abc]]');
         expect(response.body.message).toContain('"total_patient_balance":42');
         expect(response.body.toolEvents).toEqual([
@@ -661,6 +683,7 @@ describe('/api/chat route', () => {
                 }),
             }),
         ]);
+        storeSpy.mockRestore();
     });
 
     test('routes SSH-looking requests through the orchestrator instead of executing a direct tool shortcut', async () => {
