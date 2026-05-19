@@ -224,6 +224,8 @@ describe('PII workbook relationship bridge', () => {
     }));
     expect(prepared.tables[0].rows[0].cells.c1).toMatch(/^\[\[PII:[^\]]+\]\]$/);
     expect(prepared.context.piiEntries).toHaveLength(2);
+    expect(prepared.tables[0].rows[0].cells.c1).not.toBe(prepared.tables[0].rows[1].cells.c1);
+    expect(prepared.context.piiEntries[0].valueIndexHmac).toBe(prepared.context.piiEntries[1].valueIndexHmac);
 
     const result = await calculateRelationship({
       operation: 'top_n',

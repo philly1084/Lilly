@@ -683,6 +683,19 @@ describe('/api/chat route', () => {
                 }),
             }),
         ]);
+        const recordedArgs = JSON.parse(response.body.toolEvents[0].toolCall.function.arguments);
+        expect(recordedArgs.valuesIncluded).toBe(false);
+        expect(recordedArgs.relationshipKeysIncluded).toBe(false);
+        expect(JSON.stringify(recordedArgs)).not.toContain('"rows"');
+        expect(JSON.stringify(recordedArgs)).not.toContain('[[PII:patientIdentifier:abc]]');
+        expect(response.body.toolEvents[0].result).toEqual(expect.objectContaining({
+            operation: 'top_n',
+            aggregateValue: 42,
+            rowCount: 1,
+            valuesIncluded: false,
+            relationshipKeysIncluded: false,
+        }));
+        expect(JSON.stringify(response.body.toolEvents[0].result)).not.toContain('[[PII:patientIdentifier:abc]]');
         storeSpy.mockRestore();
     });
 

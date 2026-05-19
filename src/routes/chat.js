@@ -243,6 +243,45 @@ function buildTrustedPiiRelationshipWorkbookContent(result = {}) {
     ].join('\n');
 }
 
+function summarizeTrustedPiiRelationshipRequest(request = {}) {
+    const tables = Array.isArray(request.tables) ? request.tables : [];
+    return {
+        operationId: request.operationId || null,
+        operation: request.operation || null,
+        tableId: request.tableId || null,
+        groupBy: request.groupBy || null,
+        measure: request.measure || null,
+        limit: request.limit || null,
+        tableCount: tables.length,
+        tables: tables.map((table) => ({
+            id: table.id || null,
+            rowCount: Array.isArray(table.rows) ? table.rows.length : 0,
+            columnCount: Array.isArray(table.columns) ? table.columns.length : 0,
+            columns: (Array.isArray(table.columns) ? table.columns : []).map((column) => ({
+                id: column.id || null,
+                role: column.role || null,
+            })),
+        })),
+        valuesIncluded: false,
+        relationshipKeysIncluded: false,
+    };
+}
+
+function summarizeTrustedPiiRelationshipResult(result = {}) {
+    const data = result?.data && typeof result.data === 'object' ? result.data : result;
+    return {
+        success: result?.success !== false,
+        operation: data?.operation || null,
+        sanitized: data?.sanitized === true,
+        aggregateValue: typeof data?.aggregateValue === 'number' ? data.aggregateValue : null,
+        rowCount: typeof data?.rowCount === 'number' ? data.rowCount : null,
+        evidenceRowIds: Array.isArray(data?.evidenceRowIds) ? data.evidenceRowIds : [],
+        resultCount: Array.isArray(data?.results) ? data.results.length : null,
+        valuesIncluded: false,
+        relationshipKeysIncluded: false,
+    };
+}
+
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
     const options = source.podcastOptions || source.podcastProduction || null;
@@ -1421,10 +1460,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 toolCall: {
                     function: {
                         name: 'pii-relationship-calculate',
-                        arguments: JSON.stringify(piiWorkbookRelationship.request),
+                        arguments: JSON.stringify(summarizeTrustedPiiRelationshipRequest(piiWorkbookRelationship.request)),
                     },
                 },
-                result,
+                result: summarizeTrustedPiiRelationshipResult(result),
             }];
             if (result?.success === false) {
                 const error = new Error(result.error || 'PII relationship calculation failed.');
