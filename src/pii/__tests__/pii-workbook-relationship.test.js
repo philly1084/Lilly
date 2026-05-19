@@ -280,4 +280,37 @@ describe('PII workbook relationship bridge', () => {
     }));
     expect(JSON.stringify(request)).not.toContain('P001');
   });
+
+  test('prioritizes explicit highest-total measure intent over incidental count language', async () => {
+    const prepared = await prepareWorkbookRelationshipInput({
+      structuredTables: [{
+        name: 'sheet1',
+        headers: [
+          { id: 'c1', header: 'Patient Key', columnIndex: 0 },
+          { id: 'c2', header: 'Patient Balance', columnIndex: 1 },
+        ],
+        rows: [{
+          id: 'r1',
+          cells: [
+            { columnId: 'c1', columnIndex: 0, value: 'P001' },
+            { columnId: 'c2', columnIndex: 1, value: '100' },
+          ],
+        }],
+      }],
+      sessionId: 'session-workbook',
+      policy: privacyPolicy(),
+    });
+
+    const request = inferWorkbookRelationshipCalculationRequest({
+      text: 'Find the patient UID with the highest total Patient Balance; use the vault instead of counting by name.',
+      tables: prepared.tables,
+    });
+
+    expect(request).toEqual(expect.objectContaining({
+      operation: 'top_n',
+      groupBy: 'c1',
+      measure: 'c2',
+      limit: 1,
+    }));
+  });
 });

@@ -86,9 +86,9 @@ function promptMentionsAny(prompt = '', words = []) {
 function inferRelationshipOperation(text = '') {
   const normalized = normalizePromptText(text);
   if (/\b(?:average|mean)\b/.test(normalized)) return 'group_average';
-  if (/\b(?:count|how many|number of)\b/.test(normalized)) return 'group_count';
   if (/\b(?:lowest|smallest|least|min(?:imum)?|bottom)\b/.test(normalized)) return 'bottom_n';
   if (/\b(?:highest|largest|greatest|most|max(?:imum)?|top|biggest)\b/.test(normalized)) return 'top_n';
+  if (/\b(?:count|how many|number of)\b/.test(normalized)) return 'group_count';
   if (/\b(?:sum|total|totals|subtotal|add up|aggregate|balance)\b/.test(normalized)) return 'group_sum';
   return null;
 }
