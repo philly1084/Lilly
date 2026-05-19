@@ -1240,7 +1240,15 @@ describe('ArtifactService', () => {
             vectorizedAt: null,
             previewHtml: '',
             extractedText: '',
-            metadata: {},
+            metadata: {
+                sheets: [{ name: 'Patients', rowCount: 1 }],
+                structuredTables: [{
+                    name: 'Patients',
+                    rowCount: 1,
+                    headers: [{ header: 'SSN' }],
+                    rows: [{ cells: [{ value: 'Jane Patient' }, { value: '123-45-6789' }] }],
+                }],
+            },
             createdAt: '2026-04-08T00:00:00.000Z',
         });
 
@@ -1249,10 +1257,15 @@ describe('ArtifactService', () => {
         expect(serialized.preview).toBeNull();
         expect(serialized.metadata).toEqual(expect.objectContaining({
             privacyPreviewSuppressed: true,
+            sheets: [{ name: 'Patients', rowCount: 1 }],
+            structuredTableSummary: [{ name: 'Patients', rowCount: 1, columnCount: 1 }],
             piiCleansing: expect.objectContaining({
                 uploadPreviewSuppressed: true,
             }),
         }));
+        expect(JSON.stringify(serialized.metadata)).not.toContain('Jane Patient');
+        expect(JSON.stringify(serialized.metadata)).not.toContain('123-45-6789');
+        expect(serialized.metadata.structuredTables).toBeUndefined();
     });
 
     test('adds conservative instructions for resume PDF revisions', () => {

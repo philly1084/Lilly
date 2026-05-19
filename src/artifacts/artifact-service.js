@@ -85,6 +85,30 @@ function shouldSuppressUploadedArtifactPreview(artifact = {}) {
     }
 }
 
+function summarizePrivateUploadMetadata(metadata = {}) {
+    const source = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+        ? metadata
+        : {};
+    const sheets = Array.isArray(source.sheets)
+        ? source.sheets.map((sheet) => ({
+            name: String(sheet?.name || '').slice(0, 120),
+            rowCount: Number(sheet?.rowCount || 0),
+        }))
+        : [];
+    const structuredTables = Array.isArray(source.structuredTables)
+        ? source.structuredTables.map((table) => ({
+            name: String(table?.name || '').slice(0, 120),
+            rowCount: Number(table?.rowCount || (Array.isArray(table?.rows) ? table.rows.length : 0)),
+            columnCount: Array.isArray(table?.headers) ? table.headers.length : 0,
+        }))
+        : [];
+
+    return {
+        ...(sheets.length > 0 ? { sheets } : {}),
+        ...(structuredTables.length > 0 ? { structuredTableSummary: structuredTables } : {}),
+    };
+}
+
 function isPdfArtifactRecord(artifact = {}) {
     const extension = String(artifact.extension || artifact.format || '').toLowerCase();
     const mimeType = String(artifact.mimeType || '').toLowerCase();
@@ -1850,7 +1874,7 @@ class ArtifactService {
             : metadata;
         if (privacyPreviewSuppressed) {
             serializedMetadata = {
-                ...serializedMetadata,
+                ...summarizePrivateUploadMetadata(serializedMetadata),
                 privacyPreviewSuppressed: true,
                 piiCleansing: {
                     ...(serializedMetadata.piiCleansing && typeof serializedMetadata.piiCleansing === 'object'
