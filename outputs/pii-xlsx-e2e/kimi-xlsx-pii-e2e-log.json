@@ -1,0 +1,370 @@
+{
+  "run": {
+    "startedAt": "2026-05-19T09:57:34.371Z",
+    "completedAt": "2026-05-19T09:57:42.349Z",
+    "baseUrl": "https://lilly.secdevsolutions.help",
+    "namespace": "kimibuilt",
+    "deployment": "backend",
+    "backendImage": "ghcr.io/philly1084/lilly:sha-77c7b6c",
+    "backendPod": "backend-6699589c49-2vhsw",
+    "auth": {
+      "method": "login-cookie",
+      "bearerTokenUsed": false,
+      "cookieUsed": true,
+      "secretPrinted": false
+    }
+  },
+  "workbook": {
+    "filename": "synthetic_hospital_intake_billing_ledger.xlsx",
+    "localPathOnServer": "/tmp/synthetic_hospital_intake_billing_ledger.xlsx",
+    "inspectionSummary": {
+      "sheets": [
+        {
+          "name": "Intake_Billing_Ledger",
+          "headerRow": 4,
+          "dataRows": 36,
+          "columns": 44
+        },
+        {
+          "name": "Field_Guide",
+          "headerRow": 3,
+          "dataRows": 15,
+          "columns": 5
+        },
+        {
+          "name": "PII_Test_Cases",
+          "headerRow": 3,
+          "dataRows": 7,
+          "columns": 4
+        }
+      ],
+      "sensitiveColumnCountInLedger": 23,
+      "numericLedgerColumnsUsedForCalculation": [
+        "Patient Balance"
+      ],
+      "sensitiveGroupingColumn": "Patient Key / patient UID"
+    }
+  },
+  "upload": {
+    "httpStatus": 201,
+    "artifact": {
+      "id": "b7f8de30-e122-4bb9-bc61-4a1606e77288",
+      "filename": "synthetic_hospital_intake_billing_ledger.xlsx",
+      "format": "xlsx",
+      "direction": "uploaded",
+      "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "hasPreviewUrl": false,
+      "hasDownloadUrl": true
+    },
+    "sessionId": "702ea3a2-fc05-4cec-b03e-c8c8b28387e4",
+    "responseRawPiiLeakPatternMatched": false
+  },
+  "preview": {
+    "httpStatus": 200,
+    "contentType": "text/html; charset=utf-8",
+    "hidden": true,
+    "piiProtectionMessagePresent": true,
+    "rawPiiLeakPatternMatched": false,
+    "excerpt": " Preview hidden body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; color: #172033; background: #f8fafc; } main { min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; } section { max-width: 520px; border: 1px solid #d8e0ea; background: #ffffff; border-radius: 8px; padding: 22px; box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08); } h1"
+  },
+  "chat": {
+    "httpStatus": 200,
+    "requestedModel": "auto",
+    "responseId": "pii-relationship-1779184661191",
+    "messageExcerpt": "{\"patient_uid\":\"[[PII:PLACEHOLDER]]\",\"total_patient_balance\":1015,\"contributing_row_count\":3,\"evidence_row_ids\":[\"t1_r13\",\"t1_r20\",\"t1_r32\"]}",
+    "displayContentExcerpt": "{\"patient_uid\":\"<mark class=\"kb-pii-restored\" title=\"Restored locally; model saw a placeholder.\" data-pii-type=\"patientIdentifier\">P010</mark>\",\"total_patient_balance\":1015,\"contributing_row_count\":3,\"evidence_row_ids\":[\"t1_r13\",\"t1_r20\",\"t1_r32\"]}",
+    "assistantRawPiiLeakPatternMatched": false,
+    "displayRawPiiLeakPatternMatched": false,
+    "piiRestorationCount": 1,
+    "returnedArtifacts": [
+      {
+        "id": "2513e901-a3e1-4a5e-9bc3-5e8d01eea3f7",
+        "filename": "pii-vault-calculation-g39deo.xlsx",
+        "format": "xlsx",
+        "direction": "generated",
+        "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "hasPreviewUrl": true,
+        "hasDownloadUrl": true
+      }
+    ]
+  },
+  "piiRelationshipCalculation": {
+    "found": true,
+    "toolName": "pii-relationship-calculate",
+    "request": {
+      "operation": "top_n",
+      "tableId": "t1",
+      "groupBy": "c10",
+      "measure": "c39",
+      "limit": 1,
+      "tableCount": 1,
+      "table": {
+        "id": "t1",
+        "columnCount": 44,
+        "rowCount": 36,
+        "columns": [
+          {
+            "id": "c1",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c2",
+            "role": "measure",
+            "header": "Encounter Date"
+          },
+          {
+            "id": "c3",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c4",
+            "role": "private-group-key",
+            "header": "Facility"
+          },
+          {
+            "id": "c5",
+            "role": "private-group-key",
+            "header": "Department"
+          },
+          {
+            "id": "c6",
+            "role": "private-group-key",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c7",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c8",
+            "role": "private-group-key",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c9",
+            "role": "private-group-key",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c10",
+            "role": "private-group-key",
+            "header": "Patient Key"
+          },
+          {
+            "id": "c11",
+            "role": "private-group-key",
+            "header": "MRN"
+          },
+          {
+            "id": "c12",
+            "role": "private-group-key",
+            "header": "Legal First Name"
+          },
+          {
+            "id": "c13",
+            "role": "private-group-key",
+            "header": "Legal Last Name"
+          },
+          {
+            "id": "c14",
+            "role": "private-group-key",
+            "header": "DOB"
+          },
+          {
+            "id": "c15",
+            "role": "private-group-key",
+            "header": "SSN"
+          },
+          {
+            "id": "c16",
+            "role": "private-group-key",
+            "header": "Phone"
+          },
+          {
+            "id": "c17",
+            "role": "private-group-key",
+            "header": "Email"
+          },
+          {
+            "id": "c18",
+            "role": "private-group-key",
+            "header": "Address Line 1"
+          },
+          {
+            "id": "c19",
+            "role": "private-group-key",
+            "header": "Address Line 2"
+          },
+          {
+            "id": "c20",
+            "role": "private-group-key",
+            "header": "City"
+          },
+          {
+            "id": "c21",
+            "role": "private-group-key",
+            "header": "State"
+          },
+          {
+            "id": "c22",
+            "role": "private-group-key",
+            "header": "ZIP"
+          },
+          {
+            "id": "c23",
+            "role": "private-group-key",
+            "header": "Emergency Contact Name"
+          },
+          {
+            "id": "c24",
+            "role": "private-group-key",
+            "header": "Emergency Contact Phone"
+          },
+          {
+            "id": "c25",
+            "role": "private-group-key",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c26",
+            "role": "private-group-key",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c27",
+            "role": "private-group-key",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c28",
+            "role": "private-group-key",
+            "header": "Subscriber Name"
+          },
+          {
+            "id": "c29",
+            "role": "private-group-key",
+            "header": "Subscriber DOB"
+          },
+          {
+            "id": "c30",
+            "role": "dimension",
+            "header": "Relationship to Subscriber"
+          },
+          {
+            "id": "c31",
+            "role": "private-group-key",
+            "header": "Billing Address"
+          },
+          {
+            "id": "c32",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c33",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c34",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c35",
+            "role": "measure",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c36",
+            "role": "measure",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c37",
+            "role": "measure",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c38",
+            "role": "measure",
+            "header": "Patient Paid"
+          },
+          {
+            "id": "c39",
+            "role": "measure",
+            "header": "Patient Balance"
+          },
+          {
+            "id": "c40",
+            "role": "private-group-key",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c41",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c42",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          },
+          {
+            "id": "c43",
+            "role": "measure",
+            "header": "Due Date"
+          },
+          {
+            "id": "c44",
+            "role": "dimension",
+            "header": "[[PII:PLACEHOLDER]]"
+          }
+        ],
+        "sampleRows": [
+          {
+            "id": "t1_r1",
+            "groupValueClass": "[[PII:PLACEHOLDER]]",
+            "measureValue": 0
+          },
+          {
+            "id": "t1_r2",
+            "groupValueClass": "[[PII:PLACEHOLDER]]",
+            "measureValue": 0
+          },
+          {
+            "id": "t1_r3",
+            "groupValueClass": "[[PII:PLACEHOLDER]]",
+            "measureValue": 0
+          }
+        ]
+      },
+      "rawPiiLeakPatternMatched": false
+    },
+    "result": {
+      "success": true,
+      "operation": "top_n",
+      "sanitized": true,
+      "aggregateValue": 1015,
+      "rowCount": 3,
+      "evidenceRowIds": [
+        "t1_r13",
+        "t1_r20",
+        "t1_r32"
+      ],
+      "winnerPlaceholderClass": "[[PII:PLACEHOLDER]]",
+      "resultCount": 1,
+      "rawPiiLeakPatternMatched": false
+    }
+  },
+  "privacyChecks": {
+    "uploadResponseLeakPatternMatched": false,
+    "previewLeakPatternMatched": false,
+    "chatBodyLeakPatternMatched": false,
+    "relationshipToolArgumentsLeakPatternMatched": false,
+    "relationshipToolResultLeakPatternMatched": false
+  }
+}
