@@ -207,6 +207,26 @@ function buildAssistantUiMetadata(baseMetadata = {}, artifacts = [], piiMetadata
     });
 }
 
+function formatTrustedPiiRelationshipMessage(result = {}) {
+    const data = result?.data && typeof result.data === 'object' ? result.data : result;
+    const patientUid = data?.winnerPlaceholder || '';
+    const total = typeof data?.aggregateValue === 'number'
+        ? data.aggregateValue
+        : null;
+    const rowCount = typeof data?.rowCount === 'number'
+        ? data.rowCount
+        : null;
+    const evidenceRowIds = Array.isArray(data?.evidenceRowIds)
+        ? data.evidenceRowIds
+        : [];
+    return JSON.stringify({
+        patient_uid: patientUid || null,
+        total_patient_balance: total,
+        contributing_row_count: rowCount,
+        evidence_row_ids: evidenceRowIds,
+    });
+}
+
 function getPodcastRequestOptions(metadata = {}) {
     const source = metadata && typeof metadata === 'object' ? metadata : {};
     const options = source.podcastOptions || source.podcastProduction || null;
@@ -1358,6 +1378,131 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             transport: 'http',
             metadata: { route: '/api/chat', stream, phase: 'preflight', reasoningEffort, ...requestFrameMetadata },
         });
+
+        if (piiWorkbookRelationship) {
+            const runtimeToolManager = await ensureRuntimeToolManager(req.app);
+            const result = await runtimeToolManager.executeTool('pii-relationship-calculate', piiWorkbookRelationship.request, {
+                sessionId,
+                route: '/api/chat',
+                transport: 'http',
+                memoryService,
+                ownerId,
+                clientSurface,
+                memoryScope,
+                sessionIsolation,
+                memoryKeywords,
+                timezone: requestTimezone,
+                now: requestNow,
+                artifactIds: effectiveArtifactIds,
+                piiEntries: [
+                    ...buildPiiToolEntries(routePii),
+                    ...(piiWorkbookRelationship.context?.piiEntries || []),
+                ],
+                piiCleansing: piiWorkbookRelationship.context?.piiCleansing || effectiveRequestMetadata.piiCleansing || null,
+                metadata: effectiveRequestMetadata,
+            });
+            const toolEvents = [{
+                toolCall: {
+                    function: {
+                        name: 'pii-relationship-calculate',
+                        arguments: JSON.stringify(piiWorkbookRelationship.request),
+                    },
+                },
+                result,
+            }];
+            if (result?.success === false) {
+                const error = new Error(result.error || 'PII relationship calculation failed.');
+                error.code = result.errorCode || 'pii_relationship_error';
+                error.statusCode = Number(result.statusCode || 502);
+                throw error;
+            }
+
+            const responseId = `pii-relationship-${Date.now()}`;
+            const assistantText = formatTrustedPiiRelationshipMessage(result);
+            const piiPresentation = await buildTrustedPiiPresentation(assistantText, {
+                sessionId,
+                ownerId,
+                contextIds: compactPiiContextIds(routePii, piiWorkbookRelationship.context?.piiCleansing?.contextIds),
+                metadata: effectiveRequestMetadata,
+                clientSurface,
+                route: '/api/chat',
+            });
+            const piiMetadata = buildPiiCleansingMetadata(routePii, null, piiPresentation);
+            await sessionStore.recordResponse(sessionId, responseId);
+            memoryService.rememberResponse(sessionId, assistantText, buildOwnerMemoryMetadata(ownerId, memoryScope, {
+                sourceSurface: clientSurface || taskType,
+                memoryKeywords,
+                ...(sessionIsolation ? { sessionIsolation: true } : {}),
+            }));
+            await sessionStore.appendMessages(sessionId, buildWebChatSessionMessages({
+                userText: message,
+                assistantText,
+                toolEvents,
+                artifacts: [],
+                assistantMetadata: {
+                    directPiiRelationshipCalculation: true,
+                    toolEvents,
+                    ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                },
+            }));
+            await updateSessionProjectMemory(sessionId, {
+                userText: message,
+                assistantText,
+                toolEvents,
+                artifacts: [],
+            }, ownerId);
+            await safeRecordAgentJournalTurn(effectiveSession, {
+                ownerId,
+                responseId,
+                userText: message,
+                assistantText,
+                toolEvents,
+                artifacts: [],
+            });
+            completeRuntimeTask(runtimeTask?.id, {
+                responseId,
+                output: assistantText,
+                model: model || session?.metadata?.model || null,
+                duration: Date.now() - startedAt,
+                metadata: {
+                    directPiiRelationshipCalculation: true,
+                    toolEvents,
+                    ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                },
+            });
+
+            if (stream) {
+                activeSse = openSseStream(req, res, sessionId);
+                res.write(`data: ${JSON.stringify({ type: 'delta', content: assistantText })}\n\n`);
+                res.write(`data: ${JSON.stringify({
+                    type: 'done',
+                    sessionId,
+                    responseId,
+                    artifacts: [],
+                    toolEvents,
+                    displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                    piiRestorations: piiPresentation.restorations,
+                    assistant_metadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
+                    assistantMetadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
+                })}\n\n`);
+                res.write('data: [DONE]\n\n');
+                res.end();
+                return;
+            }
+
+            res.json({
+                sessionId,
+                responseId,
+                message: assistantText,
+                displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
+                piiRestorations: piiPresentation.restorations,
+                artifacts: [],
+                toolEvents,
+                assistant_metadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
+                assistantMetadata: buildAssistantUiMetadata({ directPiiRelationshipCalculation: true }, [], piiMetadata, piiPresentation),
+            });
+            return;
+        }
 
         const podcastRequestOptions = getPodcastRequestOptions(effectiveRequestMetadata);
         if (shouldUseDirectPodcastChat(message) || hasStructuredPodcastRequest(effectiveRequestMetadata)) {

@@ -39,6 +39,21 @@ jest.mock('../runtime-execution', () => ({
     resolveConversationExecutorFlag: jest.fn(() => false),
 }));
 
+jest.mock('../pii', () => ({
+    sanitizeText: jest.fn(async (text, options = {}) => ({
+        text,
+        contextId: null,
+        contextIds: [],
+        replacements: [],
+        policy: options.policy || { enabled: false },
+    })),
+    rehydrateText: jest.fn(async (text) => ({
+        text,
+        restorations: [],
+        enabled: false,
+    })),
+}));
+
 jest.mock('../ai-route-utils', () => ({
     buildInstructionsWithArtifacts: jest.fn(),
     maybeGenerateOutputArtifact: jest.fn(),
@@ -67,9 +82,14 @@ jest.mock('../ai-route-utils', () => ({
     resolveReasoningEffort: jest.fn(() => null),
     resolveSshRequestContext: jest.fn(),
     extractSshSessionMetadataFromToolEvents: jest.fn(() => null),
+    buildRequestDecisionFrame: jest.fn(() => ({})),
+    buildRequestDecisionMetadata: jest.fn(() => ({})),
+    buildRequestFrameProgress: jest.fn(() => ({ phase: 'routing', summary: 'Routing request' })),
+    formatRequestDecisionFrameForPrompt: jest.fn(() => ''),
     inferOutputFormatFromSession: jest.fn(() => null),
     inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
+    buildPiiWorkbookRelationshipToolContext: jest.fn(async () => null),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
 }));
 
@@ -236,6 +256,7 @@ describe('/api/chat route', () => {
         routeUtils.inferOutputFormatFromSession.mockReturnValue(null);
         routeUtils.inferOutputFormatFromArtifactContext.mockResolvedValue(null);
         routeUtils.resolveArtifactContextIds.mockReturnValue([]);
+        routeUtils.buildPiiWorkbookRelationshipToolContext.mockResolvedValue(null);
         shouldSuppressNotesSurfaceArtifact.mockReturnValue(false);
         shouldSuppressImplicitMermaidArtifact.mockReturnValue(false);
         routeUtils.shouldSuppressWebChatImplicitHtmlArtifact.mockReturnValue(false);
@@ -539,6 +560,107 @@ describe('/api/chat route', () => {
                 content: expect.stringContaining('The podcast has been created'),
             }),
         ]));
+    });
+
+    test('runs prepared PII workbook relationships through the trusted calculator before model chat', async () => {
+        const routeUtils = require('../ai-route-utils');
+        const workbookRequest = {
+            operationId: 'workbook-top-balance',
+            operation: 'top_n',
+            tableId: 't1',
+            groupBy: 'c1',
+            measure: 'c2',
+            limit: 1,
+            tables: [{
+                id: 't1',
+                columns: [
+                    { id: 'c1', role: 'private-group-key' },
+                    { id: 'c2', role: 'measure' },
+                ],
+                rows: [{
+                    id: 't1_r1',
+                    cells: {
+                        c1: '[[PII:patientIdentifier:abc]]',
+                        c2: 42,
+                    },
+                }],
+            }],
+        };
+        routeUtils.resolveArtifactContextIds.mockReturnValue(['artifact-xlsx']);
+        routeUtils.buildPiiWorkbookRelationshipToolContext.mockResolvedValue({
+            request: workbookRequest,
+            context: {
+                piiEntries: [{
+                    placeholder: '[[PII:patientIdentifier:abc]]',
+                    valueIndexHmac: 'hmac-1',
+                    piiType: 'patientIdentifier',
+                }],
+                piiCleansing: {
+                    contextIds: ['ctx-1'],
+                    relationshipCalculations: { active: true },
+                },
+            },
+        });
+        const toolManager = {
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                data: {
+                    operation: 'top_n',
+                    sanitized: true,
+                    winnerPlaceholder: '[[PII:patientIdentifier:abc]]',
+                    aggregateValue: 42,
+                    rowCount: 1,
+                    evidenceRowIds: ['t1_r1'],
+                },
+            }),
+            getTool: jest.fn(),
+        };
+        ensureRuntimeToolManager.mockResolvedValue(toolManager);
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat')
+            .send({
+                sessionId: 'session-1',
+                message: 'Find the highest total Patient Balance from the selected XLSX.',
+                stream: false,
+                model: 'auto',
+                artifactIds: ['artifact-xlsx'],
+                metadata: {
+                    clientSurface: 'web-chat',
+                },
+            });
+
+        expect(response.status).toBe(200);
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'pii-relationship-calculate',
+            workbookRequest,
+            expect.objectContaining({
+                sessionId: 'session-1',
+                route: '/api/chat',
+                piiEntries: expect.arrayContaining([
+                    expect.objectContaining({
+                        placeholder: '[[PII:patientIdentifier:abc]]',
+                        valueIndexHmac: 'hmac-1',
+                    }),
+                ]),
+            }),
+        );
+        expect(executeConversationRuntime).not.toHaveBeenCalled();
+        expect(response.body.message).toContain('[[PII:patientIdentifier:abc]]');
+        expect(response.body.message).toContain('"total_patient_balance":42');
+        expect(response.body.toolEvents).toEqual([
+            expect.objectContaining({
+                toolCall: expect.objectContaining({
+                    function: expect.objectContaining({
+                        name: 'pii-relationship-calculate',
+                    }),
+                }),
+            }),
+        ]);
     });
 
     test('routes SSH-looking requests through the orchestrator instead of executing a direct tool shortcut', async () => {

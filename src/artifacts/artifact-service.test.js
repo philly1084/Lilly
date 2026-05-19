@@ -1268,6 +1268,29 @@ describe('ArtifactService', () => {
         expect(serialized.metadata.structuredTables).toBeUndefined();
     });
 
+    test('buildPromptContext withholds private uploaded artifact text from model context', async () => {
+        resolvePiiPolicy.mockReturnValue({ enabled: true });
+        artifactStore.listBySession.mockResolvedValue([{
+            id: 'artifact-xlsx-1',
+            sessionId: 'session-1',
+            direction: 'uploaded',
+            filename: 'patients.xlsx',
+            extension: 'xlsx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            sizeBytes: 4096,
+            extractedText: 'Jane Patient | 123-45-6789 | P010',
+            previewHtml: '<pre>Jane Patient | 123-45-6789 | P010</pre>',
+            metadata: {},
+        }]);
+
+        const context = await artifactService.buildPromptContext('session-1', ['artifact-xlsx-1']);
+
+        expect(context).toContain('PII protection is enabled');
+        expect(context).toContain('use trusted structured tools for calculations');
+        expect(context).not.toContain('Jane Patient');
+        expect(context).not.toContain('123-45-6789');
+    });
+
     test('adds conservative instructions for resume PDF revisions', () => {
         const instructions = artifactService.getGenerationInstructions(
             'pdf',

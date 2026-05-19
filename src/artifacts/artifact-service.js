@@ -2297,7 +2297,10 @@ class ArtifactService {
         }).join('\n');
 
         const selectedDetails = selected.map((artifact) => {
-            const summary = artifact.extractedText
+            const privacyPreviewSuppressed = shouldSuppressUploadedArtifactPreview(artifact);
+            const summary = privacyPreviewSuppressed
+                ? 'PII protection is enabled for this uploaded file. Raw extracted content is withheld from the model; use trusted structured tools for calculations.'
+                : artifact.extractedText
                 ? artifact.extractedText.slice(0, 1600)
                 : stripHtml(artifact.previewHtml || '').slice(0, 1600);
             return `File: ${artifact.filename}\nType: ${artifact.extension}\nSummary:\n${summary || '[binary file without extractable text]'}`;
