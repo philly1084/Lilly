@@ -148,6 +148,7 @@ describe('ToolManager image tools', () => {
     expect(toolManager.getTool('managed-app')).toBeTruthy();
     expect(toolManager.getTool('opencode-run')).toBeFalsy();
     expect(toolManager.getTool('agent-delegate')).toBeTruthy();
+    expect(toolManager.getTool('self-reflection-update')).toBeTruthy();
     expect(toolManager.getTool('podcast')).toBeTruthy();
   });
 

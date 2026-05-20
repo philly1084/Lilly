@@ -4,6 +4,7 @@ const { toFile } = OpenAI;
 const { config } = require('./config');
 const { runtimeDiagnostics } = require('./runtime-diagnostics');
 const { AGENT_NOTES_CHAR_LIMIT } = require('./agent-notes');
+const { SELF_REFLECTION_UPDATE_TOOL_ID } = require('./self-reflection-updater');
 const { stripAgentJournalBlocks } = require('./agent-journal');
 const settingsController = require('./routes/admin/settings.controller');
 const {
@@ -292,6 +293,7 @@ const AUTO_TOOL_ALLOWLIST = new Set([
     'file-search',
     'file-mkdir',
     'agent-notes-write',
+    SELF_REFLECTION_UPDATE_TOOL_ID,
     'agent-delegate',
     'agent-workload',
     DOCUMENT_WORKFLOW_TOOL_ID,
@@ -1977,6 +1979,25 @@ function hasPublicSourceIndexIntent(prompt = '') {
     ].some((pattern) => pattern.test(source));
 }
 
+function hasSelfReflectionUpdateIntent(prompt = '') {
+    const source = String(prompt || '').trim();
+    if (!source) {
+        return false;
+    }
+
+    return [
+        /\bself[- ]reflection\b/i,
+        /\bself[- ]reflect(?:ive)?\b/i,
+        /\brecursive\s+updates?\b/i,
+        /\b(full\s+hermes|hermes\s+(?:style|mode|profile|files?))\b/i,
+        /\b(update|patch|revise)\b[\s\S]{0,80}\b(soul\.?md|user\.?md|soul file|user profile)\b/i,
+        /\bmodel card\b[\s\S]{0,80}\b(update|reflection|learning|skill|memory|notes?)\b/i,
+        /\b(update|patch|revise)\b[\s\S]{0,80}\b(skill|skills|user files?|carryover notes?|agent notes?|programming)\b/i,
+        /\b(save|remember)\b[\s\S]{0,80}\b(workflow|approach|for next time|future sessions?)\b/i,
+        /\bnext time\b[\s\S]{0,80}\b(skill|remember|update|notes?)\b/i,
+    ].some((pattern) => pattern.test(source));
+}
+
 function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     const executionProfile = normalizeExecutionProfile(
         options?.executionProfile
@@ -2057,6 +2078,13 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
 
     if (toolId === 'agent-notes-write') {
         return isAgentNotesAutoWriteEnabled();
+    }
+
+    if (toolId === SELF_REFLECTION_UPDATE_TOOL_ID) {
+        const sessionIsolation = isSessionIsolationEnabled({
+            sessionIsolation: options?.toolContext?.sessionIsolation,
+        });
+        return !sessionIsolation && hasSelfReflectionUpdateIntent(prompt);
     }
 
     if (toolId === 'agent-delegate') {
@@ -3633,6 +3661,10 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add('agent-notes-write');
     }
 
+    if (!sessionIsolation && availableToolIds.has(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntent(prompt)) {
+        selectedIds.add(SELF_REFLECTION_UPDATE_TOOL_ID);
+    }
+
     if (availableToolIds.has('managed-app') && managedAppIntent) {
         selectedIds.add('managed-app');
     }
@@ -4004,6 +4036,13 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
         guidance.push('- Rewrite the full notes file in each `agent-notes-write` call, keeping only concise, durable notes rather than project-specific task state or long prose.');
         guidance.push('- Keep project-scoped continuity, artifacts, and working context out of the global carryover notes file.');
         guidance.push('- Do not store secrets, credentials, logs, or code snippets in the carryover notes.');
+    }
+
+    if (!sessionIsolation && automaticTools.some((entry) => entry.id === SELF_REFLECTION_UPDATE_TOOL_ID)) {
+        guidance.push('- Use `self-reflection-update` when a user correction, model-card finding, or completed multi-step workflow should update Hermes-style `soul.md`/`user.md`, durable carryover notes, or the registered skill/procedure that governs future work.');
+        guidance.push('- Prefer `self-reflection-update` over separate notes and skill writes when one reflection needs to apply multiple bounded updates. Include a short `reflection`, a trigger, and at most a few structured actions.');
+        guidance.push('- Use `soul_replace` only for the complete bounded personality/voice file, `user_profile_replace` only for the complete bounded `user.md` profile, and `agent_notes_replace` only for the complete carryover notes file.');
+        guidance.push('- Do not use `self-reflection-update` for prompt-surface rewrites outside the Hermes files, current task state, logs, secrets, or its own reflection result. Nested reflection calls are rejected.');
     }
 
     if (automaticTools.some((entry) => entry.id === 'file-mkdir')) {

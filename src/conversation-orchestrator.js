@@ -122,6 +122,7 @@ const {
     hasWebsiteBuildIntent,
     inferAgentRolePipeline,
 } = require('./orchestration/agent-roles');
+const { SELF_REFLECTION_UPDATE_TOOL_ID } = require('./self-reflection-updater');
 const { normalizeBrowserReachableUrl } = require('./agent-sdk/tools/categories/web/internal-url');
 const {
     inferSurfaceFinisher,
@@ -1588,6 +1589,25 @@ function hasGroundedResearchToolResult(toolEvents = []) {
     });
 }
 
+function hasSelfReflectionUpdateIntentText(prompt = '') {
+    const source = String(prompt || '').trim();
+    if (!source) {
+        return false;
+    }
+
+    return [
+        /\bself[- ]reflection\b/i,
+        /\bself[- ]reflect(?:ive)?\b/i,
+        /\brecursive\s+updates?\b/i,
+        /\b(full\s+hermes|hermes\s+(?:style|mode|profile|files?))\b/i,
+        /\b(update|patch|revise)\b[\s\S]{0,80}\b(soul\.?md|user\.?md|soul file|user profile)\b/i,
+        /\bmodel card\b[\s\S]{0,80}\b(update|reflection|learning|skill|memory|notes?)\b/i,
+        /\b(update|patch|revise)\b[\s\S]{0,80}\b(skill|skills|user files?|carryover notes?|agent notes?|programming)\b/i,
+        /\b(save|remember)\b[\s\S]{0,80}\b(workflow|approach|for next time|future sessions?)\b/i,
+        /\bnext time\b[\s\S]{0,80}\b(skill|remember|update|notes?)\b/i,
+    ].some((pattern) => pattern.test(source));
+}
+
 function buildScoredCandidateToolMap({
     allowedToolIds = [],
     classification = null,
@@ -1810,6 +1830,7 @@ function buildScoredCandidateToolMap({
     }
     if (!sessionIsolation) {
         adjustCandidateToolScore(scoreMap, 'agent-notes-write', /\b(preference|remember|note for later|carryover|future sessions?|between sessions?|personal agent|know me|understand me|work with me)\b/.test(normalizedPrompt) ? 0.7 : 0, 'Durable carryover notes may help later sessions.');
+        adjustCandidateToolScore(scoreMap, SELF_REFLECTION_UPDATE_TOOL_ID, hasSelfReflectionUpdateIntentText(normalizedPrompt) ? 1.15 : 0, 'A bounded self-reflection update can patch durable notes and registered skills together.');
     }
     if (hasArchitectureIntent) {
         adjustCandidateToolScore(scoreMap, 'architecture-design', 1.0, 'Architecture intent is explicit.');
@@ -10995,6 +11016,9 @@ class ConversationOrchestrator extends EventEmitter {
             if (!sessionIsolation && allowedToolIds.includes('agent-notes-write') && isAgentNotesAutoWriteEnabled()) {
                 candidates.add('agent-notes-write');
             }
+            if (!sessionIsolation && allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
+                candidates.add(SELF_REFLECTION_UPDATE_TOOL_ID);
+            }
         } else {
             if (canUseSubAgents && hasSubAgentIntent && allowedToolIds.includes('agent-delegate')) {
                 candidates.add('agent-delegate');
@@ -11086,6 +11110,9 @@ class ConversationOrchestrator extends EventEmitter {
             }
             if (!sessionIsolation && allowedToolIds.includes('agent-notes-write') && isAgentNotesAutoWriteEnabled()) {
                 candidates.add('agent-notes-write');
+            }
+            if (!sessionIsolation && allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
+                candidates.add(SELF_REFLECTION_UPDATE_TOOL_ID);
             }
             if (hasRemoteCliAgentAuthoringRequest && allowedToolIds.includes('remote-cli-agent')) {
                 candidates.add('remote-cli-agent');
@@ -12173,6 +12200,9 @@ class ConversationOrchestrator extends EventEmitter {
                     'Every `agent-notes-write` step must include the full replacement notes file as `params.content`.',
                     'Keep project-specific facts, current task state, and frontend-specific continuity in project/session memory instead of `agent-notes-write`.',
                     'Do not store secrets, code dumps, verbose logs, or temporary scratch notes in `agent-notes-write`.',
+                    'Use `self-reflection-update` when the current learning should update Hermes-style `soul.md`/`user.md`, durable carryover notes, or the registered skill/procedure that should govern future work.',
+                    '`self-reflection-update` may record a `model_card_note`, replace the bounded soul or user profile files, replace carryover notes, patch one existing skill, or create/update one compact skill. Keep actions sparse and evidence-backed.',
+                    'Do not use `self-reflection-update` for current task state, prompt-surface rewrites outside the Hermes files, logs, secrets, or recursive updates to its own result.',
                 ]),
             ...(executionProfile === REMOTE_BUILD_EXECUTION_PROFILE && hasRemoteWebsiteUpdateIntent(planningPrompt)
                 ? [
@@ -13094,6 +13124,12 @@ class ConversationOrchestrator extends EventEmitter {
             parts.push('Treat the local workspace repository as the source of truth for authoring and GitHub pushes unless the user explicitly says the canonical repo lives on the server.');
             parts.push('Treat that local repository rule as a default authoring target, not proof of the repository\'s current health, cleanliness, or contents. Verify those facts with tools before stating them.');
             parts.push('Do not claim generic local shell or sandbox limits for Git work when `git-safe` is available. Continue through the constrained Git tool path instead.');
+        }
+
+        if (allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID)) {
+            parts.push('Use `self-reflection-update` when a user correction, model-card finding, or completed workflow reveals a durable improvement that should update Hermes-style soul/user files, carryover notes, or registered skill guidance.');
+            parts.push('Keep `self-reflection-update` sparse: one reflection, at most a few actions, no secrets or logs, and no recursive calls from its own result.');
+            parts.push('Use `skill_patch` when updating a small part of an existing skill; use `soul_replace`, `user_profile_replace`, and `agent_notes_replace` only with the full compact replacement file.');
         }
 
         if (allowedToolIds.includes('web-scrape')) {

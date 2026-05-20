@@ -1,0 +1,217 @@
+{
+  "format": "xlsx",
+  "textContainsExpectedSharedStrings": {
+    "patientKey": true,
+    "name": true,
+    "dob": true,
+    "healthCard": true
+  },
+  "structuredTables": [
+    {
+      "name": "sheet1",
+      "rowCount": 5,
+      "headers": [
+        {
+          "id": "c1",
+          "header": "Patient Key",
+          "columnIndex": 0
+        },
+        {
+          "id": "c2",
+          "header": "Patient Balance",
+          "columnIndex": 1
+        },
+        {
+          "id": "c3",
+          "header": "Subscriber Name",
+          "columnIndex": 2
+        },
+        {
+          "id": "c4",
+          "header": "DOB",
+          "columnIndex": 3
+        },
+        {
+          "id": "c5",
+          "header": "Health Card Number",
+          "columnIndex": 4
+        },
+        {
+          "id": "c6",
+          "header": "Postal Code",
+          "columnIndex": 5
+        }
+      ],
+      "rows": [
+        {
+          "id": "r1",
+          "rowIndex": 1,
+          "cells": [
+            {
+              "columnId": "c1",
+              "columnIndex": 0,
+              "header": "Patient Key",
+              "value": "P-1001"
+            },
+            {
+              "columnId": "c2",
+              "columnIndex": 1,
+              "header": "Patient Balance",
+              "value": "325.5"
+            },
+            {
+              "columnId": "c3",
+              "columnIndex": 2,
+              "header": "Subscriber Name",
+              "value": "Jamie Sampleton"
+            },
+            {
+              "columnId": "c4",
+              "columnIndex": 3,
+              "header": "DOB",
+              "value": "10/08/84"
+            },
+            {
+              "columnId": "c5",
+              "columnIndex": 4,
+              "header": "Health Card Number",
+              "value": "046 454 286"
+            },
+            {
+              "columnId": "c6",
+              "columnIndex": 5,
+              "header": "Postal Code",
+              "value": "K1A 0B1"
+            }
+          ]
+        },
+        {
+          "id": "r2",
+          "rowIndex": 2,
+          "cells": [
+            {
+              "columnId": "c1",
+              "columnIndex": 0,
+              "header": "Patient Key",
+              "value": "P-1002"
+            },
+            {
+              "columnId": "c2",
+              "columnIndex": 1,
+              "header": "Patient Balance",
+              "value": "875"
+            },
+            {
+              "columnId": "c3",
+              "columnIndex": 2,
+              "header": "Subscriber Name",
+              "value": "Mina Halbrook"
+            },
+            {
+              "columnId": "c4",
+              "columnIndex": 3,
+              "header": "DOB",
+              "value": "02/14/79"
+            },
+            {
+              "columnId": "c5",
+              "columnIndex": 4,
+              "header": "Health Card Number",
+              "value": "5584-486-721-MB"
+            },
+            {
+              "columnId": "c6",
+              "columnIndex": 5,
+              "header": "Postal Code",
+              "value": "B3H 2Y9"
+            }
+          ]
+        },
+        {
+          "id": "r3",
+          "rowIndex": 3,
+          "cells": [
+            {
+              "columnId": "c1",
+              "columnIndex": 0,
+              "header": "Patient Key",
+              "value": "P-1001"
+            },
+            {
+              "columnId": "c2",
+              "columnIndex": 1,
+              "header": "Patient Balance",
+              "value": "710.25"
+            },
+            {
+              "columnId": "c3",
+              "columnIndex": 2,
+              "header": "Subscriber Name",
+              "value": "Jamie Sampleton"
+            },
+            {
+              "columnId": "c4",
+              "columnIndex": 3,
+              "header": "DOB",
+              "value": "10/08/84"
+            },
+            {
+              "columnId": "c5",
+              "columnIndex": 4,
+              "header": "Health Card Number",
+              "value": "046 454 286"
+            },
+            {
+              "columnId": "c6",
+              "columnIndex": 5,
+              "header": "Postal Code",
+              "value": "K1A 0B1"
+            }
+          ]
+        },
+        {
+          "id": "r4",
+          "rowIndex": 4,
+          "cells": [
+            {
+              "columnId": "c1",
+              "columnIndex": 0,
+              "header": "Patient Key",
+              "value": "P-1003"
+            },
+            {
+              "columnId": "c2",
+              "columnIndex": 1,
+              "header": "Patient Balance",
+              "value": "940.75"
+            },
+            {
+              "columnId": "c3",
+              "columnIndex": 2,
+              "header": "Subscriber Name",
+              "value": "Owen Callis"
+            },
+            {
+              "columnId": "c4",
+              "columnIndex": 3,
+              "header": "DOB",
+              "value": "12/01/88"
+            },
+            {
+              "columnId": "c5",
+              "columnIndex": 4,
+              "header": "Health Card Number",
+              "value": "AB 1234 5678"
+            },
+            {
+              "columnId": "c6",
+              "columnIndex": 5,
+              "header": "Postal Code",
+              "value": "M5V 2T6"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ const { isDefaultBusinessAgentProfile } = require('./business-agent');
 const { buildSoulInstructions } = require('./agent-soul');
 const { buildAssetManagerInstructions } = require('./asset-manager');
 const { buildAgentNotesInstructions } = require('./agent-notes');
+const { buildUserProfileInstructions } = require('./agent-user-profile');
 const { buildProjectMemoryInstructions } = require('./project-memory');
 const { buildSessionCompactionInstructions } = require('./session-compaction');
 const settingsController = require('./routes/admin/settings.controller');
@@ -126,6 +127,11 @@ function buildSessionInstructions(session, baseInstructions = '') {
             'Do not rely on durable carryover notes or cross-session asset lookup in this session.',
         ].join('\n'));
     } else {
+        const userProfileInstructions = buildUserProfileInstructions(settingsController.settings?.userProfile || {});
+        if (userProfileInstructions) {
+            parts.push(userProfileInstructions);
+        }
+
         const agentNotesInstructions = buildAgentNotesInstructions(settingsController.settings?.agentNotes || {});
         if (agentNotesInstructions) {
             parts.push(agentNotesInstructions);

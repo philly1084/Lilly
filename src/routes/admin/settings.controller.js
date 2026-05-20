@@ -17,6 +17,11 @@ const {
   resetAgentNotesFile,
   writeAgentNotesFile,
 } = require('../../agent-notes');
+const {
+  getEffectiveUserProfileConfig,
+  resetUserProfileFile,
+  writeUserProfileFile,
+} = require('../../agent-user-profile');
 const { detectPii, normalizeDetectorId } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
@@ -435,6 +440,10 @@ class SettingsController {
         enabled: true,
         displayName: 'Agent Soul'
       },
+      userProfile: {
+        enabled: true,
+        displayName: 'User Profile'
+      },
       agentNotes: {
         enabled: true,
         displayName: 'Carryover Notes'
@@ -547,6 +556,7 @@ class SettingsController {
     try {
       const updates = JSON.parse(JSON.stringify(req.body || {}));
       this.applyPersonalityUpdate(updates);
+      this.applyUserProfileUpdate(updates);
       this.applyAgentNotesUpdate(updates);
       const normalizedUpdates = this.normalizeIncomingSettings(updates);
 
@@ -641,6 +651,9 @@ class SettingsController {
         if (section === 'personality') {
           resetSoulFile();
         }
+        if (section === 'userProfile') {
+          resetUserProfileFile();
+        }
         if (section === 'agentNotes') {
           resetAgentNotesFile();
         }
@@ -648,6 +661,7 @@ class SettingsController {
         // Reset all
         this.settings = this.getDefaultSettings();
         resetSoulFile();
+        resetUserProfileFile();
         resetAgentNotesFile();
       }
 
@@ -912,6 +926,39 @@ class SettingsController {
         normalized.agentNotes = nextAgentNotes;
       }
     }
+    const userProfileUpdate = normalized.userProfile;
+
+    if (userProfileUpdate && typeof userProfileUpdate === 'object') {
+      const currentUserProfile = this.settings?.userProfile || {};
+      const nextUserProfile = {
+        ...userProfileUpdate,
+      };
+
+      if (nextUserProfile.enabled !== undefined) {
+        nextUserProfile.enabled = Boolean(nextUserProfile.enabled);
+      }
+
+      if (nextUserProfile.displayName !== undefined) {
+        nextUserProfile.displayName = String(nextUserProfile.displayName || '').trim()
+          || currentUserProfile.displayName
+          || 'User Profile';
+      }
+
+      delete nextUserProfile.content;
+      delete nextUserProfile.defaultContent;
+      delete nextUserProfile.filePath;
+      delete nextUserProfile.absoluteFilePath;
+      delete nextUserProfile.updatedAt;
+      delete nextUserProfile.source;
+      delete nextUserProfile.characterLimit;
+      delete nextUserProfile.characterCount;
+
+      if (Object.keys(nextUserProfile).length === 0) {
+        delete normalized.userProfile;
+      } else {
+        normalized.userProfile = nextUserProfile;
+      }
+    }
     const sshUpdate = normalized.integrations?.ssh;
 
     if (sshUpdate) {
@@ -1167,6 +1214,7 @@ class SettingsController {
     const ssh = publicSettings.integrations?.ssh;
     const authEnabled = Boolean(config.auth.username && config.auth.password && config.auth.jwtSecret);
     publicSettings.personality = this.getEffectivePersonalityConfig();
+    publicSettings.userProfile = this.getEffectiveUserProfileConfig();
     publicSettings.agentNotes = this.getEffectiveAgentNotesConfig();
     publicSettings.audioProcessing = this.getPublicAudioProcessingConfig();
 
@@ -1255,6 +1303,10 @@ class SettingsController {
     return getEffectiveAgentNotesConfig(this.settings?.agentNotes || {});
   }
 
+  getEffectiveUserProfileConfig() {
+    return getEffectiveUserProfileConfig(this.settings?.userProfile || {});
+  }
+
   applyPersonalityUpdate(updates = {}) {
     const personalityUpdate = updates?.personality;
     if (!personalityUpdate || typeof personalityUpdate !== 'object') {
@@ -1274,6 +1326,17 @@ class SettingsController {
 
     if (Object.prototype.hasOwnProperty.call(agentNotesUpdate, 'content')) {
       writeAgentNotesFile(agentNotesUpdate.content);
+    }
+  }
+
+  applyUserProfileUpdate(updates = {}) {
+    const userProfileUpdate = updates?.userProfile;
+    if (!userProfileUpdate || typeof userProfileUpdate !== 'object') {
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(userProfileUpdate, 'content')) {
+      writeUserProfileFile(userProfileUpdate.content);
     }
   }
 
@@ -1543,6 +1606,10 @@ class SettingsController {
       personality: {
         enabled: true,
         displayName: 'Agent Soul'
+      },
+      userProfile: {
+        enabled: true,
+        displayName: 'User Profile'
       },
       agentNotes: {
         enabled: true,

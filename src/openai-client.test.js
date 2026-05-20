@@ -1155,6 +1155,31 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(selectedTools.map((tool) => tool.id)).not.toContain('agent-notes-write');
     });
 
+    test('selects self-reflection-update only for explicit durable learning requests', () => {
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions([
+            { id: 'self-reflection-update' },
+        ], 'Use the model card finding to update the user files and the skill we were working with.');
+
+        expect(selectedTools.map((tool) => tool.id)).toContain('self-reflection-update');
+
+        const ordinaryTools = __testUtils.selectAutomaticToolDefinitions([
+            { id: 'self-reflection-update' },
+        ], 'Summarize the latest product direction.');
+
+        expect(ordinaryTools.map((tool) => tool.id)).not.toContain('self-reflection-update');
+    });
+
+    test('self-reflection-update guidance keeps updates bounded and audited', () => {
+        const guidance = __testUtils.buildAutomaticToolGuidance([
+            { id: 'self-reflection-update' },
+        ]);
+
+        expect(guidance).toContain('Hermes-style `soul.md`/`user.md`');
+        expect(guidance).toContain('`user_profile_replace`');
+        expect(guidance).toContain('at most a few structured actions');
+        expect(guidance).toContain('Nested reflection calls are rejected');
+    });
+
     test('selects asset-search when the prompt refers to earlier documents or images', () => {
         const selectedTools = __testUtils.selectAutomaticToolDefinitions([
             { id: 'asset-search' },

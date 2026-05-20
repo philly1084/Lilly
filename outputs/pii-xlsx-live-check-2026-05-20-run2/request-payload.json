@@ -1,0 +1,18 @@
+{
+  "message": "Using the uploaded spreadsheet, create an XLSX output file. Find the patient key with the highest total Patient Balance. Use the PII vault relationship calculation path; do not expose raw names, DOBs, health-card numbers, postal codes, or patient keys to the agent. Return the calculation result as an XLSX artifact.",
+  "sessionId": "07b9dcf3-11ee-45e8-ab5f-0a81617e1941",
+  "stream": false,
+  "artifactIds": [
+    "5ed3acbf-31af-49fc-bed1-c806a94d4dce"
+  ],
+  "outputFormat": "xlsx",
+  "reasoningEffort": "low",
+  "metadata": {
+    "clientSurface": "web-chat",
+    "taskType": "chat",
+    "mode": "chat",
+    "memoryScope": "web-chat",
+    "sessionIsolation": true,
+    "testRun": "pii-xlsx-live-check"
+  }
+}

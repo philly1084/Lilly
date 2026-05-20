@@ -30,6 +30,13 @@ class Dashboard {
             storage: null,
             tokenAnalysis: null,
             lillyHistory: null,
+            selfReflectionUpdates: [],
+            selfReflectionSuggestions: [],
+            selfReflectionMeta: {},
+            selfReflectionSuggestionMeta: {},
+            selfReflectionSupported: null,
+            selfReflectionErrorMessage: '',
+            applyingSelfReflectionSuggestionId: null,
             stats: {
                 totalTasks: 0,
                 successRate: 0,
@@ -146,6 +153,16 @@ class Dashboard {
 
         document.getElementById('refreshWorkloadsBtn')?.addEventListener('click', () => {
             this.loadWorkloads();
+        });
+        document.getElementById('refreshSelfReflectionBtn')?.addEventListener('click', () => {
+            this.loadSelfReflectionUpdates({ force: true });
+        });
+        document.getElementById('selfReflectionUpdates')?.addEventListener('click', (event) => {
+            const button = event.target?.closest?.('[data-self-reflection-suggestion-id]');
+            if (!button) {
+                return;
+            }
+            this.applySelfReflectionSuggestion(button.dataset.selfReflectionSuggestionId);
         });
         document.getElementById('saveWorkloadChangesBtn')?.addEventListener('click', () => {
             this.saveAdminWorkload();
@@ -315,12 +332,22 @@ class Dashboard {
             this.resetPersonality();
         });
 
+        document.getElementById('resetUserProfileBtn')?.addEventListener('click', () => {
+            this.resetUserProfile();
+        });
+
         document.getElementById('resetAgentNotesBtn')?.addEventListener('click', () => {
             this.resetAgentNotes();
         });
 
         document.getElementById('agentNotesContent')?.addEventListener('input', () => {
             this.syncAgentNotesCharacterCount();
+        });
+        document.getElementById('soulContent')?.addEventListener('input', () => {
+            this.syncSoulCharacterCount();
+        });
+        document.getElementById('userProfileContent')?.addEventListener('input', () => {
+            this.syncUserProfileCharacterCount();
         });
 
         document.querySelectorAll('.podcast-audio-upload').forEach(button => {
@@ -549,6 +576,9 @@ class Dashboard {
             // Load health
             await this.loadSystemHealth();
 
+            // Load bounded self-reflection updates
+            await this.loadSelfReflectionUpdates();
+
             // Load workload tracking
             await this.loadWorkloads();
             
@@ -563,6 +593,9 @@ class Dashboard {
      */
     async loadViewData(view) {
         switch (view) {
+            case 'overview':
+                await this.loadSelfReflectionUpdates();
+                break;
             case 'skills':
                 await this.loadSkills();
                 break;
@@ -1151,6 +1184,345 @@ class Dashboard {
             ? 'Deferred workloads require Postgres persistence.'
             : 'Refresh deferred workloads';
     }
+
+    async loadSelfReflectionUpdates({ force = false } = {}) {
+        if (this.state.selfReflectionSupported === false && !force) {
+            this.renderSelfReflectionUpdates(
+                [],
+                this.state.selfReflectionMeta,
+                this.state.selfReflectionErrorMessage,
+                this.state.selfReflectionSuggestions,
+                this.state.selfReflectionSuggestionMeta
+            );
+            return;
+        }
+
+        try {
+            const [updatesResult, suggestionsResult] = await Promise.allSettled([
+                typeof apiClient.getSelfReflectionUpdates === 'function'
+                    ? apiClient.getSelfReflectionUpdates(6)
+                    : apiClient.get('/api/admin/self-reflection-updates', { limit: 6 }),
+                typeof apiClient.getSelfReflectionSuggestions === 'function'
+                    ? apiClient.getSelfReflectionSuggestions(6)
+                    : apiClient.get('/api/admin/self-reflection-updates/suggestions', { limit: 6 }),
+            ]);
+
+            if (updatesResult.status === 'rejected') {
+                throw updatesResult.reason;
+            }
+
+            const payload = this.unwrapApiPayload(updatesResult.value, {});
+            const rawUpdates = Array.isArray(payload) ? payload : payload.updates;
+            const updates = (Array.isArray(rawUpdates) ? rawUpdates : [])
+                .map((update, index) => this.normalizeSelfReflectionUpdate(update, index))
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            let suggestions = this.state.selfReflectionSuggestions || [];
+            let suggestionMeta = this.state.selfReflectionSuggestionMeta || {};
+            if (suggestionsResult.status === 'fulfilled') {
+                const suggestionPayload = this.unwrapApiPayload(suggestionsResult.value, {});
+                const rawSuggestions = Array.isArray(suggestionPayload) ? suggestionPayload : suggestionPayload.suggestions;
+                suggestions = (Array.isArray(rawSuggestions) ? rawSuggestions : [])
+                    .map((suggestion, index) => this.normalizeSelfReflectionSuggestion(suggestion, index))
+                    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+                suggestionMeta = Array.isArray(suggestionPayload) ? {} : (suggestionPayload.meta || {});
+            } else if (Number(suggestionsResult.reason?.status) !== 404) {
+                console.warn('Self-reflection suggestions unavailable:', suggestionsResult.reason?.message || suggestionsResult.reason);
+            }
+
+            this.state.selfReflectionUpdates = updates;
+            this.state.selfReflectionSuggestions = suggestions;
+            this.state.selfReflectionMeta = Array.isArray(payload) ? {} : (payload.meta || {});
+            this.state.selfReflectionSuggestionMeta = suggestionMeta;
+            this.state.selfReflectionSupported = true;
+            this.state.selfReflectionErrorMessage = '';
+            this.renderSelfReflectionUpdates(updates, this.state.selfReflectionMeta, '', suggestions, suggestionMeta);
+        } catch (error) {
+            document.body.classList.remove('api-loading');
+            const message = Number(error?.status) === 404
+                ? 'Self-reflection update route is not available yet.'
+                : (error.userMessage || error.message || 'Failed to load self-reflection updates.');
+
+            this.state.selfReflectionUpdates = [];
+            this.state.selfReflectionSupported = Number(error?.status) === 404 ? false : this.state.selfReflectionSupported;
+            this.state.selfReflectionErrorMessage = message;
+            console.warn('Self-reflection updates unavailable:', error.message || error);
+            this.renderSelfReflectionUpdates(
+                [],
+                this.state.selfReflectionMeta,
+                message,
+                this.state.selfReflectionSuggestions,
+                this.state.selfReflectionSuggestionMeta
+            );
+        }
+    }
+
+    normalizeSelfReflectionUpdate(update = {}, index = 0) {
+        const actions = Array.isArray(update.actions)
+            ? update.actions.map((action) => this.normalizeSelfReflectionAction(action))
+            : [];
+
+        return {
+            id: String(update.id || `reflection-${index + 1}`),
+            timestamp: update.timestamp || update.createdAt || update.updatedAt || '',
+            source: this.stringifySelfReflectionInline(update.source || 'self-reflection'),
+            trigger: this.stringifySelfReflectionInline(update.trigger || 'manual'),
+            reflection: this.stringifySelfReflectionInline(update.reflection || ''),
+            modelCardNote: this.stringifySelfReflectionInline(update.modelCardNote || ''),
+            actions,
+            logPath: update.logPath ? this.stringifySelfReflectionInline(update.logPath) : '',
+        };
+    }
+
+    normalizeSelfReflectionAction(action = {}) {
+        if (typeof action === 'string') {
+            return {
+                label: action,
+                status: 'noted',
+                statusClass: 'neutral',
+                detail: '',
+            };
+        }
+
+        const status = String(action.status || action.state || action.result || (action.completed ? 'completed' : 'pending')).toLowerCase();
+        const target = this.stringifySelfReflectionInline(action.target || action.skillId || action.id || '');
+        const type = this.stringifySelfReflectionInline(action.type || action.label || action.title || action.name || 'action');
+        const label = target ? `${type}: ${target}` : type;
+        return {
+            label,
+            status,
+            statusClass: this.getSelfReflectionActionClass(status),
+            detail: this.stringifySelfReflectionInline(action.message || action.reason || action.summary || action.note || action.description || ''),
+        };
+    }
+
+    normalizeSelfReflectionSuggestion(suggestion = {}, index = 0) {
+        const input = suggestion.input && typeof suggestion.input === 'object'
+            ? suggestion.input
+            : {};
+        const actions = Array.isArray(input.actions)
+            ? input.actions.map((action) => this.normalizeSelfReflectionAction(action))
+            : [];
+        const status = String(suggestion.status || (suggestion.applied ? 'applied' : 'suggested')).toLowerCase();
+
+        return {
+            id: String(suggestion.id || `suggestion-${index + 1}`),
+            status,
+            statusClass: this.getSelfReflectionActionClass(status),
+            applied: Boolean(suggestion.applied || status === 'applied'),
+            canApply: suggestion.canApply !== false && actions.length > 0 && status !== 'applied',
+            source: this.stringifySelfReflectionInline(input.source || 'alignment-evaluator'),
+            trigger: this.stringifySelfReflectionInline(input.trigger || suggestion.reason || 'alignment feedback'),
+            reflection: this.stringifySelfReflectionInline(input.reflection || suggestion.evaluation?.lesson || ''),
+            updatedAt: suggestion.updatedAt || '',
+            sessionId: this.stringifySelfReflectionInline(suggestion.sessionId || ''),
+            messageId: this.stringifySelfReflectionInline(suggestion.messageId || ''),
+            feedbackId: this.stringifySelfReflectionInline(suggestion.feedbackId || ''),
+            actions,
+        };
+    }
+
+    async applySelfReflectionSuggestion(id = '') {
+        const suggestionId = String(id || '').trim();
+        if (!suggestionId || this.state.applyingSelfReflectionSuggestionId) {
+            return;
+        }
+
+        this.state.applyingSelfReflectionSuggestionId = suggestionId;
+        this.renderSelfReflectionUpdates(
+            this.state.selfReflectionUpdates,
+            this.state.selfReflectionMeta,
+            '',
+            this.state.selfReflectionSuggestions,
+            this.state.selfReflectionSuggestionMeta
+        );
+
+        try {
+            const response = typeof apiClient.applySelfReflectionSuggestion === 'function'
+                ? await apiClient.applySelfReflectionSuggestion(suggestionId)
+                : await apiClient.post(`/api/admin/self-reflection-updates/suggestions/${encodeURIComponent(suggestionId)}/apply`);
+            const payload = this.unwrapApiPayload(response, {});
+            const actionCount = Array.isArray(payload.result?.actions) ? payload.result.actions.length : 0;
+            this.showToast(`Applied ${actionCount || 1} self-reflection action${actionCount === 1 ? '' : 's'}`, 'success');
+            await this.loadSelfReflectionUpdates({ force: true });
+        } catch (error) {
+            this.showToast(error.userMessage || error.message || 'Failed to apply self-reflection suggestion', 'error');
+        } finally {
+            this.state.applyingSelfReflectionSuggestionId = null;
+            this.renderSelfReflectionUpdates(
+                this.state.selfReflectionUpdates,
+                this.state.selfReflectionMeta,
+                this.state.selfReflectionErrorMessage,
+                this.state.selfReflectionSuggestions,
+                this.state.selfReflectionSuggestionMeta
+            );
+        }
+    }
+
+    stringifySelfReflectionInline(value = '') {
+        if (value == null || value === '') {
+            return '';
+        }
+
+        if (typeof value === 'string') {
+            return value;
+        }
+
+        try {
+            return JSON.stringify(value);
+        } catch (_error) {
+            return String(value);
+        }
+    }
+
+    getSelfReflectionActionClass(status = '') {
+        switch (String(status || '').toLowerCase()) {
+            case 'completed':
+            case 'done':
+            case 'success':
+            case 'applied':
+                return 'healthy';
+            case 'running':
+            case 'in_progress':
+            case 'started':
+                return 'info';
+            case 'failed':
+            case 'error':
+            case 'blocked':
+                return 'error';
+            case 'pending':
+            case 'queued':
+            case 'skipped':
+                return 'warning';
+            default:
+                return 'neutral';
+        }
+    }
+
+    renderSelfReflectionUpdates(updates = [], meta = {}, errorMessage = '', suggestions = [], suggestionMeta = {}) {
+        const container = document.getElementById('selfReflectionUpdates');
+        const status = document.getElementById('selfReflectionStatus');
+        if (!container) return;
+
+        if (errorMessage) {
+            this.setStatusBadge(status, 'error', 'Unavailable');
+            container.innerHTML = `
+                <div class="self-reflection-empty">
+                    <strong>Unable to load updates</strong>
+                    <span>${this.escapeHtml(errorMessage)}</span>
+                </div>
+            `;
+            return;
+        }
+
+        const pendingSuggestions = (Array.isArray(suggestions) ? suggestions : [])
+            .filter((suggestion) => !suggestion.applied);
+
+        if (!updates.length && !pendingSuggestions.length) {
+            this.setStatusBadge(status, 'neutral', 'No updates');
+            container.innerHTML = `
+                <div class="self-reflection-empty">
+                    <strong>No self-reflection updates recorded</strong>
+                    <span>Waiting for evaluator suggestions or the bounded self-reflection-update tool to write its first record.</span>
+                </div>
+            `;
+            return;
+        }
+
+        const total = Number(meta.total || meta.count || updates.length);
+        const suggestionTotal = Number(suggestionMeta.total || suggestionMeta.count || suggestions.length || 0);
+        const generatedAt = meta.generatedAt || meta.updatedAt || meta.timestamp || '';
+        this.setStatusBadge(status, pendingSuggestions.length ? 'warning' : 'info', pendingSuggestions.length ? `${pendingSuggestions.length} pending` : `${updates.length} recent`);
+        const pendingSuggestionsHtml = pendingSuggestions.length
+            ? `
+                <section class="self-reflection-suggestions" aria-label="Pending self-reflection suggestions">
+                    <div class="self-reflection-section-title">
+                        <span>Pending evaluator suggestions</span>
+                        <em>${this.escapeHtml(suggestionTotal.toLocaleString())} total found</em>
+                    </div>
+                    ${pendingSuggestions.map((suggestion) => {
+                        const isApplying = this.state.applyingSelfReflectionSuggestionId === suggestion.id;
+                        const actionSummary = suggestion.actions.length
+                            ? suggestion.actions.slice(0, 4).map((action) => `
+                                <span class="reflection-action-chip ${action.statusClass}" title="${this.escapeHtml(action.detail || action.label)}">
+                                    <strong>${this.escapeHtml(action.status)}</strong>
+                                    ${this.escapeHtml(action.label)}
+                                </span>
+                            `).join('')
+                            : '<span class="reflection-action-chip neutral"><strong>none</strong> No actions proposed</span>';
+                        return `
+                            <article class="self-reflection-suggestion">
+                                <div class="self-reflection-row">
+                                    <div class="self-reflection-main">
+                                        <div class="self-reflection-title">
+                                            <span>${this.escapeHtml(suggestion.source)}</span>
+                                            <em>${this.escapeHtml(this.formatDate(suggestion.updatedAt))}</em>
+                                        </div>
+                                        <div class="self-reflection-trigger">${this.escapeHtml(suggestion.trigger)}</div>
+                                    </div>
+                                    <button
+                                        class="btn btn-sm btn-primary"
+                                        type="button"
+                                        data-self-reflection-suggestion-id="${this.escapeHtml(suggestion.id)}"
+                                        ${suggestion.canApply && !isApplying ? '' : 'disabled'}
+                                    >${isApplying ? 'Applying...' : 'Apply'}</button>
+                                </div>
+                                <p class="self-reflection-copy">${this.escapeHtml(this.truncate(suggestion.reflection || 'No reflection text recorded.', 220))}</p>
+                                <div class="self-reflection-actions">${actionSummary}</div>
+                                <div class="self-reflection-suggestion-meta">
+                                    ${suggestion.feedbackId ? `<span>Feedback ${this.escapeHtml(suggestion.feedbackId)}</span>` : ''}
+                                    ${suggestion.sessionId ? `<span>Session ${this.escapeHtml(this.truncate(suggestion.sessionId, 28))}</span>` : ''}
+                                </div>
+                            </article>
+                        `;
+                    }).join('')}
+                </section>
+            `
+            : '';
+
+        container.innerHTML = `
+            <div class="self-reflection-meta">
+                <span>${this.escapeHtml(total.toLocaleString())} total${generatedAt ? ` | refreshed ${this.escapeHtml(this.formatDate(generatedAt))}` : ''}</span>
+            </div>
+            ${pendingSuggestionsHtml}
+            ${updates.map((update) => {
+                const actionSummary = update.actions.length
+                    ? update.actions.slice(0, 5).map((action) => `
+                        <span class="reflection-action-chip ${action.statusClass}" title="${this.escapeHtml(action.detail || action.label)}">
+                            <strong>${this.escapeHtml(action.status)}</strong>
+                            ${this.escapeHtml(action.label)}
+                        </span>
+                    `).join('')
+                    : '<span class="reflection-action-chip neutral"><strong>none</strong> No actions recorded</span>';
+                const remainingActions = update.actions.length > 5
+                    ? `<span class="reflection-action-more">+${update.actions.length - 5} more</span>`
+                    : '';
+
+                return `
+                    <article class="self-reflection-item">
+                        <div class="self-reflection-row">
+                            <div class="self-reflection-main">
+                                <div class="self-reflection-title">
+                                    <span>${this.escapeHtml(update.source)}</span>
+                                    <em>${this.escapeHtml(this.formatDate(update.timestamp))}</em>
+                                </div>
+                                <div class="self-reflection-trigger">${this.escapeHtml(update.trigger)}</div>
+                            </div>
+                            ${update.logPath ? `<code class="self-reflection-log">${this.escapeHtml(update.logPath)}</code>` : ''}
+                        </div>
+                        <p class="self-reflection-copy">${this.escapeHtml(this.truncate(update.reflection || 'No reflection text recorded.', 220))}</p>
+                        <div class="self-reflection-note">
+                            <span>Model-card note</span>
+                            <p>${this.escapeHtml(this.truncate(update.modelCardNote || 'No model-card note recorded.', 180))}</p>
+                        </div>
+                        <div class="self-reflection-actions">
+                            ${actionSummary}
+                            ${remainingActions}
+                        </div>
+                    </article>
+                `;
+            }).join('')}
+        `;
+    }
     
     /**
      * Load settings
@@ -1354,6 +1726,9 @@ class Dashboard {
             await this.loadSystemHealth();
             await this.loadRecentActivity();
             await this.loadModelUsage();
+            if (this.state.currentView === 'overview' && this.state.selfReflectionSupported !== false) {
+                await this.loadSelfReflectionUpdates();
+            }
             if (this.state.currentView === 'skills') {
                 await this.loadSkills();
             }
@@ -4690,6 +5065,11 @@ class Dashboard {
                     displayName: document.getElementById('personalityName').value.trim(),
                     content: document.getElementById('soulContent').value,
                 },
+                userProfile: {
+                    enabled: document.getElementById('userProfileEnabled').checked,
+                    displayName: document.getElementById('userProfileName').value.trim(),
+                    content: document.getElementById('userProfileContent').value,
+                },
                 agentNotes: {
                     enabled: document.getElementById('agentNotesEnabled').checked,
                     displayName: document.getElementById('agentNotesName').value.trim(),
@@ -5095,6 +5475,23 @@ class Dashboard {
         }
     }
 
+    async resetUserProfile() {
+        if (!confirm('Reset user.md to the default user profile?')) {
+            return;
+        }
+
+        try {
+            const response = await apiClient.post('/api/admin/settings/reset', {
+                section: 'userProfile',
+            });
+            this.applySettings(this.unwrapApiPayload(response, this.state.settings));
+            this.showToast('user.md reset to default', 'success');
+        } catch (error) {
+            console.error('Error resetting user.md:', error);
+            this.showToast('Failed to reset user.md', 'error');
+        }
+    }
+
     async resetAgentNotes() {
         if (!confirm('Reset agent-notes.md to the default carryover notes template?')) {
             return;
@@ -5427,6 +5824,7 @@ class Dashboard {
         const features = settings.features || {};
         const orchestration = settings.orchestration || {};
         const personality = settings.personality || {};
+        const userProfile = settings.userProfile || {};
         const agentNotes = settings.agentNotes || {};
         const ssh = settings.integrations?.ssh || {};
         const privacyPii = settings.privacyPii || {};
@@ -5462,6 +5860,28 @@ class Dashboard {
         if (soulFilePathLabel) {
             soulFilePathLabel.textContent = personality.filePath || 'soul.md';
         }
+        const soulCharacterLimit = document.getElementById('soulCharacterLimit');
+        if (soulCharacterLimit) {
+            soulCharacterLimit.textContent = String(personality.characterLimit || 3700);
+        }
+        this.syncSoulCharacterCount();
+
+        this.setCheckboxValue('userProfileEnabled', userProfile.enabled !== false);
+        this.setInputValue('userProfileName', userProfile.displayName || 'User Profile');
+        this.setInputValue('userProfileContent', userProfile.content || '');
+        this.setInputValue(
+            'userProfileUpdatedAt',
+            userProfile.updatedAt ? this.formatDate(userProfile.updatedAt) : 'Default content',
+        );
+        const userProfileFilePathLabel = document.getElementById('userProfileFilePathLabel');
+        if (userProfileFilePathLabel) {
+            userProfileFilePathLabel.textContent = userProfile.filePath || 'user.md';
+        }
+        const userProfileCharacterLimit = document.getElementById('userProfileCharacterLimit');
+        if (userProfileCharacterLimit) {
+            userProfileCharacterLimit.textContent = String(userProfile.characterLimit || 3700);
+        }
+        this.syncUserProfileCharacterCount();
 
         this.setCheckboxValue('agentNotesEnabled', agentNotes.enabled !== false);
         this.setInputValue('agentNotesName', agentNotes.displayName || 'Carryover Notes');
@@ -5580,6 +6000,22 @@ class Dashboard {
     syncAgentNotesCharacterCount() {
         const input = document.getElementById('agentNotesContent');
         const display = document.getElementById('agentNotesCharacterCount');
+        if (!input || !display) return;
+
+        display.textContent = String(input.value.length);
+    }
+
+    syncSoulCharacterCount() {
+        const input = document.getElementById('soulContent');
+        const display = document.getElementById('soulCharacterCount');
+        if (!input || !display) return;
+
+        display.textContent = String(input.value.length);
+    }
+
+    syncUserProfileCharacterCount() {
+        const input = document.getElementById('userProfileContent');
+        const display = document.getElementById('userProfileCharacterCount');
         if (!input || !display) return;
 
         display.textContent = String(input.value.length);

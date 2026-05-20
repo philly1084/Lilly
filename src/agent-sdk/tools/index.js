@@ -38,6 +38,11 @@ const {
   writeAgentNotesFile,
 } = require('../../agent-notes');
 const {
+  SELF_REFLECTION_UPDATE_ACTION_LIMIT,
+  SELF_REFLECTION_UPDATE_TOOL_ID,
+  applySelfReflectionUpdate,
+} = require('../../self-reflection-updater');
+const {
   hasSchedulingCue,
   summarizeTrigger,
 } = require('../../workloads/natural-language');
@@ -4960,6 +4965,102 @@ class ToolManager {
     ];
 
     const skillTools = [
+      {
+        id: SELF_REFLECTION_UPDATE_TOOL_ID,
+        name: 'Self Reflection Update',
+        category: 'system',
+        description: 'Apply a bounded self-reflection update to Hermes-style soul/user files, durable carryover notes, registered skills, and model-card audit notes.',
+        backend: {
+          handler: async (params = {}) => applySelfReflectionUpdate(params),
+          sideEffects: ['write'],
+          timeout: 10000,
+        },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            trigger: {
+              type: 'string',
+              description: 'Short description of the correction, learning, model-card finding, or workflow outcome that triggered this update.',
+            },
+            reflection: {
+              type: 'string',
+              description: 'Concise self-reflection explaining why the durable update is warranted.',
+            },
+            source: {
+              type: 'string',
+              description: 'Source of the reflection, such as user_turn, model_card, post_task_review, or user_requested.',
+            },
+            recursionDepth: {
+              type: 'integer',
+              description: 'Must be 0 or omitted. Nested reflection updates are rejected.',
+            },
+            targetSkillId: {
+              type: 'string',
+              description: 'Optional default skill id for skill_patch or skill_update actions.',
+            },
+            dryRun: {
+              type: 'boolean',
+              description: 'When true, validate the proposed updates without writing soul/user files, notes, skills, or audit logs.',
+            },
+            apply: {
+              type: 'boolean',
+              description: 'Set false to validate only. Omit or set true to apply validated actions.',
+            },
+            actions: {
+              type: 'array',
+              maxItems: SELF_REFLECTION_UPDATE_ACTION_LIMIT,
+              items: {
+                type: 'object',
+                properties: {
+                  type: {
+                    type: 'string',
+                    description: 'One of soul_replace, user_profile_replace, agent_notes_replace, carryover_notes_replace, skill_patch, skill_update, skill_create, or model_card_note.',
+                  },
+                  reason: { type: 'string' },
+                  content: { type: 'string' },
+                  notes: { type: 'string' },
+                  id: { type: 'string' },
+                  skillId: { type: 'string' },
+                  name: { type: 'string' },
+                  description: { type: 'string' },
+                  body: { type: 'string' },
+                  instructions: { type: 'string' },
+                  oldText: { type: 'string' },
+                  newText: { type: 'string' },
+                  old_string: { type: 'string' },
+                  new_string: { type: 'string' },
+                  tools: { type: 'array', items: { type: 'string' } },
+                  triggerPatterns: { type: 'array', items: { type: 'string' } },
+                  chain: { type: 'array' },
+                  contextPolicy: { type: 'object' },
+                  enabled: { type: 'boolean' },
+                },
+                additionalProperties: true,
+              },
+            },
+          },
+          additionalProperties: false,
+        },
+        skill: {
+          triggerPatterns: [
+            'self reflection update',
+            'recursive update',
+            'full hermes',
+            'hermes user.md',
+            'update soul.md',
+            'update user.md',
+            'model card update',
+            'update user files',
+            'update the skill',
+            'remember this workflow',
+          ],
+          requiresConfirmation: false,
+        },
+        frontend: {
+          exposeToFrontend: true,
+          icon: 'sparkles',
+        },
+      },
       {
         id: 'managed-app',
         name: 'Managed App',

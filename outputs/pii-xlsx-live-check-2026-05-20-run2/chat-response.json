@@ -1,0 +1,324 @@
+{
+  "sessionId": "07b9dcf3-11ee-45e8-ab5f-0a81617e1941",
+  "responseId": "pii-relationship-1779241590287",
+  "message": "{\"patient_uid\":\"[[PII:3d56df1de671]]\",\"total_patient_balance\":1035.75,\"contributing_row_count\":2,\"evidence_row_ids\":[\"t1_r1\",\"t1_r3\"]}",
+  "displayContent": "{\"patient_uid\":\"<mark class=\"kb-pii-restored\" title=\"Restored locally; model saw a placeholder.\" data-pii-type=\"patientIdentifier\">P-1001</mark>\",\"total_patient_balance\":1035.75,\"contributing_row_count\":2,\"evidence_row_ids\":[\"t1_r1\",\"t1_r3\"]}",
+  "piiRestorations": [
+    {
+      "placeholder": "[[PII:3d56df1de671]]",
+      "type": "patientIdentifier",
+      "restored": true
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "a1699369-7808-4e8b-aa33-9febaa19346d",
+      "sessionId": "07b9dcf3-11ee-45e8-ab5f-0a81617e1941",
+      "parentArtifactId": null,
+      "direction": "generated",
+      "sourceMode": "chat",
+      "filename": "pii-vault-calculation-mpiun2.xlsx",
+      "format": "xlsx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sizeBytes": 2799,
+      "status": "ready",
+      "vectorized": true,
+      "downloadUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/download",
+      "previewUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/preview",
+      "sandboxUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/sandbox",
+      "bundleDownloadUrl": null,
+      "preview": {
+        "type": "html",
+        "content": "<pre>[Sheet1]\npatient_uid | total_patient_balance | contributing_row_count | evidence_row_ids\nP-1001 | 1035.75 | 2 | t1_r1, t1_r3</pre>"
+      },
+      "metadata": {
+        "route": "/api/chat",
+        "title": "pii-vault-calculation-result",
+        "sheets": [
+          "Sheet1"
+        ],
+        "source": "trusted-pii-relationship-calculation",
+        "piiCleansing": {
+          "changed": false,
+          "enabled": true,
+          "contextIds": [
+            "ce9c01cb-9d15-4e89-a55b-d1c5ef42f880",
+            "08c1fd76-628b-4152-a0a9-3a7e07a485d1",
+            "ebde983e-bea8-47c3-990d-46a2c9323013",
+            "f88c794a-2894-4825-aa46-1b043527d569",
+            "95aefaf9-2f32-4fd5-b675-7e1312707fc2",
+            "f96a50d5-a26a-4a93-947f-f4d7fcdb028a",
+            "5cf2b4bd-e929-42db-878b-9daeecf20cb3",
+            "5ab601dc-587d-4a01-bb7f-06a8018c7749",
+            "d6eb3d14-c20c-44f8-b1e7-055dfcb2e59c",
+            "cd063567-476a-4bb3-a285-e449cf3e6c80",
+            "822aefbb-fb14-4008-a6a2-2a8b6fed823f",
+            "4cdfd442-33ff-4a02-8cbd-e29f8e0ba3c5",
+            "5e2f4865-b5a5-4a18-91e3-cf56214d6fd9",
+            "da22deb7-b493-4af6-a133-91d52c29f365",
+            "bd0370c7-e70e-4896-994b-2d72b814dbf5",
+            "81db69c1-5460-4d5a-8efe-f7f9f12ef3ca",
+            "2e832b39-9252-47ea-b56b-5786f7860a37",
+            "6ea3bdd3-5a77-48c3-94cd-b634764e9ce7"
+          ],
+          "restoredCount": 2,
+          "sanitizedInput": "",
+          "placeholderMode": "opaque-random",
+          "replacementCount": 18,
+          "restoredInGeneratedArtifact": true
+        },
+        "sourceResponseId": "pii-relationship-1779241590287"
+      },
+      "createdAt": "2026-05-20T01:46:30.355Z"
+    }
+  ],
+  "toolEvents": [
+    {
+      "toolCall": {
+        "function": {
+          "name": "pii-relationship-calculate",
+          "arguments": "{\"operationId\":\"workbook-top_n\",\"operation\":\"top_n\",\"tableId\":\"t1\",\"groupBy\":\"c1\",\"measure\":\"c2\",\"limit\":1,\"tableCount\":1,\"tables\":[{\"id\":\"t1\",\"rowCount\":4,\"columnCount\":6,\"columns\":[{\"id\":\"c1\",\"role\":\"private-group-key\"},{\"id\":\"c2\",\"role\":\"measure\"},{\"id\":\"c3\",\"role\":\"private-group-key\"},{\"id\":\"c4\",\"role\":\"private-group-key\"},{\"id\":\"c5\",\"role\":\"private-group-key\"},{\"id\":\"c6\",\"role\":\"private-group-key\"}]}],\"valuesIncluded\":false,\"relationshipKeysIncluded\":false}"
+        }
+      },
+      "result": {
+        "success": true,
+        "operation": "top_n",
+        "sanitized": true,
+        "aggregateValue": 1035.75,
+        "rowCount": 2,
+        "resultCount": 1,
+        "results": [
+          {
+            "operationId": null,
+            "operation": null,
+            "sanitized": false,
+            "aggregateValue": 1035.75,
+            "rowCount": 2,
+            "resultCount": null,
+            "formulaPlanReturned": false
+          }
+        ],
+        "valuesIncluded": false,
+        "relationshipKeysIncluded": false
+      }
+    }
+  ],
+  "assistant_metadata": {
+    "artifacts": [
+      {
+        "id": "a1699369-7808-4e8b-aa33-9febaa19346d",
+        "sessionId": "07b9dcf3-11ee-45e8-ab5f-0a81617e1941",
+        "parentArtifactId": null,
+        "direction": "generated",
+        "sourceMode": "chat",
+        "filename": "pii-vault-calculation-mpiun2.xlsx",
+        "format": "xlsx",
+        "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sizeBytes": 2799,
+        "status": "ready",
+        "vectorized": true,
+        "downloadUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/download",
+        "previewUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/preview",
+        "sandboxUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/sandbox",
+        "bundleDownloadUrl": "",
+        "preview": {
+          "type": "html",
+          "content": "<pre>[Sheet1]\npatient_uid | total_patient_balance | contributing_row_count | evidence_row_ids\nP-1001 | 1035.75 | 2 | t1_r1, t1_r3</pre>"
+        },
+        "metadata": {
+          "route": "/api/chat",
+          "title": "pii-vault-calculation-result",
+          "sheets": [
+            "Sheet1"
+          ],
+          "source": "trusted-pii-relationship-calculation",
+          "piiCleansing": {
+            "changed": false,
+            "enabled": true,
+            "contextIds": [
+              "ce9c01cb-9d15-4e89-a55b-d1c5ef42f880",
+              "08c1fd76-628b-4152-a0a9-3a7e07a485d1",
+              "ebde983e-bea8-47c3-990d-46a2c9323013",
+              "f88c794a-2894-4825-aa46-1b043527d569",
+              "95aefaf9-2f32-4fd5-b675-7e1312707fc2",
+              "f96a50d5-a26a-4a93-947f-f4d7fcdb028a",
+              "5cf2b4bd-e929-42db-878b-9daeecf20cb3",
+              "5ab601dc-587d-4a01-bb7f-06a8018c7749",
+              "d6eb3d14-c20c-44f8-b1e7-055dfcb2e59c",
+              "cd063567-476a-4bb3-a285-e449cf3e6c80",
+              "822aefbb-fb14-4008-a6a2-2a8b6fed823f",
+              "4cdfd442-33ff-4a02-8cbd-e29f8e0ba3c5",
+              "5e2f4865-b5a5-4a18-91e3-cf56214d6fd9",
+              "da22deb7-b493-4af6-a133-91d52c29f365",
+              "bd0370c7-e70e-4896-994b-2d72b814dbf5",
+              "81db69c1-5460-4d5a-8efe-f7f9f12ef3ca",
+              "2e832b39-9252-47ea-b56b-5786f7860a37",
+              "6ea3bdd3-5a77-48c3-94cd-b634764e9ce7"
+            ],
+            "restoredCount": 2,
+            "sanitizedInput": "",
+            "placeholderMode": "opaque-random",
+            "replacementCount": 18,
+            "restoredInGeneratedArtifact": true
+          },
+          "sourceResponseId": "pii-relationship-1779241590287"
+        },
+        "createdAt": "2026-05-20T01:46:30.355Z"
+      }
+    ],
+    "displayContent": "{\"patient_uid\":\"<mark class=\"kb-pii-restored\" title=\"Restored locally; model saw a placeholder.\" data-pii-type=\"patientIdentifier\">P-1001</mark>\",\"total_patient_balance\":1035.75,\"contributing_row_count\":2,\"evidence_row_ids\":[\"t1_r1\",\"t1_r3\"]}",
+    "piiCleansing": {
+      "enabled": true,
+      "contextIds": [
+        "ce9c01cb-9d15-4e89-a55b-d1c5ef42f880",
+        "08c1fd76-628b-4152-a0a9-3a7e07a485d1",
+        "ebde983e-bea8-47c3-990d-46a2c9323013",
+        "f88c794a-2894-4825-aa46-1b043527d569",
+        "95aefaf9-2f32-4fd5-b675-7e1312707fc2",
+        "f96a50d5-a26a-4a93-947f-f4d7fcdb028a",
+        "5cf2b4bd-e929-42db-878b-9daeecf20cb3",
+        "5ab601dc-587d-4a01-bb7f-06a8018c7749",
+        "d6eb3d14-c20c-44f8-b1e7-055dfcb2e59c",
+        "cd063567-476a-4bb3-a285-e449cf3e6c80",
+        "822aefbb-fb14-4008-a6a2-2a8b6fed823f",
+        "4cdfd442-33ff-4a02-8cbd-e29f8e0ba3c5",
+        "5e2f4865-b5a5-4a18-91e3-cf56214d6fd9",
+        "da22deb7-b493-4af6-a133-91d52c29f365",
+        "bd0370c7-e70e-4896-994b-2d72b814dbf5",
+        "81db69c1-5460-4d5a-8efe-f7f9f12ef3ca",
+        "2e832b39-9252-47ea-b56b-5786f7860a37",
+        "6ea3bdd3-5a77-48c3-94cd-b634764e9ce7"
+      ],
+      "replacementCount": 18,
+      "restoredCount": 1,
+      "placeholderMode": "opaque-random",
+      "relationshipCalculations": {
+        "enabled": true,
+        "autoDetect": true,
+        "allowExplicitRequest": true,
+        "maxRows": 1000,
+        "maxCells": 20000,
+        "maxOperations": 25,
+        "override": "auto",
+        "active": true,
+        "reason": "auto-detected"
+      }
+    },
+    "piiRestorations": [
+      {
+        "placeholder": "[[PII:3d56df1de671]]",
+        "type": "patientIdentifier",
+        "restored": true
+      }
+    ]
+  },
+  "assistantMetadata": {
+    "artifacts": [
+      {
+        "id": "a1699369-7808-4e8b-aa33-9febaa19346d",
+        "sessionId": "07b9dcf3-11ee-45e8-ab5f-0a81617e1941",
+        "parentArtifactId": null,
+        "direction": "generated",
+        "sourceMode": "chat",
+        "filename": "pii-vault-calculation-mpiun2.xlsx",
+        "format": "xlsx",
+        "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "sizeBytes": 2799,
+        "status": "ready",
+        "vectorized": true,
+        "downloadUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/download",
+        "previewUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/preview",
+        "sandboxUrl": "/api/artifacts/a1699369-7808-4e8b-aa33-9febaa19346d/sandbox",
+        "bundleDownloadUrl": "",
+        "preview": {
+          "type": "html",
+          "content": "<pre>[Sheet1]\npatient_uid | total_patient_balance | contributing_row_count | evidence_row_ids\nP-1001 | 1035.75 | 2 | t1_r1, t1_r3</pre>"
+        },
+        "metadata": {
+          "route": "/api/chat",
+          "title": "pii-vault-calculation-result",
+          "sheets": [
+            "Sheet1"
+          ],
+          "source": "trusted-pii-relationship-calculation",
+          "piiCleansing": {
+            "changed": false,
+            "enabled": true,
+            "contextIds": [
+              "ce9c01cb-9d15-4e89-a55b-d1c5ef42f880",
+              "08c1fd76-628b-4152-a0a9-3a7e07a485d1",
+              "ebde983e-bea8-47c3-990d-46a2c9323013",
+              "f88c794a-2894-4825-aa46-1b043527d569",
+              "95aefaf9-2f32-4fd5-b675-7e1312707fc2",
+              "f96a50d5-a26a-4a93-947f-f4d7fcdb028a",
+              "5cf2b4bd-e929-42db-878b-9daeecf20cb3",
+              "5ab601dc-587d-4a01-bb7f-06a8018c7749",
+              "d6eb3d14-c20c-44f8-b1e7-055dfcb2e59c",
+              "cd063567-476a-4bb3-a285-e449cf3e6c80",
+              "822aefbb-fb14-4008-a6a2-2a8b6fed823f",
+              "4cdfd442-33ff-4a02-8cbd-e29f8e0ba3c5",
+              "5e2f4865-b5a5-4a18-91e3-cf56214d6fd9",
+              "da22deb7-b493-4af6-a133-91d52c29f365",
+              "bd0370c7-e70e-4896-994b-2d72b814dbf5",
+              "81db69c1-5460-4d5a-8efe-f7f9f12ef3ca",
+              "2e832b39-9252-47ea-b56b-5786f7860a37",
+              "6ea3bdd3-5a77-48c3-94cd-b634764e9ce7"
+            ],
+            "restoredCount": 2,
+            "sanitizedInput": "",
+            "placeholderMode": "opaque-random",
+            "replacementCount": 18,
+            "restoredInGeneratedArtifact": true
+          },
+          "sourceResponseId": "pii-relationship-1779241590287"
+        },
+        "createdAt": "2026-05-20T01:46:30.355Z"
+      }
+    ],
+    "displayContent": "{\"patient_uid\":\"<mark class=\"kb-pii-restored\" title=\"Restored locally; model saw a placeholder.\" data-pii-type=\"patientIdentifier\">P-1001</mark>\",\"total_patient_balance\":1035.75,\"contributing_row_count\":2,\"evidence_row_ids\":[\"t1_r1\",\"t1_r3\"]}",
+    "piiCleansing": {
+      "enabled": true,
+      "contextIds": [
+        "ce9c01cb-9d15-4e89-a55b-d1c5ef42f880",
+        "08c1fd76-628b-4152-a0a9-3a7e07a485d1",
+        "ebde983e-bea8-47c3-990d-46a2c9323013",
+        "f88c794a-2894-4825-aa46-1b043527d569",
+        "95aefaf9-2f32-4fd5-b675-7e1312707fc2",
+        "f96a50d5-a26a-4a93-947f-f4d7fcdb028a",
+        "5cf2b4bd-e929-42db-878b-9daeecf20cb3",
+        "5ab601dc-587d-4a01-bb7f-06a8018c7749",
+        "d6eb3d14-c20c-44f8-b1e7-055dfcb2e59c",
+        "cd063567-476a-4bb3-a285-e449cf3e6c80",
+        "822aefbb-fb14-4008-a6a2-2a8b6fed823f",
+        "4cdfd442-33ff-4a02-8cbd-e29f8e0ba3c5",
+        "5e2f4865-b5a5-4a18-91e3-cf56214d6fd9",
+        "da22deb7-b493-4af6-a133-91d52c29f365",
+        "bd0370c7-e70e-4896-994b-2d72b814dbf5",
+        "81db69c1-5460-4d5a-8efe-f7f9f12ef3ca",
+        "2e832b39-9252-47ea-b56b-5786f7860a37",
+        "6ea3bdd3-5a77-48c3-94cd-b634764e9ce7"
+      ],
+      "replacementCount": 18,
+      "restoredCount": 1,
+      "placeholderMode": "opaque-random",
+      "relationshipCalculations": {
+        "enabled": true,
+        "autoDetect": true,
+        "allowExplicitRequest": true,
+        "maxRows": 1000,
+        "maxCells": 20000,
+        "maxOperations": 25,
+        "override": "auto",
+        "active": true,
+        "reason": "auto-detected"
+      }
+    },
+    "piiRestorations": [
+      {
+        "placeholder": "[[PII:3d56df1de671]]",
+        "type": "patientIdentifier",
+        "restored": true
+      }
+    ]
+  }
+}

@@ -15,6 +15,7 @@ const tracesController = require('./traces.controller');
 const settingsController = require('./settings.controller');
 const podcastAudioController = require('./podcast-audio.controller');
 const storageController = require('./storage.controller');
+const selfReflectionUpdatesController = require('./self-reflection-updates.controller');
 const DashboardController = require('./dashboard.controller');
 const { setDashboardController } = require('../../admin/runtime-monitor');
 const { buildLillyHistory } = require('../../admin/lilly-history');
@@ -72,6 +73,11 @@ router.get('/logs/stream', callController(logsController, 'stream'));
 router.get('/logs/:id', callController(logsController, 'getById'));
 router.post('/logs/clear', callController(logsController, 'clear'));
 router.get('/logs/export/:format', callController(logsController, 'export'));
+
+// Self-reflection update audit log
+router.get('/self-reflection-updates/suggestions', callController(selfReflectionUpdatesController, 'listSuggestions'));
+router.post('/self-reflection-updates/suggestions/:id/apply', callController(selfReflectionUpdatesController, 'applySuggestion'));
+router.get('/self-reflection-updates', callController(selfReflectionUpdatesController, 'list'));
 
 // Skills
 router.get('/skills', callController(skillsController, 'getAll'));

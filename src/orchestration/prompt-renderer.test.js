@@ -37,6 +37,7 @@ describe('prompt renderer', () => {
       'remote-cli-agent',
       'tool-doc-guidance',
       'skill-guidance',
+      'agent-user-profile',
     ]));
 
     getRequiredPromptSurfaceIds().forEach((id) => {
@@ -51,5 +52,12 @@ describe('prompt renderer', () => {
       }));
       expect(entry.expectedTests.length).toBeGreaterThan(0);
     });
+
+    const toolDocs = inventory.find((surface) => surface.id === 'tool-doc-guidance');
+    expect(toolDocs).toEqual(expect.objectContaining({
+      promptFamily: 'tool-docs',
+      sourceFile: 'src/agent-sdk/tool-docs',
+      condition: expect.stringContaining('self-reflection-update'),
+    }));
   });
 });

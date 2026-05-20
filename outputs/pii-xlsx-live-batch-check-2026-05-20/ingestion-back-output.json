@@ -1,0 +1,61 @@
+{
+  "uploadStatus": 201,
+  "uploadedArtifact": {
+    "id": "d9e3ee34-c997-4c4d-8e7b-899a6a1a998e",
+    "filename": "sample-pii-balances.xlsx",
+    "format": "xlsx",
+    "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sizeBytes": 3029,
+    "previewSuppressed": true,
+    "metadataKeysReturnedToFrontend": [
+      "sheets",
+      "structuredTableSummary",
+      "privacyPreviewSuppressed",
+      "piiCleansing"
+    ]
+  },
+  "localExtractorProof": {
+    "sawPatientKey": true,
+    "sawName": true,
+    "sawDob": true,
+    "sawHealthCard": true,
+    "structuredTableCount": 1
+  },
+  "protectedContextFromChat": {
+    "enabled": true,
+    "contextIds": [
+      "9732ced7-1a99-4252-ad8d-3f2ce495fde6",
+      "ffca20f0-a263-4f86-ab39-77cdb497b2f7",
+      "c4203e45-4b20-42af-bd6a-3c8b868243c5",
+      "af3ea5d4-e81a-4468-949c-3d35b0a4897c",
+      "2eb0511a-4418-4991-b94b-eae774cf8427",
+      "874d8409-0ac5-4839-ada3-51028a1c547e",
+      "c9530a0c-38bb-408f-a95a-db8411516a50",
+      "4f83f36d-6d46-42ee-9ce7-51eaefd031a9",
+      "3608fda5-fb53-4090-b4b5-ab7b53fd7ad0",
+      "2fe354b7-a530-4259-be40-0f2aa9a37d5b",
+      "20c9bb39-6594-4975-8e1f-e2aaa1b6c7b4",
+      "e437cdfb-0eee-4b1d-8eae-1e9523ea0c1c",
+      "f677e5dd-00c9-4d13-875d-1d799d4fa4e2",
+      "6f0b7be2-1195-4ff6-ad0a-7cdd82d2f392",
+      "66698464-cd25-456c-8085-2bfeba3ea69d",
+      "b63ffe4f-fb00-4ee6-8585-eb9308663609",
+      "0d22c334-082d-43c7-a9ab-eb4d8c961383",
+      "1a054402-63bf-436d-b3b0-4a0f954c393f"
+    ],
+    "replacementCount": 18,
+    "restoredCount": 3,
+    "placeholderMode": "opaque-random",
+    "relationshipCalculations": {
+      "enabled": true,
+      "autoDetect": true,
+      "allowExplicitRequest": true,
+      "maxRows": 1000,
+      "maxCells": 20000,
+      "maxOperations": 25,
+      "override": "auto",
+      "active": true,
+      "reason": "auto-detected"
+    }
+  }
+}

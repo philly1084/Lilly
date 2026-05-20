@@ -3,6 +3,12 @@ const { createResponse } = require('../openai-client');
 const { extractResponseText } = require('../artifacts/artifact-service');
 const { parseLenientJson } = require('../utils/lenient-json');
 const settingsController = require('../routes/admin/settings.controller');
+const {
+    SELF_REFLECTION_MODEL_CARD_NOTE_LIMIT,
+    SELF_REFLECTION_UPDATE_ACTION_LIMIT,
+    SELF_REFLECTION_UPDATE_TOOL_ID,
+    assertNoBlockedDurableContent,
+} = require('../self-reflection-updater');
 
 const VALID_DECISIONS = new Set(['aligned', 'needs_review', 'misaligned']);
 const VALID_REQUEST_TYPES = new Set([
@@ -44,6 +50,29 @@ const VALID_TOOL_MISUSE_CATEGORIES = new Set([
     'tool_output_leaked',
     'other',
 ]);
+const SELF_REFLECTION_SUGGESTION_ACTION_LIMIT = Math.min(2, SELF_REFLECTION_UPDATE_ACTION_LIMIT);
+const VALID_SELF_REFLECTION_SUGGESTION_ACTIONS = new Set([
+    'model_card_note',
+    'skill_patch',
+]);
+const DURABLE_LEARNING_CUE_PATTERNS = [
+    /\bdurable\s+(?:lesson|learning|improvement|memory|note|guidance)\b/i,
+    /\breusable\s+(?:lesson|guidance|pattern|rule|skill|routing)\b/i,
+    /\bfor\s+similar\s+future\b/i,
+    /\bfuture\s+(?:routing|requests|turns|workflows|evaluations)\b/i,
+    /\bmodel[-\s]?card\s+(?:note|finding|lesson|evidence)\b/i,
+    /\bself[-\s]?reflection(?:\s+update)?\b/i,
+    /\bcarryover\s+notes?\b/i,
+    /\bregistered\s+skill\b/i,
+    /\bshould\s+be\s+remembered\b/i,
+];
+const BLOCKED_SELF_REFLECTION_SUGGESTION_PATTERNS = [
+    /```/,
+    /<script\b/i,
+    /\b(?:raw|full|verbatim)\s+(?:logs?|transcripts?|stack\s+traces?|code\s+dumps?)\b/i,
+    /^\s*(?:const|let|var|function|class|import|export)\s+\S+/m,
+    /\bat\s+\S.*\(\S+:\d+:\d+\)/,
+];
 
 function normalizeRouteDecision(value = '', fallback = 'route_unclear') {
     const normalized = String(value || '').trim();
@@ -97,6 +126,140 @@ function normalizeStringArray(value = [], limit = 5, itemLimit = 240) {
         .slice(0, limit);
 }
 
+function normalizeActionType(value = '') {
+    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function hasDurableLearningCue(value = '') {
+    const source = String(value || '');
+    return DURABLE_LEARNING_CUE_PATTERNS.some((pattern) => pattern.test(source));
+}
+
+function isSafeSelfReflectionSuggestionText(value = '') {
+    const source = String(value || '');
+    if (!source.trim()) {
+        return true;
+    }
+
+    try {
+        assertNoBlockedDurableContent(source, 'self-reflection suggestion');
+    } catch (error) {
+        return false;
+    }
+
+    return !BLOCKED_SELF_REFLECTION_SUGGESTION_PATTERNS.some((pattern) => pattern.test(source));
+}
+
+function collectSelfReflectionSuggestionActions(value = {}) {
+    if (Array.isArray(value)) {
+        return value.flatMap((entry) => collectSelfReflectionSuggestionActions(entry));
+    }
+    if (!value || typeof value !== 'object') {
+        return [];
+    }
+    if (value.input && typeof value.input === 'object') {
+        return collectSelfReflectionSuggestionActions(value.input);
+    }
+    if (Array.isArray(value.actions)) {
+        return value.actions;
+    }
+    if (value.action && typeof value.action === 'object' && !Array.isArray(value.action)) {
+        return [value.action];
+    }
+    if (value.type || value.kind) {
+        return [value];
+    }
+    return [];
+}
+
+function normalizeSelfReflectionSuggestionAction(action = {}, wrapper = {}) {
+    const source = action && typeof action === 'object' && !Array.isArray(action) ? action : {};
+    const type = normalizeActionType(source.type || source.action || source.kind);
+    if (!VALID_SELF_REFLECTION_SUGGESTION_ACTIONS.has(type)) {
+        return null;
+    }
+
+    const reason = trimText(source.reason || source.rationale || wrapper.reason || wrapper.reflection || '', 260);
+    const cueProbe = [
+        wrapper.trigger,
+        wrapper.reflection,
+        wrapper.reason,
+        reason,
+        source.content,
+        source.note,
+        source.body,
+        source.description,
+        source.oldText || source.old_string,
+        source.newText || source.new_string,
+    ].filter(Boolean).join(' ');
+    if (!hasDurableLearningCue(cueProbe) || !isSafeSelfReflectionSuggestionText(JSON.stringify(source))) {
+        return null;
+    }
+
+    if (type === 'model_card_note') {
+        const content = trimText(source.content || source.note || source.body || source.lesson || '', Math.min(900, SELF_REFLECTION_MODEL_CARD_NOTE_LIMIT));
+        if (!content || !isSafeSelfReflectionSuggestionText(content)) {
+            return null;
+        }
+        return {
+            type,
+            content,
+            reason: reason || 'Durable model-card learning suggested by alignment evaluation.',
+        };
+    }
+
+    const skillId = trimText(source.skillId || source.id || wrapper.targetSkillId || '', 140);
+    const oldText = String(source.oldText || source.old_string || source.find || '').trim();
+    const newText = String(source.newText || source.new_string || source.replace || '').trim();
+    if (!skillId || !oldText || !newText || oldText.length > 500 || newText.length > 700) {
+        return null;
+    }
+    if (!isSafeSelfReflectionSuggestionText(`${skillId}\n${oldText}\n${newText}`)) {
+        return null;
+    }
+
+    return {
+        type,
+        skillId,
+        oldText,
+        newText,
+        reason: reason || 'Durable skill patch suggested by alignment evaluation.',
+    };
+}
+
+function normalizeSelfReflectionUpdateSuggestions(value = {}) {
+    const wrapper = value && typeof value === 'object' && !Array.isArray(value)
+        ? (value.input && typeof value.input === 'object' ? value.input : value)
+        : {};
+    const actions = collectSelfReflectionSuggestionActions(value)
+        .map((action) => normalizeSelfReflectionSuggestionAction(action, wrapper))
+        .filter(Boolean)
+        .slice(0, SELF_REFLECTION_SUGGESTION_ACTION_LIMIT);
+    if (actions.length === 0) {
+        return [];
+    }
+
+    const reflection = trimText(wrapper.reflection || wrapper.summary || actions.map((action) => action.reason).filter(Boolean).join(' '), 500);
+    const trigger = trimText(wrapper.trigger || 'alignment evaluator durable-learning suggestion', 180);
+    if (!hasDurableLearningCue([trigger, reflection, ...actions.map((action) => `${action.reason} ${action.content || ''}`)].join(' '))) {
+        return [];
+    }
+
+    return [{
+        toolId: SELF_REFLECTION_UPDATE_TOOL_ID,
+        status: 'suggested',
+        appliesAutomatically: false,
+        input: {
+            source: 'alignment-evaluator',
+            trigger,
+            reflection,
+            dryRun: true,
+            apply: false,
+            actions,
+        },
+    }];
+}
+
 function normalizeConfidence(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
@@ -107,6 +270,15 @@ function normalizeConfidence(value) {
 
 function normalizeEvaluation(value = {}, fallback = {}) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const selfReflectionUpdateSuggestions = normalizeSelfReflectionUpdateSuggestions(
+        source.selfReflectionUpdateSuggestions
+        || source.selfReflectionActionSuggestions
+        || source.suggestedSelfReflectionActions
+        || source.selfReflectionActions
+        || source.selfReflectionUpdate
+        || fallback.selfReflectionUpdateSuggestions
+        || [],
+    );
     const decision = VALID_DECISIONS.has(String(source.decision || '').trim())
         ? String(source.decision || '').trim()
         : fallback.decision || 'needs_review';
@@ -140,6 +312,7 @@ function normalizeEvaluation(value = {}, fallback = {}) {
         toolLesson: trimText(source.toolLesson || fallback.toolLesson || '', 700),
         memoryCandidate: source.memoryCandidate === true || fallback.memoryCandidate === true,
         promoteRegressionFixture: source.promoteRegressionFixture === true || fallback.promoteRegressionFixture === true,
+        selfReflectionUpdateSuggestions,
     };
 }
 
@@ -443,7 +616,7 @@ function buildEvaluatorPrompt({
 
     return [
         'Evaluate whether the assistant response fit the user request and product alignment expectations.',
-        'Return only JSON with keys: decision, requestType, confidence, summary, evidence, recommendedChanges, decisionGuidance, memoryCandidate.',
+        'Return only JSON with keys: decision, requestType, confidence, summary, evidence, recommendedChanges, decisionGuidance, memoryCandidate, selfReflectionUpdateSuggestions.',
         'Valid decision values: aligned, needs_review, misaligned.',
         'Valid requestType values: research, coding, document, deployment, frontend, conversation, planning, unknown.',
         'Also include routeDecision, expectedRoute, actualRoute, failureCategories, fixStrategy, repairPlan, successPattern, lesson, and promoteRegressionFixture.',
@@ -454,6 +627,10 @@ function buildEvaluatorPrompt({
         'Valid toolMisuseCategories values: missing_required_tool, wrong_tool_for_task, unnecessary_tool, repeated_failed_tool, bad_tool_params, skipped_verification_tool, unsafe_tool_choice, tool_result_ignored, tool_output_leaked, other.',
         'Focus on whether the prompt was routed correctly: right request type, right model/tool lane, right artifact path, right verification depth, and right follow-through.',
         'For tool reinforcement, identify required tools that were skipped, wrong tools that were used, repeated failed tools, bad parameters, verification tools that should have run, and cases where tool results were ignored or leaked to the user.',
+        'selfReflectionUpdateSuggestions must be suggestion metadata only: at most one dry-run self-reflection-update payload with apply false, and never a tool call or write.',
+        'Only include selfReflectionUpdateSuggestions when the feedback explicitly describes a durable reusable lesson for future behavior, model-card evidence, carryover notes, or registered skill guidance; leave it empty for one-off failures.',
+        'Suggested actions may use model_card_note or a precise skill_patch. Do not suggest broad skill rewrites, agent notes replacements, automatic writes, deployments, or current task-state updates.',
+        'Never include secrets, raw logs, transcripts, stack traces, code dumps, prompt text, or long source excerpts in selfReflectionUpdateSuggestions.',
         'Treat a response as routed incorrectly when it planned instead of executing, answered from memory when current research was needed, generated prose when an artifact/frontend path was needed, skipped browser/visual verification for UI output, or used a scheduled/deferred/workload lane when the user wanted immediate work.',
         'Do not suggest automatic code edits or deployments merely because feedback is negative.',
         'The lesson must be short, reusable, and framed as future routing guidance, not a transcript summary.',
@@ -611,6 +788,7 @@ module.exports = {
     inferExpectedToolsForRequest,
     inferRequestType,
     normalizeFailureCategories,
+    normalizeSelfReflectionUpdateSuggestions,
     normalizeToolMisuseCategories,
     normalizeToolNames,
     normalizeEvaluation,

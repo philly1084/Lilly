@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { getEffectiveSoulConfig, writeSoulFile } = require('../../agent-soul');
 const { getEffectiveAgentNotesConfig, writeAgentNotesFile } = require('../../agent-notes');
+const { getEffectiveUserProfileConfig, writeUserProfileFile } = require('../../agent-user-profile');
 const { artifactService } = require('../../artifacts/artifact-service');
 const { buildContinuityInstructions: buildBaseContinuityInstructions } = require('../../runtime-prompts');
 const { getPromptSurfaceInventory } = require('../../orchestration/prompt-renderer');
@@ -15,7 +16,7 @@ const settingsController = require('./settings.controller');
 const MANAGED_MESSAGE = 'Managed prompt surfaces can be edited here. Code-backed runtime snapshots remain read-only.';
 const READ_ONLY_MESSAGE = 'This prompt surface is generated from application code and cannot be edited from the dashboard.';
 const FIXED_SURFACE_MESSAGE = 'Prompt surfaces are fixed slots. Create/delete is not supported here.';
-const EDITABLE_SURFACE_IDS = new Set(['agent-soul', 'agent-notes']);
+const EDITABLE_SURFACE_IDS = new Set(['agent-soul', 'agent-user-profile', 'agent-notes']);
 
 function estimateTokens(text = '') {
   const normalized = String(text || '').trim();
@@ -229,6 +230,7 @@ function buildPromptSurfaces() {
   const notesAgentPath = path.join(rootDir, 'frontend/notes-notion/js/agent.js');
   const artifactPath = path.join(rootDir, 'src/artifacts/artifact-service.js');
   const soul = getEffectiveSoulConfig(settingsController.settings?.personality || {});
+  const userProfile = getEffectiveUserProfileConfig(settingsController.settings?.userProfile || {});
   const agentNotes = getEffectiveAgentNotesConfig(settingsController.settings?.agentNotes || {});
 
   const surfaces = [
@@ -244,6 +246,19 @@ function buildPromptSurfaces() {
       updatedAt: soul.updatedAt,
       usageModes: ['chat', 'openai-chat', 'openai-responses', 'canvas', 'notation', 'notes'],
       content: soul.content,
+    },
+    {
+      id: 'agent-user-profile',
+      name: userProfile.displayName || 'User Profile',
+      description: 'Hermes-style durable user profile loaded from user.md for stable user facts, collaboration preferences, and cross-session defaults.',
+      assignment: 'shared runtime user profile memory',
+      category: 'runtime',
+      live: true,
+      editable: true,
+      sourceFile: userProfile.absoluteFilePath,
+      updatedAt: userProfile.updatedAt,
+      usageModes: ['chat', 'openai-chat', 'openai-responses', 'canvas', 'notation', 'notes'],
+      content: userProfile.content,
     },
     {
       id: 'agent-notes',
@@ -499,6 +514,18 @@ class PromptsController {
           settingsController.settings,
           {
             personality: {
+              displayName: name,
+            },
+          },
+        );
+        await settingsController.saveSettings();
+      }
+      if (prompt.id === 'agent-user-profile') {
+        writeUserProfileFile(content);
+        settingsController.settings = settingsController.deepMerge(
+          settingsController.settings,
+          {
+            userProfile: {
               displayName: name,
             },
           },

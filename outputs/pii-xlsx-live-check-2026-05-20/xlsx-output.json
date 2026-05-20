@@ -1,0 +1,288 @@
+{
+  "artifact": {
+    "id": "e3db6703-5999-4232-abe8-2ce2a282b965",
+    "filename": "xlsx-2026-05-20-g3ku4l.xlsx",
+    "format": "xlsx",
+    "extension": "xlsx",
+    "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "size": 7396,
+    "sizeBytes": 7396,
+    "downloadUrl": "/api/artifacts/e3db6703-5999-4232-abe8-2ce2a282b965/download",
+    "metadata": {
+      "title": "Minecraft Sandbox Clone Build Plan",
+      "format": "xlsx",
+      "sheets": [
+        "Build Blueprint",
+        "MVP Scope",
+        "Technical Plan",
+        "Implementation Phases",
+        "Risks",
+        "Next Build Target"
+      ],
+      "artifactIds": [
+        "7809be19-81e2-4799-b6ed-deb3d260b414"
+      ],
+      "piiCleansing": {
+        "changed": true,
+        "enabled": true,
+        "contextIds": [
+          "410de9ce-a34e-4592-a6d6-8f48030ffd06"
+        ],
+        "modelFrame": {
+          "instruction": "Privacy gateway is active for this request. Private values were replaced with opaque placeholders before this model call. Preserve placeholders exactly when a private value should appear in the answer. Do not invent, infer, transform, or reveal the underlying private values. Do not infer or expose the placeholder category, identity, source, or semantic context.",
+          "placeholders": [
+            {
+              "placeholder": "[[PII:8c242fe24cc1]]",
+              "sourceRange": {
+                "end": 32,
+                "start": 12
+              },
+              "occurrenceIndex": 0
+            },
+            {
+              "placeholder": "[[PII:a61f2fc24d4d]]",
+              "sourceRange": {
+                "end": 428,
+                "start": 411
+              },
+              "occurrenceIndex": 1
+            },
+            {
+              "placeholder": "[[PII:a9041467575d]]",
+              "sourceRange": {
+                "end": 1657,
+                "start": 1640
+              },
+              "occurrenceIndex": 2
+            },
+            {
+              "placeholder": "[[PII:345b6edcbb6a]]",
+              "sourceRange": {
+                "end": 1730,
+                "start": 1715
+              },
+              "occurrenceIndex": 3
+            },
+            {
+              "placeholder": "[[PII:560f3aa5bf41]]",
+              "sourceRange": {
+                "end": 1788,
+                "start": 1771
+              },
+              "occurrenceIndex": 4
+            },
+            {
+              "placeholder": "[[PII:fcfdccd76dd3]]",
+              "sourceRange": {
+                "end": 1818,
+                "start": 1803
+              },
+              "occurrenceIndex": 5
+            },
+            {
+              "placeholder": "[[PII:df0b1e05a9c9]]",
+              "sourceRange": {
+                "end": 1940,
+                "start": 1920
+              },
+              "occurrenceIndex": 6
+            },
+            {
+              "placeholder": "[[PII:dd60ff680bc6]]",
+              "sourceRange": {
+                "end": 2175,
+                "start": 2155
+              },
+              "occurrenceIndex": 7
+            },
+            {
+              "placeholder": "[[PII:6be1ded053f6]]",
+              "sourceRange": {
+                "end": 2785,
+                "start": 2772
+              },
+              "occurrenceIndex": 8
+            },
+            {
+              "placeholder": "[[PII:404df1ea7081]]",
+              "sourceRange": {
+                "end": 2982,
+                "start": 2958
+              },
+              "occurrenceIndex": 9
+            },
+            {
+              "placeholder": "[[PII:1cf4f4e761ad]]",
+              "sourceRange": {
+                "end": 3166,
+                "start": 3149
+              },
+              "occurrenceIndex": 10
+            },
+            {
+              "placeholder": "[[PII:07e967e1ad73]]",
+              "sourceRange": {
+                "end": 3312,
+                "start": 3300
+              },
+              "occurrenceIndex": 11
+            },
+            {
+              "placeholder": "[[PII:9b159613afc0]]",
+              "sourceRange": {
+                "end": 3428,
+                "start": 3416
+              },
+              "occurrenceIndex": 12
+            },
+            {
+              "placeholder": "[[PII:fc270b7b04dc]]",
+              "sourceRange": {
+                "end": 3476,
+                "start": 3465
+              },
+              "occurrenceIndex": 13
+            },
+            {
+              "placeholder": "[[PII:661f90caf3bc]]",
+              "sourceRange": {
+                "end": 3596,
+                "start": 3580
+              },
+              "occurrenceIndex": 14
+            },
+            {
+              "placeholder": "[[PII:0fe9ffaebcbe]]",
+              "sourceRange": {
+                "end": 3702,
+                "start": 3689
+              },
+              "occurrenceIndex": 15
+            },
+            {
+              "placeholder": "[[PII:2f77becd13e7]]",
+              "sourceRange": {
+                "end": 4070,
+                "start": 4058
+              },
+              "occurrenceIndex": 16
+            },
+            {
+              "placeholder": "[[PII:9a5b700398ce]]",
+              "sourceRange": {
+                "end": 4233,
+                "start": 4218
+              },
+              "occurrenceIndex": 17
+            },
+            {
+              "placeholder": "[[PII:c64afcf50f6a]]",
+              "sourceRange": {
+                "end": 4429,
+                "start": 4421
+              },
+              "occurrenceIndex": 18
+            },
+            {
+              "placeholder": "[[PII:14b8986627a3]]",
+              "sourceRange": {
+                "end": 4959,
+                "start": 4936
+              },
+              "occurrenceIndex": 19
+            },
+            {
+              "placeholder": "[[PII:4b88eacf4a7c]]",
+              "sourceRange": {
+                "end": 4992,
+                "start": 4960
+              },
+              "occurrenceIndex": 20
+            },
+            {
+              "placeholder": "[[PII:a0840bb6ddb0]]",
+              "sourceRange": {
+                "end": 5797,
+                "start": 5783
+              },
+              "occurrenceIndex": 21
+            },
+            {
+              "placeholder": "[[PII:06f7bd9d6194]]",
+              "sourceRange": {
+                "end": 6063,
+                "start": 6051
+              },
+              "occurrenceIndex": 22
+            },
+            {
+              "placeholder": "[[PII:499b35d78da8]]",
+              "sourceRange": {
+                "end": 6201,
+                "start": 6191
+              },
+              "occurrenceIndex": 23
+            },
+            {
+              "placeholder": "[[PII:93a8f5de687f]]",
+              "sourceRange": {
+                "end": 6532,
+                "start": 6517
+              },
+              "occurrenceIndex": 24
+            },
+            {
+              "placeholder": "[[PII:5fc95edacb9d]]",
+              "sourceRange": {
+                "end": 7853,
+                "start": 7838
+              },
+              "occurrenceIndex": 25
+            },
+            {
+              "placeholder": "[[PII:7a5d18159fd0]]",
+              "sourceRange": {
+                "end": 8304,
+                "start": 8287
+              },
+              "occurrenceIndex": 26
+            },
+            {
+              "placeholder": "[[PII:600273179d8b]]",
+              "sourceRange": {
+                "end": 8430,
+                "start": 8415
+              },
+              "occurrenceIndex": 27
+            }
+          ],
+          "replacementCount": 28
+        },
+        "restoredCount": 0,
+        "sanitizedInput": "Using the uploaded spreadsheet, create an XLSX output file. Find the patient key with the highest total Patient Balance. Use the PII vault relationship calculation path; do not expose raw names, DOBs, health-card numbers, postal codes, or patient keys to the agent. Return the calculation result as an XLSX artifact.",
+        "placeholderMode": "opaque-random",
+        "replacementCount": 28,
+        "restoredInGeneratedArtifact": false
+      },
+      "sourcePrompt": "Using the uploaded spreadsheet, create an XLSX output file. Find the patient key with the highest total Patient Balance. Use the PII vault relationship calculation path; do not expose raw names, DOBs, health-card numbers, postal codes, or patient keys to the agent. Return the calculation result as an XLSX artifact.",
+      "themeSuggestion": "editorial",
+      "creativeDirection": "Editorial Feature",
+      "creativeRationale": "Use a magazine-like story arc with contrast between bold framing and quieter evidence sections.",
+      "creativeDirectionId": "editorial-feature"
+    },
+    "previewUrl": "/api/artifacts/e3db6703-5999-4232-abe8-2ce2a282b965/preview",
+    "sandboxUrl": "/api/artifacts/e3db6703-5999-4232-abe8-2ce2a282b965/sandbox",
+    "preview": {
+      "type": "html",
+      "content": "<pre>[Build Blueprint]\nSection | Decision | Notes\nHero | Browser-based voxel sandbox | A playable Minecraft-style prototype focused on movement, block placement, block removal, and terrain.\n01 Core Loop | Explore, mine, place, repeat | The first version should feel tactile before it feels huge.\n02 Rendering | Three.js voxel world | Use instanced meshes for block performance instead of one mesh per cube.\n03 Terrain | Chunked procedural terrain | Generate small chunks around the player using seeded noise.\n04 Controls | Pointer lock first-person movement | WASD, mouse look, jump, sprint, left-click remove, right-click place.\n05 Blocks | Starter palette | Grass, dirt, stone, wood, leaves, sand, water placeholder, glass placeholder.\n06 Inventory | Hotbar first | Nine slots, scroll wheel selection, number-key shortcuts.\n07 Persistence | Local save | Store edited blocks in browser localStorage or IndexedDB.\n08 Polish | Small signals matter | Block outline, footstep bob, placement sound, simple sky, fog, day tint.\n\n[MVP Scope]\nFeature | Priority | Acceptance Criteria\nFirst-person camera | P0 | Mouse look works smoothly after pointer lock.\nPlayer movement | P0 | WASD movement, gravity, jumping, and collision against blocks.\nVoxel terrain | P0 | World loads with varied height terrain and visible block types.\nBlock removal | P0 | Targeted block disappears with left click.\nBlock placement | P0 | Selected block appears on targeted face with right click.\nHotbar | P1 | Nine slots render on screen and selection changes with keys or wheel.\nChunk loading | P1 | Nearby chunks load without freezing the browser.\nSave edits | P1 | Placed and removed blocks persist after reload.\nLighting | P2 | Basic directional light and ambient fill give readable depth.\nMobile support | P3 | Deferred; first build should prioritize desktop playability.\n\n[Technical Plan]\nLayer | Recommended Approach | Reason\nApp shell | Vite + TypeScript | Fast local iteration and clean browser build pipeline.\n3D engine | Three.js | Reliable WebGL abstraction with broad examples and ecosystem support.\nPhysics | Simple AABB collision | Enough for voxel walking without pulling in a heavy engine.\nTerrain noise | Simplex or Perlin noise | Creates natural hills and variation with minimal data.\nChunk size | 16 x 16 x 64 | Small enough for fast rebuilds, familiar enough for voxel conventions.\nMesh strategy | Greedy meshing or instanced meshes | Avoids rendering every hidden cube face.\nState model | Chunk map plus edit overlay | Procedural base terrain stays cheap; player edits stay explicit.\nStorage | IndexedDB for larger saves | More durable than localStorage once worlds grow.\nAssets | Texture atlas | One material pass, cleaner block rendering, easier expansion.\n\n[Implementation Phases]\nPhase | Output | Definition of Done\n1 | Scene foundation | Canvas renders sky, light, camera, and a flat test block field.\n2 | Player controller | Player can walk, jump, collide, and look around without falling through terrain.\n3 | Procedural terrain | Chunks generate around spawn with grass, dirt, and stone layers.\n4 | Raycast editing | Player can aim at blocks, remove them, and place selected blocks.\n5 | Hotbar UI | Selection is visible, responsive, and mapped to block types.\n6 | Persistence | World edits survive reload.\n7 | Performance pass | Hidden faces are reduced and movement stays smooth on normal desktop hardware.\n8 | Feel pass | Block outline, sounds, fog, and subtle camera polish make it feel like a real sandbox.\n\n[Risks]\nRisk | Impact | Mitigation\nToo many meshes | Frame rate collapses | Use instancing, face culling, or greedy meshing early.\nCollision bugs | Player clips through world | Keep physics simple and test against stairs, edges, and tunnels.\nChunk rebuild spikes | Stutter while editing | Rebuild only affected chunk and neighboring border when needed.\nBrowser memory growth | Long sessions degrade | Unload distant chunks and cap active radius.\nScope creep | Prototype becomes unfinished | Ship core loop before mobs, crafting, caves, multiplayer, or advanced lighting.\nTexture mismatch | World feels cheap | Use a consistent low-res atlas instead of mixed placeholder colors.\n\n[Next Build Target]\nTarget | Concrete Spec\nPlayable prototype | A desktop browser Minecraft-style sandbox with first-person movement, procedural chunks, block breaking, block placing, and a nine-slot hotbar.\nRecommended first milestone | One HTML app running locally with Three.js, generated terrain, raycast block editing, and no backend.\nWhat to skip first | Crafting, enemies, multiplayer, infinite caves, complex water, redstone-style logic, account systems.\nSharp editor note | The clone does not need a massive world on day one. It needs one block under the cursor that feels correct when it breaks.</pre>"
+    }
+  },
+  "downloadedOutput": {
+    "status": 200,
+    "path": "C:\\Users\\phill\\KimiBuilt\\outputs\\pii-xlsx-live-check-2026-05-20\\xlsx-2026-05-20-g3ku4l.xlsx",
+    "filename": "xlsx-2026-05-20-g3ku4l.xlsx",
+    "byteLength": 7396
+  },
+  "extractedText": "[sheet1]\nSection | Decision | Notes\nHero | Browser-based voxel sandbox | A playable Minecraft-style prototype focused on movement, block placement, block removal, and terrain.\n01 Core Loop | Explore, mine, place, repeat | The first version should feel tactile before it feels huge.\n02 Rendering | Three.js voxel world | Use instanced meshes for block performance instead of one mesh per cube.\n03 Terrain | Chunked procedural terrain | Generate small chunks around the player using seeded noise.\n04 Controls | Pointer lock first-person movement | WASD, mouse look, jump, sprint, left-click remove, right-click place.\n05 Blocks | Starter palette | Grass, dirt, stone, wood, leaves, sand, water placeholder, glass placeholder.\n06 Inventory | Hotbar first | Nine slots, scroll wheel selection, number-key shortcuts.\n07 Persistence | Local save | Store edited blocks in browser localStorage or IndexedDB.\n08 Polish | Small signals matter | Block outline, footstep bob, placement sound, simple sky, fog, day tint.\n\n[sheet2]\nFeature | Priority | Acceptance Criteria\nFirst-person camera | P0 | Mouse look works smoothly after pointer lock.\nPlayer movement | P0 | WASD movement, gravity, jumping, and collision against blocks.\nVoxel terrain | P0 | World loads with varied height terrain and visible block types.\nBlock removal | P0 | Targeted block disappears with left click.\nBlock placement | P0 | Selected block appears on targeted face with right click.\nHotbar | P1 | Nine slots render on screen and selection changes with keys or wheel.\nChunk loading | P1 | Nearby chunks load without freezing the browser.\nSave edits | P1 | Placed and removed blocks persist after reload.\nLighting | P2 | Basic directional light and ambient fill give readable depth.\nMobile support | P3 | Deferred; first build should prioritize desktop playability.\n\n[sheet3]\nLayer | Recommended Approach | Reason\nApp shell | Vite + TypeScript | Fast local iteration and clean browser build pipeline.\n3D engine | Three.js | Reliable WebGL abstraction with broad examples and ecosystem support.\nPhysics | Simple AABB collision | Enough for voxel walking without pulling in a heavy engine.\nTerrain noise | Simplex or Perlin noise | Creates natural hills and variation with minimal data.\nChunk size | 16 x 16 x 64 | Small enough for fast rebuilds, familiar enough for voxel conventions.\nMesh strategy | Greedy meshing or instanced meshes | Avoids rendering every hidden cube face.\nState model | Chunk map plus edit overlay | Procedural base terrain stays cheap; player edits stay explicit.\nStorage | IndexedDB for larger saves | More durable than localStorage once worlds grow.\nAssets | Texture atlas | One material pass, cleaner block rendering, easier expansion.\n\n[sheet4]\nPhase | Output | Definition of Done\n1 | Scene foundation | Canvas renders sky, light, camera, and a flat test block field.\n2 | Player controller | Player can walk, jump, collide, and look around without falling through terrain.\n3 | Procedural terrain | Chunks generate around spawn with grass, dirt, and stone layers.\n4 | Raycast editing | Player can aim at blocks, remove them, and place selected blocks.\n5 | Hotbar UI | Selection is visible, responsive, and mapped to block types.\n6 | Persistence | World edits survive reload.\n7 | Performance pass | Hidden faces are reduced and movement stays smooth on normal desktop hardware.\n8 | Feel pass | Block outline, sounds, fog, and subtle camera polish make it feel like a real sandbox.\n\n[sheet5]\nRisk | Impact | Mitigation\nToo many meshes | Frame rate collapses | Use instancing, face culling, or greedy meshing early.\nCollision bugs | Player clips through world | Keep physics simple and test against stairs, edges, and tunnels.\nChunk rebuild spikes | Stutter while editing | Rebuild only affected chunk and neighboring border when needed.\nBrowser memory growth | Long sessions degrade | Unload distant chunks and cap active radius.\nScope creep | Prototype becomes unfinished | Ship core loop before mobs, crafting, caves, multiplayer, or advanced lighting.\nTexture mismatch | World feels cheap | Use a consistent low-res atlas instead of mixed placeholder colors.\n\n[sheet6]\nTarget | Concrete Spec\nPlayable prototype | A desktop browser Minecraft-style sandbox with first-person movement, procedural chunks, block breaking, block placing, and a nine-slot hotbar.\nRecommended first milestone | One HTML app running locally with Three.js, generated terrain, raycast block editing, and no backend.\nWhat to skip first | Crafting, enemies, multiplayer, infinite caves, complex water, redstone-style logic, account systems.\nSharp editor note | The clone does not need a massive world on day one. It needs one block under the cursor that feels correct when it breaks.",
+  "rawPrivateValuesInDownloadedOutput": []
+}

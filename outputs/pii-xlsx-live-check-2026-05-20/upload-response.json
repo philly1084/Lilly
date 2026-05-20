@@ -1,0 +1,38 @@
+{
+  "id": "7809be19-81e2-4799-b6ed-deb3d260b414",
+  "sessionId": "07b9dcf3-11ee-45e8-ab5f-0a81617e1941",
+  "parentArtifactId": null,
+  "direction": "uploaded",
+  "sourceMode": "chat",
+  "filename": "sample-pii-balances.xlsx",
+  "format": "xlsx",
+  "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "sizeBytes": 3031,
+  "status": "ready",
+  "vectorized": false,
+  "downloadUrl": "/api/artifacts/7809be19-81e2-4799-b6ed-deb3d260b414/download",
+  "previewUrl": null,
+  "sandboxUrl": null,
+  "bundleDownloadUrl": null,
+  "preview": null,
+  "metadata": {
+    "sheets": [
+      {
+        "name": "sheet1",
+        "rowCount": 5
+      }
+    ],
+    "structuredTableSummary": [
+      {
+        "name": "sheet1",
+        "rowCount": 5,
+        "columnCount": 6
+      }
+    ],
+    "privacyPreviewSuppressed": true,
+    "piiCleansing": {
+      "uploadPreviewSuppressed": true
+    }
+  },
+  "createdAt": "2026-05-20T01:44:42.039Z"
+}

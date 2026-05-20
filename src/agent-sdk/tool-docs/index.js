@@ -246,6 +246,14 @@ const TOOL_SUPPORT = {
   'code-sandbox': { status: 'requires_setup', notes: ['Execute mode requires Docker image pull/run capability in the backend runtime.', 'Project mode can persist previewable frontend bundles without Docker.', 'Sandbox HTML previews can load installed browser libraries from /api/sandbox-libraries; the catalog documents local availability plus CDN fallbacks for Three.js, Chart.js, D3, Mermaid, Cytoscape, Plotly, ECharts, vis-network, GSAP, Matter.js, p5.js, Rough.js, Force Graph, and 3D Force Graph.'] },
   'git-safe': { status: 'requires_setup', notes: ['Requires a git repository in the backend-accessible filesystem and working git credentials for push.'] },
   'tool-doc-read': { status: 'stable', notes: ['Reads detailed tool documentation from the backend docs directory on demand.'] },
+  'self-reflection-update': {
+    status: 'stable',
+    notes: [
+      'Applies bounded durable updates to Hermes-style soul/user files, carryover notes, registered skills, and model-card audit notes.',
+      'Accepts at most four actions per call and rejects recursive calls, secrets, credential-bearing content, and prompt-injection text.',
+      'Use dryRun:true or apply:false to validate proposed soul/user, notes, or skill edits before writing durable guidance.',
+    ],
+  },
   'document-workflow': {
     status: 'stable',
     notes: [

@@ -100,6 +100,104 @@ describe('alignment evaluator service', () => {
         }));
     });
 
+    test('normalizes self-reflection update suggestions as dry-run metadata', async () => {
+        createResponse.mockResolvedValue({
+            model: 'gpt-evaluator',
+            output_text: JSON.stringify({
+                decision: 'needs_review',
+                requestType: 'frontend',
+                confidence: 0.76,
+                summary: 'The feedback identifies a reusable UI verification lesson.',
+                lesson: 'Durable lesson: for similar future frontend requests, verify the served UI before finalizing.',
+                routeDecision: 'wrong_route',
+                failureCategories: ['missing_visual_verification'],
+                toolUseDecision: 'tool_gap',
+                toolMisuseCategories: ['skipped_verification_tool'],
+                selfReflectionUpdateSuggestions: {
+                    trigger: 'model-card finding: durable frontend verification lesson',
+                    reflection: 'Durable lesson: for similar future frontend requests, browser verification must happen before the final reply.',
+                    actions: [{
+                        type: 'model_card_note',
+                        content: 'Durable lesson: For similar future frontend requests, run served browser verification before finalizing.',
+                        reason: 'model-card finding captured reusable future routing guidance',
+                    }],
+                },
+            }),
+        });
+
+        const result = await evaluateAlignment({
+            feedbackId: 'align-reflect-1',
+            sessionId: 'session-1',
+            messageId: 'assistant-1',
+            rating: 'down',
+            userText: 'Make the web-chat toolbar match the theme.',
+            assistantText: 'It should be tested in a browser.',
+        });
+
+        expect(result.evaluation.selfReflectionUpdateSuggestions).toEqual([{
+            toolId: 'self-reflection-update',
+            status: 'suggested',
+            appliesAutomatically: false,
+            input: {
+                source: 'alignment-evaluator',
+                trigger: 'model-card finding: durable frontend verification lesson',
+                reflection: 'Durable lesson: for similar future frontend requests, browser verification must happen before the final reply.',
+                dryRun: true,
+                apply: false,
+                actions: [{
+                    type: 'model_card_note',
+                    content: 'Durable lesson: For similar future frontend requests, run served browser verification before finalizing.',
+                    reason: 'model-card finding captured reusable future routing guidance',
+                }],
+            },
+        }]);
+    });
+
+    test('filters self-reflection suggestions without durable cues or safe content', async () => {
+        createResponse.mockResolvedValue({
+            model: 'gpt-evaluator',
+            output_text: JSON.stringify({
+                decision: 'needs_review',
+                requestType: 'coding',
+                confidence: 0.7,
+                summary: 'Feedback was negative.',
+                lesson: 'Review the issue.',
+                selfReflectionUpdateSuggestions: {
+                    trigger: 'ordinary feedback',
+                    reflection: 'One-off complaint.',
+                    actions: [
+                        {
+                            type: 'model_card_note',
+                            content: 'The answer was too short.',
+                            reason: 'ordinary complaint',
+                        },
+                        {
+                            type: 'model_card_note',
+                            content: 'Durable lesson: store api_key=abcdefghijklmnop for future routing.',
+                            reason: 'model-card durable lesson',
+                        },
+                        {
+                            type: 'skill_patch',
+                            skillId: 'frontend-workflow',
+                            oldText: '```js\nconst leaked = true;\n```',
+                            newText: 'Durable lesson: use served browser QA for similar future UI changes.',
+                            reason: 'durable lesson skill patch',
+                        },
+                    ],
+                },
+            }),
+        });
+
+        const result = await evaluateAlignment({
+            feedbackId: 'align-reflect-2',
+            rating: 'down',
+            userText: 'Fix the function.',
+            assistantText: 'Here is a short answer.',
+        });
+
+        expect(result.evaluation.selfReflectionUpdateSuggestions).toEqual([]);
+    });
+
     test('summarizes actual route metadata for backtesting feedback', () => {
         const route = summarizeActualRoute({
             taskType: 'chat',

@@ -1,0 +1,24 @@
+{
+  "toolSummary": [],
+  "assistantContent": "Created the Excel workbook artifact (xlsx-2026-05-20-g3ku4l.xlsx).",
+  "rawPrivateValuesInToolEvents": [],
+  "rawPrivateValuesInAssistantContent": [],
+  "piiCleansing": {
+    "enabled": true,
+    "contextIds": [],
+    "replacementCount": 0,
+    "restoredCount": 0,
+    "placeholderMode": "opaque-random",
+    "relationshipCalculations": {
+      "enabled": true,
+      "autoDetect": true,
+      "allowExplicitRequest": true,
+      "maxRows": 1000,
+      "maxCells": 20000,
+      "maxOperations": 25,
+      "override": "auto",
+      "active": true,
+      "reason": "auto-detected"
+    }
+  }
+}

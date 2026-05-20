@@ -362,6 +362,23 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="dashboard-grid self-reflection-grid">
+                        <div class="card self-reflection-card">
+                            <div class="card-header">
+                                <h3>Self-Reflection Updates</h3>
+                                <div class="card-actions">
+                                    <span class="status-badge neutral" id="selfReflectionStatus">Loading</span>
+                                    <button class="btn btn-sm btn-ghost" id="refreshSelfReflectionBtn" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="self-reflection-list" id="selfReflectionUpdates" aria-live="polite">
+                                    <p class="empty-state">Loading self-reflection updates...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- Prompts View -->
@@ -1203,10 +1220,47 @@
                                         <div class="form-group">
                                             <label for="soulContent">soul.md</label>
                                             <textarea class="form-control" id="soulContent" rows="18" spellcheck="false" placeholder="# Soul&#10;&#10;Describe the agent's personality, voice, and boundaries here."></textarea>
+                                            <p class="text-muted">Hard limit: <span id="soulCharacterLimit">3700</span> characters. Current: <span id="soulCharacterCount">0</span>.</p>
                                         </div>
                                         <div class="form-actions">
                                             <button type="submit" form="generalSettingsForm" class="btn btn-primary">Save Soul + General</button>
                                             <button type="button" class="btn btn-ghost" id="resetPersonalityBtn">Reset soul.md</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h3>User Profile</h3>
+                                        <p class="text-muted">This markdown is loaded from <code id="userProfileFilePathLabel">user.md</code> as the Hermes-style durable profile for stable user facts and collaboration defaults.</p>
+                                        <div class="feature-item">
+                                            <div class="feature-info">
+                                                <span class="feature-name">Enable user.md</span>
+                                                <span class="feature-desc">Keep the bounded user profile available without mixing it into the soul or project notes.</span>
+                                            </div>
+                                            <label class="toggle">
+                                                <input type="checkbox" id="userProfileEnabled" checked>
+                                                <span class="toggle-slider"></span>
+                                            </label>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="userProfileName">Display Name</label>
+                                                <input type="text" class="form-control" id="userProfileName" value="User Profile">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="userProfileUpdatedAt">Last Updated</label>
+                                                <input type="text" class="form-control" id="userProfileUpdatedAt" value="Default content" readonly>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="userProfileContent">user.md</label>
+                                            <textarea class="form-control" id="userProfileContent" rows="14" spellcheck="false" placeholder="# User&#10;&#10;## Phil&#10;- Stable user-wide facts and collaboration preferences"></textarea>
+                                            <p class="text-muted">Hard limit: <span id="userProfileCharacterLimit">3700</span> characters. Current: <span id="userProfileCharacterCount">0</span>.</p>
+                                        </div>
+                                        <div class="form-actions">
+                                            <button type="submit" form="generalSettingsForm" class="btn btn-primary">Save User + General</button>
+                                            <button type="button" class="btn btn-ghost" id="resetUserProfileBtn">Reset user.md</button>
                                         </div>
                                     </div>
                                 </div>

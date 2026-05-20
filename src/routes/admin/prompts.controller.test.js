@@ -26,6 +26,17 @@ jest.mock('../../agent-notes', () => ({
   writeAgentNotesFile: jest.fn(),
 }));
 
+jest.mock('../../agent-user-profile', () => ({
+  getEffectiveUserProfileConfig: jest.fn((settings = {}) => ({
+    enabled: settings.enabled !== false,
+    displayName: settings.displayName || 'User Profile',
+    content: '# User\nCurrent user profile content\n',
+    absoluteFilePath: 'C:/Users/phill/KimiBuilt/user.md',
+    updatedAt: '2026-04-04T00:00:00.000Z',
+  })),
+  writeUserProfileFile: jest.fn(),
+}));
+
 jest.mock('../../artifacts/artifact-service', () => ({
   artifactService: {
     getArtifactPlanInstructions: jest.fn(() => 'plan prompt'),
@@ -65,6 +76,7 @@ jest.mock('./settings.controller', () => ({
 
 const soulHelpers = require('../../agent-soul');
 const agentNotesHelpers = require('../../agent-notes');
+const userProfileHelpers = require('../../agent-user-profile');
 const settingsController = require('./settings.controller');
 const promptsController = require('./prompts.controller');
 
@@ -80,6 +92,10 @@ describe('admin prompts controller', () => {
         enabled: true,
         displayName: 'Carryover Notes',
       },
+      userProfile: {
+        enabled: true,
+        displayName: 'User Profile',
+      },
     };
   });
 
@@ -92,12 +108,18 @@ describe('admin prompts controller', () => {
 
     const payload = res.json.mock.calls[0][0];
     const soulPrompt = payload.data.find((entry) => entry.id === 'agent-soul');
+    const userPrompt = payload.data.find((entry) => entry.id === 'agent-user-profile');
     const continuityPrompt = payload.data.find((entry) => entry.id === 'chat-continuity');
 
     expect(payload.readonly).toBe(false);
     expect(soulPrompt).toEqual(expect.objectContaining({
       id: 'agent-soul',
       name: 'Agent Soul',
+      editable: true,
+    }));
+    expect(userPrompt).toEqual(expect.objectContaining({
+      id: 'agent-user-profile',
+      name: 'User Profile',
       editable: true,
     }));
     expect(continuityPrompt.editable).toBe(false);
@@ -185,6 +207,47 @@ describe('admin prompts controller', () => {
     }));
   });
 
+  test('updates the user profile surface and persists the renamed display name', async () => {
+    const req = {
+      params: { id: 'agent-user-profile' },
+      body: {
+        name: 'Phil Profile',
+        content: '# User\n- Phil wants live proof.\n',
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    await promptsController.update(req, res);
+
+    expect(userProfileHelpers.writeUserProfileFile).toHaveBeenCalledWith('# User\n- Phil wants live proof.\n');
+    expect(settingsController.deepMerge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userProfile: expect.objectContaining({
+          enabled: true,
+          displayName: 'User Profile',
+        }),
+      }),
+      {
+        userProfile: {
+          displayName: 'Phil Profile',
+        },
+      },
+    );
+    expect(settingsController.saveSettings).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      readonly: false,
+      data: expect.objectContaining({
+        id: 'agent-user-profile',
+        name: 'Phil Profile',
+        editable: true,
+      }),
+    }));
+  });
+
   test('rejects edits to code-backed prompt surfaces', async () => {
     const req = {
       params: { id: 'chat-continuity' },
@@ -202,6 +265,7 @@ describe('admin prompts controller', () => {
 
     expect(res.status).toHaveBeenCalledWith(410);
     expect(soulHelpers.writeSoulFile).not.toHaveBeenCalled();
+    expect(userProfileHelpers.writeUserProfileFile).not.toHaveBeenCalled();
     expect(agentNotesHelpers.writeAgentNotesFile).not.toHaveBeenCalled();
     expect(settingsController.saveSettings).not.toHaveBeenCalled();
   });

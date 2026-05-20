@@ -98,6 +98,23 @@ jest.mock('../../agent-notes', () => ({
   resetAgentNotesFile: jest.fn(),
 }));
 
+jest.mock('../../agent-user-profile', () => ({
+  getEffectiveUserProfileConfig: jest.fn((settings = {}) => ({
+    enabled: settings.enabled !== false,
+    displayName: settings.displayName || 'User Profile',
+    content: '# User\n',
+    defaultContent: '# Default User\n',
+    filePath: 'user.md',
+    absoluteFilePath: 'C:/Users/phill/KimiBuilt/user.md',
+    updatedAt: '2026-04-04T00:00:00.000Z',
+    source: 'file',
+    characterLimit: 3700,
+    characterCount: 7,
+  })),
+  writeUserProfileFile: jest.fn(),
+  resetUserProfileFile: jest.fn(),
+}));
+
 jest.mock('../../postgres', () => ({
   postgres: {
     getStatus: jest.fn(() => ({ initialized: false })),
@@ -116,6 +133,7 @@ describe('settings.controller personality support', () => {
   let fsPromises;
   let soulHelpers;
   let agentNotesHelpers;
+  let userProfileHelpers;
   let consoleLogSpy;
   let consoleWarnSpy;
   let consoleErrorSpy;
@@ -131,6 +149,7 @@ describe('settings.controller personality support', () => {
     fsPromises = require('fs').promises;
     soulHelpers = require('../../agent-soul');
     agentNotesHelpers = require('../../agent-notes');
+    userProfileHelpers = require('../../agent-user-profile');
     controller = require('./settings.controller');
     controller.settings = controller.getDefaultSettings();
   });
@@ -213,12 +232,49 @@ describe('settings.controller personality support', () => {
     }));
   });
 
-  test('getPublicSettings exposes effective personality and carryover metadata and strips ssh password', () => {
+  test('update writes user.md content and merges user profile metadata', async () => {
+    const req = {
+      body: {
+        userProfile: {
+          enabled: false,
+          displayName: 'Phil Profile',
+          content: '# User\n- Phil wants direct proof.\n',
+        },
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    await controller.update(req, res);
+
+    expect(userProfileHelpers.writeUserProfileFile).toHaveBeenCalledWith('# User\n- Phil wants direct proof.\n');
+    expect(controller.settings.userProfile).toEqual({
+      enabled: false,
+      displayName: 'Phil Profile',
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        userProfile: expect.objectContaining({
+          enabled: false,
+          displayName: 'Phil Profile',
+          content: '# User\n',
+          filePath: 'user.md',
+          characterLimit: 3700,
+        }),
+      }),
+    }));
+  });
+
+  test('getPublicSettings exposes effective personality, user profile, and carryover metadata and strips ssh password', () => {
     controller.settings.integrations.ssh.password = 'super-secret';
 
     const publicSettings = controller.getPublicSettings();
 
     expect(soulHelpers.getEffectiveSoulConfig).toHaveBeenCalledWith(controller.settings.personality);
+    expect(userProfileHelpers.getEffectiveUserProfileConfig).toHaveBeenCalledWith(controller.settings.userProfile);
     expect(agentNotesHelpers.getEffectiveAgentNotesConfig).toHaveBeenCalledWith(controller.settings.agentNotes);
     expect(publicSettings.personality).toEqual(expect.objectContaining({
       enabled: true,
@@ -231,6 +287,12 @@ describe('settings.controller personality support', () => {
       displayName: 'Carryover Notes',
       content: '# Carryover Notes\n',
       filePath: 'agent-notes.md',
+    }));
+    expect(publicSettings.userProfile).toEqual(expect.objectContaining({
+      enabled: true,
+      displayName: 'User Profile',
+      content: '# User\n',
+      filePath: 'user.md',
     }));
     expect(publicSettings.integrations.ssh.password).toBeUndefined();
     expect(publicSettings.orchestration).toEqual(expect.objectContaining({
@@ -851,6 +913,35 @@ describe('settings.controller personality support', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
       message: 'agentNotes settings reset',
+    }));
+  });
+
+  test('resetting the user profile restores default settings and user.md content', async () => {
+    controller.settings.userProfile = {
+      enabled: false,
+      displayName: 'Custom User',
+    };
+
+    const req = {
+      body: {
+        section: 'userProfile',
+      },
+    };
+    const res = {
+      json: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+    };
+
+    await controller.reset(req, res);
+
+    expect(userProfileHelpers.resetUserProfileFile).toHaveBeenCalled();
+    expect(controller.settings.userProfile).toEqual({
+      enabled: true,
+      displayName: 'User Profile',
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      message: 'userProfile settings reset',
     }));
   });
 });

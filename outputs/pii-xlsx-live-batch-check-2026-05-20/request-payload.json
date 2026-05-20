@@ -1,0 +1,19 @@
+{
+  "message": "Using the uploaded spreadsheet, create an XLSX output file. Run a batch calculation plan: top 3 patient balances, also calculate average and count. Use the PII vault relationship calculation path; do not expose raw names, DOBs, health-card numbers, postal codes, or patient keys to the agent. Return the batch calculation result as an XLSX artifact.",
+  "sessionId": "bdb6d2fc-ddd1-4293-88dc-3161b8f6de81",
+  "stream": false,
+  "artifactIds": [
+    "d9e3ee34-c997-4c4d-8e7b-899a6a1a998e"
+  ],
+  "outputFormat": "xlsx",
+  "reasoningEffort": "low",
+  "metadata": {
+    "clientSurface": "web-chat",
+    "taskType": "chat",
+    "mode": "chat",
+    "memoryScope": "web-chat",
+    "sessionIsolation": true,
+    "testRun": "pii-xlsx-live-check",
+    "promptMode": "batch"
+  }
+}

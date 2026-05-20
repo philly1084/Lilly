@@ -1,0 +1,42 @@
+{
+  "uploadStatus": 201,
+  "uploadedArtifact": {
+    "id": "7809be19-81e2-4799-b6ed-deb3d260b414",
+    "filename": "sample-pii-balances.xlsx",
+    "format": "xlsx",
+    "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sizeBytes": 3031,
+    "previewSuppressed": true,
+    "metadataKeysReturnedToFrontend": [
+      "sheets",
+      "structuredTableSummary",
+      "privacyPreviewSuppressed",
+      "piiCleansing"
+    ]
+  },
+  "localExtractorProof": {
+    "sawPatientKey": true,
+    "sawName": true,
+    "sawDob": true,
+    "sawHealthCard": true,
+    "structuredTableCount": 1
+  },
+  "protectedContextFromChat": {
+    "enabled": true,
+    "contextIds": [],
+    "replacementCount": 0,
+    "restoredCount": 0,
+    "placeholderMode": "opaque-random",
+    "relationshipCalculations": {
+      "enabled": true,
+      "autoDetect": true,
+      "allowExplicitRequest": true,
+      "maxRows": 1000,
+      "maxCells": 20000,
+      "maxOperations": 25,
+      "override": "auto",
+      "active": true,
+      "reason": "auto-detected"
+    }
+  }
+}

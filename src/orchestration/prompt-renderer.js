@@ -33,6 +33,15 @@ const PROMPT_SURFACE_INVENTORY = Object.freeze([
     exposure: 'universal',
   },
   {
+    id: 'agent-user-profile',
+    name: 'User Profile',
+    promptFamily: 'runtime',
+    ownerSurface: 'shared Hermes USER.md memory',
+    sourceFile: 'user.md',
+    expectedTests: ['src/routes/admin/prompts.controller.test.js', 'src/session-instructions.test.js'],
+    exposure: 'universal',
+  },
+  {
     id: 'chat-continuity',
     name: 'Chat Continuity Instructions',
     promptFamily: 'runtime',
@@ -99,7 +108,7 @@ const PROMPT_SURFACE_INVENTORY = Object.freeze([
     sourceFile: 'src/agent-sdk/tool-docs',
     expectedTests: ['src/routes/tools.test.js', 'src/agent-sdk/tools/index.test.js'],
     exposure: 'conditional',
-    condition: 'A tool has long-form docs or the planner requests tool-doc-read.',
+    condition: 'A tool has long-form docs or the planner requests tool-doc-read; includes self-reflection-update guidance for bounded durable learning updates.',
   },
   {
     id: 'skill-guidance',

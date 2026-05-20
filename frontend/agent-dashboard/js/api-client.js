@@ -545,6 +545,33 @@ class ApiClient {
     }
 
     /**
+     * Get recent bounded self-reflection updates
+     */
+    async getSelfReflectionUpdates(limit = 6) {
+        return this.get('/api/admin/self-reflection-updates', { limit }, {
+            timeout: 10000,
+        });
+    }
+
+    /**
+     * Get pending evaluator-suggested self-reflection updates
+     */
+    async getSelfReflectionSuggestions(limit = 6) {
+        return this.get('/api/admin/self-reflection-updates/suggestions', { limit }, {
+            timeout: 10000,
+        });
+    }
+
+    /**
+     * Approve and apply one evaluator self-reflection suggestion
+     */
+    async applySelfReflectionSuggestion(id) {
+        return this.post(`/api/admin/self-reflection-updates/suggestions/${encodeURIComponent(id)}/apply`, null, {
+            timeout: 15000,
+        });
+    }
+
+    /**
      * Get settings
      */
     async getSettings() {
