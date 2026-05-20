@@ -315,4 +315,52 @@ describe('PII workbook relationship bridge', () => {
       limit: 1,
     }));
   });
+
+  test('infers an explicit batch calculation request without exposing workbook values', async () => {
+    const prepared = await prepareWorkbookRelationshipInput({
+      structuredTables: [{
+        name: 'sheet1',
+        headers: [
+          { id: 'c1', header: 'Patient Key', columnIndex: 0 },
+          { id: 'c2', header: 'Patient Balance', columnIndex: 1 },
+        ],
+        rows: [
+          {
+            id: 'r1',
+            cells: [
+              { columnId: 'c1', columnIndex: 0, value: 'P001' },
+              { columnId: 'c2', columnIndex: 1, value: '100' },
+            ],
+          },
+          {
+            id: 'r2',
+            cells: [
+              { columnId: 'c1', columnIndex: 0, value: 'P001' },
+              { columnId: 'c2', columnIndex: 1, value: '75' },
+            ],
+          },
+        ],
+      }],
+      sessionId: 'session-workbook',
+      policy: privacyPolicy(),
+    });
+
+    const request = inferWorkbookRelationshipCalculationRequest({
+      text: 'Run a batch calculation plan: top 3 patient balances, also calculate average and count.',
+      tables: prepared.tables,
+      limit: 1,
+    });
+
+    expect(request).toEqual(expect.objectContaining({
+      operationId: 'workbook-batch',
+      operation: 'batch',
+      tables: prepared.tables,
+    }));
+    expect(request.operations).toEqual([
+      expect.objectContaining({ operation: 'top_n', groupBy: 'c1', measure: 'c2', limit: 3 }),
+      expect.objectContaining({ operation: 'group_average', groupBy: 'c1', measure: 'c2' }),
+      expect.objectContaining({ operation: 'group_count', groupBy: 'c1' }),
+    ]);
+    expect(JSON.stringify(request)).not.toContain('P001');
+  });
 });

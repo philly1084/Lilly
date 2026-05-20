@@ -93,6 +93,49 @@ function inferRelationshipOperation(text = '') {
   return null;
 }
 
+function promptMentionsBatchCalculation(text = '') {
+  const normalized = normalizePromptText(text);
+  return /\b(?:batch|multiple calculations|several calculations|calculation plan|calculate both|run both|also calculate|include the|along with|as well as)\b/.test(normalized)
+    || /\b(?:top|highest|largest|lowest|bottom|average|mean|count|sum|total|aggregate)\b[\s\S]{0,80}\b(?:and|plus|also|with)\b[\s\S]{0,80}\b(?:top|highest|largest|lowest|bottom|average|mean|count|sum|total|aggregate)\b/.test(normalized);
+}
+
+function promptMentionsCountIntent(text = '') {
+  const normalized = normalizePromptText(text);
+  if (/\b(?:instead of|rather than|not|without)\s+count(?:ing)?\b/.test(normalized)) return false;
+  return /\b(?:count|how many|number of)\b/.test(normalized);
+}
+
+function inferRequestedLimit(text = '', fallbackLimit = 1) {
+  const normalized = normalizePromptText(text);
+  const match = normalized.match(/\b(?:top|bottom|highest|lowest|largest|smallest)\s+(\d{1,2})\b/);
+  const parsed = match ? Number(match[1]) : Number(fallbackLimit || 1);
+  return Math.max(1, Math.min(Number.isFinite(parsed) ? parsed : 1, 100));
+}
+
+function inferRelationshipOperations(text = '') {
+  const normalized = normalizePromptText(text);
+  const operations = [];
+  if (/\b(?:highest|largest|greatest|most|max(?:imum)?|top|biggest)\b/.test(normalized)) {
+    operations.push('top_n');
+  }
+  if (/\b(?:lowest|smallest|least|min(?:imum)?|bottom)\b/.test(normalized)) {
+    operations.push('bottom_n');
+  }
+  if (/\b(?:average|mean)\b/.test(normalized)) {
+    operations.push('group_average');
+  }
+  if (promptMentionsCountIntent(text)) {
+    operations.push('group_count');
+  }
+  if (/\b(?:sum|sums|total|totals|subtotal|add up|aggregate)\b/.test(normalized)) {
+    const alreadyRankingTotal = operations.includes('top_n') || operations.includes('bottom_n');
+    if (!alreadyRankingTotal || /\b(?:sum|sums|subtotal|add up|aggregate)\b/.test(normalized)) {
+      operations.push('group_sum');
+    }
+  }
+  return Array.from(new Set(operations));
+}
+
 function scoreColumnForPrompt(column = {}, text = '', fallbackScore = 0) {
   const haystack = columnText(column);
   const prompt = normalizePromptText(text);
@@ -144,7 +187,10 @@ function inferWorkbookRelationshipCalculationRequest({
   tables = [],
   limit = 1,
 } = {}) {
-  const operation = inferRelationshipOperation(text);
+  const inferredOperations = promptMentionsBatchCalculation(text)
+    ? inferRelationshipOperations(text)
+    : [];
+  const operation = inferredOperations.length > 1 ? 'batch' : inferRelationshipOperation(text);
   if (!operation) return null;
   const table = chooseWorkbookRelationshipTable(tables);
   if (!table) return null;
@@ -152,6 +198,22 @@ function inferWorkbookRelationshipCalculationRequest({
   if (!groupColumn) return null;
   const measureColumn = operation === 'group_count' ? null : chooseMeasureColumn(table, text);
   if (operation !== 'group_count' && !measureColumn) return null;
+
+  if (operation === 'batch') {
+    return {
+      operationId: 'workbook-batch',
+      operation,
+      tables: [table],
+      operations: inferredOperations.map((entry) => ({
+        operationId: `workbook-${entry}`,
+        operation: entry,
+        tableId: table.id,
+        groupBy: groupColumn.id,
+        ...(entry === 'group_count' ? {} : { measure: measureColumn.id }),
+        ...(entry === 'top_n' || entry === 'bottom_n' ? { limit: inferRequestedLimit(text, limit) } : {}),
+      })),
+    };
+  }
 
   return {
     operationId: `workbook-${operation}`,

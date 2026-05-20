@@ -209,6 +209,24 @@ function buildAssistantUiMetadata(baseMetadata = {}, artifacts = [], piiMetadata
 
 function formatTrustedPiiRelationshipMessage(result = {}) {
     const data = result?.data && typeof result.data === 'object' ? result.data : result;
+    if (data?.operation === 'batch' && Array.isArray(data.results)) {
+        return JSON.stringify({
+            calculation_count: data.results.length,
+            calculations: data.results.map((entry) => ({
+                operation_id: entry?.operationId || null,
+                operation: entry?.operation || null,
+                group_placeholder: entry?.winnerPlaceholder || null,
+                aggregate_value: typeof entry?.aggregateValue === 'number' ? entry.aggregateValue : null,
+                contributing_row_count: typeof entry?.rowCount === 'number' ? entry.rowCount : null,
+                result_count: Array.isArray(entry?.results) ? entry.results.length : null,
+                formula_plan: entry?.formulaPlan ? {
+                    type: entry.formulaPlan.type || 'xlsx_formula_plan',
+                    target_cells: Array.isArray(entry.formulaPlan.targetCells) ? entry.formulaPlan.targetCells : [],
+                    returns_winner_to_model: entry.formulaPlan.privacy?.returnsWinnerToModel === true,
+                } : null,
+            })),
+        });
+    }
     const patientUid = data?.winnerPlaceholder || '';
     const total = typeof data?.aggregateValue === 'number'
         ? data.aggregateValue
@@ -229,6 +247,20 @@ function formatTrustedPiiRelationshipMessage(result = {}) {
 
 function buildTrustedPiiRelationshipWorkbookContent(result = {}) {
     const data = result?.data && typeof result.data === 'object' ? result.data : result;
+    if (data?.operation === 'batch' && Array.isArray(data.results)) {
+        const rows = [
+            'operation_id | operation | group_value | aggregate_value | contributing_row_count | result_count',
+            ...data.results.map((entry) => [
+                entry?.operationId || '',
+                entry?.operation || '',
+                entry?.winnerPlaceholder || '',
+                typeof entry?.aggregateValue === 'number' ? entry.aggregateValue : '',
+                typeof entry?.rowCount === 'number' ? entry.rowCount : '',
+                Array.isArray(entry?.results) ? entry.results.length : '',
+            ].join(' | ')),
+        ];
+        return rows.join('\n');
+    }
     const evidenceRowIds = Array.isArray(data?.evidenceRowIds)
         ? data.evidenceRowIds.join(', ')
         : '';
@@ -264,6 +296,21 @@ function summarizeTrustedPiiRelationshipRequest(request = {}) {
         })),
         valuesIncluded: false,
         relationshipKeysIncluded: false,
+        ...(Array.isArray(request.operations)
+            ? {
+                operations: request.operations.map((operation) => ({
+                    operationId: operation?.operationId || null,
+                    operation: operation?.operation || null,
+                    tableId: operation?.tableId || null,
+                    groupBy: operation?.groupBy || null,
+                    measure: operation?.measure || null,
+                    measures: Array.isArray(operation?.measures) ? operation.measures : undefined,
+                    subtractMeasures: Array.isArray(operation?.subtractMeasures) ? operation.subtractMeasures : undefined,
+                    limit: operation?.limit || null,
+                    filterCount: Array.isArray(operation?.filters) ? operation.filters.length : 0,
+                })),
+            }
+            : {}),
     };
 }
 
@@ -275,8 +322,20 @@ function summarizeTrustedPiiRelationshipResult(result = {}) {
         sanitized: data?.sanitized === true,
         aggregateValue: typeof data?.aggregateValue === 'number' ? data.aggregateValue : null,
         rowCount: typeof data?.rowCount === 'number' ? data.rowCount : null,
-        evidenceRowIds: Array.isArray(data?.evidenceRowIds) ? data.evidenceRowIds : [],
         resultCount: Array.isArray(data?.results) ? data.results.length : null,
+        ...(Array.isArray(data?.results)
+            ? {
+                results: data.results.map((entry) => ({
+                    operationId: entry?.operationId || null,
+                    operation: entry?.operation || null,
+                    sanitized: entry?.sanitized === true,
+                    aggregateValue: typeof entry?.aggregateValue === 'number' ? entry.aggregateValue : null,
+                    rowCount: typeof entry?.rowCount === 'number' ? entry.rowCount : null,
+                    resultCount: Array.isArray(entry?.results) ? entry.results.length : null,
+                    formulaPlanReturned: Boolean(entry?.formulaPlan),
+                })),
+            }
+            : {}),
         valuesIncluded: false,
         relationshipKeysIncluded: false,
     };

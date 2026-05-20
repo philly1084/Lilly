@@ -13,6 +13,7 @@ const SUPPORTED_OPERATIONS = new Set([
   'filter',
   'join',
   'xlsx_formula_plan',
+  'batch',
 ]);
 
 const FILTER_OPERATORS = new Set(['equals', 'not_equals', 'gt', 'gte', 'lt', 'lte', 'contains']);
@@ -75,6 +76,14 @@ const RELATIONSHIP_CALCULATION_SCHEMA = {
         rightKey: { type: 'string', maxLength: 80 },
       },
       additionalProperties: false,
+    },
+    operations: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 100,
+      items: {
+        type: 'object',
+      },
     },
     tables: {
       type: 'array',
@@ -298,6 +307,12 @@ function getRelationshipLimits(context = {}) {
     || {};
 }
 
+function getBatchOperationLimit(context = {}) {
+  const policy = getRelationshipLimits(context);
+  const maxOperations = Number(policy.maxOperations || 25);
+  return Math.max(1, Math.min(Number.isFinite(maxOperations) ? maxOperations : 25, 100));
+}
+
 function validateJoinRequest(params = {}, context = {}, placeholderIndex = new Map()) {
   const join = params.join || {};
   const errors = [];
@@ -337,6 +352,33 @@ function validateRelationshipCalculationRequest(params = {}, context = {}, place
   const errors = [];
   if (!SUPPORTED_OPERATIONS.has(params.operation)) errors.push(`Unsupported operation "${params.operation}".`);
   const table = findTable(params, params.tableId);
+  if (params.operation === 'batch') {
+    const operations = Array.isArray(params.operations) ? params.operations : [];
+    const maxOperations = getBatchOperationLimit(context);
+    if (operations.length === 0) errors.push('batch requires at least one operation.');
+    if (operations.length > maxOperations) errors.push(`batch exceeds the privacy calculation operation limit (${maxOperations}).`);
+    operations.forEach((operation, index) => {
+      if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
+        errors.push(`batch operation ${index + 1} must be an object.`);
+        return;
+      }
+      if (operation.operation === 'batch') {
+        errors.push(`batch operation ${index + 1} cannot be nested batch.`);
+        return;
+      }
+      const child = {
+        ...operation,
+        tables: params.tables,
+      };
+      const childValidation = validateRelationshipCalculationRequest(child, context, placeholderIndex);
+      if (!childValidation.ok) {
+        childValidation.errors.forEach((error) => errors.push(`batch operation ${index + 1}: ${error}`));
+      }
+    });
+    return errors.length > 0
+      ? { ok: false, errors, repair: buildRepairBlocker(errors) }
+      : { ok: true, errors: [] };
+  }
   if (!table && params.operation !== 'join') errors.push('A valid tableId or first table is required.');
   if (['group_sum', 'group_average', 'top_n', 'bottom_n'].includes(params.operation)) {
     if (!params.groupBy) errors.push(`${params.operation} requires groupBy.`);
@@ -591,8 +633,7 @@ function executeXlsxFormulaPlan(table = {}, params = {}) {
   };
 }
 
-async function calculateRelationship(params = {}, context = {}) {
-  const placeholderIndex = await loadPlaceholderIndex(context);
+async function calculateRelationshipWithIndex(params = {}, context = {}, placeholderIndex = new Map()) {
   const validation = validateRelationshipCalculationRequest(params, context, placeholderIndex);
   if (!validation.ok) {
     const error = new Error(`Invalid PII relationship calculation request: ${validation.errors.join('; ')}`);
@@ -601,6 +642,24 @@ async function calculateRelationship(params = {}, context = {}) {
     throw error;
   }
   const operationId = normalizeId(params.operationId) || `${params.operation}-${Date.now().toString(36)}`;
+  if (params.operation === 'batch') {
+    const results = [];
+    for (const [index, operation] of params.operations.entries()) {
+      const child = {
+        ...operation,
+        operationId: normalizeId(operation.operationId) || `${operation.operation || 'operation'}-${index + 1}`,
+        tables: params.tables,
+      };
+      results.push(await calculateRelationshipWithIndex(child, context, placeholderIndex));
+    }
+    return {
+      operationId,
+      operation: params.operation,
+      sanitized: true,
+      resultCount: results.length,
+      results,
+    };
+  }
   if (params.operation === 'join') {
     return {
       operationId,
@@ -648,6 +707,11 @@ async function calculateRelationship(params = {}, context = {}) {
       evidenceRowIds: winner.evidenceRowIds,
     } : {}),
   };
+}
+
+async function calculateRelationship(params = {}, context = {}) {
+  const placeholderIndex = await loadPlaceholderIndex(context);
+  return calculateRelationshipWithIndex(params, context, placeholderIndex);
 }
 
 async function calculateRelationshipWithRepair(params = {}, context = {}, repairFn = null) {

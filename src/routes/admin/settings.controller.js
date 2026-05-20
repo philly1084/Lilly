@@ -46,6 +46,7 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
     allowExplicitRequest: true,
     maxRows: 1000,
     maxCells: 20000,
+    maxOperations: 25,
   },
 };
 
@@ -244,6 +245,7 @@ function normalizePrivacyRelationshipCalculations(value = {}, fallback = {}) {
   const fallbackSource = fallback && typeof fallback === 'object' && !Array.isArray(fallback) ? fallback : {};
   const maxRows = parseBoundedPositiveInteger(source.maxRows ?? fallbackSource.maxRows ?? 1000, 1000, 100000);
   const maxCells = parseBoundedPositiveInteger(source.maxCells ?? fallbackSource.maxCells ?? 20000, 20000, 1000000);
+  const maxOperations = parseBoundedPositiveInteger(source.maxOperations ?? fallbackSource.maxOperations ?? 25, 1, 100);
   return {
     enabled: source.enabled !== undefined ? Boolean(source.enabled) : fallbackSource.enabled !== false,
     autoDetect: source.autoDetect !== undefined ? Boolean(source.autoDetect) : fallbackSource.autoDetect !== false,
@@ -252,6 +254,7 @@ function normalizePrivacyRelationshipCalculations(value = {}, fallback = {}) {
       : fallbackSource.allowExplicitRequest !== false,
     maxRows,
     maxCells,
+    maxOperations,
   };
 }
 

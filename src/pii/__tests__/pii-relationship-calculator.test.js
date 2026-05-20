@@ -292,4 +292,104 @@ describe('PII relationship calculator', () => {
     expect(JSON.stringify(result)).not.toContain('[[PII:a1]]');
     expect(JSON.stringify(result)).not.toContain('Private Individual');
   });
+
+  test('executes a constrained batch of spreadsheet calculations with one trusted table payload', async () => {
+    const result = await calculateRelationship({
+      operationId: 'sales-batch',
+      operation: 'batch',
+      tables: [{
+        id: 'sales',
+        columns: [
+          { id: 'retailer', header: 'Retailer', role: 'private-group-key' },
+          { id: 'amount', header: 'Amount', role: 'measure' },
+        ],
+        rows: [
+          { id: 'r1', cells: { retailer: '[[PII:a1]]', amount: '120.50' } },
+          { id: 'r2', cells: { retailer: '[[PII:a2]]', amount: '80' } },
+          { id: 'r3', cells: { retailer: '[[PII:b1]]', amount: '190' } },
+        ],
+      }],
+      operations: [
+        {
+          operationId: 'largest-retailer',
+          operation: 'top_n',
+          tableId: 'sales',
+          groupBy: 'retailer',
+          measure: 'amount',
+          limit: 1,
+        },
+        {
+          operationId: 'average-retailer',
+          operation: 'group_average',
+          tableId: 'sales',
+          groupBy: 'retailer',
+          measure: 'amount',
+        },
+        {
+          operationId: 'retailer-count',
+          operation: 'group_count',
+          tableId: 'sales',
+          groupBy: 'retailer',
+        },
+      ],
+    }, {
+      piiEntries,
+      piiCleansing: {
+        relationshipCalculations: {
+          maxOperations: 5,
+        },
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      operationId: 'sales-batch',
+      operation: 'batch',
+      sanitized: true,
+      resultCount: 3,
+    }));
+    expect(result.results[0]).toEqual(expect.objectContaining({
+      operationId: 'largest-retailer',
+      operation: 'top_n',
+      aggregateValue: 200.5,
+      rowCount: 2,
+    }));
+    expect(result.results[1]).toEqual(expect.objectContaining({
+      operationId: 'average-retailer',
+      operation: 'group_average',
+    }));
+    expect(result.results[2]).toEqual(expect.objectContaining({
+      operationId: 'retailer-count',
+      operation: 'group_count',
+    }));
+    expect(JSON.stringify(result)).not.toContain('retailer-a');
+  });
+
+  test('rejects batches over the configured operation limit', async () => {
+    await expect(calculateRelationship({
+      operation: 'batch',
+      tables: [{
+        id: 'sales',
+        columns: [
+          { id: 'retailer', header: 'Retailer', role: 'private-group-key' },
+          { id: 'amount', header: 'Amount', role: 'measure' },
+        ],
+        rows: [
+          { id: 'r1', cells: { retailer: '[[PII:a1]]', amount: '120.50' } },
+        ],
+      }],
+      operations: [
+        { operation: 'group_sum', tableId: 'sales', groupBy: 'retailer', measure: 'amount' },
+        { operation: 'group_count', tableId: 'sales', groupBy: 'retailer' },
+      ],
+    }, {
+      piiEntries,
+      piiCleansing: {
+        relationshipCalculations: {
+          maxOperations: 1,
+        },
+      },
+    })).rejects.toMatchObject({
+      code: 'pii_relationship_invalid_request',
+    });
+  });
 });
