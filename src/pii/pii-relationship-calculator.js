@@ -17,6 +17,13 @@ const SUPPORTED_OPERATIONS = new Set([
 ]);
 
 const FILTER_OPERATORS = new Set(['equals', 'not_equals', 'gt', 'gte', 'lt', 'lte', 'contains']);
+const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,79}$/;
+const SAFE_ROW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/;
+const SAFE_SHEET_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9 _-]{0,79}$/;
+const SAFE_CELL_REFERENCE_PATTERN = /^([A-Za-z][A-Za-z0-9 _-]{0,79}!)?\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}$/i;
+const DANGEROUS_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const SPREADSHEET_CONTROL_PREFIX_PATTERN = /^[\s\u0000-\u001f]*[=+\-@]/;
+const MAX_ABS_NUMERIC_VALUE = 1000000000000;
 
 const RELATIONSHIP_CALCULATION_SCHEMA = {
   type: 'object',
@@ -156,7 +163,7 @@ function collectObjectErrors(value, schema, path = '$') {
     }
     const properties = schema.properties || {};
     (schema.required || []).forEach((key) => {
-      if (!(key in value)) errors.push(`${path}.${key} is required.`);
+      if (!Object.prototype.hasOwnProperty.call(value, key)) errors.push(`${path}.${key} is required.`);
     });
     if (schema.additionalProperties === false) {
       Object.keys(value).forEach((key) => {
@@ -166,7 +173,9 @@ function collectObjectErrors(value, schema, path = '$') {
       });
     }
     Object.entries(properties).forEach(([key, childSchema]) => {
-      if (key in value) errors.push(...collectObjectErrors(value[key], childSchema, `${path}.${key}`));
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        errors.push(...collectObjectErrors(value[key], childSchema, `${path}.${key}`));
+      }
     });
     return errors;
   }
@@ -192,6 +201,74 @@ function collectObjectErrors(value, schema, path = '$') {
     if (typeof schema.maximum === 'number' && value > schema.maximum) errors.push(`${path} must be <= ${schema.maximum}.`);
   }
   return errors;
+}
+
+function collectUnsafeObjectKeyErrors(value, path = '$') {
+  const errors = [];
+  if (!value || typeof value !== 'object') return errors;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      errors.push(...collectUnsafeObjectKeyErrors(item, `${path}[${index}]`));
+    });
+    return errors;
+  }
+  Object.keys(value).forEach((key) => {
+    if (DANGEROUS_OBJECT_KEYS.has(key)) {
+      errors.push(`${path}.${key} is not allowed.`);
+    }
+    errors.push(...collectUnsafeObjectKeyErrors(value[key], `${path}.${key}`));
+  });
+  return errors;
+}
+
+function isSafeIdentifier(value = '') {
+  return SAFE_IDENTIFIER_PATTERN.test(String(value || '').trim());
+}
+
+function isSafeRowId(value = '') {
+  return SAFE_ROW_ID_PATTERN.test(String(value || '').trim());
+}
+
+function validateSafeIdentifier(value = '', label = 'identifier', { optional = false } = {}) {
+  const normalized = normalizeId(value);
+  if (!normalized && optional) return null;
+  if (!isSafeIdentifier(normalized)) {
+    return `${label} must be a safe identifier using letters, numbers, underscores, or dashes, starting with a letter.`;
+  }
+  return null;
+}
+
+function validateSafeRowId(value = '', label = 'row id') {
+  const normalized = normalizeId(value);
+  if (!isSafeRowId(normalized)) {
+    return `${label} must be a safe row id using letters, numbers, underscores, dashes, dots, or colons.`;
+  }
+  return null;
+}
+
+function validateSafeCellReference(value = '', label = 'cell reference') {
+  const normalized = normalizeId(value);
+  if (!SAFE_CELL_REFERENCE_PATTERN.test(normalized)) {
+    return `${label} must be an A1-style cell reference with an optional safe sheet name.`;
+  }
+  const parsed = parseCellReference(normalized);
+  if (!parsed || parsed.row < 1 || parsed.row > 1048576 || parsed.columnIndex < 0 || parsed.columnIndex > 16383) {
+    return `${label} is outside supported XLSX bounds.`;
+  }
+  return null;
+}
+
+function validateSafeSheetName(value = '', label = 'sheet name') {
+  const normalized = normalizeId(value);
+  if (!normalized) return null;
+  if (!SAFE_SHEET_NAME_PATTERN.test(normalized)) {
+    return `${label} must be a safe worksheet name using letters, numbers, spaces, underscores, or dashes.`;
+  }
+  return null;
+}
+
+function startsWithSpreadsheetControlToken(value) {
+  return SPREADSHEET_CONTROL_PREFIX_PATTERN.test(String(value ?? ''));
 }
 
 function parseNumber(value) {
@@ -261,6 +338,73 @@ function getFormulaMeasureColumns(params = {}) {
   ].map((entry) => normalizeId(entry)).filter(Boolean)));
 }
 
+function validateRequestIdentifiers(params = {}, tables = []) {
+  const errors = [];
+  [
+    ['operationId', params.operationId, true],
+    ['tableId', params.tableId, true],
+    ['groupBy', params.groupBy, true],
+    ['measure', params.measure, true],
+  ].forEach(([label, value, optional]) => {
+    const error = validateSafeIdentifier(value, label, { optional });
+    if (error) errors.push(error);
+  });
+  getFormulaMeasureColumns(params).forEach((columnId) => {
+    const error = validateSafeIdentifier(columnId, `formula measure "${columnId}"`);
+    if (error) errors.push(error);
+  });
+  (Array.isArray(params.filters) ? params.filters : []).forEach((filter, index) => {
+    const error = validateSafeIdentifier(filter.column, `filter ${index + 1} column`);
+    if (error) errors.push(error);
+  });
+  if (params.join) {
+    [
+      ['join.leftTableId', params.join.leftTableId],
+      ['join.rightTableId', params.join.rightTableId],
+      ['join.leftKey', params.join.leftKey],
+      ['join.rightKey', params.join.rightKey],
+    ].forEach(([label, value]) => {
+      const error = validateSafeIdentifier(value, label);
+      if (error) errors.push(error);
+    });
+  }
+  if (params.target) {
+    [
+      ['target.resultCell', params.target.resultCell],
+      ['target.helperStartCell', params.target.helperStartCell],
+    ].forEach(([label, value]) => {
+      const error = validateSafeCellReference(value, label);
+      if (error) errors.push(error);
+    });
+    const sheetError = validateSafeSheetName(params.target.sheetName, 'target.sheetName');
+    if (sheetError) errors.push(sheetError);
+  }
+  tables.forEach((table, tableIndex) => {
+    const tableError = validateSafeIdentifier(table.id, `table ${tableIndex + 1} id`);
+    if (tableError) errors.push(tableError);
+    (Array.isArray(table.columns) ? table.columns : []).forEach((column, columnIndex) => {
+      const columnError = validateSafeIdentifier(column.id, `table "${table.id}" column ${columnIndex + 1} id`);
+      if (columnError) errors.push(columnError);
+      if (column.role) {
+        const roleError = validateSafeIdentifier(column.role, `table "${table.id}" column "${column.id}" role`);
+        if (roleError) errors.push(roleError);
+      }
+      if (startsWithSpreadsheetControlToken(column.header)) {
+        errors.push(`Table "${table.id}" column "${column.id}" header may not start with a spreadsheet control token.`);
+      }
+    });
+    (Array.isArray(table.rows) ? table.rows : []).forEach((row) => {
+      const rowError = validateSafeRowId(row.id, `table "${table.id}" row id`);
+      if (rowError) errors.push(rowError);
+      Object.keys(row.cells || {}).forEach((columnId) => {
+        const cellColumnError = validateSafeIdentifier(columnId, `row "${row.id}" cell column id`);
+        if (cellColumnError) errors.push(cellColumnError);
+      });
+    });
+  });
+  return errors;
+}
+
 function validateRows(table = {}, params = {}, placeholderIndex = new Map(), policy = {}) {
   const errors = [];
   const columnIds = getColumnIds(table);
@@ -284,8 +428,10 @@ function validateRows(table = {}, params = {}, placeholderIndex = new Map(), pol
     Object.entries(row.cells || {}).forEach(([columnId, value]) => {
       if (!columnIds.has(columnId)) errors.push(`Row "${row.id}" references unknown column "${columnId}".`);
       const normalized = normalizeCell(value);
-      if (typeof normalized === 'string' && normalized.trim().startsWith('=')) {
-        errors.push(`Row "${row.id}" column "${columnId}" contains a formula; v1 supports extracted values only.`);
+      const measureColumn = columnId === params.measure || getFormulaMeasureColumns(params).includes(columnId);
+      const numeric = measureColumn ? parseNumber(value) : null;
+      if (typeof normalized === 'string' && startsWithSpreadsheetControlToken(normalized) && !(measureColumn && numeric !== null)) {
+        errors.push(`Row "${row.id}" column "${columnId}" contains a spreadsheet control token; v1 supports extracted values only.`);
       }
       if (typeof normalized === 'string' && containsRawPii(normalized)) {
         errors.push(`Row "${row.id}" column "${columnId}" appears to contain raw PII instead of a placeholder.`);
@@ -295,6 +441,14 @@ function validateRows(table = {}, params = {}, placeholderIndex = new Map(), pol
       }
       if (columnId === params.groupBy && isPlaceholder(normalized) && !placeholderIndex.has(normalized)) {
         errors.push(`Placeholder "${normalized}" in row "${row.id}" is not available in the trusted PII context.`);
+      }
+      if (measureColumn) {
+        if (value !== '' && value !== null && value !== undefined && numeric === null) {
+          errors.push(`Row "${row.id}" column "${columnId}" must contain a finite numeric value.`);
+        }
+        if (numeric !== null && Math.abs(numeric) > MAX_ABS_NUMERIC_VALUE) {
+          errors.push(`Row "${row.id}" column "${columnId}" exceeds the supported numeric bound.`);
+        }
       }
     });
   });
@@ -345,12 +499,16 @@ function buildRepairBlocker(errors = []) {
 }
 
 function validateRelationshipCalculationRequest(params = {}, context = {}, placeholderIndex = new Map()) {
-  const schemaErrors = collectObjectErrors(params, RELATIONSHIP_CALCULATION_SCHEMA);
+  const schemaErrors = [
+    ...collectUnsafeObjectKeyErrors(params),
+    ...collectObjectErrors(params, RELATIONSHIP_CALCULATION_SCHEMA),
+  ];
   if (schemaErrors.length > 0) {
     return { ok: false, errors: schemaErrors, repair: buildRepairBlocker(schemaErrors) };
   }
   const errors = [];
   if (!SUPPORTED_OPERATIONS.has(params.operation)) errors.push(`Unsupported operation "${params.operation}".`);
+  errors.push(...validateRequestIdentifiers(params, Array.isArray(params.tables) ? params.tables : []));
   const table = findTable(params, params.tableId);
   if (params.operation === 'batch') {
     const operations = Array.isArray(params.operations) ? params.operations : [];

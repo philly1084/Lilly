@@ -127,6 +127,114 @@ describe('PII relationship calculator', () => {
     }, { piiEntries })).rejects.toThrow(/supports extracted values only/);
   });
 
+  test('rejects spreadsheet control tokens, unsafe identifiers, and prototype keys at the calculator boundary', async () => {
+    const prototypePollutionRequest = JSON.parse([
+      '{',
+      '"operation":"group_sum",',
+      '"tableId":"sales",',
+      '"groupBy":"retailer",',
+      '"measure":"amount",',
+      '"tables":[{',
+      '"id":"sales",',
+      '"columns":[{"id":"retailer","header":"Retailer"},{"id":"amount","header":"Amount"}],',
+      '"rows":[{"id":"r1","cells":{"retailer":"[[PII:a1]]","amount":"+cmd|calc","__proto__":"polluted"}}]',
+      '}]',
+      '}',
+    ].join(''));
+
+    await expect(calculateRelationship(prototypePollutionRequest, { piiEntries })).rejects.toMatchObject({
+      code: 'pii_relationship_invalid_request',
+    });
+
+    await expect(calculateRelationship({
+      operation: 'group_sum',
+      tableId: 'sales] , HYPERLINK("https://evil")',
+      groupBy: 'retailer',
+      measure: 'amount',
+      tables: [{
+        id: 'sales] , HYPERLINK("https://evil")',
+        columns: [
+          { id: 'retailer', header: 'Retailer' },
+          { id: 'amount', header: 'Amount' },
+        ],
+        rows: [{ id: 'r1', cells: { retailer: '[[PII:a1]]', amount: '10' } }],
+      }],
+    }, { piiEntries })).rejects.toMatchObject({
+      code: 'pii_relationship_invalid_request',
+    });
+  });
+
+  test('rejects formula-plan escape strings and unbounded numeric values', async () => {
+    await expect(calculateRelationship({
+      operation: 'xlsx_formula_plan',
+      tableId: 'sales',
+      groupBy: 'person',
+      measures: ['baseSales], HYPERLINK("https://evil")'],
+      target: {
+        helperStartCell: "Presentation_Result'!A12",
+        resultCell: 'Presentation_Result!B5',
+      },
+      tables: [{
+        id: 'sales',
+        columns: [
+          { id: 'person', header: 'Person', role: 'private-group-key' },
+          { id: 'baseSales], HYPERLINK("https://evil")', header: 'Base Sales', role: 'measure' },
+        ],
+        rows: [
+          { id: 'r1', cells: { person: '[[PII:a1]]', 'baseSales], HYPERLINK("https://evil")': '10' } },
+        ],
+      }],
+    }, { piiEntries })).rejects.toMatchObject({
+      code: 'pii_relationship_invalid_request',
+    });
+
+    await expect(calculateRelationship({
+      operation: 'group_sum',
+      tableId: 'sales',
+      groupBy: 'retailer',
+      measure: 'amount',
+      tables: [{
+        id: 'sales',
+        columns: [
+          { id: 'retailer', header: 'Retailer' },
+          { id: 'amount', header: 'Amount' },
+        ],
+        rows: [
+          { id: 'r1', cells: { retailer: '[[PII:a1]]', amount: '1e309' } },
+          { id: 'r2', cells: { retailer: '[[PII:a2]]', amount: '1000000000000000' } },
+        ],
+      }],
+    }, { piiEntries })).rejects.toMatchObject({
+      code: 'pii_relationship_invalid_request',
+    });
+  });
+
+  test('continues to accept finite negative measure values after injection hardening', async () => {
+    const result = await calculateRelationship({
+      operation: 'group_sum',
+      tableId: 'sales',
+      groupBy: 'retailer',
+      measure: 'amount',
+      tables: [{
+        id: 'sales',
+        columns: [
+          { id: 'retailer', header: 'Retailer' },
+          { id: 'amount', header: 'Amount' },
+        ],
+        rows: [
+          { id: 'r1', cells: { retailer: '[[PII:a1]]', amount: '-20' } },
+          { id: 'r2', cells: { retailer: '[[PII:a2]]', amount: '5' } },
+        ],
+      }],
+    }, { piiEntries });
+
+    expect(result).toEqual(expect.objectContaining({
+      aggregateValue: -15,
+      rowCount: 2,
+      sanitized: true,
+    }));
+  });
+
   test('runs one constrained repair callback before calculating', async () => {
     const repaired = await calculateRelationshipWithRepair({
       operation: 'top_n',
