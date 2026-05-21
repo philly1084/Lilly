@@ -125,8 +125,13 @@ describe('self-reflection updates admin controller', () => {
                       reason: 'The answer skipped verification.',
                       updatedAt: '2026-05-20T12:30:00.000Z',
                       evaluation: {
-                        summary: 'The feedback identifies a reusable route verification lesson.',
-                        lesson: 'For similar future frontend requests, verify the served UI before finalizing.',
+                        summary: 'The feedback identifies a remote route verification lesson.',
+                        lesson: 'Remote deployment requests require acting through the remote tool lane and reporting only verified results.',
+                        routeDecision: 'wrong_route',
+                        failureCategories: ['wrong_route', 'missing_visual_verification'],
+                        toolUseDecision: 'tool_gap',
+                        toolMisuseCategories: ['missing_required_tool'],
+                        promoteRegressionFixture: true,
                         selfReflectionUpdateSuggestions: [],
                       },
                     },
@@ -153,7 +158,7 @@ describe('self-reflection updates admin controller', () => {
               actions: [
                 expect.objectContaining({
                   type: 'model_card_note',
-                  content: expect.stringContaining('For similar future frontend requests'),
+                  content: expect.stringContaining('Remote deployment requests require acting'),
                 }),
               ],
             }),

@@ -57,6 +57,20 @@ function hasDurableEvaluatorLesson(value = '') {
   return DURABLE_EVALUATOR_LESSON_PATTERNS.some((pattern) => pattern.test(source));
 }
 
+function hasActionableEvaluatorFinding(evaluation = {}) {
+  const failureCategories = Array.isArray(evaluation.failureCategories)
+    ? evaluation.failureCategories
+    : [];
+  const toolMisuseCategories = Array.isArray(evaluation.toolMisuseCategories)
+    ? evaluation.toolMisuseCategories
+    : [];
+  return evaluation.promoteRegressionFixture === true
+    || ['wrong_route', 'route_unclear'].includes(String(evaluation.routeDecision || ''))
+    || ['tool_gap', 'tool_misuse'].includes(String(evaluation.toolUseDecision || ''))
+    || failureCategories.some((category) => category && category !== 'other')
+    || toolMisuseCategories.some((category) => category && category !== 'other');
+}
+
 function firstNonEmpty(values = []) {
   return values.map((value) => normalizeInline(value || '', 700)).find(Boolean) || '';
 }
@@ -77,7 +91,11 @@ function buildEvaluatorLessonSuggestion(entry = {}) {
     ...(Array.isArray(evaluation.toolMisuseCategories) ? evaluation.toolMisuseCategories : []),
   ].join(' ');
 
-  if (!lesson || !hasDurableEvaluatorLesson(cueText)) {
+  if (entry.rating !== 'down' || !lesson) {
+    return null;
+  }
+
+  if (!hasDurableEvaluatorLesson(cueText) && !hasActionableEvaluatorFinding(evaluation)) {
     return null;
   }
 
