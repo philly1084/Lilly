@@ -36,6 +36,7 @@ const {
 } = require('../artifacts/artifact-service');
 const { extractSaveableDocumentArtifact } = require('../artifacts/saveable-document-extractor');
 const { startRuntimeTask, completeRuntimeTask, failRuntimeTask } = require('../admin/runtime-monitor');
+const settingsController = require('./admin/settings.controller');
 const { resolveTranscriptObjectiveFromSession } = require('../conversation-continuity');
 const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-memory');
 const {
@@ -82,6 +83,9 @@ const {
     buildRegisteredSkillsInstructions,
     buildSkillsTreeInstructions,
 } = require('../natural-context');
+const {
+    resolveAgentDirectedRuntimeFlag,
+} = require('../agent-directed-runtime');
 const {
     buildDirectPodcastAssistantMessage,
     buildDirectPodcastParams,
@@ -1234,6 +1238,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         streamRequested = stream === true;
         const reasoningEffort = resolveReasoningEffort(req.body);
         const enableConversationExecutor = resolveConversationExecutorFlag(req.body);
+        const orchestrationSettings = settingsController.getEffectiveOrchestrationConfig?.()
+            || settingsController.settings?.orchestration
+            || {};
+        const useAgentDirectedRuntime = resolveAgentDirectedRuntimeFlag(req.body, orchestrationSettings);
         let { sessionId } = req.body;
         const memoryKeywords = normalizeMemoryKeywords(
             req.body.memoryKeywords || req.body?.metadata?.memoryKeywords || [],
@@ -1478,6 +1486,13 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
             ...requestFrameMetadata,
+            ...(useAgentDirectedRuntime
+                ? {
+                    runtimeMode: 'agent-directed',
+                    agentRuntimeMode: 'agent-directed',
+                    useAgentDirectedRuntime: true,
+                }
+                : {}),
         };
         const effectiveAgentInput = await buildUserInputWithImageArtifacts({
             sessionId,
@@ -2022,14 +2037,22 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             ...effectiveRequestMetadata,
             naturalContext,
         };
-        const naturalInstructions = [
-            buildSkillsTreeInstructions({ clientSurface, taskType }),
-            buildNaturalContextInstructions(naturalContext),
-            buildRegisteredSkillsInstructions({
-                userText: message,
-                metadata: effectiveRequestMetadata,
-            }),
-        ].filter(Boolean).join('\n\n');
+        const naturalInstructions = useAgentDirectedRuntime
+            ? [
+                buildNaturalContextInstructions(naturalContext),
+                buildRegisteredSkillsInstructions({
+                    userText: message,
+                    metadata: effectiveRequestMetadata,
+                }),
+            ].filter(Boolean).join('\n\n')
+            : [
+                buildSkillsTreeInstructions({ clientSurface, taskType }),
+                buildNaturalContextInstructions(naturalContext),
+                buildRegisteredSkillsInstructions({
+                    userText: message,
+                    metadata: effectiveRequestMetadata,
+                }),
+            ].filter(Boolean).join('\n\n');
         const agentJournalInstructions = buildAgentJournalInstructions(
             await loadAgentJournalEntries(sessionStore, effectiveSession, ownerId),
         );

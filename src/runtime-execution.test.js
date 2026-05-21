@@ -14,11 +14,25 @@ jest.mock('./openai-client', () => ({
     createResponse: jest.fn(),
 }));
 
+jest.mock('./pii', () => ({
+    sanitizeRuntimePayload: jest.fn(async (payload) => ({
+        payload,
+        changed: false,
+        contextIds: [],
+        replacements: [],
+        policy: { enabled: false },
+        modelFrame: null,
+        relationshipFrame: null,
+    })),
+}));
+
 const { sessionStore } = require('./session-store');
 const { memoryService } = require('./memory/memory-service');
 const { createResponse } = require('./openai-client');
+const settingsController = require('./routes/admin/settings.controller');
 const {
     executeConversationRuntime,
+    resolveAgentDirectedRuntimeFlag,
     resolveConversationExecutorFlag,
     inferExecutionProfile,
 } = require('./runtime-execution');
@@ -31,6 +45,7 @@ describe('runtime-execution', () => {
         ]);
         memoryService.process.mockResolvedValue(['Remembered context']);
         createResponse.mockResolvedValue({ id: 'resp_direct' });
+        settingsController.settings = settingsController.getDefaultSettings();
     });
 
     test('uses the conversation orchestrator by default when it is available', async () => {
@@ -100,6 +115,95 @@ describe('runtime-execution', () => {
         expect(createResponse).not.toHaveBeenCalled();
         expect(result.handledPersistence).toBe(true);
         expect(result.runtimeMode).toBe('orchestrated');
+    });
+
+    test('bypasses the conversation orchestrator for the agent-directed runtime experiment', async () => {
+        const executeConversation = jest.fn().mockResolvedValue({
+            success: true,
+            response: { id: 'resp_executor' },
+        });
+        const toolManager = {
+            getTool: jest.fn((toolId) => (toolId === 'web-search' ? {
+                id: 'web-search',
+                description: 'Search the web.',
+            } : null)),
+            getToolReadinessSummary: jest.fn(() => [{ status: 'ready' }]),
+            registry: {
+                getSkill: jest.fn(() => ({ description: 'Search skill.' })),
+            },
+        };
+
+        const result = await executeConversationRuntime({
+            locals: {
+                conversationOrchestrator: {
+                    executeConversation,
+                },
+            },
+        }, {
+            sessionId: 'session-agent-directed',
+            input: 'Look up current product docs.',
+            memoryInput: 'Look up current product docs.',
+            instructions: 'Base instructions.',
+            toolManager,
+            enableAutomaticToolCalls: false,
+            metadata: {
+                runtimeMode: 'agent-directed',
+                requestFrame: {
+                    cards: [{ title: 'Routing Decision', detail: 'Use web-search for the next step.' }],
+                    preferredTool: 'web-search',
+                },
+                routingDecision: {
+                    preferredTool: 'web-search',
+                    proofExpectations: ['source check completed'],
+                },
+            },
+        });
+
+        expect(executeConversation).not.toHaveBeenCalled();
+        expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
+            enableAutomaticToolCalls: true,
+            instructions: expect.stringContaining('<agent_directed_runtime version="1">'),
+        }));
+        expect(createResponse.mock.calls[0][0].instructions).toContain('Decision cards from request frame');
+        expect(createResponse.mock.calls[0][0].instructions).toContain('web-search');
+        expect(createResponse.mock.calls[0][0].instructions).toContain('[Agent soul]');
+        expect(createResponse.mock.calls[0][0].instructions).toContain('[User profile memory]');
+        expect(createResponse.mock.calls[0][0].instructions).toContain('<kimi-agent-journal>');
+        expect(result.handledPersistence).toBe(false);
+        expect(result.runtimeMode).toBe('agent-directed');
+    });
+
+    test('uses the admin orchestration setting to enable agent-directed runtime globally', async () => {
+        const executeConversation = jest.fn().mockResolvedValue({
+            success: true,
+            response: { id: 'resp_executor' },
+        });
+        settingsController.settings = {
+            ...settingsController.getDefaultSettings(),
+            orchestration: {
+                ...settingsController.getDefaultSettings().orchestration,
+                agentDirectedRuntime: true,
+            },
+        };
+
+        const result = await executeConversationRuntime({
+            locals: {
+                conversationOrchestrator: {
+                    executeConversation,
+                },
+            },
+        }, {
+            sessionId: 'session-agent-directed-admin',
+            input: 'Let the agent choose tools.',
+            memoryInput: 'Let the agent choose tools.',
+        });
+
+        expect(executeConversation).not.toHaveBeenCalled();
+        expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
+            enableAutomaticToolCalls: true,
+            instructions: expect.stringContaining('<agent_directed_runtime version="1">'),
+        }));
+        expect(result.runtimeMode).toBe('agent-directed');
     });
 
     test('routes remote build requests to the executor even without the explicit flag', async () => {
@@ -228,6 +332,13 @@ describe('runtime-execution', () => {
         expect(resolveConversationExecutorFlag({ use_agent_executor: true })).toBe(true);
         expect(resolveConversationExecutorFlag({ enable_conversation_executor: true })).toBe(true);
         expect(resolveConversationExecutorFlag({})).toBe(false);
+    });
+
+    test('accepts request and metadata flags for the agent-directed runtime experiment', () => {
+        expect(resolveAgentDirectedRuntimeFlag({ useAgentDirectedRuntime: true })).toBe(true);
+        expect(resolveAgentDirectedRuntimeFlag({ bypass_conversation_orchestrator: 'yes' })).toBe(true);
+        expect(resolveAgentDirectedRuntimeFlag({ metadata: { runtimeMode: 'agent-directed' } })).toBe(true);
+        expect(resolveAgentDirectedRuntimeFlag({})).toBe(false);
     });
 
     test('infers the remote build execution profile from explicit routing or remote-ops prompts', () => {

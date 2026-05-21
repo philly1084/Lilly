@@ -435,6 +435,7 @@ class SettingsController {
         evaluatorReasoningEffort: 'medium',
         enableAlignmentEvaluator: true,
         applyAlignmentGuidance: true,
+        agentDirectedRuntime: false,
       },
       personality: {
         enabled: true,
@@ -1200,6 +1201,9 @@ class SettingsController {
     next.applyAlignmentGuidance = value.applyAlignmentGuidance !== undefined
       ? Boolean(value.applyAlignmentGuidance)
       : current.applyAlignmentGuidance !== false;
+    next.agentDirectedRuntime = value.agentDirectedRuntime !== undefined
+      ? Boolean(value.agentDirectedRuntime)
+      : current.agentDirectedRuntime === true;
 
     next.fallbackModels = this.normalizeStringArray(
       value.fallbackModels ?? value.fallbackModelList ?? next.fallbackModels,
@@ -1538,6 +1542,8 @@ class SettingsController {
       evaluatorReasoningEffort: envEvaluatorReasoning || merged.evaluatorReasoningEffort || 'medium',
       enableAlignmentEvaluator: merged.enableAlignmentEvaluator !== false,
       applyAlignmentGuidance: merged.applyAlignmentGuidance !== false,
+      agentDirectedRuntime: merged.agentDirectedRuntime === true
+        || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_AGENT_DIRECTED_RUNTIME || '').trim().toLowerCase()),
       fallbackModels: this.normalizeStringArray(merged.fallbackModels, defaults.fallbackModels),
       source: this.canUsePostgresSettings() ? 'postgres' : 'file',
     };
@@ -1602,6 +1608,7 @@ class SettingsController {
         evaluatorReasoningEffort: 'medium',
         enableAlignmentEvaluator: true,
         applyAlignmentGuidance: true,
+        agentDirectedRuntime: false,
       },
       personality: {
         enabled: true,

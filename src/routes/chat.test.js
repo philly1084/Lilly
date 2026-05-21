@@ -207,6 +207,7 @@ const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
 const { executeConversationRuntime } = require('../runtime-execution');
+const settingsController = require('./admin/settings.controller');
 const { artifactService } = require('../artifacts/artifact-service');
 const alignmentEvaluator = require('../alignment/evaluator-service');
 const {
@@ -257,6 +258,7 @@ describe('/api/chat route', () => {
         routeUtils.inferOutputFormatFromArtifactContext.mockResolvedValue(null);
         routeUtils.resolveArtifactContextIds.mockReturnValue([]);
         routeUtils.buildPiiWorkbookRelationshipToolContext.mockResolvedValue(null);
+        settingsController.settings = settingsController.getDefaultSettings();
         shouldSuppressNotesSurfaceArtifact.mockReturnValue(false);
         shouldSuppressImplicitMermaidArtifact.mockReturnValue(false);
         routeUtils.shouldSuppressWebChatImplicitHtmlArtifact.mockReturnValue(false);
@@ -767,6 +769,110 @@ describe('/api/chat route', () => {
             }),
         );
         expect(toolManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    test('passes agent-directed runtime flags through without the heavy skills-tree startup block', async () => {
+        const toolManager = {
+            executeTool: jest.fn(),
+            getTool: jest.fn(),
+        };
+        ensureRuntimeToolManager.mockResolvedValue(toolManager);
+        resolveSshRequestContext.mockReturnValue({
+            effectivePrompt: 'Use the cards but let the agent choose tools.',
+        });
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            runtimeMode: 'agent-directed',
+            response: {
+                id: 'resp-agent-directed-1',
+                model: 'gpt-test',
+                output: [{
+                    type: 'message',
+                    content: [{ text: 'Agent-directed path used.' }],
+                }],
+                metadata: {
+                    toolEvents: [],
+                },
+            },
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat')
+            .send({
+                sessionId: 'session-1',
+                message: 'Use the cards but let the agent choose tools.',
+                stream: false,
+                metadata: {
+                    runtimeMode: 'agent-directed',
+                },
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Agent-directed path used.');
+        const runtimeParams = executeConversationRuntime.mock.calls[0][1];
+        expect(runtimeParams.metadata).toEqual(expect.objectContaining({
+            runtimeMode: 'agent-directed',
+            agentRuntimeMode: 'agent-directed',
+            useAgentDirectedRuntime: true,
+        }));
+        expect(runtimeParams.instructions).not.toContain('<skills_tree>');
+    });
+
+    test('uses the admin orchestration setting for agent-directed chat turns', async () => {
+        settingsController.settings = {
+            ...settingsController.getDefaultSettings(),
+            orchestration: {
+                ...settingsController.getDefaultSettings().orchestration,
+                agentDirectedRuntime: true,
+            },
+        };
+        ensureRuntimeToolManager.mockResolvedValue({
+            executeTool: jest.fn(),
+            getTool: jest.fn(),
+        });
+        resolveSshRequestContext.mockReturnValue({
+            effectivePrompt: 'Let the agent choose the next move.',
+        });
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            runtimeMode: 'agent-directed',
+            response: {
+                id: 'resp-agent-directed-admin-1',
+                model: 'gpt-test',
+                output: [{
+                    type: 'message',
+                    content: [{ text: 'Admin flag path used.' }],
+                }],
+                metadata: {
+                    toolEvents: [],
+                },
+            },
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat')
+            .send({
+                sessionId: 'session-1',
+                message: 'Let the agent choose the next move.',
+                stream: false,
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Admin flag path used.');
+        const runtimeParams = executeConversationRuntime.mock.calls[0][1];
+        expect(runtimeParams.metadata).toEqual(expect.objectContaining({
+            runtimeMode: 'agent-directed',
+            useAgentDirectedRuntime: true,
+        }));
+        expect(runtimeParams.instructions).not.toContain('<skills_tree>');
     });
 
     test('persists the active chat model onto the session for later workload reuse', async () => {

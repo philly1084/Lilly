@@ -6,6 +6,16 @@ const { getSessionControlState } = require('./runtime-control-state');
 const { config } = require('./config');
 const { buildScopedMemoryMetadata, isSessionIsolationEnabled, resolveProjectKey, resolveSessionScope } = require('./session-scope');
 const { sanitizeRuntimePayload } = require('./pii');
+const {
+    buildAgentDirectedRuntimeInstructions,
+    resolveAgentDirectedRuntimeFlag,
+} = require('./agent-directed-runtime');
+const { buildSessionInstructions } = require('./session-instructions');
+const {
+    buildAgentJournalInstructions,
+    loadAgentJournalEntries,
+} = require('./agent-journal');
+const settingsController = require('./routes/admin/settings.controller');
 
 const RECENT_TRANSCRIPT_LIMIT = config.memory.recentTranscriptLimit;
 const DEFAULT_EXECUTION_PROFILE = 'default';
@@ -202,6 +212,17 @@ function extractRuntimeText(input = '') {
         .join('\n');
 }
 
+function hasSessionIdentityInstructions(instructions = '') {
+    const text = String(instructions || '');
+    return text.includes('[Agent soul]')
+        || text.includes('[User profile memory]')
+        || text.includes('[Session isolation]');
+}
+
+function hasAgentJournalInstructions(instructions = '') {
+    return /<kimi-agent-journal\b/i.test(String(instructions || ''));
+}
+
 function compactPiiContextIds(...sources) {
     const ids = [];
     sources.forEach((source) => {
@@ -390,6 +411,10 @@ async function executeConversationRuntime(app, params = {}) {
         metadata: params.metadata || {},
     });
     const effectiveParams = piiSanitized.payload;
+    const orchestrationSettings = settingsController.getEffectiveOrchestrationConfig?.()
+        || settingsController.settings?.orchestration
+        || {};
+    const useAgentDirectedRuntime = resolveAgentDirectedRuntimeFlag(effectiveParams, orchestrationSettings);
     const callerPiiCleansing = effectiveToolContext.piiCleansing
         || params.metadata?.piiCleansing
         || effectiveParams.metadata?.piiCleansing
@@ -439,7 +464,7 @@ async function executeConversationRuntime(app, params = {}) {
         ],
     };
 
-    if (orchestrator?.executeConversation) {
+    if (!useAgentDirectedRuntime && orchestrator?.executeConversation) {
         return {
             ...(await orchestrator.executeConversation({
                 ...effectiveParams,
@@ -484,6 +509,35 @@ async function executeConversationRuntime(app, params = {}) {
                 recentMessages,
             })
     );
+    let agentDirectedBaseInstructions = effectiveParams.instructions;
+    if (useAgentDirectedRuntime && !hasSessionIdentityInstructions(agentDirectedBaseInstructions)) {
+        agentDirectedBaseInstructions = buildSessionInstructions(
+            effectiveParams.session || params.session || null,
+            agentDirectedBaseInstructions || '',
+        );
+    }
+    if (useAgentDirectedRuntime && !hasAgentJournalInstructions(agentDirectedBaseInstructions)) {
+        const journalInstructions = buildAgentJournalInstructions(
+            await loadAgentJournalEntries(
+                sessionStore,
+                effectiveParams.session || params.session || null,
+                effectiveParams.ownerId || params.ownerId || effectiveScopedToolContext.ownerId || null,
+            ),
+        );
+        agentDirectedBaseInstructions = [journalInstructions, agentDirectedBaseInstructions]
+            .filter(Boolean)
+            .join('\n\n');
+    }
+    const runtimeInstructions = useAgentDirectedRuntime
+        ? buildAgentDirectedRuntimeInstructions({
+            instructions: agentDirectedBaseInstructions,
+            metadata: effectiveParams.metadata || {},
+            toolManager: effectiveParams.toolManager || params.toolManager || null,
+            executionProfile,
+            clientSurface,
+            taskType: effectiveParams.taskType || params.taskType || '',
+        })
+        : effectiveParams.instructions;
 
     return {
         response: await createResponse({
@@ -492,12 +546,14 @@ async function executeConversationRuntime(app, params = {}) {
             memoryScope,
             toolContext: effectiveScopedToolContext,
             executionProfile,
+            instructions: runtimeInstructions,
+            enableAutomaticToolCalls: useAgentDirectedRuntime || effectiveParams.enableAutomaticToolCalls,
             previousPromptState: effectiveParams.previousPromptState || effectiveParams.session?.metadata?.promptState || null,
             contextMessages,
             recentMessages,
         }),
         handledPersistence: false,
-        runtimeMode: 'direct',
+        runtimeMode: useAgentDirectedRuntime ? 'agent-directed' : 'direct',
         pii: piiResult,
     };
 }
@@ -505,6 +561,7 @@ async function executeConversationRuntime(app, params = {}) {
 module.exports = {
     executeConversationRuntime,
     resolveConversationExecutorFlag,
+    resolveAgentDirectedRuntimeFlag,
     inferExecutionProfile,
     normalizeExecutionProfile,
 };

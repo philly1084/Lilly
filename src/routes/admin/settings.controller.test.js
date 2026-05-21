@@ -320,6 +320,7 @@ describe('settings.controller personality support', () => {
           evaluatorReasoningEffort: 'medium',
           enableAlignmentEvaluator: true,
           applyAlignmentGuidance: false,
+          agentDirectedRuntime: true,
         },
       },
     };
@@ -341,6 +342,7 @@ describe('settings.controller personality support', () => {
       evaluatorReasoningEffort: 'medium',
       enableAlignmentEvaluator: true,
       applyAlignmentGuidance: false,
+      agentDirectedRuntime: true,
     }));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
@@ -350,6 +352,7 @@ describe('settings.controller personality support', () => {
           evaluatorModel: 'gpt-5.4-mini',
           fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
           applyAlignmentGuidance: false,
+          agentDirectedRuntime: true,
         }),
       }),
     }));

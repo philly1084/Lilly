@@ -3007,6 +3007,7 @@ class Dashboard {
                     evaluatorReasoningEffort: document.getElementById('orchestrationEvaluatorReasoning').value,
                     enableAlignmentEvaluator: document.getElementById('orchestrationEnableAlignmentEvaluator').value === 'true',
                     applyAlignmentGuidance: document.getElementById('orchestrationApplyAlignmentGuidance').value === 'true',
+                    agentDirectedRuntime: document.getElementById('orchestrationAgentDirectedRuntime').value === 'true',
                 },
             };
 
@@ -5969,6 +5970,7 @@ class Dashboard {
         this.setInputValue('orchestrationEvaluatorReasoning', orchestration.evaluatorReasoningEffort || 'medium');
         this.setInputValue('orchestrationEnableAlignmentEvaluator', String(orchestration.enableAlignmentEvaluator !== false));
         this.setInputValue('orchestrationApplyAlignmentGuidance', String(orchestration.applyAlignmentGuidance !== false));
+        this.setInputValue('orchestrationAgentDirectedRuntime', String(orchestration.agentDirectedRuntime === true));
         apiClient.baseUrl = window.location.origin;
 
         this.setCheckboxValue('featureWebsocket', Boolean(features.realTimeUpdates));
