@@ -131,6 +131,26 @@ const {
 const SYNTHETIC_STREAM_CHUNK_SIZE = 120;
 const MAX_PLAN_STEPS = 4;
 const MAX_TOOL_RESULT_CHARS = config.memory.toolResultCharLimit;
+const TRACE_OUTPUT_PREVIEW_CHARS = Math.max(
+    400,
+    Math.min(MAX_TOOL_RESULT_CHARS, parseInt(process.env.TRACE_OUTPUT_PREVIEW_CHARS, 10) || 1200),
+);
+const REMOTE_CLI_FINAL_OUTPUT_SUMMARY_CHARS = Math.max(
+    4000,
+    Math.min(MAX_TOOL_RESULT_CHARS, parseInt(process.env.REMOTE_CLI_FINAL_OUTPUT_SUMMARY_CHARS, 10) || 24000),
+);
+const COMMAND_STDOUT_SUMMARY_CHARS = Math.max(
+    4000,
+    Math.min(MAX_TOOL_RESULT_CHARS, parseInt(process.env.TOOL_RESULT_STDOUT_SUMMARY_CHARS, 10) || 12000),
+);
+const COMMAND_STDERR_SUMMARY_CHARS = Math.max(
+    2000,
+    Math.min(MAX_TOOL_RESULT_CHARS, parseInt(process.env.TOOL_RESULT_STDERR_SUMMARY_CHARS, 10) || 6000),
+);
+const GENERIC_TOOL_OUTPUT_SUMMARY_CHARS = Math.max(
+    2000,
+    Math.min(MAX_TOOL_RESULT_CHARS, parseInt(process.env.TOOL_RESULT_GENERIC_SUMMARY_CHARS, 10) || 6000),
+);
 const RECENT_TRANSCRIPT_LIMIT = config.memory.recentTranscriptLimit;
 const MAX_STEP_SIGNATURE_REPEATS = 3;
 const HARNESS_VERSION = 'planner-recovery-v2';
@@ -2571,11 +2591,27 @@ function safeJsonParse(text = '') {
 
 function truncateText(value = '', limit = MAX_TOOL_RESULT_CHARS) {
     const text = String(value || '');
-    if (text.length <= limit) {
+    const safeLimit = Math.max(1, Number(limit) || MAX_TOOL_RESULT_CHARS);
+    if (text.length <= safeLimit) {
         return text;
     }
 
-    return `${text.slice(0, limit)}\n[truncated ${text.length - limit} chars]`;
+    if (safeLimit < 1000) {
+        return `${text.slice(0, safeLimit).trimEnd()}\n[omitted ${text.length - safeLimit} chars]`;
+    }
+
+    const marker = `\n[omitted ${text.length - safeLimit} middle chars]\n`;
+    const available = Math.max(1, safeLimit - marker.length);
+    const headLength = Math.max(1, Math.floor(available * 0.68));
+    const tailLength = Math.max(1, available - headLength);
+    const omitted = Math.max(0, text.length - headLength - tailLength);
+    const adjustedMarker = `\n[omitted ${omitted} middle chars]\n`;
+
+    return [
+        text.slice(0, headLength).trimEnd(),
+        adjustedMarker,
+        text.slice(-tailLength).trimStart(),
+    ].join('');
 }
 
 function truncateProgressStepTitle(value = '', limit = 160) {
@@ -6369,7 +6405,7 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
         data.title || '',
         data.status || '',
         data.buildStatus || '',
-        JSON.stringify(data).slice(0, 1200),
+        truncateText(JSON.stringify(data), GENERIC_TOOL_OUTPUT_SUMMARY_CHARS),
     ].join('\n');
     if (toolId === 'web-scrape'
         && /\bAuthentication required\b/i.test(output)
@@ -7516,7 +7552,8 @@ function appendModelResponseTrace(executionTrace = [], response = null, {
         details: {
             phase,
             responseId: response.id || null,
-            outputPreview: truncateText(outputText, 200),
+            outputPreview: truncateText(outputText, TRACE_OUTPUT_PREVIEW_CHARS),
+            outputChars: outputText.length,
             ...(imageDiagnostics ? { diagnostics: imageDiagnostics.diagnostics } : {}),
             ...(imageDiagnostics ? { diagnosticSummary: imageDiagnostics.summary } : {}),
             ...(imageDiagnostics ? { diagnosticSourceTool: imageDiagnostics.toolId } : {}),
@@ -7644,7 +7681,7 @@ function summarizeToolEventForUser(event = {}) {
             data?.publicHost ? `public host: ${data.publicHost}` : '',
         ].filter(Boolean).join('; ');
         preview = [
-            finalOutput ? truncateText(normalizeInlineText(finalOutput), 1200) : '',
+            finalOutput ? truncateText(normalizeInlineText(finalOutput), REMOTE_CLI_FINAL_OUTPUT_SUMMARY_CHARS) : '',
             continuity,
         ].filter(Boolean).join(' ');
     } else if (tool === 'web-search') {
@@ -7656,9 +7693,12 @@ function summarizeToolEventForUser(event = {}) {
     } else if (tool === 'web-fetch') {
         preview = summarizeFetchedContent(data);
     } else if (stdout || stderr || error) {
-        preview = truncateText(normalizeInlineText(stdout || stderr || error), 320);
+        preview = truncateText(
+            normalizeInlineText(stdout || stderr || error),
+            stdout ? COMMAND_STDOUT_SUMMARY_CHARS : (stderr ? COMMAND_STDERR_SUMMARY_CHARS : GENERIC_TOOL_OUTPUT_SUMMARY_CHARS),
+        );
     } else if (typeof data === 'string') {
-        preview = truncateText(normalizeInlineText(data), 320);
+        preview = truncateText(normalizeInlineText(data), GENERIC_TOOL_OUTPUT_SUMMARY_CHARS);
     } else if (data && typeof data === 'object') {
         preview = summarizeObjectData(data);
     }
@@ -7669,7 +7709,7 @@ function summarizeToolEventForUser(event = {}) {
             `- ${tool}: failed`,
             shouldIncludeReason && reason ? `Reason: ${reason}.` : '',
             error ? `Error: ${error}.` : '',
-            stderr && !error ? `Details: ${truncateText(normalizeInlineText(stderr), 220)}.` : '',
+            stderr && !error ? `Details: ${truncateText(normalizeInlineText(stderr), COMMAND_STDERR_SUMMARY_CHARS)}.` : '',
         ].filter(Boolean).join(' ');
     }
 
@@ -7705,9 +7745,9 @@ function buildRemoteCommandFallbackSynthesisText({ objective = '', toolEvents = 
         }
 
         if (stdout) {
-            sections.push(`${reason}\n\n\`\`\`text\n${truncateText(stdout, 2000)}\n\`\`\``);
+            sections.push(`${reason}\n\n\`\`\`text\n${truncateText(stdout, COMMAND_STDOUT_SUMMARY_CHARS)}\n\`\`\``);
         } else if (stderr) {
-            sections.push(`${reason}\n\n\`\`\`text\n${truncateText(stderr, 800)}\n\`\`\``);
+            sections.push(`${reason}\n\n\`\`\`text\n${truncateText(stderr, COMMAND_STDERR_SUMMARY_CHARS)}\n\`\`\``);
         } else {
             sections.push(`${reason}\n\nCommand completed successfully.`);
         }
@@ -8323,19 +8363,30 @@ function sanitizeValue(value, depth = 0) {
         return value;
     }
 
-    if (depth >= 4) {
-        return '[truncated]';
+    if (depth >= 6) {
+        return '[omitted nested data]';
     }
 
     if (Array.isArray(value)) {
-        return value.slice(0, 20).map((entry) => sanitizeValue(entry, depth + 1));
+        const limit = 60;
+        const entries = value.slice(0, limit).map((entry) => sanitizeValue(entry, depth + 1));
+        if (value.length > limit) {
+            entries.push(`[omitted ${value.length - limit} additional items]`);
+        }
+        return entries;
     }
 
-    return Object.fromEntries(
-        Object.entries(value)
-            .slice(0, 30)
+    const entries = Object.entries(value);
+    const limit = 80;
+    const output = Object.fromEntries(
+        entries
+            .slice(0, limit)
             .map(([key, entry]) => [key, sanitizeValue(entry, depth + 1)]),
     );
+    if (entries.length > limit) {
+        output.__omittedKeys = entries.length - limit;
+    }
+    return output;
 }
 
 function normalizeToolResult(result, fallbackToolId, timing = {}) {

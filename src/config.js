@@ -815,7 +815,7 @@ const config = {
         ),
         toolResultCharLimit: Math.max(
             1000,
-            parseInt(process.env.TOOL_RESULT_CHAR_LIMIT, 10) || 32000,
+            parseInt(process.env.TOOL_RESULT_CHAR_LIMIT, 10) || 120000,
         ),
         debugTrace: process.env.MEMORY_DEBUG_TRACE === 'true',
     },

@@ -2841,8 +2841,58 @@ describe('ConversationOrchestrator', () => {
         const prompt = llmClient.createResponse.mock.calls[0][0].input;
         expect(prompt).toContain('Verified tool results:');
         expect(prompt).toContain('- remote-command: succeeded');
-        expect(prompt).not.toContain(`"stdout": "${'A'.repeat(200)}`);
-        expect(prompt.length).toBeLessThan(6000);
+        expect(prompt).toContain('docker missing');
+        expect(prompt).not.toContain('"stdout"');
+        expect(prompt.length).toBeLessThan(30000);
+    });
+
+    test('tool synthesis keeps remote-cli-agent final output useful instead of clipping to a tiny preview', async () => {
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse('Remote CLI answer', 'resp_remote_cli_synthesis')),
+            complete: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: null,
+            sessionStore: null,
+            memoryService: null,
+        });
+        const finalOutput = [
+            'START: remote agent completed the build and began verification.',
+            'x'.repeat(26000),
+            'END_SENTINEL: final verification failed because the TLS ingress returned 404.',
+            'BLOCKER=Fix the ingress host rule.',
+            'REMOTE_CLI_SESSION_ID=remote-session-9',
+        ].join('\n');
+
+        await orchestrator.buildFinalResponse({
+            input: 'What happened in the remote agent run?',
+            objective: 'What happened in the remote agent run?',
+            toolEvents: [{
+                toolCall: {
+                    function: {
+                        name: 'remote-cli-agent',
+                    },
+                },
+                reason: 'Run the remote coding agent.',
+                result: {
+                    success: true,
+                    toolId: 'remote-cli-agent',
+                    data: {
+                        finalOutput,
+                        sessionId: 'remote-session-9',
+                        cwd: '/srv/apps/site',
+                        completionStatus: 'blocked',
+                    },
+                },
+            }],
+        });
+
+        const prompt = llmClient.createResponse.mock.calls[0][0].input;
+        expect(prompt).toContain('START: remote agent completed the build');
+        expect(prompt).toContain('END_SENTINEL: final verification failed');
+        expect(prompt).toContain('remote session: remote-session-9');
+        expect(prompt).not.toContain('[truncated');
     });
 
     test('recovers missing file-write content from recent assistant html when the planner omits it', async () => {

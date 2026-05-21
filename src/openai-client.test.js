@@ -3133,17 +3133,18 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(__testUtils.isTerminalFinishReason('stop')).toBe(true);
     });
 
-    test('truncates oversized tool payloads before returning them to the model loop', () => {
+    test('clips oversized tool payloads without dropping the tail evidence before returning them to the model loop', () => {
         const normalized = __testUtils.normalizeToolResultForModel({
             success: true,
             toolId: 'web-fetch',
             data: {
-                body: 'a'.repeat(13050),
+                body: `${'a'.repeat(130000)}tail evidence`,
             },
         }, 'web-fetch');
 
-        expect(normalized.data.body.length).toBeLessThan(12550);
-        expect(normalized.data.body).toContain('[truncated');
+        expect(normalized.data.body.length).toBeLessThan(121000);
+        expect(normalized.data.body).toContain('[omitted');
+        expect(normalized.data.body).toContain('tail evidence');
     });
 
     test('builds prompt messages with supplemental memory and recent session transcript', () => {

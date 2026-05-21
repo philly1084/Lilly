@@ -78,7 +78,10 @@ const DOCUMENT_WORKFLOW_TOOL_ID = 'document-workflow';
 const DEEP_RESEARCH_PRESENTATION_TOOL_ID = 'deep-research-presentation';
 const MAX_DOCUMENT_SOURCES = 20;
 const MAX_DOCUMENT_SUITE_FORMATS = 8;
-const MAX_DOCUMENT_SOURCE_CHARS = 8000;
+const MAX_DOCUMENT_SOURCE_CHARS = Math.max(
+  8000,
+  Math.min(Number(config.memory?.toolResultCharLimit) || 120000, parseInt(process.env.DOCUMENT_SOURCE_CHARS, 10) || 20000),
+);
 const DEFAULT_DEEP_RESEARCH_PASSES = 3;
 const MAX_DEEP_RESEARCH_PASSES = 6;
 const MAX_DEEP_RESEARCH_SEARCH_LIMIT = Math.max(
@@ -693,11 +696,22 @@ function normalizeDocumentPageTarget(value, fallback = null) {
 
 function truncateDocumentSourceText(value = '', limit = MAX_DOCUMENT_SOURCE_CHARS) {
   const text = String(value || '').trim();
-  if (!text || text.length <= limit) {
+  const safeLimit = Math.max(1, Number(limit) || MAX_DOCUMENT_SOURCE_CHARS);
+  if (!text || text.length <= safeLimit) {
     return text;
   }
 
-  return `${text.slice(0, limit)}\n[truncated ${text.length - limit} chars]`;
+  const marker = `\n[omitted ${text.length - safeLimit} middle chars]\n`;
+  const available = Math.max(1, safeLimit - marker.length);
+  const headLength = Math.max(1, Math.floor(available * 0.68));
+  const tailLength = Math.max(1, available - headLength);
+  const omitted = Math.max(0, text.length - headLength - tailLength);
+
+  return [
+    text.slice(0, headLength).trimEnd(),
+    `\n[omitted ${omitted} middle chars]\n`,
+    text.slice(-tailLength).trimStart(),
+  ].join('');
 }
 
 function normalizeDocumentSources(sources = []) {

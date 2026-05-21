@@ -22,6 +22,7 @@ const settingsController = require('../routes/admin/settings.controller');
 
 const DEFAULT_EXECUTION_PROFILE = 'default';
 const REMOTE_BUILD_EXECUTION_PROFILE = 'remote-build';
+const TRACE_OUTPUT_PREVIEW_CHARS = Math.max(400, parseInt(process.env.TRACE_OUTPUT_PREVIEW_CHARS, 10) || 1200);
 const REMOTE_BUILD_TOOL_ALLOWLIST = new Set([
   'remote-command',
   'remote-cli-agent',
@@ -37,6 +38,25 @@ const REMOTE_BUILD_TOOL_ALLOWLIST = new Set([
   'code-sandbox',
   'tool-doc-read',
 ]);
+
+function previewTraceText(value = '', limit = TRACE_OUTPUT_PREVIEW_CHARS) {
+  const text = String(value || '').trim();
+  const safeLimit = Math.max(1, Number(limit) || TRACE_OUTPUT_PREVIEW_CHARS);
+  if (!text || text.length <= safeLimit) {
+    return text;
+  }
+
+  const marker = `\n[omitted ${text.length - safeLimit} middle chars]\n`;
+  const available = Math.max(1, safeLimit - marker.length);
+  const headLength = Math.max(1, Math.floor(available * 0.68));
+  const tailLength = Math.max(1, available - headLength);
+  const omitted = Math.max(0, text.length - headLength - tailLength);
+  return [
+    text.slice(0, headLength).trimEnd(),
+    `\n[omitted ${omitted} middle chars]\n`,
+    text.slice(-tailLength).trimStart(),
+  ].join('');
+}
 
 function createNoopVectorStore() {
   return {
@@ -1380,7 +1400,8 @@ class AgentOrchestrator {
           type: 'model_call',
           status: 'completed',
           description: `${metadata.taskType || task.type} runtime response`,
-          outputPreview: String(output || '').slice(0, 200),
+          outputPreview: previewTraceText(output),
+          outputChars: String(output || '').length,
         },
       ],
     };

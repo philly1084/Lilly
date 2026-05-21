@@ -56,6 +56,18 @@ const { extractArtifactsFromToolEvents } = require('./runtime-artifacts');
 const { RELATIONSHIP_CALCULATION_TOOL_ID } = require('./pii');
 const DOCUMENT_WORKFLOW_TOOL_ID = 'document-workflow';
 const DEEP_RESEARCH_PRESENTATION_TOOL_ID = 'deep-research-presentation';
+const MODEL_TOOL_RESULT_CHAR_LIMIT = Math.max(
+    12000,
+    Number(config.memory?.toolResultCharLimit) || 120000,
+);
+const DIRECT_REMOTE_STDOUT_CHARS = Math.max(
+    12000,
+    Math.min(MODEL_TOOL_RESULT_CHAR_LIMIT, parseInt(process.env.DIRECT_REMOTE_STDOUT_CHARS, 10) || 24000),
+);
+const DIRECT_REMOTE_STDERR_CHARS = Math.max(
+    6000,
+    Math.min(MODEL_TOOL_RESULT_CHAR_LIMIT, parseInt(process.env.DIRECT_REMOTE_STDERR_CHARS, 10) || 12000),
+);
 
 let chatClient = null;
 
@@ -4185,13 +4197,32 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
     return guidance.join('\n');
 }
 
-function trimString(value, maxLength = 12000) {
-    if (typeof value !== 'string' || value.length <= maxLength) {
+function trimString(value, maxLength = MODEL_TOOL_RESULT_CHAR_LIMIT) {
+    if (typeof value !== 'string') {
         return value;
     }
 
-    const hiddenCharacters = value.length - maxLength;
-    return `${value.slice(0, maxLength)}\n...[truncated ${hiddenCharacters} chars]`;
+    const safeLimit = Math.max(1, Number(maxLength) || MODEL_TOOL_RESULT_CHAR_LIMIT);
+    if (value.length <= safeLimit) {
+        return value;
+    }
+
+    if (safeLimit < 1000) {
+        return `${value.slice(0, safeLimit).trimEnd()}\n...[omitted ${value.length - safeLimit} chars]`;
+    }
+
+    const marker = `\n...[omitted middle output]...\n`;
+    const available = Math.max(1, safeLimit - marker.length);
+    const headLength = Math.max(1, Math.floor(available * 0.68));
+    const tailLength = Math.max(1, available - headLength);
+    const omitted = Math.max(0, value.length - headLength - tailLength);
+    const adjustedMarker = `\n...[omitted ${omitted} middle chars]...\n`;
+
+    return [
+        value.slice(0, headLength).trimEnd(),
+        adjustedMarker,
+        value.slice(-tailLength).trimStart(),
+    ].join('');
 }
 
 function sanitizeToolResultPayload(value, depth = 0) {
@@ -4207,17 +4238,27 @@ function sanitizeToolResultPayload(value, depth = 0) {
         return value;
     }
 
-    if (depth >= 4) {
-        return '[truncated]';
+    if (depth >= 6) {
+        return '[omitted nested data]';
     }
 
     if (Array.isArray(value)) {
-        return value.slice(0, 25).map((entry) => sanitizeToolResultPayload(entry, depth + 1));
+        const limit = 60;
+        const entries = value.slice(0, limit).map((entry) => sanitizeToolResultPayload(entry, depth + 1));
+        if (value.length > limit) {
+            entries.push(`[omitted ${value.length - limit} additional items]`);
+        }
+        return entries;
     }
 
     const output = {};
-    for (const [key, entry] of Object.entries(value).slice(0, 50)) {
+    const entries = Object.entries(value);
+    const limit = 100;
+    for (const [key, entry] of entries.slice(0, limit)) {
         output[key] = sanitizeToolResultPayload(entry, depth + 1);
+    }
+    if (entries.length > limit) {
+        output.__omittedKeys = entries.length - limit;
     }
 
     return output;
@@ -4888,8 +4929,8 @@ function formatDirectToolResultMessage(toolEvent = {}) {
             return `SSH request failed: ${result.error || 'Unknown SSH error'}`;
         }
 
-        const stdout = trimString(String(result?.data?.stdout || '').trim(), 8000);
-        const stderr = trimString(String(result?.data?.stderr || '').trim(), 4000);
+        const stdout = trimString(String(result?.data?.stdout || '').trim(), DIRECT_REMOTE_STDOUT_CHARS);
+        const stderr = trimString(String(result?.data?.stderr || '').trim(), DIRECT_REMOTE_STDERR_CHARS);
         const host = result?.data?.host || 'remote host';
         const sections = [
             `SSH command completed on ${host}.`,

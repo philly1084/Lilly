@@ -13,6 +13,50 @@ const { normalizeUsageMetadata } = require('../../utils/token-usage');
 const { formatImageDiagnosticsSummary } = require('../../image-generation-diagnostics');
 const { buildSystemHealthReport } = require('../../observability/health-report');
 
+const TRACE_DATA_PREVIEW_CHARS = Math.max(1000, parseInt(process.env.TRACE_DATA_PREVIEW_CHARS, 10) || 4000);
+const TRACE_OUTPUT_PREVIEW_CHARS = Math.max(400, parseInt(process.env.TRACE_OUTPUT_PREVIEW_CHARS, 10) || 1200);
+
+function previewText(value = '', limit = TRACE_OUTPUT_PREVIEW_CHARS) {
+  const text = String(value || '').trim();
+  const safeLimit = Math.max(1, Number(limit) || TRACE_OUTPUT_PREVIEW_CHARS);
+  if (!text || text.length <= safeLimit) {
+    return text;
+  }
+
+  const marker = `\n[omitted ${text.length - safeLimit} middle chars]\n`;
+  const available = Math.max(1, safeLimit - marker.length);
+  const headLength = Math.max(1, Math.floor(available * 0.68));
+  const tailLength = Math.max(1, available - headLength);
+  const omitted = Math.max(0, text.length - headLength - tailLength);
+  return [
+    text.slice(0, headLength).trimEnd(),
+    `\n[omitted ${omitted} middle chars]\n`,
+    text.slice(-tailLength).trimStart(),
+  ].join('');
+}
+
+function extractToolDataPreview(data = null) {
+  if (typeof data === 'string') {
+    return previewText(data, TRACE_DATA_PREVIEW_CHARS);
+  }
+
+  if (!data || typeof data !== 'object') {
+    return '';
+  }
+
+  const direct = [
+    data.finalOutput,
+    data.stdout,
+    data.stderr,
+    data.body,
+    data.text,
+    data.content,
+    data.summary,
+  ].find((entry) => typeof entry === 'string' && entry.trim());
+
+  return direct ? previewText(direct, TRACE_DATA_PREVIEW_CHARS) : '';
+}
+
 class DashboardController {
   constructor(agentOrchestrator) {
     this.orchestrator = agentOrchestrator;
@@ -137,9 +181,7 @@ class DashboardController {
       error: event?.result?.error || event?.error || null,
       diagnostics: event?.result?.diagnostics || event?.diagnostics || null,
       paramKeys: Object.keys(rawArgs).sort(),
-      dataPreview: typeof event?.result?.data === 'string'
-        ? String(event.result.data).slice(0, 160)
-        : '',
+      dataPreview: extractToolDataPreview(event?.result?.data),
     };
   }
 
@@ -247,7 +289,8 @@ class DashboardController {
             status: 'completed',
             details: {
               responseId,
-              outputPreview: String(output || '').slice(0, 200),
+              outputPreview: previewText(output, TRACE_OUTPUT_PREVIEW_CHARS),
+              outputChars: String(output || '').length,
               diagnostics,
               diagnosticSummary,
             },
