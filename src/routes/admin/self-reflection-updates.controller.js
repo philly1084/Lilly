@@ -9,6 +9,13 @@ const { sessionStore: defaultSessionStore } = require('../../session-store');
 const DEFAULT_SUGGESTION_LIMIT = 10;
 const DEFAULT_SESSION_SCAN_LIMIT = 100;
 const APPLIED_SUGGESTION_MARKER = 'suggestion:';
+const DURABLE_EVALUATOR_LESSON_PATTERNS = [
+  /\bdurable\s+(?:lesson|learning|improvement|memory|note|guidance)\b/i,
+  /\breusable\s+(?:lesson|guidance|pattern|rule|skill|routing)\b/i,
+  /\bfor\s+similar\s+future\b/i,
+  /\bfuture\s+(?:routing|requests|turns|workflows|evaluations|sessions)\b/i,
+  /\bmodel[-\s]?card\s+(?:note|finding|lesson|evidence)\b/i,
+];
 
 function parseLimit(value, fallback = DEFAULT_SUGGESTION_LIMIT, max = 100) {
   const parsed = Number(value);
@@ -42,6 +49,59 @@ function normalizeSuggestionInput(input = {}, entry = {}) {
     dryRun: true,
     apply: false,
     actions: Array.isArray(source.actions) ? source.actions : [],
+  };
+}
+
+function hasDurableEvaluatorLesson(value = '') {
+  const source = String(value || '');
+  return DURABLE_EVALUATOR_LESSON_PATTERNS.some((pattern) => pattern.test(source));
+}
+
+function firstNonEmpty(values = []) {
+  return values.map((value) => normalizeInline(value || '', 700)).find(Boolean) || '';
+}
+
+function buildEvaluatorLessonSuggestion(entry = {}) {
+  const evaluation = entry?.evaluation || {};
+  const lesson = firstNonEmpty([
+    evaluation.toolLesson,
+    evaluation.lesson,
+    ...(Array.isArray(evaluation.decisionGuidance) ? evaluation.decisionGuidance : []),
+    ...(Array.isArray(evaluation.recommendedChanges) ? evaluation.recommendedChanges : []),
+  ]);
+  const cueText = [
+    lesson,
+    evaluation.summary,
+    evaluation.routeDecision,
+    ...(Array.isArray(evaluation.failureCategories) ? evaluation.failureCategories : []),
+    ...(Array.isArray(evaluation.toolMisuseCategories) ? evaluation.toolMisuseCategories : []),
+  ].join(' ');
+
+  if (!lesson || !hasDurableEvaluatorLesson(cueText)) {
+    return null;
+  }
+
+  const content = hasDurableEvaluatorLesson(lesson)
+    ? lesson
+    : `Durable lesson: ${lesson}`;
+
+  return {
+    toolId: SELF_REFLECTION_UPDATE_TOOL_ID,
+    status: 'suggested',
+    appliesAutomatically: false,
+    generatedFromEvaluation: true,
+    input: {
+      source: 'alignment-evaluator',
+      trigger: 'model-card finding from alignment evaluator durable lesson',
+      reflection: normalizeInline(evaluation.summary || lesson, 700),
+      dryRun: true,
+      apply: false,
+      actions: [{
+        type: 'model_card_note',
+        content: normalizeInline(content, 900),
+        reason: 'Durable evaluator lesson can be recorded as model-card evidence.',
+      }],
+    },
   };
 }
 
@@ -98,9 +158,15 @@ function collectSuggestionsFromSession(session = {}, appliedIds = new Set()) {
   });
 
   return entries.flatMap((entry = {}) => {
-    const suggestions = Array.isArray(entry?.evaluation?.selfReflectionUpdateSuggestions)
+    const explicitSuggestions = Array.isArray(entry?.evaluation?.selfReflectionUpdateSuggestions)
       ? entry.evaluation.selfReflectionUpdateSuggestions
       : [];
+    const generatedSuggestion = explicitSuggestions.length === 0
+      ? buildEvaluatorLessonSuggestion(entry)
+      : null;
+    const suggestions = generatedSuggestion
+      ? [generatedSuggestion]
+      : explicitSuggestions;
 
     return suggestions
       .filter((suggestion) => {

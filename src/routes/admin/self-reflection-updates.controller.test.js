@@ -101,6 +101,68 @@ describe('self-reflection updates admin controller', () => {
     }));
   });
 
+  test('generates model-card suggestions from durable evaluator lessons', async () => {
+    const res = {
+      json: jest.fn(),
+    };
+    const req = {
+      query: { limit: '5' },
+      app: {
+        locals: {
+          sessionStore: {
+            list: jest.fn().mockResolvedValue([
+              {
+                id: 'session-b',
+                updatedAt: '2026-05-20T12:30:00.000Z',
+                metadata: {
+                  alignmentFeedbackHistory: [
+                    {
+                      feedbackId: 'feedback-b',
+                      evaluationId: 'feedback-b',
+                      messageId: 'message-b',
+                      rating: 'down',
+                      status: 'completed',
+                      reason: 'The answer skipped verification.',
+                      updatedAt: '2026-05-20T12:30:00.000Z',
+                      evaluation: {
+                        summary: 'The feedback identifies a reusable route verification lesson.',
+                        lesson: 'For similar future frontend requests, verify the served UI before finalizing.',
+                        selfReflectionUpdateSuggestions: [],
+                      },
+                    },
+                  ],
+                },
+              },
+            ]),
+          },
+        },
+      },
+    };
+
+    await controller.listSuggestions(req, res, jest.fn());
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        suggestions: [
+          expect.objectContaining({
+            id: expect.stringMatching(/^srs-/),
+            status: 'suggested',
+            canApply: true,
+            input: expect.objectContaining({
+              actions: [
+                expect.objectContaining({
+                  type: 'model_card_note',
+                  content: expect.stringContaining('For similar future frontend requests'),
+                }),
+              ],
+            }),
+          }),
+        ],
+      }),
+    }));
+  });
+
   test('applies an approved evaluator suggestion and marks it applied in the audit view', async () => {
     const session = buildSessionWithSuggestion();
     const req = {
