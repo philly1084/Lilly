@@ -4,6 +4,7 @@ const {
     PROJECT_ROOT,
     resolvePreferredWritableFile,
 } = require('./runtime-state-paths');
+const { truncateToCharacterLimit } = require('./bounded-content');
 
 const REPO_USER_PROFILE_FILE = path.join(PROJECT_ROOT, 'user.md');
 const USER_PROFILE_CHAR_LIMIT = 3700;
@@ -71,13 +72,16 @@ function readUserProfileFile() {
             return cachedUserProfile.data;
         }
 
-        const content = fs.readFileSync(absoluteFilePath, 'utf8');
+        const rawContent = fs.readFileSync(absoluteFilePath, 'utf8');
+        const bounded = truncateToCharacterLimit(rawContent, USER_PROFILE_CHAR_LIMIT, 'user.md');
         const data = {
-            content,
+            content: bounded.content,
             absoluteFilePath,
             filePath: toDisplayPath(absoluteFilePath),
             updatedAt: stat.mtime.toISOString(),
-            source: 'file',
+            source: bounded.truncated ? 'file-truncated' : 'file',
+            limitExceeded: bounded.truncated,
+            originalCharacterCount: bounded.originalCharacterCount,
         };
 
         cachedUserProfile = {
@@ -98,6 +102,8 @@ function readUserProfileFile() {
             filePath: toDisplayPath(absoluteFilePath),
             updatedAt: null,
             source: 'default',
+            limitExceeded: false,
+            originalCharacterCount: DEFAULT_USER_PROFILE_MARKDOWN.length,
         };
     }
 }
@@ -116,6 +122,8 @@ function getEffectiveUserProfileConfig(settings = {}) {
         absoluteFilePath: fileState.absoluteFilePath,
         updatedAt: fileState.updatedAt,
         source: fileState.source,
+        limitExceeded: fileState.limitExceeded === true,
+        originalCharacterCount: fileState.originalCharacterCount || content.length,
         characterLimit: USER_PROFILE_CHAR_LIMIT,
         characterCount: content.length,
     };

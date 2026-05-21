@@ -4,6 +4,7 @@ const {
     PROJECT_ROOT,
     resolvePreferredWritableFile,
 } = require('./runtime-state-paths');
+const { truncateToCharacterLimit } = require('./bounded-content');
 
 const REPO_AGENT_NOTES_FILE = path.join(PROJECT_ROOT, 'agent-notes.md');
 const AGENT_NOTES_CHAR_LIMIT = 4000;
@@ -84,13 +85,16 @@ function readAgentNotesFile() {
             return cachedAgentNotes.data;
         }
 
-        const content = fs.readFileSync(absoluteFilePath, 'utf8');
+        const rawContent = fs.readFileSync(absoluteFilePath, 'utf8');
+        const bounded = truncateToCharacterLimit(rawContent, AGENT_NOTES_CHAR_LIMIT, 'agent-notes.md');
         const data = {
-            content,
+            content: bounded.content,
             absoluteFilePath,
             filePath: toDisplayPath(absoluteFilePath),
             updatedAt: stat.mtime.toISOString(),
-            source: 'file',
+            source: bounded.truncated ? 'file-truncated' : 'file',
+            limitExceeded: bounded.truncated,
+            originalCharacterCount: bounded.originalCharacterCount,
         };
 
         cachedAgentNotes = {
@@ -111,6 +115,8 @@ function readAgentNotesFile() {
             filePath: toDisplayPath(absoluteFilePath),
             updatedAt: null,
             source: 'default',
+            limitExceeded: false,
+            originalCharacterCount: DEFAULT_AGENT_NOTES_MARKDOWN.length,
         };
     }
 }
@@ -129,6 +135,8 @@ function getEffectiveAgentNotesConfig(settings = {}) {
         absoluteFilePath: fileState.absoluteFilePath,
         updatedAt: fileState.updatedAt,
         source: fileState.source,
+        limitExceeded: fileState.limitExceeded === true,
+        originalCharacterCount: fileState.originalCharacterCount || content.length,
         characterLimit: AGENT_NOTES_CHAR_LIMIT,
         characterCount: content.length,
     };

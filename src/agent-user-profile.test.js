@@ -45,6 +45,18 @@ describe('agent user profile', () => {
     }).toThrow('user.md cannot exceed 3700 characters');
   });
 
+  test('clamps an existing oversized user profile at runtime', () => {
+    fs.writeFileSync(userPath, `# User\n${'x'.repeat(userProfile.USER_PROFILE_CHAR_LIMIT + 200)}`, 'utf8');
+
+    const effective = userProfile.getEffectiveUserProfileConfig();
+
+    expect(effective.source).toBe('file-truncated');
+    expect(effective.limitExceeded).toBe(true);
+    expect(effective.originalCharacterCount).toBeGreaterThan(userProfile.USER_PROFILE_CHAR_LIMIT);
+    expect(effective.characterCount).toBeLessThanOrEqual(userProfile.USER_PROFILE_CHAR_LIMIT);
+    expect(effective.content).toContain('user.md exceeded 3700 characters');
+  });
+
   test('builds runtime instructions from user.md', () => {
     userProfile.writeUserProfileFile('# User\n- Phil likes concise evidence.');
 

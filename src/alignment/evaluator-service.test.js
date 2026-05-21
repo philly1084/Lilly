@@ -153,6 +153,53 @@ describe('alignment evaluator service', () => {
         }]);
     });
 
+    test('allows evaluator suggestions to clean durable carryover notes', async () => {
+        createResponse.mockResolvedValue({
+            model: 'gpt-evaluator',
+            output_text: JSON.stringify({
+                decision: 'needs_review',
+                requestType: 'conversation',
+                confidence: 0.78,
+                summary: 'The feedback asks for carryover notes to preserve durable lessons.',
+                lesson: 'Durable lesson: future agents should clear stale notes and keep useful preferences.',
+                selfReflectionUpdateSuggestions: {
+                    trigger: 'durable carryover notes cleanup requested',
+                    reflection: 'Durable lesson: for future sessions, keep carryover notes compact and useful.',
+                    actions: [{
+                        type: 'agent_notes_replace',
+                        content: '# Carryover Notes\n\n## Phil\n- Durable lesson: prefers live-route proof before reassurance in future server work.\n',
+                        reason: 'carryover notes durable lesson cleanup',
+                    }],
+                },
+            }),
+        });
+
+        const result = await evaluateAlignment({
+            feedbackId: 'align-reflect-notes',
+            rating: 'down',
+            userText: 'Have the agent clear and add what is important to them.',
+            assistantText: 'I will remember everything.',
+        });
+
+        expect(result.evaluation.selfReflectionUpdateSuggestions).toEqual([{
+            toolId: 'self-reflection-update',
+            status: 'suggested',
+            appliesAutomatically: false,
+            input: {
+                source: 'alignment-evaluator',
+                trigger: 'durable carryover notes cleanup requested',
+                reflection: 'Durable lesson: for future sessions, keep carryover notes compact and useful.',
+                dryRun: true,
+                apply: false,
+                actions: [{
+                    type: 'agent_notes_replace',
+                    content: '# Carryover Notes\n\n## Phil\n- Durable lesson: prefers live-route proof before reassurance in future server work.\n',
+                    reason: 'carryover notes durable lesson cleanup',
+                }],
+            },
+        }]);
+    });
+
     test('filters self-reflection suggestions without durable cues or safe content', async () => {
         createResponse.mockResolvedValue({
             model: 'gpt-evaluator',

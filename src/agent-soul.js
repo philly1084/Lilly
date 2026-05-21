@@ -4,6 +4,7 @@ const {
     PROJECT_ROOT,
     resolvePreferredWritableFile,
 } = require('./runtime-state-paths');
+const { truncateToCharacterLimit } = require('./bounded-content');
 
 const REPO_SOUL_FILE = path.join(PROJECT_ROOT, 'soul.md');
 const SOUL_CHAR_LIMIT = 3700;
@@ -83,13 +84,16 @@ function readSoulFile() {
             return cachedSoul.data;
         }
 
-        const content = fs.readFileSync(absoluteFilePath, 'utf8');
+        const rawContent = fs.readFileSync(absoluteFilePath, 'utf8');
+        const bounded = truncateToCharacterLimit(rawContent, SOUL_CHAR_LIMIT, 'soul.md');
         const data = {
-            content,
+            content: bounded.content,
             absoluteFilePath,
             filePath: toDisplayPath(absoluteFilePath),
             updatedAt: stat.mtime.toISOString(),
-            source: 'file',
+            source: bounded.truncated ? 'file-truncated' : 'file',
+            limitExceeded: bounded.truncated,
+            originalCharacterCount: bounded.originalCharacterCount,
         };
 
         cachedSoul = {
@@ -110,6 +114,8 @@ function readSoulFile() {
             filePath: toDisplayPath(absoluteFilePath),
             updatedAt: null,
             source: 'default',
+            limitExceeded: false,
+            originalCharacterCount: DEFAULT_SOUL_MARKDOWN.length,
         };
     }
 }
@@ -127,6 +133,8 @@ function getEffectiveSoulConfig(settings = {}) {
         absoluteFilePath: fileState.absoluteFilePath,
         updatedAt: fileState.updatedAt,
         source: fileState.source,
+        limitExceeded: fileState.limitExceeded === true,
+        originalCharacterCount: fileState.originalCharacterCount || String(fileState.content || '').length,
         characterLimit: SOUL_CHAR_LIMIT,
         characterCount: String(fileState.content || '').length,
     };

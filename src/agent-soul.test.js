@@ -44,4 +44,16 @@ describe('agent soul', () => {
       agentSoul.writeSoulFile(`A${'x'.repeat(agentSoul.SOUL_CHAR_LIMIT)}`);
     }).toThrow('soul.md cannot exceed 3700 characters');
   });
+
+  test('clamps an existing oversized soul file at runtime', () => {
+    fs.writeFileSync(soulPath, `# Soul\n${'x'.repeat(agentSoul.SOUL_CHAR_LIMIT + 200)}`, 'utf8');
+
+    const effective = agentSoul.getEffectiveSoulConfig();
+
+    expect(effective.source).toBe('file-truncated');
+    expect(effective.limitExceeded).toBe(true);
+    expect(effective.originalCharacterCount).toBeGreaterThan(agentSoul.SOUL_CHAR_LIMIT);
+    expect(effective.characterCount).toBeLessThanOrEqual(agentSoul.SOUL_CHAR_LIMIT);
+    expect(effective.content).toContain('soul.md exceeded 3700 characters');
+  });
 });

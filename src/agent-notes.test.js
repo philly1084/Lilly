@@ -38,6 +38,18 @@ describe('agent notes helpers', () => {
     }).toThrow(`agent-notes.md cannot exceed ${agentNotes.AGENT_NOTES_CHAR_LIMIT} characters`);
   });
 
+  test('clamps an existing oversized notes file at runtime', () => {
+    fs.writeFileSync(notesPath, `# Carryover Notes\n${'x'.repeat(agentNotes.AGENT_NOTES_CHAR_LIMIT + 200)}`, 'utf8');
+
+    const effective = agentNotes.getEffectiveAgentNotesConfig();
+
+    expect(effective.source).toBe('file-truncated');
+    expect(effective.limitExceeded).toBe(true);
+    expect(effective.originalCharacterCount).toBeGreaterThan(agentNotes.AGENT_NOTES_CHAR_LIMIT);
+    expect(effective.characterCount).toBeLessThanOrEqual(agentNotes.AGENT_NOTES_CHAR_LIMIT);
+    expect(effective.content).toContain(`agent-notes.md exceeded ${agentNotes.AGENT_NOTES_CHAR_LIMIT} characters`);
+  });
+
   test('builds carryover instructions that include the file path and current notes', () => {
     agentNotes.writeAgentNotesFile('# Carryover Notes\n- Remember the roadmap naming.\n');
 
