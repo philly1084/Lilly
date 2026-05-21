@@ -12195,6 +12195,7 @@ class ConversationOrchestrator extends EventEmitter {
             'Every `user-checkpoint` step must include either a non-empty `params.question` with concise choice `params.options`, or a short `params.steps` questionnaire.',
             'Use `user-checkpoint` when one high-impact user decision would materially change the plan, implementation scope, architecture, or final output before major work.',
             'Do not use `user-checkpoint` for routine autonomous build steps such as inspecting files, reading logs, applying edits, running tests, redeploying, restarting, or verifying output.',
+            'For `user-checkpoint` choice steps, every option must be an answerable user decision. Never convert remote-cli status rows, deployment proof, file paths, git status, verification results, progress summaries, or completed-work bullets into choice options.',
             'For implementation, remote-build, deployment, and debugging work, proceed with the next obvious tool step unless the next step is a design/product/architecture choice, requires missing secrets, is destructive, or follows repeated hard failures without a recovery path.',
             'Use `user-checkpoint` only when the active runtime exposes it and one concise decision or direction check would help.',
             'Prefer one short checkpoint over stopping for a long plain-text intake.',
@@ -13076,6 +13077,7 @@ class ConversationOrchestrator extends EventEmitter {
             parts.push('On web-chat, `user-checkpoint` renders as an inline popup-style survey card with clickable choices, so prefer it over a plain-text multiple-choice question.');
             parts.push('Keep checkpoint surveys concise: one card with one visible step at a time. Prefer 1 question by default, or a short 2 to 4 step questionnaire when the user explicitly wants structured intake.');
             parts.push('Supported step types are choice, multi-choice, text, date, time, and datetime. For choice steps, use 2 to 4 strong options and leave the free-text field available when helpful.');
+            parts.push('Every choice option must be an answerable user decision, not a remote-cli status row, deployment proof item, file path, git status line, verification result, progress summary, or completed-work bullet.');
             parts.push('Do not turn checkpoints into long questionnaires, pages of questions, or more than 6 steps.');
             parts.push('When the latest user turn starts with `Survey response (`, treat that as a resolved checkpoint answer and continue the work instead of asking another survey.');
             parts.push('For research, web-search, web-fetch, or web-scrape work, avoid long scrape surveys and example-heavy intake. If clarification is truly needed, use one short choice hotlist with 2 to 4 concrete options, then continue after the answer.');

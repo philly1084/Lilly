@@ -4800,7 +4800,7 @@ class ToolManager {
         id: USER_CHECKPOINT_TOOL_ID,
         name: 'User Checkpoint',
         category: 'system',
-        description: 'Primary quick user-involvement path for web chat: use a lightweight checkpoint card for a high-impact decision or a short structured questionnaire before or during major work. Keep it to one checkpoint card with one visible step at a time. Supports choice, multi-choice, text, date, time, and datetime prompts. Use this instead of `request_user_input`.',
+        description: 'Primary quick user-involvement path for web chat: use a lightweight checkpoint card for a high-impact decision or a short structured questionnaire before or during major work. Keep it to one checkpoint card with one visible step at a time. Choice options must be answerable user decisions, not remote status rows, deployment proof, file paths, git status, verification results, or progress summaries. Supports choice, multi-choice, text, date, time, and datetime prompts. Use this instead of `request_user_input`.',
         backend: {
           handler: async (params = {}, context = {}) => {
             const policy = context?.userCheckpointPolicy || {};

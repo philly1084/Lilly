@@ -294,4 +294,33 @@ describe('user checkpoint helpers', () => {
             ],
         }));
     });
+
+    test('rejects remote status summaries masquerading as checkpoint choices', () => {
+        expect(() => normalizeCheckpointRequest({
+            title: 'Choose a direction',
+            question: 'What should I do next?',
+            options: [
+                {
+                    id: 'deployment',
+                    label: 'Deployment',
+                    description: 'web/tetris-site is present and currently 1/1',
+                },
+                {
+                    id: 'ingress',
+                    label: 'Ingress',
+                    description: 'awesome.demoserver2.buzz points to tetris-site on ports 80, 443',
+                },
+                {
+                    id: 'source-file',
+                    label: 'Source file',
+                    description: '/opt/agent-apps/tetris-game/site/index.html',
+                },
+                {
+                    id: 'git-status',
+                    label: 'Git status already has site/index.html modified from earlier work',
+                    description: 'patch site/index.html, refresh the ConfigMap, restart deployment/tetris-site, and verify the public page visually.',
+                },
+            ],
+        })).toThrow(/answerable decisions/);
+    });
 });

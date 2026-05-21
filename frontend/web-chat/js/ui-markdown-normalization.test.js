@@ -323,6 +323,28 @@ Live result:
         });
     });
 
+    test('does not infer a survey card from remote-cli status/proof rows', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const content = `Current remote-cli-agent state:
+
+1. Namespace
+web namespace exists.
+2. Deployment
+web/tetris-site is present and currently 1/1.
+3. Ingress
+awesome.demoserver2.buzz points to tetris-site on ports 80, 443.
+4. Source file
+/opt/agent-apps/tetris-game/site/index.html
+5. Git status already has site/index.html modified from earlier work, plus multiple backup HTML files
+Next recovery path is straightforward: patch site/index.html, refresh the ConfigMap, restart deployment/tetris-site, and verify the public page visually.`;
+
+        expect(helper.extractSurveyDefinitionFromContent(content, 'remote-cli-status')).toBeNull();
+        expect(helper.buildSurveyRenderPlan(content, { id: 'remote-cli-status' })).toEqual({
+            markdown: content,
+            surveys: [],
+        });
+    });
+
     test('renders survey choices as keyboard-selectable list options without inline click handlers', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         helper.expandedReasoningMessageIds = new Set();

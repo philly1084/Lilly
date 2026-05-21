@@ -138,6 +138,50 @@ function normalizeCheckpointOptions(options = []) {
         .slice(0, 4);
 }
 
+function normalizeCheckpointValidationText(value = '') {
+    return trimText(value)
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function isLikelyStatusCheckpointOption(option = {}) {
+    const label = normalizeCheckpointValidationText(option?.label || '');
+    const description = normalizeCheckpointValidationText(option?.description || '');
+    const combined = [label, description].filter(Boolean).join(' ');
+
+    if (!combined) {
+        return false;
+    }
+
+    if (/^(namespace|deployment|ingress|source file|git status|workspace|git repo|git commit|public host|public url|verify commands|verify results|what changed|blocker|status|verification|live result|current state)$/.test(label)) {
+        return true;
+    }
+
+    return /\b(?:what_changed|verify_commands|verify_results|public_url|remote_cli_session_id|git_commit|deployment|blocker)=/.test(combined)
+        || /\b(?:deployment|pod|pods|service|ingress|namespace|configmap)\b[\s\S]{0,80}\b(?:present|ready|running|currently|available|1\/1|2\/2)\b/.test(combined)
+        || /\bpoints to\b[\s\S]{0,80}\bports?\b/.test(combined)
+        || /\bsource file\b|\b\/(?:opt|srv|app|var|etc)\//.test(combined)
+        || /\bgit status\b|\bmodified from earlier work\b|\bbackup html files?\b/.test(combined)
+        || /\b(?:verified|deployed|restarted|rolled out|rollout|kubectl|configmap)\b[\s\S]{0,100}\b(?:public|deployment|ingress|pod|service|namespace|route|tls|https)\b/.test(combined);
+}
+
+function assertCheckpointStepIsDecisionLike(step = {}) {
+    const inputType = trimText(step.inputType || '');
+    if (!['choice', 'multi-choice'].includes(inputType)) {
+        return;
+    }
+
+    const options = Array.isArray(step.options) ? step.options : [];
+    if (options.length < 2) {
+        return;
+    }
+
+    const statusOptionCount = options.filter((option) => isLikelyStatusCheckpointOption(option)).length;
+    if (statusOptionCount >= 2 || statusOptionCount === options.length) {
+        throw new Error('user-checkpoint choice options must be answerable decisions, not remote status, deployment proof, or progress-summary rows.');
+    }
+}
+
 function normalizeCheckpointStep(step = {}, index = 0) {
     if (!step || typeof step !== 'object') {
         return null;
@@ -167,7 +211,7 @@ function normalizeCheckpointStep(step = {}, index = 0) {
         ? trimText(step.freeTextLabel || step.freeTextPrompt || DEFAULT_USER_CHECKPOINT_FREE_TEXT_LABEL) || DEFAULT_USER_CHECKPOINT_FREE_TEXT_LABEL
         : '';
 
-    return {
+    const normalizedStep = {
         id: trimText(step.id || `step-${index + 1}`),
         ...(title ? { title } : {}),
         question,
@@ -186,6 +230,9 @@ function normalizeCheckpointStep(step = {}, index = 0) {
             }
             : {}),
     };
+
+    assertCheckpointStepIsDecisionLike(normalizedStep);
+    return normalizedStep;
 }
 
 function normalizeCheckpointSteps(value = {}) {
@@ -466,7 +513,9 @@ function buildUserCheckpointInstructions(policy = {}) {
             : 'If you truly need that decision, call the `user-checkpoint` tool instead of asking in free-form prose.',
         'Do not call or mention `request_user_input` in this runtime. Use `user-checkpoint` for web-chat questionnaires.',
         'On web-chat, use `user-checkpoint` only when one concise choice or direction check is the best way to avoid a wrong or unsafe path.',
+        'On web-chat, treat `user-checkpoint` as the primary quick way to involve the user when one concise choice or direction check would help.',
         'On the web-chat surface, do not ask a blocking multiple-choice question as plain assistant text when `user-checkpoint` is available; use the tool so the UI can render inline options.',
+        'Prefer `user-checkpoint` over a prose "which option do you want?" message when a real checkpoint is needed.',
         'Do not mention checkpoint quotas, budgets, remaining counts, or internal runtime policy to the user.',
         'Do not claim that the questionnaire rendered, popped up, was dismissed, or was answered unless the transcript explicitly shows the user response.',
         'If the user explicitly asks to test the questionnaire or survey tool, use exactly one `user-checkpoint` question. Do not turn that into a multi-question quiz, personality test, or numbered prose form.',
@@ -478,6 +527,7 @@ function buildUserCheckpointInstructions(policy = {}) {
         'Do not use a checkpoint for small clarifications or details you can infer reasonably.',
         'Keep the checkpoint concise: one card with one visible step at a time. Prefer 1 question by default, or a short 2 to 4 step questionnaire when the user explicitly wants structured intake or back-and-forth.',
         'Supported step types are single-choice, multi-choice, text, date, time, and datetime. For choice steps, use 2 to 4 strong options and keep the optional free-text path available when helpful.',
+        'For choice checkpoints, every option must be an answer the user can choose. Do not use remote status rows, deployment proof, file paths, git status, verification results, progress summaries, or completed-work bullets as options.',
         `Do not turn checkpoints into long forms or sprawling questionnaires. Keep them to at most ${MAX_USER_CHECKPOINT_STEPS} steps unless the product adds a richer form surface.`,
         'If there are no checkpoint questions remaining, do not output a prose questionnaire, numbered list of questions, or pseudo-survey.',
         'If more user input is truly required after no checkpoint cards remain, do not say the quota or budget is exhausted; ask at most one concise plain-text question or proceed with the best reasonable assumption and state that assumption briefly.',
@@ -513,4 +563,5 @@ module.exports = {
     normalizeCheckpointRequest,
     normalizePendingCheckpoint,
     parseUserCheckpointResponseMessage,
+    isLikelyStatusCheckpointOption,
 };

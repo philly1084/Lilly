@@ -2012,6 +2012,26 @@ class UIHelpers {
         }, index);
     }
 
+    isPlainSurveyStatusOption(option = {}) {
+        const label = this.cleanPlainSurveyText(option?.label || '').replace(/\s+/g, ' ').toLowerCase();
+        const description = this.cleanPlainSurveyText(option?.description || '').replace(/\s+/g, ' ').toLowerCase();
+        const combined = [label, description].filter(Boolean).join(' ');
+        if (!combined) {
+            return false;
+        }
+
+        if (/^(namespace|deployment|ingress|source file|git status|workspace|git repo|git commit|public host|public url|verify commands|verify results|what changed|blocker|status|verification|live result|current state)$/.test(label)) {
+            return true;
+        }
+
+        return /\b(?:what_changed|verify_commands|verify_results|public_url|remote_cli_session_id|git_commit|deployment|blocker)=/.test(combined)
+            || /\b(?:deployment|pod|pods|service|ingress|namespace|configmap)\b[\s\S]{0,80}\b(?:present|ready|running|currently|available|1\/1|2\/2)\b/.test(combined)
+            || /\bpoints to\b[\s\S]{0,80}\bports?\b/.test(combined)
+            || /\bsource file\b|\b\/(?:opt|srv|app|var|etc)\//.test(combined)
+            || /\bgit status\b|\bmodified from earlier work\b|\bbackup html files?\b/.test(combined)
+            || /\b(?:verified|deployed|restarted|rolled out|rollout|kubectl|configmap)\b[\s\S]{0,100}\b(?:public|deployment|ingress|pod|service|namespace|route|tls|https)\b/.test(combined);
+    }
+
     extractPlainSurveyDefinition(content = '', fallbackId = '') {
         const source = this.normalizePlainSurveySource(content);
         if (!source || /```(?:survey|kb-survey)/i.test(source)) {
@@ -2044,6 +2064,11 @@ class UIHelpers {
         }
 
         if (bestRun.length < 2 || bestRun.length > 5) {
+            return null;
+        }
+
+        const statusOptionCount = bestRun.filter((entry) => this.isPlainSurveyStatusOption(entry.option)).length;
+        if (statusOptionCount >= 2 || statusOptionCount === bestRun.length) {
             return null;
         }
 
