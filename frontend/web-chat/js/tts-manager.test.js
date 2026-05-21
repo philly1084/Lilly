@@ -1,6 +1,7 @@
 const {
     DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
     DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
+    DEFAULT_TTS_SYNTHESIS_LANES,
     WebChatTtsManager,
     splitTextIntoSpeechChunks,
 } = require('./tts-manager');
@@ -49,7 +50,7 @@ describe('splitTextIntoSpeechChunks', () => {
         expect(chunks[0]).toMatch(/^This sentence is intentionally verbose/);
     });
 
-    test('prepares upcoming sentence audio before the first sentence is scheduled', async () => {
+    test('starts the first sentence as soon as it is ready while queueing extra lanes', async () => {
         const previousCustomEvent = global.CustomEvent;
         global.CustomEvent = class CustomEvent extends Event {
             constructor(type, params = {}) {
@@ -107,13 +108,15 @@ describe('splitTextIntoSpeechChunks', () => {
             });
 
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two.']);
+            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three.']);
+            expect(preparedTexts).toHaveLength(DEFAULT_TTS_SYNTHESIS_LANES);
             expect(startedAt).toEqual([]);
 
             resolvers[0]();
             await Promise.resolve();
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three.']);
+            await new Promise((resolve) => setImmediate(resolve));
+            expect(startedAt).toHaveLength(1);
 
             resolvers.slice(1).forEach((resolve) => resolve());
             await expect(playbackPromise).resolves.toBe(true);
