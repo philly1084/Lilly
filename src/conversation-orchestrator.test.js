@@ -4276,6 +4276,150 @@ describe('ConversationOrchestrator', () => {
         }
     });
 
+    test('does not replace remote-cli-agent final output with a budget questionnaire', async () => {
+        const originalMaxMs = config.runtime.remoteBuildMaxAutonomousMs;
+        const originalContinuationCheckpointEnabled = config.runtime.remoteBuildContinuationCheckpointEnabled;
+        const nowSpy = jest.spyOn(Date, 'now');
+        let currentNow = 1760002000000;
+        nowSpy.mockImplementation(() => currentNow);
+        config.runtime.remoteBuildMaxAutonomousMs = 1000;
+        config.runtime.remoteBuildContinuationCheckpointEnabled = true;
+
+        try {
+            settingsController.getEffectiveSshConfig.mockReturnValue({
+                enabled: true,
+                host: '10.0.0.5',
+                port: 22,
+                username: 'ubuntu',
+                password: 'secret',
+                privateKeyPath: '',
+            });
+            settingsController.getEffectiveOpencodeConfig.mockReturnValue({
+                enabled: true,
+                binaryPath: 'opencode',
+                defaultAgent: 'build',
+                defaultModel: 'gpt-4o',
+                remoteDefaultWorkspace: '/srv/apps/weather',
+                allowedWorkspaceRoots: ['C:/Users/phill/KimiBuilt'],
+                providerEnvAllowlist: ['OPENAI_API_KEY', 'OPENAI_BASE_URL'],
+                remoteAutoInstall: false,
+            });
+
+            const llmClient = {
+                createResponse: jest.fn().mockResolvedValue(buildResponse('Remote CLI report surfaced as plain text.')),
+                complete: jest.fn(),
+            };
+            const toolManager = {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'web-search', 'tool-doc-read', 'user-checkpoint']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+                executeTool: jest.fn().mockImplementation(async (toolId) => {
+                    currentNow += 1500;
+                    if (toolId === 'remote-cli-agent') {
+                        return {
+                            success: true,
+                            toolId: 'remote-cli-agent',
+                            data: {
+                                finalOutput: [
+                                    'I need to report the remote run status.',
+                                    'USER_INPUT_REQUIRED=Please provide a GitLab token before I can push.',
+                                    'REMOTE_CLI_SESSION_ID=remote-session-1',
+                                    'BLOCKER=Please provide a GitLab token before I can push.',
+                                ].join('\n'),
+                                targetId: 'prod',
+                                sessionId: 'remote-session-1',
+                                blocker: 'Please provide a GitLab token before I can push.',
+                                completionStatus: 'blocked',
+                            },
+                        };
+                    }
+                    throw new Error(`Unexpected tool: ${toolId}`);
+                }),
+            };
+            const sessionStore = {
+                get: jest.fn().mockResolvedValue({ id: 'session-remote-cli-budget', metadata: {} }),
+                getOrCreate: jest.fn().mockResolvedValue({ id: 'session-remote-cli-budget', metadata: {} }),
+                getRecentMessages: jest.fn().mockResolvedValue([]),
+                recordResponse: jest.fn().mockResolvedValue(undefined),
+                appendMessages: jest.fn().mockResolvedValue(undefined),
+                update: jest.fn().mockResolvedValue(undefined),
+            };
+            const memoryService = {
+                process: jest.fn().mockResolvedValue([]),
+                rememberResponse: jest.fn(),
+            };
+
+            const orchestrator = new ConversationOrchestrator({
+                llmClient,
+                toolManager,
+                sessionStore,
+                memoryService,
+            });
+            jest.spyOn(orchestrator, 'buildDirectAction').mockReturnValue({
+                tool: 'remote-cli-agent',
+                reason: 'The request asks the remote CLI agent to report its current result.',
+                params: {
+                    task: 'Continue the active remote CLI agent task and report the result.',
+                    waitMs: 30000,
+                    adminMode: true,
+                    cwd: '/srv/apps/weather',
+                },
+            });
+
+            const result = await orchestrator.executeConversation({
+                input: 'Use remote cli agent to continue the active app build and deploy.',
+                sessionId: 'session-remote-cli-budget',
+                executionProfile: 'remote-build',
+                stream: false,
+                metadata: {
+                    remoteBuildAutonomyApproved: true,
+                    clientSurface: 'web-chat',
+                },
+                toolContext: {
+                    clientSurface: 'web-chat',
+                    userCheckpointPolicy: {
+                        enabled: true,
+                        remaining: 1,
+                        pending: null,
+                    },
+                    remoteWorkspacePath: '/srv/apps/weather',
+                },
+            });
+
+            const toolIds = result.response.metadata.toolEvents.map((event) => (
+                event?.toolCall?.function?.name || event?.result?.toolId || ''
+            ));
+            const synthesisParams = llmClient.createResponse.mock.calls.at(-1)?.[0] || {};
+
+            expect(toolManager.executeTool).toHaveBeenCalledWith(
+                'remote-cli-agent',
+                expect.objectContaining({
+                    adminMode: true,
+                }),
+                expect.any(Object),
+            );
+            expect(toolIds).toEqual(['remote-cli-agent']);
+            expect(result.response.metadata.runtimeMode).not.toBe('budget-checkpoint');
+            expect(result.response.metadata.toolEvents).not.toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    result: expect.objectContaining({
+                        toolId: 'user-checkpoint',
+                    }),
+                }),
+            ]));
+            expect(result.output).toContain('Remote CLI report surfaced as plain text.');
+            expect(synthesisParams.instructions).toContain('plain user-facing report');
+            expect(synthesisParams.instructions).not.toContain('inline popup-style survey card');
+        } finally {
+            config.runtime.remoteBuildMaxAutonomousMs = originalMaxMs;
+            config.runtime.remoteBuildContinuationCheckpointEnabled = originalContinuationCheckpointEnabled;
+            nowSpy.mockRestore();
+        }
+    });
+
     test('extends the autonomous round budget when remote-build work is still productive', async () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

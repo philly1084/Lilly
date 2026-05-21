@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-18T00:16:15.645Z",
+  "updatedAt": "2026-05-21T01:14:20.989Z",
   "targets": {
     "10.0.0.5:22": {
       "key": "10.0.0.5:22",
@@ -8,7 +8,7 @@
       "username": "ubuntu",
       "port": 22,
       "firstSeenAt": "2026-04-19T03:51:57.201Z",
-      "lastSeenAt": "2026-05-18T00:16:15.645Z",
+      "lastSeenAt": "2026-05-21T01:14:20.987Z",
       "paths": [
         "/etc/os-release",
         "/opt/kimibuilt",
@@ -29,8 +29,8 @@
         "metadata.name",
         "deployment.apps"
       ],
-      "lastObjective": "Reconnect to the Ubuntu server and continue the remote-build setup.",
-      "lastInspectionAt": "2026-05-18T00:16:15.425Z",
+      "lastObjective": "Use remote-build to keep going through the routine server checks.",
+      "lastInspectionAt": "2026-05-21T01:11:40.962Z",
       "lastStatus": "succeeded",
       "serverContext": {
         "hostname": "",
@@ -54,7 +54,7 @@
       "username": "root",
       "port": 22,
       "firstSeenAt": "2026-04-19T03:51:57.675Z",
-      "lastSeenAt": "2026-05-18T00:16:13.313Z",
+      "lastSeenAt": "2026-05-21T01:11:39.587Z",
       "paths": [
         "/tmp/website-html.yaml",
         "/opt/sophia-color-world/",
@@ -112,6 +112,68 @@
         "certManagerInstalled": null,
         "lastRefreshedAt": null
       }
+    },
+    "status.demoserver2.buzz:22": {
+      "key": "status.demoserver2.buzz:22",
+      "host": "status.demoserver2.buzz",
+      "username": "ubuntu",
+      "port": 22,
+      "firstSeenAt": "2026-05-21T01:12:25.019Z",
+      "lastSeenAt": "2026-05-21T01:12:25.019Z",
+      "paths": [],
+      "domains": [
+        "status.demoserver2.buzz"
+      ],
+      "lastObjective": "Build a new status dashboard site on the server and deploy it to k3s at status.demoserver2.buzz with ingress and TLS using remote-cli-agent.",
+      "lastInspectionAt": null,
+      "lastStatus": "failed",
+      "serverContext": {
+        "hostname": "",
+        "remoteUser": "",
+        "arch": "",
+        "osSummary": "",
+        "uptimeSummary": "",
+        "k3sVersion": "",
+        "kubectlVersion": "",
+        "nodeNames": [],
+        "ingressClasses": [],
+        "platformNamespaces": [],
+        "traefikInstalled": null,
+        "certManagerInstalled": null,
+        "lastRefreshedAt": null
+      }
+    },
+    "weather.demoserver2.buzz:22": {
+      "key": "weather.demoserver2.buzz:22",
+      "host": "weather.demoserver2.buzz",
+      "username": "ubuntu",
+      "port": 22,
+      "firstSeenAt": "2026-05-21T01:13:06.968Z",
+      "lastSeenAt": "2026-05-21T01:13:06.968Z",
+      "paths": [
+        "/etc/os-release"
+      ],
+      "domains": [
+        "weather.demoserver2.buzz"
+      ],
+      "lastObjective": "can you use remote cli agent to build a weather app on the server. use weather.demoserver2.buzz for the dns and build the ingress and tls.",
+      "lastInspectionAt": null,
+      "lastStatus": "failed",
+      "serverContext": {
+        "hostname": "",
+        "remoteUser": "",
+        "arch": "",
+        "osSummary": "",
+        "uptimeSummary": "",
+        "k3sVersion": "",
+        "kubectlVersion": "",
+        "nodeNames": [],
+        "ingressClasses": [],
+        "platformNamespaces": [],
+        "traefikInstalled": null,
+        "certManagerInstalled": null,
+        "lastRefreshedAt": null
+      }
     }
   },
   "deployments": {
@@ -132,12 +194,12 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-04-19T03:51:57.202Z",
-      "lastSeenAt": "2026-05-18T00:16:15.645Z",
+      "lastSeenAt": "2026-05-21T01:11:41.105Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:15.623Z",
-      "lastSuccessAt": "2026-05-18T00:16:15.623Z",
-      "lastFailureAt": null,
+      "lastActionAt": "2026-05-21T01:11:41.092Z",
+      "lastSuccessAt": "2026-05-21T01:11:41.092Z",
+      "lastFailureAt": "2026-05-21T01:11:39.995Z",
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
       "lastError": "",
@@ -182,11 +244,11 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-04-19T03:51:57.675Z",
-      "lastSeenAt": "2026-05-18T00:16:13.313Z",
+      "lastSeenAt": "2026-05-21T01:11:39.587Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:13.307Z",
-      "lastSuccessAt": "2026-05-18T00:16:13.307Z",
+      "lastActionAt": "2026-05-21T01:11:39.582Z",
+      "lastSuccessAt": "2026-05-21T01:11:39.582Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -229,13 +291,13 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-04-19T03:51:57.786Z",
-      "lastSeenAt": "2026-05-18T00:16:15.436Z",
+      "lastSeenAt": "2026-05-21T01:11:40.968Z",
       "lastAction": "verify-deployment",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:15.425Z",
-      "lastSuccessAt": "2026-05-18T00:16:15.425Z",
-      "lastFailureAt": "2026-05-18T00:16:14.471Z",
-      "lastVerificationAt": "2026-05-18T00:16:15.425Z",
+      "lastActionAt": "2026-05-21T01:11:40.962Z",
+      "lastSuccessAt": "2026-05-21T01:11:40.962Z",
+      "lastFailureAt": "2026-05-21T01:11:40.351Z",
+      "lastVerificationAt": "2026-05-21T01:11:40.962Z",
       "lastStatus": "succeeded",
       "lastError": "",
       "lastCommand": "set -e kubectl get deploy -A -o wide kubectl get pods -A -o wide kubectl get svc,ingress -A -o wide",
@@ -254,8 +316,8 @@
         "ingress": true,
         "tls": true,
         "https": true,
-        "lastRolloutAt": "2026-05-18T00:16:15.425Z",
-        "lastVerifiedAt": "2026-05-18T00:16:15.425Z"
+        "lastRolloutAt": "2026-05-21T01:11:40.962Z",
+        "lastVerifiedAt": "2026-05-21T01:11:40.962Z"
       }
     },
     "10.0.0.5:22|ame|backend": {
@@ -275,11 +337,11 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-04-19T03:51:57.810Z",
-      "lastSeenAt": "2026-05-18T00:16:15.435Z",
+      "lastSeenAt": "2026-05-21T01:11:40.968Z",
       "lastAction": "build-and-deploy-remote-workspace",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:15.420Z",
-      "lastSuccessAt": "2026-05-18T00:16:15.420Z",
+      "lastActionAt": "2026-05-21T01:11:40.959Z",
+      "lastSuccessAt": "2026-05-21T01:11:40.959Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -330,11 +392,11 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-04-19T03:51:57.830Z",
-      "lastSeenAt": "2026-05-18T00:16:14.505Z",
+      "lastSeenAt": "2026-05-21T01:11:40.378Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:14.485Z",
-      "lastSuccessAt": "2026-05-18T00:16:14.485Z",
+      "lastActionAt": "2026-05-21T01:11:40.362Z",
+      "lastSuccessAt": "2026-05-21T01:11:40.362Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -373,11 +435,11 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-04-19T03:51:57.866Z",
-      "lastSeenAt": "2026-05-18T00:16:14.636Z",
+      "lastSeenAt": "2026-05-21T01:11:40.468Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:14.615Z",
-      "lastSuccessAt": "2026-05-18T00:16:14.615Z",
+      "lastActionAt": "2026-05-21T01:11:40.454Z",
+      "lastSuccessAt": "2026-05-21T01:11:40.454Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -417,11 +479,11 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-04-25T05:04:11.539Z",
-      "lastSeenAt": "2026-05-18T00:16:15.469Z",
+      "lastSeenAt": "2026-05-21T01:11:40.988Z",
       "lastAction": "implement-remote-workspace",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:15.462Z",
-      "lastSuccessAt": "2026-05-18T00:16:15.462Z",
+      "lastActionAt": "2026-05-21T01:11:40.984Z",
+      "lastSuccessAt": "2026-05-21T01:11:40.984Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -511,11 +573,11 @@
       "ingressClassName": "traefik",
       "tlsClusterIssuer": "letsencrypt-prod",
       "firstSeenAt": "2026-05-04T00:17:50.483Z",
-      "lastSeenAt": "2026-05-18T00:16:13.354Z",
+      "lastSeenAt": "2026-05-21T01:11:39.616Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-05-18T00:16:13.346Z",
-      "lastSuccessAt": "2026-05-18T00:16:13.346Z",
+      "lastActionAt": "2026-05-21T01:11:39.612Z",
+      "lastSuccessAt": "2026-05-21T01:11:39.612Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -535,12 +597,146 @@
         "lastRolloutAt": null,
         "lastVerifiedAt": null
       }
+    },
+    "status.demoserver2.buzz:22|kimibuilt|backend": {
+      "key": "status.demoserver2.buzz:22|kimibuilt|backend",
+      "targetKey": "status.demoserver2.buzz:22",
+      "host": "status.demoserver2.buzz",
+      "username": "ubuntu",
+      "port": 22,
+      "namespace": "kimibuilt",
+      "deployment": "backend",
+      "container": "backend",
+      "repositoryUrl": "",
+      "ref": "master",
+      "targetDirectory": "",
+      "manifestsPath": "k8s",
+      "publicDomain": "status.demoserver2.buzz",
+      "ingressClassName": "traefik",
+      "tlsClusterIssuer": "letsencrypt-prod",
+      "firstSeenAt": "2026-05-21T01:12:25.021Z",
+      "lastSeenAt": "2026-05-21T01:12:25.022Z",
+      "lastAction": "remote-command",
+      "lastTool": "remote-command",
+      "lastActionAt": "2026-05-21T01:12:24.980Z",
+      "lastSuccessAt": null,
+      "lastFailureAt": "2026-05-21T01:12:24.980Z",
+      "lastVerificationAt": null,
+      "lastStatus": "failed",
+      "lastError": "Unexpected tool: remote-command",
+      "lastCommand": "hostname && uptime && (df -h / || true) && (free -m || true)",
+      "lastStdout": "",
+      "lastObjective": "Build a new status dashboard site on the server and deploy it to k3s at status.demoserver2.buzz with ingress and TLS using remote-cli-agent.",
+      "paths": [],
+      "domains": [
+        "status.demoserver2.buzz"
+      ],
+      "verification": {
+        "rollout": false,
+        "ingress": false,
+        "tls": false,
+        "https": false,
+        "lastRolloutAt": null,
+        "lastVerifiedAt": null
+      }
+    },
+    "weather.demoserver2.buzz:22|1|backend": {
+      "key": "weather.demoserver2.buzz:22|1|backend",
+      "targetKey": "weather.demoserver2.buzz:22",
+      "host": "weather.demoserver2.buzz",
+      "username": "ubuntu",
+      "port": 22,
+      "namespace": "1",
+      "deployment": "backend",
+      "container": "backend",
+      "repositoryUrl": "",
+      "ref": "master",
+      "targetDirectory": "",
+      "manifestsPath": "k8s",
+      "publicDomain": "weather.demoserver2.buzz",
+      "ingressClassName": "traefik",
+      "tlsClusterIssuer": "letsencrypt-prod",
+      "firstSeenAt": "2026-05-21T01:13:06.969Z",
+      "lastSeenAt": "2026-05-21T01:13:06.969Z",
+      "lastAction": "remote-command",
+      "lastTool": "remote-command",
+      "lastActionAt": "2026-05-21T01:13:06.951Z",
+      "lastSuccessAt": null,
+      "lastFailureAt": "2026-05-21T01:13:06.951Z",
+      "lastVerificationAt": null,
+      "lastStatus": "failed",
+      "lastError": "Unexpected tool: remote-command",
+      "lastCommand": "hostname && uname -m && (test -f /etc/os-release && sed -n '1,3p' /etc/os-release || true) && uptime",
+      "lastStdout": "",
+      "lastObjective": "can you use remote cli agent to build a weather app on the server. use weather.demoserver2.buzz for the dns and build the ingress and tls.",
+      "paths": [
+        "/etc/os-release"
+      ],
+      "domains": [
+        "weather.demoserver2.buzz"
+      ],
+      "verification": {
+        "rollout": false,
+        "ingress": false,
+        "tls": false,
+        "https": false,
+        "lastRolloutAt": null,
+        "lastVerifiedAt": null
+      }
     }
   },
   "edgeRoutes": {},
   "recentActivity": [
     {
-      "timestamp": "2026-05-18T00:16:15.645Z",
+      "timestamp": "2026-05-21T01:14:20.988Z",
+      "toolId": "remote-command",
+      "action": "remote-command",
+      "status": "succeeded",
+      "host": "10.0.0.5",
+      "namespace": "",
+      "deployment": "",
+      "publicDomain": "",
+      "summary": "remote-command completed a remote inspection step.",
+      "error": ""
+    },
+    {
+      "timestamp": "2026-05-21T01:14:04.243Z",
+      "toolId": "remote-command",
+      "action": "remote-command",
+      "status": "succeeded",
+      "host": "10.0.0.5",
+      "namespace": "",
+      "deployment": "",
+      "publicDomain": "",
+      "summary": "remote-command completed a remote inspection step.",
+      "error": ""
+    },
+    {
+      "timestamp": "2026-05-21T01:13:06.969Z",
+      "toolId": "remote-command",
+      "action": "remote-command",
+      "status": "failed",
+      "host": "weather.demoserver2.buzz",
+      "namespace": "1",
+      "deployment": "backend",
+      "publicDomain": "weather.demoserver2.buzz",
+      "summary": "remote-command command failed for 1/backend on weather.demoserver2.buzz.",
+      "error": "Unexpected tool: remote-command"
+    },
+    {
+      "timestamp": "2026-05-21T01:12:25.022Z",
+      "toolId": "remote-command",
+      "action": "remote-command",
+      "status": "failed",
+      "host": "status.demoserver2.buzz",
+      "namespace": "kimibuilt",
+      "deployment": "backend",
+      "publicDomain": "status.demoserver2.buzz",
+      "summary": "remote-command command failed for kimibuilt/backend on status.demoserver2.buzz.",
+      "error": "Unexpected tool: remote-command"
+    },
+    {
+      "timestamp": "2026-05-21T01:11:41.105Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -552,7 +748,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:15.470Z",
+      "timestamp": "2026-05-21T01:11:40.988Z",
       "toolId": "remote-command",
       "action": "implement-remote-workspace",
       "status": "succeeded",
@@ -564,7 +760,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:15.436Z",
+      "timestamp": "2026-05-21T01:11:40.968Z",
       "toolId": "remote-command",
       "action": "verify-deployment",
       "status": "succeeded",
@@ -576,7 +772,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:15.435Z",
+      "timestamp": "2026-05-21T01:11:40.968Z",
       "toolId": "remote-command",
       "action": "build-and-deploy-remote-workspace",
       "status": "succeeded",
@@ -588,7 +784,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:15.434Z",
+      "timestamp": "2026-05-21T01:11:40.967Z",
       "toolId": "remote-command",
       "action": "implement-remote-workspace",
       "status": "succeeded",
@@ -600,7 +796,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.636Z",
+      "timestamp": "2026-05-21T01:11:40.468Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -612,7 +808,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.635Z",
+      "timestamp": "2026-05-21T01:11:40.468Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -624,7 +820,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.569Z",
+      "timestamp": "2026-05-21T01:11:40.419Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -636,7 +832,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.568Z",
+      "timestamp": "2026-05-21T01:11:40.418Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -648,7 +844,7 @@
       "error": "--- pod title --- --- public title ---"
     },
     {
-      "timestamp": "2026-05-18T00:16:14.506Z",
+      "timestamp": "2026-05-21T01:11:40.378Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -660,7 +856,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.505Z",
+      "timestamp": "2026-05-21T01:11:40.377Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -672,7 +868,7 @@
       "error": "Error from server (NotFound): deployments.apps \"svc\" not found Error from server (NotFound): deployments.apps \"ingress\" not found"
     },
     {
-      "timestamp": "2026-05-18T00:16:14.438Z",
+      "timestamp": "2026-05-21T01:11:40.324Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -684,7 +880,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.437Z",
+      "timestamp": "2026-05-21T01:11:40.324Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -696,7 +892,7 @@
       "error": "curl: (6) Could not resolve host: api"
     },
     {
-      "timestamp": "2026-05-18T00:16:14.355Z",
+      "timestamp": "2026-05-21T01:11:40.270Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -708,7 +904,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.354Z",
+      "timestamp": "2026-05-21T01:11:40.269Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -720,7 +916,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.268Z",
+      "timestamp": "2026-05-21T01:11:40.210Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -732,7 +928,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.267Z",
+      "timestamp": "2026-05-21T01:11:40.210Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -744,7 +940,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.267Z",
+      "timestamp": "2026-05-21T01:11:40.209Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -756,7 +952,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.159Z",
+      "timestamp": "2026-05-21T01:11:40.144Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -768,7 +964,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-05-18T00:16:14.159Z",
+      "timestamp": "2026-05-21T01:11:40.144Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -778,54 +974,6 @@
       "publicDomain": "gitea.service",
       "summary": "remote-command command failed for kimibuilt/backend on gitea.service.",
       "error": "Unit gitea.service could not be found."
-    },
-    {
-      "timestamp": "2026-05-18T00:16:14.049Z",
-      "toolId": "remote-command",
-      "action": "remote-command",
-      "status": "succeeded",
-      "host": "10.0.0.5",
-      "namespace": "",
-      "deployment": "",
-      "publicDomain": "",
-      "summary": "remote-command completed a remote inspection step.",
-      "error": ""
-    },
-    {
-      "timestamp": "2026-05-18T00:16:14.049Z",
-      "toolId": "remote-command",
-      "action": "remote-command",
-      "status": "succeeded",
-      "host": "10.0.0.5",
-      "namespace": "",
-      "deployment": "",
-      "publicDomain": "",
-      "summary": "remote-command completed a remote inspection step.",
-      "error": ""
-    },
-    {
-      "timestamp": "2026-05-18T00:16:14.049Z",
-      "toolId": "remote-command",
-      "action": "remote-command",
-      "status": "succeeded",
-      "host": "10.0.0.5",
-      "namespace": "",
-      "deployment": "",
-      "publicDomain": "",
-      "summary": "remote-command completed a remote inspection step.",
-      "error": ""
-    },
-    {
-      "timestamp": "2026-05-18T00:16:14.049Z",
-      "toolId": "remote-command",
-      "action": "remote-command",
-      "status": "succeeded",
-      "host": "10.0.0.5",
-      "namespace": "",
-      "deployment": "",
-      "publicDomain": "",
-      "summary": "remote-command completed a remote inspection step.",
-      "error": ""
     }
   ]
 }

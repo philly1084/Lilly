@@ -712,6 +712,12 @@ function buildAutonomyContinuationCheckpoint({ toolEvents = [], workflow = null,
     };
 }
 
+function hasRemoteCliAgentToolEvent(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => (
+        String(event?.toolCall?.function?.name || event?.result?.toolId || '').trim() === 'remote-cli-agent'
+    ));
+}
+
 function isAgentNotesAutoWriteEnabled() {
     return settingsController.settings?.agentNotes?.enabled !== false;
 }
@@ -10330,6 +10336,7 @@ class ConversationOrchestrator extends EventEmitter {
             const canOfferAutonomyContinuationCheckpoint = resolvedProfile === REMOTE_BUILD_EXECUTION_PROFILE
                 && config.runtime?.remoteBuildContinuationCheckpointEnabled === true
                 && findLatestExecutionTraceEntry(executionTrace, 'Autonomous execution time budget reached')
+                && !hasRemoteCliAgentToolEvent(toolEvents)
                 && toolPolicy.allowedToolIds.includes(USER_CHECKPOINT_TOOL_ID)
                 && toolPolicy.userCheckpointPolicy?.enabled === true
                 && Number(toolPolicy.userCheckpointPolicy?.remaining || 0) > 0
@@ -12950,11 +12957,13 @@ class ConversationOrchestrator extends EventEmitter {
         const remoteToolId = getPreferredRemoteToolId(toolPolicy);
         const userCheckpointPolicy = toolPolicy?.userCheckpointPolicy || {};
         const isSurveyResponseTurn = userCheckpointPolicy.surveyResponseTurn === true;
+        const hasRemoteCliAgentResult = hasRemoteCliAgentToolEvent(toolEvents);
         const canUseUserCheckpoint = allowedToolIds.includes(USER_CHECKPOINT_TOOL_ID)
             && userCheckpointPolicy.enabled === true
             && Number(userCheckpointPolicy.remaining || 0) > 0
             && !userCheckpointPolicy.pending
-            && !isSurveyResponseTurn;
+            && !isSurveyResponseTurn
+            && !hasRemoteCliAgentResult;
         const normalizedClientSurface = String(clientSurface || '').trim().toLowerCase();
         const parts = [
             String(baseInstructions || '').trim(),
@@ -13089,6 +13098,10 @@ class ConversationOrchestrator extends EventEmitter {
             toolPolicy,
         })) {
             parts.push(`Hydrated remote ops guidance from local project docs:\n${HYDRATED_REMOTE_OPS_GUIDANCE_TEXT}`);
+        }
+
+        if (hasRemoteCliAgentResult) {
+            parts.push('A `remote-cli-agent` tool result is already present for this response. Surface its final output, blocker, and continuity markers as a plain user-facing report; do not convert remote-agent status, blockers, or `USER_INPUT_REQUIRED` markers into a `user-checkpoint` survey card.');
         }
 
         parts.push('Treat the local CLI environment, workspace state, filesystem contents, and shell behavior as unknown unless explicit user input, the active transcript, or verified tool results establish them.');
