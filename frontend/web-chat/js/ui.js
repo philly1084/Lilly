@@ -26,6 +26,7 @@ const WEB_CHAT_ESTIMATED_REASONING_STEPS = Object.freeze([
     'Check the edges',
     'Bring the answer home',
 ]);
+const WEB_CHAT_MAX_PROGRESS_DISPLAY_STEPS = 12;
 const WEB_CHAT_THEME_DEFAULTS = WEB_CHAT_SHARED_THEMES.defaults || Object.freeze({
     dark: 'obsidian',
     light: 'paper',
@@ -3334,15 +3335,32 @@ class UIHelpers {
                 };
             })
             .filter(Boolean);
+        const requestedTotalSteps = Number.isFinite(Number(rawProgress.totalSteps)) && Number(rawProgress.totalSteps) > 0
+            ? Math.max(steps.length, Math.round(Number(rawProgress.totalSteps)))
+            : steps.length;
+        const displayStepCount = Math.max(
+            steps.length,
+            Math.min(requestedTotalSteps, WEB_CHAT_MAX_PROGRESS_DISPLAY_STEPS),
+        );
+        while (steps.length < displayStepCount) {
+            const index = steps.length;
+            steps.push({
+                id: `progress-step-${index + 1}`,
+                title: rawProgress.estimated !== false
+                    ? this.getEstimatedReasoningStepTitle(index)
+                    : `Step ${index + 1}`,
+                status: 'pending',
+            });
+        }
         if (steps.length < 2) {
             return null;
         }
 
-        const totalSteps = Number.isFinite(Number(rawProgress.totalSteps)) && Number(rawProgress.totalSteps) > 0
-            ? Math.max(steps.length, Number(rawProgress.totalSteps))
+        const totalSteps = requestedTotalSteps > 0
+            ? Math.max(steps.length, requestedTotalSteps)
             : steps.length;
         const completedHint = Number.isFinite(Number(rawProgress.completedSteps)) && Number(rawProgress.completedSteps) >= 0
-            ? Math.min(steps.length, Number(rawProgress.completedSteps))
+            ? Math.min(totalSteps, Math.round(Number(rawProgress.completedSteps)))
             : -1;
         const activeStepId = this.extractDisplayText(rawProgress.activeStepId, { maxLength: 80 });
         const activeStepIndexValue = Math.round(Number(rawProgress.activeStepIndex));

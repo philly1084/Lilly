@@ -7,7 +7,7 @@ const {
 } = require('./tts-manager');
 
 describe('splitTextIntoSpeechChunks', () => {
-    test('keeps speech in sentence-sized chunks for continuous lookahead playback', () => {
+    test('starts with one sentence then groups later speech to reduce long-run synthesis waits', () => {
         const chunks = splitTextIntoSpeechChunks(
             'One. Two. Three. Four. Five. Six. Seven. Eight.',
             {
@@ -20,12 +20,9 @@ describe('splitTextIntoSpeechChunks', () => {
 
         expect(chunks).toEqual([
             'One.',
-            'Two.',
-            'Three.',
-            'Four.',
-            'Five.',
-            'Six.',
-            'Seven.',
+            'Two. Three.',
+            'Four. Five.',
+            'Six. Seven.',
             'Eight.',
         ]);
     });
@@ -102,13 +99,13 @@ describe('splitTextIntoSpeechChunks', () => {
 
             const playbackPromise = manager.speakPiperChunks({
                 messageId: 'assistant-1',
-                text: 'One. Two. Three.',
+                text: 'One. Two. Three. Four. Five.',
                 playbackToken: 1,
                 playbackContext: fakeContext,
             });
 
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three.']);
+            expect(preparedTexts).toEqual(['One.', 'Two. Three.', 'Four. Five.']);
             expect(preparedTexts).toHaveLength(DEFAULT_TTS_SYNTHESIS_LANES);
             expect(startedAt).toEqual([]);
 

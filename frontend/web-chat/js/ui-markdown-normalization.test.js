@@ -444,6 +444,43 @@ Live result:
         expect(html).not.toContain('...');
     });
 
+    test('renders progress rows for completed sections beyond the initially supplied step records', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const message = {
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            reasoningDisplaySource: 'generated',
+            reasoningDisplayText: { text: 'Checking the next useful step.' },
+            reasoningDisplayFullText: { text: 'Checking the next useful step.' },
+            reasoningDisplayTitle: 'Live reasoning',
+            reasoningDisplayIcon: 'sparkles',
+            progressState: {
+                phase: 'executing',
+                detail: 'Writing the next document sections.',
+                totalSteps: 5,
+                completedSteps: 4,
+                steps: [
+                    { title: 'Draft opening section', status: 'completed' },
+                    { title: 'Draft evidence section', status: 'completed' },
+                ],
+            },
+        };
+        const state = helper.getAssistantProgressState(message);
+        const html = helper.buildAssistantRenderPlan(message, true).html;
+
+        const rowCount = (html.match(/assistant-progress-card__step /g) || []).length;
+        const completedCount = (html.match(/assistant-progress-card__step--completed/g) || []).length;
+
+        expect(state).toEqual(expect.objectContaining({
+            completedSteps: 4,
+            totalSteps: 5,
+            summary: '4/5 steps complete',
+        }));
+        expect(rowCount).toBe(5);
+        expect(completedCount).toBe(4);
+    });
+
     test('renders live reasoning as a header without a duplicate dropdown body', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAssistantRenderPlan({
