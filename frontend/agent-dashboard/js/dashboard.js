@@ -683,8 +683,9 @@ class Dashboard {
         const collageContainer = document.getElementById('lillyPrCollage');
         const threadsContainer = document.getElementById('lillyGrowthThreads');
         const timelineContainer = document.getElementById('lillyTimeline');
+        const pulseContainer = document.getElementById('lillyLatestPulse');
 
-        if (!statsContainer || !phaseContainer || !collageContainer || !threadsContainer || !timelineContainer) {
+        if (!statsContainer || !phaseContainer || !collageContainer || !threadsContainer || !timelineContainer || !pulseContainer) {
             return;
         }
 
@@ -702,6 +703,9 @@ class Dashboard {
         const primaryCategories = Array.isArray(history.primaryCategories) && history.primaryCategories.length
             ? history.primaryCategories
             : (history.categories || []);
+        const recentPulls = Array.isArray(history.recent) ? history.recent : [];
+        const newestPull = recentPulls[0] || null;
+        const currentPhase = [...(history.phases || [])].reverse().find((phase) => phase.to === '2099-12-31' || phase.to === 'now') || [...(history.phases || [])].reverse()[0] || null;
 
         statsContainer.innerHTML = [
             { label: 'Repo pulls', value: totalPulls.toLocaleString(), detail: `${this.escapeHtml(history.firstDate || 'start')} to ${this.escapeHtml(history.lastDate || 'now')} | ${activeDays.toLocaleString()} days` },
@@ -717,6 +721,39 @@ class Dashboard {
                 <span class="lilly-stat-detail">${item.detail}</span>
             </div>
         `).join('');
+
+        pulseContainer.innerHTML = `
+            <div class="lilly-pulse-grid">
+                <div class="lilly-pulse-item">
+                    <span>Newest pull</span>
+                    <strong>${this.escapeHtml(newestPull?.date || recentVelocity.latestDate || history.lastDate || 'not visible')}</strong>
+                    <p>${this.escapeHtml(newestPull?.subject || 'No recent commit subject visible from this runtime.')}</p>
+                </div>
+                <div class="lilly-pulse-item">
+                    <span>Current chapter</span>
+                    <strong>${this.escapeHtml(currentPhase?.label || 'Live history')}</strong>
+                    <p>${Number(currentPhase?.count || 0).toLocaleString()} pulls in this phase | ${Number(currentPhase?.percent || 0)}% of visible history</p>
+                </div>
+                <div class="lilly-pulse-item">
+                    <span>Velocity</span>
+                    <strong>${Number(recentVelocity.last7Days || 0).toLocaleString()} pulls</strong>
+                    <p>${Number(recentVelocity.last14Days || 0).toLocaleString()} in 14 days | ${Number(recentVelocity.last30Days || 0).toLocaleString()} in 30 days</p>
+                </div>
+                <div class="lilly-pulse-item">
+                    <span>Codex evidence</span>
+                    <strong>${codexSessionCount ? codexSessionCount.toLocaleString() : 'optional'}</strong>
+                    <p>${history.codexSessions?.available ? `${sessionSize} logs | latest ${latestSessionAt}` : 'session logs are not visible in this runtime'}</p>
+                </div>
+            </div>
+            <div class="lilly-pulse-recent">
+                ${recentPulls.slice(0, 6).map((commit) => `
+                    <span class="lilly-pulse-chip lilly-tag-border-${this.escapeHtml(commit.primaryTag || 'maintenance')}">
+                        <strong>${this.escapeHtml(commit.shortHash || '')}</strong>
+                        ${this.escapeHtml(commit.subject || '')}
+                    </span>
+                `).join('') || '<span class="lilly-pulse-chip">Recent pull details are unavailable from the fallback wiki seed.</span>'}
+            </div>
+        `;
 
         const maxPhaseCount = Math.max(1, ...(history.phases || []).map((phase) => Number(phase.count || 0)));
         phaseContainer.innerHTML = (history.phases || []).map((phase) => {
@@ -841,6 +878,7 @@ class Dashboard {
 
     describeLillyThread(categoryId) {
         const descriptions = {
+            privacy: 'The privacy and trust lane tracks the newest safety layer: PII vault routing, trusted calculation batches, identity masking, approval flows, and audit-ready handling.',
             repair: 'The repair lane is the proof of pressure: crash loops, fallbacks, regressions, CORS, PDF, storage, and routing fixes that kept Lilly usable while it grew.',
             growth: 'The growth lane is where new surfaces appeared: tools, routes, workflows, documents, remote runners, podcast/video paths, skills, and orchestration abilities.',
             interface: 'The interface lane tracks the visible shape of Lilly across web chat, notes, canvas, CLI, admin, voxel polish, and dashboard diagnostics.',
@@ -856,56 +894,72 @@ class Dashboard {
     getLillyHistoryFallback() {
         return {
             generatedAt: new Date().toISOString(),
-            source: 'fallback static wiki seed refreshed from local history on 2026-05-13',
-            totalPulls: 881,
-            mergedPullRequests: 11,
-            repairPulls: 296,
-            growthPulls: 204,
-            maintenancePulls: 114,
-            taggedPulls: 767,
-            multiLanePulls: 418,
+            source: 'fallback static wiki seed refreshed from local history on 2026-05-20',
+            totalPulls: 957,
+            mergedPullRequests: 12,
+            repairPulls: 320,
+            growthPulls: 215,
+            maintenancePulls: 119,
+            taggedPulls: 838,
+            multiLanePulls: 456,
             recentVelocity: {
-                latestDate: '2026-05-12',
-                last7Days: 91,
-                last14Days: 191,
-                last30Days: 409,
+                latestDate: '2026-05-20',
+                last7Days: 70,
+                last14Days: 153,
+                last30Days: 411,
             },
             firstDate: '2026-03-04',
-            lastDate: '2026-05-12',
-            codexSessions: { available: false, count: 711, latestAt: '2026-05-13T01:59:17.537Z', totalBytes: 1363252124 },
+            lastDate: '2026-05-20',
+            codexSessions: { available: false, count: 862, latestAt: '2026-05-21T00:25:43.878Z', totalBytes: 1633829378 },
             categories: [
-                { id: 'repair', label: 'Repair', count: 296, primaryCount: 296, percent: 34 },
-                { id: 'growth', label: 'Growth', count: 204, primaryCount: 189, percent: 23 },
-                { id: 'interface', label: 'Interface', count: 297, primaryCount: 114, percent: 34 },
-                { id: 'ops', label: 'Ops', count: 151, primaryCount: 58, percent: 17 },
-                { id: 'media', label: 'Media + Docs', count: 165, primaryCount: 61, percent: 19 },
-                { id: 'intelligence', label: 'Intelligence', count: 168, primaryCount: 49, percent: 19 },
+                { id: 'privacy', label: 'Privacy + Trust', count: 46, primaryCount: 46, percent: 5 },
+                { id: 'repair', label: 'Repair', count: 320, primaryCount: 308, percent: 33 },
+                { id: 'growth', label: 'Growth', count: 215, primaryCount: 189, percent: 22 },
+                { id: 'interface', label: 'Interface', count: 304, primaryCount: 118, percent: 32 },
+                { id: 'ops', label: 'Ops', count: 152, primaryCount: 56, percent: 16 },
+                { id: 'media', label: 'Media + Docs', count: 181, primaryCount: 71, percent: 19 },
+                { id: 'intelligence', label: 'Intelligence', count: 174, primaryCount: 50, percent: 18 },
             ],
             primaryCategories: [
-                { id: 'repair', label: 'Repair', count: 296, percent: 34 },
-                { id: 'growth', label: 'Growth', count: 189, percent: 21 },
-                { id: 'interface', label: 'Interface', count: 114, percent: 13 },
-                { id: 'ops', label: 'Ops', count: 58, percent: 7 },
-                { id: 'media', label: 'Media + Docs', count: 61, percent: 7 },
-                { id: 'intelligence', label: 'Intelligence', count: 49, percent: 6 },
-                { id: 'maintenance', label: 'Maintenance', count: 114, percent: 13 },
+                { id: 'privacy', label: 'Privacy + Trust', count: 46, percent: 5 },
+                { id: 'repair', label: 'Repair', count: 308, percent: 32 },
+                { id: 'growth', label: 'Growth', count: 189, percent: 20 },
+                { id: 'interface', label: 'Interface', count: 118, percent: 12 },
+                { id: 'ops', label: 'Ops', count: 56, percent: 6 },
+                { id: 'media', label: 'Media + Docs', count: 71, percent: 7 },
+                { id: 'intelligence', label: 'Intelligence', count: 50, percent: 5 },
+                { id: 'maintenance', label: 'Maintenance', count: 119, percent: 12 },
             ],
             phases: [
-                { id: 'ignition', label: 'Ignition', from: '2026-03-04', to: '2026-03-11', count: 71, percent: 8, repairCount: 21, growthCount: 24, summary: 'The first backend, frontend, deployment, and document pieces came online.', tagCounts: [], primaryTagCounts: [], highlights: [] },
+                { id: 'ignition', label: 'Ignition', from: '2026-03-04', to: '2026-03-11', count: 71, percent: 7, repairCount: 21, growthCount: 24, summary: 'The first backend, frontend, deployment, and document pieces came online.', tagCounts: [], primaryTagCounts: [], highlights: [] },
                 { id: 'notes-admin', label: 'Notes + Admin Spine', from: '2026-03-12', to: '2026-03-18', count: 74, percent: 8, repairCount: 40, growthCount: 3, summary: 'Notes, admin, auth, PDFs, and crash recovery started becoming a working product surface.', tagCounts: [], primaryTagCounts: [], highlights: [] },
-                { id: 'runtime', label: 'Agent Runtime', from: '2026-03-19', to: '2026-03-25', count: 75, percent: 9, repairCount: 35, growthCount: 17, summary: 'Tool calls, memory, artifacts, and remote command routing became core platform behavior.', tagCounts: [], primaryTagCounts: [], highlights: [] },
-                { id: 'remote-builds', label: 'Remote Builds', from: '2026-03-26', to: '2026-04-18', count: 290, percent: 33, repairCount: 98, growthCount: 62, summary: 'Build, deploy, repair, and generated artifact paths expanded across the system.', tagCounts: [], primaryTagCounts: [], highlights: [] },
-                { id: 'polish-pipeline', label: 'Polish Pipeline', from: '2026-04-19', to: '2026-04-25', count: 134, percent: 15, repairCount: 43, growthCount: 25, summary: 'Session polish, document workflows, remote runners, and artifact handling tightened up.', tagCounts: [], primaryTagCounts: [], highlights: [] },
-                { id: 'media-symphony', label: 'Media + Symphony', from: '2026-04-26', to: '2026-05-01', count: 86, percent: 10, repairCount: 21, growthCount: 33, summary: 'Podcast, video, image gateways, Symphony, GitLab, and diagnostics became major branches.', tagCounts: [], primaryTagCounts: [], highlights: [] },
-                { id: 'live-learning', label: 'Live Learning', from: '2026-05-02', to: 'now', count: 151, percent: 17, repairCount: 38, growthCount: 40, summary: 'Kokoro, k3s proof loops, skills, frontend standards, and prompt state machines made Lilly sturdier.', tagCounts: [], primaryTagCounts: [], highlights: [] },
+                { id: 'runtime', label: 'Agent Runtime', from: '2026-03-19', to: '2026-03-25', count: 75, percent: 8, repairCount: 35, growthCount: 17, summary: 'Tool calls, memory, artifacts, and remote command routing became core platform behavior.', tagCounts: [], primaryTagCounts: [], highlights: [] },
+                { id: 'remote-builds', label: 'Remote Builds', from: '2026-03-26', to: '2026-04-18', count: 290, percent: 30, repairCount: 98, growthCount: 62, summary: 'Build, deploy, repair, and generated artifact paths expanded across the system.', tagCounts: [], primaryTagCounts: [], highlights: [] },
+                { id: 'polish-pipeline', label: 'Polish Pipeline', from: '2026-04-19', to: '2026-04-25', count: 134, percent: 14, repairCount: 43, growthCount: 25, summary: 'Session polish, document workflows, remote runners, and artifact handling tightened up.', tagCounts: [], primaryTagCounts: [], highlights: [] },
+                { id: 'media-symphony', label: 'Media + Symphony', from: '2026-04-26', to: '2026-05-01', count: 86, percent: 9, repairCount: 21, growthCount: 33, summary: 'Podcast, video, image gateways, Symphony, GitLab, and diagnostics became major branches.', tagCounts: [], primaryTagCounts: [], highlights: [] },
+                { id: 'live-learning', label: 'Live Learning', from: '2026-05-02', to: '2026-05-13', count: 157, percent: 16, repairCount: 40, growthCount: 40, summary: 'Kokoro, k3s proof loops, skills, frontend standards, and prompt state machines made Lilly sturdier.', tagCounts: [], primaryTagCounts: [], highlights: [] },
+                { id: 'privacy-trust', label: 'Privacy + Trust Layer', from: '2026-05-14', to: 'now', count: 70, percent: 7, repairCount: 22, growthCount: 11, summary: 'PII vault routing, trusted workbook calculations, admin-preview hardening, self-reflection approvals, and safer note cleanup became the newest platform layer.', tagCounts: [], primaryTagCounts: [], highlights: [] },
             ],
-            tiles: Array.from({ length: 881 }, (_, index) => ({
+            tiles: Array.from({ length: 957 }, (_, index) => ({
                 index: index + 1,
                 date: '',
                 subject: 'Lilly build pull',
-                primaryTag: ['repair', 'growth', 'interface', 'ops', 'media', 'intelligence'][index % 6],
+                primaryTag: ['privacy', 'repair', 'growth', 'interface', 'ops', 'media', 'intelligence'][index % 7],
             })),
-            recent: [],
+            recent: [
+                { hash: 'a2aeeedde9a994b1b700082844a798ebb6639cf7', shortHash: 'a2aeeed', date: '2026-05-20', subject: 'Clamp Hermes files and allow note cleanup suggestions', phase: 'privacy-trust', primaryTag: 'maintenance' },
+                { hash: 'e6924105637df37a8a2457154ff50b43206f55ef', shortHash: 'e692410', date: '2026-05-20', subject: 'Refresh lockfile for dependency advisories', phase: 'privacy-trust', primaryTag: 'maintenance' },
+                { hash: 'd2ed931612d72aa1c678b47ad65c6744d326bc82', shortHash: 'd2ed931', date: '2026-05-20', subject: 'Add approval flow for evaluator self-reflection suggestions', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: '502c8d4a9cbd159849a220f3da77fc36f2f9f5ec', shortHash: '502c8d4', date: '2026-05-19', subject: 'Harden PII relationship calculator inputs', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: '5ca3fdc38e8eed9a544cef5cdaf7503c25e43e3b', shortHash: '5ca3fdc', date: '2026-05-19', subject: 'Harden PII relationship calculator inputs', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: '3d9103ba0db05b00b7c340d202e2e6cadf5086d2', shortHash: '3d9103b', date: '2026-05-19', subject: 'Add trusted PII calculation batches', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: '11939251a1c71547da39aeb9859b77d4afc9edf7', shortHash: '1193925', date: '2026-05-19', subject: 'Minimize audited PII workbook calculation payloads', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: 'e059b88ee8932eaa9bf2f58b1acb1d4ddf6a6923', shortHash: 'e059b88', date: '2026-05-19', subject: 'Return XLSX artifacts from trusted PII calculations', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: '77c7b6c40ca2044c6541db7a63fb803ca97f881d', shortHash: '77c7b6c', date: '2026-05-19', subject: 'Return XLSX artifacts from trusted PII calculations', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: 'b4c3d9cf47a6012dea464a1a791aca2dcb5f839d', shortHash: 'b4c3d9c', date: '2026-05-19', subject: 'Prioritize workbook balance extrema over count wording', phase: 'privacy-trust', primaryTag: 'maintenance' },
+                { hash: '4dad2bb487f22ce85cdfc9bded8b0bf0a36c49ae', shortHash: '4dad2bb', date: '2026-05-19', subject: 'Use trusted workbook metadata for PII calculations', phase: 'privacy-trust', primaryTag: 'privacy' },
+                { hash: '29681faba6052ac0b5921d54013d644206f9ab09', shortHash: '29681fa', date: '2026-05-18', subject: 'Route private XLSX calculations through PII vault', phase: 'privacy-trust', primaryTag: 'privacy' },
+            ],
         };
     }
     

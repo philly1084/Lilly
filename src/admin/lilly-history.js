@@ -53,12 +53,20 @@ const PHASES = [
     id: 'live-learning',
     label: 'Live Learning',
     from: '2026-05-02',
-    to: '2099-12-31',
+    to: '2026-05-13',
     summary: 'Kokoro, k3s proof loops, skills, frontend standards, and prompt state machines made the platform more durable and self-aware.',
+  },
+  {
+    id: 'privacy-trust',
+    label: 'Privacy + Trust Layer',
+    from: '2026-05-14',
+    to: '2099-12-31',
+    summary: 'PII vault routing, trusted workbook calculations, admin-preview hardening, self-reflection approvals, and safer note cleanup became the newest platform layer.',
   },
 ];
 
 const CATEGORY_RULES = [
+  { id: 'privacy', label: 'Privacy + Trust', pattern: /\b(privacy|pii|vault|mask|masked|redact|redaction|identity|private|trusted|audit|approval|permission)\b/i },
   { id: 'repair', label: 'Repair', pattern: /\b(fix|harden|restore|stabilize|recover|crash|fallback|retry|prevent|patch)\b/i },
   { id: 'growth', label: 'Growth', pattern: /\b(add|implement|enable|support|introduce|create|expand|include)\b/i },
   { id: 'interface', label: 'Interface', pattern: /\b(ui|frontend|web chat|web-chat|notes|canvas|dashboard|visual|theme|voxel|cli)\b/i },

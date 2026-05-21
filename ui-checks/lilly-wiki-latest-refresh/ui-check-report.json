@@ -1,0 +1,247 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3137/admin/?view=lillyWiki",
+  "originalUrl": "http://127.0.0.1:3137/admin/?view=lillyWiki",
+  "authenticated": false,
+  "generatedAt": "2026-05-21T00:28:29.309Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\lilly-wiki-latest-refresh\\agent-sdk-admin-dashboard-desktop.png",
+      "metrics": {
+        "title": "Agent SDK Admin Dashboard",
+        "url": "http://127.0.0.1:3137/admin/?view=lillyWiki",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 4498,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 9052,
+        "bodyTextPreview": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces Lilly Wiki Settings Connected A Admin Superuser Lilly Wiki Dashboard / Lilly Wiki BUILD WIKI Lilly Pull Collage A visual record of the repo pulls that shaped Lilly: early artifact fixes, UI growth, planning upgrades, repair work, podcast stability, deployment proof, privacy vault routing, and the docs that taught the system how to keep building. 957 Repo pulls 2026-03-04 to 2026-05-20 | 78 days 862 Codex se",
+        "headings": [
+          "Lilly Wiki",
+          "Request Volume",
+          "Recent Activity",
+          "Model Usage",
+          "Token Usage",
+          "System Health",
+          "Self-Reflection Updates",
+          "Prompt Library",
+          "Default Configuration",
+          "Orchestration Phase",
+          "Provider Totals",
+          "Usage Summary",
+          "Per-Model Token Usage",
+          "Workload Definitions",
+          "Run Detail",
+          "Recent Runs"
+        ],
+        "interactiveControls": 349,
+        "textContrast": {
+          "checked": 283,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\lilly-wiki-latest-refresh\\agent-sdk-admin-dashboard-mobile.png",
+      "metrics": {
+        "title": "Agent SDK Admin Dashboard",
+        "url": "http://127.0.0.1:3137/admin/?view=lillyWiki",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 10554,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Too",
+            "left": -260,
+            "right": 0,
+            "width": 260
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-header",
+            "text": "Agent SDK",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "logo",
+            "text": "Agent SDK",
+            "left": -236,
+            "right": -108,
+            "width": 128
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -236,
+            "right": -204,
+            "width": 32
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -233,
+            "right": -207,
+            "width": 27
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "logo-text",
+            "text": "Agent SDK",
+            "left": -196,
+            "right": -108,
+            "width": 88
+          },
+          {
+            "tag": "button",
+            "id": "sidebarToggle",
+            "className": "sidebar-toggle",
+            "text": "",
+            "left": -57,
+            "right": -25,
+            "width": 32
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -51,
+            "right": -31,
+            "width": 20
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -46,
+            "right": -36,
+            "width": 10
+          },
+          {
+            "tag": "nav",
+            "id": "",
+            "className": "sidebar-nav",
+            "text": "DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces ",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "nav-section",
+            "text": "DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "nav-label",
+            "text": "DASHBOARD",
+            "left": -260,
+            "right": -1,
+            "width": 259
+          }
+        ],
+        "bodyTextLength": 9029,
+        "bodyTextPreview": "Agent SDK DASHBOARD Overview Prompts Models Tokens Logs 0 Workloads 0 SYSTEM Tools Traces Lilly Wiki Settings Connected A Admin Superuser Lilly Wiki BUILD WIKI Lilly Pull Collage A visual record of the repo pulls that shaped Lilly: early artifact fixes, UI growth, planning upgrades, repair work, podcast stability, deployment proof, privacy vault routing, and the docs that taught the system how to keep building. 957 Repo pulls 2026-03-04 to 2026-05-20 | 78 days 862 Codex sessions 1.5 GB logs, lat",
+        "headings": [
+          "Lilly Wiki",
+          "Request Volume",
+          "Recent Activity",
+          "Model Usage",
+          "Token Usage",
+          "System Health",
+          "Self-Reflection Updates",
+          "Prompt Library",
+          "Default Configuration",
+          "Orchestration Phase",
+          "Provider Totals",
+          "Usage Summary",
+          "Per-Model Token Usage",
+          "Workload Definitions",
+          "Run Detail",
+          "Recent Runs"
+        ],
+        "interactiveControls": 349,
+        "textContrast": {
+          "checked": 280,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\lilly-wiki-latest-refresh\\agent-sdk-admin-dashboard-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\lilly-wiki-latest-refresh\\agent-sdk-admin-dashboard-mobile.png"
+    ],
+    "issues": []
+  }
+}

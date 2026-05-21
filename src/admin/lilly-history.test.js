@@ -9,9 +9,10 @@ describe('lilly-history', () => {
       'aaa1111\t2026-03-05\tAdd Web CLI interface',
       'bbb2222\t2026-03-14\tFix admin dashboard API errors',
       'ccc3333\t2026-05-02\tDeploy Kokoro TTS service with backend',
+      'ddd4444\t2026-05-19\tHarden PII relationship calculator inputs',
     ].join('\n'));
 
-    expect(commits).toHaveLength(3);
+    expect(commits).toHaveLength(4);
     expect(commits[0]).toMatchObject({
       shortHash: 'aaa1111',
       phase: 'ignition',
@@ -20,6 +21,10 @@ describe('lilly-history', () => {
     expect(commits[1].tags).toContain('repair');
     expect(commits[2].tags).toContain('ops');
     expect(commits[2].tags).toContain('media');
+    expect(commits[3]).toMatchObject({
+      phase: 'privacy-trust',
+      primaryTag: 'privacy',
+    });
   });
 
   test('summarizes phases, categories, and all tile dots', () => {
