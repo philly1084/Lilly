@@ -234,8 +234,16 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     || cleanMarkerValue(text.match(/workspace\s*:\s*`?([^`\n]+)/i)?.[1] || '');
   const gitRepo = readMarkerLine(text, ['GIT_REPO', 'GIT_REMOTE', 'REPOSITORY'])
     || cleanMarkerValue(text.match(/(?:git\s+repo|repository)\s*:\s*`?([^`\n]+)/i)?.[1] || '');
+  const gitBranch = readMarkerLine(text, ['GIT_BRANCH', 'BRANCH']);
+  const gitBaseCommit = readMarkerLine(text, ['GIT_BASE_COMMIT', 'BASE_COMMIT']);
   const gitCommit = readMarkerLine(text, ['GIT_COMMIT', 'COMMIT'])
     || cleanMarkerValue(text.match(/(?:git\s+commit|commit)\s*:\s*`?([a-f0-9]{7,40})/i)?.[1] || '');
+  const changedFiles = Array.from(new Set(
+    readMarkerLines(text, ['CHANGED_FILES', 'GIT_CHANGED_FILES'])
+      .flatMap((value) => value.split(','))
+      .map((value) => cleanMarkerValue(value))
+      .filter(Boolean),
+  ));
   const deployment = readMarkerLine(text, ['DEPLOYMENT', 'K8S_DEPLOYMENT']);
   const publicHost = readMarkerLine(text, ['PUBLIC_HOST', 'HOST', 'URL'])
     || cleanMarkerValue(text.match(/https?:\/\/([^/\s`]+)/i)?.[1] || '');
@@ -273,7 +281,10 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     ...(jobId ? { jobId } : {}),
     ...(workspace ? { workspace } : {}),
     ...(gitRepo ? { gitRepo } : {}),
+    ...(gitBranch ? { gitBranch } : {}),
+    ...(gitBaseCommit ? { gitBaseCommit } : {}),
     ...(gitCommit ? { gitCommit } : {}),
+    ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(deployment ? { deployment } : {}),
     ...(publicHost ? { publicHost } : {}),
     ...(publicUrl ? { publicUrl } : {}),
@@ -800,6 +811,7 @@ function buildRemoteCliInstructions({
     'For new apps without a remote, create or use a repository under the configured GitLab group when the configured provider token is available to the backend or remote workbench. Push the deployable commit to GitLab before building or deploying so the GitLab project page, commits, and pipeline/build-event trail become the source of truth.',
     'If the request needs GitLab observability and GitLab is configured, do not silently use the direct BuildKit/kubectl runner as the main path. When you cannot create, attach, push, or observe the GitLab repo non-interactively, report the missing credential/API/runner capability with BLOCKER=<exact blocker>; use USER_INPUT_REQUIRED only if the next action truly requires a user-owned secret, approval, or decision.',
     'If GitLab is not configured or not reachable and the user did not require GitLab observability, deliberately fall back to a local git repo plus the direct BuildKit/kubectl runner path. Say the fallback is source-controlled locally and name what is missing for GitLab automation.',
+    'For local-git fallback, create or reuse a repository in the remote workspace before edits, keep the agent work on an agent/<run-id> branch when practical, capture git status/diff before deploy, commit before image build or manifest rollout, and use git revert for rollback so the user can see and undo AI work without GitLab/Gitea.',
     'Before committing in a fresh remote workspace, set repo-local git user.name and user.email if they are missing.',
     'For follow-up edits, inspect git status, git remote -v, git log, and the current source files first. Patch the existing source, preserve prior content/assets unless explicitly replacing them, commit the change, then rebuild/redeploy.',
     'Use live Kubernetes resources, mounted files, or ConfigMaps as diagnostics or recovery input only; do not leave them as the only editable source of truth for a deployed site.',
@@ -1152,7 +1164,10 @@ class RemoteCliAgentsSdkRunner {
         remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
         remoteCodeJobId: runMetadata.jobId || null,
         gitRepo: runMetadata.gitRepo || null,
+        gitBranch: runMetadata.gitBranch || null,
+        gitBaseCommit: runMetadata.gitBaseCommit || null,
         gitCommit: runMetadata.gitCommit || null,
+        changedFiles: runMetadata.changedFiles || [],
         deployment: runMetadata.deployment || null,
         publicHost: runMetadata.publicHost || null,
         publicUrl: runMetadata.publicUrl || null,

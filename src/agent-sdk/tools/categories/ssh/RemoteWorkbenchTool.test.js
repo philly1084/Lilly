@@ -85,6 +85,79 @@ describe('RemoteWorkbenchTool', () => {
     ]);
   });
 
+  test('prepares a git-backed agent branch with baseline markers', async () => {
+    const { tool, remoteCommand } = buildTool();
+
+    await tool.handler({
+      action: 'git-prepare',
+      branch: 'agent/test-run',
+      cwd: '/workspace/demo',
+    }, {}, { recordExecution: jest.fn() });
+
+    const params = remoteCommand.handler.mock.calls[0][0];
+    expect(params.profile).toBe('build');
+    expect(params.workingDirectory).toBe('/workspace/demo');
+    expect(params.environment).toEqual(expect.objectContaining({
+      GIT_BRANCH: 'agent/test-run',
+    }));
+    expect(params.command).toContain('git init');
+    expect(params.command).toContain('__KIMIBUILT_GIT_BASE_COMMIT__');
+    expect(params.command).toContain('git checkout -b "$branch"');
+  });
+
+  test('captures a git diff snapshot with base commit evidence', async () => {
+    const { tool, remoteCommand } = buildTool();
+
+    await tool.handler({
+      action: 'git-snapshot',
+      baseCommit: 'abc1234',
+    }, {}, { recordExecution: jest.fn() });
+
+    const params = remoteCommand.handler.mock.calls[0][0];
+    expect(params.profile).toBe('inspect');
+    expect(params.environment).toEqual(expect.objectContaining({
+      GIT_BASE_COMMIT: 'abc1234',
+    }));
+    expect(params.command).toContain('__KIMIBUILT_GIT_CHANGED_FILES__');
+    expect(params.command).toContain('git diff --no-ext-diff --binary "${base:-HEAD}"');
+  });
+
+  test('commits staged remote workspace changes with a visible commit marker', async () => {
+    const { tool, remoteCommand } = buildTool();
+
+    await tool.handler({
+      action: 'git-commit',
+      commitMessage: 'feat: upgrade remote demo',
+    }, {}, { recordExecution: jest.fn() });
+
+    const params = remoteCommand.handler.mock.calls[0][0];
+    expect(params.profile).toBe('build');
+    expect(params.environment).toEqual(expect.objectContaining({
+      GIT_COMMIT_MESSAGE: 'feat: upgrade remote demo',
+    }));
+    expect(params.command).toContain('git add -A');
+    expect(params.command).toContain('__KIMIBUILT_GIT_COMMIT__=$(git rev-parse HEAD)');
+  });
+
+  test('reverts a prior remote workspace commit with a rollback marker', async () => {
+    const { tool, remoteCommand } = buildTool();
+
+    await tool.handler({
+      action: 'git-revert',
+      revertCommit: 'HEAD',
+      commitMessage: 'revert: remote demo upgrade',
+    }, {}, { recordExecution: jest.fn() });
+
+    const params = remoteCommand.handler.mock.calls[0][0];
+    expect(params.profile).toBe('build');
+    expect(params.environment).toEqual(expect.objectContaining({
+      GIT_REVERT_COMMIT: 'HEAD',
+      GIT_COMMIT_MESSAGE: 'revert: remote demo upgrade',
+    }));
+    expect(params.command).toContain('git revert --no-edit "$target"');
+    expect(params.command).toContain('__KIMIBUILT_GIT_REVERTED_COMMIT__');
+  });
+
   test('maps rollout to the deploy runner profile', async () => {
     const { tool, remoteCommand } = buildTool();
 

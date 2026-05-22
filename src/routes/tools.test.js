@@ -173,6 +173,10 @@ describe('/api/tools routes', () => {
         expect(response.body.data.runtime.runnerAvailable).toBe(true);
         expect(response.body.data.runtime.structuredActions).toEqual(expect.arrayContaining([
             'grep',
+            'git-prepare',
+            'git-snapshot',
+            'git-commit',
+            'git-revert',
             'read-file',
             'write-file',
             'apply-patch',

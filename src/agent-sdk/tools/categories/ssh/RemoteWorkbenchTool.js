@@ -21,6 +21,10 @@ const ALLOWED_ACTIONS = Object.freeze([
   'repo-inspect',
   'repo-map',
   'changed-files',
+  'git-prepare',
+  'git-snapshot',
+  'git-commit',
+  'git-revert',
   'file-search',
   'dependency-check',
   'grep',
@@ -141,6 +145,22 @@ function normalizeRemotePath(value = '', fieldName = 'path') {
   return trimmed;
 }
 
+function normalizeGitRef(value = '') {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (/[\0\r\n\s~^:?*\\]/.test(trimmed)
+    || trimmed.includes('[')
+    || trimmed.includes(']')
+    || trimmed.includes('..')
+    || trimmed.startsWith('-')
+    || trimmed.endsWith('.')) {
+    throw new Error('branch must be a safe git branch name');
+  }
+  return trimmed.replace(/^\/+|\/+$/g, '');
+}
+
 function buildEnvironment(params = {}, overrides = {}) {
   const environment = {
     ...(params.environment && typeof params.environment === 'object' ? params.environment : {}),
@@ -227,6 +247,22 @@ class RemoteWorkbenchTool extends ToolBase {
           limit: {
             type: 'integer',
             description: 'Maximum result lines for grep. Defaults to 200.',
+          },
+          branch: {
+            type: 'string',
+            description: 'Git branch name for git-prepare. Defaults to agent/<timestamp>.',
+          },
+          commitMessage: {
+            type: 'string',
+            description: 'Commit message for git-commit or git-revert.',
+          },
+          baseCommit: {
+            type: 'string',
+            description: 'Expected base commit for git-snapshot or git-revert evidence.',
+          },
+          revertCommit: {
+            type: 'string',
+            description: 'Commit SHA to revert with git-revert. Defaults to HEAD.',
           },
           maxDepth: {
             type: 'integer',
@@ -367,6 +403,18 @@ class RemoteWorkbenchTool extends ToolBase {
     if (action === 'apply-patch') {
       return this.buildApplyPatchPlan(params);
     }
+    if (action === 'git-prepare') {
+      return this.buildGitPreparePlan(params);
+    }
+    if (action === 'git-snapshot') {
+      return this.buildGitSnapshotPlan(params);
+    }
+    if (action === 'git-commit') {
+      return this.buildGitCommitPlan(params);
+    }
+    if (action === 'git-revert') {
+      return this.buildGitRevertPlan(params);
+    }
     if (action === 'logs') {
       return this.buildLogsPlan(params);
     }
@@ -496,6 +544,136 @@ class RemoteWorkbenchTool extends ToolBase {
         description: 'remote-workbench apply-patch',
         content: patch.endsWith('\n') ? patch : `${patch}\n`,
       }],
+      timeout: 120000,
+    };
+  }
+
+  buildGitPreparePlan(params = {}) {
+    const branch = normalizeGitRef(params.branch || params.gitBranch || '');
+    return {
+      action: 'git-prepare',
+      command: [
+        'set -e',
+        'branch="${GIT_BRANCH:-agent/$(date +%Y%m%d%H%M%S)}"',
+        'if [ ! -d .git ]; then',
+        '  git init -b main >/dev/null 2>&1 || git init >/dev/null',
+        'fi',
+        'if ! git config user.name >/dev/null; then git config user.name "KimiBuilt Remote Agent"; fi',
+        'if ! git config user.email >/dev/null; then git config user.email "agent@kimibuilt.local"; fi',
+        'if ! git rev-parse --verify HEAD >/dev/null 2>&1; then',
+        '  git add -A',
+        '  if git diff --cached --quiet; then',
+        '    git commit --allow-empty -m "chore: establish KimiBuilt remote baseline" >/dev/null',
+        '  else',
+        '    git commit -m "chore: establish KimiBuilt remote baseline" >/dev/null',
+        '  fi',
+        'fi',
+        'base_commit="$(git rev-parse HEAD)"',
+        'if git show-ref --verify --quiet "refs/heads/$branch"; then',
+        '  git checkout "$branch" >/dev/null',
+        'else',
+        '  git checkout -b "$branch" >/dev/null',
+        'fi',
+        'echo "__KIMIBUILT_GIT_WORKSPACE__=$(pwd)"',
+        'echo "__KIMIBUILT_GIT_BRANCH__=$branch"',
+        'echo "__KIMIBUILT_GIT_BASE_COMMIT__=$base_commit"',
+        'echo "__KIMIBUILT_GIT_HEAD__=$(git rev-parse HEAD)"',
+        'git status --short --branch',
+      ].join('\n'),
+      profile: 'build',
+      environment: buildEnvironment(params, {
+        ...(branch ? { GIT_BRANCH: branch } : {}),
+      }),
+      timeout: 120000,
+    };
+  }
+
+  buildGitSnapshotPlan(params = {}) {
+    return {
+      action: 'git-snapshot',
+      command: [
+        'set -e',
+        'if [ ! -d .git ]; then echo "git-snapshot requires a git workspace" >&2; exit 2; fi',
+        'base="${GIT_BASE_COMMIT:-}"',
+        'head_commit="$(git rev-parse HEAD)"',
+        'echo "__KIMIBUILT_GIT_WORKSPACE__=$(pwd)"',
+        'echo "__KIMIBUILT_GIT_BRANCH__=$(git branch --show-current || true)"',
+        'echo "__KIMIBUILT_GIT_BASE_COMMIT__=${base:-unknown}"',
+        'echo "__KIMIBUILT_GIT_HEAD__=$head_commit"',
+        'echo "__KIMIBUILT_GIT_STATUS__"',
+        'git status --short --branch',
+        'echo "__KIMIBUILT_GIT_CHANGED_FILES__"',
+        'git diff --name-status "${base:-HEAD}" 2>/dev/null || git diff --name-status',
+        'git diff --cached --name-status',
+        'echo "__KIMIBUILT_GIT_DIFF_STAT__"',
+        'git diff --stat "${base:-HEAD}" 2>/dev/null || git diff --stat',
+        'git diff --cached --stat',
+        'echo "__KIMIBUILT_GIT_DIFF_PATCH__"',
+        'git diff --no-ext-diff --binary "${base:-HEAD}" 2>/dev/null || git diff --no-ext-diff --binary',
+        'git diff --cached --no-ext-diff --binary',
+      ].join('\n'),
+      profile: 'inspect',
+      environment: buildEnvironment(params, {
+        ...(params.baseCommit ? { GIT_BASE_COMMIT: String(params.baseCommit).trim() } : {}),
+      }),
+      timeout: 120000,
+    };
+  }
+
+  buildGitCommitPlan(params = {}) {
+    const message = String(params.commitMessage || params.message || 'chore: save KimiBuilt remote agent changes').trim();
+    return {
+      action: 'git-commit',
+      command: [
+        'set -e',
+        'if [ ! -d .git ]; then echo "git-commit requires a git workspace" >&2; exit 2; fi',
+        'if ! git config user.name >/dev/null; then git config user.name "KimiBuilt Remote Agent"; fi',
+        'if ! git config user.email >/dev/null; then git config user.email "agent@kimibuilt.local"; fi',
+        'git add -A',
+        'if git diff --cached --quiet; then',
+        '  echo "__KIMIBUILT_GIT_COMMIT__=none"',
+        '  echo "__KIMIBUILT_GIT_COMMIT_STATUS__=clean"',
+        'else',
+        '  git commit -m "$GIT_COMMIT_MESSAGE" >/dev/null',
+        '  echo "__KIMIBUILT_GIT_COMMIT__=$(git rev-parse HEAD)"',
+        '  echo "__KIMIBUILT_GIT_COMMIT_STATUS__=committed"',
+        'fi',
+        'echo "__KIMIBUILT_GIT_BRANCH__=$(git branch --show-current || true)"',
+        'git status --short --branch',
+      ].join('\n'),
+      profile: 'build',
+      environment: buildEnvironment(params, {
+        GIT_COMMIT_MESSAGE: message,
+      }),
+      timeout: 120000,
+    };
+  }
+
+  buildGitRevertPlan(params = {}) {
+    const revertCommit = String(params.revertCommit || params.commit || 'HEAD').trim();
+    const message = String(params.commitMessage || params.message || '').trim();
+    return {
+      action: 'git-revert',
+      command: [
+        'set -e',
+        'if [ ! -d .git ]; then echo "git-revert requires a git workspace" >&2; exit 2; fi',
+        'target="${GIT_REVERT_COMMIT:-HEAD}"',
+        'before="$(git rev-parse HEAD)"',
+        'git revert --no-edit "$target"',
+        'if [ -n "${GIT_COMMIT_MESSAGE:-}" ]; then',
+        '  git commit --amend -m "$GIT_COMMIT_MESSAGE" >/dev/null',
+        'fi',
+        'echo "__KIMIBUILT_GIT_REVERTED_COMMIT__=$target"',
+        'echo "__KIMIBUILT_GIT_REVERT_BASE__=$before"',
+        'echo "__KIMIBUILT_GIT_COMMIT__=$(git rev-parse HEAD)"',
+        'echo "__KIMIBUILT_GIT_BRANCH__=$(git branch --show-current || true)"',
+        'git status --short --branch',
+      ].join('\n'),
+      profile: 'build',
+      environment: buildEnvironment(params, {
+        GIT_REVERT_COMMIT: revertCommit,
+        ...(message ? { GIT_COMMIT_MESSAGE: message } : {}),
+      }),
       timeout: 120000,
     };
   }

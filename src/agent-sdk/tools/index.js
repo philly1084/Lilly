@@ -5491,6 +5491,11 @@ class ToolManager {
       'remote-workbench': [
         'remote workbench',
         'remote repo status',
+        'remote git prepare',
+        'remote git snapshot',
+        'remote git commit',
+        'remote git revert',
+        'remote diff',
         'remote file read',
         'remote file write',
         'remote apply patch',
