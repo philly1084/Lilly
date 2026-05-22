@@ -230,6 +230,9 @@ describe('/api/tools routes', () => {
         expect(managedApp.runtime.observability).toBe('gitlab-repo-pipeline-build-events');
         expect(remoteAgent).toBeDefined();
         expect(k3sDeploy).toBeDefined();
+        expect(remoteAgent.description).toContain('remote_code_run');
+        expect(remoteAgent.support.notes.join('\n')).toContain('GIT_BRANCH');
+        expect(remoteAgent.support.notes.join('\n')).toContain('remote_code_status');
         expect(remoteAgent.runtime.runnerAvailable).toBe(true);
         expect(remoteAgent.runtime.k3sFeedback).toEqual(expect.objectContaining({
             runnerReady: true,

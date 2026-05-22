@@ -3528,7 +3528,10 @@ function extractRemoteCliAgentControlStateFromToolEvents(toolEvents = []) {
         ...(data.cwd || params.cwd ? { cwd: data.cwd || params.cwd } : {}),
         ...(data.remoteCodeSessionId ? { remoteCodeSessionId: data.remoteCodeSessionId } : {}),
         ...(data.gitRepo ? { gitRepo: data.gitRepo } : {}),
+        ...(data.gitBranch ? { gitBranch: data.gitBranch } : {}),
+        ...(data.gitBaseCommit ? { gitBaseCommit: data.gitBaseCommit } : {}),
         ...(data.gitCommit ? { gitCommit: data.gitCommit } : {}),
+        ...(Array.isArray(data.changedFiles) && data.changedFiles.length > 0 ? { changedFiles: data.changedFiles } : {}),
         ...(data.deployment ? { deployment: data.deployment } : {}),
         ...(data.publicHost ? { publicHost: data.publicHost } : {}),
         ...(data.publicUrl ? { publicUrl: data.publicUrl } : {}),
@@ -7676,7 +7679,10 @@ function summarizeToolEventForUser(event = {}) {
         const continuity = [
             data?.sessionId ? `remote session: ${data.sessionId}` : '',
             data?.cwd ? `workspace: ${data.cwd}` : '',
+            data?.gitBranch ? `branch: ${data.gitBranch}` : '',
+            data?.gitBaseCommit ? `base: ${data.gitBaseCommit}` : '',
             data?.gitCommit ? `commit: ${data.gitCommit}` : '',
+            Array.isArray(data?.changedFiles) && data.changedFiles.length > 0 ? `changed files: ${data.changedFiles.join(', ')}` : '',
             data?.deployment ? `deployment: ${data.deployment}` : '',
             data?.publicHost ? `public host: ${data.publicHost}` : '',
         ].filter(Boolean).join('; ');

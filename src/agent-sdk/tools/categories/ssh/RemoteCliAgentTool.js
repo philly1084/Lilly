@@ -8,7 +8,11 @@ class RemoteCliAgentTool extends ToolBase {
     super({
       id: options.id || 'remote-cli-agent',
       name: options.name || 'Remote CLI Agent',
-      description: options.description || 'Run a server-side OpenAI Agents SDK coding agent with the remote-cli Streamable HTTP MCP gateway attached.',
+      description: options.description || [
+        'Run a server-side OpenAI Agents SDK coding agent with the remote-cli Streamable HTTP MCP gateway attached.',
+        'Use for remote server coding/build/deploy tasks that should go through remote_code_run and remote_code_status, with adminMode for scoped live software changes.',
+        'Remote deployments must preserve Git visibility: inspect status/remotes, create or reuse a git-backed workspace, commit before deploy, return GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, CHANGED_FILES, verification markers, and use git revert plus redeploy for rollback.',
+      ].join(' '),
       category: 'ssh',
       version: '1.0.0',
       backend: {

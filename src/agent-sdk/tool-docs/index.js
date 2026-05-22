@@ -268,7 +268,16 @@ const TOOL_SUPPORT = {
   'ssh-execute': { status: 'requires_setup', notes: ['Requires SSH target credentials or cluster secret configuration.'] },
   'remote-command': { status: 'requires_setup', notes: ['Requires SSH target credentials or cluster secret configuration.', 'Optimized for Ubuntu/Linux host and k3s cluster operations in this project.', 'Includes a Playwright/Chromium UI visual-check catalog entry when the runner image exposes the helper.', 'Runner profile admin is available only for explicitly approved privileged operations.'] },
   'remote-workbench': { status: 'requires_setup', notes: ['Structured remote runner actions for repo inspection, guarded file reads/writes, patch application, build/test, logs, rollout, deployment verification, and UI visual checks.', 'Uses inspect/build/deploy runner profiles instead of sending every operation through the deploy lane.'] },
-  'remote-cli-agent': { status: 'requires_setup', notes: ['Server-side OpenAI Agents SDK integration for the remote-cli Streamable HTTP MCP gateway.', 'Requires REMOTE_CLI_MCP_URL or GATEWAY_URL plus REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY in the trusted backend runtime.', 'Prefer for remote software author/build/deploy/verify loops; pass adminMode for scoped real deployment changes.', 'Website builds should run Playwright/Chromium UI screenshot checks when the remote target exposes a preview or public URL.'] },
+  'remote-cli-agent': {
+    status: 'requires_setup',
+    notes: [
+      'Server-side OpenAI Agents SDK integration for the remote-cli Streamable HTTP MCP gateway; inner work must go through remote_code_run and remote_code_status rather than invented tool ids.',
+      'Requires REMOTE_CLI_MCP_URL or GATEWAY_URL plus REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY in the trusted backend runtime.',
+      'Prefer for remote software author/build/deploy/verify loops; pass adminMode:true for scoped real deployment changes on the configured admin-capable runner lane.',
+      'Git visibility is required for remote deployments: inspect git status/remotes first, create or reuse a git-backed workspace, commit before deploy, report GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, and CHANGED_FILES, and use git revert plus redeploy for rollback.',
+      'Completion proof should include WHAT_CHANGED, VERIFY_COMMANDS, VERIFY_RESULTS, PUBLIC_URL, BLOCKER, deployment/public-host markers, and Playwright/Chromium UI screenshot checks for website or dashboard work.',
+    ],
+  },
   'k3s-deploy': { status: 'requires_setup', notes: ['Requires SSH target credentials and kubectl/git on the remote host.'] },
   'docker-exec': { status: 'requires_setup', notes: ['Requires explicit Docker CLI/socket access in the backend runtime; not part of the default remote host lane.'] },
   'code-sandbox': { status: 'requires_setup', notes: ['Execute mode requires Docker image pull/run capability in the backend runtime.', 'Project mode can persist previewable frontend bundles without Docker.', 'Sandbox HTML previews can load installed browser libraries from /api/sandbox-libraries; the catalog documents local availability plus CDN fallbacks for Three.js, Chart.js, D3, Mermaid, Cytoscape, Plotly, ECharts, vis-network, GSAP, Matter.js, p5.js, Rough.js, Force Graph, and 3D Force Graph.'] },

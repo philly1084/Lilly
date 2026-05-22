@@ -353,6 +353,8 @@ async function getRuntimeSupport(toolId) {
                         : `K3s feedback blockers: ${k3sFeedback.blockers.join(' ')}`,
                     gitProviderConfig?.baseURL ? `Configured Git provider is ${gitProviderConfig.provider || 'gitlab'} at ${gitProviderConfig.baseURL}.` : 'No configured GitLab base URL is visible to the runtime; remote builds should fall back to local git/direct runner and report the missing source-control automation.',
                     'Use adminMode for scoped remote software deployment loops that need real changes through the admin-capable CLI runner lane.',
+                    'Tool-call contract: backend callers should invoke remote-cli-agent; the inner agent should use remote_code_run, poll remote_code_status for in-progress jobs, and continue with returned session IDs.',
+                    'Remote deployment contract: Git visibility is required even for local fallback repos; report GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, CHANGED_FILES, verification markers, and rollback through git revert plus redeploy.',
                 ]
                 : [
                     'Remote CLI MCP needs REMOTE_CLI_MCP_URL or GATEWAY_URL.',
