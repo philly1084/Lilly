@@ -322,31 +322,129 @@ function normalizeMcpContentText(result = {}) {
   return JSON.stringify(result, null, 2);
 }
 
-function appendFallbackMarkers(text = '', { targetId = '', cwd = '', mcpSessionId = '' } = {}) {
+function findNestedNormalizedValue(source = {}, keys = [], depth = 0) {
+  if (!source || typeof source !== 'object' || depth > 3) {
+    return undefined;
+  }
+
+  const direct = getValueByNormalizedKey(source, keys);
+  if (direct !== undefined) {
+    return direct;
+  }
+
+  for (const value of Object.values(source)) {
+    if (value && typeof value === 'object') {
+      const nested = findNestedNormalizedValue(value, keys, depth + 1);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function collectRemoteCodeStateCandidates(result = {}, text = '') {
+  const candidates = [];
+  const add = (value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      candidates.push(value);
+    }
+  };
+
+  add(result);
+  add(result?.structuredContent);
+  add(result?.data);
+  const parsedText = parseLenientJson(text);
+  add(parsedText);
+  add(parsedText?.structuredContent);
+  add(parsedText?.data);
+  add(parsedText?.result);
+
+  return candidates;
+}
+
+function extractRemoteCodeJobState(result = {}, textOverride = '') {
+  const text = textOverride || normalizeMcpContentText(result);
+  const candidates = collectRemoteCodeStateCandidates(result, text);
+  const state = {};
+
+  for (const candidate of candidates) {
+    state.status = state.status || normalizeText(findNestedNormalizedValue(candidate, ['status', 'state', 'phase']));
+    state.jobId = state.jobId || normalizeText(findNestedNormalizedValue(candidate, ['jobId', 'job_id', 'runId', 'run_id', 'id']));
+    state.sessionId = state.sessionId || normalizeText(findNestedNormalizedValue(candidate, ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id']));
+  }
+
+  if (!state.status) {
+    state.status = normalizeText(
+      text.match(/(?:^|[\s,{])["']?(?:status|state|phase)["']?\s*[:=]\s*["']?([a-z_ -]{3,32})["']?/i)?.[1] || '',
+    );
+  }
+  if (!state.jobId) {
+    state.jobId = normalizeText(
+      text.match(/(?:^|[\s,{])["']?(?:jobId|job_id|runId|run_id)["']?\s*[:=]\s*["']?([a-z0-9_.:-]{3,96})["']?/i)?.[1] || '',
+    );
+  }
+  if (!state.sessionId) {
+    state.sessionId = normalizeText(
+      text.match(/(?:^|[\s,{])["']?(?:sessionId|session_id|remoteSessionId|remote_session_id)["']?\s*[:=]\s*["']?([a-z0-9_.:-]{3,128})["']?/i)?.[1] || '',
+    );
+  }
+
+  return {
+    status: normalizeText(state.status).toLowerCase().replace(/\s+/g, '_'),
+    jobId: cleanMarkerValue(state.jobId),
+    sessionId: cleanMarkerValue(state.sessionId),
+  };
+}
+
+function isRunningRemoteCodeStatus(status = '') {
+  return /^(?:running|queued|pending|active|started|in_progress|in-progress|processing|working)$/.test(
+    normalizeText(status).toLowerCase().replace(/\s+/g, '_'),
+  );
+}
+
+function appendFallbackMarkers(text = '', {
+  targetId = '',
+  cwd = '',
+  mcpSessionId = '',
+  remoteSessionId = '',
+  fallbackStatus = 'complete',
+  fallbackWhatChanged = '',
+  fallbackVerifyResult = '',
+  blocker = '',
+} = {}) {
   const source = normalizeText(text) ? text : 'remote_code_run completed without text output.';
   const existing = extractRemoteCliRunMetadata(source);
   const lines = [source.trim()];
 
-  if (!existing.sessionId && mcpSessionId) {
+  if (!existing.sessionId && remoteSessionId) {
+    lines.push(`REMOTE_CLI_SESSION_ID=${remoteSessionId}`);
+  }
+  if (mcpSessionId) {
     lines.push(`MCP_SESSION_ID=${mcpSessionId}`);
   }
   if (!existing.workspace && cwd) {
     lines.push(`WORKSPACE=${cwd}`);
   }
   if (!existing.whatChanged) {
-    lines.push('WHAT_CHANGED=Executed leaked remote_code_run MCP call directly after the inner agent returned it as raw tool-call JSON.');
+    lines.push(`WHAT_CHANGED=${fallbackWhatChanged || 'Executed leaked remote_code_run MCP call directly after the inner agent returned it as raw tool-call JSON.'}`);
   }
   if (!Array.isArray(existing.verifyCommands) || existing.verifyCommands.length === 0) {
-    lines.push('VERIFY_COMMANDS=remote_code_run');
+    lines.push(fallbackStatus === 'complete'
+      ? 'VERIFY_COMMANDS=remote_code_run, remote_code_status'
+      : 'VERIFY_COMMANDS=remote_code_run');
   }
   if (!Array.isArray(existing.verifyResults) || existing.verifyResults.length === 0) {
-    lines.push('VERIFY_RESULTS=remote_code_run returned a response from the MCP gateway.');
+    lines.push(`VERIFY_RESULTS=${fallbackVerifyResult || (fallbackStatus === 'complete'
+      ? 'remote_code_run completed through the MCP gateway.'
+      : 'remote_code_run started but did not reach a terminal status before the fallback poll limit.')}`);
   }
   if (!existing.publicUrl) {
     lines.push('PUBLIC_URL=not_available');
   }
   if (!existing.blocker) {
-    lines.push('BLOCKER=none');
+    lines.push(`BLOCKER=${blocker || (fallbackStatus === 'complete' ? 'none' : 'remote_code_run still running')}`);
   }
   if (targetId) {
     lines.push(`REMOTE_CLI_TARGET=${targetId}`);
@@ -743,6 +841,7 @@ class RemoteCliAgentsSdkRunner {
       agentModel: normalizeText(this.config.agentModel),
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
+      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, 20, { min: 1, max: 80 }),
     };
   }
 
@@ -794,6 +893,7 @@ class RemoteCliAgentsSdkRunner {
     task = '',
     waitMs = 30000,
     sessionId = '',
+    maxStatusPolls = 20,
   } = {}) {
     const call = toolCalls.find((entry) => entry.name === 'remote_code_run')
       || toolCalls.find((entry) => entry.name === 'remote_code_status');
@@ -827,11 +927,57 @@ class RemoteCliAgentsSdkRunner {
       args.cwd = cwd;
     }
 
-    const result = await remoteCli.callTool(call.name, args);
-    return appendFallbackMarkers(normalizeMcpContentText(result), {
+    const initialResult = await remoteCli.callTool(call.name, args);
+    let finalResult = initialResult;
+    let finalText = normalizeMcpContentText(finalResult);
+    let jobState = extractRemoteCodeJobState(finalResult, finalText);
+    let remoteSessionId = jobState.sessionId || args.sessionId || sessionId;
+    const pollOutputs = [];
+
+    if (call.name === 'remote_code_run' && isRunningRemoteCodeStatus(jobState.status)) {
+      const pollLimit = normalizePositiveInteger(maxStatusPolls, 20, { min: 1, max: 80 });
+      for (let attempt = 0; attempt < pollLimit && isRunningRemoteCodeStatus(jobState.status); attempt += 1) {
+        const statusArgs = {
+          targetId: args.targetId || targetId,
+          ...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
+          ...(jobState.jobId ? { jobId: jobState.jobId } : {}),
+          waitMs,
+        };
+        finalResult = await remoteCli.callTool('remote_code_status', statusArgs);
+        finalText = normalizeMcpContentText(finalResult);
+        pollOutputs.push(finalText);
+        const nextState = extractRemoteCodeJobState(finalResult, finalText);
+        const pollMetadata = extractRemoteCliRunMetadata(finalText);
+        const inferredTerminalStatus = !nextState.status && pollMetadata.completionStatus !== 'unknown'
+          ? (pollMetadata.completionStatus === 'blocked' ? 'blocked' : 'complete')
+          : '';
+        jobState = {
+          status: nextState.status || inferredTerminalStatus || jobState.status,
+          jobId: nextState.jobId || jobState.jobId,
+          sessionId: nextState.sessionId || jobState.sessionId,
+        };
+        remoteSessionId = jobState.sessionId || remoteSessionId;
+      }
+    }
+
+    const stillRunning = isRunningRemoteCodeStatus(jobState.status);
+    const combinedText = pollOutputs.length > 0
+      ? [normalizeMcpContentText(initialResult), ...pollOutputs].filter(Boolean).join('\n\n--- remote_code_status poll ---\n')
+      : finalText;
+
+    return appendFallbackMarkers(combinedText, {
       targetId: args.targetId || targetId,
       cwd: args.cwd || cwd,
       mcpSessionId: remoteCli.sessionId || '',
+      remoteSessionId,
+      fallbackStatus: stillRunning ? 'running' : 'complete',
+      fallbackWhatChanged: stillRunning
+        ? 'Started the leaked remote_code_run MCP call and polled remote_code_status, but the remote job was still running when the compatibility fallback stopped.'
+        : 'Executed leaked remote_code_run MCP call directly and continued polling remote_code_status until the remote job reached a terminal result.',
+      fallbackVerifyResult: stillRunning
+        ? `remote_code_status remained ${jobState.status || 'running'} after ${normalizePositiveInteger(maxStatusPolls, 20, { min: 1, max: 80 })} poll attempt(s).`
+        : 'remote_code_run reached a terminal result through the MCP gateway.',
+      blocker: stillRunning ? 'remote_code_run still running; continue with the returned remote session/job id' : '',
     });
   }
 
@@ -863,6 +1009,11 @@ class RemoteCliAgentsSdkRunner {
     const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
     const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
     const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
+    const maxStatusPolls = normalizePositiveInteger(
+      input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls,
+      Math.min(maxTurns, 20),
+      { min: 1, max: 80 },
+    );
     const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';
     const adminMode = resolveAdminMode(input, task);
     const apiMode = resolveAgentsApiMode({
@@ -938,6 +1089,7 @@ class RemoteCliAgentsSdkRunner {
           task,
           waitMs,
           sessionId,
+          maxStatusPolls,
         });
       }
       const runMetadata = extractRemoteCliRunMetadata(finalOutput);

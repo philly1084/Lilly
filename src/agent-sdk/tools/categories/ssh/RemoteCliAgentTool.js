@@ -50,6 +50,11 @@ class RemoteCliAgentTool extends ToolBase {
             default: 20,
             description: 'Maximum inner Agents SDK turns for this remote task.',
           },
+          maxStatusPolls: {
+            type: 'integer',
+            default: 20,
+            description: 'Maximum compatibility-fallback remote_code_status polls when a chat gateway leaks remote_code_run tool JSON instead of executing the tool loop.',
+          },
           adminMode: {
             type: 'boolean',
             default: false,

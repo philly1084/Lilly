@@ -518,6 +518,229 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('polls leaked remote_code_run jobs until remote_code_status returns completion markers', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-polling-tool';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_run') {
+          return {
+            structuredContent: {
+              status: 'running',
+              jobId: 'job-123',
+              sessionId: 'remote-session-poll',
+            },
+            content: [{
+              type: 'text',
+              text: '{"status":"running","jobId":"job-123","sessionId":"remote-session-poll"}',
+            }],
+          };
+        }
+
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              'Finished remote Tetris deploy.',
+              'REMOTE_CLI_SESSION_ID=remote-session-poll',
+              'WORKSPACE=/srv/apps/my-app',
+              'WHAT_CHANGED=Finished the remote job after polling status.',
+              'VERIFY_COMMANDS=curl https://awesome.demoserver2.buzz/',
+              'VERIFY_RESULTS=Public Tetris page returned the updated theme controls.',
+              'PUBLIC_URL=https://awesome.demoserver2.buzz/',
+              'BLOCKER=none',
+            ].join('\n'),
+          }],
+        };
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: JSON.stringify({
+            output_text: '',
+            tool_calls: [{
+              id: 'call_1',
+              name: 'remote_code_run',
+              arguments: {
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                task: 'Update and launch the Tetris themes.',
+                waitMs: 30000,
+              },
+            }],
+            finish_reason: 'tool_calls',
+          }),
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.5',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Update and launch the Tetris themes.',
+      adminMode: true,
+    });
+
+    expect(calls.toolCalls).toEqual([
+      {
+        name: 'remote_code_run',
+        args: {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Update and launch the Tetris themes.',
+          waitMs: 30000,
+        },
+      },
+      {
+        name: 'remote_code_status',
+        args: {
+          targetId: 'prod',
+          sessionId: 'remote-session-poll',
+          jobId: 'job-123',
+          waitMs: 30000,
+        },
+      },
+    ]);
+    expect(result.finalOutput).toContain('Finished remote Tetris deploy.');
+    expect(result).toMatchObject({
+      sessionId: 'remote-session-poll',
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Finished the remote job after polling status.',
+      publicUrl: 'https://awesome.demoserver2.buzz/',
+      completionStatus: 'complete',
+    });
+  });
+
+  test('does not mark leaked remote_code_run fallback complete while the remote job is still running', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-still-running';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          structuredContent: {
+            status: 'running',
+            jobId: 'job-still-running',
+            sessionId: 'remote-session-still-running',
+          },
+          content: [{
+            type: 'text',
+            text: '{"status":"running","jobId":"job-still-running","sessionId":"remote-session-still-running"}',
+          }],
+        };
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: JSON.stringify({
+            output_text: '',
+            tool_calls: [{
+              id: 'call_1',
+              name: 'remote_code_run',
+              arguments: {
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                task: 'Launch the Tetris game.',
+                waitMs: 30000,
+              },
+            }],
+            finish_reason: 'tool_calls',
+          }),
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.5',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Launch the Tetris game.',
+      adminMode: true,
+      maxStatusPolls: 2,
+    });
+
+    expect(calls.toolCalls).toHaveLength(3);
+    expect(calls.toolCalls.map((call) => call.name)).toEqual([
+      'remote_code_run',
+      'remote_code_status',
+      'remote_code_status',
+    ]);
+    expect(result).toMatchObject({
+      sessionId: 'remote-session-still-running',
+      blocker: 'remote_code_run still running; continue with the returned remote session/job id',
+      completionStatus: 'blocked',
+    });
+    expect(result.finalOutput).toContain('remote_code_status remained running after 2 poll attempt(s).');
+  });
+
   test('wraps runner failures with model, API mode, and gateway diagnostics', async () => {
     class FakeMCPServerStreamableHttp {
       constructor() {
