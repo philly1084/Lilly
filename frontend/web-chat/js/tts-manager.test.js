@@ -3,10 +3,22 @@ const {
     DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
     DEFAULT_TTS_SYNTHESIS_LANES,
     WebChatTtsManager,
+    normalizeTextForSpeech,
     splitTextIntoSpeechChunks,
 } = require('./tts-manager');
 
 describe('splitTextIntoSpeechChunks', () => {
+    test('normalizes raw websites before chunking for speech', () => {
+        const normalized = normalizeTextForSpeech(
+            'Open https://www.example.com/docs, then check lilly.secdevsolutions.help/live.',
+        );
+
+        expect(normalized).toContain('Open example dot com slash docs');
+        expect(normalized).toContain('check lilly dot secdevsolutions dot help slash live');
+        expect(normalized).not.toContain('https');
+        expect(normalized).not.toContain('www.');
+    });
+
     test('starts with one sentence then groups later speech to reduce long-run synthesis waits', () => {
         const chunks = splitTextIntoSpeechChunks(
             'One. Two. Three. Four. Five. Six. Seven. Eight.',
@@ -20,9 +32,8 @@ describe('splitTextIntoSpeechChunks', () => {
 
         expect(chunks).toEqual([
             'One.',
-            'Two. Three.',
-            'Four. Five.',
-            'Six. Seven.',
+            'Two. Three. Four.',
+            'Five. Six. Seven.',
             'Eight.',
         ]);
     });
@@ -47,7 +58,7 @@ describe('splitTextIntoSpeechChunks', () => {
         expect(chunks[0]).toMatch(/^This sentence is intentionally verbose/);
     });
 
-    test('starts the first sentence as soon as it is ready while queueing extra lanes', async () => {
+    test('starts after a small second-chunk buffer while queueing extra lanes', async () => {
         const previousCustomEvent = global.CustomEvent;
         global.CustomEvent = class CustomEvent extends Event {
             constructor(type, params = {}) {
@@ -105,7 +116,7 @@ describe('splitTextIntoSpeechChunks', () => {
             });
 
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two. Three.', 'Four. Five.']);
+            expect(preparedTexts).toEqual(['One.', 'Two. Three. Four.', 'Five.']);
             expect(preparedTexts).toHaveLength(DEFAULT_TTS_SYNTHESIS_LANES);
             expect(startedAt).toEqual([]);
 
@@ -113,9 +124,15 @@ describe('splitTextIntoSpeechChunks', () => {
             await Promise.resolve();
             await Promise.resolve();
             await new Promise((resolve) => setImmediate(resolve));
-            expect(startedAt).toHaveLength(1);
+            expect(startedAt).toHaveLength(0);
 
-            resolvers.slice(1).forEach((resolve) => resolve());
+            resolvers[1]();
+            await Promise.resolve();
+            await Promise.resolve();
+            await new Promise((resolve) => setImmediate(resolve));
+            expect(startedAt).toHaveLength(2);
+
+            resolvers.slice(2).forEach((resolve) => resolve());
             await expect(playbackPromise).resolves.toBe(true);
             expect(startedAt).toHaveLength(3);
         } finally {

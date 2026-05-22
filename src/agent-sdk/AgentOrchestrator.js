@@ -666,11 +666,17 @@ class AgentOrchestrator {
     workingMemory,
     executionProfile = DEFAULT_EXECUTION_PROFILE,
   }) {
+    const retrievedSkills = this.config.enableSkills
+      ? await this.skillRetriever.retrieveForTask(task).catch(() => [])
+      : [];
     const skillContext = this.config.enableSkills
-      ? this.skillRetriever.formatForPrompt(
-          await this.skillRetriever.retrieveForTask(task).catch(() => [])
-        )
+      ? this.skillRetriever.formatForPrompt(retrievedSkills)
       : '';
+    const selectedSkills = retrievedSkills.map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      tools: Array.isArray(skill.toolPreferences) ? skill.toolPreferences : [],
+    }));
 
     task.tools = this.getConversationToolIds(task.objective, instructions, {
       executionProfile,
@@ -730,6 +736,8 @@ class AgentOrchestrator {
         trace,
         agentExecutor: true,
         taskType,
+        skillContext,
+        selectedSkills,
       },
     });
 
@@ -752,6 +760,8 @@ class AgentOrchestrator {
             taskType,
             clientSurface,
             agentExecutor: true,
+            skillContext,
+            selectedSkills,
           },
         }),
       };
@@ -782,6 +792,8 @@ class AgentOrchestrator {
         toolEventCount: toolEvents.length,
         agentExecutor: true,
         executionTrace: trace,
+        skillContext,
+        selectedSkills,
       },
     });
 

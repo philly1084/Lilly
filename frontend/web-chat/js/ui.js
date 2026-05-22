@@ -6884,9 +6884,129 @@ class UIHelpers {
     }
 
     normalizeSpeechHighlightText(text = '') {
-        return String(text || '')
-            .replace(/\s+/g, ' ')
-            .trim();
+        const comparable = {
+            text: '',
+            positions: [],
+        };
+        this.appendComparableSpeechText(String(text || ''), comparable);
+        this.trimComparableSpeechOutput(comparable);
+        return comparable.text;
+    }
+
+    trimComparableSpeechOutput(output) {
+        while (output.text.endsWith(' ')) {
+            output.text = output.text.slice(0, -1);
+            output.positions.pop();
+        }
+    }
+
+    trimSpeechUrlToken(value = '') {
+        const token = String(value || '');
+        const trailing = token.match(/[),.;:!?]+$/)?.[0] || '';
+        return trailing ? token.slice(0, -trailing.length) : token;
+    }
+
+    normalizeSpeechUrlToken(url = '') {
+        const body = this.trimSpeechUrlToken(url);
+        if (!body) {
+            return '';
+        }
+
+        const parseTarget = /^https?:\/\//i.test(body) ? body : `https://${body.replace(/^www\./i, '')}`;
+        let host = '';
+        let path = '';
+
+        try {
+            const parsed = new URL(parseTarget);
+            host = String(parsed.hostname || '').replace(/^www\./i, '');
+            path = String(parsed.pathname || '').replace(/\/+$/g, '');
+        } catch (_error) {
+            const withoutProtocol = body.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+            const [rawHost, ...rest] = withoutProtocol.split('/');
+            host = rawHost;
+            path = rest.length ? `/${rest.join('/')}` : '';
+        }
+
+        const hostSpeech = host
+            .split('.')
+            .map((part) => part.replace(/[-_]+/g, ' ').trim())
+            .filter(Boolean)
+            .join(' dot ');
+        const decodeUrlPart = (part = '') => {
+            try {
+                return decodeURIComponent(part);
+            } catch (_error) {
+                return part;
+            }
+        };
+        const pathSpeech = path
+            ? path
+                .split('/')
+                .map((part) => decodeUrlPart(part).replace(/[-_]+/g, ' ').replace(/[?#].*$/g, '').trim())
+                .filter(Boolean)
+                .map((part) => `slash ${part}`)
+                .join(' ')
+            : '';
+
+        return [hostSpeech, pathSpeech].filter(Boolean).join(' ').trim() || body;
+    }
+
+    appendComparableSpeechChar(output, char = '', position = null) {
+        const normalized = String(char || '').toLowerCase();
+        if (/^[a-z0-9]$/.test(normalized)) {
+            output.text += normalized;
+            output.positions.push(position);
+            return;
+        }
+
+        if (output.text && !output.text.endsWith(' ')) {
+            output.text += ' ';
+            output.positions.push(position);
+        }
+    }
+
+    appendComparablePlainText(text = '', output, node = null, baseOffset = 0) {
+        String(text || '').split('').forEach((char, index) => {
+            this.appendComparableSpeechChar(output, char, node ? { node, offset: baseOffset + index } : null);
+        });
+    }
+
+    appendComparableUrlText(text = '', output, node = null, baseOffset = 0, sourceLength = 0) {
+        const speechText = this.normalizeSpeechUrlToken(text);
+        const comparableLength = Math.max(1, speechText.length);
+        const normalizedSourceLength = Math.max(1, Number(sourceLength) || String(text || '').length || 1);
+
+        speechText.split('').forEach((char, index) => {
+            const sourceOffset = baseOffset + Math.min(
+                normalizedSourceLength - 1,
+                Math.floor((index / comparableLength) * normalizedSourceLength),
+            );
+            this.appendComparableSpeechChar(output, char, node ? { node, offset: sourceOffset } : null);
+        });
+    }
+
+    appendComparableSpeechText(text = '', output, node = null, baseOffset = 0) {
+        const value = String(text || '');
+        const tokenPattern = /\b(?:https?:\/\/|www\.)[^\s<>)\]]+|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org|net|io|ai|dev|app|edu|gov|ca|co|us|uk|help|buzz|cloud|site|online|xyz|info|biz)(?:\/[^\s<>)\]]*)?/gi;
+        let cursor = 0;
+        let match = tokenPattern.exec(value);
+
+        while (match) {
+            if (match.index > cursor) {
+                this.appendComparablePlainText(value.slice(cursor, match.index), output, node, baseOffset + cursor);
+            }
+
+            const rawToken = match[0] || '';
+            const token = this.trimSpeechUrlToken(rawToken);
+            this.appendComparableUrlText(token, output, node, baseOffset + match.index, token.length);
+            cursor = match.index + rawToken.length;
+            match = tokenPattern.exec(value);
+        }
+
+        if (cursor < value.length) {
+            this.appendComparablePlainText(value.slice(cursor), output, node, baseOffset + cursor);
+        }
+
     }
 
     getMessageElementById(messageId = '') {
@@ -6953,30 +7073,20 @@ class UIHelpers {
                     : NodeFilter.FILTER_ACCEPT
             ),
         });
-        let text = '';
-        const positions = [];
+        const output = {
+            text: '',
+            positions: [],
+        };
 
         while (walker.nextNode()) {
             const node = walker.currentNode;
-            const value = String(node.nodeValue || '');
-            for (let offset = 0; offset < value.length; offset += 1) {
-                const char = value[offset];
-                if (/\s/.test(char)) {
-                    if (text && !text.endsWith(' ')) {
-                        text += ' ';
-                        positions.push({ node, offset });
-                    }
-                    continue;
-                }
-
-                text += char.toLowerCase();
-                positions.push({ node, offset });
-            }
+            this.appendComparableSpeechText(String(node.nodeValue || ''), output, node, 0);
         }
+        this.trimComparableSpeechOutput(output);
 
         return {
-            text: text.trim(),
-            positions,
+            text: output.text,
+            positions: output.positions,
         };
     }
 

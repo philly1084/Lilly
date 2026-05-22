@@ -24,6 +24,75 @@ function normalizeSpeechSentence(line = '') {
     return `${trimmed}.`;
 }
 
+function trimUrlPunctuation(value = '') {
+    const url = String(value || '');
+    const trailing = url.match(/[),.;:!?]+$/)?.[0] || '';
+    return {
+        body: trailing ? url.slice(0, -trailing.length) : url,
+        trailing,
+    };
+}
+
+function normalizeUrlForSpeech(url = '') {
+    const { body, trailing } = trimUrlPunctuation(url);
+    if (!body) {
+        return trailing;
+    }
+
+    const parseTarget = /^https?:\/\//i.test(body) ? body : `https://${body.replace(/^www\./i, '')}`;
+    let host = '';
+    let path = '';
+
+    try {
+        const parsed = new URL(parseTarget);
+        host = String(parsed.hostname || '').replace(/^www\./i, '');
+        path = String(parsed.pathname || '').replace(/\/+$/g, '');
+    } catch (_error) {
+        const withoutProtocol = body.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+        const [rawHost, ...rest] = withoutProtocol.split('/');
+        host = rawHost;
+        path = rest.length ? `/${rest.join('/')}` : '';
+    }
+
+    const hostSpeech = host
+        .split('.')
+        .map((part) => part.replace(/[-_]+/g, ' ').trim())
+        .filter(Boolean)
+        .join(' dot ');
+    const decodeUrlPart = (part = '') => {
+        try {
+            return decodeURIComponent(part);
+        } catch (_error) {
+            return part;
+        }
+    };
+    const pathSpeech = path
+        ? path
+            .split('/')
+            .map((part) => decodeUrlPart(part).replace(/[-_]+/g, ' ').replace(/[?#].*$/g, '').trim())
+            .filter(Boolean)
+            .map((part) => `slash ${part}`)
+            .join(' ')
+        : '';
+    const speech = [hostSpeech, pathSpeech].filter(Boolean).join(' ');
+    return (speech || body).trim();
+}
+
+function normalizeUrlsForSpeech(input = '') {
+    const urlPattern = /\b(?:https?:\/\/|www\.)[^\s<>)\]]+/gi;
+    const domainPattern = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org|net|io|ai|dev|app|edu|gov|ca|co|us|uk|help|buzz|cloud|site|online|xyz|info|biz)(?:\/[^\s<>)\]]*)?/gi;
+    const protectedUrls = [];
+
+    const withUrlPlaceholders = String(input || '').replace(urlPattern, (match) => {
+        const index = protectedUrls.push(normalizeUrlForSpeech(match)) - 1;
+        return ` KIMIBUILT_URL_${index}_ `;
+    });
+
+    return withUrlPlaceholders
+        .replace(domainPattern, (match) => normalizeUrlForSpeech(match))
+        .replace(/KIMIBUILT_URL_(\d+)_/g, (_match, index) => protectedUrls[Number(index)] || '');
+}
+
 function stripMarkdownForSpeech(input = '') {
     const markdown = String(input || '')
         .replace(/\r\n?/g, '\n')
@@ -42,7 +111,7 @@ function stripMarkdownForSpeech(input = '') {
         .replace(/^\s*[-=]{3,}\s*$/gm, '')
         .replace(/\n{3,}/g, '\n\n');
 
-    return stripHtml(markdown);
+    return normalizeUrlsForSpeech(stripHtml(markdown));
 }
 
 function stripMalformedUnicodeEscapes(input = '') {
@@ -125,5 +194,7 @@ module.exports = {
     normalizeTextForSpeech,
     stripMalformedUnicodeEscapes,
     stripMarkdownForSpeech,
+    normalizeUrlForSpeech,
+    normalizeUrlsForSpeech,
     stripUnpairedSurrogates,
 };

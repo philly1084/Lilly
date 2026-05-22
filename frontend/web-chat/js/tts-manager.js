@@ -1,14 +1,14 @@
 const DEFAULT_TTS_CACHE_LIMIT = 24;
 const DEFAULT_BROWSER_VOICE_ID = 'browser:default';
-const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 680;
+const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 760;
 const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
-const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 2;
+const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 3;
 const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 4;
 const DEFAULT_TTS_SYNTHESIS_LANES = 3;
-const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 1;
-const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.35;
-const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 1800;
+const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 2;
+const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.8;
+const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 750;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
 
 function normalizeSpeechSentence(line = '') {
@@ -32,6 +32,75 @@ function stripHtmlForSpeech(input = '') {
     return String(input || '').replace(/<[^>]+>/g, ' ');
 }
 
+function trimUrlPunctuation(value = '') {
+    const url = String(value || '');
+    const trailing = url.match(/[),.;:!?]+$/)?.[0] || '';
+    return {
+        body: trailing ? url.slice(0, -trailing.length) : url,
+        trailing,
+    };
+}
+
+function normalizeUrlForSpeech(url = '') {
+    const { body } = trimUrlPunctuation(url);
+    if (!body) {
+        return '';
+    }
+
+    const parseTarget = /^https?:\/\//i.test(body) ? body : `https://${body.replace(/^www\./i, '')}`;
+    let host = '';
+    let path = '';
+
+    try {
+        const parsed = new URL(parseTarget);
+        host = String(parsed.hostname || '').replace(/^www\./i, '');
+        path = String(parsed.pathname || '').replace(/\/+$/g, '');
+    } catch (_error) {
+        const withoutProtocol = body.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+        const [rawHost, ...rest] = withoutProtocol.split('/');
+        host = rawHost;
+        path = rest.length ? `/${rest.join('/')}` : '';
+    }
+
+    const hostSpeech = host
+        .split('.')
+        .map((part) => part.replace(/[-_]+/g, ' ').trim())
+        .filter(Boolean)
+        .join(' dot ');
+    const decodeUrlPart = (part = '') => {
+        try {
+            return decodeURIComponent(part);
+        } catch (_error) {
+            return part;
+        }
+    };
+    const pathSpeech = path
+        ? path
+            .split('/')
+            .map((part) => decodeUrlPart(part).replace(/[-_]+/g, ' ').replace(/[?#].*$/g, '').trim())
+            .filter(Boolean)
+            .map((part) => `slash ${part}`)
+            .join(' ')
+        : '';
+
+    return [hostSpeech, pathSpeech].filter(Boolean).join(' ').trim() || body;
+}
+
+function normalizeUrlsForSpeech(input = '') {
+    const urlPattern = /\b(?:https?:\/\/|www\.)[^\s<>)\]]+/gi;
+    const domainPattern = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org|net|io|ai|dev|app|edu|gov|ca|co|us|uk|help|buzz|cloud|site|online|xyz|info|biz)(?:\/[^\s<>)\]]*)?/gi;
+    const protectedUrls = [];
+
+    const withUrlPlaceholders = String(input || '').replace(urlPattern, (match) => {
+        const index = protectedUrls.push(normalizeUrlForSpeech(match)) - 1;
+        return ` KIMIBUILT_URL_${index}_ `;
+    });
+
+    return withUrlPlaceholders
+        .replace(domainPattern, (match) => normalizeUrlForSpeech(match))
+        .replace(/KIMIBUILT_URL_(\d+)_/g, (_match, index) => protectedUrls[Number(index)] || '');
+}
+
 function stripMarkdownForSpeech(input = '') {
     const markdown = String(input || '')
         .replace(/\0/g, '')
@@ -51,7 +120,7 @@ function stripMarkdownForSpeech(input = '') {
         .replace(/^\s*[-=]{3,}\s*$/gm, '')
         .replace(/\n{3,}/g, '\n\n');
 
-    return stripHtmlForSpeech(markdown);
+    return normalizeUrlsForSpeech(stripHtmlForSpeech(markdown));
 }
 
 function normalizeTextForSpeech(input = '') {
@@ -1524,6 +1593,8 @@ if (typeof module !== 'undefined' && module.exports) {
         WebChatTtsManager,
         groupSpeechSentencesIntoChunks,
         normalizeTextForSpeech,
+        normalizeUrlForSpeech,
+        normalizeUrlsForSpeech,
         splitPreparedSpeechChunk,
         splitSpeechChunkByClauses,
         splitTextIntoSpeechChunks,

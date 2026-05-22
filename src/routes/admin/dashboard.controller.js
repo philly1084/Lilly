@@ -189,12 +189,106 @@ class DashboardController {
     const toolEvents = Array.isArray(metadata?.toolEvents)
       ? metadata.toolEvents.map((event) => this.normalizeToolEvent(event))
       : [];
-    const skillsUsed = Array.from(new Set(toolEvents.map((event) => event.toolId).filter(Boolean)));
+    const toolsUsed = Array.from(new Set(toolEvents.map((event) => event.toolId).filter(Boolean)));
+    const skillUsage = this.extractSkillUsage(metadata);
 
     return {
       toolEvents,
-      skillsUsed,
+      toolsUsed,
+      skillsUsed: skillUsage.skillsUsed,
+      skillUsage: skillUsage.skillEvents,
       toolCallCount: toolEvents.length,
+    };
+  }
+
+  normalizeSkillUsageEntry(entry = null, source = 'metadata') {
+    if (!entry) {
+      return null;
+    }
+
+    if (typeof entry === 'string') {
+      const id = entry.trim();
+      return id ? { id, name: id, source } : null;
+    }
+
+    if (typeof entry !== 'object') {
+      return null;
+    }
+
+    const id = String(entry.id || entry.skillId || entry.name || '').trim();
+    const name = String(entry.name || entry.label || id || '').trim();
+    if (!id && !name) {
+      return null;
+    }
+
+    return {
+      id: id || name,
+      name: name || id,
+      source: entry.source || source,
+      ...(Array.isArray(entry.tools) ? { tools: entry.tools } : {}),
+      ...(Number.isFinite(entry.score) ? { score: entry.score } : {}),
+    };
+  }
+
+  parseSkillContextUsage(skillContext = '') {
+    const text = String(skillContext || '');
+    if (!text.trim()) {
+      return [];
+    }
+
+    const entries = [];
+    const registeredSkillPattern = /<skill>\s*([\s\S]*?)\s*<\/skill>/gi;
+    let match;
+    while ((match = registeredSkillPattern.exec(text))) {
+      const block = match[1] || '';
+      const id = block.match(/(?:^|\n)\s*id=([^\n]+)/i)?.[1]?.trim();
+      const name = block.match(/(?:^|\n)\s*name=([^\n]+)/i)?.[1]?.trim();
+      const entry = this.normalizeSkillUsageEntry({ id, name }, 'skillContext');
+      if (entry) {
+        entries.push(entry);
+      }
+    }
+
+    if (entries.length === 0) {
+      const learnedSkillPattern = /^\s*\*\*([^*\n]+)\*\*/gm;
+      while ((match = learnedSkillPattern.exec(text))) {
+        const entry = this.normalizeSkillUsageEntry(match[1], 'skillContext');
+        if (entry) {
+          entries.push(entry);
+        }
+      }
+    }
+
+    return entries;
+  }
+
+  extractSkillUsage(metadata = {}) {
+    const directEntries = [
+      ...(Array.isArray(metadata?.selectedSkills) ? metadata.selectedSkills : []),
+      ...(Array.isArray(metadata?.skillsUsed) ? metadata.skillsUsed : []),
+      ...(Array.isArray(metadata?.skillUsage) ? metadata.skillUsage : []),
+      ...(Array.isArray(metadata?.decisionTrace?.selectedSkills) ? metadata.decisionTrace.selectedSkills : []),
+      ...this.parseSkillContextUsage(metadata?.skillContext || metadata?.context?.skillContext || ''),
+    ];
+    const skillEvents = [];
+    const seen = new Set();
+
+    directEntries.forEach((entry) => {
+      const normalized = this.normalizeSkillUsageEntry(entry, 'metadata');
+      if (!normalized) {
+        return;
+      }
+      const key = normalized.id.toLowerCase();
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      skillEvents.push(normalized);
+    });
+
+    return {
+      skillEvents,
+      skillsUsed: skillEvents.map((entry) => entry.id),
     };
   }
 
@@ -377,6 +471,51 @@ class DashboardController {
     };
   }
 
+  buildSkillUsageSummary() {
+    const skillCounts = new Map();
+    let totalUses = 0;
+    let thisWeek = 0;
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+
+    Array.from(this.taskStore.values()).forEach((task) => {
+      const skillUsage = Array.isArray(task?.result?.skillUsage)
+        ? task.result.skillUsage
+        : (Array.isArray(task?.result?.skillsUsed) ? task.result.skillsUsed : []);
+      const taskTime = new Date(task.completedAt || task.failedAt || task.updatedAt || task.createdAt || 0).getTime();
+      const isThisWeek = Number.isFinite(taskTime) && now - taskTime <= weekMs;
+
+      skillUsage.forEach((entry) => {
+        const normalized = this.normalizeSkillUsageEntry(entry, 'task');
+        if (!normalized) {
+          return;
+        }
+        totalUses += 1;
+        if (isThisWeek) {
+          thisWeek += 1;
+        }
+        const current = skillCounts.get(normalized.id) || {
+          id: normalized.id,
+          name: normalized.name || normalized.id,
+          count: 0,
+        };
+        current.count += 1;
+        skillCounts.set(normalized.id, current);
+      });
+    });
+
+    const topSkills = Array.from(skillCounts.values())
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 8);
+
+    return {
+      totalUses,
+      distinctSkills: skillCounts.size,
+      thisWeek,
+      topSkills,
+    };
+  }
+
   handleRegistryInvocation({ id, entry = {}, stats = {} } = {}) {
     this.logActivity('tool_invoked', `Tool used: ${id}`, {
       toolId: id,
@@ -399,6 +538,7 @@ class DashboardController {
       const range = String(req.query.range || '24h').toLowerCase();
       const requestChart = this.buildRequestChart(range);
       const tokenSummary = this.buildTokenSummary();
+      const skillUsage = this.buildSkillUsageSummary();
       const stats = {
         overview: {
           totalTasks: this.taskStore.size,
@@ -406,6 +546,9 @@ class DashboardController {
           failedTasks: Array.from(this.taskStore.values()).filter(t => t.status === 'failed').length,
           activeSessions: this.sessionStore.size,
           totalSkills: await this.getSkillCount(),
+          skillsUsed: skillUsage.totalUses,
+          totalSkillUses: skillUsage.totalUses,
+          skillsUsedThisWeek: skillUsage.thisWeek,
           totalTraces: await this.getTraceCount(),
           avgResponseTime: this.calculateAvgResponseTime(),
           successRate: this.calculateSuccessRate()
@@ -419,6 +562,7 @@ class DashboardController {
         },
         tokens: tokenSummary,
         tools: this.buildToolUsageSummary(),
+        skills: skillUsage,
         models: await this.getModelUsageStats(),
         timestamp: new Date().toISOString()
       };
@@ -779,7 +923,9 @@ class DashboardController {
       tokenUsage,
       responseId,
       toolEvents: toolUsage.toolEvents,
+      toolsUsed: toolUsage.toolsUsed,
       skillsUsed: toolUsage.skillsUsed,
+      skillUsage: toolUsage.skillUsage,
       toolCallCount: toolUsage.toolCallCount,
       metadata,
     };
@@ -805,7 +951,8 @@ class DashboardController {
       sessionId: task.sessionId,
       responseId,
       toolCalls: toolUsage.toolCallCount,
-      toolsUsed: toolUsage.skillsUsed,
+      toolsUsed: toolUsage.toolsUsed,
+      skillsUsed: toolUsage.skillsUsed,
       diagnostics,
     });
 
@@ -844,7 +991,8 @@ class DashboardController {
       duration: Number(duration || 0),
       tokens: tokenUsage.totalTokens,
       responseId,
-      toolsUsed: toolUsage.skillsUsed,
+      toolsUsed: toolUsage.toolsUsed,
+      skillsUsed: toolUsage.skillsUsed,
       toolCalls: toolUsage.toolCallCount,
       diagnostics,
     });
@@ -874,7 +1022,9 @@ class DashboardController {
     task.result = {
       ...(task.result || {}),
       toolEvents: toolUsage.toolEvents,
+      toolsUsed: toolUsage.toolsUsed,
       skillsUsed: toolUsage.skillsUsed,
+      skillUsage: toolUsage.skillUsage,
       toolCallCount: toolUsage.toolCallCount,
     };
 
@@ -899,7 +1049,8 @@ class DashboardController {
       sessionId: task.sessionId,
       error: task.error,
       toolCalls: toolUsage.toolCallCount,
-      toolsUsed: toolUsage.skillsUsed,
+      toolsUsed: toolUsage.toolsUsed,
+      skillsUsed: toolUsage.skillsUsed,
       diagnostics,
     });
 
@@ -936,7 +1087,8 @@ class DashboardController {
       model: task.model,
       duration: Number(duration || 0),
       error: task.error,
-      toolsUsed: toolUsage.skillsUsed,
+      toolsUsed: toolUsage.toolsUsed,
+      skillsUsed: toolUsage.skillsUsed,
       toolCalls: toolUsage.toolCallCount,
       diagnostics,
     });

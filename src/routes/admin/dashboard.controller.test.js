@@ -340,6 +340,94 @@ describe('DashboardController', () => {
     });
   });
 
+  test('tracks skills used from agent metadata separately from tools', async () => {
+    const controller = new DashboardController(null);
+    const task = controller.recordRuntimeTaskStart({
+      sessionId: 'session-skills-used',
+      input: 'Use the frontend quality skill and verify the page.',
+      model: 'gpt-test',
+      mode: 'chat',
+      transport: 'http',
+      metadata: {},
+    });
+
+    controller.recordRuntimeTaskComplete(task.id, {
+      responseId: 'resp-skills-used',
+      output: 'Verified the page.',
+      model: 'gpt-test',
+      duration: 800,
+      metadata: {
+        selectedSkills: [
+          { id: 'impressive-frontend-websites', name: 'Impressive Frontend Websites' },
+        ],
+        skillContext: [
+          '<registered_skills>',
+          '<skill>',
+          'id=browser-qa',
+          'name=Browser QA',
+          '</skill>',
+          '</registered_skills>',
+        ].join('\n'),
+        toolEvents: [{
+          toolCall: {
+            function: {
+              name: 'web-scrape',
+              arguments: JSON.stringify({ url: 'http://localhost:3000/admin' }),
+            },
+          },
+          result: {
+            success: true,
+            duration: 400,
+          },
+        }],
+      },
+    });
+
+    const storedTask = controller.taskStore.get(task.id);
+    expect(storedTask.result.toolsUsed).toEqual(['web-scrape']);
+    expect(storedTask.result.skillsUsed).toEqual([
+      'impressive-frontend-websites',
+      'browser-qa',
+    ]);
+    expect(storedTask.result.skillUsage).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'impressive-frontend-websites', name: 'Impressive Frontend Websites' }),
+      expect.objectContaining({ id: 'browser-qa', name: 'Browser QA' }),
+    ]));
+
+    expect(logsController.addLog).toHaveBeenCalledWith(expect.objectContaining({
+      toolsUsed: ['web-scrape'],
+      skillsUsed: ['impressive-frontend-websites', 'browser-qa'],
+    }));
+
+    expect(controller.buildSkillUsageSummary()).toMatchObject({
+      totalUses: 2,
+      distinctSkills: 2,
+      thisWeek: 2,
+    });
+
+    const res = {
+      json: jest.fn(),
+      status: jest.fn(() => res),
+    };
+    await controller.getStats({ query: { range: '24h' } }, res);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        overview: expect.objectContaining({
+          skillsUsed: 2,
+          totalSkillUses: 2,
+          skillsUsedThisWeek: 2,
+        }),
+        skills: expect.objectContaining({
+          totalUses: 2,
+          distinctSkills: 2,
+          thisWeek: 2,
+        }),
+      }),
+    }));
+  });
+
   test('keeps synthesized model timeline entries after the request start', () => {
     const controller = new DashboardController(null);
     const task = controller.recordRuntimeTaskStart({

@@ -41,7 +41,8 @@ class Dashboard {
                 totalTasks: 0,
                 successRate: 0,
                 activeSessions: 0,
-                skillsLearned: 0
+                skillsUsed: 0,
+                skillsUsedThisWeek: 0
             },
             pagination: {
                 logs: { page: 1, limit: 50, total: 0 },
@@ -989,7 +990,13 @@ class Dashboard {
             document.getElementById('totalTasks').textContent = stats.totalTasks.toLocaleString();
             document.getElementById('successRate').textContent = `${stats.successRate}%`;
             document.getElementById('activeSessions').textContent = stats.activeSessions;
-            document.getElementById('skillsLearned').textContent = stats.skillsLearned;
+            document.getElementById('skillsUsed').textContent = stats.skillsUsed.toLocaleString();
+            const skillsUsedChange = document.getElementById('skillsUsedChange');
+            if (skillsUsedChange) {
+                skillsUsedChange.innerHTML = `${stats.skillsUsedThisWeek.toLocaleString()} <span>this week</span>`;
+                skillsUsedChange.classList.toggle('positive', stats.skillsUsedThisWeek > 0);
+                skillsUsedChange.classList.toggle('neutral', stats.skillsUsedThisWeek <= 0);
+            }
             this.renderOverviewTokenUsage(stats);
             this.renderRequestChart(stats.requestChart);
             
@@ -3778,7 +3785,8 @@ class Dashboard {
             totalTasks: Number(overview.totalTasks || payload.totalTasks || 0),
             successRate: Number(overview.successRate || payload.successRate || 0),
             activeSessions: Number(overview.activeSessions || payload.activeSessions || 0),
-            skillsLearned: Number(overview.totalSkills || payload.skillsLearned || 0),
+            skillsUsed: Number(overview.skillsUsed || overview.totalSkillUses || payload.skillsUsed || 0),
+            skillsUsedThisWeek: Number(overview.skillsUsedThisWeek || payload.skillsUsedThisWeek || payload.skills?.thisWeek || 0),
             tokensTotal: Number(tokens.total || 0),
             tokensPrompt: Number(tokens.prompt || 0),
             tokensCompletion: Number(tokens.completion || 0),

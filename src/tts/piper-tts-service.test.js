@@ -42,6 +42,18 @@ Read the [docs](https://example.com/docs).
         expect(normalized).not.toContain('\\u12');
         expect(normalized).not.toContain('\uD800');
     });
+
+    test('turns raw URLs and bare domains into speakable website names', () => {
+        const normalized = normalizeTextForSpeech(
+            'Open https://www.example.com/docs, then check lilly.secdevsolutions.help/live.',
+            500,
+        );
+
+        expect(normalized).toContain('Open example dot com slash docs');
+        expect(normalized).toContain('check lilly dot secdevsolutions dot help slash live');
+        expect(normalized).not.toContain('https');
+        expect(normalized).not.toContain('www.');
+    });
 });
 
 describe('PiperTtsService voice manifests', () => {
