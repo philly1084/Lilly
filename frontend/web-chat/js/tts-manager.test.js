@@ -32,9 +32,9 @@ describe('splitTextIntoSpeechChunks', () => {
 
         expect(chunks).toEqual([
             'One.',
-            'Two. Three. Four.',
-            'Five. Six. Seven.',
-            'Eight.',
+            'Two.',
+            'Three. Four. Five.',
+            'Six. Seven. Eight.',
         ]);
     });
 
@@ -58,7 +58,26 @@ describe('splitTextIntoSpeechChunks', () => {
         expect(chunks[0]).toMatch(/^This sentence is intentionally verbose/);
     });
 
-    test('starts after a small second-chunk buffer while queueing extra lanes', async () => {
+    test('keeps markdown bullet sections as separate speech chunks', () => {
+        const chunks = splitTextIntoSpeechChunks(
+            '- "Alpha" item\n- "Beta" item\n\nClosing paragraph sentence one. Closing paragraph sentence two.',
+            {
+                absoluteMaxChars: 2400,
+                targetChunkChars: 520,
+                firstChunkMaxSentences: DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
+                maxSentencesPerChunk: DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
+            },
+        );
+
+        expect(chunks).toEqual([
+            '"Alpha" item.',
+            '"Beta" item.',
+            'Closing paragraph sentence one.',
+            'Closing paragraph sentence two.',
+        ]);
+    });
+
+    test('starts the first sentence as soon as it is ready while queueing extra lanes', async () => {
         const previousCustomEvent = global.CustomEvent;
         global.CustomEvent = class CustomEvent extends Event {
             constructor(type, params = {}) {
@@ -116,7 +135,7 @@ describe('splitTextIntoSpeechChunks', () => {
             });
 
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two. Three. Four.', 'Five.']);
+            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three. Four. Five.']);
             expect(preparedTexts).toHaveLength(DEFAULT_TTS_SYNTHESIS_LANES);
             expect(startedAt).toEqual([]);
 
@@ -124,7 +143,7 @@ describe('splitTextIntoSpeechChunks', () => {
             await Promise.resolve();
             await Promise.resolve();
             await new Promise((resolve) => setImmediate(resolve));
-            expect(startedAt).toHaveLength(0);
+            expect(startedAt).toHaveLength(1);
 
             resolvers[1]();
             await Promise.resolve();

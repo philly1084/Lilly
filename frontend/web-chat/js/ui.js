@@ -6965,6 +6965,13 @@ class UIHelpers {
         }
     }
 
+    appendComparableSpeechBoundary(output, position = null) {
+        if (output.text && !output.text.endsWith(' ')) {
+            output.text += ' ';
+            output.positions.push(position);
+        }
+    }
+
     appendComparablePlainText(text = '', output, node = null, baseOffset = 0) {
         String(text || '').split('').forEach((char, index) => {
             this.appendComparableSpeechChar(output, char, node ? { node, offset: baseOffset + index } : null);
@@ -7058,6 +7065,17 @@ class UIHelpers {
         ));
     }
 
+    getSpeechHighlightSectionElement(node = null) {
+        const parentElement = node?.parentElement || null;
+        if (!parentElement) {
+            return null;
+        }
+
+        return parentElement.closest(
+            'li, p, blockquote, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, section, article',
+        ) || parentElement.closest('div');
+    }
+
     buildSpeechHighlightTextMap(root = null) {
         if (!root || !document?.createTreeWalker || typeof NodeFilter === 'undefined') {
             return {
@@ -7076,17 +7094,40 @@ class UIHelpers {
         const output = {
             text: '',
             positions: [],
+            sections: [],
         };
+        let lastSectionElement = null;
 
         while (walker.nextNode()) {
             const node = walker.currentNode;
+            const sectionElement = this.getSpeechHighlightSectionElement(node);
+            if (lastSectionElement && sectionElement !== lastSectionElement) {
+                this.appendComparableSpeechBoundary(output, { node, offset: 0 });
+                const previousSection = output.sections[output.sections.length - 1];
+                if (previousSection && typeof previousSection.endIndex !== 'number') {
+                    previousSection.endIndex = Math.max(previousSection.startIndex, output.text.length - 1);
+                }
+            }
+
+            if (sectionElement !== lastSectionElement) {
+                output.sections.push({
+                    element: sectionElement,
+                    startIndex: output.text.length,
+                });
+                lastSectionElement = sectionElement;
+            }
             this.appendComparableSpeechText(String(node.nodeValue || ''), output, node, 0);
         }
         this.trimComparableSpeechOutput(output);
+        const finalSection = output.sections[output.sections.length - 1];
+        if (finalSection && typeof finalSection.endIndex !== 'number') {
+            finalSection.endIndex = Math.max(finalSection.startIndex, output.text.length);
+        }
 
         return {
             text: output.text,
             positions: output.positions,
+            sections: output.sections,
         };
     }
 
@@ -7102,6 +7143,8 @@ class UIHelpers {
         }
 
         const preferredStartIndex = Math.max(0, Number(options.startIndex) || 0);
+        const chunkIndex = Number(options.chunkIndex);
+        const searchStartIndex = Math.max(0, preferredStartIndex - 12);
         const candidates = [
             normalizedChunk,
             normalizedChunk.length > 96 ? normalizedChunk.slice(0, 96).trim() : '',
@@ -7111,8 +7154,8 @@ class UIHelpers {
         ));
 
         for (const candidate of candidates) {
-            let matchIndex = textMap.text.indexOf(candidate, preferredStartIndex);
-            if (matchIndex < 0 && preferredStartIndex > 0) {
+            let matchIndex = textMap.text.indexOf(candidate, searchStartIndex);
+            if (matchIndex < 0 && preferredStartIndex > 0 && chunkIndex === 0) {
                 matchIndex = textMap.text.indexOf(candidate);
             }
             if (matchIndex < 0) {
@@ -7137,7 +7180,7 @@ class UIHelpers {
         return null;
     }
 
-    findSpeechSentenceRangeByIndex(root = null, chunkIndex = -1) {
+    findSpeechSectionRangeByIndex(root = null, chunkIndex = -1) {
         if (!root || !Number.isFinite(Number(chunkIndex)) || Number(chunkIndex) < 0) {
             return null;
         }
@@ -7147,19 +7190,16 @@ class UIHelpers {
             return null;
         }
 
-        const sentences = Array.from(textMap.text.matchAll(/[^.!?]+(?:[.!?]+|$)/g))
-            .map((match) => ({
-                index: match.index,
-                text: String(match[0] || '').trim(),
-            }))
-            .filter((entry) => entry.text);
-        const sentence = sentences[Math.min(sentences.length - 1, Number(chunkIndex))];
-        if (!sentence) {
+        const sections = Array.isArray(textMap.sections)
+            ? textMap.sections.filter((section) => Number(section?.endIndex) > Number(section?.startIndex))
+            : [];
+        const section = sections[Math.min(sections.length - 1, Number(chunkIndex))];
+        if (!section) {
             return null;
         }
 
-        const start = textMap.positions[sentence.index];
-        const end = textMap.positions[Math.min(textMap.positions.length - 1, sentence.index + sentence.text.length - 1)];
+        const start = textMap.positions[Math.max(0, Number(section.startIndex) || 0)];
+        const end = textMap.positions[Math.min(textMap.positions.length - 1, Math.max(Number(section.startIndex) || 0, Number(section.endIndex) - 1))];
         if (!start?.node || !end?.node) {
             return null;
         }
@@ -7169,7 +7209,7 @@ class UIHelpers {
         range.setEnd(end.node, end.offset + 1);
         return {
             range,
-            endIndex: sentence.index + sentence.text.length,
+            endIndex: Number(section.endIndex) || 0,
         };
     }
 
@@ -7201,7 +7241,8 @@ class UIHelpers {
         this.clearSpeechHighlights('', { preserveState: true });
         const match = this.findSpeechHighlightRange(textRoot, chunkText, {
             startIndex: this.speechHighlightState.lastSearchOffset,
-        }) || this.findSpeechSentenceRangeByIndex(textRoot, chunkIndex);
+            chunkIndex,
+        }) || this.findSpeechSectionRangeByIndex(textRoot, chunkIndex);
         if (!match?.range) {
             return false;
         }

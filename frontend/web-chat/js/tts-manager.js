@@ -3,12 +3,13 @@ const DEFAULT_BROWSER_VOICE_ID = 'browser:default';
 const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 760;
 const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
+const DEFAULT_PIPER_SECOND_CHUNK_SENTENCES = 1;
 const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 3;
 const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 4;
 const DEFAULT_TTS_SYNTHESIS_LANES = 3;
-const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 2;
+const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 1;
 const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.8;
-const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 750;
+const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 350;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
 
 function normalizeSpeechSentence(line = '') {
@@ -124,15 +125,20 @@ function stripMarkdownForSpeech(input = '') {
 }
 
 function normalizeTextForSpeech(input = '') {
+    return normalizeSpeechSections(input)
+        .join(' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function normalizeSpeechSections(input = '') {
     return stripMarkdownForSpeech(input)
         .replace(/[ \t\f\v]+/g, ' ')
         .split('\n')
         .map((line) => line.trim())
         .filter(Boolean)
         .map(normalizeSpeechSentence)
-        .join(' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim();
+        .filter(Boolean);
 }
 
 function splitWordsIntoSpeechChunks(text = '', maxChars = DEFAULT_TTS_MAX_TEXT_CHARS) {
@@ -265,8 +271,15 @@ function groupSpeechSentencesIntoChunks(sentences = [], options = {}) {
             Number(options.firstChunkMaxSentences) || DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
         ),
     );
+    const secondChunkMaxSentences = Math.max(
+        1,
+        Math.min(
+            6,
+            Number(options.secondChunkMaxSentences) || DEFAULT_PIPER_SECOND_CHUNK_SENTENCES,
+        ),
+    );
     const maxSentencesPerChunk = Math.max(
-        firstChunkMaxSentences,
+        Math.max(firstChunkMaxSentences, secondChunkMaxSentences),
         Math.min(
             8,
             Number(options.maxSentencesPerChunk) || DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
@@ -287,10 +300,10 @@ function groupSpeechSentencesIntoChunks(sentences = [], options = {}) {
     };
 
     normalizedSentences.forEach((sentence) => {
-        const currentChunkIsFirst = groupedChunks.length === 0;
-        const currentChunkSentenceLimit = currentChunkIsFirst
+        const currentChunkIndex = groupedChunks.length;
+        const currentChunkSentenceLimit = currentChunkIndex === 0
             ? firstChunkMaxSentences
-            : maxSentencesPerChunk;
+            : (currentChunkIndex === 1 ? secondChunkMaxSentences : maxSentencesPerChunk);
         const nextLength = currentSentences.length === 0
             ? sentence.length
             : currentLength + 1 + sentence.length;
@@ -310,10 +323,10 @@ function groupSpeechSentencesIntoChunks(sentences = [], options = {}) {
             ? sentence.length
             : currentLength + 1 + sentence.length;
 
-        const updatedChunkIsFirst = groupedChunks.length === 0;
-        const updatedChunkSentenceLimit = updatedChunkIsFirst
+        const updatedChunkIndex = groupedChunks.length;
+        const updatedChunkSentenceLimit = updatedChunkIndex === 0
             ? firstChunkMaxSentences
-            : maxSentencesPerChunk;
+            : (updatedChunkIndex === 1 ? secondChunkMaxSentences : maxSentencesPerChunk);
         if (
             currentSentences.length >= updatedChunkSentenceLimit
             || currentLength >= targetChunkChars
@@ -327,8 +340,8 @@ function groupSpeechSentencesIntoChunks(sentences = [], options = {}) {
 }
 
 function splitTextIntoSpeechChunks(input = '', options = {}) {
-    const normalizedText = normalizeTextForSpeech(input);
-    if (!normalizedText) {
+    const sections = normalizeSpeechSections(input);
+    if (sections.length === 0) {
         return [];
     }
 
@@ -341,16 +354,21 @@ function splitTextIntoSpeechChunks(input = '', options = {}) {
         ),
     );
 
-    const sentences = (normalizedText.match(/[^.!?]+(?:[.!?]+|$)/g) || [normalizedText])
-        .map((sentence) => String(sentence || '').trim())
-        .filter(Boolean);
+    const sectionChunks = sections.flatMap((section) => {
+        const sentences = (section.match(/[^.!?]+(?:[.!?]+|$)/g) || [section])
+            .map((sentence) => String(sentence || '').trim())
+            .filter(Boolean);
 
-    return groupSpeechSentencesIntoChunks(sentences, {
-        absoluteMaxChars,
-        targetChunkChars,
-        firstChunkMaxSentences: Number(options.firstChunkMaxSentences) || DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
-        maxSentencesPerChunk: Number(options.maxSentencesPerChunk) || DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
-    }).flatMap((chunk) => (
+        return groupSpeechSentencesIntoChunks(sentences, {
+            absoluteMaxChars,
+            targetChunkChars,
+            firstChunkMaxSentences: Number(options.firstChunkMaxSentences) || DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
+            secondChunkMaxSentences: Number(options.secondChunkMaxSentences) || DEFAULT_PIPER_SECOND_CHUNK_SENTENCES,
+            maxSentencesPerChunk: Number(options.maxSentencesPerChunk) || DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
+        });
+    });
+
+    return sectionChunks.flatMap((chunk) => (
         splitPreparedSpeechChunk(chunk, {
             absoluteMaxChars,
             targetChunkChars,
@@ -1592,6 +1610,7 @@ if (typeof module !== 'undefined' && module.exports) {
         DEFAULT_TTS_SYNTHESIS_LANES,
         WebChatTtsManager,
         groupSpeechSentencesIntoChunks,
+        normalizeSpeechSections,
         normalizeTextForSpeech,
         normalizeUrlForSpeech,
         normalizeUrlsForSpeech,
