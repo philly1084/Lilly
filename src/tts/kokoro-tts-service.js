@@ -72,10 +72,11 @@ class KokoroTtsService {
         this.workerRequestId = 0;
         this.workerRequests = new Map();
         this.modelPromise = null;
-        this.maxSynthesisConcurrency = Math.max(
+        const requestedSynthesisConcurrency = Math.max(
             1,
             Math.min(8, Number(this.ttsConfig.synthesisConcurrency) || 1),
         );
+        this.maxSynthesisConcurrency = this.workerEnabled ? 1 : requestedSynthesisConcurrency;
         this.activeSynthesisCount = 0;
         this.synthesisWaiters = [];
         this.transformersRuntimeConfigured = false;

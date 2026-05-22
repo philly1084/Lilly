@@ -361,11 +361,15 @@ describe('KokoroTtsService', () => {
         expect(result.audioBuffer.equals(Buffer.from('RIFF-worker-audio'))).toBe(true);
     });
 
-    test('uses the configured worker pool for concurrent worker synthesis', async () => {
+    test('caps worker mode to one synthesis lane to avoid unsafe onnxruntime re-entry', async () => {
         let releaseFirst = null;
         let firstPosted = null;
+        let firstFinished = null;
         const firstPostedPromise = new Promise((resolve) => {
             firstPosted = resolve;
+        });
+        const firstFinishedPromise = new Promise((resolve) => {
+            firstFinished = resolve;
         });
         const workers = [];
 
@@ -389,17 +393,20 @@ describe('KokoroTtsService', () => {
 
                 if (message.payload?.text === 'First worker request.') {
                     firstPosted();
-                    releaseFirst = () => this.emit('message', {
-                        id: message.id,
-                        ok: true,
-                        result: {
-                            provider: 'kokoro',
-                            audioBuffer: Uint8Array.from(Buffer.from('RIFF-first-worker')),
-                            contentType: 'audio/wav',
-                            text: message.payload.text,
-                            voice: { id: message.payload.voiceId, provider: 'kokoro' },
-                        },
-                    });
+                    releaseFirst = () => {
+                        this.emit('message', {
+                            id: message.id,
+                            ok: true,
+                            result: {
+                                provider: 'kokoro',
+                                audioBuffer: Uint8Array.from(Buffer.from('RIFF-first-worker')),
+                                contentType: 'audio/wav',
+                                text: message.payload.text,
+                                voice: { id: message.payload.voiceId, provider: 'kokoro' },
+                            },
+                        });
+                        firstFinished();
+                    };
                     return;
                 }
 
@@ -434,16 +441,23 @@ describe('KokoroTtsService', () => {
         });
 
         await service.getModel();
+        expect(service.getPublicConfig().diagnostics.synthesisConcurrency).toBe(1);
         const first = service.synthesize({ text: 'First worker request', voiceId: 'af_heart' });
         await firstPostedPromise;
         const second = service.synthesize({ text: 'Second worker request', voiceId: 'af_heart' });
-        await second;
-        releaseFirst();
-        await first;
+        await Promise.resolve();
+        await Promise.resolve();
 
-        expect(workers).toHaveLength(2);
+        expect(workers).toHaveLength(1);
         expect(workers[0].messages.filter((message) => message.action === 'synthesize')).toHaveLength(1);
-        expect(workers[1].messages.filter((message) => message.action === 'synthesize')).toHaveLength(1);
+
+        releaseFirst();
+        await firstFinishedPromise;
+        await first;
+        await second;
+
+        expect(workers).toHaveLength(1);
+        expect(workers[0].messages.filter((message) => message.action === 'synthesize')).toHaveLength(2);
     });
 
     test('rejects unknown voices', async () => {

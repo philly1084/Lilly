@@ -6,7 +6,7 @@ metadata:
   labels:
     app: kokoro-tts
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: kokoro-tts
