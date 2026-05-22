@@ -2,9 +2,45 @@
 
 const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
+const { parseLenientJson } = require('../utils/lenient-json');
 
 function normalizeText(value = '') {
   return String(value || '').trim();
+}
+
+function normalizeKey(value = '') {
+  return String(value || '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase();
+}
+
+function normalizeToolName(value = '') {
+  const compact = String(value || '')
+    .replace(/\s+/g, '')
+    .trim();
+  const key = normalizeKey(compact);
+  if (key === 'remotecoderun') {
+    return 'remote_code_run';
+  }
+  if (key === 'remotecodestatus') {
+    return 'remote_code_status';
+  }
+  return compact;
+}
+
+function getValueByNormalizedKey(source = {}, keys = []) {
+  if (!source || typeof source !== 'object') {
+    return undefined;
+  }
+
+  const wanted = new Set(keys.map((key) => normalizeKey(key)));
+  for (const [key, value] of Object.entries(source)) {
+    if (wanted.has(normalizeKey(key))) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function maskSecretValue(value = '') {
@@ -194,12 +230,151 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
   };
 }
 
+function normalizeMcpContentText(result = {}) {
+  if (!result) {
+    return '';
+  }
+
+  if (typeof result === 'string') {
+    return result;
+  }
+
+  if (Array.isArray(result.content)) {
+    return result.content
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return entry;
+        }
+        if (entry?.type === 'text' && typeof entry.text === 'string') {
+          return entry.text;
+        }
+        if (typeof entry?.text === 'string') {
+          return entry.text;
+        }
+        return JSON.stringify(entry);
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  if (typeof result.text === 'string') {
+    return result.text;
+  }
+
+  if (result.structuredContent || result.data) {
+    return JSON.stringify(result.structuredContent || result.data, null, 2);
+  }
+
+  return JSON.stringify(result, null, 2);
+}
+
+function appendFallbackMarkers(text = '', { targetId = '', cwd = '', mcpSessionId = '' } = {}) {
+  const source = normalizeText(text) ? text : 'remote_code_run completed without text output.';
+  const existing = extractRemoteCliRunMetadata(source);
+  const lines = [source.trim()];
+
+  if (!existing.sessionId && mcpSessionId) {
+    lines.push(`MCP_SESSION_ID=${mcpSessionId}`);
+  }
+  if (!existing.workspace && cwd) {
+    lines.push(`WORKSPACE=${cwd}`);
+  }
+  if (!existing.whatChanged) {
+    lines.push('WHAT_CHANGED=Executed leaked remote_code_run MCP call directly after the inner agent returned it as raw tool-call JSON.');
+  }
+  if (!Array.isArray(existing.verifyCommands) || existing.verifyCommands.length === 0) {
+    lines.push('VERIFY_COMMANDS=remote_code_run');
+  }
+  if (!Array.isArray(existing.verifyResults) || existing.verifyResults.length === 0) {
+    lines.push('VERIFY_RESULTS=remote_code_run returned a response from the MCP gateway.');
+  }
+  if (!existing.publicUrl) {
+    lines.push('PUBLIC_URL=not_available');
+  }
+  if (!existing.blocker) {
+    lines.push('BLOCKER=none');
+  }
+  if (targetId) {
+    lines.push(`REMOTE_CLI_TARGET=${targetId}`);
+  }
+
+  return lines.join('\n');
+}
+
 function normalizePositiveInteger(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
   return Math.max(min, Math.min(parsed, max));
+}
+
+function normalizeRemoteToolArgs(args = {}) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return {};
+  }
+
+  const normalized = {};
+  const fieldMap = {
+    targetId: ['targetId', 'target_id', 'target'],
+    cwd: ['cwd', 'workingDirectory', 'working_directory'],
+    task: ['task', 'prompt', 'message'],
+    waitMs: ['waitMs', 'wait_ms'],
+    sessionId: ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id'],
+    jobId: ['jobId', 'job_id'],
+  };
+
+  for (const [outputKey, aliases] of Object.entries(fieldMap)) {
+    const value = getValueByNormalizedKey(args, aliases);
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      normalized[outputKey] = outputKey === 'waitMs'
+        ? normalizePositiveInteger(value, 30000, { min: 1000, max: 300000 })
+        : value;
+    }
+  }
+
+  return normalized;
+}
+
+function parseToolArguments(value = {}) {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value === 'object') {
+    return value;
+  }
+
+  return parseLenientJson(value) || {};
+}
+
+function extractRawMcpToolCalls(finalOutput = '') {
+  const parsed = parseLenientJson(finalOutput);
+  if (!parsed || typeof parsed !== 'object') {
+    return [];
+  }
+
+  const calls = Array.isArray(parsed)
+    ? parsed
+    : (getValueByNormalizedKey(parsed, ['tool_calls', 'toolCalls', 'calls']) || []);
+
+  return (Array.isArray(calls) ? calls : [])
+    .map((call) => {
+      const functionShape = call?.function || {};
+      const name = normalizeToolName(
+        getValueByNormalizedKey(call, ['name'])
+        || getValueByNormalizedKey(functionShape, ['name'])
+        || '',
+      );
+      const rawArguments = getValueByNormalizedKey(call, ['arguments', 'args'])
+        || getValueByNormalizedKey(functionShape, ['arguments', 'args'])
+        || {};
+      return {
+        name,
+        arguments: normalizeRemoteToolArgs(parseToolArguments(rawArguments)),
+      };
+    })
+    .filter((call) => call.name === 'remote_code_run' || call.name === 'remote_code_status');
 }
 
 function isOfficialOpenAIBaseURL(baseURL = '') {
@@ -504,6 +679,53 @@ class RemoteCliAgentsSdkRunner {
     });
   }
 
+  async executeRawMcpToolCallFallback(remoteCli, toolCalls = [], {
+    targetId = 'prod',
+    cwd = '',
+    task = '',
+    waitMs = 30000,
+    sessionId = '',
+  } = {}) {
+    const call = toolCalls.find((entry) => entry.name === 'remote_code_run')
+      || toolCalls.find((entry) => entry.name === 'remote_code_status');
+    if (!call) {
+      return '';
+    }
+
+    const args = {
+      ...(call.name === 'remote_code_run'
+        ? {
+          targetId,
+          ...(cwd ? { cwd } : {}),
+          task,
+          waitMs,
+          ...(sessionId ? { sessionId } : {}),
+        }
+        : {
+          targetId,
+          ...(sessionId ? { sessionId } : {}),
+        }),
+      ...(call.arguments || {}),
+    };
+
+    if (call.name === 'remote_code_run' && !normalizeText(args.task)) {
+      args.task = task;
+    }
+    if (!normalizeText(args.targetId)) {
+      args.targetId = targetId;
+    }
+    if (cwd && !normalizeText(args.cwd)) {
+      args.cwd = cwd;
+    }
+
+    const result = await remoteCli.callTool(call.name, args);
+    return appendFallbackMarkers(normalizeMcpContentText(result), {
+      targetId: args.targetId || targetId,
+      cwd: args.cwd || cwd,
+      mcpSessionId: remoteCli.sessionId || '',
+    });
+  }
+
   async run(input = {}) {
     const task = normalizeText(input.task || input.prompt || input.message);
     if (!task) {
@@ -597,7 +819,18 @@ class RemoteCliAgentsSdkRunner {
         maxTurns,
       });
 
-      const finalOutput = result.finalOutput || '';
+      let finalOutput = result.finalOutput || '';
+      const leakedMcpToolCalls = extractRawMcpToolCalls(finalOutput);
+      if (leakedMcpToolCalls.length > 0) {
+        console.warn('[RemoteCliAgentsSdkRunner] Inner agent returned raw MCP tool calls; executing the first remote-cli MCP call directly.');
+        finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, leakedMcpToolCalls, {
+          targetId,
+          cwd,
+          task,
+          waitMs,
+          sessionId,
+        });
+      }
       const runMetadata = extractRemoteCliRunMetadata(finalOutput);
 
       return {

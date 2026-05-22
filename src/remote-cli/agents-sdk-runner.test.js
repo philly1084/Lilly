@@ -328,6 +328,107 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('executes leaked raw remote_code_run tool calls from incompatible chat gateways', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-raw-tool';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              'REMOTE_CLI_SESSION_ID=remote-session-raw',
+              'WORKSPACE=/srv/apps/my-app',
+              'WHAT_CHANGED=Explored the remote Tetris workspace.',
+              'VERIFY_COMMANDS=remote_code_run',
+              'VERIFY_RESULTS=remote_code_run completed through MCP.',
+              'PUBLIC_URL=not_available',
+              'BLOCKER=none',
+            ].join('\n'),
+          }],
+        };
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: JSON.stringify({
+            output_text: '',
+            tool_calls: [{
+              id: 'call_1',
+              name: 'remote_code_run',
+              arguments: {
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                task: 'Explore the workspace to find the Tetris game files.',
+                waitMs: 30000,
+              },
+            }],
+            finish_reason: 'tool_calls',
+          }),
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.5',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Explore the workspace to find the Tetris game files.',
+      adminMode: true,
+    });
+
+    expect(calls.toolCalls).toEqual([{
+      name: 'remote_code_run',
+      args: {
+        targetId: 'prod',
+        cwd: '/srv/apps/my-app',
+        task: 'Explore the workspace to find the Tetris game files.',
+        waitMs: 30000,
+      },
+    }]);
+    expect(result.finalOutput).toContain('Explored the remote Tetris workspace.');
+    expect(result).toMatchObject({
+      sessionId: 'remote-session-raw',
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Explored the remote Tetris workspace.',
+      completionStatus: 'complete',
+    });
+  });
+
   test('wraps runner failures with model, API mode, and gateway diagnostics', async () => {
     class FakeMCPServerStreamableHttp {
       constructor() {
