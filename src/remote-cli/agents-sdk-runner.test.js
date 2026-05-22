@@ -741,6 +741,126 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(result.finalOutput).toContain('remote_code_status remained running after 2 poll attempt(s).');
   });
 
+  test('detects running status when the MCP gateway returns a raw content array', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-array-content';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_run') {
+          return [{
+            type: 'text',
+            text: JSON.stringify({
+              id: 'job-array-content',
+              targetId: 'prod',
+              cwd: '/srv/apps/my-app',
+              status: 'running',
+            }),
+          }];
+        }
+
+        return [{
+          type: 'text',
+          text: [
+            'Finished array content polling smoke.',
+            'WORKSPACE=/srv/apps/my-app',
+            'WHAT_CHANGED=Polled raw content array job to completion.',
+            'VERIFY_COMMANDS=remote_code_status',
+            'VERIFY_RESULTS=remote_code_status returned completion markers.',
+            'PUBLIC_URL=not_available',
+            'BLOCKER=none',
+          ].join('\n'),
+        }];
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: JSON.stringify({
+            output_text: '',
+            tool_calls: [{
+              id: 'call_1',
+              name: 'remote_code_run',
+              arguments: {
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                task: 'Run the content-array polling smoke.',
+                waitMs: 1000,
+              },
+            }],
+            finish_reason: 'tool_calls',
+          }),
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.5',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Run the content-array polling smoke.',
+      adminMode: true,
+      maxStatusPolls: 3,
+    });
+
+    expect(calls.toolCalls).toEqual([
+      {
+        name: 'remote_code_run',
+        args: {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Run the content-array polling smoke.',
+          waitMs: 1000,
+        },
+      },
+      {
+        name: 'remote_code_status',
+        args: {
+          targetId: 'prod',
+          jobId: 'job-array-content',
+          waitMs: 1000,
+        },
+      },
+    ]);
+    expect(result).toMatchObject({
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Polled raw content array job to completion.',
+      completionStatus: 'complete',
+    });
+  });
+
   test('wraps runner failures with model, API mode, and gateway diagnostics', async () => {
     class FakeMCPServerStreamableHttp {
       constructor() {

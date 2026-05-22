@@ -293,8 +293,11 @@ function normalizeMcpContentText(result = {}) {
     return result;
   }
 
-  if (Array.isArray(result.content)) {
-    return result.content
+  const contentEntries = Array.isArray(result)
+    ? result
+    : (Array.isArray(result.content) ? result.content : null);
+  if (contentEntries) {
+    return contentEntries
       .map((entry) => {
         if (typeof entry === 'string') {
           return entry;
@@ -360,6 +363,17 @@ function collectRemoteCodeStateCandidates(result = {}, text = '') {
   add(parsedText?.structuredContent);
   add(parsedText?.data);
   add(parsedText?.result);
+  const parsedContentEntries = Array.isArray(parsedText)
+    ? parsedText
+    : (Array.isArray(parsedText?.content) ? parsedText.content : []);
+  for (const entry of parsedContentEntries) {
+    add(entry);
+    const entryText = typeof entry === 'string' ? entry : entry?.text;
+    const parsedEntryText = typeof entryText === 'string' ? parseLenientJson(entryText) : null;
+    add(parsedEntryText);
+    add(parsedEntryText?.data);
+    add(parsedEntryText?.result);
+  }
 
   return candidates;
 }
@@ -935,12 +949,13 @@ class RemoteCliAgentsSdkRunner {
 
     if (call.name === 'remote_code_run' && isRunningRemoteCodeStatus(jobState.status)) {
       const pollLimit = normalizePositiveInteger(maxStatusPolls, 20, { min: 1, max: 80 });
+      const statusWaitMs = normalizePositiveInteger(args.waitMs || waitMs, waitMs, { min: 1000, max: 300000 });
       for (let attempt = 0; attempt < pollLimit && isRunningRemoteCodeStatus(jobState.status); attempt += 1) {
         const statusArgs = {
           targetId: args.targetId || targetId,
           ...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
           ...(jobState.jobId ? { jobId: jobState.jobId } : {}),
-          waitMs,
+          waitMs: statusWaitMs,
         };
         finalResult = await remoteCli.callTool('remote_code_status', statusArgs);
         finalText = normalizeMcpContentText(finalResult);
