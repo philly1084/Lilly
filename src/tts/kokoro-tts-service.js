@@ -67,10 +67,17 @@ class KokoroTtsService {
         this.createWorker = dependencies.createWorker || ((workerPath) => new Worker(workerPath));
         this.workerPath = dependencies.workerPath || path.join(__dirname, 'kokoro-synthesis-worker.js');
         this.worker = null;
+        this.workerPool = [];
+        this.nextWorkerPoolIndex = 0;
         this.workerRequestId = 0;
         this.workerRequests = new Map();
         this.modelPromise = null;
-        this.synthesisQueue = Promise.resolve();
+        this.maxSynthesisConcurrency = Math.max(
+            1,
+            Math.min(8, Number(this.ttsConfig.synthesisConcurrency) || 1),
+        );
+        this.activeSynthesisCount = 0;
+        this.synthesisWaiters = [];
         this.transformersRuntimeConfigured = false;
     }
 
@@ -214,6 +221,7 @@ class KokoroTtsService {
             diagnostics: {
                 ...diagnostics,
                 workerEnabled: this.workerEnabled === true,
+                synthesisConcurrency: this.maxSynthesisConcurrency,
             },
         };
     }
@@ -268,7 +276,11 @@ class KokoroTtsService {
     async getModel() {
         this.assertConfigured();
         if (this.workerEnabled) {
-            return this.callWorker('warm', {}, Number(this.ttsConfig.timeoutMs) || 90000);
+            const workerCount = this.getWorkerPoolSize();
+            const warmResults = await Promise.all(Array.from({ length: workerCount }, (_value, index) => (
+                this.callWorker('warm', {}, Number(this.ttsConfig.timeoutMs) || 90000, { workerIndex: index })
+            )));
+            return warmResults[0];
         }
         if (!this.modelPromise) {
             const modelId = String(this.ttsConfig.modelId || DEFAULT_MODEL_ID).trim() || DEFAULT_MODEL_ID;
@@ -301,13 +313,21 @@ class KokoroTtsService {
         return this.modelPromise;
     }
 
-    getWorker() {
-        if (this.worker) {
-            return this.worker;
-        }
+    getWorkerPoolSize() {
+        return this.workerEnabled ? this.maxSynthesisConcurrency : 1;
+    }
 
+    createWorkerDescriptor(index = 0) {
         const worker = this.createWorker(this.workerPath);
-        this.worker = worker;
+        const descriptor = {
+            index,
+            worker,
+            pendingRequestIds: new Set(),
+        };
+        this.workerPool[index] = descriptor;
+        if (index === 0) {
+            this.worker = worker;
+        }
 
         worker.on('message', (message = {}) => {
             const request = this.workerRequests.get(message.id);
@@ -315,6 +335,7 @@ class KokoroTtsService {
                 return;
             }
             this.workerRequests.delete(message.id);
+            descriptor.pendingRequestIds.delete(message.id);
             clearTimeout(request.timeoutId);
 
             if (message.ok) {
@@ -336,11 +357,17 @@ class KokoroTtsService {
         });
 
         const failPending = (error) => {
-            for (const request of this.workerRequests.values()) {
+            const pendingRequestIds = Array.from(descriptor.pendingRequestIds);
+            descriptor.pendingRequestIds.clear();
+            for (const requestId of pendingRequestIds) {
+                const request = this.workerRequests.get(requestId);
+                if (!request) {
+                    continue;
+                }
+                this.workerRequests.delete(requestId);
                 clearTimeout(request.timeoutId);
                 request.reject(error);
             }
-            this.workerRequests.clear();
         };
 
         worker.on('error', (error) => {
@@ -350,15 +377,13 @@ class KokoroTtsService {
                 'tts_unavailable',
             );
             failPending(wrapped);
-            if (this.worker === worker) {
-                this.worker = null;
-            }
+            this.workerPool[index] = null;
+            this.worker = this.workerPool[0]?.worker || null;
         });
 
         worker.on('exit', (code) => {
-            if (this.worker === worker) {
-                this.worker = null;
-            }
+            this.workerPool[index] = null;
+            this.worker = this.workerPool[0]?.worker || null;
             if (code !== 0) {
                 failPending(createServiceError(
                     503,
@@ -368,12 +393,43 @@ class KokoroTtsService {
             }
         });
 
-        return worker;
+        return descriptor;
     }
 
-    async resetWorker() {
-        const worker = this.worker;
-        this.worker = null;
+    getWorkerDescriptor(options = {}) {
+        const poolSize = this.getWorkerPoolSize();
+        const requestedIndex = Number.isInteger(options.workerIndex)
+            ? Math.max(0, Math.min(poolSize - 1, options.workerIndex))
+            : null;
+
+        if (requestedIndex !== null) {
+            return this.workerPool[requestedIndex] || this.createWorkerDescriptor(requestedIndex);
+        }
+
+        while (this.workerPool.length < poolSize) {
+            this.createWorkerDescriptor(this.workerPool.length);
+        }
+
+        let selected = null;
+        for (let offset = 0; offset < poolSize; offset += 1) {
+            const index = (this.nextWorkerPoolIndex + offset) % poolSize;
+            const descriptor = this.workerPool[index] || this.createWorkerDescriptor(index);
+            if (!selected || descriptor.pendingRequestIds.size < selected.pendingRequestIds.size) {
+                selected = descriptor;
+            }
+        }
+
+        this.nextWorkerPoolIndex = ((selected?.index || 0) + 1) % poolSize;
+        return selected;
+    }
+
+    async resetWorker(descriptor = null) {
+        const targetDescriptor = descriptor || this.workerPool[0] || null;
+        const worker = targetDescriptor?.worker || this.worker;
+        if (targetDescriptor) {
+            this.workerPool[targetDescriptor.index] = null;
+        }
+        this.worker = this.workerPool[0]?.worker || null;
         if (worker?.terminate) {
             try {
                 await worker.terminate();
@@ -383,8 +439,9 @@ class KokoroTtsService {
         }
     }
 
-    callWorker(action, payload = {}, timeoutMs = 90000) {
-        const worker = this.getWorker();
+    callWorker(action, payload = {}, timeoutMs = 90000, options = {}) {
+        const descriptor = this.getWorkerDescriptor(options);
+        const worker = descriptor.worker;
         const id = ++this.workerRequestId;
         const effectiveTimeoutMs = Math.max(1000, Number(timeoutMs) || 90000);
 
@@ -394,7 +451,8 @@ class KokoroTtsService {
                     return;
                 }
                 this.workerRequests.delete(id);
-                await this.resetWorker();
+                descriptor.pendingRequestIds.delete(id);
+                await this.resetWorker(descriptor);
                 reject(createServiceError(
                     504,
                     'Kokoro synthesis worker timed out before responding.',
@@ -407,6 +465,7 @@ class KokoroTtsService {
                 reject,
                 timeoutId,
             });
+            descriptor.pendingRequestIds.add(id);
 
             worker.postMessage({
                 id,
@@ -416,17 +475,50 @@ class KokoroTtsService {
         });
     }
 
-    enqueueSynthesis(task) {
-        const run = this.synthesisQueue
-            .catch(() => null)
-            .then(task);
-        this.synthesisQueue = run.catch(async (error) => {
-            if (error?.code === 'tts_timeout' && error?.pendingOperation) {
-                await error.pendingOperation;
-            }
-            return null;
+    acquireSynthesisSlot() {
+        if (this.activeSynthesisCount < this.maxSynthesisConcurrency) {
+            this.activeSynthesisCount += 1;
+            return Promise.resolve(this.releaseSynthesisSlot.bind(this));
+        }
+
+        return new Promise((resolve) => {
+            this.synthesisWaiters.push(resolve);
+        }).then(() => {
+            this.activeSynthesisCount += 1;
+            return this.releaseSynthesisSlot.bind(this);
         });
-        return run;
+    }
+
+    releaseSynthesisSlot() {
+        this.activeSynthesisCount = Math.max(0, this.activeSynthesisCount - 1);
+        const nextWaiter = this.synthesisWaiters.shift();
+        if (nextWaiter) {
+            nextWaiter();
+        }
+    }
+
+    releaseSynthesisSlotAfter(promise, release) {
+        Promise.resolve(promise)
+            .catch(() => null)
+            .finally(release);
+    }
+
+    async runSynthesis(task) {
+        const release = await this.acquireSynthesisSlot();
+        let releaseDeferred = false;
+        try {
+            return await task();
+        } catch (error) {
+            if (error?.code === 'tts_timeout' && error?.pendingOperation) {
+                releaseDeferred = true;
+                this.releaseSynthesisSlotAfter(error.pendingOperation, release);
+            }
+            throw error;
+        } finally {
+            if (!releaseDeferred) {
+                release();
+            }
+        }
     }
 
     async synthesize({ text = '', voiceId = '', timeoutMs } = {}) {
@@ -446,7 +538,7 @@ class KokoroTtsService {
         );
         const effectiveTimeoutMs = Math.max(1000, Number(timeoutMs) || Number(this.ttsConfig.timeoutMs) || 90000);
 
-        return this.enqueueSynthesis(async () => {
+        return this.runSynthesis(async () => {
             if (this.workerEnabled) {
                 return this.callWorker('synthesize', {
                     text: speakableText,

@@ -429,6 +429,15 @@ const normalizedKokoroPodcastChunkChars = Math.max(
         parseInt(process.env.KOKORO_TTS_PODCAST_CHUNK_CHARS, 10) || Math.min(900, normalizedKokoroMaxTextChars),
     ),
 );
+const normalizedKokoroSynthesisConcurrency = Math.max(
+    1,
+    Math.min(
+        8,
+        parseInt(process.env.KOKORO_TTS_SYNTHESIS_CONCURRENCY, 10)
+            || parseInt(process.env.KOKORO_TTS_CONCURRENCY, 10)
+            || 1,
+    ),
+);
 const normalizedPodcastVideoSegmentTimeoutMs = Math.max(
     30000,
     parseInt(process.env.PODCAST_VIDEO_SEGMENT_TIMEOUT_MS, 10) || 360000,
@@ -591,6 +600,7 @@ const config = {
             timeoutMs: normalizedKokoroTimeoutMs,
             podcastTimeoutMs: normalizedKokoroPodcastTimeoutMs,
             podcastChunkChars: normalizedKokoroPodcastChunkChars,
+            synthesisConcurrency: normalizedKokoroSynthesisConcurrency,
         },
         piper: {
             enabled: process.env.PIPER_TTS_ENABLED !== 'false',

@@ -171,6 +171,69 @@ describe('KokoroTtsService', () => {
         ]);
     });
 
+    test('runs configured concurrent generation requests in parallel', async () => {
+        const events = [];
+        let releaseFirst = null;
+        let firstStarted = null;
+        let secondStarted = null;
+        const firstStartedPromise = new Promise((resolve) => {
+            firstStarted = resolve;
+        });
+        const secondStartedPromise = new Promise((resolve) => {
+            secondStarted = resolve;
+        });
+        const generate = jest.fn(async (text) => {
+            events.push(`start:${text}`);
+            if (text === 'First request.') {
+                firstStarted();
+                await new Promise((resolve) => {
+                    releaseFirst = resolve;
+                });
+            }
+            if (text === 'Second request.') {
+                secondStarted();
+            }
+            events.push(`finish:${text}`);
+            return createAudio(Buffer.from(`RIFF-${text}`));
+        });
+        const service = new KokoroTtsService({
+            enabled: true,
+            modelId: 'test-model',
+            defaultVoiceId: 'af_heart',
+            voices: [{ id: 'af_heart', label: 'Heart Studio' }],
+            timeoutMs: 5000,
+            synthesisConcurrency: 2,
+        }, {
+            importKokoro: () => ({
+                KokoroTTS: {
+                    from_pretrained: jest.fn(async () => ({ generate })),
+                },
+            }),
+        });
+
+        const first = service.synthesize({ text: 'First request', voiceId: 'af_heart' });
+        await firstStartedPromise;
+        const second = service.synthesize({ text: 'Second request', voiceId: 'af_heart' });
+        await secondStartedPromise;
+
+        expect(generate).toHaveBeenCalledTimes(2);
+        expect(events).toEqual([
+            'start:First request.',
+            'start:Second request.',
+            'finish:Second request.',
+        ]);
+
+        releaseFirst();
+        await Promise.all([first, second]);
+
+        expect(events).toEqual([
+            'start:First request.',
+            'start:Second request.',
+            'finish:Second request.',
+            'finish:First request.',
+        ]);
+    });
+
     test('keeps timed-out generation in the queue until the underlying work settles', async () => {
         const events = [];
         let releaseFirst = null;
@@ -296,6 +359,91 @@ describe('KokoroTtsService', () => {
         }));
         expect(Buffer.isBuffer(result.audioBuffer)).toBe(true);
         expect(result.audioBuffer.equals(Buffer.from('RIFF-worker-audio'))).toBe(true);
+    });
+
+    test('uses the configured worker pool for concurrent worker synthesis', async () => {
+        let releaseFirst = null;
+        let firstPosted = null;
+        const firstPostedPromise = new Promise((resolve) => {
+            firstPosted = resolve;
+        });
+        const workers = [];
+
+        class FakeWorker extends EventEmitter {
+            constructor(index) {
+                super();
+                this.index = index;
+                this.messages = [];
+            }
+
+            postMessage(message) {
+                this.messages.push(message);
+                if (message.action === 'warm') {
+                    setImmediate(() => this.emit('message', {
+                        id: message.id,
+                        ok: true,
+                        result: { warmed: true, workerIndex: this.index },
+                    }));
+                    return;
+                }
+
+                if (message.payload?.text === 'First worker request.') {
+                    firstPosted();
+                    releaseFirst = () => this.emit('message', {
+                        id: message.id,
+                        ok: true,
+                        result: {
+                            provider: 'kokoro',
+                            audioBuffer: Uint8Array.from(Buffer.from('RIFF-first-worker')),
+                            contentType: 'audio/wav',
+                            text: message.payload.text,
+                            voice: { id: message.payload.voiceId, provider: 'kokoro' },
+                        },
+                    });
+                    return;
+                }
+
+                setImmediate(() => this.emit('message', {
+                    id: message.id,
+                    ok: true,
+                    result: {
+                        provider: 'kokoro',
+                        audioBuffer: Uint8Array.from(Buffer.from('RIFF-second-worker')),
+                        contentType: 'audio/wav',
+                        text: message.payload.text,
+                        voice: { id: message.payload.voiceId, provider: 'kokoro' },
+                    },
+                }));
+            }
+        }
+
+        const service = new KokoroTtsService({
+            enabled: true,
+            modelId: 'test-model',
+            defaultVoiceId: 'af_heart',
+            voices: [{ id: 'af_heart', label: 'Heart Studio' }],
+            timeoutMs: 5000,
+            workerEnabled: true,
+            synthesisConcurrency: 2,
+        }, {
+            createWorker: () => {
+                const worker = new FakeWorker(workers.length);
+                workers.push(worker);
+                return worker;
+            },
+        });
+
+        await service.getModel();
+        const first = service.synthesize({ text: 'First worker request', voiceId: 'af_heart' });
+        await firstPostedPromise;
+        const second = service.synthesize({ text: 'Second worker request', voiceId: 'af_heart' });
+        await second;
+        releaseFirst();
+        await first;
+
+        expect(workers).toHaveLength(2);
+        expect(workers[0].messages.filter((message) => message.action === 'synthesize')).toHaveLength(1);
+        expect(workers[1].messages.filter((message) => message.action === 'synthesize')).toHaveLength(1);
     });
 
     test('rejects unknown voices', async () => {
