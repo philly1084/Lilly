@@ -101,6 +101,8 @@ describe('RemoteWorkbenchTool', () => {
       GIT_BRANCH: 'agent/test-run',
     }));
     expect(params.command).toContain('git init');
+    expect(params.command).toContain('".kimibuilt/" >> .git/info/exclude');
+    expect(params.command).toContain('"*.bak.*" >> .git/info/exclude');
     expect(params.command).toContain('__KIMIBUILT_GIT_BASE_COMMIT__');
     expect(params.command).toContain('git checkout -b "$branch"');
   });

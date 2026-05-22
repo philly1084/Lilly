@@ -40,7 +40,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(instructions).toContain('VERIFY_RESULTS');
     expect(instructions).toContain('PUBLIC_URL');
     expect(instructions).toContain('BLOCKER');
+    expect(instructions).toContain('GIT_BRANCH');
+    expect(instructions).toContain('GIT_BASE_COMMIT');
     expect(instructions).toContain('GIT_COMMIT');
+    expect(instructions).toContain('CHANGED_FILES');
+    expect(instructions).toContain('git revert');
     expect(instructions).toContain('remote_code_status');
     expect(instructions).toContain('persistent private workbench');
     expect(instructions).toContain('not a Git remote, URL, or raw user@host SSH string');

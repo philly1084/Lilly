@@ -56,6 +56,7 @@ Behavior:
   3. If GitLab is configured but the workspace has no matching origin, create or use a repo under the configured group when credentials/API access are available; prefer token/askpass HTTPS over SSH prompts.
   4. If repo creation is blocked by missing credentials or API capability, commit locally, report the exact missing piece, and leave the workspace ready to attach to GitLab.
   5. If GitLab is not configured or reachable, use the direct BuildKit/kubectl path from a local git repo and clearly mark GitLab as the missing automation layer.
+- Because this is the most-used remote deployment tool, Git visibility is required even when the fallback is only local Git: create or reuse a repo in the workspace, work on an `agent/<run-id>` branch when practical, capture base commit and changed files, commit before deploy, and use `git revert` plus redeploy for rollback.
 - Source-to-public completion requires evidence in this order when available: changed files, commit SHA, GitLab pipeline/build event, image tag or digest, k3s rollout, ingress/TLS/HTTPS verification, and browser screenshot for UI work. A healthy pod by itself is not enough.
 - Before first commit in a fresh remote workspace, set repo-local `git config user.name` and `git config user.email` if they are missing.
 - For follow-up edits, inspect `git status`, recent commits, and current source first. Use live Kubernetes resources, ConfigMaps, or mounted files only as diagnostics or recovery input, then persist the change back to git before redeploying.
@@ -70,7 +71,7 @@ Behavior:
   - `VERIFY_RESULTS=<pass/fail/blocked result; repeat the marker for multiple checks>`
   - `PUBLIC_URL=<https URL or not_available>`
   - `BLOCKER=<none or exact blocker>`
-- The final output should also include continuity markers when known: `REMOTE_CLI_SESSION_ID=...`, `WORKSPACE=...`, `GIT_REPO=...`, `GIT_COMMIT=...`, `DEPLOYMENT=...`, `PUBLIC_HOST=...`, `UI_CHECK_REPORT=...`, and `UI_SCREENSHOTS=...`.
+- The final output should also include continuity markers when known: `REMOTE_CLI_SESSION_ID=...`, `WORKSPACE=...`, `GIT_REPO=...`, `GIT_BRANCH=...`, `GIT_BASE_COMMIT=...`, `GIT_COMMIT=...`, `CHANGED_FILES=...`, `DEPLOYMENT=...`, `PUBLIC_HOST=...`, `UI_CHECK_REPORT=...`, and `UI_SCREENSHOTS=...`.
 - Prefer `waitMs: 30000` for long coding tasks.
 - Pass `sessionId` when continuing a previous remote coding session.
 - Pass `mcpSessionId` when continuing a previous Streamable HTTP MCP session.
