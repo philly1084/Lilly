@@ -429,6 +429,95 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('executes token-spaced leaked remote_code_run output from chat gateway traces', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-spaced-tool';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              'REMOTE_CLI_SESSION_ID=remote-session-spaced',
+              'WORKSPACE=/srv/apps/my-app',
+              'WHAT_CHANGED=Applied the live remote CLI fallback.',
+              'VERIFY_COMMANDS=remote_code_run',
+              'VERIFY_RESULTS=remote_code_run completed through MCP after spaced JSON extraction.',
+              'PUBLIC_URL=not_available',
+              'BLOCKER=none',
+            ].join('\n'),
+          }],
+        };
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: '{" output _text ":""," tool _calls ":[{" id ":" call _ 1 "," name ":" remote _code _run "," arguments ":{" target Id ":" prod "," cwd ":"/ srv /apps /my -app "," wait Ms ": 300 00 ," task ":" Explore the workspace at / srv /apps /my -app to find the Tet ris game project ." }} ]," finish _reason ":" tool _calls "}',
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.5',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const cleanTask = 'Explore the workspace at /srv/apps/my-app to find the Tetris game project.';
+    const result = await runner.run({
+      task: cleanTask,
+      adminMode: true,
+    });
+
+    expect(calls.toolCalls).toEqual([{
+      name: 'remote_code_run',
+      args: {
+        targetId: 'prod',
+        cwd: '/srv/apps/my-app',
+        task: cleanTask,
+        waitMs: 30000,
+      },
+    }]);
+    expect(result.finalOutput).toContain('Applied the live remote CLI fallback.');
+    expect(result).toMatchObject({
+      sessionId: 'remote-session-spaced',
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Applied the live remote CLI fallback.',
+      completionStatus: 'complete',
+    });
+  });
+
   test('wraps runner failures with model, API mode, and gateway diagnostics', async () => {
     class FakeMCPServerStreamableHttp {
       constructor() {

@@ -28,6 +28,60 @@ function normalizeToolName(value = '') {
   return compact;
 }
 
+function normalizeLeakedPath(value = '') {
+  const normalized = normalizeText(value);
+  if (!normalized || !/[\\/]/.test(normalized)) {
+    return normalized;
+  }
+
+  return normalized
+    .replace(/\s*([\\/])\s*/g, '$1')
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s+/g, '');
+}
+
+function buildLooseJsonKeyPattern(key = '') {
+  const token = normalizeKey(key);
+  return token
+    .split('')
+    .map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[\\s_]*');
+}
+
+function extractLooseJsonStringField(source = '', keys = []) {
+  const text = String(source || '');
+  for (const key of keys) {
+    const pattern = buildLooseJsonKeyPattern(key);
+    if (!pattern) {
+      continue;
+    }
+    const match = text.match(new RegExp(`["']\\s*${pattern}\\s*["']\\s*:\\s*["']([\\s\\S]*?)["']`, 'i'));
+    if (match?.[1] !== undefined) {
+      return match[1]
+        .replace(/\\(["'\\/bfnrt])/g, '$1')
+        .replace(/\\u([0-9a-f]{4})/gi, (_all, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
+    }
+  }
+
+  return undefined;
+}
+
+function extractLooseJsonNumberField(source = '', keys = []) {
+  const text = String(source || '');
+  for (const key of keys) {
+    const pattern = buildLooseJsonKeyPattern(key);
+    if (!pattern) {
+      continue;
+    }
+    const match = text.match(new RegExp(`["']\\s*${pattern}\\s*["']\\s*:\\s*([0-9][0-9\\s_]*)`, 'i'));
+    if (match?.[1]) {
+      return match[1].replace(/[^0-9]/g, '');
+    }
+  }
+
+  return undefined;
+}
+
 function getValueByNormalizedKey(source = {}, keys = []) {
   if (!source || typeof source !== 'object') {
     return undefined;
@@ -327,9 +381,15 @@ function normalizeRemoteToolArgs(args = {}) {
   for (const [outputKey, aliases] of Object.entries(fieldMap)) {
     const value = getValueByNormalizedKey(args, aliases);
     if (value !== undefined && value !== null && String(value).trim() !== '') {
-      normalized[outputKey] = outputKey === 'waitMs'
-        ? normalizePositiveInteger(value, 30000, { min: 1000, max: 300000 })
-        : value;
+      if (outputKey === 'waitMs') {
+        normalized[outputKey] = normalizePositiveInteger(value, 30000, { min: 1000, max: 300000 });
+      } else if (outputKey === 'cwd') {
+        normalized[outputKey] = normalizeLeakedPath(value);
+      } else if (outputKey === 'task') {
+        normalized[outputKey] = normalizeText(value).replace(/\s+/g, ' ');
+      } else {
+        normalized[outputKey] = normalizeText(value).replace(/\s+/g, '');
+      }
     }
   }
 
@@ -348,17 +408,63 @@ function parseToolArguments(value = {}) {
   return parseLenientJson(value) || {};
 }
 
+function extractRawMcpToolCallsFromLooseText(finalOutput = '') {
+  const text = String(finalOutput || '');
+  const normalizedText = normalizeKey(text);
+  if (!normalizedText.includes('toolcalls') || !normalizedText.includes('arguments')) {
+    return [];
+  }
+
+  const extractedName = normalizeToolName(extractLooseJsonStringField(text, ['name', 'toolName']) || '');
+  const name = extractedName === 'remote_code_run' || normalizedText.includes('remotecoderun')
+    ? 'remote_code_run'
+    : (extractedName === 'remote_code_status' || normalizedText.includes('remotecodestatus')
+      ? 'remote_code_status'
+      : '');
+  if (!name) {
+    return [];
+  }
+
+  const args = {};
+  const targetId = extractLooseJsonStringField(text, ['targetId', 'target_id', 'target']);
+  const cwd = extractLooseJsonStringField(text, ['cwd', 'workingDirectory', 'working_directory']);
+  const waitMs = extractLooseJsonNumberField(text, ['waitMs', 'wait_ms']);
+  const sessionId = extractLooseJsonStringField(text, ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id']);
+  const jobId = extractLooseJsonStringField(text, ['jobId', 'job_id']);
+
+  if (targetId) {
+    args.targetId = targetId;
+  }
+  if (cwd) {
+    args.cwd = cwd;
+  }
+  if (waitMs) {
+    args.waitMs = waitMs;
+  }
+  if (sessionId) {
+    args.sessionId = sessionId;
+  }
+  if (jobId) {
+    args.jobId = jobId;
+  }
+
+  return [{
+    name,
+    arguments: normalizeRemoteToolArgs(args),
+  }];
+}
+
 function extractRawMcpToolCalls(finalOutput = '') {
   const parsed = parseLenientJson(finalOutput);
   if (!parsed || typeof parsed !== 'object') {
-    return [];
+    return extractRawMcpToolCallsFromLooseText(finalOutput);
   }
 
   const calls = Array.isArray(parsed)
     ? parsed
     : (getValueByNormalizedKey(parsed, ['tool_calls', 'toolCalls', 'calls']) || []);
 
-  return (Array.isArray(calls) ? calls : [])
+  const parsedCalls = (Array.isArray(calls) ? calls : [])
     .map((call) => {
       const functionShape = call?.function || {};
       const name = normalizeToolName(
@@ -375,6 +481,9 @@ function extractRawMcpToolCalls(finalOutput = '') {
       };
     })
     .filter((call) => call.name === 'remote_code_run' || call.name === 'remote_code_status');
+  return parsedCalls.length > 0
+    ? parsedCalls
+    : extractRawMcpToolCallsFromLooseText(finalOutput);
 }
 
 function isOfficialOpenAIBaseURL(baseURL = '') {
