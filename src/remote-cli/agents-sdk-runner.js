@@ -411,6 +411,7 @@ function appendFallbackMarkers(text = '', {
   remoteSessionId = '',
   fallbackStatus = 'complete',
   fallbackWhatChanged = '',
+  fallbackVerifyCommand = '',
   fallbackVerifyResult = '',
   blocker = '',
 } = {}) {
@@ -431,9 +432,7 @@ function appendFallbackMarkers(text = '', {
     lines.push(`WHAT_CHANGED=${fallbackWhatChanged || 'Executed leaked remote_code_run MCP call directly after the inner agent returned it as raw tool-call JSON.'}`);
   }
   if (!Array.isArray(existing.verifyCommands) || existing.verifyCommands.length === 0) {
-    lines.push(fallbackStatus === 'complete'
-      ? 'VERIFY_COMMANDS=remote_code_run, remote_code_status'
-      : 'VERIFY_COMMANDS=remote_code_run');
+    lines.push(`VERIFY_COMMANDS=${fallbackVerifyCommand || 'remote_code_run'}`);
   }
   if (!Array.isArray(existing.verifyResults) || existing.verifyResults.length === 0) {
     lines.push(`VERIFY_RESULTS=${fallbackVerifyResult || (fallbackStatus === 'complete'
@@ -961,6 +960,7 @@ class RemoteCliAgentsSdkRunner {
     }
 
     const stillRunning = isRunningRemoteCodeStatus(jobState.status);
+    const usedStatusPoll = pollOutputs.length > 0;
     const combinedText = pollOutputs.length > 0
       ? [normalizeMcpContentText(initialResult), ...pollOutputs].filter(Boolean).join('\n\n--- remote_code_status poll ---\n')
       : finalText;
@@ -973,10 +973,15 @@ class RemoteCliAgentsSdkRunner {
       fallbackStatus: stillRunning ? 'running' : 'complete',
       fallbackWhatChanged: stillRunning
         ? 'Started the leaked remote_code_run MCP call and polled remote_code_status, but the remote job was still running when the compatibility fallback stopped.'
-        : 'Executed leaked remote_code_run MCP call directly and continued polling remote_code_status until the remote job reached a terminal result.',
+        : (usedStatusPoll
+          ? 'Executed leaked remote_code_run MCP call directly and continued polling remote_code_status until the remote job reached a terminal result.'
+          : 'Executed leaked remote_code_run MCP call directly and received a terminal result from the MCP gateway.'),
+      fallbackVerifyCommand: usedStatusPoll ? 'remote_code_run, remote_code_status' : 'remote_code_run',
       fallbackVerifyResult: stillRunning
         ? `remote_code_status remained ${jobState.status || 'running'} after ${normalizePositiveInteger(maxStatusPolls, 20, { min: 1, max: 80 })} poll attempt(s).`
-        : 'remote_code_run reached a terminal result through the MCP gateway.',
+        : (usedStatusPoll
+          ? 'remote_code_run reached a terminal result through the MCP gateway after status polling.'
+          : 'remote_code_run returned a terminal result through the MCP gateway.'),
       blocker: stillRunning ? 'remote_code_run still running; continue with the returned remote session/job id' : '',
     });
   }
