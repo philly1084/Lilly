@@ -1168,6 +1168,7 @@
                                 <button class="settings-nav-item" data-settings="podcastAudio">Podcast Audio</button>
                                 <button class="settings-nav-item" data-settings="storage">Storage</button>
                                 <button class="settings-nav-item" data-settings="features">Features</button>
+                                <button class="settings-nav-item" data-settings="orchestration">Orchestration</button>
                                 <button class="settings-nav-item" data-settings="privacyPii">Privacy / PII</button>
                                 <button class="settings-nav-item" data-settings="api">API & Integrations</button>
                                 <button class="settings-nav-item" data-settings="notifications">Notifications</button>
@@ -1524,6 +1525,31 @@
                                                 </label>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Orchestration Settings -->
+                            <div class="settings-section" id="orchestrationSettings">
+                                <h2>Orchestration</h2>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <form id="agentRuntimeSettingsForm">
+                                            <h3>Agent Runtime</h3>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
+                                                    <span class="feature-name">Agent-directed runtime</span>
+                                                    <span class="feature-desc">Bypass the heavy conversation orchestrator and let the agent choose progress and tools from cards plus compact registry context.</span>
+                                                </div>
+                                                <label class="toggle">
+                                                    <input type="checkbox" id="settingsAgentDirectedRuntime">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="form-actions">
+                                                <button type="submit" class="btn btn-primary">Save Runtime</button>
+                                            </div>
+                                        </form>
                                     </div>
                                 </div>
                             </div>

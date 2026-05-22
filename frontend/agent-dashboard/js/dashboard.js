@@ -263,6 +263,16 @@ class Dashboard {
             e.preventDefault();
             this.saveOrchestrationConfig();
         });
+        document.getElementById('agentRuntimeSettingsForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveAgentRuntimeSettings();
+        });
+        document.getElementById('settingsAgentDirectedRuntime')?.addEventListener('change', (e) => {
+            this.setInputValue('orchestrationAgentDirectedRuntime', String(e.target.checked));
+        });
+        document.getElementById('orchestrationAgentDirectedRuntime')?.addEventListener('change', (e) => {
+            this.setCheckboxValue('settingsAgentDirectedRuntime', e.target.value === 'true');
+        });
         
         document.getElementById('addModelBtn')?.addEventListener('click', () => {
             this.showToast('Add model functionality coming soon', 'info');
@@ -3017,6 +3027,25 @@ class Dashboard {
         } catch (error) {
             console.error('Error saving orchestration settings:', error);
             this.showToast('Failed to save orchestration settings', 'error');
+        }
+    }
+
+    async saveAgentRuntimeSettings() {
+        try {
+            const existing = this.state.settings?.orchestration || {};
+            const settings = {
+                orchestration: {
+                    ...existing,
+                    agentDirectedRuntime: document.getElementById('settingsAgentDirectedRuntime').checked,
+                },
+            };
+
+            const response = await apiClient.put('/api/admin/settings', settings);
+            this.applySettings(this.unwrapApiPayload(response, settings));
+            this.showToast('Runtime setting saved', 'success');
+        } catch (error) {
+            console.error('Error saving runtime setting:', error);
+            this.showToast('Failed to save runtime setting', 'error');
         }
     }
     
@@ -5971,6 +6000,7 @@ class Dashboard {
         this.setInputValue('orchestrationEnableAlignmentEvaluator', String(orchestration.enableAlignmentEvaluator !== false));
         this.setInputValue('orchestrationApplyAlignmentGuidance', String(orchestration.applyAlignmentGuidance !== false));
         this.setInputValue('orchestrationAgentDirectedRuntime', String(orchestration.agentDirectedRuntime === true));
+        this.setCheckboxValue('settingsAgentDirectedRuntime', orchestration.agentDirectedRuntime === true);
         apiClient.baseUrl = window.location.origin;
 
         this.setCheckboxValue('featureWebsocket', Boolean(features.realTimeUpdates));
