@@ -36,6 +36,10 @@ class RemoteCliAgentTool extends ToolBase {
             type: 'string',
             description: 'Remote coding session ID returned by remote_code_run for continuing prior work.',
           },
+          jobId: {
+            type: 'string',
+            description: 'Remote coding job ID returned by remote_code_run for checking an in-progress offshoot with remote_code_status.',
+          },
           mcpSessionId: {
             type: 'string',
             description: 'Streamable HTTP MCP session ID returned by a prior remote-cli-agent call.',
@@ -79,6 +83,7 @@ class RemoteCliAgentTool extends ToolBase {
           cwd: { type: 'string' },
           sessionId: { type: 'string' },
           remoteCodeSessionId: { type: 'string' },
+          remoteCodeJobId: { type: 'string' },
           gitRepo: { type: 'string' },
           gitCommit: { type: 'string' },
           deployment: { type: 'string' },

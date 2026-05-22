@@ -21,6 +21,9 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
 
     expect(instructions).toContain('Use remote_code_run for coding tasks.');
+    expect(instructions).toContain('Tool shape: call remote_code_run');
+    expect(instructions).toContain('Tool shape: call remote_code_status');
+    expect(instructions).toContain('do not paste full raw tool JSON or giant command output');
     expect(instructions).toContain('Default targetId: prod');
     expect(instructions).toContain('Default cwd: /srv/apps/my-app');
     expect(instructions).toContain('repo-map');
@@ -650,6 +653,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     const calls = {
       toolCalls: [],
     };
+    const noisyStdout = 'still-running-output '.repeat(1000);
 
     class FakeMCPServerStreamableHttp {
       constructor() {
@@ -667,10 +671,16 @@ describe('RemoteCliAgentsSdkRunner', () => {
             status: 'running',
             jobId: 'job-still-running',
             sessionId: 'remote-session-still-running',
+            stdout: noisyStdout,
           },
           content: [{
             type: 'text',
-            text: '{"status":"running","jobId":"job-still-running","sessionId":"remote-session-still-running"}',
+            text: JSON.stringify({
+              status: 'running',
+              jobId: 'job-still-running',
+              sessionId: 'remote-session-still-running',
+              stdout: noisyStdout,
+            }),
           }],
         };
       }
@@ -735,10 +745,14 @@ describe('RemoteCliAgentsSdkRunner', () => {
     ]);
     expect(result).toMatchObject({
       sessionId: 'remote-session-still-running',
+      remoteCodeJobId: 'job-still-running',
       blocker: 'remote_code_run still running; continue with the returned remote session/job id',
       completionStatus: 'blocked',
     });
+    expect(result.finalOutput).toContain('REMOTE_CLI_JOB_ID=job-still-running');
     expect(result.finalOutput).toContain('remote_code_status remained running after 2 poll attempt(s).');
+    expect(result.finalOutput).not.toContain(noisyStdout);
+    expect(result.finalOutput.length).toBeLessThan(1500);
   });
 
   test('detects running status when the MCP gateway returns a raw content array', async () => {

@@ -228,6 +228,8 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
   const text = String(finalOutput || '');
   const sessionId = readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID'])
     || cleanMarkerValue(text.match(/remote\s+session\s*:\s*`?([^`\s]+)/i)?.[1] || '');
+  const jobId = readMarkerLine(text, ['REMOTE_CLI_JOB_ID', 'REMOTE_CODE_JOB_ID', 'JOB_ID'])
+    || cleanMarkerValue(text.match(/(?:job\s*id|jobId|job_id|runId|run_id)\s*[:=]\s*`?([a-z0-9_.:-]{3,128})/i)?.[1] || '');
   const workspace = readMarkerLine(text, ['WORKSPACE', 'REMOTE_WORKSPACE', 'CWD'])
     || cleanMarkerValue(text.match(/workspace\s*:\s*`?([^`\n]+)/i)?.[1] || '');
   const gitRepo = readMarkerLine(text, ['GIT_REPO', 'GIT_REMOTE', 'REPOSITORY'])
@@ -268,6 +270,7 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
 
   return {
     ...(sessionId ? { sessionId } : {}),
+    ...(jobId ? { jobId } : {}),
     ...(workspace ? { workspace } : {}),
     ...(gitRepo ? { gitRepo } : {}),
     ...(gitCommit ? { gitCommit } : {}),
@@ -423,6 +426,7 @@ function appendFallbackMarkers(text = '', {
   cwd = '',
   mcpSessionId = '',
   remoteSessionId = '',
+  remoteJobId = '',
   fallbackStatus = 'complete',
   fallbackWhatChanged = '',
   fallbackVerifyCommand = '',
@@ -435,6 +439,9 @@ function appendFallbackMarkers(text = '', {
 
   if (!existing.sessionId && remoteSessionId) {
     lines.push(`REMOTE_CLI_SESSION_ID=${remoteSessionId}`);
+  }
+  if (!existing.jobId && remoteJobId) {
+    lines.push(`REMOTE_CLI_JOB_ID=${remoteJobId}`);
   }
   if (mcpSessionId) {
     lines.push(`MCP_SESSION_ID=${mcpSessionId}`);
@@ -763,6 +770,7 @@ function buildRemoteCliInstructions({
   targetId,
   cwd,
   sessionId = '',
+  jobId = '',
   waitMs = 30000,
   adminMode = false,
   extraInstructions = '',
@@ -772,6 +780,9 @@ function buildRemoteCliInstructions({
     'You can modify the remote server using the remote-cli MCP tools.',
     '',
     'Use remote_code_run for coding tasks.',
+    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","waitMs":30000,"sessionId":"<optional prior sessionId>"}. It may return fields like {"id":"<job id>","jobId":"<job id>","status":"running|completed|failed","sessionId":"<remote session id>","stdout":"...","stderr":"..."}.',
+    'Tool shape: call remote_code_status with {"targetId":"<gateway target id>","jobId":"<job id from remote_code_run>","sessionId":"<remote session id when available>","waitMs":30000}. It returns the same status/session/stdout/stderr shape. When status is running, poll status instead of dumping the raw JSON as the final answer.',
+    'When reporting back, summarize stdout/stderr into proof markers; do not paste full raw tool JSON or giant command output unless the user explicitly asks for the log.',
     `Default targetId: ${targetId}`,
     cwd ? `Default cwd: ${cwd}` : 'Default cwd: use the gateway target default.',
     '',
@@ -808,6 +819,7 @@ function buildRemoteCliInstructions({
     'If it returns status "running", call remote_code_status with the returned jobId.',
     'If continuing prior work, reuse the returned sessionId.',
     sessionId ? `Current prior remote CLI sessionId: ${sessionId}` : '',
+    jobId ? `Current prior remote CLI jobId: ${jobId}` : '',
     'When the task includes an "Original task" and a "Current user follow-up", preserve the original task as the governing objective. Treat the follow-up as steering or continuation, not as a replacement status request.',
     'Do not let progress callbacks, foreground plan labels, or status-card text become the task. Finish the requested work and only stop for USER_INPUT_REQUIRED when a real user decision is needed.',
     'Do not try to pass raw shell commands; only use the exposed tool schema.',
@@ -822,6 +834,7 @@ function buildRemoteCliPrompt({
   targetId,
   cwd,
   sessionId = '',
+  jobId = '',
   waitMs = 30000,
   adminMode = false,
 } = {}) {
@@ -832,6 +845,7 @@ function buildRemoteCliPrompt({
     `- targetId: ${targetId}`,
     cwd ? `- cwd: ${cwd}` : '',
     sessionId ? `- continue remote CLI sessionId: ${sessionId}` : '',
+    jobId ? `- continue/check remote CLI jobId: ${jobId}` : '',
     `- waitMs: ${waitMs}`,
     adminMode ? '- admin runner mode: enabled for real remote change/deploy work; keep privilege use scoped to the task and stop on repeated blocked commands.' : '',
   ].filter(Boolean).join('\n');
@@ -906,6 +920,7 @@ class RemoteCliAgentsSdkRunner {
     task = '',
     waitMs = 30000,
     sessionId = '',
+    jobId = '',
     maxStatusPolls = 20,
   } = {}) {
     const call = toolCalls.find((entry) => entry.name === 'remote_code_run')
@@ -926,6 +941,7 @@ class RemoteCliAgentsSdkRunner {
         : {
           targetId,
           ...(sessionId ? { sessionId } : {}),
+          ...(jobId ? { jobId } : {}),
         }),
       ...(call.arguments || {}),
     };
@@ -979,12 +995,21 @@ class RemoteCliAgentsSdkRunner {
     const combinedText = pollOutputs.length > 0
       ? [normalizeMcpContentText(initialResult), ...pollOutputs].filter(Boolean).join('\n\n--- remote_code_status poll ---\n')
       : finalText;
+    const sourceText = stillRunning
+      ? [
+        'remote_code_run started a remote job and it is still running.',
+        `remote_code_status=${jobState.status || 'running'}`,
+        jobState.jobId ? `REMOTE_CLI_JOB_ID=${jobState.jobId}` : '',
+        remoteSessionId ? `REMOTE_CLI_SESSION_ID=${remoteSessionId}` : '',
+      ].filter(Boolean).join('\n')
+      : combinedText;
 
-    return appendFallbackMarkers(combinedText, {
+    return appendFallbackMarkers(sourceText, {
       targetId: args.targetId || targetId,
       cwd: args.cwd || cwd,
       mcpSessionId: remoteCli.sessionId || '',
       remoteSessionId,
+      remoteJobId: jobState.jobId,
       fallbackStatus: stillRunning ? 'running' : 'complete',
       fallbackWhatChanged: stillRunning
         ? 'Started the leaked remote_code_run MCP call and polled remote_code_status, but the remote job was still running when the compatibility fallback stopped.'
@@ -1027,6 +1052,7 @@ class RemoteCliAgentsSdkRunner {
     );
     const cwd = normalizeText(input.cwd || input.workingDirectory || input.working_directory || this.config.defaultCwd);
     const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
+    const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
     const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
     const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
     const maxStatusPolls = normalizePositiveInteger(
@@ -1050,6 +1076,7 @@ class RemoteCliAgentsSdkRunner {
       targetId,
       cwd,
       sessionId,
+      jobId,
       waitMs,
       adminMode,
       extraInstructions: input.instructions || input.extraInstructions || '',
@@ -1093,6 +1120,7 @@ class RemoteCliAgentsSdkRunner {
         targetId,
         cwd,
         sessionId,
+        jobId,
         waitMs,
         adminMode,
       }), {
@@ -1109,6 +1137,7 @@ class RemoteCliAgentsSdkRunner {
           task,
           waitMs,
           sessionId,
+          jobId,
           maxStatusPolls,
         });
       }
@@ -1121,6 +1150,7 @@ class RemoteCliAgentsSdkRunner {
         cwd: runMetadata.workspace || cwd,
         sessionId: runMetadata.sessionId || sessionId || null,
         remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
+        remoteCodeJobId: runMetadata.jobId || null,
         gitRepo: runMetadata.gitRepo || null,
         gitCommit: runMetadata.gitCommit || null,
         deployment: runMetadata.deployment || null,
