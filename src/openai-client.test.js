@@ -371,6 +371,21 @@ function createToolManager() {
                 },
             },
         }],
+        ['remote-cli-agent', {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            description: 'Run a server-side remote coding agent for author, build, deploy, and verify loops.',
+            inputSchema: {
+                type: 'object',
+                required: ['task'],
+                properties: {
+                    task: { type: 'string' },
+                    adminMode: { type: 'boolean' },
+                    waitMs: { type: 'integer' },
+                    maxStatusPolls: { type: 'integer' },
+                },
+            },
+        }],
         ['k3s-deploy', {
             id: 'k3s-deploy',
             name: 'K3s Deploy',
@@ -3077,6 +3092,39 @@ describe('openai-client automatic tool orchestration helpers', () => {
             automaticTools.map((tool) => tool.id),
             { toolContext },
         )).not.toBe('remote-cli-agent');
+    });
+
+    test('keeps sticky remote-build follow-up edits on remote-cli-agent in agent-directed mode', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Make the patch for the background themes and apply. Yes go ahead and make the changes and deploy.';
+        const toolContext = {
+            executionProfile: 'remote-build',
+            metadata: {
+                stickyRemoteContext: true,
+                remoteBuildContinuation: true,
+                lastRemoteObjective: 'Build and deploy the themed web app on the remote k3s server.',
+                lastRemoteToolIntent: 'remote-cli-agent',
+            },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(selectedIds).toContain('remote-cli-agent');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('remote-cli-agent');
     });
 
     test('does not misclassify research html documents about public or live events as remote website work', () => {

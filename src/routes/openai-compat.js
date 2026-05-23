@@ -1454,9 +1454,22 @@ router.post('/chat/completions', async (req, res, next) => {
         });
         const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
         const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+        const stickyRemoteContext = Boolean(
+            chatControlState?.lastToolIntent
+            || chatControlState?.lastSshTarget?.host
+            || chatControlState?.lastRemoteObjective
+        );
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
             ...requestFrameMetadata,
+            ...(stickyRemoteContext
+                ? {
+                    stickyRemoteContext: true,
+                    remoteBuildContinuation: true,
+                    lastRemoteObjective: chatControlState?.lastRemoteObjective || '',
+                    lastRemoteToolIntent: chatControlState?.lastToolIntent || '',
+                }
+                : {}),
         };
         runtimeTask = startRuntimeTask({
             sessionId,
@@ -2670,9 +2683,22 @@ router.post('/responses', async (req, res, next) => {
         });
         const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
         const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+        const stickyRemoteContext = Boolean(
+            responsesControlState?.lastToolIntent
+            || responsesControlState?.lastSshTarget?.host
+            || responsesControlState?.lastRemoteObjective
+        );
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
             ...requestFrameMetadata,
+            ...(stickyRemoteContext
+                ? {
+                    stickyRemoteContext: true,
+                    remoteBuildContinuation: true,
+                    lastRemoteObjective: responsesControlState?.lastRemoteObjective || '',
+                    lastRemoteToolIntent: responsesControlState?.lastToolIntent || '',
+                }
+                : {}),
         };
         runtimeTask = startRuntimeTask({
             sessionId,

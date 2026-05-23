@@ -1919,6 +1919,19 @@ function hasRemoteSoftwareDeploymentIntent(prompt = '') {
     return softwareTarget && remoteTarget && deploymentIntent && authoringIntent && !infraOnly;
 }
 
+function hasRemoteBuildAuthoringContinuationIntent(prompt = '') {
+    const normalized = String(prompt || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const authoringIntent = /\b(make|patch|apply|change|update|fix|edit|implement|build|deploy|redeploy|publish|launch|ship|push|commit)\b/.test(normalized);
+    const infraOnly = /\b(kubectl get|kubectl describe|logs?|status|health|uptime|journalctl|systemctl status|inspect|diagnose|debug|check)\b/.test(normalized)
+        && !/\b(make|patch|apply|change|update|fix|edit|implement|build|deploy|redeploy|publish|launch|ship|push|commit)\b/.test(normalized);
+
+    return authoringIntent && !infraOnly;
+}
+
 function hasExplicitLocalSandboxIntent(prompt = '') {
     const normalized = String(prompt || '').trim().toLowerCase();
     if (!normalized) {
@@ -3520,6 +3533,14 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && hasRemoteSoftwareCreationIntent(prompt);
     const remoteSoftwareDeploymentIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareDeploymentIntent(prompt);
+    const metadata = getToolContextMetadata(options);
+    const stickyRemoteBuildContinuationIntent = executionProfile === 'remote-build'
+        && (
+            metadata.stickyRemoteContext === true
+            || metadata.remoteBuildContinuation === true
+            || Boolean(metadata.lastRemoteObjective)
+        )
+        && hasRemoteBuildAuthoringContinuationIntent(prompt);
     const managedAppIntent = shouldPreferManagedAppForRemoteBuild(prompt, options);
     const shouldSuppressDocumentWorkflowForRemoteDeploy = remoteSoftwareCreationIntent
         || remoteSoftwareDeploymentIntent
@@ -3681,7 +3702,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add('managed-app');
     }
 
-    if (remoteCliAgentToolId && remoteSoftwareDeploymentIntent && !managedAppIntent) {
+    if (remoteCliAgentToolId && (remoteSoftwareDeploymentIntent || stickyRemoteBuildContinuationIntent) && !managedAppIntent) {
         selectedIds.add(remoteCliAgentToolId);
     }
 
@@ -3810,7 +3831,18 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
     }
 
     if (remoteCliAgentToolId
-        && hasRemoteSoftwareDeploymentIntent(prompt)
+        && (
+            hasRemoteSoftwareDeploymentIntent(prompt)
+            || (
+                normalizeExecutionProfile(options?.executionProfile || options?.toolContext?.executionProfile) === 'remote-build'
+                && (
+                    getToolContextMetadata(options).stickyRemoteContext === true
+                    || getToolContextMetadata(options).remoteBuildContinuation === true
+                    || Boolean(getToolContextMetadata(options).lastRemoteObjective)
+                )
+                && hasRemoteBuildAuthoringContinuationIntent(prompt)
+            )
+        )
         && !(availableToolIds.has('managed-app') && shouldPreferManagedAppForRemoteBuild(prompt, options))) {
         return remoteCliAgentToolId;
     }
