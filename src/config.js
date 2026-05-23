@@ -933,6 +933,17 @@ const config = {
             1,
             Math.min(parseInt(process.env.REMOTE_CLI_AGENT_MAX_TURNS, 10) || 20, 80),
         ),
+        agentRunTimeoutMs: Math.max(
+            1000,
+            Math.min(
+                parseInt(
+                    process.env.REMOTE_CLI_AGENT_MODEL_RUN_TIMEOUT_MS
+                    || process.env.REMOTE_CLI_AGENT_RUN_TIMEOUT_MS,
+                    10,
+                ) || 180000,
+                600000,
+            ),
+        ),
         maxStatusPolls: Math.max(
             1,
             Math.min(parseInt(process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS, 10) || 3, 80),

@@ -5,6 +5,8 @@ const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
 
 const DEFAULT_MAX_STATUS_POLLS = 3;
+const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
+const REMOTE_CLI_AGENT_RUN_TIMEOUT_CODE = 'REMOTE_CLI_AGENT_RUN_TIMEOUT';
 
 function normalizeText(value = '') {
   return String(value || '').trim();
@@ -494,6 +496,37 @@ function normalizePositiveInteger(value, fallback, { min = 1, max = Number.MAX_S
   return Math.max(min, Math.min(parsed, max));
 }
 
+function createRemoteCliAgentRunTimeoutError(timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
+  const error = new Error(`remote-cli-agent inner model run timed out after ${timeoutMs}ms before returning a result.`);
+  error.name = 'RemoteCliAgentRunTimeoutError';
+  error.code = REMOTE_CLI_AGENT_RUN_TIMEOUT_CODE;
+  error.timeoutMs = timeoutMs;
+  return error;
+}
+
+function isRemoteCliAgentRunTimeoutError(error) {
+  return error?.code === REMOTE_CLI_AGENT_RUN_TIMEOUT_CODE
+    || error?.name === 'RemoteCliAgentRunTimeoutError';
+}
+
+async function withAgentRunTimeout(promise, timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
+  let timer = null;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(createRemoteCliAgentRunTimeoutError(timeoutMs)), timeoutMs);
+    if (typeof timer.unref === 'function') {
+      timer.unref();
+    }
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function normalizeRemoteToolArgs(args = {}) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
     return {};
@@ -906,6 +939,7 @@ class RemoteCliAgentsSdkRunner {
       defaultCwd: normalizeText(this.config.defaultCwd),
       agentModel: normalizeText(this.config.agentModel),
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
+      agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1000, max: 600000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
       maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 }),
     };
@@ -1127,6 +1161,11 @@ class RemoteCliAgentsSdkRunner {
     const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
     const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
     const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
+    const agentRunTimeoutMs = normalizePositiveInteger(
+      input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs,
+      DEFAULT_AGENT_RUN_TIMEOUT_MS,
+      { min: 1000, max: 600000 },
+    );
     const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
     const maxStatusPolls = normalizePositiveInteger(
       input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls,
@@ -1166,54 +1205,32 @@ class RemoteCliAgentsSdkRunner {
       tracingDisabled: true,
       workflowName: 'Remote CLI MCP coding task',
     });
-
-    try {
+    const onProgress = typeof input.onProgress === 'function' ? input.onProgress : null;
+    const emitProgress = (detail, { phase = 'executing', percent = 35, stage = 'in_progress' } = {}) => {
+      if (!onProgress || !detail) {
+        return;
+      }
       try {
-        await remoteCli.connect();
+        onProgress({
+          phase,
+          reasoningSummary: detail,
+          percent,
+          steps: [
+            { title: 'Connect remote CLI MCP', status: 'completed' },
+            { title: 'Start remote_code_run', status: stage === 'completed' ? 'completed' : 'in_progress' },
+            { title: 'Return proof markers', status: stage === 'completed' ? 'in_progress' : 'pending' },
+          ],
+          toolEvents: [{
+            toolId: 'remote-cli-agent',
+            stage,
+            detail,
+          }],
+        });
       } catch (error) {
-        const diagnostics = buildRemoteCliDiagnostics({
-          stage: 'mcp_connect',
-          error,
-          model,
-          apiMode,
-          targetId,
-          cwd,
-          config: this.config,
-          mcpSessionId: input.mcpSessionId,
-        });
-        throw createRemoteCliAgentError(
-          `remote-cli-agent could not connect to the MCP gateway: ${summarizeRemoteCliError(error).message}`,
-          diagnostics,
-          error,
-        );
+        console.warn('[RemoteCliAgentsSdkRunner] Failed to emit remote-cli-agent progress:', error?.message || error);
       }
-
-      const result = await runner.run(agent, buildRemoteCliPrompt({
-        task,
-        targetId,
-        cwd,
-        sessionId,
-        jobId,
-        waitMs,
-        adminMode,
-      }), {
-        maxTurns,
-      });
-
-      let finalOutput = result.finalOutput || '';
-      const leakedMcpToolCalls = extractRawMcpToolCalls(finalOutput);
-      if (leakedMcpToolCalls.length > 0) {
-        console.warn('[RemoteCliAgentsSdkRunner] Inner agent returned raw MCP tool calls; executing the first remote-cli MCP call directly.');
-        finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, leakedMcpToolCalls, {
-          targetId,
-          cwd,
-          task,
-          waitMs,
-          sessionId,
-          jobId,
-          maxStatusPolls,
-        });
-      }
+    };
+    const buildRunResult = (finalOutput) => {
       const runMetadata = extractRemoteCliRunMetadata(finalOutput);
 
       return {
@@ -1242,9 +1259,97 @@ class RemoteCliAgentsSdkRunner {
         model,
         apiMode,
       };
+    };
+
+    try {
+      try {
+        await remoteCli.connect();
+      } catch (error) {
+        const diagnostics = buildRemoteCliDiagnostics({
+          stage: 'mcp_connect',
+          error,
+          model,
+          apiMode,
+          targetId,
+          cwd,
+          config: this.config,
+          mcpSessionId: input.mcpSessionId,
+        });
+        throw createRemoteCliAgentError(
+          `remote-cli-agent could not connect to the MCP gateway: ${summarizeRemoteCliError(error).message}`,
+          diagnostics,
+          error,
+        );
+      }
+
+      emitProgress('Remote CLI MCP connected; asking the inner agent to start remote_code_run.', {
+        percent: 34,
+      });
+
+      const result = await withAgentRunTimeout(runner.run(agent, buildRemoteCliPrompt({
+        task,
+        targetId,
+        cwd,
+        sessionId,
+        jobId,
+        waitMs,
+        adminMode,
+      }), {
+        maxTurns,
+      }), agentRunTimeoutMs);
+
+      let finalOutput = result.finalOutput || '';
+      const leakedMcpToolCalls = extractRawMcpToolCalls(finalOutput);
+      if (leakedMcpToolCalls.length > 0) {
+        console.warn('[RemoteCliAgentsSdkRunner] Inner agent returned raw MCP tool calls; executing the first remote-cli MCP call directly.');
+        emitProgress('Inner agent returned remote_code_run as text; executing it directly through MCP.', {
+          percent: 48,
+        });
+        finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, leakedMcpToolCalls, {
+          targetId,
+          cwd,
+          task,
+          waitMs,
+          sessionId,
+          jobId,
+          maxStatusPolls,
+        });
+      }
+      return buildRunResult(finalOutput);
     } catch (error) {
       if (error?.name === 'RemoteCliAgentError') {
         throw error;
+      }
+
+      if (isRemoteCliAgentRunTimeoutError(error)) {
+        console.warn(`[RemoteCliAgentsSdkRunner] Inner agent model run timed out after ${agentRunTimeoutMs}ms; falling back to direct remote_code_run.`);
+        emitProgress(`Inner agent did not start remote_code_run within ${Math.round(agentRunTimeoutMs / 1000)}s; calling remote_code_run directly.`, {
+          percent: 52,
+        });
+        try {
+          const finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, [{
+            name: 'remote_code_run',
+            arguments: {
+              targetId,
+              ...(cwd ? { cwd } : {}),
+              task,
+              waitMs,
+              ...(sessionId ? { sessionId } : {}),
+            },
+          }], {
+            targetId,
+            cwd,
+            task,
+            waitMs,
+            sessionId,
+            jobId,
+            maxStatusPolls,
+          });
+
+          return buildRunResult(finalOutput);
+        } catch (fallbackError) {
+          console.warn('[RemoteCliAgentsSdkRunner] Direct remote_code_run recovery failed after inner agent timeout:', fallbackError?.message || fallbackError);
+        }
       }
 
       if (isRemoteCodeStatusMissingJobIdError(error)) {
@@ -1268,34 +1373,7 @@ class RemoteCliAgentsSdkRunner {
             jobId,
             maxStatusPolls,
           });
-          const runMetadata = extractRemoteCliRunMetadata(finalOutput);
-
-          return {
-            finalOutput,
-            mcpSessionId: remoteCli.sessionId || input.mcpSessionId || null,
-            targetId,
-            cwd: runMetadata.workspace || cwd,
-            sessionId: runMetadata.sessionId || sessionId || null,
-            remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
-            remoteCodeJobId: runMetadata.jobId || null,
-            gitRepo: runMetadata.gitRepo || null,
-            gitBranch: runMetadata.gitBranch || null,
-            gitBaseCommit: runMetadata.gitBaseCommit || null,
-            gitCommit: runMetadata.gitCommit || null,
-            changedFiles: runMetadata.changedFiles || [],
-            deployment: runMetadata.deployment || null,
-            publicHost: runMetadata.publicHost || null,
-            publicUrl: runMetadata.publicUrl || null,
-            uiCheckReport: runMetadata.uiCheckReport || null,
-            uiScreenshots: runMetadata.uiScreenshots || [],
-            whatChanged: runMetadata.whatChanged || null,
-            verifyCommands: runMetadata.verifyCommands || [],
-            verifyResults: runMetadata.verifyResults || [],
-            blocker: runMetadata.blocker || null,
-            completionStatus: runMetadata.completionStatus || 'unknown',
-            model,
-            apiMode,
-          };
+          return buildRunResult(finalOutput);
         } catch (fallbackError) {
           console.warn('[RemoteCliAgentsSdkRunner] Direct remote_code_run recovery failed after missing jobId status call:', fallbackError?.message || fallbackError);
         }

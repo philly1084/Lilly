@@ -58,6 +58,11 @@ class RemoteCliAgentTool extends ToolBase {
             default: 20,
             description: 'Maximum inner Agents SDK turns for this remote task.',
           },
+          agentRunTimeoutMs: {
+            type: 'integer',
+            default: 180000,
+            description: 'Maximum time to let the inner agent model run before falling back to direct remote_code_run.',
+          },
           maxStatusPolls: {
             type: 'integer',
             default: 3,
@@ -121,7 +126,11 @@ class RemoteCliAgentTool extends ToolBase {
       task: String(params.task || '').slice(0, 200),
     });
 
-    return this.runner.run(params);
+    const runParams = typeof _context?.onProgress === 'function'
+      ? { ...params, onProgress: _context.onProgress }
+      : params;
+
+    return this.runner.run(runParams);
   }
 }
 

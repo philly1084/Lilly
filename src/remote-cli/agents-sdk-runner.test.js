@@ -189,7 +189,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
       },
     });
 
-    expect(runner.getPublicConfig().maxStatusPolls).toBe(3);
+    expect(runner.getPublicConfig()).toMatchObject({
+      agentRunTimeoutMs: 180000,
+      maxStatusPolls: 3,
+    });
   });
 
   test('builds actionable diagnostics for generic remote CLI connection errors', () => {
@@ -507,6 +510,115 @@ describe('RemoteCliAgentsSdkRunner', () => {
       completionStatus: 'complete',
     });
     expect(result.finalOutput).toContain('Recovered through direct remote_code_run.');
+  });
+
+  test('falls back to direct remote_code_run when the inner agent model run times out', async () => {
+    jest.useFakeTimers();
+    try {
+      const calls = {
+        progress: [],
+        runnerStarted: false,
+        toolCalls: [],
+      };
+
+      class FakeMCPServerStreamableHttp {
+        constructor() {
+          this.sessionId = 'mcp-session-timeout';
+        }
+
+        async connect() {}
+
+        async close() {}
+
+        async callTool(name, args) {
+          calls.toolCalls.push({ name, args });
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                'Recovered through timeout fallback.',
+                'REMOTE_CLI_SESSION_ID=remote-session-timeout',
+                'WORKSPACE=/srv/apps/my-app',
+                'WHAT_CHANGED=Started remote_code_run directly after the inner agent stalled.',
+                'VERIFY_COMMANDS=remote_code_run',
+                'VERIFY_RESULTS=remote_code_run returned completion markers.',
+                'PUBLIC_URL=not_available',
+                'BLOCKER=none',
+              ].join('\n'),
+            }],
+          };
+        }
+      }
+
+      class FakeAgent {}
+      class FakeOpenAIProvider {}
+      class FakeRunner {
+        async run() {
+          calls.runnerStarted = true;
+          return new Promise(() => {});
+        }
+      }
+
+      const runner = new RemoteCliAgentsSdkRunner({
+        config: {
+          enabled: true,
+          url: 'https://gateway.example.com/mcp',
+          name: 'remote-cli',
+          apiKey: 'gateway-secret',
+          agentApiKey: 'openai-secret',
+          agentBaseURL: 'http://gateway.example.com/v1',
+          agentApiMode: 'chat',
+          agentModel: 'gpt-5.5',
+          defaultTargetId: 'prod',
+          defaultCwd: '/srv/apps/my-app',
+          agentRunTimeoutMs: 1000,
+        },
+        sdkLoader: () => ({
+          Agent: FakeAgent,
+          MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+          OpenAIProvider: FakeOpenAIProvider,
+          Runner: FakeRunner,
+          setOpenAIAPI: () => {},
+        }),
+      });
+
+      const resultPromise = runner.run({
+        task: 'Update the remote game and deploy it.',
+        waitMs: 30000,
+        adminMode: true,
+        onProgress: (progress) => calls.progress.push(progress),
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(calls.runnerStarted).toBe(true);
+      jest.advanceTimersByTime(1000);
+      await Promise.resolve();
+
+      const result = await resultPromise;
+
+      expect(calls.toolCalls).toEqual([{
+        name: 'remote_code_run',
+        args: {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Update the remote game and deploy it.',
+          waitMs: 30000,
+        },
+      }]);
+      expect(calls.progress.map((progress) => progress.reasoningSummary)).toEqual(expect.arrayContaining([
+        'Remote CLI MCP connected; asking the inner agent to start remote_code_run.',
+        'Inner agent did not start remote_code_run within 1s; calling remote_code_run directly.',
+      ]));
+      expect(result).toMatchObject({
+        sessionId: 'remote-session-timeout',
+        whatChanged: 'Started remote_code_run directly after the inner agent stalled.',
+        completionStatus: 'complete',
+      });
+      expect(result.finalOutput).toContain('Recovered through timeout fallback.');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('connects Streamable HTTP MCP with bearer auth and closes it after the run', async () => {
