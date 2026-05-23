@@ -8,6 +8,9 @@ The backend reads Remote CLI Agent settings from:
 
 `REMOTE_CLI_MCP_URL` belongs in the ConfigMap. The bearer credential belongs in
 the Secret as either `REMOTE_CLI_MCP_BEARER_TOKEN` or `N8N_API_KEY`.
+`REMOTE_CLI_AGENT_MODEL` also belongs in the ConfigMap and should be an OpenAI
+tool-calling chat model such as `gpt-5.4`, not the general `OPENAI_MODEL` when
+that value is `kimi-for-coding`.
 
 ## One-command setup
 
@@ -33,6 +36,7 @@ Useful overrides:
 powershell -ExecutionPolicy Bypass -File k8s/setup-remote-cli-agent.ps1 `
   -Namespace kimibuilt `
   -RemoteCliMcpUrl "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local/mcp" `
+  -RemoteCliAgentModel "gpt-5.4" `
   -N8nApiKey $env:N8N_API_KEY
 ```
 

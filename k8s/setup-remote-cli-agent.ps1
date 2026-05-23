@@ -11,6 +11,7 @@ param(
   [string]$DockerApiVersion = $env:DOCKER_API_VERSION,
   [string]$DefaultTargetId = $env:REMOTE_CLI_DEFAULT_TARGET_ID,
   [string]$DefaultCwd = $env:REMOTE_CLI_DEFAULT_CWD,
+  [string]$RemoteCliAgentModel = $(if ($env:REMOTE_CLI_AGENT_MODEL) { $env:REMOTE_CLI_AGENT_MODEL } else { "gpt-5.4" }),
   [switch]$NoRestart,
   [switch]$CreateNamespace
 )
@@ -124,6 +125,7 @@ Invoke-Kubectl patch configmap $ConfigMapName -n $resolvedNamespace --type merge
     REMOTE_CLI_MCP_URL = $RemoteCliMcpUrl
     REMOTE_CLI_MCP_NAME = "remote-cli"
     REMOTE_CLI_DEFAULT_TARGET_ID = $(if ($DefaultTargetId) { $DefaultTargetId } else { "prod" })
+    REMOTE_CLI_AGENT_MODEL = $RemoteCliAgentModel
     REMOTE_CLI_AGENT_OPENAI_API_MODE = "chat"
     REMOTE_CLI_AGENT_MAX_TURNS = "20"
   }

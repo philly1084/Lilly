@@ -229,6 +229,101 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(JSON.stringify(diagnostics)).not.toContain('sk-openai-secret');
   });
 
+  test('diagnostics call out unsupported kimi model selection for remote CLI agent', () => {
+    const diagnostics = buildRemoteCliDiagnostics({
+      stage: 'agent_run',
+      error: new Error('MCP error -32000: invalid_type jobId'),
+      model: 'kimi-for-coding',
+      apiMode: 'chat',
+      targetId: 'prod',
+      cwd: '/srv/apps/my-app',
+      config: {
+        url: 'http://gateway.example.com/mcp',
+        apiKey: 'gateway-secret-token',
+        agentApiKey: 'sk-openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+      },
+    });
+
+    expect(diagnostics.remoteCliAgent.hint).toContain('requires an OpenAI tool-calling model');
+    expect(diagnostics.remoteCliAgent.hint).toContain('REMOTE_CLI_AGENT_MODEL');
+  });
+
+  test('blocks leaked remote_code_status fallback when no jobId is available', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-missing-job';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        throw new Error('remote_code_status should not be called without jobId');
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: JSON.stringify({
+            tool_calls: [{
+              id: 'call_1',
+              name: 'remote_code_status',
+              arguments: {
+                targetId: 'prod',
+                waitMs: 30000,
+              },
+            }],
+          }),
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.4',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Check the previous remote job.',
+      adminMode: true,
+    });
+
+    expect(calls.toolCalls).toEqual([]);
+    expect(result).toMatchObject({
+      completionStatus: 'blocked',
+      blocker: 'remote_code_status missing required jobId; start or resume with remote_code_run first',
+      remoteCodeJobId: null,
+    });
+    expect(result.finalOutput).toContain('remote_code_status requires jobId');
+  });
+
   test('connects Streamable HTTP MCP with bearer auth and closes it after the run', async () => {
     const calls = {
       apiModes: [],

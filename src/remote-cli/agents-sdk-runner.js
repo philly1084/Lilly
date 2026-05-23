@@ -669,6 +669,10 @@ function summarizeRemoteCliError(error = null) {
   };
 }
 
+function isKimiModel(value = '') {
+  return /^kimi(?:\b|-|_)/i.test(normalizeText(value));
+}
+
 function buildRemoteCliDiagnostics({
   stage,
   error,
@@ -689,6 +693,9 @@ function buildRemoteCliDiagnostics({
   }
   if (apiMode === 'chat') {
     hintParts.push('REMOTE_CLI_AGENT_OPENAI_API_MODE is chat, so the configured base URL must implement /v1/chat/completions for the selected model.');
+  }
+  if (isKimiModel(model)) {
+    hintParts.push('remote-cli-agent requires an OpenAI tool-calling model; set REMOTE_CLI_AGENT_MODEL to an OpenAI model instead of inheriting OPENAI_MODEL=kimi-for-coding.');
   }
   if (model) {
     hintParts.push(`Verify REMOTE_CLI_AGENT_MODEL or OPENAI_MODEL is accepted by that gateway: ${model}.`);
@@ -969,6 +976,19 @@ class RemoteCliAgentsSdkRunner {
     }
     if (cwd && !normalizeText(args.cwd)) {
       args.cwd = cwd;
+    }
+    if (call.name === 'remote_code_status' && !normalizeText(args.jobId)) {
+      return appendFallbackMarkers('remote_code_status cannot be checked because no remote CLI jobId was available from the model output.', {
+        targetId: args.targetId || targetId,
+        cwd: args.cwd || cwd,
+        mcpSessionId: remoteCli.sessionId || '',
+        remoteSessionId: args.sessionId || sessionId,
+        fallbackStatus: 'blocked',
+        fallbackWhatChanged: 'Rejected malformed leaked remote_code_status MCP call before sending it to the gateway.',
+        fallbackVerifyCommand: 'remote_code_status',
+        fallbackVerifyResult: 'Blocked: remote_code_status requires jobId from a prior remote_code_run result.',
+        blocker: 'remote_code_status missing required jobId; start or resume with remote_code_run first',
+      });
     }
 
     const initialResult = await remoteCli.callTool(call.name, args);

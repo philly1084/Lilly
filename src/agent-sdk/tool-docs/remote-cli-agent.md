@@ -14,8 +14,11 @@ REMOTE_CLI_MCP_URL=https://gateway.example.com/mcp
 N8N_API_KEY=server-side-admin-or-n8n-key
 REMOTE_CLI_DEFAULT_TARGET_ID=prod
 REMOTE_CLI_DEFAULT_CWD=/srv/apps/my-app
+REMOTE_CLI_AGENT_MODEL=gpt-5.4
 REMOTE_CLI_AGENT_MAX_STATUS_POLLS=3
 ```
+
+`REMOTE_CLI_AGENT_MODEL` must be an OpenAI tool-calling chat model. Do not let this lane inherit `OPENAI_MODEL=kimi-for-coding`; Kimi can answer normal chat prompts, but it has produced malformed MCP status calls for `remote_code_status`.
 
 Gateway-side requirements:
 
