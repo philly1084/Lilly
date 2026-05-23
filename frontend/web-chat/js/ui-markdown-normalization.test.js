@@ -396,6 +396,41 @@ Next recovery path is straightforward: patch site/index.html, refresh the Config
         expect(html).not.toContain('agent-survey-card__input--text');
     });
 
+    test('renders multi-choice survey fields as checkbox options', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.expandedReasoningMessageIds = new Set();
+        const survey = helper.normalizeSurveyDefinition({
+            id: 'checkpoint-deliverables',
+            title: 'Pick useful outputs',
+            fields: [{
+                id: 'deliverables',
+                label: 'Which outputs should the agent produce?',
+                fieldType: 'multi-select',
+                maxSelections: 3,
+                options: [
+                    { value: 'summary', label: 'Short summary' },
+                    { value: 'patch', label: 'Code patch' },
+                    { value: 'tests', label: 'Regression tests' },
+                    { value: 'screenshots', label: 'Screenshots' },
+                ],
+            }],
+        }, 'message-1');
+        const html = helper.renderSurveyBlock(survey, { id: 'message-1' });
+
+        expect(survey.steps[0]).toEqual(expect.objectContaining({
+            inputType: 'multi-choice',
+            allowMultiple: true,
+            maxSelections: 3,
+        }));
+        expect(html).toContain('role="group"');
+        expect(html).toContain('role="checkbox"');
+        expect(html).toContain('data-step-allow-multiple="true"');
+        expect(html).toContain('data-step-max-selections="3"');
+        expect(html).toContain('Choose up to 3');
+        expect(html).toContain('data-option-id="summary"');
+        expect(html).toContain('data-option-id="screenshots"');
+    });
+
     test('renders progress as one live reasoning block with completed task styling', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAssistantRenderPlan({

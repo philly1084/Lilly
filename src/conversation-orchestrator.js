@@ -2279,7 +2279,9 @@ function normalizeUserCheckpointPlanStep(step = {}) {
         ? step.question.trim()
         : (typeof step.prompt === 'string'
             ? step.prompt.trim()
-            : (typeof step.ask === 'string' ? step.ask.trim() : ''));
+            : (typeof step.ask === 'string'
+                ? step.ask.trim()
+                : (typeof step.label === 'string' ? step.label.trim() : '')));
     if (!question) {
         return null;
     }
@@ -2293,9 +2295,11 @@ function normalizeUserCheckpointPlanStep(step = {}) {
         .slice(0, 4);
     const inputType = typeof step.inputType === 'string'
         ? step.inputType.trim()
-        : (typeof step.type === 'string'
-            ? step.type.trim()
-            : (typeof step.kind === 'string' ? step.kind.trim() : ''));
+        : (typeof step.fieldType === 'string'
+            ? step.fieldType.trim()
+            : (typeof step.type === 'string'
+                ? step.type.trim()
+                : (typeof step.kind === 'string' ? step.kind.trim() : '')));
     const title = typeof step.title === 'string' ? step.title.trim() : '';
     const placeholder = typeof step.placeholder === 'string'
         ? step.placeholder.trim()
@@ -2330,7 +2334,12 @@ function normalizeUserCheckpointPlanParams(step = {}) {
     const rawParams = step?.params && typeof step.params === 'object'
         ? { ...step.params }
         : {};
-    const normalizedSteps = (Array.isArray(rawParams.steps) ? rawParams.steps : [])
+    const rawStepList = Array.isArray(rawParams.steps)
+        ? rawParams.steps
+        : (Array.isArray(rawParams.questions)
+            ? rawParams.questions
+            : (Array.isArray(rawParams.fields) ? rawParams.fields : []));
+    const normalizedSteps = rawStepList
         .map((entry) => normalizeUserCheckpointPlanStep(entry))
         .filter(Boolean)
         .slice(0, 6);

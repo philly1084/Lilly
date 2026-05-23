@@ -1779,7 +1779,7 @@ class UIHelpers {
             .toLowerCase()
             .replace(/[_\s]+/g, '-');
 
-        if (['multi-choice', 'multiple-choice', 'multi', 'checkbox', 'checkboxes'].includes(normalized)) {
+        if (['multi-choice', 'multiple-choice', 'multi', 'multiple', 'multi-select', 'multiselect', 'multiple-select', 'checkbox', 'checkboxes'].includes(normalized)) {
             return 'multi-choice';
         }
 
@@ -1815,7 +1815,7 @@ class UIHelpers {
             return null;
         }
 
-        const question = String(step.question || step.prompt || step.ask || '').trim();
+        const question = String(step.question || step.prompt || step.ask || step.label || '').trim();
         if (!question) {
             return null;
         }
@@ -1827,7 +1827,7 @@ class UIHelpers {
             .filter(Boolean)
             .slice(0, 5);
         const allowMultiple = step.allowMultiple === true || step.multiple === true;
-        const inputType = this.normalizeSurveyInputType(step.inputType || step.type || step.kind || '', {
+        const inputType = this.normalizeSurveyInputType(step.inputType || step.fieldType || step.type || step.kind || '', {
             hasOptions: options.length > 0,
             allowMultiple,
         });
@@ -1873,7 +1873,9 @@ class UIHelpers {
 
         const rawSteps = Array.isArray(value.steps)
             ? value.steps
-            : (Array.isArray(value.questions) ? value.questions : []);
+            : (Array.isArray(value.questions)
+                ? value.questions
+                : (Array.isArray(value.fields) ? value.fields : []));
         const legacyStep = this.normalizeSurveyStep({
             ...value,
             options: value.options || value.choices,

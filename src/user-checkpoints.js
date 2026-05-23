@@ -54,7 +54,7 @@ function normalizeCheckpointInputType(value = '', { hasOptions = false, allowMul
         .toLowerCase()
         .replace(/[_\s]+/g, '-');
 
-    if (['multi-choice', 'multiple-choice', 'multi', 'checkbox', 'checkboxes'].includes(normalized)) {
+    if (['multi-choice', 'multiple-choice', 'multi', 'multiple', 'multi-select', 'multiselect', 'multiple-select', 'checkbox', 'checkboxes'].includes(normalized)) {
         return 'multi-choice';
     }
 
@@ -187,14 +187,14 @@ function normalizeCheckpointStep(step = {}, index = 0) {
         return null;
     }
 
-    const question = trimText(step.question || step.prompt || step.ask || '');
+    const question = trimText(step.question || step.prompt || step.ask || step.label || '');
     if (!question) {
         return null;
     }
 
     const options = normalizeCheckpointOptions(step.options || step.choices || []);
     const allowMultiple = step.allowMultiple === true || step.multiple === true;
-    const inputType = normalizeCheckpointInputType(step.inputType || step.type || step.kind || '', {
+    const inputType = normalizeCheckpointInputType(step.inputType || step.fieldType || step.type || step.kind || '', {
         hasOptions: options.length > 0,
         allowMultiple,
     });
@@ -239,7 +239,9 @@ function normalizeCheckpointSteps(value = {}) {
     const source = value && typeof value === 'object' ? value : {};
     const rawSteps = Array.isArray(source.steps)
         ? source.steps
-        : (Array.isArray(source.questions) ? source.questions : []);
+        : (Array.isArray(source.questions)
+            ? source.questions
+            : (Array.isArray(source.fields) ? source.fields : []));
     const legacyStep = normalizeCheckpointStep({
         ...source,
         options: source.options || source.choices || [],

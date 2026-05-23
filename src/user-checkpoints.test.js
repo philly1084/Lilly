@@ -295,6 +295,40 @@ describe('user checkpoint helpers', () => {
         }));
     });
 
+    test('normalizes multi-select checkpoint fields', () => {
+        const checkpoint = normalizeCheckpointRequest({
+            title: 'Pick useful outputs',
+            fields: [
+                {
+                    id: 'deliverables',
+                    label: 'Which outputs should the agent produce?',
+                    fieldType: 'multi-select',
+                    maxSelections: 3,
+                    options: [
+                        { value: 'summary', label: 'Short summary' },
+                        { value: 'patch', label: 'Code patch' },
+                        { value: 'tests', label: 'Regression tests' },
+                        { value: 'screenshots', label: 'Screenshots' },
+                    ],
+                },
+            ],
+        });
+
+        expect(checkpoint.steps[0]).toEqual(expect.objectContaining({
+            id: 'deliverables',
+            question: 'Which outputs should the agent produce?',
+            inputType: 'multi-choice',
+            allowMultiple: true,
+            maxSelections: 3,
+            options: [
+                { id: 'summary', label: 'Short summary' },
+                { id: 'patch', label: 'Code patch' },
+                { id: 'tests', label: 'Regression tests' },
+                { id: 'screenshots', label: 'Screenshots' },
+            ],
+        }));
+    });
+
     test('rejects remote status summaries masquerading as checkpoint choices', () => {
         expect(() => normalizeCheckpointRequest({
             title: 'Choose a direction',
