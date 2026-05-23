@@ -11,6 +11,10 @@ describe('remote CLI MCP configuration', () => {
     delete process.env.REMOTE_CLI_MCP_BEARER_TOKEN;
     delete process.env.N8N_API_KEY;
     delete process.env.REMOTE_CLI_AGENT_MODEL;
+    delete process.env.REMOTE_CLI_REMOTE_CODE_MODEL;
+    delete process.env.REMOTE_CODE_MODEL;
+    delete process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS;
+    delete process.env.REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS;
   });
 
   afterEach(() => {
@@ -47,6 +51,26 @@ describe('remote CLI MCP configuration', () => {
     const { config } = require('./config');
 
     expect(config.remoteCliMcp.agentModel).toBe('gpt-5.4-mini');
+  });
+
+  test('uses the gateway remote_code_run model and status polling defaults', () => {
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.remoteCodeModel).toBe('openai/gpt-5.4');
+    expect(config.remoteCliMcp.maxStatusPolls).toBe(90);
+    expect(config.remoteCliMcp.statusPollIntervalMs).toBe(2000);
+  });
+
+  test('allows the remote_code_run model and status polling to be explicitly configured', () => {
+    process.env.REMOTE_CLI_REMOTE_CODE_MODEL = 'openai/gpt-5.4-mini';
+    process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS = '7';
+    process.env.REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS = '25';
+
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.remoteCodeModel).toBe('openai/gpt-5.4-mini');
+    expect(config.remoteCliMcp.maxStatusPolls).toBe(7);
+    expect(config.remoteCliMcp.statusPollIntervalMs).toBe(25);
   });
 
 });

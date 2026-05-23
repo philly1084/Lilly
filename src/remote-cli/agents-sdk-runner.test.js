@@ -328,6 +328,211 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('executes leaked remote_code_run JSON through MCP with sanitized arguments', async () => {
+    const calls = {
+      toolCalls: [],
+      runnerInput: null,
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-3';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_run') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                status: 'running',
+                jobId: 'rcli_123',
+                sessionId: 'remote-session-3',
+              }),
+            }],
+          };
+        }
+        if (name === 'remote_code_status') {
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                'REMOTE_CLI_JOB_ID=rcli_123',
+                'REMOTE_CLI_SESSION_ID=remote-session-3',
+                'WORKSPACE=/srv/apps/my-app',
+                'WHAT_CHANGED=Finished the remote task.',
+                'VERIFY_COMMANDS=remote_code_status',
+                'VERIFY_RESULTS=Remote job completed.',
+                'PUBLIC_URL=not_available',
+                'BLOCKER=none',
+              ].join('\n'),
+            }],
+          };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      }
+    }
+
+    class FakeAgent {}
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run(_agent, input) {
+        calls.runnerInput = input;
+        return {
+          finalOutput: '{" output _text ":""," tool _calls ":[{" id ":" call _1 "," name ":" remote _code _run "," arguments ":{" target Id ":" prod "," cwd ":"/ srv /apps /my -app "," command ":"rm -rf /"," shell ":"bash"," wait Ms ": 300 00 }}]," finish _reason ":" tool _call"}',
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'kimi-for-coding',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Fix the deployed game and verify it.',
+      waitMs: 30000,
+      maxStatusPolls: 3,
+      statusPollIntervalMs: 0,
+    });
+
+    expect(calls.runnerInput).toContain('Fix the deployed game and verify it.');
+    expect(calls.toolCalls[0]).toEqual({
+      name: 'remote_code_run',
+      args: {
+        targetId: 'prod',
+        cwd: '/srv/apps/my-app',
+        task: 'Fix the deployed game and verify it.',
+        model: 'openai/gpt-5.4',
+        waitMs: 30000,
+      },
+    });
+    expect(JSON.stringify(calls.toolCalls[0].args)).not.toContain('command');
+    expect(JSON.stringify(calls.toolCalls[0].args)).not.toContain('shell');
+    expect(calls.toolCalls[1]).toEqual({
+      name: 'remote_code_status',
+      args: { jobId: 'rcli_123' },
+    });
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_123',
+      sessionId: 'remote-session-3',
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Finished the remote task.',
+      completionStatus: 'complete',
+    });
+  });
+
+  test('continues an existing remote_code_run job with status-only polling', async () => {
+    const calls = {
+      toolCalls: [],
+      runnerCalled: false,
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-4';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              'REMOTE_CLI_JOB_ID=rcli_456',
+              'REMOTE_CLI_SESSION_ID=remote-session-4',
+              'WHAT_CHANGED=Continued the existing remote job.',
+              'VERIFY_COMMANDS=remote_code_status',
+              'VERIFY_RESULTS=Remote job completed.',
+              'PUBLIC_URL=not_available',
+              'BLOCKER=none',
+            ].join('\n'),
+          }],
+        };
+      }
+    }
+
+    class FakeAgent {}
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run() {
+        calls.runnerCalled = true;
+        throw new Error('inner agent should not run for jobId continuations');
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'kimi-for-coding',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Continue the remote job.',
+      jobId: 'rcli_456',
+      maxStatusPolls: 1,
+      statusPollIntervalMs: 0,
+    });
+
+    expect(calls.runnerCalled).toBe(false);
+    expect(calls.toolCalls).toEqual([{
+      name: 'remote_code_status',
+      args: { jobId: 'rcli_456' },
+    }]);
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_456',
+      sessionId: 'remote-session-4',
+      whatChanged: 'Continued the existing remote job.',
+      completionStatus: 'complete',
+    });
+  });
+
   test('wraps runner failures with model, API mode, and gateway diagnostics', async () => {
     class FakeMCPServerStreamableHttp {
       constructor() {

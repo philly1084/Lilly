@@ -63,10 +63,20 @@ class RemoteCliAgentTool extends ToolBase {
             default: 180000,
             description: 'Maximum time to let the inner agent model run before falling back to direct remote_code_run.',
           },
+          remoteCodeModel: {
+            type: 'string',
+            default: 'openai/gpt-5.4',
+            description: 'Model passed to the gateway remote_code_run worker. This is separate from the inner routing agent model.',
+          },
           maxStatusPolls: {
             type: 'integer',
-            default: 3,
-            description: 'Maximum compatibility-fallback remote_code_status polls when a chat gateway leaks remote_code_run tool JSON instead of executing the tool loop. Defaults low so running jobs return resumable job/session markers instead of freezing the caller.',
+            default: 90,
+            description: 'Maximum remote_code_status polls after remote_code_run returns a jobId.',
+          },
+          statusPollIntervalMs: {
+            type: 'integer',
+            default: 2000,
+            description: 'Delay between remote_code_status polls.',
           },
           adminMode: {
             type: 'boolean',

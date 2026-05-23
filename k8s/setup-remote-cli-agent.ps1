@@ -11,6 +11,9 @@ param(
   [string]$DockerApiVersion = $env:DOCKER_API_VERSION,
   [string]$DefaultTargetId = $env:REMOTE_CLI_DEFAULT_TARGET_ID,
   [string]$DefaultCwd = $env:REMOTE_CLI_DEFAULT_CWD,
+  [string]$RemoteCliRemoteCodeModel = $env:REMOTE_CLI_REMOTE_CODE_MODEL,
+  [string]$RemoteCliAgentMaxStatusPolls = $env:REMOTE_CLI_AGENT_MAX_STATUS_POLLS,
+  [string]$RemoteCliAgentStatusPollIntervalMs = $env:REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS,
   [switch]$NoRestart,
   [switch]$CreateNamespace
 )
@@ -104,6 +107,9 @@ if (!$DockerHost -and $env:DOCKER_HOST) { $DockerHost = $env:DOCKER_HOST }
 if (!$DockerApiVersion -and $env:DOCKER_API_VERSION) { $DockerApiVersion = $env:DOCKER_API_VERSION }
 if (!$DefaultTargetId -and $env:REMOTE_CLI_DEFAULT_TARGET_ID) { $DefaultTargetId = $env:REMOTE_CLI_DEFAULT_TARGET_ID }
 if (!$DefaultCwd -and $env:REMOTE_CLI_DEFAULT_CWD) { $DefaultCwd = $env:REMOTE_CLI_DEFAULT_CWD }
+if (!$RemoteCliRemoteCodeModel -and $env:REMOTE_CLI_REMOTE_CODE_MODEL) { $RemoteCliRemoteCodeModel = $env:REMOTE_CLI_REMOTE_CODE_MODEL }
+if (!$RemoteCliAgentMaxStatusPolls -and $env:REMOTE_CLI_AGENT_MAX_STATUS_POLLS) { $RemoteCliAgentMaxStatusPolls = $env:REMOTE_CLI_AGENT_MAX_STATUS_POLLS }
+if (!$RemoteCliAgentStatusPollIntervalMs -and $env:REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS) { $RemoteCliAgentStatusPollIntervalMs = $env:REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS }
 
 if (!$RemoteCliMcpUrl -and $GatewayUrl) {
   $RemoteCliMcpUrl = $GatewayUrl.TrimEnd("/") + "/mcp"
@@ -126,6 +132,9 @@ Invoke-Kubectl patch configmap $ConfigMapName -n $resolvedNamespace --type merge
     REMOTE_CLI_DEFAULT_TARGET_ID = $(if ($DefaultTargetId) { $DefaultTargetId } else { "prod" })
     REMOTE_CLI_AGENT_OPENAI_API_MODE = "chat"
     REMOTE_CLI_AGENT_MAX_TURNS = "20"
+    REMOTE_CLI_REMOTE_CODE_MODEL = $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { "openai/gpt-5.4" })
+    REMOTE_CLI_AGENT_MAX_STATUS_POLLS = $(if ($RemoteCliAgentMaxStatusPolls) { $RemoteCliAgentMaxStatusPolls } else { "90" })
+    REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS = $(if ($RemoteCliAgentStatusPollIntervalMs) { $RemoteCliAgentStatusPollIntervalMs } else { "2000" })
   }
 } | ConvertTo-Json -Compress) | Out-Null
 
@@ -187,5 +196,6 @@ Write-Host "Namespace: $resolvedNamespace"
 Write-Host "ConfigMap: $ConfigMapName"
 Write-Host "Secret: $SecretName"
 Write-Host "REMOTE_CLI_MCP_URL: $RemoteCliMcpUrl"
+Write-Host "REMOTE_CLI_REMOTE_CODE_MODEL: $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { 'openai/gpt-5.4' })"
 Write-Host "Remote CLI token present: $hasRemoteToken"
 Write-Host "Backend restarted: $(!$NoRestart)"
