@@ -466,6 +466,42 @@ Next recovery path is straightforward: patch site/index.html, refresh the Config
         expect(html).not.toContain('...');
     });
 
+    test('renders remote CLI progress heartbeat details from SSE progress metadata', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const message = {
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            progressState: {
+                phase: 'executing',
+                reasoningSummary: 'Remote CLI agent is still working (390s elapsed).',
+                steps: [
+                    { title: 'Choose remote agent lane', status: 'completed' },
+                    { title: 'Remote CLI agent run', status: 'in_progress' },
+                    { title: 'Return proof markers', status: 'pending' },
+                ],
+                toolEvents: [
+                    {
+                        toolId: 'remote-cli-agent',
+                        stage: 'in_progress',
+                        detail: 'Remote CLI agent is still working (390s elapsed).',
+                    },
+                ],
+            },
+        };
+
+        const state = helper.getAssistantProgressState(message);
+        const html = helper.buildAssistantRenderPlan(message, true).html;
+
+        expect(state).toEqual(expect.objectContaining({
+            detail: 'Remote CLI agent is still working (390s elapsed).',
+            summary: 'Remote CLI agent is still working (390s elapsed).',
+        }));
+        expect(html).toContain('Remote CLI agent is still working (390s elapsed).');
+        expect(html).toContain('Remote CLI agent run');
+        expect(html).not.toContain('Working through the next step.');
+    });
+
     test('renders progress rows for completed sections beyond the initially supplied step records', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const message = {

@@ -3419,10 +3419,31 @@ class UIHelpers {
                 ? { ...step, status: 'in_progress' }
                 : step);
         }
-        const detail = this.extractDisplayText(rawProgress.detail, { maxLength: 240 });
+        const toolEventDetails = (Array.isArray(rawProgress.toolEvents) ? rawProgress.toolEvents : [])
+            .map((event) => this.extractDisplayText(
+                event?.detail
+                || event?.message
+                || event?.summary
+                || event?.text,
+                { maxLength: 240 },
+            ))
+            .filter(Boolean);
+        const latestToolEventDetail = toolEventDetails[toolEventDetails.length - 1] || '';
+        const progressReasoningSummary = this.extractDisplayText(
+            rawProgress.reasoningSummary
+            || rawProgress.reasoning_summary
+            || rawProgress.reasoning
+            || rawProgress.message,
+            { maxLength: 240 },
+        );
+        const detail = this.extractDisplayText(rawProgress.detail, { maxLength: 240 })
+            || progressReasoningSummary
+            || latestToolEventDetail;
         const phase = this.extractDisplayText(rawProgress.phase, { maxLength: 80 }).toLowerCase() || 'thinking';
         const estimated = rawProgress.estimated !== false;
         const summary = this.extractDisplayText(rawProgress.summary, { maxLength: 160 })
+            || this.extractDisplayText(progressReasoningSummary, { maxLength: 160 })
+            || this.extractDisplayText(latestToolEventDetail, { maxLength: 160 })
             || `${completedSteps}/${totalSteps} steps complete`;
         const progressUnits = Math.min(totalSteps, completedSteps + (activeStepIndex >= 0 && completedSteps < totalSteps ? 0.45 : 0));
         const percent = totalSteps > 0
