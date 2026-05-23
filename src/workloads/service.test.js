@@ -791,6 +791,164 @@ describe('AgentWorkloadService', () => {
         }));
     });
 
+    test('long agent mode records evaluator events and queues the next obvious step', async () => {
+        const workload = {
+            id: 'workload-long-1',
+            ownerId: 'phill',
+            sessionId: 'session-1',
+            title: 'Long skill work',
+            mode: 'project',
+            prompt: 'Improve the agent loop.',
+            trigger: { type: 'manual' },
+            policy: {
+                executionProfile: 'default',
+                toolIds: [],
+                maxRounds: 6,
+                maxToolCalls: 18,
+                maxDurationMs: 300000,
+                allowSideEffects: false,
+            },
+            stages: [],
+            metadata: {
+                longAgent: {
+                    enabled: true,
+                    goal: 'Improve the agent loop.',
+                    scratchFile: '.kimibuilt/long-agent-scratch.md',
+                    maxAutoSteps: 3,
+                },
+            },
+        };
+        const run = {
+            id: 'run-long-1',
+            workload,
+            stageIndex: -1,
+            scheduledFor: '2026-04-01T09:00:00.000Z',
+            prompt: workload.prompt,
+            metadata: {
+                longAgentStep: 1,
+            },
+        };
+
+        conversationRunService.runChatTurn.mockResolvedValue({
+            outputText: [
+                'Implemented the first slice.',
+                '',
+                'Stage scratch summary',
+                'Done: mapped the runtime path.',
+                'Verification: focused test passed.',
+                'Next obvious step: add UI activation.',
+            ].join('\n'),
+            response: { id: 'resp-long-1' },
+            execution: { trace: { steps: 1 } },
+            artifacts: [],
+        });
+        store.completeRun.mockResolvedValue({ id: 'run-long-1', status: 'completed' });
+        store.updateWorkload.mockResolvedValue({
+            ...workload,
+            metadata: {
+                ...workload.metadata,
+                longAgent: {
+                    ...workload.metadata.longAgent,
+                    lastScratchSummary: 'Done: mapped the runtime path.',
+                },
+            },
+        });
+        store.enqueueRun.mockResolvedValueOnce({
+            id: 'run-long-2',
+            workloadId: workload.id,
+            reason: 'long-agent-next-step',
+            stageIndex: -1,
+            scheduledFor: '2026-04-01T09:00:01.000Z',
+        });
+
+        await service.executeClaimedRun(run, 'worker-1');
+
+        expect(conversationRunService.runChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+            message: expect.stringContaining('<long_agent_mode>'),
+        }));
+        expect(store.addRunEvent).toHaveBeenCalledWith('run-long-1', 'long-agent-evaluator', expect.objectContaining({
+            evaluation: expect.objectContaining({
+                decision: 'next_step',
+                scratchFile: '.kimibuilt/long-agent-scratch.md',
+            }),
+        }));
+        expect(store.enqueueRun).toHaveBeenCalledWith(expect.objectContaining({
+            reason: 'long-agent-next-step',
+            parentRunId: 'run-long-1',
+            metadata: expect.objectContaining({
+                longAgentStep: 2,
+            }),
+            prompt: expect.stringContaining('Next obvious step: add UI activation.'),
+        }));
+    });
+
+    test('long agent mode queues an automatic review after blocked output', async () => {
+        const workload = {
+            id: 'workload-long-review',
+            ownerId: 'phill',
+            sessionId: 'session-1',
+            title: 'Long review work',
+            mode: 'project',
+            prompt: 'Finish the feature.',
+            trigger: { type: 'manual' },
+            policy: {
+                executionProfile: 'default',
+                toolIds: [],
+                maxRounds: 6,
+                maxToolCalls: 18,
+                maxDurationMs: 300000,
+                allowSideEffects: false,
+            },
+            stages: [],
+            metadata: {
+                longAgent: {
+                    enabled: true,
+                    goal: 'Finish the feature.',
+                    scratchFile: 'scratch.md',
+                    maxAutoSteps: 3,
+                },
+            },
+        };
+        const run = {
+            id: 'run-long-review-1',
+            workload,
+            stageIndex: -1,
+            scheduledFor: '2026-04-01T09:00:00.000Z',
+            prompt: workload.prompt,
+            metadata: {
+                longAgentStep: 1,
+            },
+        };
+
+        conversationRunService.runChatTurn.mockResolvedValue({
+            outputText: 'Stage scratch summary\nBlocked: tests failing and needs review.\nNext obvious step: repair the failing assertion.',
+            response: { id: 'resp-long-review-1' },
+            execution: { trace: { steps: 1 } },
+            artifacts: [],
+        });
+        store.completeRun.mockResolvedValue({ id: 'run-long-review-1', status: 'completed' });
+        store.updateWorkload.mockResolvedValue(workload);
+        store.enqueueRun.mockResolvedValueOnce({
+            id: 'run-long-review-2',
+            workloadId: workload.id,
+            reason: 'long-agent-review',
+            stageIndex: -1,
+        });
+
+        await service.executeClaimedRun(run, 'worker-1');
+
+        expect(store.addRunEvent).toHaveBeenCalledWith('run-long-review-1', 'long-agent-evaluator', expect.objectContaining({
+            evaluation: expect.objectContaining({
+                decision: 'review',
+                needsReview: true,
+            }),
+        }));
+        expect(store.enqueueRun).toHaveBeenCalledWith(expect.objectContaining({
+            reason: 'long-agent-review',
+            prompt: expect.stringContaining('previous agent stage stopped with a review-needed signal'),
+        }));
+    });
+
     test('enqueues the first follow-up stage after a successful base run', async () => {
         const workload = {
             id: 'workload-1',

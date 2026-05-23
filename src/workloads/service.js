@@ -13,6 +13,14 @@ const {
     deriveRunIdempotencyKey,
     validateWorkloadPayload,
 } = require('./schema');
+const {
+    buildLongAgentExecutionContext,
+    buildNextStepPrompt,
+    buildReviewPrompt,
+    evaluateLongAgentStop,
+    getLongAgentStep,
+    normalizeLongAgentMetadata,
+} = require('./long-agent-mode');
 const { RUN_STATUS, workloadStore } = require('./store');
 const { broadcastToAdmins, broadcastToSession } = require('../realtime-hub');
 
@@ -857,7 +865,7 @@ class AgentWorkloadService {
             : (run.prompt || workload.prompt);
         const execution = stage?.execution || workload.execution || null;
         const stageInputs = await this.resolveStageInputs(run, stage);
-        const message = this.buildStageMessage(prompt, stageInputs, stage, workload);
+        const message = this.buildStageMessage(prompt, stageInputs, stage, workload, run);
         const defaultOutputFormat = !stage
             ? String(workload?.metadata?.defaultOutputFormat || '').trim().toLowerCase()
             : '';
@@ -974,7 +982,14 @@ class AgentWorkloadService {
                 structuredExecution: Boolean(execution),
                 artifactOnly: artifactOnlyStage,
             });
-            await this.scheduleFollowupStage(trackedWorkload, run, true);
+            const explicitFollowupRun = await this.scheduleFollowupStage(trackedWorkload, run, true);
+            if (!explicitFollowupRun) {
+                await this.handleLongAgentStop(trackedWorkload, run, {
+                    succeeded: true,
+                    stage,
+                    result,
+                });
+            }
             await this.ensureNextScheduledRun(trackedWorkload, run);
 
             await this.appendSyntheticMessageSafe(
@@ -1020,7 +1035,17 @@ class AgentWorkloadService {
                 artifacts: [],
             });
             const retryRun = await this.maybeRetrySubAgentRun(trackedWorkload, run, error, subAgentFailure);
-            await this.scheduleFollowupStage(trackedWorkload, run, false);
+            const explicitFollowupRun = await this.scheduleFollowupStage(trackedWorkload, run, false);
+            if (!retryRun && !explicitFollowupRun) {
+                await this.handleLongAgentStop(trackedWorkload, run, {
+                    succeeded: false,
+                    stage,
+                    error,
+                    result: {
+                        outputText: error.message,
+                    },
+                });
+            }
             await this.ensureNextScheduledRun(trackedWorkload, run);
             await this.appendSyntheticMessageSafe(
                 trackedWorkload.sessionId,
@@ -1366,17 +1391,19 @@ class AgentWorkloadService {
         return `[${label}]\n${parts.join('\n\n')}`;
     }
 
-    buildStageMessage(prompt = '', stageInputs = {}, stage = null, workload = null) {
+    buildStageMessage(prompt = '', stageInputs = {}, stage = null, workload = null, run = {}) {
         const trimmedPrompt = String(prompt || '').trim();
         const inputText = this.renderStageInputText(stageInputs, stage);
         const projectContext = formatProjectExecutionContext(extractProjectPlan(workload, {
             title: workload?.title,
             prompt: workload?.prompt,
         }));
+        const longAgentContext = buildLongAgentExecutionContext(workload, run);
         const creationContext = this.renderCreationContext(workload?.metadata?.creationContext);
 
         const contextParts = [
             projectContext,
+            longAgentContext,
             creationContext,
         ].filter(Boolean);
         const contextText = contextParts.join('\n\n');
@@ -1455,7 +1482,7 @@ class AgentWorkloadService {
             String(result?.artifactMessage || '').trim(),
         );
 
-        return {
+        const metadata = {
             ...(run.metadata || {}),
             ...(outputKey ? { outputKey } : {}),
             output: {
@@ -1464,6 +1491,21 @@ class AgentWorkloadService {
                 artifacts,
             },
         };
+        const longAgent = normalizeLongAgentMetadata(run?.workload?.metadata || {}, {
+            goal: run?.workload?.prompt,
+        });
+        if (longAgent) {
+            const evaluation = evaluateLongAgentStop({
+                workload: run.workload,
+                run,
+                result,
+                succeeded: true,
+            });
+            metadata.longAgentStep = evaluation?.step || getLongAgentStep(run);
+            metadata.longAgentScratchSummary = evaluation?.scratchSummary || '';
+        }
+
+        return metadata;
     }
 
     _truncateStoredOutputLegacy(value = '', maxLength = 20000) {
@@ -1524,6 +1566,138 @@ class AgentWorkloadService {
             console.warn(`[Workloads] Failed to persist project review for ${workload.id}:`, error.message);
             return workload;
         }
+    }
+
+    async handleLongAgentStop(workload, run, {
+        succeeded = true,
+        stage = null,
+        result = {},
+        error = null,
+    } = {}) {
+        const longAgent = normalizeLongAgentMetadata(workload?.metadata || {}, {
+            goal: workload?.prompt,
+        });
+        if (!longAgent || String(run?.reason || '').startsWith('long-agent-final')) {
+            return null;
+        }
+
+        const evaluation = evaluateLongAgentStop({
+            workload,
+            run,
+            result,
+            succeeded,
+            error,
+        });
+        if (!evaluation) {
+            return null;
+        }
+
+        await this.addRunEventSafe(run.id, 'long-agent-evaluator', {
+            workloadId: workload.id,
+            stageIndex: run.stageIndex,
+            evaluation,
+        });
+
+        const nextMetadata = {
+            ...(workload.metadata || {}),
+            longAgent: {
+                ...(workload.metadata?.longAgent || {}),
+                enabled: true,
+                goal: longAgent.goal,
+                scratchFile: longAgent.scratchFile,
+                maxAutoSteps: longAgent.maxAutoSteps,
+                reviewPolicy: longAgent.reviewPolicy,
+                compaction: longAgent.compaction,
+                lastScratchSummary: evaluation.scratchSummary,
+                lastDecision: {
+                    runId: run.id,
+                    step: evaluation.step,
+                    decision: evaluation.decision,
+                    reason: evaluation.reason,
+                    at: new Date().toISOString(),
+                },
+            },
+        };
+
+        let trackedWorkload = workload;
+        try {
+            const updated = await this.store.updateWorkload(workload.id, workload.ownerId, {
+                metadata: nextMetadata,
+            });
+            trackedWorkload = updated || {
+                ...workload,
+                metadata: nextMetadata,
+            };
+        } catch (updateError) {
+            console.warn(`[Workloads] Failed to persist long-agent review for ${workload.id}:`, updateError.message);
+        }
+
+        if (evaluation.decision === 'complete' || evaluation.decision === 'stop_max_steps') {
+            await this.addRunEventSafe(run.id, 'long-agent-complete', {
+                decision: evaluation.decision,
+                reason: evaluation.reason,
+                scratchSummary: evaluation.scratchSummary,
+            });
+            return null;
+        }
+
+        const nextStep = evaluation.step + 1;
+        if (nextStep > longAgent.maxAutoSteps) {
+            return null;
+        }
+
+        const reason = evaluation.decision === 'review'
+            ? 'long-agent-review'
+            : 'long-agent-next-step';
+        const priorOutput = String(result?.outputText || result?.artifactMessage || error?.message || '').trim();
+        const prompt = evaluation.decision === 'review'
+            ? buildReviewPrompt(longAgent, evaluation, priorOutput)
+            : buildNextStepPrompt(longAgent, evaluation);
+        const scheduledFor = new Date(Date.now() + 1000);
+        const followupRun = await this.store.enqueueRun({
+            workloadId: workload.id,
+            ownerId: workload.ownerId,
+            sessionId: workload.sessionId,
+            reason,
+            scheduledFor,
+            parentRunId: run.id,
+            stageIndex: Number.isFinite(Number(run.stageIndex)) ? Number(run.stageIndex) : -1,
+            prompt,
+            idempotencyKey: deriveRunIdempotencyKey({
+                workloadId: workload.id,
+                scheduledFor: scheduledFor.toISOString(),
+                stageIndex: Number.isFinite(Number(run.stageIndex)) ? Number(run.stageIndex) : -1,
+                reason: `${reason}-${run.id}-${nextStep}`,
+            }),
+            metadata: {
+                parentRunId: run.id,
+                longAgentStep: nextStep,
+                longAgentDecision: evaluation.decision,
+                longAgentScratchFile: longAgent.scratchFile,
+                longAgentScratchSummary: evaluation.scratchSummary,
+            },
+        });
+
+        if (isQueuedLikeRun(followupRun)) {
+            await this.addRunEventSafe(run.id, `${reason}-enqueued`, {
+                followupRunId: followupRun.id,
+                step: nextStep,
+                scratchFile: longAgent.scratchFile,
+            });
+            await this.appendSyntheticMessageSafe(
+                trackedWorkload.sessionId,
+                'system',
+                `Long agent "${trackedWorkload.title}" queued ${reason.replace(/-/g, ' ')} stage ${nextStep}.`,
+            );
+            await this.emitWorkloadUpdate('workload_queued', trackedWorkload.sessionId, {
+                workloadId: trackedWorkload.id,
+                runId: followupRun.id,
+                scheduledFor: followupRun.scheduledFor,
+                reason,
+            });
+        }
+
+        return followupRun;
     }
 
     async getSessionSummaries(sessionIds = [], ownerId = null) {

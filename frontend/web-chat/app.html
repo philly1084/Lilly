@@ -478,6 +478,14 @@
                     </button>
                 </div>
                 <div class="model-selector-setting">
+                    <span class="model-selector-setting__label">Long agent defaults</span>
+                    <button id="long-agent-default-btn" class="btn-icon remote-autonomy-btn remote-autonomy-btn--panel" title="Enable long agent mode by default for new workloads" aria-label="Enable long agent mode by default for new workloads" aria-pressed="false">
+                        <i data-lucide="workflow" class="w-5 h-5" aria-hidden="true"></i>
+                        <span id="long-agent-default-label">Long agent: Off</span>
+                    </button>
+                    <p class="model-selector-setting__hint">Sets the default for new workload forms. You can still turn it on or off per workload.</p>
+                </div>
+                <div class="model-selector-setting">
                     <span class="model-selector-setting__label">Robot sound cues</span>
                     <div class="assistant-sound-stack">
                         <button id="sound-cues-btn" class="btn-icon remote-autonomy-btn remote-autonomy-btn--panel" title="Enable robot-style acknowledgments and agent chimes" aria-label="Enable robot-style acknowledgments and agent chimes" aria-pressed="false">
@@ -1140,6 +1148,22 @@
                             <input id="workload-allow-side-effects" type="checkbox">
                             <span>Allow side-effecting tools if explicitly listed</span>
                         </label>
+
+                        <label class="workload-checkbox">
+                            <input id="workload-long-agent-enabled" type="checkbox">
+                            <span>Long agent mode with evaluator follow-ups</span>
+                        </label>
+                        <div class="workload-form__grid">
+                            <div>
+                                <label class="modal-label" for="workload-long-agent-scratch">Scratch file</label>
+                                <input id="workload-long-agent-scratch" class="modal-input" type="text" placeholder=".kimibuilt/long-agent-scratch.md">
+                            </div>
+                            <div>
+                                <label class="modal-label" for="workload-long-agent-steps">Auto stages</label>
+                                <input id="workload-long-agent-steps" class="modal-input" type="number" min="1" max="12" value="4">
+                            </div>
+                        </div>
+                        <p class="workload-form__hint">Use this for bounded long-form agent work: each stop records an evaluator event, updates compact scratch context, and queues review or next-step work until the stage budget is reached.</p>
 
                         <label class="modal-label" for="workload-stages-json">Follow-up stages JSON</label>
                         <textarea id="workload-stages-json" class="modal-textarea" rows="5" placeholder='[{"when":"on_failure","delayMs":60000,"prompt":"Retry with a shorter summary."}]'></textarea>

@@ -78,6 +78,7 @@ const AgentUI = (function() {
             modelList: document.getElementById('model-list'),
             chatModelName: document.getElementById('agent-chat-model-name'),
             contextIndicator,
+            profilePicker: document.getElementById('agent-profile-picker'),
             understandingCard,
             composerDesignTray,
             agentStatus: document.querySelector('.agent-status'),
@@ -97,6 +98,7 @@ const AgentUI = (function() {
 
         setupEventListeners();
         updateModelUI();
+        renderProfilePicker();
         updateContextIndicator();
         renderMessages();
         renderComposerDesignOptions();
@@ -158,6 +160,15 @@ const AgentUI = (function() {
             });
         }
 
+        if (elements.profilePicker) {
+            elements.profilePicker.addEventListener('click', (event) => {
+                const button = event.target.closest('.agent-profile-option[data-profile-id]');
+                if (!button) return;
+
+                selectAgentProfile(button.dataset.profileId);
+            });
+        }
+
         document.addEventListener('keydown', (event) => {
             if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
                 event.preventDefault();
@@ -193,6 +204,11 @@ const AgentUI = (function() {
         });
 
         window.addEventListener('modelChanged', updateModelUI);
+        window.addEventListener('notes-agent-profile-changed', () => {
+            renderProfilePicker();
+            updateModelUI();
+            updateContextIndicator();
+        });
         window.addEventListener('notes-agent-processing', handleProcessingEvent);
         window.addEventListener('notes-agent-context-changed', handleConversationContextChange);
         document.addEventListener('click', scheduleContextRefresh, true);
@@ -408,7 +424,50 @@ const AgentUI = (function() {
 
         const selectedBlockId = window.Selection?.getSelectedBlockId?.();
         const selectedLabel = selectedBlockId ? `, selected ${selectedBlockId}` : '';
-        elements.contextIndicator.textContent = `${pageContext.title || 'Untitled'} - ${pageContext.blockCount} blocks${selectedLabel}`;
+        const profile = window.Agent.getSelectedAgentProfile?.();
+        const profileLabel = profile?.shortName ? ` - ${profile.shortName}` : '';
+        elements.contextIndicator.textContent = `${pageContext.title || 'Untitled'} - ${pageContext.blockCount} blocks${selectedLabel}${profileLabel}`;
+    }
+
+    function renderProfilePicker() {
+        if (!elements.profilePicker || !window.Agent?.getAgentProfiles) return;
+
+        const profiles = window.Agent.getAgentProfiles();
+        const selectedProfile = window.Agent.getSelectedAgentProfile?.() || profiles[0];
+
+        elements.profilePicker.innerHTML = profiles.map((profile) => {
+            const selected = profile.id === selectedProfile?.id;
+            return `
+                <button
+                    type="button"
+                    class="agent-profile-option${selected ? ' is-selected' : ''}"
+                    data-profile-id="${escapeHtmlAttr(profile.id)}"
+                    title="${escapeHtmlAttr(profile.bestFor || profile.tagline || '')}"
+                    aria-pressed="${selected}"
+                >
+                    <span class="agent-profile-initials">${escapeHtml(profile.initials || profile.shortName || 'AI')}</span>
+                    <span class="agent-profile-copy">
+                        <strong>${escapeHtml(profile.shortName || profile.name)}</strong>
+                        <small>${escapeHtml(profile.tagline || '')}</small>
+                    </span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    function selectAgentProfile(profileId) {
+        if (!window.Agent?.setSelectedAgentProfile(profileId)) {
+            showToast('Failed to change AI buddy', 'error');
+            return;
+        }
+
+        const profile = window.Agent.getSelectedAgentProfile?.();
+        renderProfilePicker();
+        updateModelUI();
+        updateContextIndicator();
+        renderRequestUnderstanding();
+        renderComposerDesignOptions();
+        showToast(`AI buddy changed to ${profile?.name || 'selected profile'}`, 'success');
     }
 
     function setStreamState(nextState) {
@@ -1111,13 +1170,14 @@ const AgentUI = (function() {
 
         const model = window.Agent.getModel(window.Agent.getSelectedModel());
         const displayName = getModelDisplayName(model);
+        const profile = window.Agent.getSelectedAgentProfile?.();
 
         if (elements.currentModelLabel) {
             elements.currentModelLabel.textContent = displayName;
         }
 
         if (elements.chatModelName) {
-            elements.chatModelName.textContent = `AI Assistant - ${displayName}`;
+            elements.chatModelName.textContent = `${profile?.name || 'AI Assistant'} - ${displayName}`;
         }
     }
 
@@ -1217,6 +1277,8 @@ const AgentUI = (function() {
         closeModelSelector,
         selectModel,
         updateModelUI,
+        selectAgentProfile,
+        renderProfilePicker,
         openWithPrompt,
         runPrompt
     };
@@ -1235,7 +1297,9 @@ window.AgentUI = {
     openModelSelector: AgentUI.openModelSelector,
     closeModelSelector: AgentUI.closeModelSelector,
     selectModel: AgentUI.selectModel,
-    updateModelUI: AgentUI.updateModelUI
+    updateModelUI: AgentUI.updateModelUI,
+    selectAgentProfile: AgentUI.selectAgentProfile,
+    renderProfilePicker: AgentUI.renderProfilePicker
 };
 
 if (document.readyState === 'loading') {

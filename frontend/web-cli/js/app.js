@@ -3,6 +3,8 @@
  * Terminal-style coding interface for LillyBuilt AI
  */
 
+const WEB_CLI_LONG_AGENT_ENABLED_KEY = 'codecli-long-agent-enabled';
+
 class CodeCLIApp {
     constructor() {
         this.history = [];
@@ -23,6 +25,7 @@ class CodeCLIApp {
         this.voxel = window.VoxelPets;
         this.voxelPet = this.loadVoxelPet();
         this.voxelPetHidden = localStorage.getItem('codecli-voxel-pet-hidden') === 'true';
+        this.longAgentCliEnabled = this.loadLongAgentCliEnabled();
         this.activePetAction = 'idle';
         this.lastVoxelTypingReaction = 0;
         this.lastVoxelAmbientMove = Date.now();
@@ -52,7 +55,7 @@ class CodeCLIApp {
             '/upload', '/session', '/history', '/artifacts', '/stats', '/shortcuts', '/keys', '/health', '/tools', '/tool', '/tool-help',
             '/skills', '/skill', '/skill-create', '/skill-update',
             '/files', '/ls', '/download', '/open', '/pet', '/spawn', '/agent', '/voxel-agent', '/random-agent', '/creator', '/voxel-creator',
-            '/buddy', '/toolbelt', '/build', '/remote', '/sandbox', '/sandbox-help',
+            '/buddy', '/toolbelt', '/build', '/long-agent', '/long', '/remote', '/sandbox', '/sandbox-help',
         ];
         
         this.init();
@@ -1189,6 +1192,10 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
                 this.printBuildDeck();
                 this.recordVoxelToolUse('build');
                 break;
+            case 'long':
+            case 'long-agent':
+                await this.createLongAgentWorkload(args);
+                break;
             case 'remote':
                 await this.handleRemoteCommand(args);
                 break;
@@ -2321,6 +2328,10 @@ Session Statistics:
   /buddy             Open the voxel coding buddy panel
   /toolbelt          Show chat/tools/files shortcuts
   /build             Show the coding-agent build workflow
+  /long-agent on|off|status
+                     Enable, disable, or inspect long agent mode
+  /long-agent <goal> [--on|--off]
+                     Queue bounded long-form work with evaluator follow-ups
   /remote <cmd>      status, tools, plan, run, or verify through remote CLI
   /sandbox <lang>    Run code, or save previewable HTML/Vite-style projects
 
@@ -2407,6 +2418,177 @@ Good prompt:
 \`\`\`text
 Improve the repo feature that handles <area>. Keep changes scoped, run relevant tests, and summarize the verification.
 \`\`\``);
+    }
+
+    parseLongAgentArgs(args = []) {
+        const parts = Array.isArray(args) ? [...args] : [];
+        const goalParts = [];
+        const options = {
+            scratchFile: '.kimibuilt/long-agent-scratch.md',
+            maxAutoSteps: 4,
+            enabledOverride: null,
+        };
+
+        for (let index = 0; index < parts.length; index += 1) {
+            const part = String(parts[index] || '').trim();
+            if (part === '--on' || part === '--enable' || part === '--enabled') {
+                options.enabledOverride = true;
+                continue;
+            }
+            if (part === '--off' || part === '--disable' || part === '--disabled') {
+                options.enabledOverride = false;
+                continue;
+            }
+            if (part === '--scratch' || part === '--scratch-file') {
+                options.scratchFile = String(parts[index + 1] || '').trim() || options.scratchFile;
+                index += 1;
+                continue;
+            }
+            if (part === '--steps' || part === '--stages') {
+                options.maxAutoSteps = Math.max(1, Math.min(Number(parts[index + 1] || 4), 12));
+                index += 1;
+                continue;
+            }
+            goalParts.push(part);
+        }
+
+        return {
+            goal: goalParts.join(' ').trim(),
+            options,
+        };
+    }
+
+    loadLongAgentCliEnabled() {
+        try {
+            const value = localStorage.getItem(WEB_CLI_LONG_AGENT_ENABLED_KEY);
+            return value == null ? true : value === 'true';
+        } catch (_error) {
+            return true;
+        }
+    }
+
+    setLongAgentCliEnabled(enabled) {
+        this.longAgentCliEnabled = enabled === true;
+        try {
+            localStorage.setItem(WEB_CLI_LONG_AGENT_ENABLED_KEY, String(this.longAgentCliEnabled));
+        } catch (_error) {
+            // Keep the current in-memory toggle even when storage is unavailable.
+        }
+    }
+
+    printLongAgentStatus() {
+        this.printSystem(`Long agent mode: ${this.longAgentCliEnabled ? 'on' : 'off'}`);
+    }
+
+    deriveLongAgentTitle(goal = '') {
+        const words = String(goal || '')
+            .trim()
+            .replace(/[^\w\s-]/g, '')
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 6);
+
+        return words.length > 0
+            ? words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+            : 'Long Agent Work';
+    }
+
+    async createLongAgentWorkload(args = []) {
+        const firstArg = String(args[0] || '').trim().toLowerCase();
+        if (['on', 'enable', 'enabled'].includes(firstArg) && args.length === 1) {
+            this.setLongAgentCliEnabled(true);
+            this.printSystem('Long agent mode enabled.');
+            return;
+        }
+        if (['off', 'disable', 'disabled'].includes(firstArg) && args.length === 1) {
+            this.setLongAgentCliEnabled(false);
+            this.printSystem('Long agent mode disabled.');
+            return;
+        }
+        if (['status', 'state'].includes(firstArg) && args.length === 1) {
+            this.printLongAgentStatus();
+            return;
+        }
+
+        const { goal, options } = this.parseLongAgentArgs(args);
+        if (!goal) {
+            this.printError('Usage: /long-agent on|off|status OR /long-agent <goal> [--scratch .kimibuilt/long-agent-scratch.md] [--steps 4] [--on|--off]');
+            return;
+        }
+        const enabled = options.enabledOverride == null
+            ? this.longAgentCliEnabled === true
+            : options.enabledOverride === true;
+        if (!enabled) {
+            this.printSystem('Long agent mode is off. Use /long-agent on or add --on to this command.');
+            return;
+        }
+
+        try {
+            this.printSystem('Creating long agent workload...');
+            const title = this.deriveLongAgentTitle(goal);
+            const workload = await api.createSessionWorkload({
+                title,
+                prompt: goal,
+                mode: 'project',
+                trigger: { type: 'manual' },
+                policy: {
+                    executionProfile: 'default',
+                    toolIds: [],
+                    maxRounds: 6,
+                    maxToolCalls: 18,
+                    maxDurationMs: 300000,
+                    allowSideEffects: false,
+                },
+                metadata: {
+                    longAgent: {
+                        enabled: true,
+                        goal,
+                        scratchFile: options.scratchFile,
+                        maxAutoSteps: options.maxAutoSteps,
+                        reviewPolicy: 'auto',
+                        compaction: {
+                            enabled: true,
+                            triggerCharCount: 12000,
+                            retainChars: 6000,
+                            codeCaptureLimit: 4,
+                        },
+                    },
+                    project: {
+                        title,
+                        objective: goal,
+                        successDefinition: [
+                            'Each stage ends with a compact scratch summary.',
+                            'Evaluator events decide review or next-step continuation.',
+                            'Final handoff states verification and remaining blockers.',
+                        ],
+                        milestones: [{
+                            title: 'Execute bounded long-form agent loop',
+                            objective: goal,
+                            status: 'in_progress',
+                            acceptanceCriteria: [
+                                'Meaningful progress is made each stage.',
+                                'Scratch context is compact enough for continuation.',
+                                'Review or next-step follow-up is queued automatically when appropriate.',
+                            ],
+                        }],
+                    },
+                },
+                stages: [],
+            });
+            const run = await api.runWorkload(workload.id, {
+                source: 'web-cli',
+                longAgentStep: 1,
+            });
+            this.printSystem(`Long agent queued: ${workload.title} (${workload.id.slice(0, 8)}...), run ${run.id.slice(0, 8)}...`);
+            this.printAI(`Long agent mode is active.
+
+- Goal: ${goal}
+- Scratch file: \`${options.scratchFile}\`
+- Auto stage budget: ${options.maxAutoSteps}
+- The workload runner will record an evaluator event after each stage, then queue review or next-step work when appropriate.`);
+        } catch (error) {
+            this.printError(`Failed to create long agent workload: ${error.message}`);
+        }
     }
 
     printSandboxHelp() {

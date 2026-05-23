@@ -8,6 +8,7 @@ const Agent = (function() {
     const LEGACY_MODEL_STORAGE_KEY = 'notes_agent_model';
     const LEGACY_MESSAGES_STORAGE_KEY = 'notes_agent_messages';
     const PAGE_MESSAGES_STORAGE_PREFIX = 'notes_agent_messages:';
+    const AGENT_PROFILE_STORAGE_KEY = 'notes_agent_profile';
     const NOTES_COLOR_OPTIONS = ['gray', 'brown', 'orange', 'yellow', 'amber', 'lime', 'green', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'rose', 'red'];
     const NOTES_FONT_FAMILY_OPTIONS = ['sans', 'serif', 'mono'];
     const NOTES_FONT_SIZE_OPTIONS = ['small', 'normal', 'large', 'xlarge'];
@@ -15,6 +16,63 @@ const Agent = (function() {
     const NOTES_TEXT_ALIGN_OPTIONS = ['left', 'center', 'right'];
     const NOTES_HIGHLIGHT_COLOR_OPTIONS = ['yellow', 'amber', 'lime', 'green', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'rose', 'red', 'orange', 'brown', 'gray'];
     const NOTES_TEMPLATE_METADATA_BLOCKLIST = new Set(['type', 'mode', 'audience']);
+    const NOTES_AGENT_PROFILES = Object.freeze([
+        Object.freeze({
+            id: 'builder-buddy',
+            name: 'Builder Buddy',
+            shortName: 'Builder',
+            initials: 'BB',
+            tagline: 'Turns rough intent into working page blocks.',
+            bestFor: 'New pages, rebuilds, structured drafts, specs, plans, and creative build-outs.',
+            style: 'Friendly, decisive, practical, and a little lively. Think alongside the user, then build the page instead of over-explaining.',
+            toolUse: 'Prefer notes-actions for page work. Use web-search, web-fetch, or web-scrape only when the page needs current or source-backed information. Use richer blocks such as database, mermaid, callout, code, ai_image, and toggle when they improve the result.',
+            actionBias: 'Default to making the current notes page more useful. Choose a template, create a strong first screenful, and ship a complete block structure.',
+        }),
+        Object.freeze({
+            id: 'research-buddy',
+            name: 'Research Buddy',
+            shortName: 'Research',
+            initials: 'RB',
+            tagline: 'Finds sources, then turns them into clean notes.',
+            bestFor: 'Source-backed explainers, news/current topics, comparisons, learning pages, and evidence tables.',
+            style: 'Curious, careful, grounded, and concise. Make uncertainty visible and avoid pretending unverified facts are current.',
+            toolUse: 'Use web-search for discovery, web-fetch for selected pages, and web-scrape only for structured extraction or JS-rendered pages. Convert findings into bookmarks, databases, callouts, and source notes on the page.',
+            actionBias: 'Gather enough evidence to be useful, then write the page with citations or source blocks. Keep synthesis separate from raw facts.',
+        }),
+        Object.freeze({
+            id: 'polish-partner',
+            name: 'Polish Partner',
+            shortName: 'Polish',
+            initials: 'PP',
+            tagline: 'Tightens voice, structure, and readability.',
+            bestFor: 'Editing existing pages, grammar, tone, concise rewrites, hierarchy, and layout cleanup.',
+            style: 'Warm, editorial, respectful of the user voice, and precise. Improve the writing without sanding off personality.',
+            toolUse: 'Use replace_text, highlight_text, update_block, change_block_type, and section-level operations before rebuilding. Avoid research unless the user asks for factual expansion.',
+            actionBias: 'Preserve strong existing blocks. Make targeted edits first, then improve section rhythm, headings, callouts, and visual hierarchy.',
+        }),
+        Object.freeze({
+            id: 'systems-builder',
+            name: 'Systems Builder',
+            shortName: 'Systems',
+            initials: 'SB',
+            tagline: 'Maps workflows, decisions, and technical plans.',
+            bestFor: 'Technical notes, architecture, process maps, data models, SOPs, diagrams, and implementation plans.',
+            style: 'Calm, structured, builder-minded, and specific. Prefer clear contracts and next actions over vague strategy.',
+            toolUse: 'Use mermaid, code, database, chart, math, and todo blocks when they clarify systems work. Use web tools for current API or standards details before encoding them into the page.',
+            actionBias: 'Turn ambiguity into a usable structure: components, flows, risks, decisions, owners, and verification steps.',
+        }),
+        Object.freeze({
+            id: 'pitch-buddy',
+            name: 'Pitch Buddy',
+            shortName: 'Pitch',
+            initials: 'PB',
+            tagline: 'Shapes offers, stories, and persuasive briefs.',
+            bestFor: 'Sales pages, proposals, value stories, client notes, product positioning, and executive summaries.',
+            style: 'Confident, human, useful, and not hypey. Lead with outcomes, proof, and the next move.',
+            toolUse: 'Use callouts for the offer, databases for proof or pricing comparisons, quotes for customer language, and todo blocks for next steps. Use web tools only when outside proof needs verification.',
+            actionBias: 'Make the value easy to scan. Structure problem, offer, proof, fit, objections, and next steps.',
+        }),
+    ]);
     const NOTES_PAGE_TEMPLATES = Object.freeze([
         Object.freeze({
             id: 'brief',
@@ -2901,6 +2959,8 @@ const Agent = (function() {
     // Build system prompt with page context
     function buildSystemPrompt(pageContext, requestContext = {}) {
         const question = String(requestContext?.question || '').trim();
+        const agentProfile = requestContext?.agentProfile || getSelectedAgentProfile();
+        const agentProfileGuidance = buildAgentProfilePromptGuidance(agentProfile);
         const templateMatches = selectNotesPageTemplates(question, pageContext, { limit: 2 });
         const pageSetup = buildPageSetupSummary(pageContext);
         const blockMap = buildPageContentSnapshot(pageContext);
@@ -2938,6 +2998,9 @@ const Agent = (function() {
         return `You are an AI assistant editing a Lilly-style block-based document.
 
 CURRENT PAGE: "${pageContext?.title || 'Untitled'}"
+
+ACTIVE BUDDY PROFILE:
+${agentProfileGuidance}
 
 PAGE STRUCTURE:
 The document is organized into blocks. Each block has a unique ID shown in brackets like [block_abc123].
@@ -8628,6 +8691,81 @@ Silently verify the lead cluster, section order, and final polish before returni
         }
     }
 
+    function getStoredAgentProfileId() {
+        try {
+            const stored = localStorage.getItem(AGENT_PROFILE_STORAGE_KEY);
+            return NOTES_AGENT_PROFILES.some((profile) => profile.id === stored)
+                ? stored
+                : NOTES_AGENT_PROFILES[0].id;
+        } catch (error) {
+            return NOTES_AGENT_PROFILES[0].id;
+        }
+    }
+
+    function persistSelectedAgentProfile(profileId) {
+        try {
+            localStorage.setItem(AGENT_PROFILE_STORAGE_KEY, profileId);
+        } catch (error) {
+            console.warn('Failed to persist selected agent profile:', error);
+        }
+    }
+
+    function getAgentProfiles() {
+        return NOTES_AGENT_PROFILES.map((profile) => ({ ...profile }));
+    }
+
+    function getAgentProfile(profileId = state.selectedAgentProfileId) {
+        return NOTES_AGENT_PROFILES.find((profile) => profile.id === profileId) || NOTES_AGENT_PROFILES[0];
+    }
+
+    function getSelectedAgentProfile() {
+        return getAgentProfile(state.selectedAgentProfileId);
+    }
+
+    function setSelectedAgentProfile(profileId) {
+        const nextProfile = getAgentProfile(profileId);
+        if (!nextProfile || nextProfile.id !== profileId) {
+            return false;
+        }
+
+        state.selectedAgentProfileId = nextProfile.id;
+        persistSelectedAgentProfile(nextProfile.id);
+
+        try {
+            window.dispatchEvent(new CustomEvent('notes-agent-profile-changed', {
+                detail: { profile: { ...nextProfile } }
+            }));
+        } catch (error) {
+            console.warn('Failed to dispatch agent profile change event:', error);
+        }
+
+        return true;
+    }
+
+    function buildAgentProfileMetadata(profile = getSelectedAgentProfile()) {
+        return {
+            id: profile.id,
+            name: profile.name,
+            shortName: profile.shortName,
+            bestFor: profile.bestFor,
+        };
+    }
+
+    function buildAgentProfilePromptGuidance(profile = getSelectedAgentProfile()) {
+        if (!profile) {
+            return '';
+        }
+
+        return [
+            `Selected buddy: ${profile.name}`,
+            `Best for: ${profile.bestFor}`,
+            `Personality and style: ${profile.style}`,
+            `Tool and block use: ${profile.toolUse}`,
+            `Work bias: ${profile.actionBias}`,
+            'Keep this as a working personality layer, not a costume. The profile should shape judgment, wording, tool choice, and page structure while still obeying the notes-actions contract above all else.',
+        ].join('\n');
+    }
+
     function isSupportedNotesModelId(modelId) {
         const id = String(modelId || '').trim().toLowerCase();
         if (!id) return false;
@@ -8670,6 +8808,7 @@ Silently verify the lead cluster, section order, and final polish before returni
     // ============================================
     const state = {
         selectedModel: getStoredModelId(),
+        selectedAgentProfileId: getStoredAgentProfileId(),
         isActive: false,
         messages: [],
         activePageId: null,
@@ -10080,9 +10219,14 @@ Silently verify the lead cluster, section order, and final polish before returni
         if (shouldSuppressRequestedArtifactFormat(question, context, requestedArtifactFormat)) {
             requestedArtifactFormat = null;
         }
+        const agentProfile = getSelectedAgentProfile();
         const requestOptions = {
             ...(requestedArtifactFormat ? { outputFormat: requestedArtifactFormat } : {}),
-            reasoningEffort: 'medium'
+            reasoningEffort: 'medium',
+            metadata: {
+                notesAgentProfile: buildAgentProfileMetadata(agentProfile),
+                notesAgentProfileId: agentProfile.id,
+            },
         };
         const requestUnderstanding = buildRequestUnderstanding(question, context, requestOptions);
         
@@ -10093,7 +10237,8 @@ Silently verify the lead cluster, section order, and final polish before returni
             wordCount: 0,
             outline: []
         }, {
-            question
+            question,
+            agentProfile
         });
 
         const attemptedModels = [];
@@ -10939,7 +11084,10 @@ Silently verify the lead cluster, section order, and final polish before returni
         getModelInfo,
         getModel,
         getModelsByProvider,
-        
+        getAgentProfiles,
+        getSelectedAgentProfile,
+        setSelectedAgentProfile,
+
         // Page Context
         getPageContext,
         getFullPageContent,
@@ -11000,7 +11148,8 @@ Silently verify the lead cluster, section order, and final polish before returni
         _hasNonPageRuntimeIntent: hasNonPageRuntimeIntent,
         _shouldForcePageEditActions: shouldForcePageEditActions,
         _shouldUseMultiPassNotesDraft: shouldUseMultiPassNotesDraft,
-        _shouldSuppressRequestedArtifactFormat: shouldSuppressRequestedArtifactFormat
+        _shouldSuppressRequestedArtifactFormat: shouldSuppressRequestedArtifactFormat,
+        _buildAgentProfilePromptGuidance: buildAgentProfilePromptGuidance
     };
 })();
 

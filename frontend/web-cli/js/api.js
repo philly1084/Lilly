@@ -1264,6 +1264,50 @@ class WebCLIAPI {
         };
     }
 
+    async createSessionWorkload(payload = {}) {
+        await this.ensureSession({ title: 'Voxel CLI' });
+        const response = await this.fetchWithTimeout(
+            `${BASE_URL_WITHOUT_API}/api/sessions/${encodeURIComponent(this.sessionId)}/workloads`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            },
+            15000
+        );
+
+        if (!response.ok) {
+            const errorText = await this.parseErrorResponse(response);
+            throw new Error(errorText || `Failed to create workload: HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
+    async runWorkload(workloadId, metadata = {}) {
+        const normalizedId = String(workloadId || '').trim();
+        if (!normalizedId) {
+            throw new Error('Workload id is required.');
+        }
+
+        const response = await this.fetchWithTimeout(
+            `${BASE_URL_WITHOUT_API}/api/workloads/${encodeURIComponent(normalizedId)}/run`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ metadata }),
+            },
+            15000
+        );
+
+        if (!response.ok) {
+            const errorText = await this.parseErrorResponse(response);
+            throw new Error(errorText || `Failed to queue workload: HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
     async getSessionState() {
         const params = new URLSearchParams({
             taskType: WEB_CLI_TASK_TYPE,

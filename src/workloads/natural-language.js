@@ -58,7 +58,7 @@ const TODAY_SCHEDULE_FRAGMENT = 'today\\b(?![\'’]s)';
 
 const SCHEDULE_TASK_VERB_FRAGMENT = '(?:run|do|check|review|research|summarize|follow\\s+up|watch|remind|collect|gather|create|make|generate|build|write|prepare|send|report|monitor|audit|scan|call|ping)';
 const SCHEDULING_SETUP_VERB_FRAGMENT = '(?:set\\s+up|setup|schedule|queue|save|remind)';
-const WEEKLY_CADENCE_FRAGMENT = '(?:every\\s+week|each\\s+week|weekly\\s+(?:to\\b|basis\\b|automation\\b|workloads?\\b|follow-?ups?\\b|tasks?\\b|jobs?\\b|runs?\\b|checks?\\b|reminders?\\b|occurrences?\\b|recurrences?\\b))';
+const WEEKLY_CADENCE_FRAGMENT = '(?:every\\s+week\\b|each\\s+week\\b|weekly\\s+(?:to\\b|basis\\b|automation\\b|workloads?\\b|follow-?ups?\\b|tasks?\\b|jobs?\\b|runs?\\b|checks?\\b|reminders?\\b|occurrences?\\b|recurrences?\\b))';
 
 function hasImmediateOrNoDeferCue(text = '') {
     const normalized = String(text || '').trim().toLowerCase();

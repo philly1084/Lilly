@@ -4,6 +4,11 @@ const vm = require('vm');
 
 function loadAgent(overrides = {}) {
     const source = fs.readFileSync(path.join(__dirname, 'agent.js'), 'utf8');
+    const localStorageObject = overrides.localStorage || {
+        getItem: jest.fn(() => null),
+        setItem: jest.fn(),
+        removeItem: jest.fn(),
+    };
     const windowObject = {
         location: { origin: 'http://localhost:3000' },
         addEventListener: jest.fn(),
@@ -23,11 +28,7 @@ function loadAgent(overrides = {}) {
             querySelector: jest.fn(() => null),
             querySelectorAll: jest.fn(() => []),
         },
-        localStorage: {
-            getItem: jest.fn(() => null),
-            setItem: jest.fn(),
-            removeItem: jest.fn(),
-        },
+        localStorage: localStorageObject,
         console,
         URL,
         setTimeout,
@@ -63,6 +64,54 @@ function loadAgent(overrides = {}) {
 }
 
 describe('notes agent parsing', () => {
+    test('adds the selected buddy profile to the notes system prompt', () => {
+        const agent = loadAgent();
+
+        expect(agent.setSelectedAgentProfile('research-buddy')).toBe(true);
+
+        const systemPrompt = agent._buildSystemPrompt({
+            title: 'Penguin Research',
+            blockCount: 1,
+            wordCount: 12,
+            readingTime: 1,
+            outline: [],
+            blocks: [],
+        }, {
+            question: 'Research penguins and build a page.',
+        });
+
+        expect(systemPrompt).toContain('ACTIVE BUDDY PROFILE');
+        expect(systemPrompt).toContain('Selected buddy: Research Buddy');
+        expect(systemPrompt).toContain('Use web-search for discovery');
+        expect(systemPrompt).toContain('notes-actions');
+    });
+
+    test('persists and exposes notes buddy profiles for the UI', () => {
+        const localStorage = {
+            getItem: jest.fn(() => null),
+            setItem: jest.fn(),
+            removeItem: jest.fn(),
+        };
+        const agent = loadAgent({ localStorage });
+
+        const profiles = agent.getAgentProfiles();
+        expect(profiles.map((profile) => profile.id)).toEqual(expect.arrayContaining([
+            'builder-buddy',
+            'research-buddy',
+            'polish-partner',
+            'systems-builder',
+            'pitch-buddy',
+        ]));
+
+        expect(agent.setSelectedAgentProfile('systems-builder')).toBe(true);
+        expect(agent.getSelectedAgentProfile()).toEqual(expect.objectContaining({
+            id: 'systems-builder',
+            name: 'Systems Builder',
+        }));
+        expect(localStorage.setItem).toHaveBeenCalledWith('notes_agent_profile', 'systems-builder');
+        expect(agent.setSelectedAgentProfile('missing-profile')).toBe(false);
+    });
+
     test('normalizes legacy notes-actions replace-content payloads into rebuild_page actions', () => {
         const agent = loadAgent();
         const responseText = JSON.stringify({

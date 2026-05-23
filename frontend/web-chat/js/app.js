@@ -11,6 +11,7 @@ const REAL_REASONING_DISPLAY_HOLD_MS = 40000;
 const SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
+const WEB_CHAT_LONG_AGENT_DEFAULT_KEY = 'kimibuilt_long_agent_default_enabled';
 const webChatWorkspaceHelpers = window.KimiBuiltWebChatWorkspace || null;
 const webChatWorkspaceEmbedHelpers = window.KimiBuiltWebChatWorkspaceEmbed || null;
 const WEB_CHAT_APP_WORKSPACE_CONTEXT = typeof webChatWorkspaceHelpers?.getWorkspaceContext === 'function'
@@ -336,6 +337,8 @@ class ChatApp {
         this.currentSessionInfo = document.getElementById('current-session-info');
         this.typingIndicator = document.getElementById('typing-indicator');
         this.backgroundWorkloadStatus = document.getElementById('background-workload-status');
+        this.longAgentDefaultBtn = document.getElementById('long-agent-default-btn');
+        this.longAgentDefaultLabel = document.getElementById('long-agent-default-label');
         this.workloadsBtn = document.getElementById('workloads-btn');
         this.workloadsPanel = document.getElementById('workloads-panel');
         this.workloadsEmpty = document.getElementById('workloads-empty');
@@ -362,6 +365,9 @@ class ChatApp {
         this.workloadMaxToolCalls = document.getElementById('workload-max-tool-calls');
         this.workloadMaxDuration = document.getElementById('workload-max-duration');
         this.workloadAllowSideEffects = document.getElementById('workload-allow-side-effects');
+        this.workloadLongAgentEnabled = document.getElementById('workload-long-agent-enabled');
+        this.workloadLongAgentScratch = document.getElementById('workload-long-agent-scratch');
+        this.workloadLongAgentSteps = document.getElementById('workload-long-agent-steps');
         this.workloadStagesJson = document.getElementById('workload-stages-json');
         this.workloadOnceRow = document.getElementById('workload-once-row');
         this.workloadCronRow = document.getElementById('workload-cron-row');
@@ -435,6 +441,7 @@ class ChatApp {
         this.workloadSocketConsecutiveFailures = 0;
         this.workloadSocketCircuitDelayMs = 60000;
         this.workloadSocketPaused = false;
+        this.longAgentDefaultEnabled = this.loadLongAgentDefaultEnabled();
         this.backgroundWorkloadStatusHideTimer = null;
         this.subscribedWorkloadSessionId = null;
         this.isRefreshingSessionSummaries = false;
@@ -626,6 +633,8 @@ class ChatApp {
         document.getElementById('theme-toggle')?.addEventListener('click', () => {
             uiHelpers.openThemeGallery();
         });
+        this.longAgentDefaultBtn?.addEventListener('click', () => this.toggleLongAgentDefault());
+        this.updateLongAgentDefaultControl();
         
         // Mobile sidebar toggle
         document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
@@ -688,12 +697,15 @@ class ChatApp {
             this.workloadCronExpression,
             this.workloadTimezone,
             this.workloadToolIds,
+            this.workloadLongAgentScratch,
+            this.workloadLongAgentSteps,
             this.workloadStagesJson,
         ].forEach((field) => {
             field?.addEventListener('input', () => {
                 this.clearWorkloadFormError();
             });
         });
+        this.workloadLongAgentEnabled?.addEventListener('change', () => this.clearWorkloadFormError());
         this.workloadTimezone?.addEventListener('input', () => {
             this.renderWorkloadPresetTable(
                 this.workloadCronExpression?.value || '',
@@ -2404,6 +2416,46 @@ class ChatApp {
             .slice(0, 64);
     }
 
+    loadLongAgentDefaultEnabled() {
+        try {
+            return localStorage.getItem(WEB_CHAT_LONG_AGENT_DEFAULT_KEY) === 'true';
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    setLongAgentDefaultEnabled(enabled) {
+        this.longAgentDefaultEnabled = enabled === true;
+        try {
+            localStorage.setItem(WEB_CHAT_LONG_AGENT_DEFAULT_KEY, String(this.longAgentDefaultEnabled));
+        } catch (_error) {
+            // Ignore storage failures; the in-memory setting still updates this page.
+        }
+        this.updateLongAgentDefaultControl();
+    }
+
+    toggleLongAgentDefault() {
+        this.setLongAgentDefaultEnabled(this.longAgentDefaultEnabled !== true);
+        uiHelpers.showToast(
+            this.longAgentDefaultEnabled ? 'Long agent default enabled' : 'Long agent default disabled',
+            'success',
+        );
+    }
+
+    updateLongAgentDefaultControl() {
+        const enabled = this.longAgentDefaultEnabled === true;
+        if (this.longAgentDefaultBtn) {
+            this.longAgentDefaultBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+            this.longAgentDefaultBtn.title = enabled
+                ? 'Disable long agent mode by default for new workloads'
+                : 'Enable long agent mode by default for new workloads';
+            this.longAgentDefaultBtn.classList.toggle('is-active', enabled);
+        }
+        if (this.longAgentDefaultLabel) {
+            this.longAgentDefaultLabel.textContent = enabled ? 'Long agent: On' : 'Long agent: Off';
+        }
+    }
+
     openWorkloadModal(existing = null) {
         if (!sessionManager.currentSessionId) {
             uiHelpers.showToast('Open a conversation first', 'info');
@@ -2432,6 +2484,11 @@ class ChatApp {
         this.workloadMaxToolCalls.value = existing?.policy?.maxToolCalls || 10;
         this.workloadMaxDuration.value = existing?.policy?.maxDurationMs || 120000;
         this.workloadAllowSideEffects.checked = existing?.policy?.allowSideEffects === true;
+        this.workloadLongAgentEnabled.checked = existing
+            ? existing?.metadata?.longAgent?.enabled === true
+            : this.longAgentDefaultEnabled === true;
+        this.workloadLongAgentScratch.value = existing?.metadata?.longAgent?.scratchFile || '.kimibuilt/long-agent-scratch.md';
+        this.workloadLongAgentSteps.value = existing?.metadata?.longAgent?.maxAutoSteps || 4;
         this.workloadStagesJson.value = JSON.stringify(existing?.stages || [], null, 2);
         this.updateWorkloadTriggerFields();
         this.renderWorkloadPresetTable(
@@ -2525,6 +2582,49 @@ class ChatApp {
             },
             stages: [],
         };
+
+        if (this.workloadLongAgentEnabled?.checked) {
+            const scratchFile = this.workloadLongAgentScratch?.value?.trim() || '.kimibuilt/long-agent-scratch.md';
+            const maxAutoSteps = Math.max(1, Math.min(Number(this.workloadLongAgentSteps?.value || 4), 12));
+            payload.mode = 'project';
+            payload.metadata = {
+                longAgent: {
+                    enabled: true,
+                    goal: prompt,
+                    scratchFile,
+                    maxAutoSteps,
+                    reviewPolicy: 'auto',
+                    compaction: {
+                        enabled: true,
+                        triggerCharCount: 12000,
+                        retainChars: 6000,
+                        codeCaptureLimit: 4,
+                    },
+                },
+                project: {
+                    title,
+                    objective: prompt,
+                    successDefinition: [
+                        'Each stage ends with a compact scratch summary.',
+                        'Evaluator events decide review or next-step continuation.',
+                        'Final handoff states verification and remaining blockers.',
+                    ],
+                    milestones: [{
+                        title: 'Execute bounded long-form agent loop',
+                        objective: prompt,
+                        status: 'in_progress',
+                        acceptanceCriteria: [
+                            'Meaningful progress is made each stage.',
+                            'Scratch context is compact enough for continuation.',
+                            'Review or next-step follow-up is queued automatically when appropriate.',
+                        ],
+                    }],
+                },
+            };
+            payload.policy.maxRounds = Math.max(payload.policy.maxRounds || 3, 6);
+            payload.policy.maxToolCalls = Math.max(payload.policy.maxToolCalls || 10, 18);
+            payload.policy.maxDurationMs = Math.max(payload.policy.maxDurationMs || 120000, 300000);
+        }
 
         if (triggerType === 'once') {
             if (!this.workloadRunAt.value) {
