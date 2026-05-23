@@ -1190,10 +1190,14 @@ describe('RemoteCliAgentsSdkRunner', () => {
           return [{
             type: 'text',
             text: JSON.stringify({
-              id: 'job-array-content',
               targetId: 'prod',
-              cwd: '/srv/apps/my-app',
               status: 'running',
+            }),
+          }, {
+            type: 'text',
+            text: JSON.stringify({
+              id: 'job-array-content',
+              cwd: '/srv/apps/my-app',
             }),
           }];
         }

@@ -372,26 +372,35 @@ function collectRemoteCodeStateCandidates(result = {}, text = '') {
       candidates.push(value);
     }
   };
+  const addContentEntries = (value) => {
+    const entries = Array.isArray(value)
+      ? value
+      : (Array.isArray(value?.content) ? value.content : []);
+    for (const entry of entries) {
+      add(entry);
+      add(entry?.structuredContent);
+      add(entry?.data);
+      const entryText = typeof entry === 'string' ? entry : entry?.text;
+      const parsedEntryText = typeof entryText === 'string' ? parseLenientJson(entryText) : null;
+      add(parsedEntryText);
+      add(parsedEntryText?.structuredContent);
+      add(parsedEntryText?.data);
+      add(parsedEntryText?.result);
+      add(parsedEntryText?.result?.structuredContent);
+    }
+  };
 
   add(result);
   add(result?.structuredContent);
   add(result?.data);
+  addContentEntries(result);
   const parsedText = parseLenientJson(text);
   add(parsedText);
   add(parsedText?.structuredContent);
   add(parsedText?.data);
   add(parsedText?.result);
-  const parsedContentEntries = Array.isArray(parsedText)
-    ? parsedText
-    : (Array.isArray(parsedText?.content) ? parsedText.content : []);
-  for (const entry of parsedContentEntries) {
-    add(entry);
-    const entryText = typeof entry === 'string' ? entry : entry?.text;
-    const parsedEntryText = typeof entryText === 'string' ? parseLenientJson(entryText) : null;
-    add(parsedEntryText);
-    add(parsedEntryText?.data);
-    add(parsedEntryText?.result);
-  }
+  add(parsedText?.result?.structuredContent);
+  addContentEntries(parsedText);
 
   return candidates;
 }
@@ -403,7 +412,7 @@ function extractRemoteCodeJobState(result = {}, textOverride = '') {
 
   for (const candidate of candidates) {
     state.status = state.status || normalizeText(findNestedNormalizedValue(candidate, ['status', 'state', 'phase']));
-    state.jobId = state.jobId || normalizeText(findNestedNormalizedValue(candidate, ['jobId', 'job_id', 'runId', 'run_id', 'id']));
+    state.jobId = state.jobId || normalizeText(findNestedNormalizedValue(candidate, ['jobId', 'job_id', 'runId', 'run_id', 'remoteCodeJobId', 'remote_code_job_id', 'id']));
     state.sessionId = state.sessionId || normalizeText(findNestedNormalizedValue(candidate, ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id']));
   }
 
@@ -414,7 +423,12 @@ function extractRemoteCodeJobState(result = {}, textOverride = '') {
   }
   if (!state.jobId) {
     state.jobId = normalizeText(
-      text.match(/(?:^|[\s,{])["']?(?:jobId|job_id|runId|run_id)["']?\s*[:=]\s*["']?([a-z0-9_.:-]{3,96})["']?/i)?.[1] || '',
+      text.match(/(?:^|[\s,{])["']?(?:jobId|job_id|runId|run_id|remoteCodeJobId|remote_code_job_id)["']?\s*[:=]\s*["']?([a-z0-9_.:-]{3,96})["']?/i)?.[1] || '',
+    );
+  }
+  if (!state.jobId) {
+    state.jobId = normalizeText(
+      text.match(/(?:^|[\s,{])["']?id["']?\s*[:=]\s*["']?(rcli_[a-z0-9_.:-]{3,96})["']?/i)?.[1] || '',
     );
   }
   if (!state.sessionId) {
