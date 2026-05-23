@@ -65,8 +65,8 @@ class RemoteCliAgentTool extends ToolBase {
           },
           remoteCodeModel: {
             type: 'string',
-            default: 'openai/gpt-5.4',
-            description: 'Model passed to the gateway remote_code_run worker. This is separate from the inner routing agent model.',
+            default: '',
+            description: 'Optional model passed to the gateway remote_code_run worker. Leave blank to use the gateway target default.',
           },
           maxStatusPolls: {
             type: 'integer',

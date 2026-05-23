@@ -132,7 +132,7 @@ Invoke-Kubectl patch configmap $ConfigMapName -n $resolvedNamespace --type merge
     REMOTE_CLI_DEFAULT_TARGET_ID = $(if ($DefaultTargetId) { $DefaultTargetId } else { "prod" })
     REMOTE_CLI_AGENT_OPENAI_API_MODE = "chat"
     REMOTE_CLI_AGENT_MAX_TURNS = "20"
-    REMOTE_CLI_REMOTE_CODE_MODEL = $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { "openai/gpt-5.4" })
+    REMOTE_CLI_REMOTE_CODE_MODEL = $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { "" })
     REMOTE_CLI_AGENT_MAX_STATUS_POLLS = $(if ($RemoteCliAgentMaxStatusPolls) { $RemoteCliAgentMaxStatusPolls } else { "90" })
     REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS = $(if ($RemoteCliAgentStatusPollIntervalMs) { $RemoteCliAgentStatusPollIntervalMs } else { "2000" })
   }
@@ -196,6 +196,6 @@ Write-Host "Namespace: $resolvedNamespace"
 Write-Host "ConfigMap: $ConfigMapName"
 Write-Host "Secret: $SecretName"
 Write-Host "REMOTE_CLI_MCP_URL: $RemoteCliMcpUrl"
-Write-Host "REMOTE_CLI_REMOTE_CODE_MODEL: $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { 'openai/gpt-5.4' })"
+Write-Host "REMOTE_CLI_REMOTE_CODE_MODEL: $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { '(gateway target default)' })"
 Write-Host "Remote CLI token present: $hasRemoteToken"
 Write-Host "Backend restarted: $(!$NoRestart)"

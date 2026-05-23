@@ -427,7 +427,6 @@ describe('RemoteCliAgentsSdkRunner', () => {
         targetId: 'prod',
         cwd: '/srv/apps/my-app',
         task: 'Fix the deployed game and verify it.',
-        model: 'openai/gpt-5.4',
         waitMs: 30000,
       },
     });

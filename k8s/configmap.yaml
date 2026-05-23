@@ -27,7 +27,8 @@ data:
   REMOTE_CLI_DEFAULT_CWD: "/srv/apps/my-app"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"
   REMOTE_CLI_AGENT_MAX_TURNS: "20"
-  REMOTE_CLI_REMOTE_CODE_MODEL: "openai/gpt-5.4"
+  # Leave empty to use the gateway target's supported default model.
+  REMOTE_CLI_REMOTE_CODE_MODEL: ""
   REMOTE_CLI_AGENT_MAX_STATUS_POLLS: "90"
   REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS: "2000"
 

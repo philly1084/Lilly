@@ -56,7 +56,7 @@ describe('remote CLI MCP configuration', () => {
   test('uses the gateway remote_code_run model and status polling defaults', () => {
     const { config } = require('./config');
 
-    expect(config.remoteCliMcp.remoteCodeModel).toBe('openai/gpt-5.4');
+    expect(config.remoteCliMcp.remoteCodeModel).toBe('');
     expect(config.remoteCliMcp.maxStatusPolls).toBe(90);
     expect(config.remoteCliMcp.statusPollIntervalMs).toBe(2000);
   });

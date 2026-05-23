@@ -926,7 +926,7 @@ const config = {
             || process.env.KIMIBUILT_DEPLOY_TARGET_DIR
             || '',
         agentModel: process.env.REMOTE_CLI_AGENT_MODEL || process.env.OPENAI_MODEL || 'gpt-5.5',
-        remoteCodeModel: process.env.REMOTE_CLI_REMOTE_CODE_MODEL || process.env.REMOTE_CODE_MODEL || 'openai/gpt-5.4',
+        remoteCodeModel: process.env.REMOTE_CLI_REMOTE_CODE_MODEL || process.env.REMOTE_CODE_MODEL || '',
         agentApiKey: process.env.REMOTE_CLI_AGENT_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '',
         agentBaseURL: process.env.REMOTE_CLI_AGENT_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
         agentApiMode: process.env.REMOTE_CLI_AGENT_OPENAI_API_MODE || process.env.OPENAI_API_MODE || 'auto',

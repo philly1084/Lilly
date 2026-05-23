@@ -14,7 +14,8 @@ REMOTE_CLI_MCP_URL=https://gateway.example.com/mcp
 N8N_API_KEY=server-side-admin-or-n8n-key
 REMOTE_CLI_DEFAULT_TARGET_ID=prod
 REMOTE_CLI_DEFAULT_CWD=/srv/apps/my-app
-REMOTE_CLI_REMOTE_CODE_MODEL=openai/gpt-5.4
+# Optional; leave unset to use the gateway target default.
+REMOTE_CLI_REMOTE_CODE_MODEL=
 REMOTE_CLI_AGENT_MAX_STATUS_POLLS=90
 REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS=2000
 ```
@@ -28,7 +29,7 @@ REMOTE_CLI_TOOL_AUTH_SCOPES=n8n,frontend,admin
 MCP gateway contract:
 
 - The backend connects to `POST /mcp` with bearer auth. This is JSON-RPC request/response plus polling, not SSE.
-- Coding work must call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })`.
+- Coding work must call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })`; omit `model` unless the configured gateway target supports the override.
 - Long-running work must then call `remote_code_status({ jobId })`.
 - Do not send raw command execution fields such as `command`, `args`, `executable`, or `shell`; the gateway rejects them.
 - Do not include `targetId`, `cwd`, `sessionId`, or `waitMs` in `remote_code_status`; it accepts the job id only.

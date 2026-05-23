@@ -4,7 +4,7 @@ const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
 
-const DEFAULT_REMOTE_CODE_MODEL = 'openai/gpt-5.4';
+const DEFAULT_REMOTE_CODE_MODEL = '';
 const DEFAULT_MAX_STATUS_POLLS = 90;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
 
@@ -803,7 +803,7 @@ function buildRemoteCliInstructions({
     'You can modify the remote server using the remote-cli MCP tools.',
     '',
     'Use remote_code_run for coding tasks.',
-    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","model":"openai/gpt-5.4","sessionId":"<optional prior sessionId>","waitMs":30000}.',
+    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","model":"<optional supported model>","sessionId":"<optional prior sessionId>","waitMs":30000}. Omit model unless a supported gateway model was explicitly configured.',
     'Then poll with remote_code_status using only {"jobId":"<job id from remote_code_run>"}. Do not send command, args, executable, shell, targetId, cwd, sessionId, or waitMs to remote_code_status.',
     'Do not send raw command execution fields to remote_code_run. The allowed execution fields are targetId, cwd, task, model, sessionId, and waitMs.',
     `Default targetId: ${targetId}`,
