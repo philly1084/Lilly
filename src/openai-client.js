@@ -5204,6 +5204,94 @@ function buildDirectToolResponse(toolEvent, model = null, toolEvents = [], metad
     };
 }
 
+function buildDirectRemoteCliProgress(toolId = 'tool', stage = 'started', startedAt = Date.now(), detail = '') {
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const isRemoteCliAgent = toolId === 'remote-cli-agent';
+    const toolLabel = isRemoteCliAgent ? 'Remote CLI agent' : toolId;
+    const runningDetail = elapsedSeconds > 0
+        ? `${toolLabel} is still working (${elapsedSeconds}s elapsed).`
+        : `${toolLabel} is starting.`;
+    const summary = detail || (
+        stage === 'completed'
+            ? `${toolLabel} finished; preparing the result.`
+            : stage === 'failed'
+                ? `${toolLabel} hit a blocker.`
+                : runningDetail
+    );
+    const runningStatus = stage === 'completed'
+        ? 'completed'
+        : stage === 'failed'
+            ? 'failed'
+            : 'in_progress';
+
+    return {
+        phase: stage === 'failed' ? 'blocked' : (stage === 'completed' ? 'finalizing' : 'executing'),
+        reasoningSummary: summary,
+        percent: stage === 'completed'
+            ? 92
+            : stage === 'failed'
+                ? 100
+                : Math.min(85, 18 + Math.floor(elapsedSeconds / 30) * 8),
+        steps: [
+            { title: 'Choose remote agent lane', status: 'completed' },
+            { title: `${toolLabel} run`, status: runningStatus },
+            { title: 'Return proof markers', status: stage === 'completed' ? 'in_progress' : 'pending' },
+        ],
+        toolEvents: [{
+            toolId,
+            stage: runningStatus,
+            detail: summary,
+        }],
+    };
+}
+
+function startDirectRemoteCliProgress(toolContext = {}, toolId = 'tool') {
+    const onProgress = typeof toolContext?.onProgress === 'function' ? toolContext.onProgress : null;
+    if (!onProgress || toolId !== 'remote-cli-agent') {
+        return null;
+    }
+
+    const startedAt = Date.now();
+    let stopped = false;
+    const emit = (stage = 'started', detail = '') => {
+        if (stopped && stage !== 'completed' && stage !== 'failed') {
+            return;
+        }
+        try {
+            onProgress(buildDirectRemoteCliProgress(toolId, stage, startedAt, detail));
+        } catch (error) {
+            console.warn('[OpenAI] Failed to emit direct remote-cli-agent progress:', error?.message || error);
+        }
+    };
+    const interval = setInterval(() => {
+        emit('heartbeat');
+    }, 15000);
+    if (typeof interval.unref === 'function') {
+        interval.unref();
+    }
+
+    emit('started', 'Remote CLI agent started; waiting for remote_code_run/status proof markers.');
+
+    return {
+        complete() {
+            if (stopped) {
+                return;
+            }
+            stopped = true;
+            clearInterval(interval);
+            emit('completed');
+        },
+        fail(error = null) {
+            if (stopped) {
+                return;
+            }
+            stopped = true;
+            clearInterval(interval);
+            emit('failed', `Remote CLI agent failed: ${error?.message || 'unknown error'}`);
+        },
+    };
+}
+
 async function runDirectRequiredToolAction({
     toolManager,
     requiredToolId,
@@ -5297,7 +5385,16 @@ async function runDirectRequiredToolAction({
         },
     };
 
-    const result = await executeAutomaticToolCall(toolManager, toolCall, toolContext);
+    console.log(`[OpenAI] Direct required tool execution starting for '${requiredToolId}'`);
+    const progress = startDirectRemoteCliProgress(toolContext, requiredToolId);
+    let result;
+    try {
+        result = await executeAutomaticToolCall(toolManager, toolCall, toolContext);
+        progress?.complete();
+    } catch (error) {
+        progress?.fail(error);
+        throw error;
+    }
     const toolEvent = {
         toolCall: normalizeToolCall(toolCall),
         result,

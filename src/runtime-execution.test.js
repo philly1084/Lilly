@@ -174,6 +174,7 @@ describe('runtime-execution', () => {
     });
 
     test('passes remote-cli-agent control state into agent-directed tool context', async () => {
+        const onProgress = jest.fn();
         settingsController.settings = {
             ...settingsController.getDefaultSettings(),
             orchestration: {
@@ -188,6 +189,7 @@ describe('runtime-execution', () => {
             sessionId: 'session-remote-agent-directed',
             input: 'go ahead and apply the patch',
             memoryInput: 'go ahead and apply the patch',
+            onProgress,
             session: {
                 metadata: {
                     controlState: {
@@ -214,6 +216,7 @@ describe('runtime-execution', () => {
                 controlState: expect.objectContaining({
                     lastToolIntent: 'remote-cli-agent',
                 }),
+                onProgress,
             }),
         }));
     });

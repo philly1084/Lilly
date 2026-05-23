@@ -2797,6 +2797,40 @@ describe('openai-client automatic tool orchestration helpers', () => {
         );
     });
 
+    test('emits progress for direct remote-cli-agent runs so bypass streams do not look frozen', async () => {
+        const toolManager = createToolManager();
+        const prompt = 'go ahead and apply the patch';
+        const progressEvents = [];
+
+        await __testUtils.runDirectRequiredToolAction({
+            toolManager,
+            requiredToolId: 'remote-cli-agent',
+            selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt,
+            toolContext: {
+                executionProfile: 'remote-build',
+                onProgress: (progress) => progressEvents.push(progress),
+            },
+            model: 'gpt-5.5',
+        });
+
+        expect(progressEvents.length).toBeGreaterThanOrEqual(2);
+        expect(progressEvents[0]).toMatchObject({
+            phase: 'executing',
+            toolEvents: [expect.objectContaining({
+                toolId: 'remote-cli-agent',
+                stage: 'in_progress',
+            })],
+        });
+        expect(progressEvents[progressEvents.length - 1]).toMatchObject({
+            phase: 'finalizing',
+            toolEvents: [expect.objectContaining({
+                toolId: 'remote-cli-agent',
+                stage: 'completed',
+            })],
+        });
+    });
+
     test('surfaces remote-cli-agent diagnostics directly on connection failure', async () => {
         const toolManager = createToolManager();
         const prompt = 'Build and deploy an app on the remote k3s server, but fail remote cli.';

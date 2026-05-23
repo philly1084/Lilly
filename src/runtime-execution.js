@@ -460,6 +460,7 @@ async function executeConversationRuntime(app, params = {}) {
     const effectiveScopedToolContext = {
         ...scopedToolContext,
         metadata: effectiveParams.metadata || params.metadata || {},
+        ...(typeof params.onProgress === 'function' ? { onProgress: params.onProgress } : {}),
         piiCleansing: piiResult,
         piiEntries: [
             ...(Array.isArray(scopedToolContext?.piiEntries) ? scopedToolContext.piiEntries : []),
