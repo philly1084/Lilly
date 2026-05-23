@@ -324,6 +324,191 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(result.finalOutput).toContain('remote_code_status requires jobId');
   });
 
+  test('does not poll remote_code_status when leaked remote_code_run is running without jobId', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-running-no-job';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_status') {
+          throw new Error('remote_code_status should not be called without jobId');
+        }
+        return {
+          structuredContent: {
+            status: 'running',
+            sessionId: 'remote-session-running-no-job',
+          },
+          content: [{
+            type: 'text',
+            text: '{"status":"running","sessionId":"remote-session-running-no-job"}',
+          }],
+        };
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: JSON.stringify({
+            tool_calls: [{
+              id: 'call_1',
+              name: 'remote_code_run',
+              arguments: {
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                task: 'Run a smoke check.',
+                waitMs: 30000,
+              },
+            }],
+          }),
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.5',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Run a smoke check.',
+      adminMode: false,
+    });
+
+    expect(calls.toolCalls).toEqual([{
+      name: 'remote_code_run',
+      args: {
+        targetId: 'prod',
+        cwd: '/srv/apps/my-app',
+        task: 'Run a smoke check.',
+        waitMs: 30000,
+      },
+    }]);
+    expect(result).toMatchObject({
+      sessionId: 'remote-session-running-no-job',
+      remoteCodeJobId: null,
+      blocker: 'remote_code_run returned running without a jobId; cannot poll remote_code_status safely',
+      completionStatus: 'blocked',
+    });
+    expect(result.finalOutput).toContain('running without a jobId');
+  });
+
+  test('recovers from inner model remote_code_status missing jobId errors with direct remote_code_run fallback', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-recovered';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              'Recovered through direct remote_code_run.',
+              'REMOTE_CLI_SESSION_ID=remote-session-recovered',
+              'WORKSPACE=/srv/apps/my-app',
+              'WHAT_CHANGED=Recovered after the inner agent attempted remote_code_status without a jobId.',
+              'VERIFY_COMMANDS=remote_code_run',
+              'VERIFY_RESULTS=remote_code_run returned completion markers.',
+              'PUBLIC_URL=not_available',
+              'BLOCKER=none',
+            ].join('\n'),
+          }],
+        };
+      }
+    }
+
+    class FakeAgent {}
+    class FakeOpenAIProvider {}
+    class FakeRunner {
+      async run() {
+        throw new Error('MCP error -32000: invalid_type path jobId received undefined Required');
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.5',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Run the recovered smoke check.',
+      waitMs: 30000,
+      adminMode: false,
+    });
+
+    expect(calls.toolCalls).toEqual([{
+      name: 'remote_code_run',
+      args: {
+        targetId: 'prod',
+        cwd: '/srv/apps/my-app',
+        task: 'Run the recovered smoke check.',
+        waitMs: 30000,
+      },
+    }]);
+    expect(result).toMatchObject({
+      sessionId: 'remote-session-recovered',
+      whatChanged: 'Recovered after the inner agent attempted remote_code_status without a jobId.',
+      completionStatus: 'complete',
+    });
+    expect(result.finalOutput).toContain('Recovered through direct remote_code_run.');
+  });
+
   test('connects Streamable HTTP MCP with bearer auth and closes it after the run', async () => {
     const calls = {
       apiModes: [],

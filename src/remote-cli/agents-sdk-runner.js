@@ -669,6 +669,23 @@ function summarizeRemoteCliError(error = null) {
   };
 }
 
+function isRemoteCodeStatusMissingJobIdError(error = null) {
+  const summary = summarizeRemoteCliError(error);
+  const haystack = [
+    summary.message,
+    summary.code,
+    summary.causeMessage,
+    summary.responseMessage,
+    error?.stack,
+    JSON.stringify(error?.body || {}),
+    JSON.stringify(error?.response?.data || {}),
+  ].filter(Boolean).join('\n');
+
+  return /remote_code_status|jobId|job_id/i.test(haystack)
+    && /jobId|job_id/i.test(haystack)
+    && /required|invalid_type|undefined|missing/i.test(haystack);
+}
+
 function isKimiModel(value = '') {
   return /^kimi(?:\b|-|_)/i.test(normalizeText(value));
 }
@@ -999,9 +1016,30 @@ class RemoteCliAgentsSdkRunner {
     const pollOutputs = [];
 
     if (call.name === 'remote_code_run' && isRunningRemoteCodeStatus(jobState.status)) {
+      if (!jobState.jobId) {
+        return appendFallbackMarkers([
+          'remote_code_run started a remote job, but the MCP gateway did not return a jobId.',
+          `remote_code_status=${jobState.status || 'running'}`,
+          remoteSessionId ? `REMOTE_CLI_SESSION_ID=${remoteSessionId}` : '',
+        ].filter(Boolean).join('\n'), {
+          targetId: args.targetId || targetId,
+          cwd: args.cwd || cwd,
+          mcpSessionId: remoteCli.sessionId || '',
+          remoteSessionId,
+          fallbackStatus: 'blocked',
+          fallbackWhatChanged: 'Started the leaked remote_code_run MCP call, but skipped remote_code_status because no jobId was available.',
+          fallbackVerifyCommand: 'remote_code_run',
+          fallbackVerifyResult: 'Blocked: remote_code_run returned a running status without a jobId for remote_code_status.',
+          blocker: 'remote_code_run returned running without a jobId; cannot poll remote_code_status safely',
+        });
+      }
+
       const pollLimit = normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
       const statusWaitMs = normalizePositiveInteger(args.waitMs || waitMs, waitMs, { min: 1000, max: 300000 });
       for (let attempt = 0; attempt < pollLimit && isRunningRemoteCodeStatus(jobState.status); attempt += 1) {
+        if (!jobState.jobId) {
+          break;
+        }
         const statusArgs = {
           targetId: args.targetId || targetId,
           ...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
@@ -1207,6 +1245,60 @@ class RemoteCliAgentsSdkRunner {
     } catch (error) {
       if (error?.name === 'RemoteCliAgentError') {
         throw error;
+      }
+
+      if (isRemoteCodeStatusMissingJobIdError(error)) {
+        console.warn('[RemoteCliAgentsSdkRunner] Inner agent attempted remote_code_status without jobId; recovering with direct remote_code_run fallback.');
+        try {
+          const finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, [{
+            name: 'remote_code_run',
+            arguments: {
+              targetId,
+              ...(cwd ? { cwd } : {}),
+              task,
+              waitMs,
+              ...(sessionId ? { sessionId } : {}),
+            },
+          }], {
+            targetId,
+            cwd,
+            task,
+            waitMs,
+            sessionId,
+            jobId,
+            maxStatusPolls,
+          });
+          const runMetadata = extractRemoteCliRunMetadata(finalOutput);
+
+          return {
+            finalOutput,
+            mcpSessionId: remoteCli.sessionId || input.mcpSessionId || null,
+            targetId,
+            cwd: runMetadata.workspace || cwd,
+            sessionId: runMetadata.sessionId || sessionId || null,
+            remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
+            remoteCodeJobId: runMetadata.jobId || null,
+            gitRepo: runMetadata.gitRepo || null,
+            gitBranch: runMetadata.gitBranch || null,
+            gitBaseCommit: runMetadata.gitBaseCommit || null,
+            gitCommit: runMetadata.gitCommit || null,
+            changedFiles: runMetadata.changedFiles || [],
+            deployment: runMetadata.deployment || null,
+            publicHost: runMetadata.publicHost || null,
+            publicUrl: runMetadata.publicUrl || null,
+            uiCheckReport: runMetadata.uiCheckReport || null,
+            uiScreenshots: runMetadata.uiScreenshots || [],
+            whatChanged: runMetadata.whatChanged || null,
+            verifyCommands: runMetadata.verifyCommands || [],
+            verifyResults: runMetadata.verifyResults || [],
+            blocker: runMetadata.blocker || null,
+            completionStatus: runMetadata.completionStatus || 'unknown',
+            model,
+            apiMode,
+          };
+        } catch (fallbackError) {
+          console.warn('[RemoteCliAgentsSdkRunner] Direct remote_code_run recovery failed after missing jobId status call:', fallbackError?.message || fallbackError);
+        }
       }
 
       const diagnostics = buildRemoteCliDiagnostics({
