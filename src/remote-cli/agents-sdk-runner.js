@@ -2,103 +2,9 @@
 
 const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
-const { parseLenientJson } = require('../utils/lenient-json');
-
-const DEFAULT_MAX_STATUS_POLLS = 3;
-const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
-const REMOTE_CLI_AGENT_RUN_TIMEOUT_CODE = 'REMOTE_CLI_AGENT_RUN_TIMEOUT';
 
 function normalizeText(value = '') {
   return String(value || '').trim();
-}
-
-function normalizeKey(value = '') {
-  return String(value || '')
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .toLowerCase();
-}
-
-function normalizeToolName(value = '') {
-  const compact = String(value || '')
-    .replace(/\s+/g, '')
-    .trim();
-  const key = normalizeKey(compact);
-  if (key === 'remotecoderun') {
-    return 'remote_code_run';
-  }
-  if (key === 'remotecodestatus') {
-    return 'remote_code_status';
-  }
-  return compact;
-}
-
-function normalizeLeakedPath(value = '') {
-  const normalized = normalizeText(value);
-  if (!normalized || !/[\\/]/.test(normalized)) {
-    return normalized;
-  }
-
-  return normalized
-    .replace(/\s*([\\/])\s*/g, '$1')
-    .replace(/\s*-\s*/g, '-')
-    .replace(/\s+/g, '');
-}
-
-function buildLooseJsonKeyPattern(key = '') {
-  const token = normalizeKey(key);
-  return token
-    .split('')
-    .map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('[\\s_]*');
-}
-
-function extractLooseJsonStringField(source = '', keys = []) {
-  const text = String(source || '');
-  for (const key of keys) {
-    const pattern = buildLooseJsonKeyPattern(key);
-    if (!pattern) {
-      continue;
-    }
-    const match = text.match(new RegExp(`["']\\s*${pattern}\\s*["']\\s*:\\s*["']([\\s\\S]*?)["']`, 'i'));
-    if (match?.[1] !== undefined) {
-      return match[1]
-        .replace(/\\(["'\\/bfnrt])/g, '$1')
-        .replace(/\\u([0-9a-f]{4})/gi, (_all, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
-    }
-  }
-
-  return undefined;
-}
-
-function extractLooseJsonNumberField(source = '', keys = []) {
-  const text = String(source || '');
-  for (const key of keys) {
-    const pattern = buildLooseJsonKeyPattern(key);
-    if (!pattern) {
-      continue;
-    }
-    const match = text.match(new RegExp(`["']\\s*${pattern}\\s*["']\\s*:\\s*([0-9][0-9\\s_]*)`, 'i'));
-    if (match?.[1]) {
-      return match[1].replace(/[^0-9]/g, '');
-    }
-  }
-
-  return undefined;
-}
-
-function getValueByNormalizedKey(source = {}, keys = []) {
-  if (!source || typeof source !== 'object') {
-    return undefined;
-  }
-
-  const wanted = new Set(keys.map((key) => normalizeKey(key)));
-  for (const [key, value] of Object.entries(source)) {
-    if (wanted.has(normalizeKey(key))) {
-      return value;
-    }
-  }
-
-  return undefined;
 }
 
 function maskSecretValue(value = '') {
@@ -232,22 +138,12 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
   const text = String(finalOutput || '');
   const sessionId = readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID'])
     || cleanMarkerValue(text.match(/remote\s+session\s*:\s*`?([^`\s]+)/i)?.[1] || '');
-  const jobId = readMarkerLine(text, ['REMOTE_CLI_JOB_ID', 'REMOTE_CODE_JOB_ID', 'JOB_ID'])
-    || cleanMarkerValue(text.match(/(?:job\s*id|jobId|job_id|runId|run_id)\s*[:=]\s*`?([a-z0-9_.:-]{3,128})/i)?.[1] || '');
   const workspace = readMarkerLine(text, ['WORKSPACE', 'REMOTE_WORKSPACE', 'CWD'])
     || cleanMarkerValue(text.match(/workspace\s*:\s*`?([^`\n]+)/i)?.[1] || '');
   const gitRepo = readMarkerLine(text, ['GIT_REPO', 'GIT_REMOTE', 'REPOSITORY'])
     || cleanMarkerValue(text.match(/(?:git\s+repo|repository)\s*:\s*`?([^`\n]+)/i)?.[1] || '');
-  const gitBranch = readMarkerLine(text, ['GIT_BRANCH', 'BRANCH']);
-  const gitBaseCommit = readMarkerLine(text, ['GIT_BASE_COMMIT', 'BASE_COMMIT']);
   const gitCommit = readMarkerLine(text, ['GIT_COMMIT', 'COMMIT'])
     || cleanMarkerValue(text.match(/(?:git\s+commit|commit)\s*:\s*`?([a-f0-9]{7,40})/i)?.[1] || '');
-  const changedFiles = Array.from(new Set(
-    readMarkerLines(text, ['CHANGED_FILES', 'GIT_CHANGED_FILES'])
-      .flatMap((value) => value.split(','))
-      .map((value) => cleanMarkerValue(value))
-      .filter(Boolean),
-  ));
   const deployment = readMarkerLine(text, ['DEPLOYMENT', 'K8S_DEPLOYMENT']);
   const publicHost = readMarkerLine(text, ['PUBLIC_HOST', 'HOST', 'URL'])
     || cleanMarkerValue(text.match(/https?:\/\/([^/\s`]+)/i)?.[1] || '');
@@ -282,13 +178,9 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
 
   return {
     ...(sessionId ? { sessionId } : {}),
-    ...(jobId ? { jobId } : {}),
     ...(workspace ? { workspace } : {}),
     ...(gitRepo ? { gitRepo } : {}),
-    ...(gitBranch ? { gitBranch } : {}),
-    ...(gitBaseCommit ? { gitBaseCommit } : {}),
     ...(gitCommit ? { gitCommit } : {}),
-    ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(deployment ? { deployment } : {}),
     ...(publicHost ? { publicHost } : {}),
     ...(publicUrl ? { publicUrl } : {}),
@@ -302,366 +194,12 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
   };
 }
 
-function normalizeMcpContentText(result = {}) {
-  if (!result) {
-    return '';
-  }
-
-  if (typeof result === 'string') {
-    return result;
-  }
-
-  const contentEntries = Array.isArray(result)
-    ? result
-    : (Array.isArray(result.content) ? result.content : null);
-  if (contentEntries) {
-    return contentEntries
-      .map((entry) => {
-        if (typeof entry === 'string') {
-          return entry;
-        }
-        if (entry?.type === 'text' && typeof entry.text === 'string') {
-          return entry.text;
-        }
-        if (typeof entry?.text === 'string') {
-          return entry.text;
-        }
-        return JSON.stringify(entry);
-      })
-      .filter(Boolean)
-      .join('\n');
-  }
-
-  if (typeof result.text === 'string') {
-    return result.text;
-  }
-
-  if (result.structuredContent || result.data) {
-    return JSON.stringify(result.structuredContent || result.data, null, 2);
-  }
-
-  return JSON.stringify(result, null, 2);
-}
-
-function findNestedNormalizedValue(source = {}, keys = [], depth = 0) {
-  if (!source || typeof source !== 'object' || depth > 3) {
-    return undefined;
-  }
-
-  const direct = getValueByNormalizedKey(source, keys);
-  if (direct !== undefined) {
-    return direct;
-  }
-
-  for (const value of Object.values(source)) {
-    if (value && typeof value === 'object') {
-      const nested = findNestedNormalizedValue(value, keys, depth + 1);
-      if (nested !== undefined) {
-        return nested;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function collectRemoteCodeStateCandidates(result = {}, text = '') {
-  const candidates = [];
-  const add = (value) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      candidates.push(value);
-    }
-  };
-  const addContentEntries = (value) => {
-    const entries = Array.isArray(value)
-      ? value
-      : (Array.isArray(value?.content) ? value.content : []);
-    for (const entry of entries) {
-      add(entry);
-      add(entry?.structuredContent);
-      add(entry?.data);
-      const entryText = typeof entry === 'string' ? entry : entry?.text;
-      const parsedEntryText = typeof entryText === 'string' ? parseLenientJson(entryText) : null;
-      add(parsedEntryText);
-      add(parsedEntryText?.structuredContent);
-      add(parsedEntryText?.data);
-      add(parsedEntryText?.result);
-      add(parsedEntryText?.result?.structuredContent);
-    }
-  };
-
-  add(result);
-  add(result?.structuredContent);
-  add(result?.data);
-  addContentEntries(result);
-  const parsedText = parseLenientJson(text);
-  add(parsedText);
-  add(parsedText?.structuredContent);
-  add(parsedText?.data);
-  add(parsedText?.result);
-  add(parsedText?.result?.structuredContent);
-  addContentEntries(parsedText);
-
-  return candidates;
-}
-
-function extractRemoteCodeJobState(result = {}, textOverride = '') {
-  const text = textOverride || normalizeMcpContentText(result);
-  const candidates = collectRemoteCodeStateCandidates(result, text);
-  const state = {};
-
-  for (const candidate of candidates) {
-    state.status = state.status || normalizeText(findNestedNormalizedValue(candidate, ['status', 'state', 'phase']));
-    state.jobId = state.jobId || normalizeText(findNestedNormalizedValue(candidate, ['jobId', 'job_id', 'runId', 'run_id', 'remoteCodeJobId', 'remote_code_job_id', 'id']));
-    state.sessionId = state.sessionId || normalizeText(findNestedNormalizedValue(candidate, ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id']));
-  }
-
-  if (!state.status) {
-    state.status = normalizeText(
-      text.match(/(?:^|[\s,{])["']?(?:status|state|phase)["']?\s*[:=]\s*["']?([a-z_ -]{3,32})["']?/i)?.[1] || '',
-    );
-  }
-  if (!state.jobId) {
-    state.jobId = normalizeText(
-      text.match(/(?:^|[\s,{])["']?(?:jobId|job_id|runId|run_id|remoteCodeJobId|remote_code_job_id)["']?\s*[:=]\s*["']?([a-z0-9_.:-]{3,96})["']?/i)?.[1] || '',
-    );
-  }
-  if (!state.jobId) {
-    state.jobId = normalizeText(
-      text.match(/(?:^|[\s,{])["']?id["']?\s*[:=]\s*["']?(rcli_[a-z0-9_.:-]{3,96})["']?/i)?.[1] || '',
-    );
-  }
-  if (!state.sessionId) {
-    state.sessionId = normalizeText(
-      text.match(/(?:^|[\s,{])["']?(?:sessionId|session_id|remoteSessionId|remote_session_id)["']?\s*[:=]\s*["']?([a-z0-9_.:-]{3,128})["']?/i)?.[1] || '',
-    );
-  }
-
-  return {
-    status: normalizeText(state.status).toLowerCase().replace(/\s+/g, '_'),
-    jobId: cleanMarkerValue(state.jobId),
-    sessionId: cleanMarkerValue(state.sessionId),
-  };
-}
-
-function isRunningRemoteCodeStatus(status = '') {
-  return /^(?:running|queued|pending|active|started|in_progress|in-progress|processing|working)$/.test(
-    normalizeText(status).toLowerCase().replace(/\s+/g, '_'),
-  );
-}
-
-function appendFallbackMarkers(text = '', {
-  targetId = '',
-  cwd = '',
-  mcpSessionId = '',
-  remoteSessionId = '',
-  remoteJobId = '',
-  fallbackStatus = 'complete',
-  fallbackWhatChanged = '',
-  fallbackVerifyCommand = '',
-  fallbackVerifyResult = '',
-  blocker = '',
-} = {}) {
-  const source = normalizeText(text) ? text : 'remote_code_run completed without text output.';
-  const existing = extractRemoteCliRunMetadata(source);
-  const lines = [source.trim()];
-
-  if (!existing.sessionId && remoteSessionId) {
-    lines.push(`REMOTE_CLI_SESSION_ID=${remoteSessionId}`);
-  }
-  if (!existing.jobId && remoteJobId) {
-    lines.push(`REMOTE_CLI_JOB_ID=${remoteJobId}`);
-  }
-  if (mcpSessionId) {
-    lines.push(`MCP_SESSION_ID=${mcpSessionId}`);
-  }
-  if (!existing.workspace && cwd) {
-    lines.push(`WORKSPACE=${cwd}`);
-  }
-  if (!existing.whatChanged) {
-    lines.push(`WHAT_CHANGED=${fallbackWhatChanged || 'Executed leaked remote_code_run MCP call directly after the inner agent returned it as raw tool-call JSON.'}`);
-  }
-  if (!Array.isArray(existing.verifyCommands) || existing.verifyCommands.length === 0) {
-    lines.push(`VERIFY_COMMANDS=${fallbackVerifyCommand || 'remote_code_run'}`);
-  }
-  if (!Array.isArray(existing.verifyResults) || existing.verifyResults.length === 0) {
-    lines.push(`VERIFY_RESULTS=${fallbackVerifyResult || (fallbackStatus === 'complete'
-      ? 'remote_code_run completed through the MCP gateway.'
-      : 'remote_code_run started but did not reach a terminal status before the fallback poll limit.')}`);
-  }
-  if (!existing.publicUrl) {
-    lines.push('PUBLIC_URL=not_available');
-  }
-  if (!existing.blocker) {
-    lines.push(`BLOCKER=${blocker || (fallbackStatus === 'complete' ? 'none' : 'remote_code_run still running')}`);
-  }
-  if (targetId) {
-    lines.push(`REMOTE_CLI_TARGET=${targetId}`);
-  }
-
-  return lines.join('\n');
-}
-
 function normalizePositiveInteger(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
   return Math.max(min, Math.min(parsed, max));
-}
-
-function createRemoteCliAgentRunTimeoutError(timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
-  const error = new Error(`remote-cli-agent inner model run timed out after ${timeoutMs}ms before returning a result.`);
-  error.name = 'RemoteCliAgentRunTimeoutError';
-  error.code = REMOTE_CLI_AGENT_RUN_TIMEOUT_CODE;
-  error.timeoutMs = timeoutMs;
-  return error;
-}
-
-function isRemoteCliAgentRunTimeoutError(error) {
-  return error?.code === REMOTE_CLI_AGENT_RUN_TIMEOUT_CODE
-    || error?.name === 'RemoteCliAgentRunTimeoutError';
-}
-
-async function withAgentRunTimeout(promise, timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
-  let timer = null;
-  const timeout = new Promise((_resolve, reject) => {
-    timer = setTimeout(() => reject(createRemoteCliAgentRunTimeoutError(timeoutMs)), timeoutMs);
-    if (typeof timer.unref === 'function') {
-      timer.unref();
-    }
-  });
-
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
-function normalizeRemoteToolArgs(args = {}) {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return {};
-  }
-
-  const normalized = {};
-  const fieldMap = {
-    targetId: ['targetId', 'target_id', 'target'],
-    cwd: ['cwd', 'workingDirectory', 'working_directory'],
-    task: ['task', 'prompt', 'message'],
-    waitMs: ['waitMs', 'wait_ms'],
-    sessionId: ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id'],
-    jobId: ['jobId', 'job_id'],
-  };
-
-  for (const [outputKey, aliases] of Object.entries(fieldMap)) {
-    const value = getValueByNormalizedKey(args, aliases);
-    if (value !== undefined && value !== null && String(value).trim() !== '') {
-      if (outputKey === 'waitMs') {
-        normalized[outputKey] = normalizePositiveInteger(value, 30000, { min: 1000, max: 300000 });
-      } else if (outputKey === 'cwd') {
-        normalized[outputKey] = normalizeLeakedPath(value);
-      } else if (outputKey === 'task') {
-        normalized[outputKey] = normalizeText(value).replace(/\s+/g, ' ');
-      } else {
-        normalized[outputKey] = normalizeText(value).replace(/\s+/g, '');
-      }
-    }
-  }
-
-  return normalized;
-}
-
-function parseToolArguments(value = {}) {
-  if (!value) {
-    return {};
-  }
-
-  if (typeof value === 'object') {
-    return value;
-  }
-
-  return parseLenientJson(value) || {};
-}
-
-function extractRawMcpToolCallsFromLooseText(finalOutput = '') {
-  const text = String(finalOutput || '');
-  const normalizedText = normalizeKey(text);
-  if (!normalizedText.includes('toolcalls') || !normalizedText.includes('arguments')) {
-    return [];
-  }
-
-  const extractedName = normalizeToolName(extractLooseJsonStringField(text, ['name', 'toolName']) || '');
-  const name = extractedName === 'remote_code_run' || normalizedText.includes('remotecoderun')
-    ? 'remote_code_run'
-    : (extractedName === 'remote_code_status' || normalizedText.includes('remotecodestatus')
-      ? 'remote_code_status'
-      : '');
-  if (!name) {
-    return [];
-  }
-
-  const args = {};
-  const targetId = extractLooseJsonStringField(text, ['targetId', 'target_id', 'target']);
-  const cwd = extractLooseJsonStringField(text, ['cwd', 'workingDirectory', 'working_directory']);
-  const waitMs = extractLooseJsonNumberField(text, ['waitMs', 'wait_ms']);
-  const sessionId = extractLooseJsonStringField(text, ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id']);
-  const jobId = extractLooseJsonStringField(text, ['jobId', 'job_id']);
-
-  if (targetId) {
-    args.targetId = targetId;
-  }
-  if (cwd) {
-    args.cwd = cwd;
-  }
-  if (waitMs) {
-    args.waitMs = waitMs;
-  }
-  if (sessionId) {
-    args.sessionId = sessionId;
-  }
-  if (jobId) {
-    args.jobId = jobId;
-  }
-
-  return [{
-    name,
-    arguments: normalizeRemoteToolArgs(args),
-  }];
-}
-
-function extractRawMcpToolCalls(finalOutput = '') {
-  const parsed = parseLenientJson(finalOutput);
-  if (!parsed || typeof parsed !== 'object') {
-    return extractRawMcpToolCallsFromLooseText(finalOutput);
-  }
-
-  const calls = Array.isArray(parsed)
-    ? parsed
-    : (getValueByNormalizedKey(parsed, ['tool_calls', 'toolCalls', 'calls']) || []);
-
-  const parsedCalls = (Array.isArray(calls) ? calls : [])
-    .map((call) => {
-      const functionShape = call?.function || {};
-      const name = normalizeToolName(
-        getValueByNormalizedKey(call, ['name'])
-        || getValueByNormalizedKey(functionShape, ['name'])
-        || '',
-      );
-      const rawArguments = getValueByNormalizedKey(call, ['arguments', 'args'])
-        || getValueByNormalizedKey(functionShape, ['arguments', 'args'])
-        || {};
-      return {
-        name,
-        arguments: normalizeRemoteToolArgs(parseToolArguments(rawArguments)),
-      };
-    })
-    .filter((call) => call.name === 'remote_code_run' || call.name === 'remote_code_status');
-  return parsedCalls.length > 0
-    ? parsedCalls
-    : extractRawMcpToolCallsFromLooseText(finalOutput);
 }
 
 function isOfficialOpenAIBaseURL(baseURL = '') {
@@ -716,27 +254,6 @@ function summarizeRemoteCliError(error = null) {
   };
 }
 
-function isRemoteCodeStatusMissingJobIdError(error = null) {
-  const summary = summarizeRemoteCliError(error);
-  const haystack = [
-    summary.message,
-    summary.code,
-    summary.causeMessage,
-    summary.responseMessage,
-    error?.stack,
-    JSON.stringify(error?.body || {}),
-    JSON.stringify(error?.response?.data || {}),
-  ].filter(Boolean).join('\n');
-
-  return /remote_code_status|jobId|job_id/i.test(haystack)
-    && /jobId|job_id/i.test(haystack)
-    && /required|invalid_type|undefined|missing/i.test(haystack);
-}
-
-function isKimiModel(value = '') {
-  return /^kimi(?:\b|-|_)/i.test(normalizeText(value));
-}
-
 function buildRemoteCliDiagnostics({
   stage,
   error,
@@ -757,9 +274,6 @@ function buildRemoteCliDiagnostics({
   }
   if (apiMode === 'chat') {
     hintParts.push('REMOTE_CLI_AGENT_OPENAI_API_MODE is chat, so the configured base URL must implement /v1/chat/completions for the selected model.');
-  }
-  if (isKimiModel(model)) {
-    hintParts.push('remote-cli-agent requires an OpenAI tool-calling model; set REMOTE_CLI_AGENT_MODEL to an OpenAI model instead of inheriting OPENAI_MODEL=kimi-for-coding.');
   }
   if (model) {
     hintParts.push(`Verify REMOTE_CLI_AGENT_MODEL or OPENAI_MODEL is accepted by that gateway: ${model}.`);
@@ -854,7 +368,6 @@ function buildRemoteCliInstructions({
   targetId,
   cwd,
   sessionId = '',
-  jobId = '',
   waitMs = 30000,
   adminMode = false,
   extraInstructions = '',
@@ -864,9 +377,6 @@ function buildRemoteCliInstructions({
     'You can modify the remote server using the remote-cli MCP tools.',
     '',
     'Use remote_code_run for coding tasks.',
-    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","waitMs":30000,"sessionId":"<optional prior sessionId>"}. It may return fields like {"id":"<job id>","jobId":"<job id>","status":"running|completed|failed","sessionId":"<remote session id>","stdout":"...","stderr":"..."}.',
-    'Tool shape: call remote_code_status with {"targetId":"<gateway target id>","jobId":"<job id from remote_code_run>","sessionId":"<remote session id when available>","waitMs":30000}. It returns the same status/session/stdout/stderr shape. When status is running, poll status instead of dumping the raw JSON as the final answer.',
-    'When reporting back, summarize stdout/stderr into proof markers; do not paste full raw tool JSON or giant command output unless the user explicitly asks for the log.',
     `Default targetId: ${targetId}`,
     cwd ? `Default cwd: ${cwd}` : 'Default cwd: use the gateway target default.',
     '',
@@ -882,10 +392,8 @@ function buildRemoteCliInstructions({
     'GitLab-backed source-control skill: first discover whether the workspace already has an origin, then compare that host with the configured Git provider host. If it matches, keep using that remote as the editable source of truth.',
     'When GitLab is configured but no matching origin exists, check whether non-interactive credentials are available in the remote environment before assuming the user must program anything. Prefer token/askpass-based HTTPS remotes over SSH prompts.',
     'For new apps without a remote, create or use a repository under the configured GitLab group when the configured provider token is available to the backend or remote workbench. Push the deployable commit to GitLab before building or deploying so the GitLab project page, commits, and pipeline/build-event trail become the source of truth.',
-    'If the request needs GitLab observability and GitLab is configured, do not silently use the direct BuildKit/kubectl runner as the main path. When you cannot create, attach, push, or observe the GitLab repo non-interactively, report the missing credential/API/runner capability with BLOCKER=<exact blocker>; use USER_INPUT_REQUIRED only if the next action truly requires a user-owned secret, approval, or decision.',
+    'If the request needs GitLab observability and GitLab is configured, do not silently use the direct BuildKit/kubectl runner as the main path. Stop with USER_INPUT_REQUIRED and name the missing credential/API/runner capability when you cannot create, attach, push, or observe the GitLab repo non-interactively.',
     'If GitLab is not configured or not reachable and the user did not require GitLab observability, deliberately fall back to a local git repo plus the direct BuildKit/kubectl runner path. Say the fallback is source-controlled locally and name what is missing for GitLab automation.',
-    'For local-git fallback, create or reuse a repository in the remote workspace before edits, keep the agent work on an agent/<run-id> branch when practical, capture git status/diff before deploy, commit before image build or manifest rollout, and use git revert for rollback so the user can see and undo AI work without GitLab/Gitea.',
-    'For remote-cli-agent edit/deploy runs, treat Git visibility as required completion evidence: report GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, and CHANGED_FILES markers when a workspace was changed. If there is no remote origin, set GIT_REPO to the local workspace path and still include the local commit SHA.',
     'Before committing in a fresh remote workspace, set repo-local git user.name and user.email if they are missing.',
     'For follow-up edits, inspect git status, git remote -v, git log, and the current source files first. Patch the existing source, preserve prior content/assets unless explicitly replacing them, commit the change, then rebuild/redeploy.',
     'Use live Kubernetes resources, mounted files, or ConfigMaps as diagnostics or recovery input only; do not leave them as the only editable source of truth for a deployed site.',
@@ -894,7 +402,6 @@ function buildRemoteCliInstructions({
     adminMode ? 'If a command is blocked by runner policy, sudo policy, missing credentials, or missing admin capability, do not retry the same blocked command. Switch to a non-privileged supported path when one exists; otherwise stop and report the exact approval, capability, credential, or sudoers change needed.' : '',
     'Track repeated errors. If the same command shape or root error fails twice without a materially different fix, stop that loop, summarize the blocker, and name the next distinct recovery option instead of wasting time retrying.',
     'If you need a user decision to finish the work, emit a concise marker line USER_INPUT_REQUIRED=<question/options> and stop; the KimiBuilt-side agent will forward that request and can steer a follow-up remote-cli-agent run with the user choice.',
-    'Do not emit USER_INPUT_REQUIRED for ordinary status updates, completed work, missing verification, repeated command failures, or blockers that can be reported directly. Use BLOCKER=<exact blocker> for those cases and still include WHAT_CHANGED, VERIFY_COMMANDS, VERIFY_RESULTS, and continuity markers.',
     'For website, dashboard, or frontend work, include visual QA in the build package: run Playwright/Chromium screenshots for desktop and mobile states when the target exposes a local preview or public URL.',
     'For website, dashboard, app, landing-page, and frontend mockup work, apply the Impressive Frontend Websites standard: infer a compact brief, make the first viewport specific to the product or workflow, build the usable experience instead of a generic placeholder, include real controls/states/interactions, and use assets that reveal the actual product, place, audience, workflow, or state.',
     'Design with restraint and specificity: avoid one-note palettes, oversized rounded/nested cards, decorative blobs, clipped text, horizontal overflow, broken image paths, and unreadable dropdown/menu/popover/dialog/tooltip states.',
@@ -905,12 +412,11 @@ function buildRemoteCliInstructions({
     'If it returns status "running", call remote_code_status with the returned jobId.',
     'If continuing prior work, reuse the returned sessionId.',
     sessionId ? `Current prior remote CLI sessionId: ${sessionId}` : '',
-    jobId ? `Current prior remote CLI jobId: ${jobId}` : '',
     'When the task includes an "Original task" and a "Current user follow-up", preserve the original task as the governing objective. Treat the follow-up as steering or continuation, not as a replacement status request.',
     'Do not let progress callbacks, foreground plan labels, or status-card text become the task. Finish the requested work and only stop for USER_INPUT_REQUIRED when a real user decision is needed.',
     'Do not try to pass raw shell commands; only use the exposed tool schema.',
     'Finish every run with completion proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, and BLOCKER=<none or exact blocker>. Use one VERIFY_COMMANDS or VERIFY_RESULTS line per distinct command/result when useful.',
-    'Also finish with marker lines for continuity when known: REMOTE_CLI_SESSION_ID=<remote_code_run sessionId>, WORKSPACE=<path>, GIT_REPO=<origin or local repo>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha before edit>, GIT_COMMIT=<sha after edit>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
+    'Also finish with marker lines for continuity when known: REMOTE_CLI_SESSION_ID=<remote_code_run sessionId>, WORKSPACE=<path>, GIT_REPO=<origin or local repo>, GIT_COMMIT=<sha>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
     extraInstructions,
   ].filter(Boolean).join('\n');
 }
@@ -920,7 +426,6 @@ function buildRemoteCliPrompt({
   targetId,
   cwd,
   sessionId = '',
-  jobId = '',
   waitMs = 30000,
   adminMode = false,
 } = {}) {
@@ -931,7 +436,6 @@ function buildRemoteCliPrompt({
     `- targetId: ${targetId}`,
     cwd ? `- cwd: ${cwd}` : '',
     sessionId ? `- continue remote CLI sessionId: ${sessionId}` : '',
-    jobId ? `- continue/check remote CLI jobId: ${jobId}` : '',
     `- waitMs: ${waitMs}`,
     adminMode ? '- admin runner mode: enabled for real remote change/deploy work; keep privilege use scoped to the task and stop on repeated blocked commands.' : '',
   ].filter(Boolean).join('\n');
@@ -953,9 +457,7 @@ class RemoteCliAgentsSdkRunner {
       defaultCwd: normalizeText(this.config.defaultCwd),
       agentModel: normalizeText(this.config.agentModel),
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
-      agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1000, max: 600000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
-      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 }),
     };
   }
 
@@ -1001,152 +503,6 @@ class RemoteCliAgentsSdkRunner {
     });
   }
 
-  async executeRawMcpToolCallFallback(remoteCli, toolCalls = [], {
-    targetId = 'prod',
-    cwd = '',
-    task = '',
-    waitMs = 30000,
-    sessionId = '',
-    jobId = '',
-    maxStatusPolls = DEFAULT_MAX_STATUS_POLLS,
-  } = {}) {
-    const call = toolCalls.find((entry) => entry.name === 'remote_code_run')
-      || toolCalls.find((entry) => entry.name === 'remote_code_status');
-    if (!call) {
-      return '';
-    }
-
-    const args = {
-      ...(call.name === 'remote_code_run'
-        ? {
-          targetId,
-          ...(cwd ? { cwd } : {}),
-          task,
-          waitMs,
-          ...(sessionId ? { sessionId } : {}),
-        }
-        : {
-          targetId,
-          ...(sessionId ? { sessionId } : {}),
-          ...(jobId ? { jobId } : {}),
-        }),
-      ...(call.arguments || {}),
-    };
-
-    if (call.name === 'remote_code_run' && !normalizeText(args.task)) {
-      args.task = task;
-    }
-    if (!normalizeText(args.targetId)) {
-      args.targetId = targetId;
-    }
-    if (cwd && !normalizeText(args.cwd)) {
-      args.cwd = cwd;
-    }
-    if (call.name === 'remote_code_status' && !normalizeText(args.jobId)) {
-      return appendFallbackMarkers('remote_code_status cannot be checked because no remote CLI jobId was available from the model output.', {
-        targetId: args.targetId || targetId,
-        cwd: args.cwd || cwd,
-        mcpSessionId: remoteCli.sessionId || '',
-        remoteSessionId: args.sessionId || sessionId,
-        fallbackStatus: 'blocked',
-        fallbackWhatChanged: 'Rejected malformed leaked remote_code_status MCP call before sending it to the gateway.',
-        fallbackVerifyCommand: 'remote_code_status',
-        fallbackVerifyResult: 'Blocked: remote_code_status requires jobId from a prior remote_code_run result.',
-        blocker: 'remote_code_status missing required jobId; start or resume with remote_code_run first',
-      });
-    }
-
-    const initialResult = await remoteCli.callTool(call.name, args);
-    let finalResult = initialResult;
-    let finalText = normalizeMcpContentText(finalResult);
-    let jobState = extractRemoteCodeJobState(finalResult, finalText);
-    let remoteSessionId = jobState.sessionId || args.sessionId || sessionId;
-    const pollOutputs = [];
-
-    if (call.name === 'remote_code_run' && isRunningRemoteCodeStatus(jobState.status)) {
-      if (!jobState.jobId) {
-        return appendFallbackMarkers([
-          'remote_code_run started a remote job, but the MCP gateway did not return a jobId.',
-          `remote_code_status=${jobState.status || 'running'}`,
-          remoteSessionId ? `REMOTE_CLI_SESSION_ID=${remoteSessionId}` : '',
-        ].filter(Boolean).join('\n'), {
-          targetId: args.targetId || targetId,
-          cwd: args.cwd || cwd,
-          mcpSessionId: remoteCli.sessionId || '',
-          remoteSessionId,
-          fallbackStatus: 'blocked',
-          fallbackWhatChanged: 'Started the leaked remote_code_run MCP call, but skipped remote_code_status because no jobId was available.',
-          fallbackVerifyCommand: 'remote_code_run',
-          fallbackVerifyResult: 'Blocked: remote_code_run returned a running status without a jobId for remote_code_status.',
-          blocker: 'remote_code_run returned running without a jobId; cannot poll remote_code_status safely',
-        });
-      }
-
-      const pollLimit = normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
-      const statusWaitMs = normalizePositiveInteger(args.waitMs || waitMs, waitMs, { min: 1000, max: 300000 });
-      for (let attempt = 0; attempt < pollLimit && isRunningRemoteCodeStatus(jobState.status); attempt += 1) {
-        if (!jobState.jobId) {
-          break;
-        }
-        const statusArgs = {
-          targetId: args.targetId || targetId,
-          ...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
-          ...(jobState.jobId ? { jobId: jobState.jobId } : {}),
-          waitMs: statusWaitMs,
-        };
-        finalResult = await remoteCli.callTool('remote_code_status', statusArgs);
-        finalText = normalizeMcpContentText(finalResult);
-        pollOutputs.push(finalText);
-        const nextState = extractRemoteCodeJobState(finalResult, finalText);
-        const pollMetadata = extractRemoteCliRunMetadata(finalText);
-        const inferredTerminalStatus = !nextState.status && pollMetadata.completionStatus !== 'unknown'
-          ? (pollMetadata.completionStatus === 'blocked' ? 'blocked' : 'complete')
-          : '';
-        jobState = {
-          status: nextState.status || inferredTerminalStatus || jobState.status,
-          jobId: nextState.jobId || jobState.jobId,
-          sessionId: nextState.sessionId || jobState.sessionId,
-        };
-        remoteSessionId = jobState.sessionId || remoteSessionId;
-      }
-    }
-
-    const stillRunning = isRunningRemoteCodeStatus(jobState.status);
-    const usedStatusPoll = pollOutputs.length > 0;
-    const combinedText = pollOutputs.length > 0
-      ? [normalizeMcpContentText(initialResult), ...pollOutputs].filter(Boolean).join('\n\n--- remote_code_status poll ---\n')
-      : finalText;
-    const sourceText = stillRunning
-      ? [
-        'remote_code_run started a remote job and it is still running.',
-        `remote_code_status=${jobState.status || 'running'}`,
-        jobState.jobId ? `REMOTE_CLI_JOB_ID=${jobState.jobId}` : '',
-        remoteSessionId ? `REMOTE_CLI_SESSION_ID=${remoteSessionId}` : '',
-      ].filter(Boolean).join('\n')
-      : combinedText;
-
-    return appendFallbackMarkers(sourceText, {
-      targetId: args.targetId || targetId,
-      cwd: args.cwd || cwd,
-      mcpSessionId: remoteCli.sessionId || '',
-      remoteSessionId,
-      remoteJobId: jobState.jobId,
-      fallbackStatus: stillRunning ? 'running' : 'complete',
-      fallbackWhatChanged: stillRunning
-        ? 'Started the leaked remote_code_run MCP call and polled remote_code_status, but the remote job was still running when the compatibility fallback stopped.'
-        : (usedStatusPoll
-          ? 'Executed leaked remote_code_run MCP call directly and continued polling remote_code_status until the remote job reached a terminal result.'
-          : 'Executed leaked remote_code_run MCP call directly and received a terminal result from the MCP gateway.'),
-      fallbackVerifyCommand: usedStatusPoll ? 'remote_code_run, remote_code_status' : 'remote_code_run',
-      fallbackVerifyResult: stillRunning
-        ? `remote_code_status remained ${jobState.status || 'running'} after ${normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 })} poll attempt(s).`
-        : (usedStatusPoll
-          ? 'remote_code_run reached a terminal result through the MCP gateway after status polling.'
-          : 'remote_code_run returned a terminal result through the MCP gateway.'),
-      blocker: stillRunning ? 'remote_code_run still running; continue with the returned remote session/job id' : '',
-    });
-  }
-
   async run(input = {}) {
     const task = normalizeText(input.task || input.prompt || input.message);
     if (!task) {
@@ -1173,19 +529,8 @@ class RemoteCliAgentsSdkRunner {
     );
     const cwd = normalizeText(input.cwd || input.workingDirectory || input.working_directory || this.config.defaultCwd);
     const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
-    const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
     const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
-    const agentRunTimeoutMs = normalizePositiveInteger(
-      input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs,
-      DEFAULT_AGENT_RUN_TIMEOUT_MS,
-      { min: 1000, max: 600000 },
-    );
     const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
-    const maxStatusPolls = normalizePositiveInteger(
-      input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls,
-      DEFAULT_MAX_STATUS_POLLS,
-      { min: 1, max: 80 },
-    );
     const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';
     const adminMode = resolveAdminMode(input, task);
     const apiMode = resolveAgentsApiMode({
@@ -1202,7 +547,6 @@ class RemoteCliAgentsSdkRunner {
       targetId,
       cwd,
       sessionId,
-      jobId,
       waitMs,
       adminMode,
       extraInstructions: input.instructions || input.extraInstructions || '',
@@ -1219,61 +563,6 @@ class RemoteCliAgentsSdkRunner {
       tracingDisabled: true,
       workflowName: 'Remote CLI MCP coding task',
     });
-    const onProgress = typeof input.onProgress === 'function' ? input.onProgress : null;
-    const emitProgress = (detail, { phase = 'executing', percent = 35, stage = 'in_progress' } = {}) => {
-      if (!onProgress || !detail) {
-        return;
-      }
-      try {
-        onProgress({
-          phase,
-          reasoningSummary: detail,
-          percent,
-          steps: [
-            { title: 'Connect remote CLI MCP', status: 'completed' },
-            { title: 'Start remote_code_run', status: stage === 'completed' ? 'completed' : 'in_progress' },
-            { title: 'Return proof markers', status: stage === 'completed' ? 'in_progress' : 'pending' },
-          ],
-          toolEvents: [{
-            toolId: 'remote-cli-agent',
-            stage,
-            detail,
-          }],
-        });
-      } catch (error) {
-        console.warn('[RemoteCliAgentsSdkRunner] Failed to emit remote-cli-agent progress:', error?.message || error);
-      }
-    };
-    const buildRunResult = (finalOutput) => {
-      const runMetadata = extractRemoteCliRunMetadata(finalOutput);
-
-      return {
-        finalOutput,
-        mcpSessionId: remoteCli.sessionId || input.mcpSessionId || null,
-        targetId,
-        cwd: runMetadata.workspace || cwd,
-        sessionId: runMetadata.sessionId || sessionId || null,
-        remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
-        remoteCodeJobId: runMetadata.jobId || null,
-        gitRepo: runMetadata.gitRepo || null,
-        gitBranch: runMetadata.gitBranch || null,
-        gitBaseCommit: runMetadata.gitBaseCommit || null,
-        gitCommit: runMetadata.gitCommit || null,
-        changedFiles: runMetadata.changedFiles || [],
-        deployment: runMetadata.deployment || null,
-        publicHost: runMetadata.publicHost || null,
-        publicUrl: runMetadata.publicUrl || null,
-        uiCheckReport: runMetadata.uiCheckReport || null,
-        uiScreenshots: runMetadata.uiScreenshots || [],
-        whatChanged: runMetadata.whatChanged || null,
-        verifyCommands: runMetadata.verifyCommands || [],
-        verifyResults: runMetadata.verifyResults || [],
-        blocker: runMetadata.blocker || null,
-        completionStatus: runMetadata.completionStatus || 'unknown',
-        model,
-        apiMode,
-      };
-    };
 
     try {
       try {
@@ -1296,101 +585,45 @@ class RemoteCliAgentsSdkRunner {
         );
       }
 
-      emitProgress('Remote CLI MCP connected; asking the inner agent to start remote_code_run.', {
-        percent: 34,
-      });
-
-      const result = await withAgentRunTimeout(runner.run(agent, buildRemoteCliPrompt({
+      const result = await runner.run(agent, buildRemoteCliPrompt({
         task,
         targetId,
         cwd,
         sessionId,
-        jobId,
         waitMs,
         adminMode,
       }), {
         maxTurns,
-      }), agentRunTimeoutMs);
+      });
 
-      let finalOutput = result.finalOutput || '';
-      const leakedMcpToolCalls = extractRawMcpToolCalls(finalOutput);
-      if (leakedMcpToolCalls.length > 0) {
-        console.warn('[RemoteCliAgentsSdkRunner] Inner agent returned raw MCP tool calls; executing the first remote-cli MCP call directly.');
-        emitProgress('Inner agent returned remote_code_run as text; executing it directly through MCP.', {
-          percent: 48,
-        });
-        finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, leakedMcpToolCalls, {
-          targetId,
-          cwd,
-          task,
-          waitMs,
-          sessionId,
-          jobId,
-          maxStatusPolls,
-        });
-      }
-      return buildRunResult(finalOutput);
+      const finalOutput = result.finalOutput || '';
+      const runMetadata = extractRemoteCliRunMetadata(finalOutput);
+
+      return {
+        finalOutput,
+        mcpSessionId: remoteCli.sessionId || input.mcpSessionId || null,
+        targetId,
+        cwd: runMetadata.workspace || cwd,
+        sessionId: runMetadata.sessionId || sessionId || null,
+        remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
+        gitRepo: runMetadata.gitRepo || null,
+        gitCommit: runMetadata.gitCommit || null,
+        deployment: runMetadata.deployment || null,
+        publicHost: runMetadata.publicHost || null,
+        publicUrl: runMetadata.publicUrl || null,
+        uiCheckReport: runMetadata.uiCheckReport || null,
+        uiScreenshots: runMetadata.uiScreenshots || [],
+        whatChanged: runMetadata.whatChanged || null,
+        verifyCommands: runMetadata.verifyCommands || [],
+        verifyResults: runMetadata.verifyResults || [],
+        blocker: runMetadata.blocker || null,
+        completionStatus: runMetadata.completionStatus || 'unknown',
+        model,
+        apiMode,
+      };
     } catch (error) {
       if (error?.name === 'RemoteCliAgentError') {
         throw error;
-      }
-
-      if (isRemoteCliAgentRunTimeoutError(error)) {
-        console.warn(`[RemoteCliAgentsSdkRunner] Inner agent model run timed out after ${agentRunTimeoutMs}ms; falling back to direct remote_code_run.`);
-        emitProgress(`Inner agent did not start remote_code_run within ${Math.round(agentRunTimeoutMs / 1000)}s; calling remote_code_run directly.`, {
-          percent: 52,
-        });
-        try {
-          const finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, [{
-            name: 'remote_code_run',
-            arguments: {
-              targetId,
-              ...(cwd ? { cwd } : {}),
-              task,
-              waitMs,
-              ...(sessionId ? { sessionId } : {}),
-            },
-          }], {
-            targetId,
-            cwd,
-            task,
-            waitMs,
-            sessionId,
-            jobId,
-            maxStatusPolls,
-          });
-
-          return buildRunResult(finalOutput);
-        } catch (fallbackError) {
-          console.warn('[RemoteCliAgentsSdkRunner] Direct remote_code_run recovery failed after inner agent timeout:', fallbackError?.message || fallbackError);
-        }
-      }
-
-      if (isRemoteCodeStatusMissingJobIdError(error)) {
-        console.warn('[RemoteCliAgentsSdkRunner] Inner agent attempted remote_code_status without jobId; recovering with direct remote_code_run fallback.');
-        try {
-          const finalOutput = await this.executeRawMcpToolCallFallback(remoteCli, [{
-            name: 'remote_code_run',
-            arguments: {
-              targetId,
-              ...(cwd ? { cwd } : {}),
-              task,
-              waitMs,
-              ...(sessionId ? { sessionId } : {}),
-            },
-          }], {
-            targetId,
-            cwd,
-            task,
-            waitMs,
-            sessionId,
-            jobId,
-            maxStatusPolls,
-          });
-          return buildRunResult(finalOutput);
-        } catch (fallbackError) {
-          console.warn('[RemoteCliAgentsSdkRunner] Direct remote_code_run recovery failed after missing jobId status call:', fallbackError?.message || fallbackError);
-        }
       }
 
       const diagnostics = buildRemoteCliDiagnostics({

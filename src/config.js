@@ -925,28 +925,13 @@ const config = {
             || process.env.OPENCODE_REMOTE_DEFAULT_WORKSPACE
             || process.env.KIMIBUILT_DEPLOY_TARGET_DIR
             || '',
-        agentModel: process.env.REMOTE_CLI_AGENT_MODEL || 'gpt-5.5',
+        agentModel: process.env.REMOTE_CLI_AGENT_MODEL || process.env.OPENAI_MODEL || 'gpt-5.5',
         agentApiKey: process.env.REMOTE_CLI_AGENT_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '',
         agentBaseURL: process.env.REMOTE_CLI_AGENT_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
         agentApiMode: process.env.REMOTE_CLI_AGENT_OPENAI_API_MODE || process.env.OPENAI_API_MODE || 'auto',
         maxTurns: Math.max(
             1,
             Math.min(parseInt(process.env.REMOTE_CLI_AGENT_MAX_TURNS, 10) || 20, 80),
-        ),
-        agentRunTimeoutMs: Math.max(
-            1000,
-            Math.min(
-                parseInt(
-                    process.env.REMOTE_CLI_AGENT_MODEL_RUN_TIMEOUT_MS
-                    || process.env.REMOTE_CLI_AGENT_RUN_TIMEOUT_MS,
-                    10,
-                ) || 180000,
-                600000,
-            ),
-        ),
-        maxStatusPolls: Math.max(
-            1,
-            Math.min(parseInt(process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS, 10) || 3, 80),
         ),
     },
 

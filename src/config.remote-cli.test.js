@@ -11,7 +11,6 @@ describe('remote CLI MCP configuration', () => {
     delete process.env.REMOTE_CLI_MCP_BEARER_TOKEN;
     delete process.env.N8N_API_KEY;
     delete process.env.REMOTE_CLI_AGENT_MODEL;
-    delete process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS;
   });
 
   afterEach(() => {
@@ -34,18 +33,12 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.apiKey).toBe('mcp-token');
   });
 
-  test('defaults remote CLI fallback status polling to a short resumable window', () => {
-    const { config } = require('./config');
-
-    expect(config.remoteCliMcp.maxStatusPolls).toBe(3);
-  });
-
-  test('does not inherit the general chat model for the remote CLI agent lane', () => {
+  test('inherits the general chat model for the remote CLI agent lane by default', () => {
     process.env.OPENAI_MODEL = 'kimi-for-coding';
 
     const { config } = require('./config');
 
-    expect(config.remoteCliMcp.agentModel).toBe('gpt-5.5');
+    expect(config.remoteCliMcp.agentModel).toBe('kimi-for-coding');
   });
 
   test('allows the remote CLI agent model to be explicitly configured', () => {
@@ -56,11 +49,4 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.agentModel).toBe('gpt-5.4-mini');
   });
 
-  test('allows remote CLI fallback status polling to be explicitly increased', () => {
-    process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS = '7';
-
-    const { config } = require('./config');
-
-    expect(config.remoteCliMcp.maxStatusPolls).toBe(7);
-  });
 });

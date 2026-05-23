@@ -14,11 +14,7 @@ REMOTE_CLI_MCP_URL=https://gateway.example.com/mcp
 N8N_API_KEY=server-side-admin-or-n8n-key
 REMOTE_CLI_DEFAULT_TARGET_ID=prod
 REMOTE_CLI_DEFAULT_CWD=/srv/apps/my-app
-REMOTE_CLI_AGENT_MODEL=gpt-5.5
-REMOTE_CLI_AGENT_MAX_STATUS_POLLS=3
 ```
-
-`REMOTE_CLI_AGENT_MODEL` must be an OpenAI tool-calling chat model. Do not let this lane inherit `OPENAI_MODEL=kimi-for-coding`; Kimi can answer normal chat prompts, but it has produced malformed MCP status calls for `remote_code_status`.
 
 Gateway-side requirements:
 
@@ -77,7 +73,6 @@ Behavior:
   - `BLOCKER=<none or exact blocker>`
 - The final output should also include continuity markers when known: `REMOTE_CLI_SESSION_ID=...`, `WORKSPACE=...`, `GIT_REPO=...`, `GIT_BRANCH=...`, `GIT_BASE_COMMIT=...`, `GIT_COMMIT=...`, `CHANGED_FILES=...`, `DEPLOYMENT=...`, `PUBLIC_HOST=...`, `UI_CHECK_REPORT=...`, and `UI_SCREENSHOTS=...`.
 - Prefer `waitMs: 30000` for long coding tasks.
-- Keep `maxStatusPolls` low by default. If the compatibility fallback starts a remote job that is still running, it should return `REMOTE_CLI_JOB_ID` and `REMOTE_CLI_SESSION_ID` quickly enough for the caller to continue rather than holding the user-facing event open for many minutes.
 - Pass `sessionId` when continuing a previous remote coding session.
 - Pass `mcpSessionId` when continuing a previous Streamable HTTP MCP session.
 - Frontends expose `/remote agent <task>` for handing a full coding, build, deploy, and verification loop to this tool.
