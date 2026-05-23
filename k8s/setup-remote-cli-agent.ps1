@@ -11,7 +11,7 @@ param(
   [string]$DockerApiVersion = $env:DOCKER_API_VERSION,
   [string]$DefaultTargetId = $env:REMOTE_CLI_DEFAULT_TARGET_ID,
   [string]$DefaultCwd = $env:REMOTE_CLI_DEFAULT_CWD,
-  [string]$RemoteCliAgentModel = $(if ($env:REMOTE_CLI_AGENT_MODEL) { $env:REMOTE_CLI_AGENT_MODEL } else { "gpt-5.4" }),
+  [string]$RemoteCliAgentModel = $(if ($env:REMOTE_CLI_AGENT_MODEL) { $env:REMOTE_CLI_AGENT_MODEL } else { "gpt-5.5" }),
   [switch]$NoRestart,
   [switch]$CreateNamespace
 )

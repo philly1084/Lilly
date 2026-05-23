@@ -45,7 +45,7 @@ describe('remote CLI MCP configuration', () => {
 
     const { config } = require('./config');
 
-    expect(config.remoteCliMcp.agentModel).toBe('gpt-5.4');
+    expect(config.remoteCliMcp.agentModel).toBe('gpt-5.5');
   });
 
   test('allows the remote CLI agent model to be explicitly configured', () => {

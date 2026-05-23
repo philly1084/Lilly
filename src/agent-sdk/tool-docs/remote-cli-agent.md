@@ -14,7 +14,7 @@ REMOTE_CLI_MCP_URL=https://gateway.example.com/mcp
 N8N_API_KEY=server-side-admin-or-n8n-key
 REMOTE_CLI_DEFAULT_TARGET_ID=prod
 REMOTE_CLI_DEFAULT_CWD=/srv/apps/my-app
-REMOTE_CLI_AGENT_MODEL=gpt-5.4
+REMOTE_CLI_AGENT_MODEL=gpt-5.5
 REMOTE_CLI_AGENT_MAX_STATUS_POLLS=3
 ```
 
