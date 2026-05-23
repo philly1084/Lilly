@@ -5127,6 +5127,51 @@ function formatDirectToolResultMessage(toolEvent = {}) {
     return JSON.stringify(result?.data || {}, null, 2);
 }
 
+function hasRemoteCliAgentContinuationIntent(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return [
+        /^(?:yes|yeah|yep|ok|okay)?\s*(?:continue|resume|finish|complete|keep going|keep working|go ahead|proceed)\b/,
+        /\b(?:continue|resume|finish|complete|keep going|keep working)\b[\s\S]{0,80}\b(?:it|that|same|app|site|project|work|task)\b/,
+        /\b(?:go ahead|proceed)\b[\s\S]{0,80}\b(?:remote cli agent|remote clie agent|remote coding agent|that app|the app|it)\b/,
+    ].some((pattern) => pattern.test(normalized));
+}
+
+function buildRemoteCliAgentTaskForDirectMode(prompt = '', priorAgentState = {}) {
+    const currentRequest = String(prompt || '').trim();
+    const priorTask = String(priorAgentState?.lastTask || '').trim();
+    if (!currentRequest || !priorTask || !hasRemoteCliAgentContinuationIntent(currentRequest)) {
+        return currentRequest;
+    }
+
+    return [
+        'Continue the prior remote-cli-agent task to completion.',
+        '',
+        'Original task:',
+        priorTask,
+        '',
+        'Current user follow-up:',
+        currentRequest,
+        '',
+        'Continuity requirement: keep the same remote session/workspace when available, do not replace the task with a progress callback or status-card text, and keep working through authoring, build, deploy, and live verification unless a real blocker requires user input.',
+    ].join('\n');
+}
+
+function getRemoteCliAgentStateFromToolContext(toolContext = {}) {
+    const metadata = getToolContextMetadata(toolContext);
+    const candidates = [
+        toolContext?.remoteCliAgent,
+        toolContext?.controlState?.remoteCliAgent,
+        metadata?.remoteCliAgent,
+        metadata?.controlState?.remoteCliAgent,
+    ];
+
+    return candidates.find((entry) => entry && typeof entry === 'object' && !Array.isArray(entry)) || {};
+}
+
 function buildDirectToolResponse(toolEvent, model = null, toolEvents = [], metadata = {}) {
     const normalizedToolEvents = Array.isArray(toolEvents) && toolEvents.length > 0
         ? toolEvents
@@ -5223,10 +5268,22 @@ async function runDirectRequiredToolAction({
         return null;
     }
 
+    const priorRemoteCliAgentState = requiredToolId === 'remote-cli-agent'
+        ? getRemoteCliAgentStateFromToolContext(toolContext)
+        : {};
     const params = requiredToolId === 'remote-cli-agent'
         ? {
-            task: prompt,
-            adminMode: hasRemoteSoftwareDeploymentIntent(prompt),
+            task: buildRemoteCliAgentTaskForDirectMode(prompt, priorRemoteCliAgentState),
+            waitMs: 30000,
+            adminMode: hasRemoteSoftwareDeploymentIntent(prompt)
+                || normalizeExecutionProfile(toolContext?.executionProfile) === REMOTE_BUILD_EXECUTION_PROFILE,
+            ...(priorRemoteCliAgentState.targetId ? { targetId: priorRemoteCliAgentState.targetId } : {}),
+            ...(priorRemoteCliAgentState.cwd ? { cwd: priorRemoteCliAgentState.cwd } : {}),
+            ...(priorRemoteCliAgentState.sessionId || priorRemoteCliAgentState.remoteCodeSessionId
+                ? { sessionId: priorRemoteCliAgentState.sessionId || priorRemoteCliAgentState.remoteCodeSessionId }
+                : {}),
+            ...(priorRemoteCliAgentState.mcpSessionId ? { mcpSessionId: priorRemoteCliAgentState.mcpSessionId } : {}),
+            ...(priorRemoteCliAgentState.remoteCodeJobId ? { jobId: priorRemoteCliAgentState.remoteCodeJobId } : {}),
         }
         : requiredToolId === 'image-generate'
             ? (actions[0]?.params || { prompt })
@@ -7038,6 +7095,7 @@ module.exports = {
         runAutomaticToolLoopWithResponses,
         sanitizeToolSchema,
         selectAutomaticToolDefinitions,
+        buildRemoteCliAgentTaskForDirectMode,
         summarizeOpenAIRequestParamsForLog,
         inferRequiredAutomaticToolId,
         shouldSendReasoningEffort,

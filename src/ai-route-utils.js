@@ -1640,6 +1640,53 @@ function extractSshSessionMetadataFromToolEvents(toolEvents = []) {
 
     for (let index = events.length - 1; index >= 0; index -= 1) {
         const event = events[index];
+        const rawToolName = String(event?.toolCall?.function?.name || event?.result?.toolId || '').trim();
+        if (rawToolName === 'remote-cli-agent') {
+            const args = parseLenientJson(event?.toolCall?.function?.arguments || '{}') || {};
+            const data = event?.result?.data && typeof event.result.data === 'object' ? event.result.data : {};
+            const task = String(args.task || '').trim();
+            const remoteCliAgent = {
+                ...(task ? { lastTask: task } : {}),
+                lastTaskAt: new Date().toISOString(),
+                ...(event?.result?.success === false
+                    ? {
+                        lastFailure: {
+                            task,
+                            reason: String(event?.result?.error || 'remote-cli-agent failed').trim(),
+                            failedAt: new Date().toISOString(),
+                        },
+                    }
+                    : {}),
+                ...(data.sessionId ? { sessionId: data.sessionId } : {}),
+                ...(data.mcpSessionId ? { mcpSessionId: data.mcpSessionId } : {}),
+                ...(data.targetId ? { targetId: data.targetId } : {}),
+                ...(data.cwd || args.cwd ? { cwd: data.cwd || args.cwd } : {}),
+                ...(data.remoteCodeSessionId ? { remoteCodeSessionId: data.remoteCodeSessionId } : {}),
+                ...(data.remoteCodeJobId ? { remoteCodeJobId: data.remoteCodeJobId } : {}),
+                ...(data.gitRepo ? { gitRepo: data.gitRepo } : {}),
+                ...(data.gitBranch ? { gitBranch: data.gitBranch } : {}),
+                ...(data.gitBaseCommit ? { gitBaseCommit: data.gitBaseCommit } : {}),
+                ...(data.gitCommit ? { gitCommit: data.gitCommit } : {}),
+                ...(Array.isArray(data.changedFiles) && data.changedFiles.length > 0 ? { changedFiles: data.changedFiles } : {}),
+                ...(data.deployment ? { deployment: data.deployment } : {}),
+                ...(data.publicHost ? { publicHost: data.publicHost } : {}),
+                ...(data.publicUrl ? { publicUrl: data.publicUrl } : {}),
+                ...(data.uiCheckReport ? { uiCheckReport: data.uiCheckReport } : {}),
+                ...(Array.isArray(data.uiScreenshots) && data.uiScreenshots.length > 0 ? { uiScreenshots: data.uiScreenshots } : {}),
+                ...(data.whatChanged ? { whatChanged: data.whatChanged } : {}),
+                ...(Array.isArray(data.verifyCommands) && data.verifyCommands.length > 0 ? { verifyCommands: data.verifyCommands } : {}),
+                ...(Array.isArray(data.verifyResults) && data.verifyResults.length > 0 ? { verifyResults: data.verifyResults } : {}),
+                ...(data.blocker ? { blocker: data.blocker } : {}),
+                ...(data.completionStatus ? { completionStatus: data.completionStatus } : {}),
+                ...(data.model ? { model: data.model } : {}),
+            };
+
+            return {
+                lastToolIntent: 'remote-cli-agent',
+                remoteCliAgent,
+            };
+        }
+
         const toolName = canonicalizeRemoteToolId(event?.toolCall?.function?.name);
         if (!isRemoteCommandToolId(toolName)) {
             continue;

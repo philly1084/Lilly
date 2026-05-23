@@ -1477,6 +1477,53 @@ describe('ai-route-utils', () => {
         });
     });
 
+    test('extractSshSessionMetadataFromToolEvents persists remote-cli-agent continuity state', () => {
+        const metadata = extractSshSessionMetadataFromToolEvents([
+            {
+                toolCall: {
+                    function: {
+                        name: 'remote-cli-agent',
+                        arguments: JSON.stringify({
+                            task: 'Build and deploy the themed dashboard.',
+                            cwd: '/srv/apps/my-app',
+                        }),
+                    },
+                },
+                result: {
+                    success: true,
+                    toolId: 'remote-cli-agent',
+                    data: {
+                        sessionId: 'remote-session-1',
+                        mcpSessionId: 'mcp-session-1',
+                        remoteCodeSessionId: 'remote-code-session-1',
+                        remoteCodeJobId: 'job-123',
+                        targetId: 'prod',
+                        cwd: '/srv/apps/my-app',
+                        publicUrl: 'https://app.demoserver2.buzz/',
+                        completionStatus: 'blocked',
+                        blocker: 'remote_code_run still running',
+                    },
+                },
+            },
+        ]);
+
+        expect(metadata).toMatchObject({
+            lastToolIntent: 'remote-cli-agent',
+            remoteCliAgent: {
+                lastTask: 'Build and deploy the themed dashboard.',
+                sessionId: 'remote-session-1',
+                mcpSessionId: 'mcp-session-1',
+                remoteCodeSessionId: 'remote-code-session-1',
+                remoteCodeJobId: 'job-123',
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                publicUrl: 'https://app.demoserver2.buzz/',
+                completionStatus: 'blocked',
+                blocker: 'remote_code_run still running',
+            },
+        });
+    });
+
     test('resolveArtifactContextIds uses recently uploaded files when a podcast request refers to uploaded source files', () => {
         const session = {
             metadata: {

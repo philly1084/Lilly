@@ -2757,6 +2757,46 @@ describe('openai-client automatic tool orchestration helpers', () => {
         );
     });
 
+    test('passes prior remote-cli-agent continuity into direct required tool mode', async () => {
+        const toolManager = createToolManager();
+        const prompt = 'go ahead and apply the patch';
+
+        const response = await __testUtils.runDirectRequiredToolAction({
+            toolManager,
+            requiredToolId: 'remote-cli-agent',
+            selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt,
+            toolContext: {
+                executionProfile: 'remote-build',
+                remoteCliAgent: {
+                    lastTask: 'Build and deploy the themed dashboard.',
+                    targetId: 'prod',
+                    cwd: '/srv/apps/my-app',
+                    sessionId: 'remote-session-1',
+                    mcpSessionId: 'mcp-session-1',
+                    remoteCodeJobId: 'job-123',
+                },
+            },
+            model: 'gpt-5.5',
+        });
+
+        expect(response.output[0].content[0].text).toContain('Remote app deployed.');
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'remote-cli-agent',
+            expect.objectContaining({
+                task: expect.stringContaining('Original task:'),
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                sessionId: 'remote-session-1',
+                mcpSessionId: 'mcp-session-1',
+                jobId: 'job-123',
+                waitMs: 30000,
+                adminMode: true,
+            }),
+            expect.any(Object),
+        );
+    });
+
     test('surfaces remote-cli-agent diagnostics directly on connection failure', async () => {
         const toolManager = createToolManager();
         const prompt = 'Build and deploy an app on the remote k3s server, but fail remote cli.';

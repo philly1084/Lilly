@@ -173,6 +173,51 @@ describe('runtime-execution', () => {
         expect(result.runtimeMode).toBe('agent-directed');
     });
 
+    test('passes remote-cli-agent control state into agent-directed tool context', async () => {
+        settingsController.settings = {
+            ...settingsController.getDefaultSettings(),
+            orchestration: {
+                ...settingsController.getDefaultSettings().orchestration,
+                agentDirectedRuntime: true,
+            },
+        };
+
+        await executeConversationRuntime({
+            locals: {},
+        }, {
+            sessionId: 'session-remote-agent-directed',
+            input: 'go ahead and apply the patch',
+            memoryInput: 'go ahead and apply the patch',
+            session: {
+                metadata: {
+                    controlState: {
+                        lastToolIntent: 'remote-cli-agent',
+                        remoteCliAgent: {
+                            lastTask: 'Build and deploy the themed dashboard.',
+                            sessionId: 'remote-session-1',
+                            mcpSessionId: 'mcp-session-1',
+                            cwd: '/srv/apps/my-app',
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
+            toolContext: expect.objectContaining({
+                remoteCliAgent: expect.objectContaining({
+                    lastTask: 'Build and deploy the themed dashboard.',
+                    sessionId: 'remote-session-1',
+                    mcpSessionId: 'mcp-session-1',
+                    cwd: '/srv/apps/my-app',
+                }),
+                controlState: expect.objectContaining({
+                    lastToolIntent: 'remote-cli-agent',
+                }),
+            }),
+        }));
+    });
+
     test('uses the admin orchestration setting to enable agent-directed runtime globally', async () => {
         const executeConversation = jest.fn().mockResolvedValue({
             success: true,

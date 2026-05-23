@@ -354,8 +354,11 @@ function inferExecutionProfile(payload = {}) {
 
 async function executeConversationRuntime(app, params = {}) {
     const executionProfile = inferExecutionProfile(params);
+    const sessionControlState = getSessionControlState(params.session || { metadata: params.metadata || {} });
     const effectiveToolContext = {
         ...(params.toolContext || {}),
+        controlState: sessionControlState,
+        ...(sessionControlState.remoteCliAgent ? { remoteCliAgent: sessionControlState.remoteCliAgent } : {}),
         ...(params.metadata && typeof params.metadata === 'object'
             ? { metadata: params.metadata }
             : {}),
