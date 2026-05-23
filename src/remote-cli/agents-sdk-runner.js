@@ -4,6 +4,8 @@ const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
 
+const DEFAULT_MAX_STATUS_POLLS = 3;
+
 function normalizeText(value = '') {
   return String(value || '').trim();
 }
@@ -881,7 +883,7 @@ class RemoteCliAgentsSdkRunner {
       agentModel: normalizeText(this.config.agentModel),
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
-      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, 20, { min: 1, max: 80 }),
+      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 }),
     };
   }
 
@@ -934,7 +936,7 @@ class RemoteCliAgentsSdkRunner {
     waitMs = 30000,
     sessionId = '',
     jobId = '',
-    maxStatusPolls = 20,
+    maxStatusPolls = DEFAULT_MAX_STATUS_POLLS,
   } = {}) {
     const call = toolCalls.find((entry) => entry.name === 'remote_code_run')
       || toolCalls.find((entry) => entry.name === 'remote_code_status');
@@ -977,7 +979,7 @@ class RemoteCliAgentsSdkRunner {
     const pollOutputs = [];
 
     if (call.name === 'remote_code_run' && isRunningRemoteCodeStatus(jobState.status)) {
-      const pollLimit = normalizePositiveInteger(maxStatusPolls, 20, { min: 1, max: 80 });
+      const pollLimit = normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
       const statusWaitMs = normalizePositiveInteger(args.waitMs || waitMs, waitMs, { min: 1000, max: 300000 });
       for (let attempt = 0; attempt < pollLimit && isRunningRemoteCodeStatus(jobState.status); attempt += 1) {
         const statusArgs = {
@@ -1031,7 +1033,7 @@ class RemoteCliAgentsSdkRunner {
           : 'Executed leaked remote_code_run MCP call directly and received a terminal result from the MCP gateway.'),
       fallbackVerifyCommand: usedStatusPoll ? 'remote_code_run, remote_code_status' : 'remote_code_run',
       fallbackVerifyResult: stillRunning
-        ? `remote_code_status remained ${jobState.status || 'running'} after ${normalizePositiveInteger(maxStatusPolls, 20, { min: 1, max: 80 })} poll attempt(s).`
+        ? `remote_code_status remained ${jobState.status || 'running'} after ${normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 })} poll attempt(s).`
         : (usedStatusPoll
           ? 'remote_code_run reached a terminal result through the MCP gateway after status polling.'
           : 'remote_code_run returned a terminal result through the MCP gateway.'),
@@ -1070,7 +1072,7 @@ class RemoteCliAgentsSdkRunner {
     const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
     const maxStatusPolls = normalizePositiveInteger(
       input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls,
-      Math.min(maxTurns, 20),
+      DEFAULT_MAX_STATUS_POLLS,
       { min: 1, max: 80 },
     );
     const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';

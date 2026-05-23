@@ -10,6 +10,7 @@ describe('remote CLI MCP configuration', () => {
     };
     delete process.env.REMOTE_CLI_MCP_BEARER_TOKEN;
     delete process.env.N8N_API_KEY;
+    delete process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS;
   });
 
   afterEach(() => {
@@ -30,5 +31,19 @@ describe('remote CLI MCP configuration', () => {
     const { config } = require('./config');
 
     expect(config.remoteCliMcp.apiKey).toBe('mcp-token');
+  });
+
+  test('defaults remote CLI fallback status polling to a short resumable window', () => {
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.maxStatusPolls).toBe(3);
+  });
+
+  test('allows remote CLI fallback status polling to be explicitly increased', () => {
+    process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS = '7';
+
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.maxStatusPolls).toBe(7);
   });
 });

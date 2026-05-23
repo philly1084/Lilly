@@ -60,8 +60,8 @@ class RemoteCliAgentTool extends ToolBase {
           },
           maxStatusPolls: {
             type: 'integer',
-            default: 20,
-            description: 'Maximum compatibility-fallback remote_code_status polls when a chat gateway leaks remote_code_run tool JSON instead of executing the tool loop.',
+            default: 3,
+            description: 'Maximum compatibility-fallback remote_code_status polls when a chat gateway leaks remote_code_run tool JSON instead of executing the tool loop. Defaults low so running jobs return resumable job/session markers instead of freezing the caller.',
           },
           adminMode: {
             type: 'boolean',

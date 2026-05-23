@@ -179,6 +179,19 @@ describe('RemoteCliAgentsSdkRunner', () => {
     })).toBe('responses');
   });
 
+  test('reports a short default status poll limit in public config', () => {
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+      },
+    });
+
+    expect(runner.getPublicConfig().maxStatusPolls).toBe(3);
+  });
+
   test('builds actionable diagnostics for generic remote CLI connection errors', () => {
     const diagnostics = buildRemoteCliDiagnostics({
       stage: 'agent_run',
