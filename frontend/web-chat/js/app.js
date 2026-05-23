@@ -7505,9 +7505,41 @@ curl -fsSIL --max-time 20 "https://$host"`;
         };
     }
 
+    isGeneratedImageArtifactCandidate(artifact = null) {
+        if (!artifact || typeof artifact !== 'object') {
+            return false;
+        }
+
+        const mimeType = String(artifact.mimeType || artifact.mime_type || '').trim().toLowerCase();
+        const format = String(artifact.format || artifact.extension || '').trim().toLowerCase();
+        const filename = String(artifact.filename || artifact.name || '').trim().toLowerCase();
+        const url = String(
+            artifact.url
+            || artifact.imageUrl
+            || artifact.image_url
+            || artifact.thumbnailUrl
+            || artifact.thumbUrl
+            || artifact.inlineUrl
+            || artifact.inlinePath
+            || artifact.absoluteInlineUrl
+            || artifact.absoluteUrl
+            || '',
+        ).trim().toLowerCase();
+        const imageFormats = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
+
+        return Boolean(
+            mimeType.startsWith('image/')
+            || imageFormats.has(format)
+            || /\.(?:png|jpe?g|gif|webp|svg)$/i.test(filename)
+            || url.startsWith('data:image/')
+            || typeof artifact.b64_json === 'string',
+        );
+    }
+
     buildGeneratedImageArtifactSelectionMessage(parentMessageId, artifacts = [], options = {}) {
         const normalizedParentId = String(parentMessageId || '').trim();
         const files = (Array.isArray(artifacts) ? artifacts : [])
+            .filter((artifact) => this.isGeneratedImageArtifactCandidate(artifact))
             .slice(0, 4)
             .map((artifact) => this.normalizeGeneratedImage(
                 artifact,

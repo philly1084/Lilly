@@ -77,4 +77,75 @@ describe('web-chat generated image artifact previews', () => {
             mimeType: 'image/png',
         }])).toBeNull();
     });
+
+    test('does not treat HTML and sandbox artifacts as generated image options', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        const message = app.buildGeneratedImageArtifactSelectionMessage('assistant-1', [
+            {
+                id: 'html-artifact-1',
+                filename: 'report.html',
+                format: 'html',
+                mimeType: 'text/html',
+                downloadUrl: '/api/artifacts/html-artifact-1/download',
+                previewUrl: '/api/artifacts/html-artifact-1/preview',
+            },
+            {
+                id: 'sandbox-artifact-1',
+                filename: 'report-sandbox.zip',
+                format: 'zip',
+                mimeType: 'application/zip',
+                downloadUrl: '/api/artifacts/sandbox-artifact-1/download',
+                previewUrl: '/api/artifacts/sandbox-artifact-1/preview',
+                sandboxUrl: '/api/artifacts/sandbox-artifact-1/sandbox',
+                bundleDownloadUrl: '/api/artifacts/sandbox-artifact-1/bundle',
+            },
+        ]);
+
+        expect(message).toBeNull();
+    });
+
+    test('ignores non-image artifacts while preserving generated image choices', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        const message = app.buildGeneratedImageArtifactSelectionMessage('assistant-1', [
+            {
+                id: 'html-artifact-1',
+                filename: 'report.html',
+                format: 'html',
+                mimeType: 'text/html',
+                downloadUrl: '/api/artifacts/html-artifact-1/download',
+            },
+            {
+                id: 'image-artifact-1',
+                filename: 'first.png',
+                format: 'png',
+                mimeType: 'image/png',
+            },
+            {
+                id: 'sandbox-artifact-1',
+                filename: 'report-sandbox.zip',
+                format: 'zip',
+                mimeType: 'application/zip',
+                downloadUrl: '/api/artifacts/sandbox-artifact-1/download',
+                sandboxUrl: '/api/artifacts/sandbox-artifact-1/sandbox',
+            },
+            {
+                id: 'image-artifact-2',
+                filename: 'second.webp',
+                format: 'webp',
+                mimeType: 'image/webp',
+            },
+        ]);
+
+        expect(message).toEqual(expect.objectContaining({
+            id: 'assistant-1-image-artifacts',
+            type: 'image-selection',
+        }));
+        expect(message.results).toHaveLength(2);
+        expect(message.results.map((result) => result.artifactId)).toEqual([
+            'image-artifact-1',
+            'image-artifact-2',
+        ]);
+    });
 });
