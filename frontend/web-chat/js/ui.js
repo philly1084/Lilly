@@ -8853,7 +8853,16 @@ class UIHelpers {
             resultsContainer.innerHTML = `
                 <div class="command-group">
                     <div class="command-group-title">Remote CLI</div>
-                    <div class="command-item selected" data-action="insert-tool-command:/remote status" role="option" tabindex="0">
+                    <div class="command-item selected" data-action="insert-tool-command:/remote agent " role="option" tabindex="0">
+                        <div class="command-item-icon">
+                            <i data-lucide="bot"></i>
+                        </div>
+                        <div class="command-item-content">
+                            <div class="command-item-title">Remote CLI Agent</div>
+                            <div class="command-item-desc">Insert /remote agent &lt;task&gt; for coding, build, deploy, and verify loops</div>
+                        </div>
+                    </div>
+                    <div class="command-item" data-action="insert-tool-command:/remote status" role="option" tabindex="0">
                         <div class="command-item-icon">
                             <i data-lucide="terminal"></i>
                         </div>
@@ -8869,15 +8878,6 @@ class UIHelpers {
                         <div class="command-item-content">
                             <div class="command-item-title">Remote Tools</div>
                             <div class="command-item-desc">List remote command catalog entries</div>
-                        </div>
-                    </div>
-                    <div class="command-item" data-action="insert-tool-command:/remote agent " role="option" tabindex="0">
-                        <div class="command-item-icon">
-                            <i data-lucide="bot"></i>
-                        </div>
-                        <div class="command-item-content">
-                            <div class="command-item-title">Remote CLI Agent</div>
-                            <div class="command-item-desc">Insert /remote agent &lt;task&gt; using the selected router model</div>
                         </div>
                     </div>
                     <div class="command-item" data-action="open-model-selector" role="option" tabindex="0">
@@ -8980,8 +8980,8 @@ class UIHelpers {
             { category: 'Actions', icon: 'plus', title: 'New Chat', description: 'Start a new conversation', action: 'new-chat', shortcut: 'Ctrl+N' },
             { category: 'Actions', icon: 'image', title: 'Create Image', description: 'Generate AI images or search Unsplash', action: 'open-image-modal', shortcut: 'Ctrl+I' },
             { category: 'Actions', icon: 'camera', title: 'Search Unsplash', description: 'Find free stock photos', action: 'open-image-modal:unsplash' },
+            { category: 'Remote CLI', icon: 'bot', title: 'Remote CLI Agent', description: 'Insert /remote agent for coding, build, deploy, and verify loops', action: 'insert-tool-command:/remote agent ' },
             { category: 'Remote CLI', icon: 'terminal', title: 'Remote Status', description: 'Insert the /remote status command into chat', action: 'insert-tool-command:/remote status' },
-            { category: 'Remote CLI', icon: 'bot', title: 'Remote CLI Agent', description: 'Insert /remote agent using the selected router model', action: 'insert-tool-command:/remote agent ' },
             { category: 'Remote CLI', icon: 'cpu', title: 'Remote CLI Agent Model', description: 'Choose the router model used by chat and /remote agent', action: 'open-model-selector' },
             { category: 'Remote CLI', icon: 'square-terminal', title: 'Run Remote Command', description: 'Insert the /remote run command into chat', action: 'insert-tool-command:/remote run ' },
             { category: 'Actions', icon: 'wrench', title: 'List Tools', description: 'Insert the /tools command into chat', action: 'insert-tool-command:/tools' },

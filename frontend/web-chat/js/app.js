@@ -5466,12 +5466,30 @@ class ChatApp {
             lines.push('');
         }
 
-        tools.forEach((tool) => {
+        const remoteToolOrder = new Map([
+            ['remote-cli-agent', 0],
+            ['managed-app', 1],
+            ['k3s-deploy', 2],
+            ['remote-command', 3],
+            ['remote-workbench', 4],
+        ]);
+        const displayTools = [...tools].sort((first, second) => {
+            const firstRank = remoteToolOrder.has(first?.id) ? remoteToolOrder.get(first.id) : 50;
+            const secondRank = remoteToolOrder.has(second?.id) ? remoteToolOrder.get(second.id) : 50;
+            return firstRank - secondRank;
+        });
+
+        displayTools.forEach((tool) => {
             const params = Array.isArray(tool.parameters)
                 ? tool.parameters.map((param) => typeof param === 'string' ? param : param.name).filter(Boolean)
                 : Object.keys(tool.inputSchema?.properties || {});
             lines.push(`- \`${tool.id}\` (${tool.category})`);
             lines.push(`  ${tool.description || 'No description provided.'}`);
+            if (tool.id === 'remote-cli-agent') {
+                lines.push('  Preferred for remote coding, build, deploy, and verification loops. Use `/remote agent <task>` or `/remote <task>`.');
+            } else if (tool.id === 'remote-workbench') {
+                lines.push('  Structured low-level helper; keep normal remote build/deploy work on `remote-cli-agent`.');
+            }
             if (tool.support?.status) {
                 lines.push(`  Support: ${tool.support.status}`);
             }
@@ -5660,11 +5678,11 @@ class ChatApp {
         return [
             '## Remote CLI Plan',
             '',
-            '1. `/remote status` - confirm remote runner health and fallback target.',
-            '2. `/remote tools` - choose a catalog command.',
-            '3. `/remote <tool-id>` - run a catalog entry such as `baseline`, `kubectl-inspect`, `logs`, `rollout`, `build`, or `test`.',
-            '4. `/remote run <command>` - execute one purposeful inspect, fix, or verify batch.',
-            '5. `/remote agent <task>` - hand a full coding/build/deploy loop to the backend remote CLI agent.',
+            '1. `/remote agent <task>` or `/remote <task>` - hand a full coding/build/deploy loop to the backend remote CLI agent.',
+            '2. `/remote status` - confirm remote runner health and fallback target.',
+            '3. `/remote tools` - list exact inspect/catalog commands.',
+            '4. `/remote <catalog-id>` - run a catalog entry such as `baseline`, `kubectl-inspect`, `logs`, or `rollout`.',
+            '5. `/remote run <command>` - execute one purposeful raw inspect or verify batch.',
             '6. Continue normal build/test failures while the next step is still on plan.',
             '7. Stop for sudo/package installs, secrets, destructive deletes, force push, repeated failures, missing credentials, or unclear recovery.',
             '',
@@ -5696,6 +5714,35 @@ curl -fsSIL --max-time 20 "https://$host"`;
         }) || null;
     }
 
+    shouldRouteRemoteSubcommandToAgent(subcommand = '', rest = '', remoteCatalog = {}) {
+        const normalized = String(subcommand || '').trim().toLowerCase();
+        const remaining = String(rest || '').trim();
+        if (!normalized || !remaining) {
+            return false;
+        }
+
+        if (['agent', 'run', 'status', 'tools', 'tool', 'plan', 'help', '?', 'verify'].includes(normalized)) {
+            return false;
+        }
+
+        return Boolean(remoteCatalog?.remoteAgent || remoteCatalog?.tools?.some((tool) => tool.id === 'remote-cli-agent'));
+    }
+
+    buildRemoteAgentOptions(remoteCatalog = {}) {
+        const remoteAgent = remoteCatalog.remoteAgent
+            || remoteCatalog.tools?.find((tool) => tool.id === 'remote-cli-agent')
+            || null;
+        const selectedModel = String(uiHelpers.getCurrentModel?.() || '').trim();
+
+        return {
+            cwd: remoteAgent?.runtime?.defaultCwd || remoteCatalog.runtime?.remoteRunner?.defaultWorkspace || '',
+            waitMs: 30000,
+            maxTurns: 30,
+            adminMode: true,
+            ...(selectedModel ? { model: selectedModel } : {}),
+        };
+    }
+
     unwrapRemoteResult(invocation = {}) {
         const envelope = invocation?.result || {};
         return envelope?.data || envelope?.result || envelope;
@@ -5723,11 +5770,21 @@ curl -fsSIL --max-time 20 "https://$host"`;
     formatRemoteTools(remoteCatalog = {}) {
         const catalog = Array.isArray(remoteCatalog.catalog) ? remoteCatalog.catalog : [];
         if (catalog.length === 0) {
-            return 'No remote CLI command catalog is available.';
+            return [
+                '## Remote CLI Tools',
+                '',
+                '`remote-cli-agent` is the default for coding, build, deploy, and verify loops.',
+                '',
+                'No exact remote command catalog is available.',
+            ].join('\n');
         }
 
         return [
             '## Remote CLI Tools',
+            '',
+            '`remote-cli-agent` is the default for coding, build, deploy, and verify loops. Use `/remote agent <task>` or `/remote <task>` for that path.',
+            '',
+            'Exact inspect/catalog commands:',
             '',
             ...catalog.map((entry) => {
                 const id = String(entry?.id || '').trim();
@@ -5850,15 +5907,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     if (!rest) {
                         throw new Error('Usage: /remote agent <coding/build/deploy task>');
                     }
-                    const remoteAgent = remoteCatalog.tools?.find((tool) => tool.id === 'remote-cli-agent') || null;
-                    const selectedModel = String(uiHelpers.getCurrentModel?.() || '').trim();
-                    const invocation = await apiClient.invokeRemoteCliAgent(rest, {
-                        cwd: remoteAgent?.runtime?.defaultCwd || remoteCatalog.runtime?.remoteRunner?.defaultWorkspace || '',
-                        waitMs: 30000,
-                        maxTurns: 30,
-                        adminMode: true,
-                        ...(selectedModel ? { model: selectedModel } : {}),
-                    });
+                    const invocation = await apiClient.invokeRemoteCliAgent(rest, this.buildRemoteAgentOptions(remoteCatalog));
                     if (invocation?.sessionId) {
                         this.syncBackendSession(invocation.sessionId);
                     }
@@ -5875,26 +5924,34 @@ curl -fsSIL --max-time 20 "https://$host"`;
                     }
                     assistantContent = this.formatRemoteResult(this.unwrapRemoteResult(invocation), 'Remote HTTPS Verify');
                 } else {
-                    const catalogEntry = this.resolveRemoteCatalogEntry(remoteCatalog.catalog, subcommand);
-                    if (!catalogEntry) {
-                        throw new Error('Usage: /remote status | /remote tools | /remote plan | /remote <catalog-id> | /remote run <command> | /remote agent <task> | /remote verify [host]');
+                    if (this.shouldRouteRemoteSubcommandToAgent(subcommand, rest, remoteCatalog)) {
+                        const invocation = await apiClient.invokeRemoteCliAgent(trimmed, this.buildRemoteAgentOptions(remoteCatalog));
+                        if (invocation?.sessionId) {
+                            this.syncBackendSession(invocation.sessionId);
+                        }
+                        assistantContent = this.formatRemoteAgentResult(this.unwrapRemoteResult(invocation));
+                    } else {
+                        const catalogEntry = this.resolveRemoteCatalogEntry(remoteCatalog.catalog, subcommand);
+                        if (!catalogEntry) {
+                            throw new Error('Usage: /remote status | /remote tools | /remote plan | /remote <catalog-id> | /remote run <command> | /remote agent <task> | /remote verify [host]');
+                        }
+                        const command = String(catalogEntry.command || '').trim();
+                        if (!command) {
+                            throw new Error(`Remote catalog entry '${catalogEntry.id || subcommand}' has no command.`);
+                        }
+                        const invocation = await apiClient.invokeRemoteCommand(command, {
+                            profile: catalogEntry.profile || 'inspect',
+                            workflowAction: `web-chat-remote-${catalogEntry.id || subcommand}`,
+                            timeout: 120000,
+                        });
+                        if (invocation?.sessionId) {
+                            this.syncBackendSession(invocation.sessionId);
+                        }
+                        assistantContent = this.formatRemoteResult(
+                            this.unwrapRemoteResult(invocation),
+                            `Remote ${catalogEntry.label || catalogEntry.id || subcommand}`,
+                        );
                     }
-                    const command = String(catalogEntry.command || '').trim();
-                    if (!command) {
-                        throw new Error(`Remote catalog entry '${catalogEntry.id || subcommand}' has no command.`);
-                    }
-                    const invocation = await apiClient.invokeRemoteCommand(command, {
-                        profile: catalogEntry.profile || 'inspect',
-                        workflowAction: `web-chat-remote-${catalogEntry.id || subcommand}`,
-                        timeout: 120000,
-                    });
-                    if (invocation?.sessionId) {
-                        this.syncBackendSession(invocation.sessionId);
-                    }
-                    assistantContent = this.formatRemoteResult(
-                        this.unwrapRemoteResult(invocation),
-                        `Remote ${catalogEntry.label || catalogEntry.id || subcommand}`,
-                    );
                 }
             }
 

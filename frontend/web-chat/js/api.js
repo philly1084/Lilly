@@ -2358,14 +2358,16 @@ class OpenAIAPIClient extends EventTarget {
             executionProfile: 'remote-build',
         });
         const tools = Array.isArray(response?.tools) ? response.tools : [];
-        const remoteTool = tools.find((tool) => tool.id === 'remote-command')
-            || tools.find((tool) => Array.isArray(tool?.runtime?.commandCatalog))
-            || null;
+        const remoteAgent = tools.find((tool) => tool.id === 'remote-cli-agent') || null;
+        const remoteTool = tools.find((tool) => tool.id === 'remote-command') || null;
+        const remoteWorkbench = tools.find((tool) => tool.id === 'remote-workbench') || null;
 
         return {
             tools,
             runtime: response?.meta?.runtime || null,
+            remoteAgent,
             remoteTool,
+            remoteWorkbench,
             catalog: remoteTool?.runtime?.commandCatalog || [],
             meta: response?.meta || {},
         };
