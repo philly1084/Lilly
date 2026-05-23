@@ -11,7 +11,6 @@ const REAL_REASONING_DISPLAY_HOLD_MS = 40000;
 const SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
-const WEB_CHAT_LONG_AGENT_DEFAULT_KEY = 'kimibuilt_long_agent_default_enabled';
 const webChatWorkspaceHelpers = window.KimiBuiltWebChatWorkspace || null;
 const webChatWorkspaceEmbedHelpers = window.KimiBuiltWebChatWorkspaceEmbed || null;
 const WEB_CHAT_APP_WORKSPACE_CONTEXT = typeof webChatWorkspaceHelpers?.getWorkspaceContext === 'function'
@@ -337,8 +336,6 @@ class ChatApp {
         this.currentSessionInfo = document.getElementById('current-session-info');
         this.typingIndicator = document.getElementById('typing-indicator');
         this.backgroundWorkloadStatus = document.getElementById('background-workload-status');
-        this.longAgentDefaultBtn = document.getElementById('long-agent-default-btn');
-        this.longAgentDefaultLabel = document.getElementById('long-agent-default-label');
         this.workloadsBtn = document.getElementById('workloads-btn');
         this.workloadsPanel = document.getElementById('workloads-panel');
         this.workloadsEmpty = document.getElementById('workloads-empty');
@@ -441,7 +438,7 @@ class ChatApp {
         this.workloadSocketConsecutiveFailures = 0;
         this.workloadSocketCircuitDelayMs = 60000;
         this.workloadSocketPaused = false;
-        this.longAgentDefaultEnabled = this.loadLongAgentDefaultEnabled();
+        this.longAgentDefaultEnabled = uiHelpers.isLongAgentDefaultEnabled?.() === true;
         this.backgroundWorkloadStatusHideTimer = null;
         this.subscribedWorkloadSessionId = null;
         this.isRefreshingSessionSummaries = false;
@@ -633,8 +630,9 @@ class ChatApp {
         document.getElementById('theme-toggle')?.addEventListener('click', () => {
             uiHelpers.openThemeGallery();
         });
-        this.longAgentDefaultBtn?.addEventListener('click', () => this.toggleLongAgentDefault());
-        this.updateLongAgentDefaultControl();
+        window.addEventListener('longAgentDefaultChanged', (event) => {
+            this.longAgentDefaultEnabled = event.detail?.enabled === true;
+        });
         
         // Mobile sidebar toggle
         document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
@@ -2416,46 +2414,6 @@ class ChatApp {
             .slice(0, 64);
     }
 
-    loadLongAgentDefaultEnabled() {
-        try {
-            return localStorage.getItem(WEB_CHAT_LONG_AGENT_DEFAULT_KEY) === 'true';
-        } catch (_error) {
-            return false;
-        }
-    }
-
-    setLongAgentDefaultEnabled(enabled) {
-        this.longAgentDefaultEnabled = enabled === true;
-        try {
-            localStorage.setItem(WEB_CHAT_LONG_AGENT_DEFAULT_KEY, String(this.longAgentDefaultEnabled));
-        } catch (_error) {
-            // Ignore storage failures; the in-memory setting still updates this page.
-        }
-        this.updateLongAgentDefaultControl();
-    }
-
-    toggleLongAgentDefault() {
-        this.setLongAgentDefaultEnabled(this.longAgentDefaultEnabled !== true);
-        uiHelpers.showToast(
-            this.longAgentDefaultEnabled ? 'Long agent default enabled' : 'Long agent default disabled',
-            'success',
-        );
-    }
-
-    updateLongAgentDefaultControl() {
-        const enabled = this.longAgentDefaultEnabled === true;
-        if (this.longAgentDefaultBtn) {
-            this.longAgentDefaultBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-            this.longAgentDefaultBtn.title = enabled
-                ? 'Disable long agent mode by default for new workloads'
-                : 'Enable long agent mode by default for new workloads';
-            this.longAgentDefaultBtn.classList.toggle('is-active', enabled);
-        }
-        if (this.longAgentDefaultLabel) {
-            this.longAgentDefaultLabel.textContent = enabled ? 'Long agent: On' : 'Long agent: Off';
-        }
-    }
-
     openWorkloadModal(existing = null) {
         if (!sessionManager.currentSessionId) {
             uiHelpers.showToast('Open a conversation first', 'info');
@@ -2486,7 +2444,7 @@ class ChatApp {
         this.workloadAllowSideEffects.checked = existing?.policy?.allowSideEffects === true;
         this.workloadLongAgentEnabled.checked = existing
             ? existing?.metadata?.longAgent?.enabled === true
-            : this.longAgentDefaultEnabled === true;
+            : uiHelpers.isLongAgentDefaultEnabled?.() === true;
         this.workloadLongAgentScratch.value = existing?.metadata?.longAgent?.scratchFile || '.kimibuilt/long-agent-scratch.md';
         this.workloadLongAgentSteps.value = existing?.metadata?.longAgent?.maxAutoSteps || 4;
         this.workloadStagesJson.value = JSON.stringify(existing?.stages || [], null, 2);

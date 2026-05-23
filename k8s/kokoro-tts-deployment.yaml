@@ -6,7 +6,7 @@ metadata:
   labels:
     app: kokoro-tts
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: kokoro-tts
@@ -41,9 +41,9 @@ spec:
             - name: KOKORO_TTS_BASE_URL
               value: ""
             - name: NODE_OPTIONS
-              value: "--max-old-space-size=2048"
+              value: "--max-old-space-size=3072"
             - name: UV_THREADPOOL_SIZE
-              value: "8"
+              value: "12"
           readinessProbe:
             httpGet:
               path: /ready
@@ -63,10 +63,10 @@ spec:
           resources:
             requests:
               memory: "1536Mi"
-              cpu: "1000m"
+              cpu: "1500m"
             limits:
-              memory: "4Gi"
-              cpu: "3000m"
+              memory: "5Gi"
+              cpu: "4000m"
 ---
 apiVersion: v1
 kind: Service

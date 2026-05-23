@@ -18,6 +18,7 @@ const webChatIsChatModel = webChatGatewayHelpers.isChatModel || ((modelOrId = ''
 const WEB_CHAT_SHARED_THEMES = window.KimiBuiltThemePresets || {};
 const WEB_CHAT_THEME_PRESET_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.preset || 'kimibuilt_theme_preset';
 const WEB_CHAT_THEME_MODE_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.mode || 'kimibuilt_theme';
+const WEB_CHAT_LONG_AGENT_DEFAULT_KEY = 'kimibuilt_long_agent_default_enabled';
 const WEB_CHAT_SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
 const WEB_CHAT_ESTIMATED_REASONING_STEPS = Object.freeze([
     'Tune into the ask',
@@ -656,10 +657,12 @@ class UIHelpers {
         const savedModel = window.sessionManager?.safeStorageGet?.('kimibuilt_default_model');
         const savedReasoningEffort = window.sessionManager?.safeStorageGet?.('kimibuilt_reasoning_effort');
         const savedRemoteAutonomy = window.sessionManager?.safeStorageGet?.('kimibuilt_remote_build_autonomy');
+        const savedLongAgentDefault = this.storageGet(WEB_CHAT_LONG_AGENT_DEFAULT_KEY);
         this.currentThemePresetId = WEB_CHAT_THEME_DEFAULTS.dark;
         this.currentModel = this.normalizeDefaultModelPreference(savedModel);
         this.currentReasoningEffort = this.normalizeReasoningEffort(savedReasoningEffort);
         this.remoteBuildAutonomyApproved = this.parseRemoteBuildAutonomyPreference(savedRemoteAutonomy);
+        this.longAgentDefaultEnabled = savedLongAgentDefault === 'true';
         this.soundManager = window.WebChatSoundManager
             ? new window.WebChatSoundManager()
             : null;
@@ -674,6 +677,7 @@ class UIHelpers {
         this.updateModelUI();
         this.updateReasoningUI();
         this.updateRemoteBuildAutonomyUI();
+        this.updateLongAgentDefaultUI();
         this.updateSoundCuesUI();
         this.updateMenuSoundsUI();
         this.populateSoundProfileOptions();
@@ -6096,13 +6100,16 @@ class UIHelpers {
         const savedModel = this.normalizeDefaultModelPreference(this.storageGet('kimibuilt_default_model'));
         const savedReasoningEffort = this.normalizeReasoningEffort(this.storageGet('kimibuilt_reasoning_effort'));
         const savedRemoteAutonomy = this.parseRemoteBuildAutonomyPreference(this.storageGet('kimibuilt_remote_build_autonomy'));
+        const savedLongAgentDefault = this.parseBooleanPreference(this.storageGet(WEB_CHAT_LONG_AGENT_DEFAULT_KEY), false);
 
         this.currentModel = savedModel;
         this.currentReasoningEffort = savedReasoningEffort;
         this.remoteBuildAutonomyApproved = savedRemoteAutonomy;
+        this.longAgentDefaultEnabled = savedLongAgentDefault;
         this.updateModelUI();
         this.updateReasoningUI();
         this.updateRemoteBuildAutonomyUI();
+        this.updateLongAgentDefaultUI();
 
         this.soundManager?.refreshFromStorage?.();
         this.updateSoundCuesUI();
@@ -6172,6 +6179,46 @@ class UIHelpers {
     toggleRemoteBuildAutonomy() {
         this.setRemoteBuildAutonomyApproved(!this.isRemoteBuildAutonomyApproved());
         this.playMenuCue('menu-select');
+    }
+
+    isLongAgentDefaultEnabled() {
+        return this.longAgentDefaultEnabled === true;
+    }
+
+    setLongAgentDefaultEnabled(value) {
+        this.longAgentDefaultEnabled = value === true;
+        this.storageSet(WEB_CHAT_LONG_AGENT_DEFAULT_KEY, this.longAgentDefaultEnabled ? 'true' : 'false');
+        this.updateLongAgentDefaultUI();
+        this.showToast(
+            this.longAgentDefaultEnabled ? 'Long agent default enabled' : 'Long agent default disabled',
+            'success',
+        );
+        window.dispatchEvent(new CustomEvent('longAgentDefaultChanged', {
+            detail: { enabled: this.longAgentDefaultEnabled },
+        }));
+    }
+
+    toggleLongAgentDefault() {
+        this.setLongAgentDefaultEnabled(!this.isLongAgentDefaultEnabled());
+        this.playMenuCue('menu-select');
+    }
+
+    updateLongAgentDefaultUI() {
+        const button = document.getElementById('long-agent-default-btn');
+        const label = document.getElementById('long-agent-default-label');
+        if (!button) {
+            return;
+        }
+
+        const enabled = this.isLongAgentDefaultEnabled();
+        button.classList.toggle('is-active', enabled);
+        button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        button.title = enabled
+            ? 'Disable long agent mode by default for new workloads'
+            : 'Enable long agent mode by default for new workloads';
+        if (label) {
+            label.textContent = enabled ? 'Long agent: On' : 'Long agent: Off';
+        }
     }
 
     isSoundCuesEnabled() {
@@ -9865,6 +9912,13 @@ class UIHelpers {
         if (remoteAutonomyBtn) {
             remoteAutonomyBtn.addEventListener('click', () => {
                 this.toggleRemoteBuildAutonomy();
+            });
+        }
+
+        const longAgentDefaultBtn = document.getElementById('long-agent-default-btn');
+        if (longAgentDefaultBtn) {
+            longAgentDefaultBtn.addEventListener('click', () => {
+                this.toggleLongAgentDefault();
             });
         }
 
