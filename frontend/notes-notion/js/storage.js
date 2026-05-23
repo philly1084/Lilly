@@ -264,6 +264,74 @@ const Storage = (function() {
         }
     }
 
+    function normalizeImageUrlValue(value) {
+        const normalized = String(value || '').trim();
+        return normalized || null;
+    }
+
+    function buildArtifactInlinePath(artifactId) {
+        const normalizedId = String(artifactId || '').trim();
+        return normalizedId ? `/api/artifacts/${encodeURIComponent(normalizedId)}/download?inline=1` : null;
+    }
+
+    function resolveSavedAIImageUrl(content = {}) {
+        const directUrl = normalizeImageUrlValue(content.imageUrl || content.url);
+        if (directUrl) return directUrl;
+
+        const directFallback = normalizeImageUrlValue(
+            content.inlineUrl
+            || content.absoluteInlineUrl
+            || content.downloadUrl
+            || content.absoluteUrl
+        );
+        if (directFallback) return directFallback;
+
+        const generatedImages = Array.isArray(content.generatedImages) ? content.generatedImages : [];
+        for (const image of generatedImages) {
+            const imageUrl = normalizeImageUrlValue(
+                image?.inlineUrl
+                || image?.imageUrl
+                || image?.url
+                || image?.downloadUrl
+                || image?.absoluteInlineUrl
+                || image?.absoluteUrl
+            );
+            if (imageUrl) return imageUrl;
+
+            const imageArtifactPath = buildArtifactInlinePath(image?.artifactId || image?.artifact_id);
+            if (imageArtifactPath) return imageArtifactPath;
+        }
+
+        return buildArtifactInlinePath(content.artifactId || content.selectedArtifactId);
+    }
+
+    function normalizeAIImageStatusForStorage(content = {}) {
+        const hasImageUrl = Boolean(resolveSavedAIImageUrl(content) || content.imageAssetId);
+        const hasSearchResults = (
+            (Array.isArray(content.unsplashResults) && content.unsplashResults.length > 0)
+            || (Array.isArray(content.artifactResults) && content.artifactResults.length > 0)
+        );
+        const status = String(content.status || '').trim();
+
+        if (status === 'generating') {
+            return hasImageUrl ? 'done' : 'pending';
+        }
+
+        if (status === 'search_results') {
+            return hasSearchResults ? 'search_results' : (hasImageUrl ? 'done' : 'pending');
+        }
+
+        if (status === 'done') {
+            return hasImageUrl ? 'done' : 'pending';
+        }
+
+        if (status === 'error') {
+            return 'error';
+        }
+
+        return status || (hasSearchResults ? 'search_results' : (hasImageUrl ? 'done' : 'pending'));
+    }
+
     function normalizeBlockForStorage(block) {
         if (!block || typeof block !== 'object') return block;
 
@@ -276,6 +344,8 @@ const Storage = (function() {
             const nextContent = { ...nextBlock.content };
             delete nextContent._resolvedImageUrl;
             delete nextContent._assetLoading;
+            delete nextContent._assetPersisting;
+            delete nextContent._activeGeneration;
             delete nextContent._unsplashAutoRequested;
             delete nextContent.unsplashResults;
             delete nextContent.errorMessage;
@@ -283,6 +353,13 @@ const Storage = (function() {
             if (nextContent.imageAssetId && (!nextContent.imageUrl || String(nextContent.imageUrl).startsWith('blob:'))) {
                 nextContent.imageUrl = `asset://${nextContent.imageAssetId}`;
             }
+            if (!nextContent.imageAssetId && typeof nextContent.imageUrl === 'string' && nextContent.imageUrl.startsWith('asset://')) {
+                nextContent.imageAssetId = nextContent.imageUrl.slice('asset://'.length) || null;
+            }
+            if (!nextContent.imageUrl) {
+                nextContent.imageUrl = resolveSavedAIImageUrl(nextContent);
+            }
+            nextContent.status = normalizeAIImageStatusForStorage(nextContent);
 
             nextBlock.content = nextContent;
         }

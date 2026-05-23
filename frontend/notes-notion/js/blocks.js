@@ -1284,6 +1284,42 @@ const Blocks = (function() {
     /**
      * Render an AI Image block
      */
+    function buildAIImageArtifactInlinePath(artifactId) {
+        const normalizedId = String(artifactId || '').trim();
+        return normalizedId ? `/api/artifacts/${encodeURIComponent(normalizedId)}/download?inline=1` : null;
+    }
+
+    function getAIImageFallbackUrl(content = {}) {
+        const directUrl = String(
+            content.inlineUrl
+            || content.absoluteInlineUrl
+            || content.downloadUrl
+            || content.absoluteUrl
+            || content.url
+            || ''
+        ).trim();
+        if (directUrl) return directUrl;
+
+        const generatedImages = Array.isArray(content.generatedImages) ? content.generatedImages : [];
+        for (const image of generatedImages) {
+            const imageUrl = String(
+                image?.inlineUrl
+                || image?.imageUrl
+                || image?.url
+                || image?.downloadUrl
+                || image?.absoluteInlineUrl
+                || image?.absoluteUrl
+                || ''
+            ).trim();
+            if (imageUrl) return imageUrl;
+
+            const artifactPath = buildAIImageArtifactInlinePath(image?.artifactId || image?.artifact_id);
+            if (artifactPath) return artifactPath;
+        }
+
+        return buildAIImageArtifactInlinePath(content.artifactId || content.selectedArtifactId);
+    }
+
     function renderAIImageBlock(block, isEditable = true) {
         const wrapper = document.createElement('div');
         wrapper.className = 'block-content ai-image-block';
@@ -1318,15 +1354,26 @@ const Blocks = (function() {
         }
         const hasAssetRef = Boolean(content.imageAssetId);
         const hasDirectImageUrl = Boolean(content.imageUrl);
-        const hasRenderableImage = hasAssetRef || hasDirectImageUrl;
-        const normalizedStatus = content.status
+        const fallbackImageUrl = getAIImageFallbackUrl(content);
+        const hasFallbackImageUrl = Boolean(fallbackImageUrl);
+        const hasRenderableImage = hasAssetRef || hasDirectImageUrl || hasFallbackImageUrl;
+        let normalizedStatus = content.status
             || ((hasUnsplashResults || hasArtifactResults) ? 'search_results' : (hasRenderableImage ? 'done' : 'pending'));
+        if (normalizedStatus === 'generating' && !content._activeGeneration) {
+            normalizedStatus = hasRenderableImage ? 'done' : 'pending';
+        } else if (normalizedStatus === 'done' && !hasRenderableImage) {
+            normalizedStatus = 'pending';
+        } else if (normalizedStatus === 'search_results' && !hasUnsplashResults && !hasArtifactResults) {
+            normalizedStatus = hasRenderableImage ? 'done' : 'pending';
+        }
         if (content.status !== normalizedStatus) {
             content.status = normalizedStatus;
         }
 
         const assetRef = content.imageAssetId ? `asset://${content.imageAssetId}` : content.imageUrl;
-        const displayImageUrl = content._resolvedImageUrl || (assetRef && !String(assetRef).startsWith('asset://') ? assetRef : null);
+        const displayImageUrl = content._resolvedImageUrl
+            || (assetRef && !String(assetRef).startsWith('asset://') ? assetRef : null)
+            || fallbackImageUrl;
 
         if (content.status === 'done'
             && !hasAssetRef
@@ -1403,7 +1450,14 @@ const Blocks = (function() {
             window.Storage.resolveImageAsset(assetRef)
                 .then((resolvedUrl) => {
                     content._assetLoading = false;
-                    if (!resolvedUrl) return;
+                    if (!resolvedUrl) {
+                        if (fallbackImageUrl) {
+                            block.content._resolvedImageUrl = fallbackImageUrl;
+                            wrapper.innerHTML = '';
+                            wrapper.appendChild(renderAIImageBlock(block, isEditable));
+                        }
+                        return;
+                    }
                     block.content._resolvedImageUrl = resolvedUrl;
                     wrapper.innerHTML = '';
                     wrapper.appendChild(renderAIImageBlock(block, isEditable));
@@ -1854,6 +1908,7 @@ const Blocks = (function() {
                     quality: qualitySelect.disabled ? null : (qualitySelect.value || null),
                     style: styleSelect.disabled ? null : (styleSelect.value || null),
                     status: 'generating',
+                    _activeGeneration: true,
                     imageUrl: null,
                     unsplashResults: null,
                     errorMessage: null,
@@ -1868,12 +1923,14 @@ const Blocks = (function() {
                         block.content.unsplashResults = result.results;
                         block.content.status = 'search_results';
                         block.content.totalResults = result.total;
+                        delete block.content._activeGeneration;
                         wrapper.innerHTML = '';
                         wrapper.appendChild(renderAIImageBlock(block, isEditable));
                     } catch (err) {
                         console.error('Unsplash search error:', err);
                         block.content.status = 'error';
                         block.content.errorMessage = 'Failed to search Unsplash. Please try again.';
+                        delete block.content._activeGeneration;
                         wrapper.innerHTML = '';
                         wrapper.appendChild(renderAIImageBlock(block, isEditable));
                     }
@@ -1920,6 +1977,7 @@ const Blocks = (function() {
                             block.content.status = 'done';
                             block.content.revisedPrompt = result.revised_prompt;
                         }
+                        delete block.content._activeGeneration;
                         wrapper.innerHTML = '';
                         wrapper.appendChild(renderAIImageBlock(block, isEditable));
                         
@@ -1930,6 +1988,7 @@ const Blocks = (function() {
                         console.error('Image generation error:', err);
                         block.content.status = 'error';
                         block.content.errorMessage = err.message || 'Failed to generate image';
+                        delete block.content._activeGeneration;
                         wrapper.innerHTML = '';
                         wrapper.appendChild(renderAIImageBlock(block, isEditable));
                     }

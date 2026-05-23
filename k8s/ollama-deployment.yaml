@@ -77,8 +77,8 @@ spec:
             periodSeconds: 30
           resources:
             requests:
-              memory: "3Gi"
-              cpu: "2000m"
+              memory: "2Gi"
+              cpu: "1000m"
             limits:
               memory: "8Gi"
               cpu: "6000m"

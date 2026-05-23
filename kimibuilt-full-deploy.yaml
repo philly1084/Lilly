@@ -223,8 +223,8 @@ spec:
             periodSeconds: 20
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "1000m"
+              memory: "1Gi"
+              cpu: "500m"
             limits:
               memory: "6Gi"
               cpu: "3000m"
@@ -303,8 +303,8 @@ spec:
             periodSeconds: 30
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "1000m"
+              memory: "1Gi"
+              cpu: "500m"
             limits:
               memory: "5Gi"
               cpu: "4000m"
@@ -401,8 +401,8 @@ spec:
             periodSeconds: 30
           resources:
             requests:
-              memory: "3Gi"
-              cpu: "2000m"
+              memory: "2Gi"
+              cpu: "1000m"
             limits:
               memory: "8Gi"
               cpu: "6000m"
@@ -490,8 +490,8 @@ spec:
             failureThreshold: 10
           resources:
             requests:
-              memory: "1536Mi"
-              cpu: "1000m"
+              memory: "768Mi"
+              cpu: "500m"
             limits:
               memory: "4Gi"
               cpu: "3000m"
@@ -574,8 +574,8 @@ spec:
             failureThreshold: 10
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "1000m"
+              memory: "1Gi"
+              cpu: "500m"
             limits:
               memory: "6Gi"
               cpu: "4000m"
