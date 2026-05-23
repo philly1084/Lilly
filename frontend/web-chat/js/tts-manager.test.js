@@ -1,7 +1,7 @@
 const {
     DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
     DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
-    DEFAULT_TTS_SYNTHESIS_LANES,
+    DEFAULT_REALTIME_SYNTHESIS_LANES,
     WebChatTtsManager,
     normalizeTextForSpeech,
     splitTextIntoSpeechChunks,
@@ -135,8 +135,8 @@ describe('splitTextIntoSpeechChunks', () => {
             });
 
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three. Four. Five.']);
-            expect(preparedTexts).toHaveLength(DEFAULT_TTS_SYNTHESIS_LANES);
+            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three. Four.', 'Five.']);
+            expect(preparedTexts).toHaveLength(DEFAULT_REALTIME_SYNTHESIS_LANES);
             expect(startedAt).toEqual([]);
 
             resolvers[0]();
@@ -153,9 +153,50 @@ describe('splitTextIntoSpeechChunks', () => {
 
             resolvers.slice(2).forEach((resolve) => resolve());
             await expect(playbackPromise).resolves.toBe(true);
-            expect(startedAt).toHaveLength(3);
+            expect(startedAt).toHaveLength(4);
         } finally {
             global.CustomEvent = previousCustomEvent;
         }
+    });
+
+    test('hedges a slow realtime chunk through the emergency provider', async () => {
+        const manager = new WebChatTtsManager();
+        manager.realtimePolicy = {
+            ...manager.realtimePolicy,
+            hedgeDelayMs: 1,
+            emergencyProvider: 'piper',
+        };
+        manager.decodeAudioBlob = jest.fn(async (blob) => ({
+            context: 'ctx',
+            decodedBuffer: {
+                duration: blob.provider === 'piper' ? 0.4 : 0.8,
+            },
+        }));
+
+        const requests = [];
+        manager.synthesizeMessageAudio = jest.fn((_text, _messageId, options) => {
+            requests.push(options);
+            if (options.provider === 'piper') {
+                return Promise.resolve({
+                    blob: { provider: 'piper' },
+                    provider: 'piper',
+                });
+            }
+
+            return new Promise(() => {});
+        });
+
+        const result = await manager.synthesizeRealtimeChunkAudio('Slow small sentence.', 'assistant-1', {
+            playbackContext: 'ctx',
+        });
+
+        expect(result.provider).toBe('piper');
+        expect(requests[0]).toEqual(expect.objectContaining({
+            allowProviderFallback: true,
+        }));
+        expect(requests[1]).toEqual(expect.objectContaining({
+            provider: 'piper',
+            allowProviderFallback: false,
+        }));
     });
 });

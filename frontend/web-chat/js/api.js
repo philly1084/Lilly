@@ -2153,6 +2153,15 @@ class OpenAIAPIClient extends EventTarget {
         if (options.voiceId) {
             payload.voiceId = options.voiceId;
         }
+        if (options.provider) {
+            payload.provider = String(options.provider || '');
+        }
+        if (Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0) {
+            payload.timeoutMs = Number(options.timeoutMs);
+        }
+        if (typeof options.allowProviderFallback === 'boolean') {
+            payload.allowProviderFallback = options.allowProviderFallback;
+        }
 
         const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
             method: 'POST',
@@ -2177,6 +2186,8 @@ class OpenAIAPIClient extends EventTarget {
             voiceId: response.headers.get('x-tts-voice-id') || '',
             voiceLabel: response.headers.get('x-tts-voice-label') || '',
             provider: response.headers.get('x-tts-provider') || 'piper',
+            fallbackProvider: response.headers.get('x-tts-fallback-provider') || '',
+            fallbackReason: response.headers.get('x-tts-fallback-reason') || '',
         };
     }
 

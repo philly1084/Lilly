@@ -438,6 +438,83 @@ const normalizedKokoroSynthesisConcurrency = Math.max(
             || 1,
     ),
 );
+const normalizedTtsRealtimeSynthesisLanes = Math.max(
+    1,
+    Math.min(
+        8,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LANES, 10) || 4,
+    ),
+);
+const normalizedTtsRealtimeSynthesisLookahead = Math.max(
+    normalizedTtsRealtimeSynthesisLanes,
+    Math.min(
+        12,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LOOKAHEAD, 10) || 6,
+    ),
+);
+const normalizedTtsRealtimeChunkTargetChars = Math.max(
+    180,
+    Math.min(
+        normalizedKokoroMaxTextChars,
+        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 420,
+    ),
+);
+const normalizedTtsRealtimeInitialBufferChunks = Math.max(
+    1,
+    Math.min(
+        4,
+        parseInt(process.env.TTS_REALTIME_INITIAL_BUFFER_CHUNKS, 10) || 1,
+    ),
+);
+const normalizedTtsRealtimeFirstChunkSentences = Math.max(
+    1,
+    Math.min(
+        3,
+        parseInt(process.env.TTS_REALTIME_FIRST_CHUNK_SENTENCES, 10) || 1,
+    ),
+);
+const normalizedTtsRealtimeSecondChunkSentences = Math.max(
+    1,
+    Math.min(
+        3,
+        parseInt(process.env.TTS_REALTIME_SECOND_CHUNK_SENTENCES, 10) || 1,
+    ),
+);
+const normalizedTtsRealtimeMaxSentencesPerChunk = Math.max(
+    normalizedTtsRealtimeSecondChunkSentences,
+    Math.min(
+        4,
+        parseInt(process.env.TTS_REALTIME_MAX_SENTENCES_PER_CHUNK, 10) || 2,
+    ),
+);
+const normalizedTtsRealtimePrimaryTimeoutMs = Math.max(
+    3000,
+    Math.min(
+        normalizedKokoroTimeoutMs,
+        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 12000,
+    ),
+);
+const normalizedTtsRealtimeFallbackTimeoutMs = Math.max(
+    3000,
+    Math.min(
+        normalizedPiperTimeoutMs,
+        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 10000,
+    ),
+);
+const normalizedTtsRealtimeHedgeDelayMs = Math.max(
+    250,
+    Math.min(
+        5000,
+        parseInt(process.env.TTS_REALTIME_HEDGE_DELAY_MS, 10) || 1600,
+    ),
+);
+const normalizedTtsRealtimeChunkStallMs = Math.max(
+    350,
+    Math.min(
+        5000,
+        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 1800,
+    ),
+);
 const normalizedPodcastVideoSegmentTimeoutMs = Math.max(
     30000,
     parseInt(process.env.PODCAST_VIDEO_SEGMENT_TIMEOUT_MS, 10) || 360000,
@@ -577,6 +654,25 @@ const config = {
         provider: process.env.TTS_PROVIDER || 'kokoro',
         fallbackProvider: process.env.TTS_FALLBACK_PROVIDER || 'piper',
         fallbackEnabled: process.env.TTS_FALLBACK_ENABLED !== 'false',
+        realtime: {
+            synthesisLanes: normalizedTtsRealtimeSynthesisLanes,
+            synthesisLookahead: normalizedTtsRealtimeSynthesisLookahead,
+            chunkTargetChars: normalizedTtsRealtimeChunkTargetChars,
+            initialBufferChunks: normalizedTtsRealtimeInitialBufferChunks,
+            initialBufferSeconds: parseOptionalFloat(process.env.TTS_REALTIME_INITIAL_BUFFER_SECONDS) ?? 1.6,
+            initialBufferMaxWaitMs: Math.max(
+                0,
+                Math.min(2000, parseInt(process.env.TTS_REALTIME_INITIAL_BUFFER_MAX_WAIT_MS, 10) || 350),
+            ),
+            firstChunkMaxSentences: normalizedTtsRealtimeFirstChunkSentences,
+            secondChunkMaxSentences: normalizedTtsRealtimeSecondChunkSentences,
+            maxSentencesPerChunk: normalizedTtsRealtimeMaxSentencesPerChunk,
+            primaryTimeoutMs: normalizedTtsRealtimePrimaryTimeoutMs,
+            fallbackTimeoutMs: normalizedTtsRealtimeFallbackTimeoutMs,
+            hedgeDelayMs: normalizedTtsRealtimeHedgeDelayMs,
+            chunkStallMs: normalizedTtsRealtimeChunkStallMs,
+            emergencyProvider: process.env.TTS_REALTIME_EMERGENCY_PROVIDER || 'piper',
+        },
         kokoro: {
             enabled: process.env.KOKORO_TTS_ENABLED !== 'false',
             baseURL: String(process.env.KOKORO_TTS_BASE_URL || '').trim().replace(/\/+$/, ''),

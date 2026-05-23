@@ -161,6 +161,9 @@ class TtsService {
             providers: providerConfigs,
             fallbackProvider: fallbackProviderId || null,
             fallbackEnabled: this.ttsConfig.fallbackEnabled !== false,
+            realtime: this.ttsConfig.realtime && typeof this.ttsConfig.realtime === 'object'
+                ? { ...this.ttsConfig.realtime }
+                : null,
         };
     }
 
@@ -169,29 +172,40 @@ class TtsService {
         voiceId = '',
         timeoutMs,
         allowProviderFallback = true,
+        provider = '',
     } = {}) {
-        const primaryProviderId = normalizeProviderId(this.ttsConfig.provider, 'kokoro');
+        const primaryProviderId = normalizeProviderId(provider, normalizeProviderId(this.ttsConfig.provider, 'kokoro'));
         const fallbackProviderId = this.getFallbackProviderId();
         const primaryProvider = this.getProvider(primaryProviderId);
         const providerFallbackEnabled = allowProviderFallback !== false && this.ttsConfig.fallbackEnabled !== false;
         const fallbackProvider = providerFallbackEnabled ? this.getProvider(fallbackProviderId) : null;
-        const params = {
+        const requestedParams = {
             text,
             voiceId,
         };
 
         if (Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0) {
-            params.timeoutMs = Number(timeoutMs);
+            requestedParams.timeoutMs = Number(timeoutMs);
         }
-        const fallbackParams = () => {
-            const fallbackConfig = this.getProviderPublicConfig(fallbackProviderId);
-            if (fallbackConfig && !providerSupportsVoice(fallbackConfig, params.voiceId)) {
+        const buildProviderParams = (providerId = primaryProviderId) => {
+            const providerConfig = this.getProviderPublicConfig(providerId);
+            if (providerConfig && !providerSupportsVoice(providerConfig, requestedParams.voiceId)) {
                 return {
-                    ...params,
+                    ...requestedParams,
                     voiceId: '',
                 };
             }
-            return params;
+            return requestedParams;
+        };
+        const fallbackParams = () => {
+            const fallbackConfig = this.getProviderPublicConfig(fallbackProviderId);
+            if (fallbackConfig && !providerSupportsVoice(fallbackConfig, requestedParams.voiceId)) {
+                return {
+                    ...requestedParams,
+                    voiceId: '',
+                };
+            }
+            return requestedParams;
         };
         const synthesizeWithFallback = async (reason = {}) => {
             if (!fallbackProvider?.synthesize) {
@@ -204,7 +218,7 @@ class TtsService {
                     providerFallback: true,
                     fromProvider: primaryProviderId,
                     toProvider: fallbackProviderId,
-                    requestedVoiceId: params.voiceId || '',
+                    requestedVoiceId: requestedParams.voiceId || '',
                     actualVoiceId: result?.voice?.id || '',
                     reason: {
                         code: String(reason?.code || '').trim() || null,
@@ -238,7 +252,7 @@ class TtsService {
         }
 
         try {
-            return await primaryProvider.synthesize(params);
+            return await primaryProvider.synthesize(buildProviderParams(primaryProviderId));
         } catch (error) {
             if (fallbackProvider?.synthesize && isProviderRetryable(error)) {
                 return synthesizeWithFallback(error);

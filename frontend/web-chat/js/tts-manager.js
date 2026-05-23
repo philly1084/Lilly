@@ -1,16 +1,23 @@
 const DEFAULT_TTS_CACHE_LIMIT = 24;
 const DEFAULT_BROWSER_VOICE_ID = 'browser:default';
 const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 760;
+const DEFAULT_REALTIME_CHUNK_TARGET_CHARS = 420;
 const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
 const DEFAULT_PIPER_SECOND_CHUNK_SENTENCES = 1;
 const DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK = 3;
 const DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD = 4;
 const DEFAULT_TTS_SYNTHESIS_LANES = 3;
+const DEFAULT_REALTIME_SYNTHESIS_LANES = 4;
+const DEFAULT_REALTIME_SYNTHESIS_LOOKAHEAD = 6;
 const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 1;
 const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.8;
 const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 350;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
+const DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS = 12000;
+const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 10000;
+const DEFAULT_REALTIME_HEDGE_DELAY_MS = 1600;
+const DEFAULT_REALTIME_CHUNK_STALL_MS = 1800;
 
 function normalizeSpeechSentence(line = '') {
     const trimmed = String(line || '').trim();
@@ -27,6 +34,12 @@ function normalizeSpeechSentence(line = '') {
     }
 
     return `${trimmed}.`;
+}
+
+function clampNumber(value, fallback, min, max) {
+    const parsed = Number(value);
+    const effective = Number.isFinite(parsed) ? parsed : fallback;
+    return Math.max(min, Math.min(max, effective));
 }
 
 function stripHtmlForSpeech(input = '') {
@@ -406,6 +419,7 @@ class WebChatTtsManager extends EventTarget {
         this.audioContext = null;
         this.pendingConfigPromise = null;
         this.maxTextChars = DEFAULT_TTS_MAX_TEXT_CHARS;
+        this.realtimePolicy = this.normalizeRealtimePolicy();
         this.playbackToken = 0;
         this.browserSpeechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
         this.handleBrowserVoicesChanged = this.handleBrowserVoicesChanged.bind(this);
@@ -430,6 +444,82 @@ class WebChatTtsManager extends EventTarget {
         }
 
         return fallback;
+    }
+
+    normalizeRealtimePolicy(policy = {}) {
+        const maxTextChars = Math.max(120, Number(this.maxTextChars) || DEFAULT_TTS_MAX_TEXT_CHARS);
+        const synthesisLanes = clampNumber(
+            policy.synthesisLanes,
+            DEFAULT_REALTIME_SYNTHESIS_LANES,
+            1,
+            8,
+        );
+        const synthesisLookahead = Math.max(
+            synthesisLanes,
+            clampNumber(policy.synthesisLookahead, DEFAULT_REALTIME_SYNTHESIS_LOOKAHEAD, 1, 12),
+        );
+        const firstChunkMaxSentences = clampNumber(policy.firstChunkMaxSentences, 1, 1, 3);
+        const secondChunkMaxSentences = clampNumber(policy.secondChunkMaxSentences, 1, 1, 3);
+
+        return {
+            synthesisLanes,
+            synthesisLookahead,
+            chunkTargetChars: clampNumber(
+                policy.chunkTargetChars,
+                DEFAULT_REALTIME_CHUNK_TARGET_CHARS,
+                180,
+                maxTextChars,
+            ),
+            initialBufferChunks: clampNumber(
+                policy.initialBufferChunks,
+                DEFAULT_TTS_INITIAL_BUFFER_CHUNKS,
+                1,
+                4,
+            ),
+            initialBufferSeconds: clampNumber(
+                policy.initialBufferSeconds,
+                DEFAULT_TTS_INITIAL_BUFFER_SECONDS,
+                0,
+                8,
+            ),
+            initialBufferMaxWaitMs: clampNumber(
+                policy.initialBufferMaxWaitMs,
+                DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS,
+                0,
+                2000,
+            ),
+            firstChunkMaxSentences,
+            secondChunkMaxSentences,
+            maxSentencesPerChunk: Math.max(
+                secondChunkMaxSentences,
+                clampNumber(policy.maxSentencesPerChunk, 2, 1, 4),
+            ),
+            primaryTimeoutMs: clampNumber(
+                policy.primaryTimeoutMs,
+                DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS,
+                3000,
+                60000,
+            ),
+            fallbackTimeoutMs: clampNumber(
+                policy.fallbackTimeoutMs,
+                DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS,
+                3000,
+                60000,
+            ),
+            hedgeDelayMs: clampNumber(
+                policy.hedgeDelayMs,
+                DEFAULT_REALTIME_HEDGE_DELAY_MS,
+                250,
+                5000,
+            ),
+            chunkStallMs: clampNumber(
+                policy.chunkStallMs,
+                DEFAULT_REALTIME_CHUNK_STALL_MS,
+                350,
+                5000,
+            ),
+            emergencyProvider: String(policy.emergencyProvider || 'piper').trim().toLowerCase() || 'piper',
+        };
     }
 
     storageGet(key) {
@@ -756,6 +846,7 @@ class WebChatTtsManager extends EventTarget {
                 120,
                 Number(manifest?.maxTextChars) || DEFAULT_TTS_MAX_TEXT_CHARS,
             );
+            this.realtimePolicy = this.normalizeRealtimePolicy(manifest?.realtime || {});
             const manifestProvider = String(manifest?.provider || 'piper').trim() || 'piper';
             const manifestProviderLabel = manifestProvider === 'browser' ? 'Browser voice' : 'Piper';
             const manifestUnavailableMessage = manifestProvider === 'browser'
@@ -824,6 +915,7 @@ class WebChatTtsManager extends EventTarget {
                 this.voices = [];
                 this.selectedVoiceId = '';
                 this.maxTextChars = DEFAULT_TTS_MAX_TEXT_CHARS;
+                this.realtimePolicy = this.normalizeRealtimePolicy();
                 this.diagnostics = {
                     status: 'unavailable',
                     binaryReachable: false,
@@ -1006,9 +1098,9 @@ class WebChatTtsManager extends EventTarget {
         return Math.abs(hash).toString(36);
     }
 
-    buildCacheKey(_messageId = '', text = '') {
+    buildCacheKey(_messageId = '', text = '', options = {}) {
         return [
-            this.getProvider(),
+            String(options.provider || this.getProvider() || '').trim() || this.getProvider(),
             this.getSelectedVoiceId(),
             this.hashText(text),
         ].join(':');
@@ -1018,6 +1110,76 @@ class WebChatTtsManager extends EventTarget {
         while (this.cachedAudioBlobs.size > DEFAULT_TTS_CACHE_LIMIT) {
             const oldest = this.cachedAudioBlobs.keys().next().value;
             this.cachedAudioBlobs.delete(oldest);
+        }
+    }
+
+    getRealtimeChunkTimeoutMs(text = '', options = {}) {
+        const policy = this.realtimePolicy || this.normalizeRealtimePolicy();
+        const baseTimeoutMs = options.fallback === true
+            ? policy.fallbackTimeoutMs
+            : policy.primaryTimeoutMs;
+        const textLength = String(text || '').trim().length;
+        const lengthBudgetMs = Math.min(8000, Math.max(0, textLength - 120) * 18);
+        return Math.round(baseTimeoutMs + lengthBudgetMs);
+    }
+
+    wait(ms) {
+        return new Promise((resolve) => {
+            const timer = setTimeout(resolve, Math.max(0, Number(ms) || 0));
+            timer?.unref?.();
+        });
+    }
+
+    async synthesizeRealtimeChunkAudio(text, messageId = '', options = {}) {
+        const policy = this.realtimePolicy || this.normalizeRealtimePolicy();
+        const normalizedText = String(text || '').trim();
+        const primaryOptions = {
+            ...options,
+            timeoutMs: this.getRealtimeChunkTimeoutMs(normalizedText, options),
+            allowProviderFallback: true,
+        };
+        let settled = false;
+        let fallbackStarted = false;
+        let primaryError = null;
+
+        const primaryPromise = this.synthesizeAndPrepareMessageAudio(
+            normalizedText,
+            messageId,
+            primaryOptions,
+        ).catch((error) => {
+            primaryError = error;
+            throw error;
+        });
+
+        const fallbackPromise = this.wait(policy.hedgeDelayMs).then(() => {
+            if (settled || !policy.emergencyProvider) {
+                return new Promise(() => {});
+            }
+
+            fallbackStarted = true;
+            return this.synthesizeAndPrepareMessageAudio(normalizedText, messageId, {
+                ...options,
+                provider: policy.emergencyProvider,
+                timeoutMs: this.getRealtimeChunkTimeoutMs(normalizedText, { ...options, fallback: true }),
+                allowProviderFallback: false,
+                showLoading: false,
+            });
+        });
+
+        try {
+            const result = await Promise.any([primaryPromise, fallbackPromise]);
+            settled = true;
+            return {
+                ...result,
+                realtimeFallbackAttempted: fallbackStarted,
+                realtimePrimaryError: primaryError?.message || '',
+            };
+        } catch (error) {
+            settled = true;
+            if (error?.errors?.length) {
+                throw error.errors[0];
+            }
+            throw error;
         }
     }
 
@@ -1216,7 +1378,7 @@ class WebChatTtsManager extends EventTarget {
             throw new Error('No text is available to read aloud.');
         }
 
-        const cacheKey = this.buildCacheKey(messageId, normalizedText);
+        const cacheKey = this.buildCacheKey(messageId, normalizedText, options);
         const cachedAudioBlob = this.cachedAudioBlobs.get(cacheKey);
         if (cachedAudioBlob) {
             return {
@@ -1236,6 +1398,9 @@ class WebChatTtsManager extends EventTarget {
         try {
             const result = await window.apiClient?.synthesizeSpeech?.(normalizedText, {
                 voiceId: this.getSelectedVoiceId(),
+                provider: options.provider || '',
+                timeoutMs: options.timeoutMs,
+                allowProviderFallback: options.allowProviderFallback,
             });
             this.cachedAudioBlobs.set(cacheKey, result.blob);
             this.trimCache();
@@ -1266,11 +1431,16 @@ class WebChatTtsManager extends EventTarget {
     }
 
     getPiperSpeechChunks(text = '') {
+        const policy = this.realtimePolicy || this.normalizeRealtimePolicy();
         return splitTextIntoSpeechChunks(text, {
             absoluteMaxChars: this.maxTextChars,
-            targetChunkChars: Math.min(this.maxTextChars, DEFAULT_PIPER_CHUNK_TARGET_CHARS),
-            firstChunkMaxSentences: DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
-            maxSentencesPerChunk: DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
+            targetChunkChars: Math.min(
+                this.maxTextChars,
+                Number(policy.chunkTargetChars) || DEFAULT_PIPER_CHUNK_TARGET_CHARS,
+            ),
+            firstChunkMaxSentences: Number(policy.firstChunkMaxSentences) || DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
+            secondChunkMaxSentences: Number(policy.secondChunkMaxSentences) || DEFAULT_PIPER_SECOND_CHUNK_SENTENCES,
+            maxSentencesPerChunk: Number(policy.maxSentencesPerChunk) || DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
         });
     }
 
@@ -1384,8 +1554,15 @@ class WebChatTtsManager extends EventTarget {
         let nextChunkToPrepare = 0;
         let preparedWindowAnchor = 0;
         let scheduledEndTime = 0;
-        const synthesisLookahead = Math.max(1, DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD);
-        const synthesisLanes = Math.max(1, DEFAULT_TTS_SYNTHESIS_LANES);
+        const policy = this.realtimePolicy || this.normalizeRealtimePolicy();
+        const synthesisLookahead = Math.max(
+            1,
+            Number(policy.synthesisLookahead) || DEFAULT_PIPER_SYNTHESIS_LOOKAHEAD,
+        );
+        const synthesisLanes = Math.max(
+            1,
+            Number(policy.synthesisLanes) || DEFAULT_TTS_SYNTHESIS_LANES,
+        );
         activePlaybackContext = activePlaybackContext || await this.preparePlayback();
         const bufferedChunkResults = new Map();
 
@@ -1395,10 +1572,12 @@ class WebChatTtsManager extends EventTarget {
             }
 
             preparingChunkIndexes.add(index);
-            const chunkPromise = this.synthesizeAndPrepareMessageAudio(chunks[index], normalizedMessageId, {
+            const chunkPromise = this.synthesizeRealtimeChunkAudio(chunks[index], normalizedMessageId, {
                 showLoading: index === 0,
                 resetCurrentMessage: index === 0,
                 playbackContext: activePlaybackContext,
+                chunkIndex: index,
+                chunkCount: chunks.length,
             }).finally(() => {
                 preparingChunkIndexes.delete(index);
                 fillPreparedWindow(preparedWindowAnchor);
@@ -1417,11 +1596,6 @@ class WebChatTtsManager extends EventTarget {
                 nextChunkToPrepare += 1;
             }
         };
-
-        const wait = (ms) => new Promise((resolve) => {
-            const timer = setTimeout(resolve, Math.max(0, Number(ms) || 0));
-            timer?.unref?.();
-        });
 
         const waitForPreparedChunk = async (index, timeoutMs = 0) => {
             if (bufferedChunkResults.has(index)) {
@@ -1456,7 +1630,7 @@ class WebChatTtsManager extends EventTarget {
                         result,
                     };
                 }),
-                wait(timeoutMs).then(() => ({
+                this.wait(timeoutMs).then(() => ({
                     timedOut: true,
                     result: null,
                 })),
@@ -1470,13 +1644,18 @@ class WebChatTtsManager extends EventTarget {
             }
 
             const maxInitialChunks = Math.min(chunks.length, DEFAULT_TTS_INITIAL_BUFFER_CHUNKS);
-            const deadline = Date.now() + DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS;
+            const policyInitialBufferChunks = Math.min(
+                chunks.length,
+                Number(policy.initialBufferChunks) || DEFAULT_TTS_INITIAL_BUFFER_CHUNKS,
+            );
+            const maxRealtimeInitialChunks = Math.max(maxInitialChunks, policyInitialBufferChunks);
+            const deadline = Date.now() + (Number(policy.initialBufferMaxWaitMs) || DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS);
             let bufferedDuration = Number(firstChunk.result.decodedBuffer?.duration) || 0;
 
-            for (let index = 1; index < maxInitialChunks; index += 1) {
+            for (let index = 1; index < maxRealtimeInitialChunks; index += 1) {
                 if (
-                    bufferedChunkResults.size >= maxInitialChunks
-                    || bufferedDuration >= DEFAULT_TTS_INITIAL_BUFFER_SECONDS
+                    bufferedChunkResults.size >= maxRealtimeInitialChunks
+                    || bufferedDuration >= (Number(policy.initialBufferSeconds) || DEFAULT_TTS_INITIAL_BUFFER_SECONDS)
                     || !this.isPlaybackRequestActive(playbackToken)
                 ) {
                     break;
@@ -1513,15 +1692,22 @@ class WebChatTtsManager extends EventTarget {
                 if (!this.isPlaybackRequestActive(playbackToken)) {
                     return false;
                 }
-                await wait(10);
+                await this.wait(10);
                 fillPreparedWindow(index);
             }
-            const chunkPromise = bufferedChunkResults.has(index)
-                ? Promise.resolve(bufferedChunkResults.get(index))
-                : preparedChunkPromises.get(index);
+            const laterChunkReady = Array.from(bufferedChunkResults.keys()).some((readyIndex) => readyIndex > index);
+            const preparedChunk = laterChunkReady
+                ? await waitForPreparedChunk(index, Number(policy.chunkStallMs) || DEFAULT_REALTIME_CHUNK_STALL_MS)
+                : await waitForPreparedChunk(index);
+            if (preparedChunk.timedOut || !preparedChunk.result) {
+                preparedChunkPromises.delete(index);
+                bufferedChunkResults.delete(index);
+                fillPreparedWindow(index + 1);
+                continue;
+            }
             preparedChunkPromises.delete(index);
             bufferedChunkResults.delete(index);
-            const chunkResult = await chunkPromise;
+            const chunkResult = preparedChunk.result;
             if (!this.isPlaybackRequestActive(playbackToken)) {
                 return false;
             }
@@ -1607,6 +1793,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         DEFAULT_PIPER_FIRST_CHUNK_SENTENCES,
         DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
+        DEFAULT_REALTIME_SYNTHESIS_LANES,
         DEFAULT_TTS_SYNTHESIS_LANES,
         WebChatTtsManager,
         groupSpeechSentencesIntoChunks,

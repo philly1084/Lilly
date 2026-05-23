@@ -76,9 +76,18 @@ describe('/api/tts', () => {
             .send({
                 text: 'Hello from Kokoro.',
                 voiceId: 'af_heart',
+                timeoutMs: 12000,
+                allowProviderFallback: true,
             });
 
         expect(response.status).toBe(200);
+        expect(ttsService.synthesize).toHaveBeenCalledWith({
+            text: 'Hello from Kokoro.',
+            voiceId: 'af_heart',
+            provider: '',
+            timeoutMs: 12000,
+            allowProviderFallback: true,
+        });
         expect(response.headers['content-type']).toMatch(/audio\/wav/);
         expect(response.headers['x-tts-provider']).toBe('kokoro');
         expect(response.headers['x-tts-voice-id']).toBe('af_heart');

@@ -7,6 +7,9 @@ const router = Router();
 const synthesizeSchema = {
     text: { required: true, type: 'string' },
     voiceId: { required: false, type: 'string' },
+    provider: { required: false, type: 'string' },
+    timeoutMs: { required: false, type: 'number' },
+    allowProviderFallback: { required: false, type: 'boolean' },
 };
 
 router.get('/voices', (_req, res) => {
@@ -18,6 +21,9 @@ router.post('/synthesize', validate(synthesizeSchema), async (req, res, next) =>
         const result = await ttsService.synthesize({
             text: req.body.text,
             voiceId: req.body.voiceId || '',
+            provider: req.body.provider || '',
+            timeoutMs: req.body.timeoutMs,
+            allowProviderFallback: req.body.allowProviderFallback,
         });
 
         res.setHeader('Content-Type', result.contentType || 'audio/wav');
@@ -25,6 +31,10 @@ router.post('/synthesize', validate(synthesizeSchema), async (req, res, next) =>
         res.setHeader('X-TTS-Provider', result.provider || 'unknown');
         res.setHeader('X-TTS-Voice-Id', result.voice?.id || '');
         res.setHeader('X-TTS-Voice-Label', result.voice?.label || '');
+        if (result.fallback?.providerFallback) {
+            res.setHeader('X-TTS-Fallback-Provider', result.fallback.toProvider || '');
+            res.setHeader('X-TTS-Fallback-Reason', result.fallback.reason?.code || '');
+        }
         res.send(result.audioBuffer);
     } catch (error) {
         if (error?.statusCode) {

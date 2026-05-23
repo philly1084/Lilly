@@ -66,6 +66,34 @@ describe('TtsService', () => {
         });
     });
 
+    test('can route a realtime hedge directly to the fallback provider without an incompatible voice id', async () => {
+        const kokoro = createProvider('kokoro');
+        const piper = createProvider('piper');
+        const service = new TtsService({
+            provider: 'kokoro',
+            fallbackProvider: 'piper',
+        }, {
+            kokoro,
+            piper,
+        });
+
+        const result = await service.synthesize({
+            text: 'Fast hedge please.',
+            voiceId: 'af_heart',
+            provider: 'piper',
+            timeoutMs: 10000,
+            allowProviderFallback: false,
+        });
+
+        expect(kokoro.synthesize).not.toHaveBeenCalled();
+        expect(piper.synthesize).toHaveBeenCalledWith({
+            text: 'Fast hedge please.',
+            voiceId: '',
+            timeoutMs: 10000,
+        });
+        expect(result.provider).toBe('piper');
+    });
+
     test('returns Kokoro public config plus fallback provider catalog', () => {
         const kokoro = createProvider('kokoro', 'ready', undefined, {
             maxTextChars: 2400,
