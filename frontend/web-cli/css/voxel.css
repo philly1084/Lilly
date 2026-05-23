@@ -138,7 +138,7 @@ body[data-theme="voxel"] .terminal-output {
     z-index: 1;
     min-width: 0;
     overflow-x: hidden;
-    padding: 22px 16px 118px;
+    padding: 22px 16px 168px;
 }
 
 body[data-theme="voxel"] .input-container {
@@ -318,6 +318,85 @@ body[data-theme="voxel"] .input-container:focus-within .voxel-toolbelt {
         0 4px 0 var(--voxel-pet-accent);
 }
 
+body[data-theme="voxel"] .command-shelf {
+    margin-top: 10px;
+}
+
+body[data-theme="voxel"] .command-shelf-label {
+    color: var(--voxel-pet-secondary);
+}
+
+body[data-theme="voxel"] .command-quick-actions {
+    padding-bottom: 5px;
+}
+
+body[data-theme="voxel"] .command-quick-btn {
+    flex-basis: 164px;
+    min-height: 52px;
+    border-width: 2px;
+    border-radius: 4px;
+    background:
+        linear-gradient(90deg, rgba(83, 221, 177, 0.06) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(117, 183, 255, 0.04) 1px, transparent 1px),
+        rgba(8, 12, 16, 0.76);
+    background-size: 12px 12px, 12px 12px, auto;
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.22);
+}
+
+body[data-theme="voxel"] .command-quick-btn:hover,
+body[data-theme="voxel"] .command-quick-btn:focus-visible {
+    border-color: var(--voxel-pet-secondary);
+    background:
+        linear-gradient(90deg, rgba(83, 221, 177, 0.14), rgba(244, 201, 93, 0.08)),
+        var(--bg-secondary);
+    box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.25);
+    transform: translate(-1px, -1px);
+}
+
+body[data-theme="voxel"] .command-quick-icon,
+body[data-theme="voxel"] .autocomplete-icon {
+    color: var(--voxel-ink);
+    background: var(--voxel-pet-primary);
+    border-radius: 3px;
+    box-shadow:
+        3px 3px 0 var(--voxel-pet-secondary),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.18);
+}
+
+body[data-theme="voxel"] .command-quick-template {
+    color: var(--voxel-pet-secondary);
+}
+
+body[data-theme="voxel"] .command-assist.is-ready {
+    color: var(--voxel-pet-primary);
+}
+
+body[data-theme="voxel"] .command-assist.is-waiting {
+    color: var(--voxel-pet-secondary);
+}
+
+body[data-theme="voxel"] .autocomplete-item {
+    border-bottom: 1px solid rgba(49, 89, 94, 0.58);
+}
+
+body[data-theme="voxel"] .autocomplete-item:last-child {
+    border-bottom: 0;
+}
+
+body[data-theme="voxel"] .autocomplete-title code {
+    color: var(--voxel-pet-secondary);
+}
+
+body[data-theme="voxel"] .autocomplete-description {
+    color: var(--text-secondary);
+}
+
+body[data-theme="voxel"] .autocomplete-args {
+    color: var(--voxel-pet-secondary);
+    border-color: rgba(244, 201, 93, 0.42);
+    background: rgba(244, 201, 93, 0.1);
+}
+
 .voxel-pet-status {
     max-width: 240px;
     color: var(--voxel-pet-secondary);
@@ -427,6 +506,49 @@ body[data-theme="voxel"] .ai-response-toggle:focus-visible {
     box-shadow:
         0 0 0 2px rgba(244, 201, 93, 0.12),
         3px 3px 0 rgba(0, 0, 0, 0.28);
+}
+
+body[data-theme="voxel"] .cli-response-tools {
+    margin-left: 0;
+}
+
+body[data-theme="voxel"] .cli-tts-btn {
+    color: var(--voxel-pet-secondary);
+    background: rgba(6, 16, 19, 0.88);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.22);
+}
+
+body[data-theme="voxel"] .cli-tts-btn:hover:not(:disabled),
+body[data-theme="voxel"] .cli-tts-btn:focus-visible {
+    color: var(--voxel-pet-primary);
+    border-color: var(--voxel-pet-secondary);
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(244, 201, 93, 0.12),
+        3px 3px 0 rgba(0, 0, 0, 0.28);
+}
+
+body[data-theme="voxel"] .cli-tts-btn.is-active {
+    color: var(--voxel-ink);
+    background: var(--voxel-pet-primary);
+    border-color: var(--voxel-pet-secondary);
+}
+
+body[data-theme="voxel"] .line-output.ai.is-voice-playing {
+    border-left-color: var(--voxel-pet-secondary);
+    box-shadow:
+        0 0 0 2px rgba(244, 201, 93, 0.12),
+        5px 5px 0 rgba(0, 0, 0, 0.22);
+}
+
+body[data-theme="voxel"] .tts-reading-highlight {
+    color: #061013;
+    background: var(--voxel-pet-secondary);
+    box-shadow:
+        0 0 0 0.2rem rgba(244, 201, 93, 0.14),
+        2px 2px 0 rgba(0, 0, 0, 0.24);
 }
 
 .voxel-response-body {
@@ -1996,6 +2118,27 @@ body[data-theme="voxel"] .autocomplete-item.selected {
         flex-wrap: wrap;
         gap: 6px;
         padding-bottom: 2px;
+    }
+
+    body[data-theme="voxel"] .command-shelf {
+        margin-top: 8px;
+    }
+
+    body[data-theme="voxel"] .command-quick-actions {
+        gap: 6px;
+        padding-bottom: 4px;
+    }
+
+    body[data-theme="voxel"] .command-quick-btn {
+        flex-basis: 140px;
+        min-height: 46px;
+        padding: 7px 8px;
+    }
+
+    body[data-theme="voxel"] .command-quick-icon {
+        width: 26px;
+        height: 26px;
+        font-size: 10px;
     }
 
     .voxel-response-head {

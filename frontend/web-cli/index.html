@@ -23,7 +23,7 @@
 
     <!-- PDF export for Mermaid diagrams -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <link rel="stylesheet" href="css/voxel.css?v=20260510a">
+    <link rel="stylesheet" href="css/voxel.css?v=20260523b">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
     
     <style>
@@ -338,6 +338,17 @@
             margin-left: auto;
         }
 
+        .cli-response-tools {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+        }
+
+        .cli-response-tools .cli-alignment-actions {
+            margin-left: 0;
+        }
+
         .cli-alignment-btn {
             min-height: 24px;
             padding: 0 8px;
@@ -361,6 +372,68 @@
         .cli-alignment-btn:disabled {
             opacity: 0.5;
             cursor: default;
+        }
+
+        .cli-tts-btn {
+            min-height: 24px;
+            padding: 0 8px;
+            color: var(--text-secondary);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font: inherit;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .cli-tts-btn:hover:not(:disabled),
+        .cli-tts-btn:focus-visible {
+            color: var(--accent-hover);
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.18);
+        }
+
+        .cli-tts-btn:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .cli-tts-btn.is-active {
+            color: #041510;
+            background: var(--success-bright);
+            border-color: var(--success-bright);
+            opacity: 1;
+        }
+
+        .line-output.ai.is-voice-playing {
+            border-left-color: var(--accent);
+        }
+
+        .tts-reading-highlight {
+            color: #fff7ed;
+            background: rgba(239, 68, 68, 0.18);
+            box-shadow: 0 0 0 0.22rem rgba(239, 68, 68, 0.12);
+            border-radius: 0.32em;
+            padding: 0.02em 0.14em;
+            animation: voice-recording-pulse 1.6s ease-in-out infinite;
+        }
+
+        @keyframes voice-recording-pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0.22rem rgba(239, 68, 68, 0.08);
+            }
+            50% {
+                transform: scale(1.01);
+                box-shadow: 0 0 0 0.28rem rgba(239, 68, 68, 0.16);
+            }
+        }
+
+        .toolbar .btn.is-active {
+            color: #041510;
+            background: var(--success-bright);
+            border-color: var(--success-bright);
         }
 
         .line-output.ai[data-alignment-rating="up"] .cli-alignment-btn[data-alignment-rating="up"] {
@@ -623,6 +696,121 @@
             color: var(--text-muted);
         }
 
+        .command-shelf {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .command-shelf-label {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .command-quick-actions {
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+            min-width: 0;
+            overflow-x: auto;
+            padding: 2px 2px 4px;
+            scrollbar-color: var(--border-color) transparent;
+            scrollbar-width: thin;
+        }
+
+        .command-quick-btn {
+            display: grid;
+            grid-template-columns: 30px minmax(0, 1fr);
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 154px;
+            min-height: 48px;
+            padding: 8px 10px;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .command-quick-btn:hover,
+        .command-quick-btn:focus-visible {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.18);
+        }
+
+        .command-quick-icon {
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-primary);
+            background: var(--accent);
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .command-quick-copy {
+            display: grid;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .command-quick-name,
+        .command-quick-template {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .command-quick-name {
+            color: var(--text-primary);
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
+        .command-quick-template {
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.2;
+        }
+
+        .command-assist {
+            min-width: 0;
+            max-width: min(420px, 44vw);
+            margin-left: auto;
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .command-assist.is-waiting {
+            color: var(--warning);
+        }
+
+        .command-assist.is-ready {
+            color: var(--accent);
+        }
+
+        .command-assist.is-error {
+            color: var(--error);
+        }
+
         /* CLI Status Indicator */
         .cli-status {
             display: inline-flex;
@@ -790,19 +978,92 @@
             overflow-y: auto;
             margin-bottom: 8px;
             box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 60;
         }
 
         .autocomplete-item {
-            padding: 8px 12px;
+            display: grid;
+            grid-template-columns: 30px minmax(0, 1fr) minmax(86px, auto);
+            align-items: center;
+            gap: 9px;
+            width: 100%;
+            padding: 9px 12px;
             cursor: pointer;
             color: var(--text-primary);
+            background: transparent;
+            border: 0;
             font-size: 13px;
+            font: inherit;
+            text-align: left;
         }
 
         .autocomplete-item:hover,
         .autocomplete-item.selected {
             background: var(--bg-tertiary);
             color: var(--accent);
+        }
+
+        .autocomplete-icon {
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-primary);
+            background: var(--accent);
+            border-radius: 5px;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .autocomplete-main {
+            display: grid;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .autocomplete-title {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .autocomplete-title code,
+        .autocomplete-title strong,
+        .autocomplete-description,
+        .autocomplete-args {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .autocomplete-title code {
+            color: var(--accent);
+            font-size: 12px;
+        }
+
+        .autocomplete-title strong {
+            color: var(--text-primary);
+            font-size: 12px;
+        }
+
+        .autocomplete-description {
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        .autocomplete-args {
+            justify-self: end;
+            max-width: 180px;
+            padding: 2px 6px;
+            color: var(--warning);
+            background: rgba(210, 153, 34, 0.12);
+            border: 1px solid rgba(210, 153, 34, 0.28);
+            border-radius: 999px;
+            font-size: 10px;
         }
 
         /* ===== Modal ===== */
@@ -952,6 +1213,49 @@
 
             .input-container {
                 padding: 10px 12px;
+            }
+
+            .command-shelf {
+                grid-template-columns: 1fr;
+                gap: 6px;
+                margin-top: 8px;
+            }
+
+            .command-shelf-label {
+                display: none;
+            }
+
+            .command-quick-btn {
+                flex-basis: 136px;
+                min-height: 44px;
+                padding: 7px 8px;
+            }
+
+            .command-quick-icon {
+                width: 26px;
+                height: 26px;
+            }
+
+            .command-assist {
+                order: 8;
+                width: 100%;
+                max-width: 100%;
+                margin-left: 0;
+            }
+
+            .autocomplete {
+                max-height: min(280px, 52vh);
+            }
+
+            .autocomplete-item {
+                grid-template-columns: 28px minmax(0, 1fr);
+                align-items: flex-start;
+            }
+
+            .autocomplete-args {
+                grid-column: 2;
+                justify-self: start;
+                max-width: 100%;
             }
 
             .header-title {
@@ -1147,6 +1451,9 @@
                 <button id="themeButton" class="btn btn-sm" data-short="Thm" onclick="app.cycleTheme()" title="Toggle theme" aria-label="Toggle theme">
                     <span>Theme</span>
                 </button>
+                <button id="ttsToggleButton" class="btn btn-sm" data-short="TTS" onclick="app.toggleTtsAutoPlayFromToolbar()" title="Read replies aloud" aria-label="Read replies aloud" disabled>
+                    <span>Voice</span>
+                </button>
                 <button class="btn btn-sm" data-short="Bud" onclick="app.focusVoxelCreator()" title="Voxel buddy" aria-label="Focus voxel buddy">
                     <span>Buddy</span>
                 </button>
@@ -1179,6 +1486,10 @@
                             spellcheck="false"
                         >
                     </div>
+                    <div id="commandShelf" class="command-shelf" aria-label="Quick CLI commands">
+                        <span class="command-shelf-label">Commands</span>
+                        <div id="commandQuickActions" class="command-quick-actions" aria-label="Click a command to place it in the CLI input"></div>
+                    </div>
                     <div id="voxelToolbelt" class="voxel-toolbelt" aria-label="Voxel coding toolbelt">
                         <button type="button" class="voxel-tool-chip active" data-tool="chat" onclick="app.useVoxelQuickTool('chat')" title="Chat with the coding buddy">
                             <span class="voxel-tool-icon" aria-hidden="true"></span>
@@ -1199,6 +1510,7 @@
                         <span id="cliStatus" class="cli-status ready">Ready</span>
                         <span id="voxelPetStatus" class="voxel-pet-status">Voxel companion ready</span>
                         <span id="queueIndicator" class="queue-indicator hidden" title="Commands queued"></span>
+                        <span id="commandAssist" class="command-assist is-ready">Click a command or type / for autocomplete.</span>
                         <span class="shortcut-hint">Ctrl+L=Clear | ↑↓=History | F1=Help</span>
                     </div>
                     <div id="autocomplete" class="autocomplete hidden"></div>
@@ -1315,8 +1627,9 @@
     <script src="../shared/model-output-parser.js?v=20260426b"></script>
     <script src="../shared/theme-presets.js?v=20260426a"></script>
     <script src="js/api.js?v=20260523a"></script>
+    <script src="../web-chat/js/tts-manager.js?v=20260523a"></script>
     <script src="js/file-handler.js"></script>
     <script src="js/voxel-pets.js"></script>
-    <script src="js/app.js?v=20260523a"></script>
+    <script src="js/app.js?v=20260523b"></script>
 </body>
 </html>

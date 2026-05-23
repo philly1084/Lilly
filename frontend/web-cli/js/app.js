@@ -4,6 +4,7 @@
  */
 
 const WEB_CLI_LONG_AGENT_ENABLED_KEY = 'codecli-long-agent-enabled';
+const WEB_CLI_TTS_MESSAGE_PREFIX = 'web-cli-tts';
 
 class CodeCLIApp {
     constructor() {
@@ -39,6 +40,16 @@ class CodeCLIApp {
         this.liveProgressState = null;
         this.liveReasoningSummary = '';
         this.liveToolEvents = [];
+        this.installTtsStorageBridge();
+        this.ttsManager = window.WebChatTtsManager ? new window.WebChatTtsManager() : null;
+        this.ttsInitialized = false;
+        this.ttsMessageCounter = 0;
+        this.ttsMessageTextById = new Map();
+        this.speechHighlightState = {
+            messageId: '',
+            lastSearchOffset: 0,
+            lastChunkIndex: -1,
+        };
         
         // Session file storage
         this.sessionFiles = [];
@@ -48,17 +59,44 @@ class CodeCLIApp {
         this.commandQueue = [];
         this.isProcessingQueue = false;
         
-        // Available commands for autocomplete
-        this.commands = [
-            '/help', '/?', '/clear', '/cls', '/new', '/sessions', '/switch', '/delete', '/models', '/model', '/theme', '/voxel',
-            '/export', '/save', '/load', '/copy', '/image', '/image-models', '/unsplash', '/podcast', '/video-podcast', '/diagram',
-            '/upload', '/session', '/history', '/artifacts', '/stats', '/shortcuts', '/keys', '/health', '/tools', '/tool', '/tool-help',
-            '/skills', '/skill', '/skill-create', '/skill-update',
-            '/files', '/ls', '/download', '/open', '/pet', '/spawn', '/agent', '/voxel-agent', '/random-agent', '/creator', '/voxel-creator',
-            '/buddy', '/toolbelt', '/build', '/long-agent', '/long', '/remote', '/sandbox', '/sandbox-help',
-        ];
+        this.commandCatalog = this.buildCommandCatalog();
+        this.commands = this.commandCatalog
+            .flatMap((command) => [command.command, ...(command.aliases || [])])
+            .filter(Boolean);
         
         this.init();
+    }
+
+    installTtsStorageBridge() {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const storageHost = window.sessionManager && typeof window.sessionManager === 'object'
+            ? window.sessionManager
+            : {};
+        window.sessionManager = storageHost;
+
+        if (typeof storageHost.safeStorageGet !== 'function') {
+            storageHost.safeStorageGet = (key) => {
+                try {
+                    return window.localStorage.getItem(key);
+                } catch (_error) {
+                    return null;
+                }
+            };
+        }
+
+        if (typeof storageHost.safeStorageSet !== 'function') {
+            storageHost.safeStorageSet = (key, value) => {
+                try {
+                    window.localStorage.setItem(key, value);
+                    return true;
+                } catch (_error) {
+                    return false;
+                }
+            };
+        }
     }
     
     init() {
@@ -66,6 +104,7 @@ class CodeCLIApp {
         this.commandInput = document.getElementById('commandInput');
         this.modelSelect = document.getElementById('modelSelect');
         this.themeButton = document.getElementById('themeButton');
+        this.ttsToggleButton = document.getElementById('ttsToggleButton');
         this.statusDot = document.getElementById('statusDot');
         this.statusText = document.getElementById('statusText');
         this.sessionInfo = document.getElementById('sessionInfo');
@@ -74,6 +113,8 @@ class CodeCLIApp {
         this.shortcutsModal = document.getElementById('shortcutsModal');
         this.cliStatus = document.getElementById('cliStatus');
         this.queueIndicator = document.getElementById('queueIndicator');
+        this.commandQuickActions = document.getElementById('commandQuickActions');
+        this.commandAssist = document.getElementById('commandAssist');
         // Queue elements removed - using inline status only
         this.queueSection = null;
         this.queueList = null;
@@ -99,7 +140,9 @@ class CodeCLIApp {
         this.voxelToolStat = document.getElementById('voxelToolStat');
         
         this.setupEventListeners();
+        this.renderCommandShelf();
         this.applyTheme(this.theme);
+        this.initializeTts();
         this.renderVoxelPet();
         this.initMermaid();
         this.checkConnection();
@@ -119,6 +162,591 @@ class CodeCLIApp {
                 fontFamily: 'var(--font-family)'
             });
         }
+    }
+
+    buildCommandCatalog() {
+        return [
+            {
+                id: 'ask',
+                command: 'ask',
+                label: 'Ask',
+                icon: '>',
+                category: 'Chat',
+                description: 'Start a normal Lilly request in the CLI input.',
+                template: '',
+                featured: true,
+                requiresInput: true,
+                arguments: 'plain-language request',
+            },
+            {
+                id: 'help',
+                command: '/help',
+                aliases: ['/?'],
+                label: 'Help',
+                icon: '?',
+                category: 'General',
+                description: 'Show the full command guide.',
+                template: '/help',
+                featured: true,
+            },
+            {
+                id: 'clear',
+                command: '/clear',
+                aliases: ['/cls'],
+                label: 'Clear',
+                icon: 'C',
+                category: 'General',
+                description: 'Clear the terminal transcript.',
+                template: '/clear',
+            },
+            {
+                id: 'new',
+                command: '/new',
+                label: 'New Chat',
+                icon: '+',
+                category: 'Session',
+                description: 'Start a fresh isolated backend session.',
+                template: '/new ',
+                arguments: 'optional session name',
+            },
+            {
+                id: 'sessions',
+                command: '/sessions',
+                label: 'Sessions',
+                icon: 'S',
+                category: 'Session',
+                description: 'List isolated Voxel CLI sessions.',
+                template: '/sessions',
+            },
+            {
+                id: 'switch',
+                command: '/switch',
+                label: 'Switch',
+                icon: 'SW',
+                category: 'Session',
+                description: 'Switch to a session by number, id, or prefix.',
+                template: '/switch ',
+                requiresInput: true,
+                arguments: 'session id, prefix, or list number',
+            },
+            {
+                id: 'delete',
+                command: '/delete',
+                aliases: ['/del', '/rm'],
+                label: 'Delete',
+                icon: 'D',
+                category: 'Session',
+                description: 'Delete a session by number, id, or prefix.',
+                template: '/delete ',
+                requiresInput: true,
+                arguments: 'session id, prefix, or list number',
+            },
+            {
+                id: 'models',
+                command: '/models',
+                label: 'Models',
+                icon: 'M',
+                category: 'AI Controls',
+                description: 'List available AI models.',
+                template: '/models',
+            },
+            {
+                id: 'model',
+                command: '/model',
+                label: 'Set Model',
+                icon: 'M+',
+                category: 'AI Controls',
+                description: 'Change the current AI model.',
+                template: '/model ',
+                featured: true,
+                requiresInput: true,
+                arguments: 'model id',
+            },
+            {
+                id: 'tts',
+                command: '/tts',
+                aliases: ['/voice'],
+                label: 'Voice',
+                icon: 'VO',
+                category: 'AI Controls',
+                description: 'Inspect, enable, stop, or configure response read-aloud.',
+                template: '/tts ',
+                arguments: 'status, on, off, stop, voices, or voice id',
+            },
+            {
+                id: 'theme',
+                command: '/theme',
+                label: 'Theme',
+                icon: 'TH',
+                category: 'General',
+                description: 'Set voxel or a shared web-chat theme.',
+                template: '/theme ',
+                arguments: 'theme name or list',
+            },
+            {
+                id: 'voxel',
+                command: '/voxel',
+                label: 'Voxel',
+                icon: 'VX',
+                category: 'General',
+                description: 'Switch back to the voxel CLI theme.',
+                template: '/voxel',
+            },
+            {
+                id: 'tools',
+                command: '/tools',
+                label: 'Tools',
+                icon: 'T',
+                category: 'AI Controls',
+                description: 'List frontend-available backend tools.',
+                template: '/tools ',
+                featured: true,
+                arguments: 'optional category',
+            },
+            {
+                id: 'tool',
+                command: '/tool',
+                label: 'Run Tool',
+                icon: 'TX',
+                category: 'AI Controls',
+                description: 'Invoke one tool with JSON parameters.',
+                template: '/tool ',
+                requiresInput: true,
+                arguments: 'tool id and JSON params',
+            },
+            {
+                id: 'tool-help',
+                command: '/tool-help',
+                label: 'Tool Help',
+                icon: 'TD',
+                category: 'AI Controls',
+                description: 'Show documentation for one tool.',
+                template: '/tool-help ',
+                requiresInput: true,
+                arguments: 'tool id',
+            },
+            {
+                id: 'skills',
+                command: '/skills',
+                label: 'Skills',
+                icon: 'K',
+                category: 'AI Controls',
+                description: 'List registered low-context skills.',
+                template: '/skills ',
+                featured: true,
+                arguments: 'optional search',
+            },
+            {
+                id: 'skill',
+                command: '/skill',
+                label: 'Skill',
+                icon: 'KS',
+                category: 'AI Controls',
+                description: 'Show one registered skill.',
+                template: '/skill ',
+                requiresInput: true,
+                arguments: 'skill id',
+            },
+            {
+                id: 'skill-create',
+                command: '/skill-create',
+                label: 'Create Skill',
+                icon: 'K+',
+                category: 'AI Controls',
+                description: 'Create a reusable skill chain.',
+                template: '/skill-create ',
+                requiresInput: true,
+                arguments: 'JSON payload',
+            },
+            {
+                id: 'skill-update',
+                command: '/skill-update',
+                label: 'Update Skill',
+                icon: 'KU',
+                category: 'AI Controls',
+                description: 'Update a reusable skill chain.',
+                template: '/skill-update ',
+                requiresInput: true,
+                arguments: 'skill id and JSON payload',
+            },
+            {
+                id: 'files',
+                command: '/files',
+                aliases: ['/ls'],
+                label: 'Files',
+                icon: 'F',
+                category: 'Files',
+                description: 'List generated session files.',
+                template: '/files',
+                featured: true,
+            },
+            {
+                id: 'download',
+                command: '/download',
+                label: 'Download',
+                icon: 'DL',
+                category: 'Files',
+                description: 'Download a generated file by id.',
+                template: '/download ',
+                requiresInput: true,
+                arguments: 'file id',
+            },
+            {
+                id: 'open',
+                command: '/open',
+                label: 'Open Files',
+                icon: 'OP',
+                category: 'Files',
+                description: 'Open the graphical file manager.',
+                template: '/open',
+            },
+            {
+                id: 'remote',
+                command: '/remote',
+                label: 'Remote',
+                icon: 'R',
+                category: 'Remote',
+                description: 'Use remote status, tools, plan, run, agent, or verify subcommands.',
+                template: '/remote ',
+                arguments: 'status, tools, plan, run, agent, or verify',
+            },
+            {
+                id: 'remote-plan',
+                command: '/remote plan',
+                aliases: ['/remote help'],
+                label: 'Remote Plan',
+                icon: 'RP',
+                category: 'Remote',
+                description: 'Show remote build and deploy lanes.',
+                template: '/remote plan',
+            },
+            {
+                id: 'remote-status',
+                command: '/remote status',
+                label: 'Remote Status',
+                icon: 'RS',
+                category: 'Remote',
+                description: 'Check remote runner health and target details.',
+                template: '/remote status',
+            },
+            {
+                id: 'remote-tools',
+                command: '/remote tools',
+                label: 'Remote Tools',
+                icon: 'RT',
+                category: 'Remote',
+                description: 'List exact remote CLI catalog commands.',
+                template: '/remote tools',
+            },
+            {
+                id: 'remote-run',
+                command: '/remote run',
+                label: 'Remote Run',
+                icon: 'RR',
+                category: 'Remote',
+                description: 'Run one purposeful remote inspect or verify command.',
+                template: '/remote run ',
+                requiresInput: true,
+                arguments: 'remote shell command',
+            },
+            {
+                id: 'remote-agent',
+                command: '/remote agent',
+                label: 'Remote Agent',
+                icon: 'RA',
+                category: 'Remote',
+                description: 'Hand a full coding, build, deploy, or verify task to the remote CLI agent.',
+                template: '/remote agent ',
+                featured: true,
+                requiresInput: true,
+                arguments: 'task for the remote CLI agent',
+            },
+            {
+                id: 'remote-verify',
+                command: '/remote verify',
+                label: 'Verify URL',
+                icon: 'RV',
+                category: 'Remote',
+                description: 'Run an HTTPS verification against a host.',
+                template: '/remote verify ',
+                arguments: 'optional host',
+            },
+            {
+                id: 'sandbox',
+                command: '/sandbox',
+                label: 'Sandbox',
+                icon: 'SB',
+                category: 'Build',
+                description: 'Run code or save previewable HTML/Vite-style projects.',
+                template: '/sandbox ',
+                featured: true,
+                requiresInput: true,
+                arguments: 'language plus code or project JSON',
+            },
+            {
+                id: 'sandbox-project',
+                command: '/sandbox project',
+                label: 'Sandbox Project',
+                icon: 'SP',
+                category: 'Build',
+                description: 'Save a previewable project from a JSON file bundle.',
+                template: '/sandbox project ',
+                requiresInput: true,
+                arguments: 'project JSON',
+            },
+            {
+                id: 'sandbox-help',
+                command: '/sandbox-help',
+                label: 'Sandbox Help',
+                icon: 'SH',
+                category: 'Build',
+                description: 'Show sandbox usage and examples.',
+                template: '/sandbox-help',
+            },
+            {
+                id: 'build',
+                command: '/build',
+                label: 'Build Mode',
+                icon: 'B',
+                category: 'Build',
+                description: 'Show the coding-agent build workflow.',
+                template: '/build',
+                featured: true,
+            },
+            {
+                id: 'long-agent',
+                command: '/long-agent',
+                aliases: ['/long'],
+                label: 'Long Agent',
+                icon: 'LA',
+                category: 'Build',
+                description: 'Enable, disable, inspect, or queue bounded long-form work.',
+                template: '/long-agent ',
+                requiresInput: true,
+                arguments: 'on, off, status, or goal',
+            },
+            {
+                id: 'image',
+                command: '/image',
+                label: 'Image',
+                icon: 'IM',
+                category: 'Media',
+                description: 'Generate an image from a prompt.',
+                template: '/image ',
+                featured: true,
+                requiresInput: true,
+                arguments: 'image prompt and options',
+            },
+            {
+                id: 'image-models',
+                command: '/image-models',
+                label: 'Image Models',
+                icon: 'IL',
+                category: 'Media',
+                description: 'List available image models.',
+                template: '/image-models',
+            },
+            {
+                id: 'unsplash',
+                command: '/unsplash',
+                label: 'Unsplash',
+                icon: 'US',
+                category: 'Media',
+                description: 'Search Unsplash for stock images.',
+                template: '/unsplash ',
+                requiresInput: true,
+                arguments: 'search query',
+            },
+            {
+                id: 'podcast',
+                command: '/podcast',
+                label: 'Podcast',
+                icon: 'P',
+                category: 'Media',
+                description: 'Create a basic audio podcast.',
+                template: '/podcast ',
+                requiresInput: true,
+                arguments: 'topic and options',
+            },
+            {
+                id: 'video-podcast',
+                command: '/video-podcast',
+                label: 'Video Podcast',
+                icon: 'VP',
+                category: 'Media',
+                description: 'Create a video podcast.',
+                template: '/video-podcast ',
+                requiresInput: true,
+                arguments: 'topic and options',
+            },
+            {
+                id: 'diagram',
+                command: '/diagram',
+                label: 'Diagram',
+                icon: 'DG',
+                category: 'Media',
+                description: 'Generate a Mermaid diagram.',
+                template: '/diagram ',
+                requiresInput: true,
+                arguments: 'type and prompt',
+            },
+            {
+                id: 'upload',
+                command: '/upload',
+                label: 'Upload',
+                icon: 'UP',
+                category: 'Files',
+                description: 'Upload a file for context.',
+                template: '/upload',
+            },
+            {
+                id: 'session',
+                command: '/session',
+                label: 'Session',
+                icon: 'SI',
+                category: 'Session',
+                description: 'Show session info or run session subcommands.',
+                template: '/session ',
+                arguments: 'optional new, list, switch, delete',
+            },
+            {
+                id: 'history',
+                command: '/history',
+                label: 'History',
+                icon: 'H',
+                category: 'Session',
+                description: 'Show persisted isolated session history.',
+                template: '/history',
+            },
+            {
+                id: 'artifacts',
+                command: '/artifacts',
+                label: 'Artifacts',
+                icon: 'A',
+                category: 'Files',
+                description: 'Show persisted isolated session artifacts.',
+                template: '/artifacts',
+            },
+            {
+                id: 'stats',
+                command: '/stats',
+                label: 'Stats',
+                icon: '#',
+                category: 'Session',
+                description: 'Show session statistics.',
+                template: '/stats',
+            },
+            {
+                id: 'shortcuts',
+                command: '/shortcuts',
+                aliases: ['/keys'],
+                label: 'Shortcuts',
+                icon: 'KBD',
+                category: 'General',
+                description: 'Show keyboard shortcuts.',
+                template: '/shortcuts',
+            },
+            {
+                id: 'health',
+                command: '/health',
+                label: 'Health',
+                icon: 'OK',
+                category: 'System',
+                description: 'Check API connection health.',
+                template: '/health',
+            },
+            {
+                id: 'save',
+                command: '/save',
+                label: 'Save',
+                icon: 'SV',
+                category: 'Session',
+                description: 'Save the current conversation.',
+                template: '/save ',
+                arguments: 'optional name',
+            },
+            {
+                id: 'load',
+                command: '/load',
+                label: 'Load',
+                icon: 'LD',
+                category: 'Session',
+                description: 'Load a saved conversation.',
+                template: '/load ',
+                arguments: 'optional name',
+            },
+            {
+                id: 'export',
+                command: '/export',
+                label: 'Export',
+                icon: 'EX',
+                category: 'Session',
+                description: 'Export the session to a JSON file.',
+                template: '/export',
+            },
+            {
+                id: 'copy',
+                command: '/copy',
+                label: 'Copy',
+                icon: 'CP',
+                category: 'General',
+                description: 'Copy the last response to the clipboard.',
+                template: '/copy',
+            },
+            {
+                id: 'pet',
+                command: '/pet',
+                aliases: ['/spawn'],
+                label: 'Pet',
+                icon: 'PT',
+                category: 'Voxel',
+                description: 'Spawn or update the prompt companion.',
+                template: '/pet ',
+                requiresInput: true,
+                arguments: 'prompt, random, ai, act, name, hide, or show',
+            },
+            {
+                id: 'agent',
+                command: '/agent',
+                aliases: ['/voxel-agent'],
+                label: 'Agent',
+                icon: 'AG',
+                category: 'Voxel',
+                description: 'Generate an AI-backed voxel agent.',
+                template: '/agent ',
+                requiresInput: true,
+                arguments: 'agent prompt',
+            },
+            {
+                id: 'random-agent',
+                command: '/random-agent',
+                label: 'Random Agent',
+                icon: 'AR',
+                category: 'Voxel',
+                description: 'Spawn a random 3D voxel character.',
+                template: '/random-agent',
+            },
+            {
+                id: 'creator',
+                command: '/creator',
+                aliases: ['/voxel-creator'],
+                label: 'Creator',
+                icon: 'CR',
+                category: 'Voxel',
+                description: 'Focus the voxel creator panel.',
+                template: '/creator',
+            },
+            {
+                id: 'buddy',
+                command: '/buddy',
+                aliases: ['/toolbelt'],
+                label: 'Buddy',
+                icon: 'BD',
+                category: 'Voxel',
+                description: 'Open the coding buddy panel and toolbelt.',
+                template: '/buddy',
+            },
+        ];
     }
     
     setupEventListeners() {
@@ -175,7 +803,12 @@ class CodeCLIApp {
         // Input for autocomplete
         this.commandInput.addEventListener('input', () => {
             this.updateAutocomplete();
+            this.updateCommandAssist();
             this.queueVoxelTypingReaction();
+        });
+
+        this.commandInput.addEventListener('focus', () => {
+            this.updateCommandAssist();
         });
 
         if (this.voxelPetPrompt) {
@@ -189,7 +822,7 @@ class CodeCLIApp {
         
         // Focus input on click anywhere
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('button, input, textarea, select, a, [contenteditable="true"], .autocomplete, .modal, .voxel-creator-modal, .file-manager-modal')) {
+            if (!e.target.closest('button, input, textarea, select, a, [contenteditable="true"], .autocomplete, .command-shelf, .modal, .voxel-creator-modal, .file-manager-modal')) {
                 this.commandInput.focus();
             }
         });
@@ -652,19 +1285,200 @@ class CodeCLIApp {
         handler();
     }
 
+    renderCommandShelf() {
+        if (!this.commandQuickActions) {
+            return;
+        }
+
+        const featuredCommands = this.commandCatalog.filter((command) => command.featured);
+        this.commandQuickActions.innerHTML = featuredCommands.map((command) => `
+            <button
+                type="button"
+                class="command-quick-btn"
+                data-command-id="${this.escapeHtml(command.id)}"
+                title="${this.escapeHtml(`${command.command === 'ask' ? 'Ask' : command.command} - ${command.description}`)}"
+                aria-label="${this.escapeHtml(`Use ${command.label} command`)}"
+            >
+                <span class="command-quick-icon" aria-hidden="true">${this.escapeHtml(command.icon || '/')}</span>
+                <span class="command-quick-copy">
+                    <strong class="command-quick-name">${this.escapeHtml(command.label)}</strong>
+                    <code class="command-quick-template">${this.escapeHtml(command.command === 'ask' ? 'message' : (command.template || command.command))}</code>
+                </span>
+            </button>
+        `).join('');
+
+        this.commandQuickActions.querySelectorAll('[data-command-id]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const command = this.commandCatalog.find((entry) => entry.id === button.dataset.commandId);
+                this.activateCommandEntry(command, { source: 'shelf' });
+            });
+        });
+    }
+
+    getCommandEntry(value = '') {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (!normalized) {
+            return null;
+        }
+
+        const commandsByLength = [...this.commandCatalog].sort((a, b) => {
+            const aLength = Math.max(String(a.command || '').length, ...(a.aliases || []).map((alias) => String(alias || '').length));
+            const bLength = Math.max(String(b.command || '').length, ...(b.aliases || []).map((alias) => String(alias || '').length));
+            return bLength - aLength;
+        });
+
+        return commandsByLength.find((entry) => {
+            const candidates = [entry.command, ...(entry.aliases || [])]
+                .filter(Boolean)
+                .map((candidate) => String(candidate).toLowerCase());
+            return candidates.some((candidate) => (
+                normalized === candidate
+                || normalized.startsWith(`${candidate} `)
+                || (candidate === 'ask' && !normalized.startsWith('/'))
+            ));
+        }) || null;
+    }
+
+    getCommandMatches(input = '') {
+        const rawInput = String(input || '').trimStart();
+        const query = rawInput.toLowerCase();
+        if (!query.startsWith('/')) {
+            return [];
+        }
+
+        const searchText = query.slice(1).trim();
+        const matches = this.commandCatalog
+            .filter((entry) => entry.command.startsWith('/'))
+            .map((entry) => {
+                const commandCandidates = [entry.command, ...(entry.aliases || [])]
+                    .filter(Boolean)
+                    .map((candidate) => String(candidate).toLowerCase());
+                const startsWithCommand = commandCandidates.some((candidate) => candidate.startsWith(query));
+                const startsWithSegment = commandCandidates.some((candidate) => {
+                    const words = candidate.split(/\s+/);
+                    return words.some((word) => word.startsWith(query));
+                });
+                const haystack = [
+                    entry.label,
+                    entry.category,
+                    entry.description,
+                    entry.arguments,
+                    ...commandCandidates,
+                ].join(' ').toLowerCase();
+                const textMatch = searchText.length >= 2 && haystack.includes(searchText);
+
+                if (!startsWithCommand && !startsWithSegment && !textMatch) {
+                    return null;
+                }
+
+                let score = 0;
+                if (commandCandidates.some((candidate) => candidate === query)) score += 40;
+                if (startsWithCommand) score += 30;
+                if (entry.featured) score += 8;
+                if (startsWithSegment) score += 4;
+                if (textMatch) score += 2;
+                return { entry, score };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.score - a.score || a.entry.command.localeCompare(b.entry.command))
+            .map((match) => match.entry);
+
+        return matches.slice(0, 10);
+    }
+
+    setCommandInputValue(value = '', options = {}) {
+        if (!this.commandInput) {
+            return;
+        }
+
+        this.commandInput.value = value;
+        this.commandInput.focus();
+        const cursor = Number.isFinite(options.cursor)
+            ? Math.max(0, Math.min(value.length, options.cursor))
+            : value.length;
+        if (typeof this.commandInput.setSelectionRange === 'function') {
+            this.commandInput.setSelectionRange(cursor, cursor);
+        }
+    }
+
+    activateCommandEntry(command, options = {}) {
+        const entry = command || null;
+        if (!entry) {
+            return;
+        }
+
+        if (entry.id === 'ask') {
+            this.setActiveVoxelTool('chat');
+            this.setCommandInputValue('');
+            this.updateCommandAssist(entry, { activated: true });
+            this.hideAutocomplete();
+            return;
+        }
+
+        const value = String(options.value || entry.template || `${entry.command} `);
+        this.setCommandInputValue(value);
+        this.hideAutocomplete();
+        this.updateCommandAssist(entry, { activated: true });
+
+        const shouldSubmit = options.submit === true && !entry.requiresInput;
+        if (shouldSubmit) {
+            this.sendCommand();
+        }
+    }
+
     useCommandSuggestion(command = '', options = {}) {
         const normalized = String(command || '').trim();
         if (!normalized || !this.commandInput) {
             return;
         }
 
-        this.commandInput.value = normalized;
-        this.commandInput.focus();
-        this.hideAutocomplete();
+        const entry = this.getCommandEntry(normalized) || {
+            id: normalized,
+            command: normalized,
+            label: normalized,
+            icon: '/',
+            description: 'CLI command',
+            template: normalized,
+        };
+        this.activateCommandEntry(entry, {
+            ...options,
+            value: normalized,
+        });
+    }
 
-        if (options && options.submit) {
-            this.sendCommand();
+    updateCommandAssist(command = null, options = {}) {
+        if (!this.commandAssist) {
+            return;
         }
+
+        const input = String(this.commandInput?.value || '');
+        const entry = command || this.getCommandEntry(input);
+        this.commandAssist.classList.remove('is-waiting', 'is-ready', 'is-error');
+
+        if (!entry) {
+            if (input.startsWith('/')) {
+                this.commandAssist.textContent = 'No exact command yet. Keep typing, press Tab, or choose from autocomplete.';
+                this.commandAssist.classList.add('is-error');
+            } else {
+                this.commandAssist.textContent = 'Click a command or type / for autocomplete.';
+                this.commandAssist.classList.add('is-ready');
+            }
+            return;
+        }
+
+        const commandLabel = entry.command === 'ask' ? 'message' : entry.command;
+        if (entry.requiresInput || (options.activated && entry.arguments)) {
+            this.commandAssist.textContent = `${commandLabel}: add ${entry.arguments || 'details'} and press Enter.`;
+            this.commandAssist.classList.add('is-waiting');
+            return;
+        }
+
+        if (entry.arguments) {
+            this.commandAssist.textContent = `${commandLabel}: ${entry.description} Add ${entry.arguments} or press Enter.`;
+        } else {
+            this.commandAssist.textContent = `${commandLabel}: ${entry.description} Press Enter to run.`;
+        }
+        this.commandAssist.classList.add('is-ready');
     }
 
     getVoxelTypingThought() {
@@ -1167,6 +1981,12 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
                     this.printSystem(`Current model: ${api.currentModel || 'default'}`);
                 }
                 break;
+            case 'tts':
+                await this.handleTtsCommand(args);
+                break;
+            case 'voice':
+                await this.handleVoiceCommand(args);
+                break;
             case 'theme':
                 if (args[0]) {
                     const themeArg = String(args[0] || '').toLowerCase();
@@ -1366,9 +2186,10 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
             }
 
             // Finalize streaming output after the pixel reveal buffer catches up.
-            await this.finalizeStreamingOutput(response.content || 'No response');
+            const finalResponseLine = await this.finalizeStreamingOutput(response.content || 'No response');
             await this.attachLatestAlignmentTargetToLastAIResponse(response);
             this.finalizeLiveProgressCard();
+            void this.maybeAutoPlayResponseSpeech(finalResponseLine);
             const addedArtifactFiles = this.syncArtifactsToSessionFiles([
                 ...(Array.isArray(response.artifacts) ? response.artifacts : []),
                 ...this.collectArtifactsFromValue(response.toolEvents || []),
@@ -1587,6 +2408,811 @@ Session Statistics:
 
         return '>';
     }
+
+    initializeTts() {
+        if (!this.ttsManager || this.ttsInitialized) {
+            this.updateTtsControls();
+            return;
+        }
+
+        this.ttsInitialized = true;
+        this.ttsManager.addEventListener('statechange', () => this.updateTtsControls());
+        this.ttsManager.addEventListener('configchange', () => this.updateTtsControls());
+        this.ttsManager.addEventListener('chunkstart', (event) => this.handleTtsChunkStart(event));
+        this.ttsManager.addEventListener('chunkend', (event) => this.handleTtsChunkEnd(event));
+        this.ttsManager.addEventListener('playbackstop', () => {
+            this.clearSpeechHighlights();
+            this.clearTtsActiveLines();
+            this.updateTtsControls();
+        });
+
+        void this.ttsManager.ensureConfigLoaded({ quiet: true })
+            .catch((error) => {
+                console.warn('[WebCLI] TTS unavailable:', error);
+            })
+            .finally(() => this.updateTtsControls());
+    }
+
+    isTtsAvailable() {
+        return this.ttsManager?.isAvailable?.() === true;
+    }
+
+    getTtsStatus() {
+        return this.ttsManager?.getStatus?.() || (this.isTtsAvailable() ? 'ready' : 'unavailable');
+    }
+
+    getTtsDiagnostics() {
+        return this.ttsManager?.getDiagnostics?.() || {
+            status: 'unavailable',
+            message: 'Voice playback is unavailable.',
+        };
+    }
+
+    getTtsFeatureLabel() {
+        return this.ttsManager?.getProviderLabel?.() || 'Voice';
+    }
+
+    getTtsVoiceLabel() {
+        return this.ttsManager?.getVoiceLabel?.() || 'Voice';
+    }
+
+    getTtsVoices() {
+        return this.ttsManager?.getVoices?.() || [];
+    }
+
+    createTtsMessageId() {
+        this.ttsMessageCounter += 1;
+        return `${WEB_CLI_TTS_MESSAGE_PREFIX}:${Date.now()}:${this.ttsMessageCounter}`;
+    }
+
+    registerTtsMessageText(text = '', messageId = '') {
+        const normalizedText = String(text || '').trim();
+        if (!normalizedText) {
+            return '';
+        }
+
+        const normalizedMessageId = String(messageId || '').trim() || this.createTtsMessageId();
+        this.ttsMessageTextById.set(normalizedMessageId, normalizedText);
+        while (this.ttsMessageTextById.size > 160) {
+            const oldestKey = this.ttsMessageTextById.keys().next().value;
+            this.ttsMessageTextById.delete(oldestKey);
+        }
+        return normalizedMessageId;
+    }
+
+    getTtsTextForMessage(messageId = '', line = null) {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (normalizedMessageId && this.ttsMessageTextById.has(normalizedMessageId)) {
+            return this.ttsMessageTextById.get(normalizedMessageId);
+        }
+
+        return String(
+            line?.querySelector?.('.markdown-content')?.innerText
+            || line?.querySelector?.('.cli-response-body, .voxel-response-body')?.innerText
+            || '',
+        ).trim();
+    }
+
+    getTtsControlState(messageId = '') {
+        const normalizedMessageId = String(messageId || '').trim();
+        const text = this.getTtsTextForMessage(normalizedMessageId);
+        const loading = this.ttsManager?.isLoadingMessage?.(normalizedMessageId) === true;
+        const playing = this.ttsManager?.isPlayingMessage?.(normalizedMessageId) === true;
+        const available = this.isTtsAvailable();
+        const featureLabel = this.getTtsFeatureLabel();
+        const diagnostics = this.getTtsDiagnostics();
+        const disabled = !this.ttsManager || !text || !available || loading;
+        const title = !text
+            ? 'No readable text in this response'
+            : (!available
+                ? `${featureLabel} unavailable: ${String(diagnostics.message || 'Voice playback is unavailable.').trim()}`
+                : (playing ? 'Stop voice playback' : `Read response aloud with ${this.getTtsVoiceLabel()}`));
+
+        return {
+            available,
+            disabled,
+            loading,
+            playing,
+            label: loading ? '...' : (playing ? 'Stop' : 'Read'),
+            title,
+        };
+    }
+
+    buildTtsActionMarkup(text = '', options = {}) {
+        if (options.streaming === true || !String(text || '').trim()) {
+            return '';
+        }
+
+        const messageId = this.registerTtsMessageText(text, options.ttsMessageId);
+        if (!messageId) {
+            return '';
+        }
+
+        const state = this.getTtsControlState(messageId);
+        return `
+            <button
+                type="button"
+                class="cli-tts-btn${state.playing ? ' is-active' : ''}${state.loading ? ' is-loading' : ''}"
+                data-cli-tts-message-id="${this.escapeHtmlAttr(messageId)}"
+                onclick="app.toggleResponseSpeech(this)"
+                title="${this.escapeHtmlAttr(state.title)}"
+                aria-label="${this.escapeHtmlAttr(state.title)}"
+                ${state.disabled ? 'disabled' : ''}
+            >${this.escapeHtml(state.label)}</button>
+        `;
+    }
+
+    updateTtsControls(container = document) {
+        if (this.ttsToggleButton) {
+            const available = this.isTtsAvailable();
+            const enabled = this.ttsManager?.isAutoPlayEnabled?.() === true;
+            const diagnostics = this.getTtsDiagnostics();
+            const label = this.ttsToggleButton.querySelector('span');
+            this.ttsToggleButton.disabled = !this.ttsManager || !available;
+            this.ttsToggleButton.classList.toggle('is-active', available && enabled);
+            this.ttsToggleButton.setAttribute('aria-pressed', available && enabled ? 'true' : 'false');
+            this.ttsToggleButton.title = available
+                ? (enabled ? 'Read replies aloud: On' : 'Read replies aloud: Off')
+                : String(diagnostics.message || 'Voice playback is unavailable.');
+            this.ttsToggleButton.setAttribute('aria-label', this.ttsToggleButton.title);
+            if (label) {
+                label.textContent = enabled ? 'Voice On' : 'Voice';
+            }
+        }
+
+        if (!container?.querySelectorAll) {
+            return;
+        }
+
+        container.querySelectorAll('.cli-tts-btn[data-cli-tts-message-id]').forEach((button) => {
+            const messageId = String(button.dataset.cliTtsMessageId || '').trim();
+            const state = this.getTtsControlState(messageId);
+            button.disabled = state.disabled;
+            button.textContent = state.label;
+            button.title = state.title;
+            button.setAttribute('aria-label', state.title);
+            button.classList.toggle('is-active', state.playing);
+            button.classList.toggle('is-loading', state.loading);
+        });
+    }
+
+    setTtsActiveLine(messageId = '', active = true) {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedMessageId || !this.terminalOutput?.querySelectorAll) {
+            return;
+        }
+
+        const escapeSelectorValue = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(normalizedMessageId)
+            : normalizedMessageId.replace(/["\\]/g, '\\$&');
+        this.terminalOutput
+            .querySelectorAll(`.cli-tts-btn[data-cli-tts-message-id="${escapeSelectorValue}"]`)
+            .forEach((button) => {
+                const line = button.closest('.line-output.ai');
+                if (line) {
+                    line.classList.toggle('is-voice-playing', active);
+                }
+            });
+    }
+
+    clearTtsActiveLines() {
+        this.terminalOutput
+            ?.querySelectorAll?.('.line-output.ai.is-voice-playing')
+            .forEach((line) => line.classList.remove('is-voice-playing'));
+    }
+
+    normalizeSpeechHighlightText(text = '') {
+        const comparable = {
+            text: '',
+            positions: [],
+        };
+        this.appendComparableSpeechText(String(text || ''), comparable);
+        this.trimComparableSpeechOutput(comparable);
+        return comparable.text;
+    }
+
+    trimComparableSpeechOutput(output) {
+        while (output.text.endsWith(' ')) {
+            output.text = output.text.slice(0, -1);
+            output.positions.pop();
+        }
+    }
+
+    trimSpeechUrlToken(value = '') {
+        const token = String(value || '');
+        const trailing = token.match(/[),.;:!?]+$/)?.[0] || '';
+        return trailing ? token.slice(0, -trailing.length) : token;
+    }
+
+    normalizeSpeechUrlToken(url = '') {
+        const body = this.trimSpeechUrlToken(url);
+        if (!body) {
+            return '';
+        }
+
+        const parseTarget = /^https?:\/\//i.test(body) ? body : `https://${body.replace(/^www\./i, '')}`;
+        let host = '';
+        let path = '';
+
+        try {
+            const parsed = new URL(parseTarget);
+            host = String(parsed.hostname || '').replace(/^www\./i, '');
+            path = String(parsed.pathname || '').replace(/\/+$/g, '');
+        } catch (_error) {
+            const withoutProtocol = body.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+            const [rawHost, ...rest] = withoutProtocol.split('/');
+            host = rawHost;
+            path = rest.length ? `/${rest.join('/')}` : '';
+        }
+
+        const hostSpeech = host
+            .split('.')
+            .map((part) => part.replace(/[-_]+/g, ' ').trim())
+            .filter(Boolean)
+            .join(' dot ');
+        const decodeUrlPart = (part = '') => {
+            try {
+                return decodeURIComponent(part);
+            } catch (_error) {
+                return part;
+            }
+        };
+        const pathSpeech = path
+            ? path
+                .split('/')
+                .map((part) => decodeUrlPart(part).replace(/[-_]+/g, ' ').replace(/[?#].*$/g, '').trim())
+                .filter(Boolean)
+                .map((part) => `slash ${part}`)
+                .join(' ')
+            : '';
+
+        return [hostSpeech, pathSpeech].filter(Boolean).join(' ').trim() || body;
+    }
+
+    appendComparableSpeechChar(output, char = '', position = null) {
+        const normalized = String(char || '').toLowerCase();
+        if (/^[a-z0-9]$/.test(normalized)) {
+            output.text += normalized;
+            output.positions.push(position);
+            return;
+        }
+
+        if (output.text && !output.text.endsWith(' ')) {
+            output.text += ' ';
+            output.positions.push(position);
+        }
+    }
+
+    appendComparableSpeechBoundary(output, position = null) {
+        if (output.text && !output.text.endsWith(' ')) {
+            output.text += ' ';
+            output.positions.push(position);
+        }
+    }
+
+    appendComparablePlainText(text = '', output, node = null, baseOffset = 0) {
+        String(text || '').split('').forEach((char, index) => {
+            this.appendComparableSpeechChar(output, char, node ? { node, offset: baseOffset + index } : null);
+        });
+    }
+
+    appendComparableUrlText(text = '', output, node = null, baseOffset = 0, sourceLength = 0) {
+        const speechText = this.normalizeSpeechUrlToken(text);
+        const comparableLength = Math.max(1, speechText.length);
+        const normalizedSourceLength = Math.max(1, Number(sourceLength) || String(text || '').length || 1);
+
+        speechText.split('').forEach((char, index) => {
+            const sourceOffset = baseOffset + Math.min(
+                normalizedSourceLength - 1,
+                Math.floor((index / comparableLength) * normalizedSourceLength),
+            );
+            this.appendComparableSpeechChar(output, char, node ? { node, offset: sourceOffset } : null);
+        });
+    }
+
+    appendComparableSpeechText(text = '', output, node = null, baseOffset = 0) {
+        const value = String(text || '');
+        const tokenPattern = /\b(?:https?:\/\/|www\.)[^\s<>)\]]+|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org|net|io|ai|dev|app|edu|gov|ca|co|us|uk|help|buzz|cloud|site|online|xyz|info|biz)(?:\/[^\s<>)\]]*)?/gi;
+        let cursor = 0;
+        let match = tokenPattern.exec(value);
+
+        while (match) {
+            if (match.index > cursor) {
+                this.appendComparablePlainText(value.slice(cursor, match.index), output, node, baseOffset + cursor);
+            }
+
+            const rawToken = match[0] || '';
+            const token = this.trimSpeechUrlToken(rawToken);
+            this.appendComparableUrlText(token, output, node, baseOffset + match.index, token.length);
+            cursor = match.index + rawToken.length;
+            match = tokenPattern.exec(value);
+        }
+
+        if (cursor < value.length) {
+            this.appendComparablePlainText(value.slice(cursor), output, node, baseOffset + cursor);
+        }
+    }
+
+    getTtsLineByMessageId(messageId = '') {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedMessageId || !this.terminalOutput?.querySelectorAll) {
+            return null;
+        }
+
+        const escapeSelectorValue = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(normalizedMessageId)
+            : normalizedMessageId.replace(/["\\]/g, '\\$&');
+        return this.terminalOutput
+            .querySelector(`.cli-tts-btn[data-cli-tts-message-id="${escapeSelectorValue}"]`)
+            ?.closest?.('.line-output.ai') || null;
+    }
+
+    clearSpeechHighlights(messageId = '', options = {}) {
+        const line = messageId ? this.getTtsLineByMessageId(messageId) : null;
+        const root = line || this.terminalOutput || document;
+        if (!root?.querySelectorAll) {
+            return;
+        }
+
+        root.querySelectorAll('.tts-reading-highlight').forEach((highlight) => {
+            const parent = highlight.parentNode;
+            if (!parent) {
+                return;
+            }
+            const children = Array.from(highlight.childNodes);
+            children.forEach((child) => parent.insertBefore(child, highlight));
+            parent.removeChild(highlight);
+            parent.normalize?.();
+        });
+
+        if (options.preserveState !== true) {
+            this.speechHighlightState = {
+                messageId: '',
+                lastSearchOffset: 0,
+                lastChunkIndex: -1,
+            };
+        }
+    }
+
+    shouldSkipSpeechHighlightNode(node = null) {
+        const parentElement = node?.parentElement || null;
+        if (!parentElement) {
+            return true;
+        }
+
+        return Boolean(parentElement.closest(
+            'pre, code, kbd, samp, script, style, textarea, input, button, svg, .cli-response-head, .voxel-response-head, .cli-response-tools, .tts-reading-highlight',
+        ));
+    }
+
+    getSpeechHighlightSectionElement(node = null) {
+        const parentElement = node?.parentElement || null;
+        if (!parentElement) {
+            return null;
+        }
+
+        return parentElement.closest(
+            'li, p, blockquote, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, section, article',
+        ) || parentElement.closest('div');
+    }
+
+    buildSpeechHighlightTextMap(root = null) {
+        if (!root || !document?.createTreeWalker || typeof NodeFilter === 'undefined') {
+            return {
+                text: '',
+                positions: [],
+            };
+        }
+
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode: (node) => (
+                this.shouldSkipSpeechHighlightNode(node) || !String(node.nodeValue || '').trim()
+                    ? NodeFilter.FILTER_REJECT
+                    : NodeFilter.FILTER_ACCEPT
+            ),
+        });
+        const output = {
+            text: '',
+            positions: [],
+            sections: [],
+        };
+        let lastSectionElement = null;
+
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            const sectionElement = this.getSpeechHighlightSectionElement(node);
+            if (lastSectionElement && sectionElement !== lastSectionElement) {
+                this.appendComparableSpeechBoundary(output, { node, offset: 0 });
+                const previousSection = output.sections[output.sections.length - 1];
+                if (previousSection && typeof previousSection.endIndex !== 'number') {
+                    previousSection.endIndex = Math.max(previousSection.startIndex, output.text.length - 1);
+                }
+            }
+
+            if (sectionElement !== lastSectionElement) {
+                output.sections.push({
+                    element: sectionElement,
+                    startIndex: output.text.length,
+                });
+                lastSectionElement = sectionElement;
+            }
+            this.appendComparableSpeechText(String(node.nodeValue || ''), output, node, 0);
+        }
+        this.trimComparableSpeechOutput(output);
+        const finalSection = output.sections[output.sections.length - 1];
+        if (finalSection && typeof finalSection.endIndex !== 'number') {
+            finalSection.endIndex = Math.max(finalSection.startIndex, output.text.length);
+        }
+
+        return {
+            text: output.text,
+            positions: output.positions,
+            sections: output.sections,
+        };
+    }
+
+    findSpeechHighlightRange(root = null, chunkText = '', options = {}) {
+        const normalizedChunk = this.normalizeSpeechHighlightText(chunkText).toLowerCase();
+        if (!root || !normalizedChunk) {
+            return null;
+        }
+
+        const textMap = this.buildSpeechHighlightTextMap(root);
+        if (!textMap.text || textMap.positions.length === 0) {
+            return null;
+        }
+
+        const preferredStartIndex = Math.max(0, Number(options.startIndex) || 0);
+        const chunkIndex = Number(options.chunkIndex);
+        const searchStartIndex = Math.max(0, preferredStartIndex - 12);
+        const candidates = [
+            normalizedChunk,
+            normalizedChunk.length > 96 ? normalizedChunk.slice(0, 96).trim() : '',
+            normalizedChunk.split(' ').slice(0, 10).join(' '),
+        ].filter((candidate, index, list) => (
+            candidate.length >= 3 && list.indexOf(candidate) === index
+        ));
+
+        for (const candidate of candidates) {
+            let matchIndex = textMap.text.indexOf(candidate, searchStartIndex);
+            if (matchIndex < 0 && preferredStartIndex > 0 && chunkIndex === 0) {
+                matchIndex = textMap.text.indexOf(candidate);
+            }
+            if (matchIndex < 0) {
+                continue;
+            }
+
+            const start = textMap.positions[matchIndex];
+            const end = textMap.positions[Math.min(textMap.positions.length - 1, matchIndex + candidate.length - 1)];
+            if (!start?.node || !end?.node) {
+                continue;
+            }
+
+            const range = document.createRange();
+            range.setStart(start.node, start.offset);
+            range.setEnd(end.node, end.offset + 1);
+            return {
+                range,
+                endIndex: matchIndex + candidate.length,
+            };
+        }
+
+        return null;
+    }
+
+    findSpeechSectionRangeByIndex(root = null, chunkIndex = -1) {
+        if (!root || !Number.isFinite(Number(chunkIndex)) || Number(chunkIndex) < 0) {
+            return null;
+        }
+
+        const textMap = this.buildSpeechHighlightTextMap(root);
+        if (!textMap.text || textMap.positions.length === 0) {
+            return null;
+        }
+
+        const sections = Array.isArray(textMap.sections)
+            ? textMap.sections.filter((section) => Number(section?.endIndex) > Number(section?.startIndex))
+            : [];
+        const section = sections[Math.min(sections.length - 1, Number(chunkIndex))];
+        if (!section) {
+            return null;
+        }
+
+        const start = textMap.positions[Math.max(0, Number(section.startIndex) || 0)];
+        const end = textMap.positions[Math.min(textMap.positions.length - 1, Math.max(Number(section.startIndex) || 0, Number(section.endIndex) - 1))];
+        if (!start?.node || !end?.node) {
+            return null;
+        }
+
+        const range = document.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset + 1);
+        return {
+            range,
+            endIndex: Number(section.endIndex) || 0,
+        };
+    }
+
+    highlightSpeechChunk(messageId = '', chunkText = '', options = {}) {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedMessageId || normalizedMessageId.startsWith('tts-preview:')) {
+            return false;
+        }
+
+        const line = this.getTtsLineByMessageId(normalizedMessageId);
+        const textRoot = line?.querySelector?.('.cli-response-body, .voxel-response-body');
+        if (!textRoot) {
+            return false;
+        }
+
+        const chunkIndex = Number(options.chunkIndex);
+        if (
+            this.speechHighlightState.messageId !== normalizedMessageId
+            || chunkIndex === 0
+            || chunkIndex <= this.speechHighlightState.lastChunkIndex
+        ) {
+            this.speechHighlightState = {
+                messageId: normalizedMessageId,
+                lastSearchOffset: 0,
+                lastChunkIndex: -1,
+            };
+        }
+
+        this.clearSpeechHighlights('', { preserveState: true });
+        const match = this.findSpeechHighlightRange(textRoot, chunkText, {
+            startIndex: this.speechHighlightState.lastSearchOffset,
+            chunkIndex,
+        }) || this.findSpeechSectionRangeByIndex(textRoot, chunkIndex);
+        if (!match?.range) {
+            return false;
+        }
+
+        const highlight = document.createElement('span');
+        highlight.className = 'tts-reading-highlight';
+        highlight.dataset.ttsReading = 'true';
+        try {
+            const contents = match.range.extractContents();
+            highlight.appendChild(contents);
+            match.range.insertNode(highlight);
+            this.speechHighlightState = {
+                messageId: normalizedMessageId,
+                lastSearchOffset: Math.max(this.speechHighlightState.lastSearchOffset, Number(match.endIndex) || 0),
+                lastChunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : this.speechHighlightState.lastChunkIndex,
+            };
+            highlight.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+            return true;
+        } catch (error) {
+            console.warn('[WebCLI] Failed to highlight spoken text:', error);
+            this.clearSpeechHighlights();
+            return false;
+        }
+    }
+
+    handleTtsChunkStart(event = {}) {
+        const messageId = String(event.detail?.messageId || '').trim();
+        this.highlightSpeechChunk(messageId, event.detail?.chunkText || '', {
+            chunkIndex: event.detail?.chunkIndex,
+        });
+        this.clearTtsActiveLines();
+        this.setTtsActiveLine(messageId, true);
+        this.updateTtsControls();
+    }
+
+    handleTtsChunkEnd(event = {}) {
+        const messageId = String(event.detail?.messageId || '').trim();
+        const chunkIndex = Number(event.detail?.chunkIndex);
+        const chunkCount = Number(event.detail?.chunkCount);
+        if (Number.isFinite(chunkIndex) && Number.isFinite(chunkCount) && chunkIndex >= chunkCount - 1) {
+            this.setTtsActiveLine(messageId, false);
+            setTimeout(() => this.clearSpeechHighlights(messageId), 120);
+        }
+        this.updateTtsControls();
+    }
+
+    async ensureTtsConfig() {
+        if (!this.ttsManager) {
+            return false;
+        }
+
+        try {
+            await this.ttsManager.ensureConfigLoaded({ quiet: true });
+        } catch (error) {
+            console.warn('[WebCLI] Failed to load TTS config:', error);
+        }
+
+        this.updateTtsControls();
+        return this.isTtsAvailable();
+    }
+
+    async toggleResponseSpeech(button = null) {
+        const line = button?.closest?.('.line-output.ai') || null;
+        const messageId = String(button?.dataset?.cliTtsMessageId || '').trim();
+        const text = this.getTtsTextForMessage(messageId, line);
+        if (!messageId || !text) {
+            this.printWarning('There is no readable text in this response.');
+            return;
+        }
+
+        const available = this.isTtsAvailable() || await this.ensureTtsConfig();
+        if (!available) {
+            const diagnostics = this.getTtsDiagnostics();
+            this.printWarning(String(diagnostics.message || 'Voice playback is unavailable.'));
+            return;
+        }
+
+        try {
+            await this.ttsManager.toggleMessagePlayback({
+                messageId,
+                text,
+            });
+        } catch (error) {
+            this.printWarning(error.message || 'Failed to generate voice playback.');
+        } finally {
+            this.updateTtsControls();
+        }
+    }
+
+    async maybeAutoPlayResponseSpeech(line = null) {
+        if (!line || this.ttsManager?.isAutoPlayEnabled?.() !== true) {
+            return;
+        }
+
+        const button = line.querySelector?.('.cli-tts-btn[data-cli-tts-message-id]');
+        const messageId = String(button?.dataset?.cliTtsMessageId || '').trim();
+        const text = this.getTtsTextForMessage(messageId, line);
+        if (!messageId || !text) {
+            return;
+        }
+
+        const available = this.isTtsAvailable() || await this.ensureTtsConfig();
+        if (!available) {
+            return;
+        }
+
+        try {
+            await this.ttsManager.speakMessage({
+                messageId,
+                text,
+            });
+        } catch (error) {
+            console.warn('[WebCLI] TTS autoplay failed:', error);
+        } finally {
+            this.updateTtsControls();
+        }
+    }
+
+    async toggleTtsAutoPlayFromToolbar() {
+        await this.handleTtsCommand(['toggle']);
+    }
+
+    async handleTtsCommand(args = []) {
+        const subcommand = String(args[0] || 'status').trim().toLowerCase();
+        if (!this.ttsManager) {
+            this.printWarning('Voice playback is not loaded in this browser.');
+            return;
+        }
+
+        if (['on', 'enable', 'enabled', 'autoplay'].includes(subcommand)) {
+            const available = this.isTtsAvailable() || await this.ensureTtsConfig();
+            if (!available) {
+                this.printWarning(String(this.getTtsDiagnostics().message || 'Voice playback is unavailable.'));
+                return;
+            }
+            this.ttsManager.setAutoPlayEnabled(true);
+            this.updateTtsControls();
+            this.printSuccess(`Read replies aloud is on with ${this.getTtsVoiceLabel()}.`);
+            return;
+        }
+
+        if (['off', 'disable', 'disabled'].includes(subcommand)) {
+            this.ttsManager.setAutoPlayEnabled(false);
+            this.ttsManager.stop?.();
+            this.updateTtsControls();
+            this.printSystem('Read replies aloud is off.');
+            return;
+        }
+
+        if (subcommand === 'toggle') {
+            const nextValue = this.ttsManager.isAutoPlayEnabled?.() !== true;
+            await this.handleTtsCommand([nextValue ? 'on' : 'off']);
+            return;
+        }
+
+        if (['stop', 'pause', 'quiet'].includes(subcommand)) {
+            this.ttsManager.stop?.();
+            this.clearTtsActiveLines();
+            this.updateTtsControls();
+            this.printSystem('Voice playback stopped.');
+            return;
+        }
+
+        if (['voices', 'list'].includes(subcommand)) {
+            await this.printTtsVoices();
+            return;
+        }
+
+        if (subcommand === 'voice') {
+            await this.handleVoiceCommand(args.slice(1));
+            return;
+        }
+
+        if (!['status', 'help', '?'].includes(subcommand)) {
+            await this.handleVoiceCommand(args);
+            return;
+        }
+
+        await this.ensureTtsConfig();
+        const status = this.getTtsStatus();
+        const diagnostics = this.getTtsDiagnostics();
+        const voices = this.getTtsVoices();
+        this.printAI(`## Voice Playback
+
+- Status: ${status}
+- Provider: ${this.getTtsFeatureLabel()}
+- Voice: ${this.getTtsVoiceLabel()}
+- Autoplay: ${this.ttsManager.isAutoPlayEnabled?.() === true ? 'on' : 'off'}
+- Voices: ${voices.length}
+- Note: ${String(diagnostics.message || 'Ready.').trim()}
+
+Commands: \`/tts on\`, \`/tts off\`, \`/tts stop\`, \`/tts voices\`, \`/voice <id>\`.`);
+    }
+
+    async printTtsVoices() {
+        const available = this.isTtsAvailable() || await this.ensureTtsConfig();
+        const voices = this.getTtsVoices();
+        if (!available || voices.length === 0) {
+            this.printWarning(String(this.getTtsDiagnostics().message || 'No voices are available.'));
+            return;
+        }
+
+        const selectedVoiceId = this.ttsManager.getSelectedVoiceId?.() || '';
+        const lines = voices.map((voice) => {
+            const id = String(voice.id || '').trim();
+            const label = String(voice.label || id || 'Voice').trim();
+            const provider = String(voice.provider || this.ttsManager.getProvider?.() || '').trim();
+            return `- ${id === selectedVoiceId ? '**' : ''}\`${id}\`${id === selectedVoiceId ? '**' : ''} - ${label}${provider ? ` (${provider})` : ''}`;
+        });
+
+        this.printAI(`## Available Voices
+
+${lines.join('\n')}
+
+Use \`/voice <id>\` to switch the read-aloud voice.`);
+    }
+
+    async handleVoiceCommand(args = []) {
+        const requestedVoice = String(args.join(' ') || '').trim();
+        if (!this.ttsManager) {
+            this.printWarning('Voice playback is not loaded in this browser.');
+            return;
+        }
+
+        const available = this.isTtsAvailable() || await this.ensureTtsConfig();
+        const voices = this.getTtsVoices();
+        if (!available || voices.length === 0) {
+            this.printWarning(String(this.getTtsDiagnostics().message || 'No voices are available.'));
+            return;
+        }
+
+        if (!requestedVoice || ['list', 'voices', 'status', 'help', '?'].includes(requestedVoice.toLowerCase())) {
+            await this.printTtsVoices();
+            return;
+        }
+
+        const requestedLower = requestedVoice.toLowerCase();
+        const match = voices.find((voice) => String(voice.id || '').toLowerCase() === requestedLower)
+            || voices.find((voice) => String(voice.id || '').toLowerCase().startsWith(requestedLower))
+            || voices.find((voice) => String(voice.label || '').toLowerCase().includes(requestedLower));
+
+        if (!match) {
+            this.printWarning(`No matching voice found for "${requestedVoice}". Use /tts voices to list options.`);
+            return;
+        }
+
+        this.ttsManager.setSelectedVoiceId(match.id);
+        this.updateTtsControls();
+        this.printSuccess(`Voice set to ${match.label || match.id}.`);
+    }
     
     // ==================== Output Methods ====================
     
@@ -1608,6 +3234,7 @@ Session Statistics:
         this.terminalOutput.appendChild(line);
         this.scrollToBottom();
         this.finishAIContentLine(line);
+        return line;
     }
 
     printHistoryMessage(message = {}) {
@@ -1675,6 +3302,7 @@ Session Statistics:
         }
 
         this.renderMermaidDiagrams(line);
+        this.updateTtsControls(line);
     }
 
     async attachLatestAlignmentTargetToLastAIResponse(response = {}) {
@@ -1790,6 +3418,12 @@ Session Statistics:
         const body = this.renderMarkdown(text);
         const isStreaming = options.streaming === true;
         const title = options.title || 'AI Output';
+        const responseToolsMarkup = isStreaming ? '' : `
+            <div class="cli-response-tools">
+                ${this.buildTtsActionMarkup(text, options)}
+                ${this.buildAlignmentActionsMarkup()}
+            </div>
+        `;
         const toggleMarkup = `
             <button
                 type="button"
@@ -1807,7 +3441,7 @@ Session Statistics:
                     <div class="cli-response-head">
                         ${toggleMarkup}
                         <span class="cli-response-title">${this.escapeHtml(title)}</span>
-                        ${isStreaming ? '' : this.buildAlignmentActionsMarkup()}
+                        ${responseToolsMarkup}
                     </div>
                     <div class="cli-response-body">${body}</div>
                 </div>
@@ -1820,7 +3454,7 @@ Session Statistics:
                 <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>${this.escapeHtml(title)}</span>
                 ${toggleMarkup}
                 <span class="voxel-response-meta">${this.escapeHtml(meta)}</span>
-                ${isStreaming ? '' : this.buildAlignmentActionsMarkup()}
+                ${responseToolsMarkup}
             </div>
             <div class="voxel-response-body">${body}</div>
         `;
@@ -2338,6 +3972,10 @@ Session Statistics:
 **AI Controls:**
   /models            List available AI models
   /model <name>      Change AI model
+  /tts status        Show voice playback status
+  /tts on|off|stop   Autoplay new replies, disable autoplay, or stop audio
+  /tts voices        List available read-aloud voices
+  /voice <id>        Switch the read-aloud voice
   /tools [category]  List frontend-available tools
   /tool <id> <json>  Invoke a tool with JSON params
   /tool-help <id>    Show on-demand documentation for a tool
@@ -5394,17 +7032,31 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             return;
         }
         
-        const matches = this.commands.filter(cmd => cmd.startsWith(input.toLowerCase()));
-        if (matches.length === 0 || (matches.length === 1 && matches[0] === input)) {
+        const matches = this.getCommandMatches(input);
+        const exactMatch = matches.length === 1
+            && [matches[0].command, ...(matches[0].aliases || [])]
+                .filter(Boolean)
+                .some((candidate) => String(candidate).toLowerCase() === input.trim().toLowerCase());
+        if (matches.length === 0 || (exactMatch && !matches[0].requiresInput && !matches[0].arguments)) {
             this.hideAutocomplete();
             return;
         }
         
         this.autocompleteMatches = matches;
-        this.autocompleteIndex = -1;
+        this.autocompleteIndex = 0;
         
         this.autocompleteEl.innerHTML = matches.map((match, i) => `
-            <div class="autocomplete-item ${i === 0 ? 'selected' : ''}" data-index="${i}">${match}</div>
+            <button type="button" class="autocomplete-item ${i === 0 ? 'selected' : ''}" data-index="${i}">
+                <span class="autocomplete-icon" aria-hidden="true">${this.escapeHtml(match.icon || '/')}</span>
+                <span class="autocomplete-main">
+                    <span class="autocomplete-title">
+                        <code>${this.escapeHtml(match.command)}</code>
+                        <strong>${this.escapeHtml(match.label || match.command)}</strong>
+                    </span>
+                    <span class="autocomplete-description">${this.escapeHtml(match.description || 'CLI command')}</span>
+                </span>
+                ${match.arguments ? `<span class="autocomplete-args">${this.escapeHtml(match.arguments)}</span>` : ''}
+            </button>
         `).join('');
         
         this.autocompleteEl.classList.remove('hidden');
@@ -5412,9 +7064,8 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         // Click handlers
         this.autocompleteEl.querySelectorAll('.autocomplete-item').forEach(item => {
             item.addEventListener('click', () => {
-                this.commandInput.value = item.textContent + ' ';
-                this.commandInput.focus();
-                this.hideAutocomplete();
+                const match = this.autocompleteMatches[Number(item.dataset.index)];
+                this.activateCommandEntry(match, { source: 'autocomplete' });
             });
         });
     }
@@ -5431,14 +7082,15 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         
         this.autocompleteEl.querySelectorAll('.autocomplete-item').forEach((item, i) => {
             item.classList.toggle('selected', i === this.autocompleteIndex);
+            if (i === this.autocompleteIndex && typeof item.scrollIntoView === 'function') {
+                item.scrollIntoView({ block: 'nearest' });
+            }
         });
     }
     
     selectAutocomplete() {
         if (this.autocompleteIndex >= 0) {
-            this.commandInput.value = this.autocompleteMatches[this.autocompleteIndex] + ' ';
-            this.commandInput.focus();
-            this.hideAutocomplete();
+            this.activateCommandEntry(this.autocompleteMatches[this.autocompleteIndex], { source: 'keyboard' });
         }
     }
     
@@ -5451,11 +7103,11 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     handleTabCompletion() {
         const input = this.commandInput.value;
         if (input.startsWith('/')) {
-            const matches = this.commands.filter(cmd => cmd.startsWith(input.toLowerCase()));
+            const matches = this.getCommandMatches(input);
             if (matches.length === 1) {
-                this.commandInput.value = matches[0] + ' ';
+                this.activateCommandEntry(matches[0], { source: 'tab' });
             } else if (matches.length > 0) {
-                this.printSystem('Commands: ' + matches.join(', '));
+                this.printSystem('Commands: ' + matches.map((match) => match.command).join(', '));
             }
         }
     }
@@ -5647,13 +7299,13 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 streamingLine.innerHTML = this.renderAIContent(expected || this.currentOutput);
                 this.finishAIContentLine(streamingLine);
                 this.scrollToBottom();
-                return;
+                return streamingLine;
             }
 
             if (expected) {
-                this.printAI(expected);
+                return this.printAI(expected);
             }
-            return;
+            return null;
         }
 
         const streamingLine = this.terminalOutput.querySelector('.line-output.ai.streaming');
@@ -5662,12 +7314,14 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             streamingLine.innerHTML = this.renderAIContent(expected || this.currentOutput);
             this.finishAIContentLine(streamingLine);
             this.scrollToBottom();
-            return;
+            return streamingLine;
         }
 
         if (expected) {
-            this.printAI(expected);
+            return this.printAI(expected);
         }
+
+        return null;
     }
 }
 

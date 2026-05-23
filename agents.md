@@ -49,6 +49,18 @@ Clients (CLI / Web Chat / Canvas / Notation)
 
 ---
 
+## Agent Grep Docs
+
+When an agent needs a small workflow doc instead of the full project instructions, start with `docs/agent-grep/`.
+
+```bash
+rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY" docs/agent-grep src/agent-sdk/tool-docs data/skills
+```
+
+Use these compact docs to find copyable grep commands, the tool-use rhythm, tool lookup paths, new-tool update checklist, design research steps, skill authoring rules, and build/verify proof loops before loading longer runbooks.
+
+---
+
 ## Generated HTML and Document Design Guardrails
 
 When an agent or program creates HTML, PDF-oriented HTML, DOCX, slide decks, dashboards, reports, or other visual artifacts:

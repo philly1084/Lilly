@@ -1,0 +1,322 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3130/web-cli/",
+  "originalUrl": "http://127.0.0.1:3130/web-cli/",
+  "authenticated": false,
+  "generatedAt": "2026-05-23T23:40:59.095Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-command-autocomplete\\kimibuilt-web-cli-desktop.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://127.0.0.1:3130/web-cli/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "button",
+            "id": "",
+            "className": "command-quick-btn",
+            "text": "SB Sandbox /sandbox",
+            "left": 1285,
+            "right": 1449,
+            "width": 164
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "command-quick-btn",
+            "text": "B Build Mode /build",
+            "left": 1457,
+            "right": 1621,
+            "width": 164
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-icon",
+            "text": "B",
+            "left": 1469,
+            "right": 1499,
+            "width": 30
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-copy",
+            "text": "Build Mode /build",
+            "left": 1507,
+            "right": 1609,
+            "width": 102
+          },
+          {
+            "tag": "strong",
+            "id": "",
+            "className": "command-quick-name",
+            "text": "Build Mode",
+            "left": 1507,
+            "right": 1609,
+            "width": 102
+          },
+          {
+            "tag": "code",
+            "id": "",
+            "className": "command-quick-template",
+            "text": "/build",
+            "left": 1507,
+            "right": 1609,
+            "width": 102
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "command-quick-btn",
+            "text": "IM Image /image",
+            "left": 1629,
+            "right": 1793,
+            "width": 164
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-icon",
+            "text": "IM",
+            "left": 1641,
+            "right": 1671,
+            "width": 30
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-copy",
+            "text": "Image /image",
+            "left": 1679,
+            "right": 1781,
+            "width": 102
+          },
+          {
+            "tag": "strong",
+            "id": "",
+            "className": "command-quick-name",
+            "text": "Image",
+            "left": 1679,
+            "right": 1781,
+            "width": 102
+          },
+          {
+            "tag": "code",
+            "id": "",
+            "className": "command-quick-template",
+            "text": "/image",
+            "left": 1679,
+            "right": 1781,
+            "width": 102
+          }
+        ],
+        "bodyTextLength": 1014,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Connected auto auto gpt-image-2 gpt-image-1.5 gpt-image-1 gpt-image-1-mini New Chat Sessions Clear Export Theme Voice Buddy ? Home KIMIBUILT WEB CLI 5/23/2026, 8:40:55 PM AGENT COMMAND SURFACE Command from the browser, keep the terminal rhythm. Chat, inspect tools, run sandboxes, call remote agents, and keep generated files in the same session. MODE chat MODEL auto SESSION pending Ask Start with a normal request /tools Inspect available actions /skills Route with reusable skill",
+        "headings": [],
+        "interactiveControls": 50,
+        "textContrast": {
+          "checked": 112,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-command-autocomplete\\kimibuilt-web-cli-mobile.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://127.0.0.1:3130/web-cli/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "button",
+            "id": "",
+            "className": "command-quick-btn",
+            "text": "M+ Set Model /model",
+            "left": 315,
+            "right": 455,
+            "width": 140
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-copy",
+            "text": "Set Model /model",
+            "left": 363,
+            "right": 445,
+            "width": 82
+          },
+          {
+            "tag": "strong",
+            "id": "",
+            "className": "command-quick-name",
+            "text": "Set Model",
+            "left": 363,
+            "right": 445,
+            "width": 82
+          },
+          {
+            "tag": "code",
+            "id": "",
+            "className": "command-quick-template",
+            "text": "/model",
+            "left": 363,
+            "right": 445,
+            "width": 82
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "command-quick-btn",
+            "text": "T Tools /tools",
+            "left": 461,
+            "right": 601,
+            "width": 140
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-icon",
+            "text": "T",
+            "left": 471,
+            "right": 497,
+            "width": 26
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-copy",
+            "text": "Tools /tools",
+            "left": 509,
+            "right": 591,
+            "width": 82
+          },
+          {
+            "tag": "strong",
+            "id": "",
+            "className": "command-quick-name",
+            "text": "Tools",
+            "left": 509,
+            "right": 591,
+            "width": 82
+          },
+          {
+            "tag": "code",
+            "id": "",
+            "className": "command-quick-template",
+            "text": "/tools",
+            "left": 509,
+            "right": 591,
+            "width": 82
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "command-quick-btn",
+            "text": "K Skills /skills",
+            "left": 607,
+            "right": 747,
+            "width": 140
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-icon",
+            "text": "K",
+            "left": 617,
+            "right": 643,
+            "width": 26
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "command-quick-copy",
+            "text": "Skills /skills",
+            "left": 655,
+            "right": 737,
+            "width": 82
+          }
+        ],
+        "bodyTextLength": 880,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Connected auto gpt-image-2 gpt-image-1.5 gpt-image-1 gpt-image-1-mini ? KIMIBUILT WEB CLI AGENT COMMAND SURFACE Command from the browser, keep the terminal rhythm. Chat, inspect tools, run sandboxes, call remote agents, and keep generated files in the same session. MODE chat MODEL auto SESSION pending Ask Start with a normal request /tools Inspect available actions /skills Route with reusable skills /files Review generated artifacts /remote plan See remote deploy lanes Build Dr",
+        "headings": [],
+        "interactiveControls": 50,
+        "textContrast": {
+          "checked": 99,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-command-autocomplete\\kimibuilt-web-cli-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-command-autocomplete\\kimibuilt-web-cli-mobile.png"
+    ],
+    "issues": []
+  }
+}

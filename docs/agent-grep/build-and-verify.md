@@ -1,0 +1,41 @@
+# Build And Verify
+
+GREP_HANDLES: AGENT_DOC BUILD_VERIFY LOCAL_BUILD REMOTE_BUILD REMOTE_CLI_AGENT UI_CHECK DEPLOY_PROOF
+
+Use when:
+- The user asks to build, fix, deploy, publish, or prove a UI/backend change.
+- A result needs visible proof rather than only code reasoning.
+- You need to decide between local, sandbox, remote, and k3s paths.
+
+Local path:
+- Inspect changed files: `git status --short`
+- Find code quickly: `rg -n "route|symbol|error text" src frontend docs`
+- Run focused tests first: `node .\node_modules\jest\bin\jest.js --runTestsByPath <test-file>`
+- Syntax check edited JS when useful: `node --check <file>`
+- For generated HTML/UI: `node bin/kimibuilt-ui-check.js <url-or-file-url> --out ui-checks/<name>`
+
+Sandbox path:
+- Use `code-sandbox` for static preview bundles or runnable snippets.
+- For browser libraries, prefer `/api/sandbox-libraries/catalog.json` and local `/api/sandbox-libraries/...` routes before CDNs.
+- Keep preview bundles static-safe: one `index.html`, local CSS/assets, no uncompiled build-only classes.
+
+Remote path:
+- Prefer `remote-cli-agent` for scoped remote software creation, update, deploy, and verification loops.
+- Prefer `remote-command` for one-off kubectl, logs, service checks, network checks, and status inspection.
+- Prefer `k3s-deploy` for standard repo sync, manifest apply, image update, and rollout checks.
+- Start remote reconnects with the baseline from `agents.md`.
+- Remote agents should report `WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, and `BLOCKER` when relevant.
+
+Proof checklist:
+- Code changed in the intended files only.
+- Focused tests or syntax checks passed.
+- UI/browser checks ran when the result is visual.
+- Remote rollout, ingress, TLS, and public URL were checked for deployed work.
+- Any blocker is reported plainly with the next distinct recovery path.
+
+Good grep targets:
+- `src/agent-sdk/tool-docs/remote-cli-agent.md`
+- `src/agent-sdk/tool-docs/remote-command.md`
+- `src/agent-sdk/tool-docs/k3s-deploy.md`
+- `k8s/K3S_RANCHER_PLAYBOOK.md`
+- `bin/kimibuilt-ui-check.js`
