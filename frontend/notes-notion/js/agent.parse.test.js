@@ -751,6 +751,84 @@ Approved page plan:
         ]));
     });
 
+    test('surfaces page reasoning map for Mermaid color and cross-reference requests', () => {
+        const agent = loadAgent();
+        const pageContext = {
+            title: 'Workflow Map',
+            pageId: 'page-workflow',
+            blockCount: 4,
+            wordCount: 24,
+            readingTime: 1,
+            outline: [
+                { id: 'submit-heading', content: 'Submit request' },
+                { id: 'approval-heading', content: 'Approve plan' },
+            ],
+            blocks: [
+                { id: 'diagram', type: 'mermaid', content: 'sequenceDiagram\nIntake->>Review: Submit request', depth: 0 },
+                { id: 'submit-heading', type: 'heading_2', content: 'Submit request', depth: 0 },
+                { id: 'submit-copy', type: 'text', content: 'The intake owner submits the request.', depth: 0 },
+                { id: 'approval-heading', type: 'heading_2', content: 'Approve plan', depth: 0 },
+            ],
+            projections: {
+                pageMap: {
+                    summary: {
+                        sectionCount: 2,
+                        mermaidCount: 1,
+                        mermaidStepCount: 1,
+                        crossReferenceCount: 1,
+                    },
+                    mermaid: [{
+                        blockId: 'diagram',
+                        diagramType: 'sequence',
+                        stepCount: 1,
+                        steps: [{
+                            stepIndex: 1,
+                            label: 'Submit request',
+                            color: 'blue',
+                            relatedBlockIds: ['submit-heading', 'submit-copy'],
+                        }],
+                    }],
+                    crossReferences: [{
+                        type: 'mermaid_step_match',
+                        mermaidBlockId: 'diagram',
+                        stepIndex: 1,
+                        targetBlockIds: ['submit-heading', 'submit-copy'],
+                    }],
+                    relatedClusters: [{
+                        concept: 'submit request',
+                        blockIds: ['diagram', 'submit-heading', 'submit-copy'],
+                    }],
+                    colorCodingHints: [{
+                        target: 'mermaid_step',
+                        stepIndex: 1,
+                        label: 'Submit request',
+                        suggestedColor: 'blue',
+                        relatedBlockIds: ['submit-heading', 'submit-copy'],
+                    }],
+                },
+                styles: [],
+            },
+        };
+        const question = 'Color code this so people can identify where steps are in the Mermaid chart and cross-reference related information elsewhere.';
+
+        const understanding = agent._buildRequestUnderstanding(question, pageContext, {});
+        expect(understanding.pageReasoningModes).toEqual(expect.arrayContaining([
+            'color_coding',
+            'mermaid_alignment',
+            'cross_reference',
+        ]));
+
+        const prompt = agent._buildSystemPrompt(pageContext, { question });
+        expect(prompt).toContain('PAGE REASONING MAP:');
+        expect(prompt).toContain('"colorCodingHints"');
+        expect(prompt).toContain('"relatedBlockIds"');
+        expect(prompt).toContain('PAGE REASONING RULES:');
+        expect(prompt).toContain('Reasoning modes for this request: color_coding, mermaid_alignment, cross_reference');
+        expect(prompt).toContain('Apply the same color meaning to the Mermaid step');
+        expect(prompt).toContain('Use update_block color/textColor for whole-block sequence tags');
+        expect(prompt).toContain('Page reasoning: color_coding, mermaid_alignment, cross_reference');
+    });
+
     test('applies section-level actions through editor section APIs', () => {
         jest.useFakeTimers();
         const editor = {

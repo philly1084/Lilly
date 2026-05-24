@@ -442,14 +442,14 @@ const normalizedTtsRealtimeSynthesisLanes = Math.max(
     1,
     Math.min(
         8,
-        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LANES, 10) || 4,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LANES, 10) || 2,
     ),
 );
 const normalizedTtsRealtimeSynthesisLookahead = Math.max(
     normalizedTtsRealtimeSynthesisLanes,
     Math.min(
         12,
-        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LOOKAHEAD, 10) || 6,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LOOKAHEAD, 10) || 3,
     ),
 );
 const normalizedTtsRealtimeChunkTargetChars = Math.max(

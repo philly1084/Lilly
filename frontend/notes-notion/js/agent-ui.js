@@ -521,6 +521,9 @@ const AgentUI = (function() {
             ? `#${understanding.layout.index} ${understanding.layout.name}`
             : 'Adaptive layout';
         const scheme = understanding.designScheme?.name || 'Current page scheme';
+        const reasoning = Array.isArray(understanding.pageReasoningModes) && understanding.pageReasoningModes.length
+            ? understanding.pageReasoningModes.map((mode) => mode.replace(/_/g, ' ')).join(', ')
+            : 'General page context';
 
         elements.understandingCard.hidden = false;
         elements.understandingCard.innerHTML = `
@@ -533,6 +536,7 @@ const AgentUI = (function() {
                 <span>Template</span><b>${escapeHtml(template)}</b>
                 <span>Layout</span><b>${escapeHtml(layout)}</b>
                 <span>Design</span><b>${escapeHtml(scheme)}</b>
+                <span>Reasoning</span><b>${escapeHtml(reasoning)}</b>
             </div>
             <p>${escapeHtml(understanding.strategy || '')}</p>
         `;

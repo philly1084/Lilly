@@ -2956,6 +2956,66 @@ const Agent = (function() {
         return setupLines.join('\n');
     }
 
+    function inferPageReasoningModes(question = '', pageContext = null) {
+        const normalized = String(question || '').trim().toLowerCase();
+        const modes = [];
+
+        if (/\b(color|colour|color-code|colour-code|palette|visual tag|highlight|stage color|status color)\b/.test(normalized)) {
+            modes.push('color_coding');
+        }
+
+        if (/\b(mermaid|diagram|flowchart|sequence chart|sequence diagram|chart sequence|node|edge|participant)\b/.test(normalized)) {
+            modes.push('mermaid_alignment');
+        }
+
+        if (/\b(cross[- ]?reference|xref|related|relationship|connect|linked|elsewhere|same concept|references?)\b/.test(normalized)) {
+            modes.push('cross_reference');
+        }
+
+        if (/\b(layout|page setup|structure|organize|sequence|order|stages?|steps?|flow|where blocks|where sections)\b/.test(normalized)) {
+            modes.push('layout_reasoning');
+        }
+
+        if ((pageContext?.projections?.pageMap?.summary?.crossReferenceCount || 0) > 0 && modes.length === 0) {
+            modes.push('page_map_available');
+        }
+
+        return Array.from(new Set(modes));
+    }
+
+    function buildPageReasoningGuidance(question = '', pageContext = null) {
+        const pageMap = pageContext?.projections?.pageMap || pageContext?.reasoningMap || null;
+        const modes = inferPageReasoningModes(question, pageContext);
+        const summary = pageMap?.summary || {};
+        const lines = [
+            `Reasoning modes for this request: ${modes.length ? modes.join(', ') : 'general_page_context'}`,
+            `Derived map: ${summary.sectionCount || 0} layout regions, ${summary.mermaidCount || 0} Mermaid block(s), ${summary.mermaidStepCount || 0} Mermaid step(s), ${summary.crossReferenceCount || 0} cross-reference candidates.`,
+            '- Before editing layout, identify the relevant heading section, its block range, and any related blocks elsewhere in the page.',
+            '- When the user asks where information belongs, compare layout regions, related clusters, Mermaid matches, and current block styles before deciding the target block IDs.',
+            '- When adding new information, place it beside the most related section or block rather than appending it to the end by default.',
+        ];
+
+        if (modes.includes('mermaid_alignment')) {
+            lines.push('- For Mermaid work, inspect the Mermaid steps and their relatedBlockIds. Keep the Mermaid block and the matching page blocks synchronized when the user asks for diagram/page consistency.');
+        }
+
+        if (modes.includes('color_coding')) {
+            lines.push('- For color-coding by sequence, use colorCodingHints as the starting palette. Apply the same color meaning to the Mermaid step, its matched heading/callout/todo/list blocks, and any repeated concept highlights.');
+            lines.push('- Use update_block color/textColor for whole-block sequence tags and highlight_text only for exact terms inside a text-like block.');
+        }
+
+        if (modes.includes('cross_reference')) {
+            lines.push('- For cross-references, use relatedClusters and crossReferences to find existing blocks that talk about the same concept before creating duplicate explanations.');
+            lines.push('- If a new block summarizes related material, name the source block IDs in your hidden planning and place the summary near the strongest anchor section.');
+        }
+
+        if (modes.includes('layout_reasoning')) {
+            lines.push('- For layout reasoning, treat the page as a designed sequence: lead cluster, major sections, support/detail clusters, then closeout. Reorder or restyle section anchors instead of rebuilding unrelated sections.');
+        }
+
+        return lines.join('\n');
+    }
+
     // Build system prompt with page context
     function buildSystemPrompt(pageContext, requestContext = {}) {
         const question = String(requestContext?.question || '').trim();
@@ -2970,10 +3030,14 @@ const Agent = (function() {
         const styleLayerSnapshot = pageContext?.projections?.styles
             ? JSON.stringify(pageContext.projections.styles, null, 2).slice(0, 5000)
             : '';
+        const pageReasoningMapSnapshot = pageContext?.projections?.pageMap
+            ? JSON.stringify(pageContext.projections.pageMap, null, 2).slice(0, 9000)
+            : '';
         const pageContent = buildFullPageContentFromContext(pageContext).slice(0, 6000);
         const topLevelLayout = buildTopLevelLayoutSnapshot(pageContext);
         const sectionEditMap = buildSectionEditMap(pageContext);
         const visualAnchors = buildVisualAnchorSnapshot(pageContext);
+        const pageReasoningGuidance = buildPageReasoningGuidance(question, pageContext);
         const pageEditWorkflow = buildPageEditWorkflowGuidance(question, pageContext);
         const editResponsePatterns = buildEditResponsePatterns(pageContext);
         const blockOpportunities = buildBlockOpportunityGuidance(question, pageContext, templateMatches);
@@ -3016,12 +3080,20 @@ Use the smallest useful layer. Prefer block IDs from the outline, sections, styl
 - sections: read section heading IDs and their block ranges
 - styles: read block color, text color, font family, and font size
 - grep: limit visible blocks by word, block type, section, color, textColor, or block ID
+- page_map: read layout regions, Mermaid steps, repeated concepts, cross-references, and color-coding hints
+- mermaid_sequences: read Mermaid blocks as ordered steps with related page block candidates
 
 COMPACT AGENT SNAPSHOT:
 ${agentLayerSnapshot || '(no query projection available)'}
 
 STYLE LAYER SNAPSHOT:
 ${styleLayerSnapshot || '(no style projection available)'}
+
+PAGE REASONING MAP:
+${pageReasoningMapSnapshot || '(no page reasoning map available)'}
+
+PAGE REASONING RULES:
+${pageReasoningGuidance}
 
 TOP-LEVEL LAYOUT:
 ${topLevelLayout}
@@ -3966,6 +4038,7 @@ GUIDELINES:
         const layout = getBestFitIndexedLayout(templateMatches);
         const outputFormat = requestOptions?.outputFormat || inferRequestedArtifactFormat(normalized);
         const suppressedOutput = shouldSuppressRequestedArtifactFormat(normalized, context, outputFormat);
+        const pageReasoningModes = inferPageReasoningModes(normalized, context);
 
         let route = 'chat';
         let label = 'Answer in chat';
@@ -4011,6 +4084,7 @@ GUIDELINES:
             leadTemplate?.name ? `template: ${leadTemplate.name}` : '',
             layout?.name ? `layout: ${layout.name}` : '',
             leadScheme?.name ? `scheme: ${leadScheme.name}` : '',
+            pageReasoningModes.length ? `page reasoning: ${pageReasoningModes.join(', ')}` : '',
         ].filter(Boolean);
 
         return {
@@ -4028,6 +4102,7 @@ GUIDELINES:
                 id: leadScheme.id,
                 name: leadScheme.name,
             } : null,
+            pageReasoningModes,
             signals,
         };
     }
@@ -4041,6 +4116,7 @@ GUIDELINES:
             leadTemplate?.name ? `Template: ${leadTemplate.name}` : '',
             understanding.layout?.name ? `Indexed layout: #${understanding.layout.index} ${understanding.layout.name}` : '',
             understanding.designScheme?.name ? `Design scheme: ${understanding.designScheme.name}` : '',
+            understanding.pageReasoningModes?.length ? `Page reasoning: ${understanding.pageReasoningModes.join(', ')}` : '',
             `Strategy: ${understanding.strategy}`,
             understanding.signals?.length ? `Signals: ${understanding.signals.join(' | ')}` : '',
             'Before answering, reconcile the route, template, layout, and page context. If they conflict, preserve the user request first, then the current page, then visual polish.',

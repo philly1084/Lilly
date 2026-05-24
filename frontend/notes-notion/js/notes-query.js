@@ -23,9 +23,70 @@
     ]);
 
     const STYLE_KEYS = ['color', 'textColor', 'fontFamily', 'fontSize', 'fontWeight', 'textAlign', 'formatting'];
+    const PAGE_SEQUENCE_COLORS = ['blue', 'teal', 'green', 'amber', 'orange', 'rose', 'purple', 'indigo'];
+    const CONCEPT_STOP_WORDS = new Set([
+        'about',
+        'after',
+        'again',
+        'against',
+        'also',
+        'because',
+        'before',
+        'being',
+        'between',
+        'block',
+        'blocks',
+        'chart',
+        'could',
+        'detail',
+        'details',
+        'diagram',
+        'each',
+        'else',
+        'from',
+        'have',
+        'into',
+        'main',
+        'make',
+        'mermaid',
+        'more',
+        'note',
+        'notes',
+        'only',
+        'other',
+        'page',
+        'part',
+        'phase',
+        'process',
+        'section',
+        'sections',
+        'should',
+        'step',
+        'steps',
+        'that',
+        'their',
+        'there',
+        'these',
+        'this',
+        'through',
+        'when',
+        'where',
+        'which',
+        'with',
+        'would',
+    ]);
 
     function normalizeText(value) {
         return String(value || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function normalizeConceptKey(value) {
+        return normalizeText(value)
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
     function truncateText(value, limit = 120) {
@@ -36,6 +97,54 @@
 
     function escapeRegExp(value) {
         return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function uniqueStrings(values = []) {
+        return Array.from(new Set(values.filter(Boolean).map(String)));
+    }
+
+    function summarizeCounts(values = [], limit = 6) {
+        const counts = {};
+        values.forEach((value) => {
+            const key = String(value || '').trim().toLowerCase();
+            if (!key || key === 'default') return;
+            counts[key] = (counts[key] || 0) + 1;
+        });
+
+        return Object.entries(counts)
+            .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+            .slice(0, limit)
+            .map(([value, count]) => ({ value, count }));
+    }
+
+    function extractConcepts(value = '', options = {}) {
+        const words = normalizeConceptKey(value)
+            .split(/\s+/)
+            .filter((word) =>
+                word
+                && word.length >= 3
+                && !CONCEPT_STOP_WORDS.has(word)
+                && !/^\d+$/.test(word)
+            );
+
+        const concepts = [];
+        if (options.includePhrase && words.length >= 2 && words.length <= 7) {
+            concepts.push(words.join(' '));
+        }
+
+        words.forEach((word) => {
+            if (word.length >= 4) concepts.push(word);
+        });
+
+        for (let index = 0; index < words.length - 1; index += 1) {
+            const left = words[index];
+            const right = words[index + 1];
+            if (left.length >= 4 && right.length >= 4) {
+                concepts.push(`${left} ${right}`);
+            }
+        }
+
+        return uniqueStrings(concepts).slice(0, options.limit || 10);
     }
 
     function getHeadingLevel(block) {
@@ -382,6 +491,498 @@
         });
     }
 
+    function detectMermaidDiagramType(source = '') {
+        const normalized = String(source || '').replace(/\s+/g, '').toLowerCase();
+        if (normalized.startsWith('sequencediagram')) return 'sequence';
+        if (normalized.startsWith('flowchart') || normalized.startsWith('graph')) return 'flowchart';
+        if (normalized.startsWith('statediagram')) return 'state';
+        if (normalized.startsWith('classdiagram')) return 'class';
+        if (normalized.startsWith('erdiagram')) return 'er';
+        if (normalized.startsWith('gantt')) return 'gantt';
+        if (normalized.startsWith('mindmap')) return 'mindmap';
+        if (normalized.startsWith('gitgraph')) return 'gitgraph';
+        return 'mermaid';
+    }
+
+    function cleanMermaidNodeId(value = '') {
+        return String(value || '')
+            .trim()
+            .replace(/^["']|["']$/g, '')
+            .replace(/[^A-Za-z0-9_.:-]+/g, '')
+            .trim();
+    }
+
+    function cleanMermaidLabel(value = '') {
+        return normalizeText(String(value || '')
+            .replace(/<br\s*\/?>/gi, ' ')
+            .replace(/^["']|["']$/g, ''));
+    }
+
+    function parseMermaidNodeToken(token = '') {
+        const trimmed = String(token || '').trim().replace(/[;,]+$/g, '');
+        const shapedMatch = trimmed.match(/^([A-Za-z][\w.:-]*)\s*(?:\[\[?|\(\(?|\{)\s*["']?(.+?)["']?\s*(?:\]\]?|\)\)?|\})$/);
+        if (shapedMatch) {
+            return {
+                id: cleanMermaidNodeId(shapedMatch[1]),
+                label: cleanMermaidLabel(shapedMatch[2]) || cleanMermaidNodeId(shapedMatch[1]),
+            };
+        }
+
+        const simpleMatch = trimmed.match(/^([A-Za-z][\w.:-]*)/);
+        const id = simpleMatch ? cleanMermaidNodeId(simpleMatch[1]) : cleanMermaidNodeId(trimmed);
+        return {
+            id,
+            label: id,
+        };
+    }
+
+    function parseSequenceParticipant(line = '') {
+        const match = String(line || '').trim().match(/^(?:participant|actor)\s+([A-Za-z][\w.:-]*)(?:\s+as\s+(.+))?$/i);
+        if (!match) return null;
+        const id = cleanMermaidNodeId(match[1]);
+        return {
+            id,
+            label: cleanMermaidLabel(match[2] || id),
+        };
+    }
+
+    function parseSequenceMessage(line = '', stepIndex = 0) {
+        const match = String(line || '').trim().match(/^([A-Za-z][\w.:-]*)\s*(?:-+>>\+?|-+x|-+\)|-+>|=+>>?|-+)\s*([A-Za-z][\w.:-]*)\s*:?\s*(.*)$/);
+        if (!match) return null;
+        const sourceId = cleanMermaidNodeId(match[1]);
+        const targetId = cleanMermaidNodeId(match[2]);
+        const label = cleanMermaidLabel(match[3] || `${sourceId} to ${targetId}`);
+        return {
+            stepIndex: stepIndex + 1,
+            type: 'message',
+            sourceId,
+            targetId,
+            label,
+            color: PAGE_SEQUENCE_COLORS[stepIndex % PAGE_SEQUENCE_COLORS.length],
+        };
+    }
+
+    function parseFlowchartStep(line = '', stepIndex = 0) {
+        const cleaned = String(line || '').trim();
+        if (!cleaned || /^(flowchart|graph)\b/i.test(cleaned)) return null;
+        if (/^(classDef|class|style|linkStyle|subgraph|end)\b/i.test(cleaned)) return null;
+
+        const edgeMatch = cleaned.match(/^(.+?)\s*(?:--[^>]*-->|-->|---|==>|-\.->|--x|--o)\s*(.+?)\s*$/);
+        if (edgeMatch) {
+            const source = parseMermaidNodeToken(edgeMatch[1]);
+            const target = parseMermaidNodeToken(edgeMatch[2]);
+            if (!source.id || !target.id) return null;
+            return {
+                stepIndex: stepIndex + 1,
+                type: 'edge',
+                sourceId: source.id,
+                sourceLabel: source.label,
+                targetId: target.id,
+                targetLabel: target.label,
+                label: source.label === target.label ? source.label : `${source.label} -> ${target.label}`,
+                color: PAGE_SEQUENCE_COLORS[stepIndex % PAGE_SEQUENCE_COLORS.length],
+            };
+        }
+
+        const node = parseMermaidNodeToken(cleaned);
+        if (!node.id) return null;
+        return {
+            stepIndex: stepIndex + 1,
+            type: 'node',
+            sourceId: node.id,
+            sourceLabel: node.label,
+            label: node.label,
+            color: PAGE_SEQUENCE_COLORS[stepIndex % PAGE_SEQUENCE_COLORS.length],
+        };
+    }
+
+    function buildMermaidMapForEntry(entry) {
+        const source = String(entry?.text || '').trim();
+        if (!source) return null;
+
+        const lines = source
+            .replace(/\r/g, '')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+        const diagramType = detectMermaidDiagramType(source);
+        const participants = {};
+        const steps = [];
+
+        lines.forEach((line) => {
+            const participant = parseSequenceParticipant(line);
+            if (participant?.id) {
+                participants[participant.id] = participant;
+                return;
+            }
+
+            if (diagramType === 'sequence') {
+                const step = parseSequenceMessage(line, steps.length);
+                if (step) steps.push(step);
+                return;
+            }
+
+            if (diagramType === 'flowchart') {
+                const step = parseFlowchartStep(line, steps.length);
+                if (step) steps.push(step);
+            }
+        });
+
+        steps.forEach((step) => {
+            if (step.sourceId && !participants[step.sourceId]) {
+                participants[step.sourceId] = { id: step.sourceId, label: step.sourceLabel || step.sourceId };
+            }
+            if (step.targetId && !participants[step.targetId]) {
+                participants[step.targetId] = { id: step.targetId, label: step.targetLabel || step.targetId };
+            }
+        });
+
+        return {
+            blockId: entry.id,
+            sectionHeadingId: entry.sectionHeadingId,
+            sectionHeadingText: entry.sectionHeadingText,
+            diagramType,
+            participantCount: Object.keys(participants).length,
+            participants: Object.values(participants),
+            stepCount: steps.length,
+            steps,
+        };
+    }
+
+    function buildEntrySearchText(entry) {
+        return normalizeConceptKey([
+            entry?.text || '',
+            entry?.sectionHeadingText || '',
+            ...(Array.isArray(entry?.sectionPath) ? entry.sectionPath : []),
+        ].join(' '));
+    }
+
+    function scoreEntryForLabel(entry, label = '') {
+        const searchText = buildEntrySearchText(entry);
+        if (!searchText) return 0;
+
+        const labelKey = normalizeConceptKey(label);
+        const labelConcepts = extractConcepts(label, { includePhrase: true, limit: 8 });
+        let score = 0;
+
+        if (labelKey && labelKey.length >= 4 && searchText.includes(labelKey)) {
+            score += 4;
+        }
+
+        labelConcepts.forEach((concept) => {
+            if (concept.length >= 3 && searchText.includes(concept)) {
+                score += concept.includes(' ') ? 2 : 1;
+            }
+        });
+
+        if (entry.headingLevel && score > 0) score += 0.5;
+        if (String(entry.type || '') === 'callout' && score > 0) score += 0.25;
+        return score;
+    }
+
+    function findRelatedBlocksForLabels(index, labels = [], excludeIds = []) {
+        const excluded = new Set(excludeIds.filter(Boolean).map(String));
+        const candidates = [];
+
+        index.blocks.forEach((entry) => {
+            if (!entry?.id || excluded.has(String(entry.id)) || entry.type === 'mermaid') return;
+            const score = labels.reduce((total, label) => total + scoreEntryForLabel(entry, label), 0);
+            if (score > 0) {
+                candidates.push({
+                    id: entry.id,
+                    type: entry.type,
+                    sectionHeadingId: entry.sectionHeadingId,
+                    sectionHeadingText: entry.sectionHeadingText,
+                    text: entry.textPreview,
+                    score,
+                });
+            }
+        });
+
+        return candidates
+            .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
+            .slice(0, 6);
+    }
+
+    function attachMermaidPageRelations(index, mermaidMap) {
+        if (!mermaidMap) return null;
+
+        const steps = mermaidMap.steps.map((step) => {
+            const participantLabels = [step.sourceId, step.sourceLabel, step.targetId, step.targetLabel]
+                .map((idOrLabel) => {
+                    const participant = mermaidMap.participants.find((entry) => entry.id === idOrLabel || entry.label === idOrLabel);
+                    return participant?.label || idOrLabel;
+                });
+            const labels = uniqueStrings([
+                step.label,
+                ...participantLabels,
+            ]).filter((label) => normalizeConceptKey(label).length >= 3);
+            const relatedBlocks = findRelatedBlocksForLabels(index, labels, [mermaidMap.blockId]);
+
+            return {
+                ...step,
+                relatedBlockIds: relatedBlocks.map((entry) => entry.id),
+                relatedBlocks,
+            };
+        });
+
+        return {
+            ...mermaidMap,
+            steps,
+        };
+    }
+
+    function extractExplicitBlockReferences(index) {
+        const references = [];
+        const blockIds = new Set(index.blocks.map((entry) => String(entry.id || '')));
+        const pattern = /\[([A-Za-z0-9_.:-]+)\]/g;
+
+        index.blocks.forEach((entry) => {
+            let match;
+            while ((match = pattern.exec(String(entry.text || '')))) {
+                const targetId = match[1];
+                if (!blockIds.has(targetId) || targetId === entry.id) continue;
+                references.push({
+                    type: 'explicit_block_reference',
+                    sourceBlockId: entry.id,
+                    targetBlockIds: [targetId],
+                    evidence: `[${targetId}]`,
+                    sectionHeadingId: entry.sectionHeadingId,
+                    sectionHeadingText: entry.sectionHeadingText,
+                });
+            }
+        });
+
+        return references;
+    }
+
+    function buildConceptRelations(index, options = {}) {
+        const conceptMap = {};
+
+        index.blocks.forEach((entry) => {
+            if (!entry?.id || !normalizeText(entry.text)) return;
+            const concepts = extractConcepts(entry.text, {
+                includePhrase: Boolean(entry.headingLevel),
+                limit: 12,
+            });
+
+            concepts.forEach((concept) => {
+                if (!conceptMap[concept]) {
+                    conceptMap[concept] = {
+                        concept,
+                        blockIds: new Set(),
+                        sectionHeadingIds: new Set(),
+                        sectionHeadingTexts: new Set(),
+                        types: new Set(),
+                    };
+                }
+
+                conceptMap[concept].blockIds.add(entry.id);
+                if (entry.sectionHeadingId) conceptMap[concept].sectionHeadingIds.add(entry.sectionHeadingId);
+                if (entry.sectionHeadingText) conceptMap[concept].sectionHeadingTexts.add(entry.sectionHeadingText);
+                if (entry.type) conceptMap[concept].types.add(entry.type);
+            });
+        });
+
+        return Object.values(conceptMap)
+            .map((relation) => ({
+                type: 'shared_concept',
+                concept: relation.concept,
+                blockIds: Array.from(relation.blockIds),
+                sectionHeadingIds: Array.from(relation.sectionHeadingIds),
+                sectionHeadingTexts: Array.from(relation.sectionHeadingTexts),
+                blockTypes: Array.from(relation.types),
+                strength: relation.blockIds.size + relation.sectionHeadingIds.size,
+            }))
+            .filter((relation) => relation.blockIds.length >= 2)
+            .sort((left, right) => right.strength - left.strength || left.concept.localeCompare(right.concept))
+            .slice(0, options.limit || 30);
+    }
+
+    function buildLayoutRegions(index, options = {}) {
+        const maxRegions = Number(options.maxRegions || 30);
+        const regions = [];
+        let currentRegion = null;
+
+        function summarizeRegion(region) {
+            if (!region) return null;
+            const sectionBlocks = region.blockIds.map((id) => index.blockById[id]).filter(Boolean);
+            const supportTypes = uniqueStrings(sectionBlocks
+                .map((entry) => entry.type)
+                .filter((type) => type && !/^heading_/.test(type) && type !== 'text'));
+            const orders = sectionBlocks.map((entry) => entry.order);
+
+            return {
+                label: region.label,
+                headingBlockId: region.headingBlockId,
+                level: region.level,
+                blockIds: region.blockIds.slice(0, 24),
+                blockCount: sectionBlocks.length,
+                wordCount: countWords(sectionBlocks.map((entry) => entry.text).join(' ')),
+                orderStart: orders.length ? Math.min(...orders) : 0,
+                orderEnd: orders.length ? Math.max(...orders) : 0,
+                supportTypes,
+                colors: summarizeCounts(sectionBlocks.flatMap((entry) => [entry.color, entry.textColor])),
+                preview: sectionBlocks.slice(0, 4).map((entry) => `[${entry.id}] ${entry.type}: ${entry.textPreview || '(empty)'}`),
+            };
+        }
+
+        function commitRegion() {
+            const summarized = summarizeRegion(currentRegion);
+            if (summarized) regions.push(summarized);
+            currentRegion = null;
+        }
+
+        index.blocks.forEach((entry) => {
+            if (entry.headingLevel) {
+                commitRegion();
+                currentRegion = {
+                    label: entry.text || 'Untitled section',
+                    headingBlockId: entry.id,
+                    level: `heading_${entry.headingLevel}`,
+                    blockIds: [entry.id],
+                };
+                return;
+            }
+
+            if (!currentRegion) {
+                currentRegion = {
+                    label: 'Lead cluster',
+                    headingBlockId: null,
+                    level: 'lead',
+                    blockIds: [],
+                };
+            }
+
+            currentRegion.blockIds.push(entry.id);
+        });
+        commitRegion();
+
+        if (!regions.length) {
+            return [{
+                label: 'Lead cluster',
+                headingBlockId: null,
+                level: 'lead',
+                blockIds: index.blocks.slice(0, 12).map((entry) => entry.id),
+                blockCount: index.blocks.length,
+                orderStart: index.blocks[0]?.order ?? 0,
+                orderEnd: index.blocks[index.blocks.length - 1]?.order ?? 0,
+                supportTypes: uniqueStrings(index.blocks.map((entry) => entry.type).filter((type) => !/^heading_/.test(type))),
+                colors: summarizeCounts(index.blocks.flatMap((entry) => [entry.color, entry.textColor])),
+                preview: index.blocks.slice(0, 4).map((entry) => `[${entry.id}] ${entry.type}: ${entry.textPreview || '(empty)'}`),
+            }];
+        }
+
+        return regions.slice(0, maxRegions);
+    }
+
+    function buildMermaidCrossReferences(mermaidMaps = []) {
+        const references = [];
+
+        mermaidMaps.forEach((map) => {
+            map.steps.forEach((step) => {
+                if (!Array.isArray(step.relatedBlockIds) || step.relatedBlockIds.length === 0) return;
+                references.push({
+                    type: 'mermaid_step_match',
+                    sourceBlockId: map.blockId,
+                    targetBlockIds: step.relatedBlockIds,
+                    mermaidBlockId: map.blockId,
+                    stepIndex: step.stepIndex,
+                    label: step.label,
+                    suggestedColor: step.color,
+                    evidence: `Mermaid step ${step.stepIndex}: ${step.label}`,
+                    sectionHeadingId: map.sectionHeadingId,
+                    sectionHeadingText: map.sectionHeadingText,
+                });
+            });
+        });
+
+        return references;
+    }
+
+    function buildColorCodingHints(layoutRegions = [], mermaidMaps = []) {
+        const hints = [];
+
+        mermaidMaps.forEach((map) => {
+            map.steps.slice(0, 16).forEach((step) => {
+                hints.push({
+                    target: 'mermaid_step',
+                    mermaidBlockId: map.blockId,
+                    stepIndex: step.stepIndex,
+                    label: step.label,
+                    suggestedColor: step.color,
+                    relatedBlockIds: step.relatedBlockIds || [],
+                    reason: 'Use this when the user asks to make Mermaid sequence steps visually trackable across the page.',
+                });
+            });
+        });
+
+        layoutRegions.slice(0, 12).forEach((region, index) => {
+            hints.push({
+                target: 'section_sequence',
+                sequenceIndex: index + 1,
+                headingBlockId: region.headingBlockId,
+                label: region.label,
+                suggestedColor: PAGE_SEQUENCE_COLORS[index % PAGE_SEQUENCE_COLORS.length],
+                relatedBlockIds: region.blockIds || [],
+                reason: 'Use this when the user asks to color-code page sections or process stages by order.',
+            });
+        });
+
+        return hints;
+    }
+
+    function buildPageReasoningMap(pageOrIndex = null, options = {}) {
+        const index = pageOrIndex?.blocks?.[0]?.source ? pageOrIndex : buildIndex(pageOrIndex, options);
+        const layoutRegions = buildLayoutRegions(index, options);
+        const mermaidMaps = index.blocks
+            .filter((entry) => entry.type === 'mermaid')
+            .map((entry) => buildMermaidMapForEntry(entry))
+            .filter(Boolean)
+            .map((map) => attachMermaidPageRelations(index, map));
+        const conceptRelations = buildConceptRelations(index, { limit: options.maxConcepts || 30 });
+        const explicitReferences = extractExplicitBlockReferences(index);
+        const mermaidReferences = buildMermaidCrossReferences(mermaidMaps);
+        const crossReferences = [
+            ...mermaidReferences,
+            ...explicitReferences,
+            ...conceptRelations.map((relation) => ({
+                type: relation.type,
+                concept: relation.concept,
+                targetBlockIds: relation.blockIds,
+                sectionHeadingIds: relation.sectionHeadingIds,
+                sectionHeadingTexts: relation.sectionHeadingTexts,
+                evidence: `Shared concept: ${relation.concept}`,
+                strength: relation.strength,
+            })),
+        ].slice(0, options.maxReferences || 60);
+        const relatedClusters = conceptRelations.slice(0, options.maxClusters || 20).map((relation) => ({
+            concept: relation.concept,
+            blockIds: relation.blockIds.slice(0, 10),
+            sectionHeadingIds: relation.sectionHeadingIds,
+            sectionHeadingTexts: relation.sectionHeadingTexts,
+            blockTypes: relation.blockTypes,
+            strength: relation.strength,
+        }));
+
+        return {
+            summary: {
+                title: index.title,
+                blockCount: index.blockCount,
+                sectionCount: layoutRegions.length,
+                mermaidCount: mermaidMaps.length,
+                mermaidStepCount: mermaidMaps.reduce((count, map) => count + map.stepCount, 0),
+                crossReferenceCount: crossReferences.length,
+                relatedClusterCount: relatedClusters.length,
+            },
+            layoutRegions,
+            mermaid: mermaidMaps,
+            crossReferences,
+            relatedClusters,
+            colorCodingHints: buildColorCodingHints(layoutRegions, mermaidMaps),
+        };
+    }
+
     function createProjection(pageOrIndex = null, options = {}) {
         const index = pageOrIndex?.blocks?.[0]?.source ? pageOrIndex : buildIndex(pageOrIndex);
         const mode = String(options.mode || 'agent_context').toLowerCase();
@@ -417,6 +1018,14 @@
 
         if (mode === 'sections') {
             return index.sections;
+        }
+
+        if (mode === 'page_map' || mode === 'relationships' || mode === 'relationship_graph') {
+            return buildPageReasoningMap(index, options);
+        }
+
+        if (mode === 'mermaid_sequences' || mode === 'mermaid') {
+            return buildPageReasoningMap(index, options).mermaid;
         }
 
         if (mode === 'grep') {
@@ -463,6 +1072,11 @@
 
     function buildPageContext(page = null, options = {}) {
         const index = buildIndex(page, options);
+        const pageMap = createProjection(index, {
+            mode: 'page_map',
+            maxReferences: options.maxReferences || 60,
+            maxClusters: options.maxClusters || 20,
+        });
         return {
             title: index.title,
             icon: index.icon,
@@ -505,9 +1119,13 @@
             defaultModel: index.defaultModel,
             hasCover: index.hasCover,
             properties: index.properties,
+            reasoningMap: pageMap,
             projections: {
                 agentContext: createProjection(index, { mode: 'agent_context' }),
                 styles: createProjection(index, { mode: 'styles' }),
+                pageMap,
+                mermaidSequences: pageMap.mermaid,
+                relationships: pageMap.crossReferences,
             },
         };
     }
@@ -636,6 +1254,7 @@
         createHighlightActions,
         createDatabaseUpdateAction,
         createDatabaseFillAction,
+        buildPageReasoningMap,
     };
 
     root.NotesQuery = api;

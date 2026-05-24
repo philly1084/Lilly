@@ -5,6 +5,40 @@
 
 const WEB_CLI_LONG_AGENT_ENABLED_KEY = 'codecli-long-agent-enabled';
 const WEB_CLI_TTS_MESSAGE_PREFIX = 'web-cli-tts';
+const WEB_CLI_CURRENT_HELP_COMMAND_IDS = new Set([
+    'help',
+    'clear',
+    'new',
+    'sessions',
+    'switch',
+    'delete',
+    'models',
+    'model',
+    'tts',
+    'theme',
+    'tools',
+    'tool',
+    'tool-help',
+    'skills',
+    'skill',
+    'files',
+    'open',
+    'download',
+    'upload',
+    'remote-status',
+    'remote-tools',
+    'remote-agent',
+    'remote-run',
+    'remote-verify',
+    'sandbox',
+    'sandbox-help',
+    'build',
+    'long-agent',
+    'history',
+    'artifacts',
+    'shortcuts',
+    'health',
+]);
 
 class CodeCLIApp {
     constructor() {
@@ -746,6 +780,10 @@ class CodeCLIApp {
             },
         ];
     }
+
+    isCurrentHelpCommand(command = {}) {
+        return WEB_CLI_CURRENT_HELP_COMMAND_IDS.has(command.id);
+    }
     
     setupEventListeners() {
         // Input handling
@@ -1316,7 +1354,7 @@ class CodeCLIApp {
 
         const searchText = query.slice(1).trim();
         const matches = this.commandCatalog
-            .filter((entry) => entry.command.startsWith('/'))
+            .filter((entry) => entry.command.startsWith('/') && this.isCurrentHelpCommand(entry))
             .map((entry) => {
                 const commandCandidates = [entry.command, ...(entry.aliases || [])]
                     .filter(Boolean)
@@ -3881,9 +3919,9 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                                 <code>/files</code>
                                 <span>Review generated artifacts</span>
                             </button>
-                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/remote plan', { submit: true })">
-                                <code>/remote plan</code>
-                                <span>See remote deploy lanes</span>
+                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/remote status', { submit: true })">
+                                <code>/remote status</code>
+                                <span>Check remote agent readiness</span>
                             </button>
                             <button type="button" class="voxel-command-chip" onclick="app.useVoxelQuickTool('build')">
                                 <code>Build</code>
@@ -3918,7 +3956,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
     getHelpCommandGroups() {
         const groups = new Map();
         this.commandCatalog
-            .filter((command) => command.command && command.command.startsWith('/'))
+            .filter((command) => command.command && command.command.startsWith('/') && this.isCurrentHelpCommand(command))
             .forEach((command) => {
                 const category = command.category || 'Commands';
                 if (!groups.has(category)) {
@@ -3927,7 +3965,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                 groups.get(category).push(command);
             });
 
-        const order = ['General', 'Session', 'AI Controls', 'Remote', 'Build', 'Media', 'Files', 'Voxel', 'System'];
+        const order = ['General', 'Session', 'AI Controls', 'Remote', 'Build', 'Files', 'System'];
         return [...groups.entries()]
             .sort((a, b) => {
                 const aIndex = order.indexOf(a[0]);
@@ -3988,8 +4026,8 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         return `
             <div class="cli-help-menu">
                 <div class="cli-help-menu__intro">
-                    <strong>Click a row to stage that CLI command.</strong>
-                    <span>It fills the prompt only; press Enter when you are ready, or keep typing after commands that need details.</span>
+                    <strong>Current agent commands.</strong>
+                    <span>Click a row to stage a supported command, then press Enter or add the requested details.</span>
                 </div>
                 ${groupsMarkup}
                 <div class="cli-help-menu__footer">
@@ -4049,8 +4087,8 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
 Your buddy is focused on the three primary actions in the prompt bar.
 
 - Chat starts a normal Lilly conversation.
-- \`/tools [category]\` and \`/tool-help <id>\` inspect the backend tool catalog.
-- \`/skills\`, \`/skill-create {...}\`, and \`/skill-update <id> {...}\` manage reusable low-context chains.
+- \`/tools [category]\`, \`/tool-help <id>\`, and \`/tool <id> {...}\` inspect or invoke the live backend tool catalog.
+- \`/skills\` and \`/skill <id>\` inspect registered low-context chains.
 - \`/files\` and \`/open\` manage generated session files.
 
 Buddy stats: bond ${Math.round(personality.bond || 0)}%, guided runs ${personality.buildRuns || 0}, tool runs ${personality.toolRuns || 0}.`);
@@ -4063,10 +4101,10 @@ Buddy stats: bond ${Math.round(personality.bond || 0)}%, guided runs ${personali
 Use this when you want the agent to build through the remote CLI pipeline.
 
 1. Describe the target behavior in the prompt.
-2. The agent uses \`remote-command\` through the remote runner first, with SSH as fallback.
-3. Planned inspect, search, edit, build, test, deploy, rollout, and verify steps continue automatically.
+2. The agent uses \`remote-cli-agent\` for full coding/build/deploy loops.
+3. Use \`remote-command\` for focused inspect, log, rollout, and HTTPS verification checks.
 4. The agent stops for off-plan sudo/package installs, secret mutation, destructive deletes, force pushes, missing credentials, repeated failures, or unclear recovery.
-5. Use \`/remote tools\` for the command catalog, \`/remote status\` for runner health, \`/remote run <command>\` for expert execution, and \`/remote verify [host]\` for HTTPS checks.
+5. Use \`/remote status\` for runner health, \`/remote tools\` for the command catalog, \`/remote agent <task>\` for full loops, \`/remote run <command>\` for expert execution, and \`/remote verify [host]\` for HTTPS checks.
 
 Good prompt:
 \`\`\`text
@@ -4484,11 +4522,10 @@ Examples:
         this.printAI(`## Remote CLI Plan
 
 1. \`/remote status\` - confirm remote runner health and fallback target.
-2. \`/remote tools\` - choose a catalog command: baseline, repo-inspect, file-search, build, test, docker-buildkit, kubectl-inspect, logs, rollout, or https-verify.
-3. \`/remote run <command>\` - execute one purposeful inspect, fix, or verify batch.
-4. \`/remote agent <task>\` - hand a full coding/build/deploy loop to the backend remote CLI agent.
-5. Continue normal build/test failures while the next step is still on plan.
-6. Stop and report on privilege boundaries, secrets, destructive deletes, force push, repeated failures, missing credentials, or unclear recovery.
+2. \`/remote tools\` - choose a live catalog command such as baseline, repo-map, changed-files, targeted-grep, build, focused-test, buildkit, kubectl-inspect, logs, rollout, deploy-verify, or ui-visual-check.
+3. \`/remote agent <task>\` - hand a full coding/build/deploy loop to the backend remote CLI agent.
+4. \`/remote run <command>\` - execute one purposeful expert inspect, fix, or verify batch.
+5. \`/remote verify [host]\` - run the standard DNS and HTTPS availability check.
 
 Raw expert access remains available:
 \`\`\`text
@@ -4796,7 +4833,8 @@ Raw expert access remains available:
                 }
             });
             lines.push('');
-            lines.push('Usage: /skill <id>, /skill-create {...}, /skill-update <id> {...}');
+            lines.push('Usage: /skill <id>');
+            lines.push('Maintainer commands remain available when needed: /skill-create {...}, /skill-update <id> {...}');
             this.printAI(lines.join('\n'));
         } catch (error) {
             this.printError(`Failed to load skills: ${error.message}`);

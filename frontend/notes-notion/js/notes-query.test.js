@@ -64,6 +64,61 @@ function samplePage() {
     };
 }
 
+function sampleProcessPage() {
+    return {
+        id: 'page-process',
+        title: 'Intake Workflow',
+        blocks: [
+            {
+                id: 'title',
+                type: 'heading_1',
+                content: 'Intake Workflow',
+                children: [],
+            },
+            {
+                id: 'diagram',
+                type: 'mermaid',
+                content: {
+                    text: [
+                        'sequenceDiagram',
+                        'participant Intake',
+                        'participant Review',
+                        'participant Approval',
+                        'Intake->>Review: Submit request',
+                        'Review->>Approval: Approve plan',
+                    ].join('\n'),
+                    diagramType: 'sequence',
+                },
+                children: [],
+            },
+            {
+                id: 'submit-heading',
+                type: 'heading_2',
+                content: 'Submit request',
+                children: [],
+            },
+            {
+                id: 'submit-copy',
+                type: 'text',
+                content: 'The intake owner submits the request with source details.',
+                children: [],
+            },
+            {
+                id: 'approval-heading',
+                type: 'heading_2',
+                content: 'Approve plan',
+                children: [],
+            },
+            {
+                id: 'approval-copy',
+                type: 'callout',
+                content: { text: 'Approval confirms the plan and identifies related review evidence.', icon: '!' },
+                children: [],
+            },
+        ],
+    };
+}
+
 describe('NotesQuery', () => {
     test('builds agent page context with section metadata', () => {
         const context = NotesQuery.buildPageContext(samplePage());
@@ -168,5 +223,42 @@ describe('NotesQuery', () => {
             start: 1,
             end: 5,
         });
+    });
+
+    test('builds page reasoning map with Mermaid step matches and color hints', () => {
+        const context = NotesQuery.buildPageContext(sampleProcessPage());
+        const pageMap = context.projections.pageMap;
+
+        expect(pageMap.summary).toEqual(expect.objectContaining({
+            mermaidCount: 1,
+            mermaidStepCount: 2,
+        }));
+        expect(pageMap.mermaid[0]).toEqual(expect.objectContaining({
+            blockId: 'diagram',
+            diagramType: 'sequence',
+            stepCount: 2,
+        }));
+        expect(pageMap.mermaid[0].steps[0]).toEqual(expect.objectContaining({
+            stepIndex: 1,
+            label: 'Submit request',
+            color: 'blue',
+            relatedBlockIds: expect.arrayContaining(['submit-heading', 'submit-copy']),
+        }));
+        expect(pageMap.crossReferences).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'mermaid_step_match',
+                mermaidBlockId: 'diagram',
+                stepIndex: 1,
+                targetBlockIds: expect.arrayContaining(['submit-heading']),
+            }),
+        ]));
+        expect(pageMap.colorCodingHints).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                target: 'mermaid_step',
+                stepIndex: 1,
+                suggestedColor: 'blue',
+                relatedBlockIds: expect.arrayContaining(['submit-heading']),
+            }),
+        ]));
     });
 });
