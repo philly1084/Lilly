@@ -34,7 +34,7 @@ Clients (CLI / Web Chat / Canvas / Notation)
 
 ### Stack
 
-- **Runtime:** Node.js 20 + Express
+- **Runtime:** Node.js 24 LTS + Express
 - **AI Generation:** OpenAI Response API (configurable base URL)
 - **Embeddings:** Ollama with `nomic-embed-text:latest` (768-dim vectors)
 - **Vector DB:** Qdrant for contextual memory / RAG

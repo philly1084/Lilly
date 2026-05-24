@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "description": "Multi-interface AI backend with contextual memory — CLI, Web Chat, Canvas, and Notation Helper",
     "main": "src/server.js",
+    "engines": {
+        "node": ">=24 <25"
+    },
     "bin": {
         "kimibuilt-ingress": "bin/kimibuilt-ingress.js",
         "kimibuilt-runner": "bin/kimibuilt-runner.js",

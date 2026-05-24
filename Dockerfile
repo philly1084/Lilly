@@ -1,7 +1,7 @@
 # ================================
 # Stage 1: Install dependencies
 # ================================
-FROM node:20-bookworm-slim AS deps
+FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ FROM docker.io/moby/buildkit:v0.17.2 AS buildkit
 # ================================
 # Stage 3: Production image
 # ================================
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 WORKDIR /app
 
