@@ -20,6 +20,29 @@ describe('saveable document extractor', () => {
         expect(result.content).not.toContain('I can make it');
     });
 
+    test('removes assistant notes accidentally placed inside an html fence', () => {
+        const result = extractSaveableDocumentArtifact({
+            assistantText: [
+                'Save this as `canada-ledger.html`.',
+                '```html',
+                'I pulled together a stronger Canada news set and wrote it as original article-style coverage.',
+                'Sources used include AP, Statistics Canada, Canada.ca, and CRTC-related reporting.',
+                '<!DOCTYPE html><html><head><title>Canada Ledger</title></head><body><main>Ready</main></body></html>',
+                'This note belongs in chat, not in the page.',
+                '```',
+            ].join('\n'),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            format: 'html',
+            filename: 'canada-ledger.html',
+            content: expect.stringContaining('<!DOCTYPE html>'),
+        }));
+        expect(result.content).toContain('<title>Canada Ledger</title>');
+        expect(result.content).not.toContain('Sources used include');
+        expect(result.content).not.toContain('belongs in chat');
+    });
+
     test('ignores short non-document snippets', () => {
         expect(extractSaveableDocumentArtifact({
             assistantText: 'Use `<div>Hello</div>` inside your page.',

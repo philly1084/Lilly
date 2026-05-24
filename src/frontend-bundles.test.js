@@ -3,6 +3,7 @@ const {
     normalizeFrontendMetadata,
     isComplexFrontendBundleRequest,
     readFrontendBundleArchive,
+    sanitizeFrontendHtmlContent,
 } = require('./frontend-bundles');
 
 describe('frontend bundle styling safety net', () => {
@@ -77,6 +78,35 @@ describe('frontend bundle styling safety net', () => {
         expect(reportsHtml).toContain('href="../styles.css"');
         expect(css).toContain('kimibuilt bundle style safety net');
         expect(css).toContain('[data-dashboard-zone]');
+    });
+
+    test('strips assistant notes inside fenced html bundle files', () => {
+        const dirtyHtml = [
+            '```html',
+            'I pulled together a stronger Canada news set and wrote it as original article-style coverage.',
+            'Sources used include AP, Statistics Canada, Canada.ca, and CRTC-related reporting.',
+            '<!DOCTYPE html><html><head><title>Canada Ledger</title></head><body><main><h1>Canada Ledger</h1></main></body></html>',
+            'This should remain a chat handoff, not page chrome.',
+            '```',
+        ].join('\n');
+
+        const cleanHtml = sanitizeFrontendHtmlContent(dirtyHtml);
+        expect(cleanHtml.trim()).toMatch(/^<!DOCTYPE html>/);
+        expect(cleanHtml).toContain('<h1>Canada Ledger</h1>');
+        expect(cleanHtml).not.toContain('Sources used include');
+        expect(cleanHtml).not.toContain('chat handoff');
+
+        const artifact = buildFrontendBundleArtifact({
+            entry: 'index.html',
+            files: [{ path: 'index.html', language: 'html', content: dirtyHtml }],
+        }, 'Canada Ledger');
+        const entries = readFrontendBundleArchive(artifact.buffer);
+        const indexHtml = entries.get('index.html').toString('utf8');
+
+        expect(indexHtml.trim()).toMatch(/^<!DOCTYPE html>/);
+        expect(indexHtml).toContain('<h1>Canada Ledger</h1>');
+        expect(indexHtml).not.toContain('I pulled together');
+        expect(indexHtml).not.toContain('Sources used include');
     });
 
     test('fills an existing missing local stylesheet reference with fallback css', () => {

@@ -181,9 +181,14 @@ function inferBundleLanguage(filePath = '') {
 }
 
 function trimStandaloneHtmlDocument(content = '') {
-    const source = String(content || '').trim();
+    let source = String(content || '').trim();
     if (!source) {
         return '';
+    }
+
+    const htmlStart = source.search(/(?:<!doctype\s+html\b|<html\b|<body\b|<main\b|<section\b|<article\b|<div\b|<h1\b)/i);
+    if (htmlStart > 0) {
+        source = source.slice(htmlStart).trim();
     }
 
     const closeMatch = source.match(/<\/html\s*>/i);

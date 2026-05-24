@@ -34,9 +34,14 @@ function extractFilenameFromText(text = '') {
 }
 
 function trimHtmlDocument(html = '') {
-    const source = String(html || '').trim();
+    let source = String(html || '').trim();
     if (!source) {
         return '';
+    }
+
+    const startMatch = source.match(HTML_DOCUMENT_PATTERN);
+    if (startMatch && Number.isInteger(startMatch.index) && startMatch.index > 0) {
+        source = source.slice(startMatch.index).trim();
     }
 
     const closeMatch = source.match(HTML_CLOSE_PATTERN);

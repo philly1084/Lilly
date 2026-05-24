@@ -174,6 +174,23 @@ describe('normalizeMermaidSource', () => {
         expect(parts.bodyContent).not.toContain('cron version');
     });
 
+    test('drops assistant notes accidentally included inside fenced html blocks', () => {
+        const parts = extractCompositeDocumentParts([
+            '```html',
+            'I pulled together a stronger Canada news set and wrote it as original article-style coverage.',
+            'Sources used include AP, Statistics Canada, Canada.ca, and CRTC-related reporting.',
+            '<!DOCTYPE html>',
+            '<html><head><title>Canada Ledger</title></head><body><main><h1>Canada Ledger</h1></main></body></html>',
+            'This handoff note should stay out of the page.',
+            '```',
+        ].join('\n'));
+
+        expect(parts.headContent).toContain('<title>Canada Ledger</title>');
+        expect(parts.bodyContent).toBe('<main><h1>Canada Ledger</h1></main>');
+        expect(parts.bodyContent).not.toContain('Sources used include');
+        expect(parts.bodyContent).not.toContain('handoff note');
+    });
+
     test('drops explanatory prose before standalone html fragments', () => {
         const parts = extractCompositeDocumentParts([
             'Here is the finished page:',

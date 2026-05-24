@@ -343,9 +343,19 @@ function normalizeMermaidSource(text = '') {
 }
 
 function extractHtmlBody(html = '') {
-    const source = String(html || '').trim();
+    let source = String(html || '').trim();
     if (!source) {
         return { body: '', head: '' };
+    }
+
+    const htmlStart = findLikelyHtmlStartIndex(source);
+    if (htmlStart > 0) {
+        source = source.slice(htmlStart).trim();
+    }
+
+    const htmlCloseMatch = source.match(/<\/html\s*>/i);
+    if (htmlCloseMatch && Number.isInteger(htmlCloseMatch.index)) {
+        source = source.slice(0, htmlCloseMatch.index + htmlCloseMatch[0].length).trim();
     }
 
     const headMatch = source.match(/<head[^>]*>([\s\S]*?)<\/head>/i);

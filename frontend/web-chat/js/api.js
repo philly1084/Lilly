@@ -1967,7 +1967,7 @@ class OpenAIAPIClient extends EventTarget {
             style = null,
             n = 1,
             batchMode = null,
-            response_format = 'b64_json',
+            response_format = null,
             sessionId = null
         } = options;
 
@@ -1976,11 +1976,13 @@ class OpenAIAPIClient extends EventTarget {
             model: model || 'gpt-image-2',
             size,
             n: n || 1,
-            response_format,
             taskType: 'image',
             clientSurface: WEB_CHAT_API_CLIENT_SURFACE,
         };
 
+        if (response_format != null) {
+            params.response_format = response_format;
+        }
         if (quality != null) {
             params.quality = quality;
         }
