@@ -75,7 +75,8 @@ class CodeCLIApp {
         this.liveReasoningSummary = '';
         this.liveToolEvents = [];
         this.installTtsStorageBridge();
-        this.ttsManager = window.WebChatTtsManager ? new window.WebChatTtsManager() : null;
+        const RealtimeTtsManager = window.KimiBuiltRealtimeTtsManager || window.WebChatTtsManager;
+        this.ttsManager = RealtimeTtsManager ? new RealtimeTtsManager() : null;
         this.ttsInitialized = false;
         this.ttsMessageCounter = 0;
         this.ttsMessageTextById = new Map();

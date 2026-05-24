@@ -24,6 +24,18 @@ describe('model-output-parser', () => {
         expect(normalized).toContain('| Potatoes | 2 lbs |');
     });
 
+    test('drops reasoning content parts before normalizing visible html output', () => {
+        const normalized = parser.normalizeModelOutputMarkdown({
+            content: [
+                { type: 'reasoning', text: 'Reasoning: draft the sections and choose the layout.' },
+                { type: 'output_text', text: '<!doctype html><html><head><title>Clean Artifact</title></head><body><main>Ready</main></body></html>' },
+            ],
+        });
+
+        expect(normalized).toContain('```html\n<!doctype html>');
+        expect(normalized).not.toContain('Reasoning: draft the sections');
+    });
+
     test('keeps fenced code blocks intact while repairing surrounding prose', () => {
         const normalized = parser.normalizeModelOutputMarkdown('Summary: useful\n\n```js\nconst table = \"| not markdown |\";\n```\n\nIngredients | Item | Quantity | |---|---| | A | B |');
 
@@ -62,6 +74,20 @@ describe('model-output-parser', () => {
         expect(normalized).toContain('<style>');
         expect(normalized).toContain('--muted: #5f6675;');
         expect(normalized).toContain('</html>\n```');
+    });
+
+    test('does not keep internal diagnostic prefaces before raw html documents', () => {
+        const normalized = parser.normalizeModelOutputMarkdown([
+            'Reasoning: I will build the page in three passes.',
+            'Diagnostics',
+            'provider_or_backend_error | stage=route_error',
+            '<!doctype html>',
+            '<html><head><title>Clean</title></head><body><main>Ready</main></body></html>',
+        ].join('\n'));
+
+        expect(normalized).toContain('```html\n<!doctype html>');
+        expect(normalized).not.toContain('Reasoning: I will build');
+        expect(normalized).not.toContain('provider_or_backend_error');
     });
 
     test('normalizes lightweight presentation markup outside code fences', () => {

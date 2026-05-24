@@ -42,17 +42,21 @@ data:
   TTS_FALLBACK_ENABLED: "true"
   TTS_REALTIME_SYNTHESIS_LANES: "4"
   TTS_REALTIME_SYNTHESIS_LOOKAHEAD: "6"
-  TTS_REALTIME_CHUNK_TARGET_CHARS: "360"
+  TTS_REALTIME_CHUNK_TARGET_CHARS: "620"
   TTS_REALTIME_INITIAL_BUFFER_CHUNKS: "1"
-  TTS_REALTIME_INITIAL_BUFFER_SECONDS: "1.6"
-  TTS_REALTIME_INITIAL_BUFFER_MAX_WAIT_MS: "350"
+  TTS_REALTIME_INITIAL_BUFFER_SECONDS: "2.2"
+  TTS_REALTIME_INITIAL_BUFFER_MAX_WAIT_MS: "650"
   TTS_REALTIME_FIRST_CHUNK_SENTENCES: "1"
   TTS_REALTIME_SECOND_CHUNK_SENTENCES: "1"
-  TTS_REALTIME_MAX_SENTENCES_PER_CHUNK: "2"
+  TTS_REALTIME_MAX_SENTENCES_PER_CHUNK: "3"
   TTS_REALTIME_PRIMARY_TIMEOUT_MS: "8000"
   TTS_REALTIME_FALLBACK_TIMEOUT_MS: "7000"
   TTS_REALTIME_HEDGE_DELAY_MS: "900"
-  TTS_REALTIME_CHUNK_STALL_MS: "1200"
+  TTS_REALTIME_CHUNK_STALL_MS: "2500"
+  TTS_REALTIME_CHUNK_PAUSE_SECONDS: "0.08"
+  TTS_REALTIME_TRIM_EDGE_SECONDS: "0.12"
+  TTS_REALTIME_TRIM_THRESHOLD: "0.0035"
+  TTS_REALTIME_SKIP_STALLED_CHUNKS: "false"
   TTS_REALTIME_EMERGENCY_PROVIDER: "piper"
   KOKORO_TTS_ENABLED: "true"
   KOKORO_TTS_MODEL_ID: "onnx-community/Kokoro-82M-v1.0-ONNX"
@@ -68,7 +72,7 @@ data:
   KOKORO_TTS_PODCAST_TIMEOUT_MS: "300000"
   KOKORO_TTS_PODCAST_CHUNK_CHARS: "700"
   KOKORO_TTS_SYNTHESIS_CONCURRENCY: "1"
-  PODCAST_TTS_CONCURRENCY: "1"
+  PODCAST_TTS_CONCURRENCY: "2"
   AUDIO_PROCESSING_TIMEOUT_MS: "900000"
   PODCAST_MASTERING_ENABLED: "false"
   PODCAST_TOOL_TIMEOUT_MS: "3600000"
@@ -559,9 +563,9 @@ spec:
             - name: KOKORO_TTS_BASE_URL
               value: ""
             - name: NODE_OPTIONS
-              value: "--max-old-space-size=2048"
+              value: "--max-old-space-size=3072"
             - name: UV_THREADPOOL_SIZE
-              value: "8"
+              value: "12"
           readinessProbe:
             httpGet:
               path: /ready
@@ -580,11 +584,11 @@ spec:
             failureThreshold: 10
           resources:
             requests:
-              memory: "768Mi"
-              cpu: "500m"
+              memory: "1Gi"
+              cpu: "1000m"
             limits:
-              memory: "4Gi"
-              cpu: "3000m"
+              memory: "5Gi"
+              cpu: "4000m"
 
 ---
 apiVersion: v1

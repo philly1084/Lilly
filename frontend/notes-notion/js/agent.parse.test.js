@@ -1396,6 +1396,46 @@ Approved page plan:
         ]));
     });
 
+    test('drops internal reasoning or diagnostics before raw html documents', () => {
+        const agent = loadAgent();
+        const html = [
+            'Reasoning: I will outline the page before composing it.',
+            'Diagnostics',
+            'provider_or_backend_error | stage=route_error',
+            '<!doctype html>',
+            '<html lang="en">',
+            '<head><title>Clean Artifact</title></head>',
+            '<body><main><h1>Clean Artifact</h1></main></body>',
+            '</html>',
+        ].join('\n');
+
+        const normalizedActions = agent._normalizeStructuredPageActions([
+            {
+                op: 'rebuild_page',
+                blocks: [{
+                    type: 'text',
+                    content: html,
+                }],
+            },
+        ], 'Put this HTML document on the page without leaking diagnostics.', {
+            blockCount: 0,
+            outline: [],
+        });
+
+        expect(normalizedActions[0].blocks).toEqual([
+            expect.objectContaining({ type: 'heading_1', content: 'Clean Artifact' }),
+            expect.objectContaining({
+                type: 'code',
+                content: expect.objectContaining({
+                    language: 'html',
+                    text: expect.stringContaining('<!doctype html>'),
+                }),
+            }),
+        ]);
+        expect(normalizedActions[0].blocks[0].content).not.toContain('Reasoning');
+        expect(normalizedActions[0].blocks[1].content.text).not.toContain('provider_or_backend_error');
+    });
+
     test('rehydrates collapsed one-line markdown into structured notes blocks', () => {
         const agent = loadAgent();
         const normalizedActions = agent._normalizeStructuredPageActions([

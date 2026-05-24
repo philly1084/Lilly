@@ -4792,7 +4792,8 @@ GUIDELINES:
     }
 
     function stripHtmlDocumentLeadIn(prefix = '') {
-        return String(prefix || '')
+        const safePrefix = stripInternalHtmlDocumentPreface(prefix);
+        return String(safePrefix || '')
             .replace(/```html\s*$/i, '')
             .replace(/\b(?:here(?:'s| is)?|below is|this is)\s+the\s+(?:full\s+)?html\s+(?:source|code|document)\s*(?:for|of)?\s*$/i, '')
             .replace(/\b(?:full\s+)?html\s+(?:source|code|document|preview)\s*:?\s*$/i, '')
@@ -4800,6 +4801,20 @@ GUIDELINES:
             .replace(/\b[a-z0-9._-]+\.html\s*$/i, '')
             .replace(/[:\-]+$/g, '')
             .trim();
+    }
+
+    function stripInternalHtmlDocumentPreface(prefix = '') {
+        const text = stripUnsafeNullCharacters(prefix).trim();
+        if (!text) {
+            return '';
+        }
+
+        if (/(?:^|\n)\s*(?:analysis|reasoning|thinking|chain of thought|internal planning|diagnostics?|raw details|trace id|diagnostic code|provider_or_backend_error|model request failed|image request received|\+\d+ms)\b/i.test(text)
+            || /\bPAGE REASONING (?:MAP|RULES)\b/i.test(text)) {
+            return '';
+        }
+
+        return text;
     }
 
     function extractTitleFromRawHtmlDocument(html = '') {

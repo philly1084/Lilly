@@ -1663,7 +1663,7 @@ const Blocks = (function() {
                     <line x1="12" y1="8" x2="12" y2="12"></line>
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                 </svg>
-                <div>${content.errorMessage || 'Failed to generate image'}</div>
+                <div>${escapeHtml(content.errorMessage || 'Failed to generate image')}</div>
                 <button class="ai-image-btn retry-btn">Try Again</button>
             `;
             error.querySelector('.retry-btn').addEventListener('click', () => {
@@ -1904,8 +1904,8 @@ const Blocks = (function() {
                     prompt,
                     source: currentSource,
                     model: modelSelect.value,
-                    size: sizeSelect.value,
-                    quality: qualitySelect.disabled ? null : (qualitySelect.value || null),
+                    size: sizeSelect.value || DEFAULT_IMAGE_SIZE,
+                    quality: qualitySelect.disabled ? null : (qualitySelect.value || DEFAULT_IMAGE_QUALITY),
                     style: styleSelect.disabled ? null : (styleSelect.value || null),
                     status: 'generating',
                     _activeGeneration: true,

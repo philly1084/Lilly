@@ -143,6 +143,11 @@ const API = (function() {
         }
     }
 
+    function normalizeImageOption(value, fallback = null) {
+        const normalized = String(value ?? '').trim();
+        return normalized || fallback;
+    }
+
     function normalizeGeneratedImage(image = {}) {
         if (!image || typeof image !== 'object') {
             return null;
@@ -368,6 +373,60 @@ const API = (function() {
             ?? response?.output_text
             ?? response
         );
+    }
+
+    function parseImageErrorBody(errorText = '') {
+        const text = String(errorText || '').trim();
+        if (!text) {
+            return {
+                message: '',
+                diagnosticSummary: '',
+            };
+        }
+
+        try {
+            const parsed = JSON.parse(text);
+            const diagnosticSummary = String(parsed?.diagnosticSummary || '').trim();
+            const errorValue = parsed?.error;
+            const errorMessage = typeof errorValue === 'string'
+                ? errorValue
+                : (typeof errorValue?.message === 'string' ? errorValue.message : '');
+            const message = String(
+                errorMessage
+                || parsed?.message
+                || diagnosticSummary
+                || ''
+            ).trim();
+            return {
+                message,
+                diagnosticSummary,
+            };
+        } catch (_error) {
+            return {
+                message: text,
+                diagnosticSummary: '',
+            };
+        }
+    }
+
+    function buildImageErrorMessage(status, errorText = '') {
+        const parsed = parseImageErrorBody(errorText);
+        const truncate = (value = '', limit = 480) => {
+            const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+            return normalized.length > limit
+                ? `${normalized.slice(0, Math.max(0, limit - 1)).trim()}...`
+                : normalized;
+        };
+        const compactMessage = truncate(parsed.message);
+        const compactSummary = truncate(parsed.diagnosticSummary);
+        const base = compactMessage || `HTTP ${status}`;
+
+        if (compactSummary && compactSummary !== compactMessage) {
+            const separator = /[.!?]$/.test(base) ? ' ' : '. ';
+            return `HTTP ${status}: ${base}${separator}${compactSummary}`;
+        }
+
+        return `HTTP ${status}: ${base}`;
     }
 
     function setSessionId(id) {
@@ -611,21 +670,25 @@ const API = (function() {
             quality,
             style,
             n,
-            response_format = 'b64_json',
+            response_format = null,
             sessionId = currentSessionId,
         } = request;
 
+        const normalizedSize = normalizeImageOption(size, 'auto');
+        const normalizedQuality = normalizeImageOption(quality);
+        const normalizedStyle = normalizeImageOption(style);
+        const normalizedResponseFormat = normalizeImageOption(response_format);
         const params = {
             prompt,
             model: model || 'gpt-image-2',
-            size,
-            response_format,
+            size: normalizedSize,
             taskType: 'image',
             clientSurface: NOTES_CLIENT_SURFACE,
         };
 
-        if (quality != null) params.quality = quality;
-        if (style != null) params.style = style;
+        if (normalizedResponseFormat) params.response_format = normalizedResponseFormat;
+        if (normalizedQuality) params.quality = normalizedQuality;
+        if (normalizedStyle) params.style = normalizedStyle;
         if (n) params.n = n;
         if (sessionId) params.session_id = sessionId;
         
@@ -642,7 +705,7 @@ const API = (function() {
             
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errorText}`);
+                throw new Error(buildImageErrorMessage(response.status, errorText));
             }
             
             const data = await response.json();

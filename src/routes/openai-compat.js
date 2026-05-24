@@ -752,7 +752,13 @@ function buildArtifactPromptFromTranscript(messages = [], fallbackPrompt = '') {
     const transcript = normalizedMessages
         .filter((message) => ['user', 'assistant', 'tool'].includes(message?.role))
         .slice(-8)
-        .map((message) => `${message.role}: ${normalizeMessageText(message?.content || '')}`.trim())
+        .map((message) => {
+            const safeText = sanitizeArtifactTranscriptContextText(
+                normalizeMessageText(message?.content || ''),
+                message?.role,
+            );
+            return safeText ? `${message.role}: ${safeText}`.trim() : '';
+        })
         .filter((line) => line && !line.endsWith(':'))
         .join('\n');
 
@@ -765,6 +771,24 @@ function buildArtifactPromptFromTranscript(messages = [], fallbackPrompt = '') {
         'Recent conversation context for continuity only; do not use this context label as the document title, filename, heading, or visible prose.',
         transcript,
     ].filter(Boolean).join('\n\n');
+}
+
+function sanitizeArtifactTranscriptContextText(text = '', role = '') {
+    const normalized = stripNullCharacters(String(text || '')).trim();
+    if (!normalized) {
+        return '';
+    }
+
+    if (role !== 'user' && looksLikeInternalDiagnosticContext(normalized)) {
+        return '';
+    }
+
+    return normalized;
+}
+
+function looksLikeInternalDiagnosticContext(text = '') {
+    return /\b(?:diagnosticSummary|diagnostics|imageGeneration|raw details|trace id|diagnostic code|provider_or_backend_error|provider_response_not_parsable|Model request failed|image request received)\b/i.test(text)
+        || /\+\d+ms\s*\n/i.test(text);
 }
 
 function buildContinuityInstructions(extra = '') {

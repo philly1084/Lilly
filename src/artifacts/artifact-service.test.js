@@ -366,6 +366,19 @@ describe('ArtifactService', () => {
         })).toBe('Hello world');
     });
 
+    test('extractResponseText ignores reasoning parts when visible output is present', () => {
+        expect(extractResponseText({
+            output: [{
+                type: 'message',
+                role: 'assistant',
+                content: [
+                    { type: 'reasoning', text: 'Reasoning that should not become artifact content.' },
+                    { type: 'output_text', text: '<!DOCTYPE html><html><body><main>Visible artifact</main></body></html>' },
+                ],
+            }],
+        })).toBe('<!DOCTYPE html><html><body><main>Visible artifact</main></body></html>');
+    });
+
     test('extractResponseText recovers provider text from reasoning-style fields', () => {
         expect(extractResponseText({
             choices: [{

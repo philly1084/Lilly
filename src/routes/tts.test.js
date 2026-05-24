@@ -118,4 +118,49 @@ describe('/api/tts', () => {
             },
         });
     });
+
+    test('includes provider diagnostics when fallback synthesis also fails', async () => {
+        const app = express();
+        app.use(express.json());
+        app.use('/api/tts', ttsRouter);
+
+        const error = new Error('TTS provider "kokoro" could not generate audio and fallback provider "piper" also failed.');
+        error.statusCode = 502;
+        error.code = 'tts_fallback_failed';
+        error.primary = {
+            provider: 'kokoro',
+            code: 'tts_timeout',
+            message: 'Kokoro generation timed out.',
+        };
+        error.fallback = {
+            provider: 'piper',
+            code: 'tts_timeout',
+            message: 'Piper TTS timed out before audio generation completed.',
+        };
+        ttsService.synthesize.mockRejectedValue(error);
+
+        const response = await request(app)
+            .post('/api/tts/synthesize')
+            .send({
+                text: 'Hello from Kokoro.',
+            });
+
+        expect(response.status).toBe(502);
+        expect(response.body).toEqual({
+            error: {
+                type: 'tts_fallback_failed',
+                message: 'TTS provider "kokoro" could not generate audio and fallback provider "piper" also failed.',
+                details: {
+                    primary: expect.objectContaining({
+                        provider: 'kokoro',
+                        code: 'tts_timeout',
+                    }),
+                    fallback: expect.objectContaining({
+                        provider: 'piper',
+                        code: 'tts_timeout',
+                    }),
+                },
+            },
+        });
+    });
 });

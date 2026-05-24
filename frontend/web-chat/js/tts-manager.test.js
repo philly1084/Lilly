@@ -135,8 +135,8 @@ describe('splitTextIntoSpeechChunks', () => {
             });
 
             await Promise.resolve();
-            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three. Four.', 'Five.']);
-            expect(preparedTexts).toHaveLength(DEFAULT_REALTIME_SYNTHESIS_LANES);
+            expect(preparedTexts).toEqual(['One.', 'Two.', 'Three. Four. Five.']);
+            expect(preparedTexts).toHaveLength(Math.min(DEFAULT_REALTIME_SYNTHESIS_LANES, 3));
             expect(startedAt).toEqual([]);
 
             resolvers[0]();
@@ -153,7 +153,7 @@ describe('splitTextIntoSpeechChunks', () => {
 
             resolvers.slice(2).forEach((resolve) => resolve());
             await expect(playbackPromise).resolves.toBe(true);
-            expect(startedAt).toHaveLength(4);
+            expect(startedAt).toHaveLength(3);
         } finally {
             global.CustomEvent = previousCustomEvent;
         }
@@ -192,7 +192,7 @@ describe('splitTextIntoSpeechChunks', () => {
 
         expect(result.provider).toBe('piper');
         expect(requests[0]).toEqual(expect.objectContaining({
-            allowProviderFallback: true,
+            allowProviderFallback: false,
         }));
         expect(requests[1]).toEqual(expect.objectContaining({
             provider: 'piper',
@@ -200,7 +200,41 @@ describe('splitTextIntoSpeechChunks', () => {
         }));
     });
 
-    test('records prepared later chunks as ready so a slow second chunk cannot block the whole queue', async () => {
+    test('keeps the primary Kokoro error visible when the realtime hedge also fails', async () => {
+        const manager = new WebChatTtsManager();
+        manager.realtimePolicy = {
+            ...manager.realtimePolicy,
+            hedgeDelayMs: 1,
+            emergencyProvider: 'piper',
+        };
+
+        manager.synthesizeMessageAudio = jest.fn((_text, _messageId, options) => {
+            const error = options.provider === 'piper'
+                ? new Error('Piper TTS timed out before audio generation completed.')
+                : new Error('Remote Kokoro TTS timed out before audio generation completed.');
+            error.code = 'tts_timeout';
+            return Promise.reject(error);
+        });
+
+        await expect(manager.synthesizeRealtimeChunkAudio('Slow small sentence.', 'assistant-1', {
+            playbackContext: 'ctx',
+        })).rejects.toThrow('Remote Kokoro TTS timed out');
+
+        expect(manager.synthesizeMessageAudio).toHaveBeenNthCalledWith(
+            1,
+            'Slow small sentence.',
+            'assistant-1',
+            expect.objectContaining({ allowProviderFallback: false }),
+        );
+        expect(manager.synthesizeMessageAudio).toHaveBeenNthCalledWith(
+            2,
+            'Slow small sentence.',
+            'assistant-1',
+            expect.objectContaining({ provider: 'piper', allowProviderFallback: false }),
+        );
+    });
+
+    test('can skip a stalled chunk only when the realtime policy allows it', async () => {
         const previousCustomEvent = global.CustomEvent;
         global.CustomEvent = class CustomEvent extends Event {
             constructor(type, params = {}) {
@@ -215,6 +249,7 @@ describe('splitTextIntoSpeechChunks', () => {
             manager.realtimePolicy = {
                 ...manager.realtimePolicy,
                 chunkStallMs: 1,
+                skipStalledChunks: true,
                 synthesisLanes: 4,
                 synthesisLookahead: 4,
             };

@@ -18,6 +18,26 @@ function createUnavailableError() {
     return error;
 }
 
+function summarizeProviderError(providerId = '', error = {}) {
+    return {
+        provider: normalizeProviderId(providerId, 'unknown'),
+        code: String(error?.code || '').trim() || null,
+        statusCode: Number(error?.statusCode || error?.status) || null,
+        message: String(error?.message || '').trim() || null,
+    };
+}
+
+function createFallbackFailedError(primaryProviderId = '', fallbackProviderId = '', primaryReason = {}, fallbackError = {}) {
+    const error = new Error(
+        `TTS provider "${normalizeProviderId(primaryProviderId, 'primary')}" could not generate audio and fallback provider "${normalizeProviderId(fallbackProviderId, 'fallback')}" also failed.`,
+    );
+    error.statusCode = Number(fallbackError?.statusCode || fallbackError?.status || primaryReason?.statusCode || primaryReason?.status) || 502;
+    error.code = 'tts_fallback_failed';
+    error.primary = summarizeProviderError(primaryProviderId, primaryReason);
+    error.fallback = summarizeProviderError(fallbackProviderId, fallbackError);
+    return error;
+}
+
 function isProviderRetryable(error = {}) {
     const statusCode = Number(error.statusCode);
     const code = String(error.code || '').trim();
@@ -211,7 +231,17 @@ class TtsService {
             if (!fallbackProvider?.synthesize) {
                 return null;
             }
-            const result = await fallbackProvider.synthesize(fallbackParams());
+            let result;
+            try {
+                result = await fallbackProvider.synthesize(fallbackParams());
+            } catch (fallbackError) {
+                throw createFallbackFailedError(
+                    primaryProviderId,
+                    fallbackProviderId,
+                    reason,
+                    fallbackError,
+                );
+            }
             return {
                 ...result,
                 fallback: {

@@ -456,7 +456,7 @@ const normalizedTtsRealtimeChunkTargetChars = Math.max(
     180,
     Math.min(
         normalizedKokoroMaxTextChars,
-        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 420,
+        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 620,
     ),
 );
 const normalizedTtsRealtimeInitialBufferChunks = Math.max(
@@ -484,7 +484,7 @@ const normalizedTtsRealtimeMaxSentencesPerChunk = Math.max(
     normalizedTtsRealtimeSecondChunkSentences,
     Math.min(
         4,
-        parseInt(process.env.TTS_REALTIME_MAX_SENTENCES_PER_CHUNK, 10) || 2,
+        parseInt(process.env.TTS_REALTIME_MAX_SENTENCES_PER_CHUNK, 10) || 3,
     ),
 );
 const normalizedTtsRealtimePrimaryTimeoutMs = Math.max(
@@ -512,7 +512,7 @@ const normalizedTtsRealtimeChunkStallMs = Math.max(
     350,
     Math.min(
         5000,
-        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 1200,
+        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 2500,
     ),
 );
 const normalizedPodcastVideoSegmentTimeoutMs = Math.max(
@@ -659,10 +659,10 @@ const config = {
             synthesisLookahead: normalizedTtsRealtimeSynthesisLookahead,
             chunkTargetChars: normalizedTtsRealtimeChunkTargetChars,
             initialBufferChunks: normalizedTtsRealtimeInitialBufferChunks,
-            initialBufferSeconds: parseOptionalFloat(process.env.TTS_REALTIME_INITIAL_BUFFER_SECONDS) ?? 1.6,
+            initialBufferSeconds: parseOptionalFloat(process.env.TTS_REALTIME_INITIAL_BUFFER_SECONDS) ?? 2.2,
             initialBufferMaxWaitMs: Math.max(
                 0,
-                Math.min(2000, parseInt(process.env.TTS_REALTIME_INITIAL_BUFFER_MAX_WAIT_MS, 10) || 350),
+                Math.min(2000, parseInt(process.env.TTS_REALTIME_INITIAL_BUFFER_MAX_WAIT_MS, 10) || 650),
             ),
             firstChunkMaxSentences: normalizedTtsRealtimeFirstChunkSentences,
             secondChunkMaxSentences: normalizedTtsRealtimeSecondChunkSentences,
@@ -671,6 +671,10 @@ const config = {
             fallbackTimeoutMs: normalizedTtsRealtimeFallbackTimeoutMs,
             hedgeDelayMs: normalizedTtsRealtimeHedgeDelayMs,
             chunkStallMs: normalizedTtsRealtimeChunkStallMs,
+            chunkPauseSeconds: parseOptionalFloat(process.env.TTS_REALTIME_CHUNK_PAUSE_SECONDS) ?? 0.08,
+            trimEdgeSeconds: parseOptionalFloat(process.env.TTS_REALTIME_TRIM_EDGE_SECONDS) ?? 0.12,
+            trimThreshold: parseOptionalFloat(process.env.TTS_REALTIME_TRIM_THRESHOLD) ?? 0.0035,
+            skipStalledChunks: process.env.TTS_REALTIME_SKIP_STALLED_CHUNKS === 'true',
             emergencyProvider: process.env.TTS_REALTIME_EMERGENCY_PROVIDER || 'piper',
         },
         kokoro: {

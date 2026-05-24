@@ -1,7 +1,7 @@
 const DEFAULT_TTS_CACHE_LIMIT = 24;
 const DEFAULT_BROWSER_VOICE_ID = 'browser:default';
 const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 760;
-const DEFAULT_REALTIME_CHUNK_TARGET_CHARS = 420;
+const DEFAULT_REALTIME_CHUNK_TARGET_CHARS = 620;
 const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
 const DEFAULT_PIPER_SECOND_CHUNK_SENTENCES = 1;
@@ -11,13 +11,51 @@ const DEFAULT_TTS_SYNTHESIS_LANES = 3;
 const DEFAULT_REALTIME_SYNTHESIS_LANES = 4;
 const DEFAULT_REALTIME_SYNTHESIS_LOOKAHEAD = 6;
 const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 1;
-const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.8;
-const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 350;
+const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 2.2;
+const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 650;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
 const DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS = 8000;
 const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 7000;
 const DEFAULT_REALTIME_HEDGE_DELAY_MS = 900;
-const DEFAULT_REALTIME_CHUNK_STALL_MS = 1200;
+const DEFAULT_REALTIME_CHUNK_STALL_MS = 2500;
+const DEFAULT_REALTIME_CHUNK_PAUSE_SECONDS = 0.08;
+const DEFAULT_REALTIME_TRIM_EDGE_SECONDS = 0.12;
+const DEFAULT_REALTIME_TRIM_THRESHOLD = 0.0035;
+
+function getTtsProviderLabel(provider = '') {
+    const normalizedProvider = String(provider || '').trim().toLowerCase();
+    if (normalizedProvider === 'browser') {
+        return 'Browser voice';
+    }
+    if (normalizedProvider === 'kokoro') {
+        return 'Kokoro';
+    }
+    if (normalizedProvider === 'piper') {
+        return 'Piper';
+    }
+    return 'Voice';
+}
+
+function parsePolicyBoolean(value, fallback = false) {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (!normalized) {
+        return fallback;
+    }
+
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+        return true;
+    }
+
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+}
 
 function normalizeSpeechSentence(line = '') {
     const trimmed = String(line || '').trim();
@@ -397,7 +435,7 @@ class WebChatTtsManager extends EventTarget {
             voiceId: 'kimibuilt_tts_voice_id',
         };
         this.available = false;
-        this.provider = 'piper';
+        this.provider = 'kokoro';
         this.voices = [];
         this.diagnostics = {
             status: 'unavailable',
@@ -492,7 +530,7 @@ class WebChatTtsManager extends EventTarget {
             secondChunkMaxSentences,
             maxSentencesPerChunk: Math.max(
                 secondChunkMaxSentences,
-                clampNumber(policy.maxSentencesPerChunk, 2, 1, 4),
+                clampNumber(policy.maxSentencesPerChunk, DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK, 1, 4),
             ),
             primaryTimeoutMs: clampNumber(
                 policy.primaryTimeoutMs,
@@ -517,6 +555,28 @@ class WebChatTtsManager extends EventTarget {
                 DEFAULT_REALTIME_CHUNK_STALL_MS,
                 350,
                 5000,
+            ),
+            chunkPauseSeconds: clampNumber(
+                policy.chunkPauseSeconds,
+                DEFAULT_REALTIME_CHUNK_PAUSE_SECONDS,
+                0,
+                0.5,
+            ),
+            trimEdgeSeconds: clampNumber(
+                policy.trimEdgeSeconds,
+                DEFAULT_REALTIME_TRIM_EDGE_SECONDS,
+                0,
+                0.5,
+            ),
+            trimThreshold: clampNumber(
+                policy.trimThreshold,
+                DEFAULT_REALTIME_TRIM_THRESHOLD,
+                0,
+                0.08,
+            ),
+            skipStalledChunks: parsePolicyBoolean(
+                policy.skipStalledChunks ?? policy.allowChunkSkipping,
+                false,
             ),
             emergencyProvider: String(policy.emergencyProvider || 'piper').trim().toLowerCase() || 'piper',
         };
@@ -622,18 +682,11 @@ class WebChatTtsManager extends EventTarget {
 
     getProvider() {
         const selectedVoiceProvider = this.resolveVoiceProvider(this.getSelectedVoiceId());
-        return selectedVoiceProvider || String(this.provider || 'piper').trim() || 'piper';
+        return selectedVoiceProvider || String(this.provider || 'kokoro').trim() || 'kokoro';
     }
 
     getProviderLabel() {
-        const provider = this.getProvider();
-        if (provider === 'browser') {
-            return 'Browser voice';
-        }
-        if (provider === 'piper') {
-            return 'Piper';
-        }
-        return 'Voice';
+        return getTtsProviderLabel(this.getProvider());
     }
 
     getStatus() {
@@ -720,7 +773,8 @@ class WebChatTtsManager extends EventTarget {
             return 'System voice';
         }
 
-        return 'Piper voice';
+        const providerLabel = getTtsProviderLabel(this.getProvider());
+        return providerLabel === 'Voice' ? 'Voice' : `${providerLabel} voice`;
     }
 
     isLoadingMessage(messageId = '') {
@@ -847,11 +901,11 @@ class WebChatTtsManager extends EventTarget {
                 Number(manifest?.maxTextChars) || DEFAULT_TTS_MAX_TEXT_CHARS,
             );
             this.realtimePolicy = this.normalizeRealtimePolicy(manifest?.realtime || {});
-            const manifestProvider = String(manifest?.provider || 'piper').trim() || 'piper';
-            const manifestProviderLabel = manifestProvider === 'browser' ? 'Browser voice' : 'Piper';
+            const manifestProvider = String(manifest?.provider || 'kokoro').trim() || 'kokoro';
+            const manifestProviderLabel = getTtsProviderLabel(manifestProvider);
             const manifestUnavailableMessage = manifestProvider === 'browser'
                 ? 'Browser voice playback is unavailable.'
-                : 'Piper voice playback is unavailable.';
+                : `${manifestProviderLabel} voice playback is unavailable.`;
             const manifestDiagnostics = manifest?.diagnostics && typeof manifest.diagnostics === 'object'
                 ? {
                     status: String(manifest.diagnostics.status || '').trim() || (manifestConfigured ? 'ready' : 'unavailable'),
@@ -898,7 +952,7 @@ class WebChatTtsManager extends EventTarget {
                 );
             } else {
                 this.available = false;
-                this.provider = manifest?.provider || 'piper';
+                this.provider = manifest?.provider || 'kokoro';
                 this.voices = manifestVoices;
                 this.diagnostics = manifestDiagnostics;
             }
@@ -911,7 +965,7 @@ class WebChatTtsManager extends EventTarget {
                 this.useBrowserFallback('Browser speech synthesis is ready.');
             } else {
                 this.available = false;
-                this.provider = 'piper';
+                this.provider = 'kokoro';
                 this.voices = [];
                 this.selectedVoiceId = '';
                 this.maxTextChars = DEFAULT_TTS_MAX_TEXT_CHARS;
@@ -1136,7 +1190,10 @@ class WebChatTtsManager extends EventTarget {
         const primaryOptions = {
             ...options,
             timeoutMs: this.getRealtimeChunkTimeoutMs(normalizedText, options),
-            allowProviderFallback: true,
+            // Browser realtime playback owns failover with a separate hedged request.
+            // Keeping backend fallback off here prevents a slow Piper fallback from
+            // hiding the primary Kokoro result or surfacing as the main failure.
+            allowProviderFallback: false,
         };
         let settled = false;
         let fallbackStarted = false;
@@ -1423,11 +1480,78 @@ class WebChatTtsManager extends EventTarget {
             result.blob,
             options.playbackContext || null,
         );
+        const trimmedBuffer = this.trimDecodedAudioBuffer(decodedBuffer, context);
         return {
             ...result,
-            decodedBuffer,
+            decodedBuffer: trimmedBuffer || decodedBuffer,
             playbackContext: context,
         };
+    }
+
+    trimDecodedAudioBuffer(decodedBuffer = null, context = null) {
+        const policy = this.realtimePolicy || this.normalizeRealtimePolicy();
+        if (
+            !decodedBuffer
+            || !context
+            || typeof context.createBuffer !== 'function'
+            || typeof decodedBuffer.getChannelData !== 'function'
+            || !Number.isFinite(Number(decodedBuffer.length))
+            || !Number.isFinite(Number(decodedBuffer.sampleRate))
+            || Number(decodedBuffer.length) <= 0
+        ) {
+            return decodedBuffer;
+        }
+
+        const channelCount = Math.max(1, Number(decodedBuffer.numberOfChannels) || 1);
+        const sampleRate = Math.max(1, Number(decodedBuffer.sampleRate) || 1);
+        const maxEdgeSamples = Math.max(0, Math.floor(sampleRate * (Number(policy.trimEdgeSeconds) || 0)));
+        if (maxEdgeSamples <= 0) {
+            return decodedBuffer;
+        }
+
+        const threshold = Math.max(0, Number(policy.trimThreshold) || DEFAULT_REALTIME_TRIM_THRESHOLD);
+        const length = Math.max(0, Number(decodedBuffer.length) || 0);
+        const isSilentSample = (sampleIndex) => {
+            for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+                const data = decodedBuffer.getChannelData(channelIndex);
+                if (Math.abs(Number(data[sampleIndex]) || 0) > threshold) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        let startIndex = 0;
+        const maxStartIndex = Math.min(length - 1, maxEdgeSamples);
+        while (startIndex < maxStartIndex && isSilentSample(startIndex)) {
+            startIndex += 1;
+        }
+
+        let endIndex = length - 1;
+        const minEndIndex = Math.max(startIndex, length - 1 - maxEdgeSamples);
+        while (endIndex > minEndIndex && isSilentSample(endIndex)) {
+            endIndex -= 1;
+        }
+
+        const nextLength = Math.max(1, endIndex - startIndex + 1);
+        if (startIndex <= 0 && nextLength >= length) {
+            return decodedBuffer;
+        }
+        if (nextLength < Math.floor(sampleRate * 0.08)) {
+            return decodedBuffer;
+        }
+
+        try {
+            const outputBuffer = context.createBuffer(channelCount, nextLength, sampleRate);
+            for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+                const source = decodedBuffer.getChannelData(channelIndex);
+                const target = outputBuffer.getChannelData(channelIndex);
+                target.set(source.subarray(startIndex, startIndex + nextLength));
+            }
+            return outputBuffer;
+        } catch (_error) {
+            return decodedBuffer;
+        }
     }
 
     getPiperSpeechChunks(text = '') {
@@ -1699,7 +1823,8 @@ class WebChatTtsManager extends EventTarget {
                 fillPreparedWindow(index);
             }
             const laterChunkReady = Array.from(bufferedChunkResults.keys()).some((readyIndex) => readyIndex > index);
-            const preparedChunk = laterChunkReady
+            const shouldSkipStalledChunk = policy.skipStalledChunks === true && laterChunkReady;
+            const preparedChunk = shouldSkipStalledChunk
                 ? await waitForPreparedChunk(index, Number(policy.chunkStallMs) || DEFAULT_REALTIME_CHUNK_STALL_MS)
                 : await waitForPreparedChunk(index);
             if (preparedChunk.timedOut || !preparedChunk.result) {
@@ -1727,7 +1852,7 @@ class WebChatTtsManager extends EventTarget {
                 chunkCount: chunks.length,
                 isFinalChunk: index === (chunks.length - 1),
             });
-            scheduledEndTime = scheduledChunk.endTime;
+            scheduledEndTime = scheduledChunk.endTime + Math.max(0, Number(policy.chunkPauseSeconds) || 0);
         }
 
         return playbackCompleted;
@@ -1789,6 +1914,7 @@ class WebChatTtsManager extends EventTarget {
 }
 
 if (typeof window !== 'undefined') {
+    window.KimiBuiltRealtimeTtsManager = WebChatTtsManager;
     window.WebChatTtsManager = WebChatTtsManager;
 }
 
@@ -1799,6 +1925,7 @@ if (typeof module !== 'undefined' && module.exports) {
         DEFAULT_REALTIME_SYNTHESIS_LANES,
         DEFAULT_TTS_SYNTHESIS_LANES,
         WebChatTtsManager,
+        getTtsProviderLabel,
         groupSpeechSentencesIntoChunks,
         normalizeSpeechSections,
         normalizeTextForSpeech,

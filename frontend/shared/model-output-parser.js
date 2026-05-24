@@ -53,6 +53,9 @@
                 if (!part || typeof part !== 'object') {
                     return '';
                 }
+                if (isInternalReasoningPart(part)) {
+                    return '';
+                }
                 if (typeof part.text === 'string') {
                     return part.text;
                 }
@@ -66,6 +69,26 @@
             })
             .filter(Boolean)
             .join('\n\n');
+    }
+
+    function isInternalReasoningPart(value) {
+        if (!value || typeof value !== 'object') {
+            return false;
+        }
+
+        const type = String(value.type || value.kind || '').trim().toLowerCase();
+        if (!type) {
+            return false;
+        }
+
+        return [
+            'analysis',
+            'reasoning',
+            'reasoning_summary',
+            'reasoning_summary_text',
+            'thinking',
+            'think',
+        ].includes(type);
     }
 
     function extractTextFromObject(value) {
@@ -411,12 +434,27 @@
             : htmlTail.length;
         const htmlSource = htmlTail.slice(0, htmlEndIndex).trim();
         const suffix = htmlTail.slice(htmlEndIndex).trim();
+        const safePrefix = stripInternalHtmlDocumentPreface(prefix);
 
         return [
-            prefix,
+            safePrefix,
             `\`\`\`html\n${htmlSource}\n\`\`\``,
             suffix,
         ].filter(Boolean).join('\n\n');
+    }
+
+    function stripInternalHtmlDocumentPreface(prefix = '') {
+        const text = String(prefix || '').trim();
+        if (!text) {
+            return '';
+        }
+
+        if (/(?:^|\n)\s*(?:analysis|reasoning|thinking|chain of thought|internal planning|diagnostics?|raw details|trace id|diagnostic code|provider_or_backend_error|model request failed|image request received|\+\d+ms)\b/i.test(text)
+            || /\bPAGE REASONING (?:MAP|RULES)\b/i.test(text)) {
+            return '';
+        }
+
+        return text;
     }
 
     function normalizeStructuredMarkdown(source = '') {

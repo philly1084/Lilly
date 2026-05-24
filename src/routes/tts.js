@@ -38,11 +38,18 @@ router.post('/synthesize', validate(synthesizeSchema), async (req, res, next) =>
         res.send(result.audioBuffer);
     } catch (error) {
         if (error?.statusCode) {
+            const payload = {
+                type: error.code || 'tts_error',
+                message: error.message || 'TTS synthesis failed.',
+            };
+            if (error.primary || error.fallback) {
+                payload.details = {
+                    ...(error.primary ? { primary: error.primary } : {}),
+                    ...(error.fallback ? { fallback: error.fallback } : {}),
+                };
+            }
             return res.status(error.statusCode).json({
-                error: {
-                    type: error.code || 'tts_error',
-                    message: error.message,
-                },
+                error: payload,
             });
         }
 

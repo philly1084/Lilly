@@ -219,6 +219,26 @@ function extractFunctionPayloadText(content, depth = 0) {
     return '';
 }
 
+function isInternalReasoningContentPart(content = null) {
+    if (!content || typeof content !== 'object' || Array.isArray(content)) {
+        return false;
+    }
+
+    const type = String(content.type || content.kind || '').trim().toLowerCase();
+    if (!type) {
+        return false;
+    }
+
+    return [
+        'analysis',
+        'reasoning',
+        'reasoning_summary',
+        'reasoning_summary_text',
+        'thinking',
+        'think',
+    ].includes(type);
+}
+
 function extractResponseContentText(content, depth = 0) {
     if (depth > 8) {
         return '';
@@ -243,6 +263,7 @@ function extractResponseContentText(content, depth = 0) {
 
     if (Array.isArray(content)) {
         return content
+            .filter((item) => !isInternalReasoningContentPart(item))
             .map((item) => extractResponseContentText(item, depth + 1))
             .filter(Boolean)
             .join(' ')
@@ -251,6 +272,10 @@ function extractResponseContentText(content, depth = 0) {
     }
 
     if (!content || typeof content !== 'object') {
+        return '';
+    }
+
+    if (isInternalReasoningContentPart(content)) {
         return '';
     }
 
@@ -381,6 +406,7 @@ function extractRawResponseContentText(content, depth = 0) {
 
     if (Array.isArray(content)) {
         return content
+            .filter((item) => !isInternalReasoningContentPart(item))
             .map((item) => extractRawResponseContentText(item, depth + 1))
             .filter(Boolean)
             .join('\n')
@@ -388,6 +414,10 @@ function extractRawResponseContentText(content, depth = 0) {
     }
 
     if (!content || typeof content !== 'object') {
+        return '';
+    }
+
+    if (isInternalReasoningContentPart(content)) {
         return '';
     }
 
