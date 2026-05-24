@@ -22,6 +22,10 @@
         'ai',
     ]);
 
+    const SENTENCE_BLOCK_TYPES = new Set(
+        Array.from(TEXT_BLOCK_TYPES).filter((type) => !['code', 'math', 'mermaid'].includes(type))
+    );
+
     const STYLE_KEYS = ['color', 'textColor', 'fontFamily', 'fontSize', 'fontWeight', 'textAlign', 'formatting'];
     const PAGE_SEQUENCE_COLORS = ['blue', 'teal', 'green', 'amber', 'orange', 'rose', 'purple', 'indigo'];
     const CONCEPT_STOP_WORDS = new Set([
@@ -101,6 +105,44 @@
 
     function uniqueStrings(values = []) {
         return Array.from(new Set(values.filter(Boolean).map(String)));
+    }
+
+    function splitSentences(value = '') {
+        const source = String(value || '');
+        const sentences = [];
+        const pattern = /[^.!?\n]+(?:[.!?]+["')\]]*|(?=\n|$))/g;
+        let match;
+
+        while ((match = pattern.exec(source))) {
+            const raw = match[0];
+            const exactText = raw.trim();
+            if (!exactText) continue;
+
+            const leadingOffset = raw.search(/\S/);
+            const start = match.index + (leadingOffset >= 0 ? leadingOffset : 0);
+            sentences.push({
+                sentenceIndex: sentences.length,
+                text: normalizeText(exactText),
+                exactText,
+                start,
+                end: start + exactText.length,
+            });
+        }
+
+        if (!sentences.length) {
+            const exactText = source.trim();
+            if (exactText) {
+                sentences.push({
+                    sentenceIndex: 0,
+                    text: normalizeText(exactText),
+                    exactText,
+                    start: source.search(/\S/),
+                    end: source.search(/\S/) + exactText.length,
+                });
+            }
+        }
+
+        return sentences;
     }
 
     function summarizeCounts(values = [], limit = 6) {
@@ -366,6 +408,7 @@
             else if (normalizedKey === 'weight' || normalizedKey === 'fontweight' || normalizedKey === 'font_weight') query.fontWeight = value;
             else if (normalizedKey === 'align' || normalizedKey === 'textalign' || normalizedKey === 'text_align') query.textAlign = value;
             else if (normalizedKey === 'highlight' || normalizedKey === 'highlightcolor' || normalizedKey === 'highlight_color') query.highlightColor = value;
+            else if (normalizedKey === 'sentence' || normalizedKey === 'sentencetext' || normalizedKey === 'sentence_text') query.sentenceIncludes = value;
             else if (normalizedKey === 'section') query.sectionHeading = value;
             else if (normalizedKey === 'id' || normalizedKey === 'block') query.blockIds = [value];
             else query.words.push(value);
@@ -473,6 +516,119 @@
         }
 
         return selectFields(entries, spec.select);
+    }
+
+    function buildSentenceIndex(pageOrIndex = null, options = {}) {
+        const index = pageOrIndex?.blocks?.[0]?.source ? pageOrIndex : buildIndex(pageOrIndex, options);
+        const allowedTypes = options.includeTechnical ? TEXT_BLOCK_TYPES : SENTENCE_BLOCK_TYPES;
+        const maxSentencesPerBlock = Number(options.maxSentencesPerBlock || 0);
+        const sentences = [];
+
+        index.blocks.forEach((entry) => {
+            if (!allowedTypes.has(entry.type) || !normalizeText(entry.text)) return;
+            let blockSentences = splitSentences(entry.text);
+            if (maxSentencesPerBlock > 0) {
+                blockSentences = blockSentences.slice(0, maxSentencesPerBlock);
+            }
+
+            blockSentences.forEach((sentence) => {
+                sentences.push({
+                    id: `${entry.id}:s${sentence.sentenceIndex + 1}`,
+                    blockId: entry.id,
+                    type: entry.type,
+                    sentenceIndex: sentence.sentenceIndex,
+                    text: sentence.text,
+                    exactText: sentence.exactText,
+                    textPreview: truncateText(sentence.text, options.previewLength || 180),
+                    start: sentence.start,
+                    end: sentence.end,
+                    order: entry.order,
+                    depth: entry.depth,
+                    sectionHeadingId: entry.sectionHeadingId,
+                    sectionHeadingText: entry.sectionHeadingText,
+                    sectionPath: entry.sectionPath,
+                    highlights: entry.highlights,
+                });
+            });
+        });
+
+        return sentences;
+    }
+
+    function findSentences(pageOrIndex = null, spec = {}) {
+        const index = pageOrIndex?.blocks?.[0]?.source ? pageOrIndex : buildIndex(pageOrIndex);
+        const normalizedSpec = typeof spec === 'string' ? { query: spec } : { ...(spec || {}) };
+        const parsedGrep = normalizedSpec.grep || normalizedSpec.query
+            ? parseGrepQuery(normalizedSpec.grep || normalizedSpec.query)
+            : {};
+        const where = {
+            ...parsedGrep,
+            ...(normalizedSpec.where || {}),
+        };
+        const blockEntries = query(index, {
+            ...normalizedSpec,
+            where,
+            limit: 0,
+            select: ['id'],
+        });
+        const allowedBlockIds = new Set(blockEntries.map((entry) => entry.id));
+        const caseSensitive = Boolean(normalizedSpec.caseSensitive || where.caseSensitive);
+        const sentenceNeedles = [
+            ...(Array.isArray(parsedGrep.words) ? parsedGrep.words : []),
+            parsedGrep.sentenceIncludes,
+            where.sentenceIncludes,
+            normalizedSpec.sentenceIncludes,
+            normalizedSpec.sentenceText,
+            normalizedSpec.sentence,
+            normalizedSpec.text,
+            normalizedSpec.textIncludes,
+            where.textIncludes,
+        ].filter(Boolean).map((needle) => normalizeText(needle));
+        const minWords = Number(normalizedSpec.minWords || where.minWords || 0);
+        const maxWords = Number(normalizedSpec.maxWords || where.maxWords || 0);
+        const sentenceIndex = Number.isInteger(where.sentenceIndex)
+            ? where.sentenceIndex
+            : (Number.isInteger(normalizedSpec.sentenceIndex) ? normalizedSpec.sentenceIndex : null);
+        const textMatches = normalizedSpec.textMatches || where.textMatches || null;
+        const regexp = textMatches
+            ? (textMatches instanceof RegExp ? textMatches : new RegExp(escapeRegExp(textMatches), caseSensitive ? '' : 'i'))
+            : null;
+
+        let sentences = buildSentenceIndex(index, normalizedSpec)
+            .filter((sentence) => allowedBlockIds.has(sentence.blockId));
+
+        if (sentenceNeedles.length > 0) {
+            sentences = sentences.filter((sentence) => {
+                const haystack = caseSensitive ? sentence.text : sentence.text.toLowerCase();
+                return sentenceNeedles.every((needle) => {
+                    const normalizedNeedle = caseSensitive ? needle : needle.toLowerCase();
+                    return !normalizedNeedle || haystack.includes(normalizedNeedle);
+                });
+            });
+        }
+
+        if (regexp) {
+            sentences = sentences.filter((sentence) => regexp.test(sentence.text));
+        }
+
+        if (Number.isInteger(sentenceIndex)) {
+            sentences = sentences.filter((sentence) => sentence.sentenceIndex === sentenceIndex);
+        }
+
+        if (minWords > 0) {
+            sentences = sentences.filter((sentence) => countWords(sentence.text) >= minWords);
+        }
+
+        if (maxWords > 0) {
+            sentences = sentences.filter((sentence) => countWords(sentence.text) <= maxWords);
+        }
+
+        const limit = Number(normalizedSpec.limit || where.limit || 0);
+        if (limit > 0) {
+            sentences = sentences.slice(0, limit);
+        }
+
+        return selectFields(sentences, normalizedSpec.select);
     }
 
     function selectFields(entries, select = null) {
@@ -1036,6 +1192,14 @@
             });
         }
 
+        if (mode === 'sentences' || mode === 'sentence_index' || mode === 'sentence_search') {
+            return findSentences(index, {
+                ...options,
+                select: options.select || ['id', 'blockId', 'type', 'sentenceIndex', 'text', 'exactText', 'sectionHeadingId', 'sectionHeadingText', 'highlights'],
+                limit: options.limit || 80,
+            });
+        }
+
         const maxBlocks = Number(options.maxBlocks || 80);
         return {
             title: index.title,
@@ -1123,6 +1287,7 @@
             projections: {
                 agentContext: createProjection(index, { mode: 'agent_context' }),
                 styles: createProjection(index, { mode: 'styles' }),
+                sentences: createProjection(index, { mode: 'sentence_index', limit: options.maxSentences || 80 }),
                 pageMap,
                 mermaidSequences: pageMap.mermaid,
                 relationships: pageMap.crossReferences,
@@ -1213,6 +1378,17 @@
         }));
     }
 
+    function createSentenceHighlightActions(pageOrIndex = null, spec = {}, highlight = {}) {
+        return findSentences(pageOrIndex, spec).map((sentence) => ({
+            op: 'highlight_text',
+            blockId: sentence.blockId,
+            text: sentence.exactText || sentence.text,
+            color: highlight.color || highlight.highlightColor || 'yellow',
+            scope: 'sentence',
+            caseSensitive: true,
+        }));
+    }
+
     function createDatabaseUpdateAction(blockId, updates = {}) {
         if (!blockId) return null;
         const action = {
@@ -1245,6 +1421,9 @@
         grep: (pageOrIndex, input = '', options = {}) => query(pageOrIndex, { ...options, grep: input }),
         parseGrepQuery,
         flattenBlocks,
+        splitSentences,
+        buildSentenceIndex,
+        findSentences,
         extractText,
         getHeadingLevel,
         createBulkUpdateActions,
@@ -1252,6 +1431,7 @@
         createHeaderColorActions,
         createSectionStyleActions,
         createHighlightActions,
+        createSentenceHighlightActions,
         createDatabaseUpdateAction,
         createDatabaseFillAction,
         buildPageReasoningMap,
@@ -1264,6 +1444,7 @@
         headerColor: createHeaderColorActions,
         sectionStyle: createSectionStyleActions,
         highlight: createHighlightActions,
+        highlightSentences: createSentenceHighlightActions,
         databaseUpdate: createDatabaseUpdateAction,
         databaseFill: createDatabaseFillAction,
     };

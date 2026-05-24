@@ -1142,6 +1142,49 @@ Approved page plan:
         jest.useRealTimers();
     });
 
+    test('expands sentence-scoped highlight actions from a phrase query', () => {
+        jest.useFakeTimers();
+        const blocks = {
+            block_a: {
+                id: 'block_a',
+                type: 'text',
+                content: 'The launch date is Monday. Keep this line important. Final note.',
+                children: [],
+                formatting: {},
+            },
+        };
+        const editor = {
+            getBlock: jest.fn((blockId) => blocks[blockId]),
+            replaceBlockWithBlocks: jest.fn((blockId, replacements) => {
+                blocks[blockId] = replacements[0];
+                return replacements;
+            }),
+            savePage: jest.fn(),
+            focusBlock: jest.fn(),
+        };
+        const agent = loadAgent({ Editor: editor });
+
+        const result = agent._applyNotesActions([
+            {
+                op: 'highlight_text',
+                blockId: 'block_a',
+                text: 'launch date',
+                scope: 'sentence',
+                color: 'blue',
+            },
+        ]);
+
+        expect(result.appliedCount).toBe(1);
+        expect(blocks.block_a.formatting.highlights).toEqual([
+            expect.objectContaining({
+                text: 'The launch date is Monday.',
+                color: 'blue',
+            }),
+        ]);
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+    });
+
     test('applies logical database bulk writes and rating fills in one block update', () => {
         jest.useFakeTimers();
         const blocks = {

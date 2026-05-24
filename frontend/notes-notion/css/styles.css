@@ -2930,6 +2930,27 @@ body {
 .inline-highlight-brown { background: #e7d3c5; }
 .inline-highlight-gray { background: #e5e7eb; }
 
+[data-theme="dark"] .inline-highlight {
+    color: #f8fafc;
+    box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.12);
+}
+
+[data-theme="dark"] .inline-highlight-yellow { background: #4a3a12; }
+[data-theme="dark"] .inline-highlight-amber { background: #51320b; }
+[data-theme="dark"] .inline-highlight-lime { background: #2f4216; }
+[data-theme="dark"] .inline-highlight-green { background: #1f4932; }
+[data-theme="dark"] .inline-highlight-teal { background: #124c47; }
+[data-theme="dark"] .inline-highlight-cyan { background: #12465a; }
+[data-theme="dark"] .inline-highlight-blue { background: #173f66; }
+[data-theme="dark"] .inline-highlight-indigo { background: #272f73; }
+[data-theme="dark"] .inline-highlight-purple { background: #3b2866; }
+[data-theme="dark"] .inline-highlight-pink { background: #5a234b; }
+[data-theme="dark"] .inline-highlight-rose { background: #5a2435; }
+[data-theme="dark"] .inline-highlight-red { background: #5a2428; }
+[data-theme="dark"] .inline-highlight-orange { background: #5a3415; }
+[data-theme="dark"] .inline-highlight-brown { background: #4b3426; }
+[data-theme="dark"] .inline-highlight-gray { background: #374151; }
+
 /* ===== @ Mentions ===== */
 .mention-popup {
     position: fixed;

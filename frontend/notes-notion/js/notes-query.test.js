@@ -202,6 +202,44 @@ describe('NotesQuery', () => {
         ]);
     });
 
+    test('finds sentence matches and plans full-sentence highlight actions', () => {
+        const page = samplePage();
+
+        expect(NotesQuery.findSentences(page, {
+            query: 'section:Risks sentence:"Budget approval"',
+        })).toEqual([
+            expect.objectContaining({
+                id: 'risk-body:s1',
+                blockId: 'risk-body',
+                text: 'Budget approval is the main blocker.',
+                exactText: 'Budget approval is the main blocker.',
+                sectionHeadingId: 'risks',
+                sectionHeadingText: 'Risks',
+            }),
+        ]);
+
+        expect(NotesQuery.createSentenceHighlightActions(page, {
+            query: 'Budget approval',
+        }, {
+            color: 'rose',
+        })).toEqual([
+            {
+                op: 'highlight_text',
+                blockId: 'risk-body',
+                text: 'Budget approval is the main blocker.',
+                color: 'rose',
+                scope: 'sentence',
+                caseSensitive: true,
+            },
+        ]);
+
+        expect(NotesQuery.createProjection(page, {
+            mode: 'sentence_index',
+            query: 'launch',
+            limit: 2,
+        }).map((entry) => entry.id)).toEqual(['h1:s1', 'intro:s1']);
+    });
+
     test('plans database bulk update and fill actions', () => {
         expect(NotesQuery.createDatabaseUpdateAction('db-1', {
             columns: ['Item', 'Rating'],

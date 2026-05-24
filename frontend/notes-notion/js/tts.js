@@ -120,6 +120,43 @@ const NotesTts = (function() {
         }
     }
 
+    function isComparableSpeechContentChar(char = '') {
+        return /^[a-z0-9]$/.test(String(char || ''));
+    }
+
+    function findComparableSpeechContentIndex(textMap = {}, startIndex = 0, endIndex = 0, direction = 1) {
+        const text = String(textMap.text || '');
+        const positions = Array.isArray(textMap.positions) ? textMap.positions : [];
+        if (!text || positions.length === 0) {
+            return -1;
+        }
+
+        const step = direction < 0 ? -1 : 1;
+        const min = Math.max(0, Math.min(Number(startIndex) || 0, Number(endIndex) || 0));
+        const max = Math.min(text.length - 1, Math.max(Number(startIndex) || 0, Number(endIndex) || 0));
+        let index = step < 0 ? max : min;
+        while (index >= min && index <= max) {
+            if (isComparableSpeechContentChar(text[index]) && positions[index]?.node) {
+                return index;
+            }
+            index += step;
+        }
+        return -1;
+    }
+
+    function createSpeechRangeFromComparableIndexes(textMap = {}, startIndex = 0, endIndex = 0) {
+        const start = textMap.positions?.[startIndex];
+        const end = textMap.positions?.[endIndex];
+        if (!start?.node || !end?.node) {
+            return null;
+        }
+
+        const range = document.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset + 1);
+        return range;
+    }
+
     function appendComparablePlainText(text = '', output, node = null, baseOffset = 0) {
         String(text || '').split('').forEach((char, index) => {
             appendComparableSpeechChar(output, char, node ? { node, offset: baseOffset + index } : null);
@@ -267,9 +304,11 @@ const NotesTts = (function() {
             normalizedChunk,
             normalizedChunk.length > 96 ? normalizedChunk.slice(0, 96).trim() : '',
             normalizedChunk.split(' ').slice(0, 10).join(' '),
-        ].filter((candidate, index, list) => (
-            candidate.length >= 3 && list.indexOf(candidate) === index
-        ));
+        ]
+            .map((candidate) => candidate.trim())
+            .filter((candidate, index, list) => (
+                candidate.length >= 3 && list.indexOf(candidate) === index
+            ));
 
         for (const candidate of candidates) {
             const matchIndex = textMap.text.indexOf(candidate, searchStartIndex);
@@ -277,18 +316,20 @@ const NotesTts = (function() {
                 continue;
             }
 
-            const start = textMap.positions[matchIndex];
-            const end = textMap.positions[Math.min(textMap.positions.length - 1, matchIndex + candidate.length - 1)];
-            if (!start?.node || !end?.node) {
+            const rawEndIndex = Math.min(textMap.positions.length - 1, matchIndex + candidate.length - 1);
+            const startIndex = findComparableSpeechContentIndex(textMap, matchIndex, rawEndIndex, 1);
+            const endIndex = findComparableSpeechContentIndex(textMap, rawEndIndex, matchIndex, -1);
+            if (startIndex < 0 || endIndex < startIndex) {
                 continue;
             }
 
-            const range = document.createRange();
-            range.setStart(start.node, start.offset);
-            range.setEnd(end.node, end.offset + 1);
+            const range = createSpeechRangeFromComparableIndexes(textMap, startIndex, endIndex);
+            if (!range) {
+                continue;
+            }
             return {
                 range,
-                endIndex: matchIndex + candidate.length,
+                endIndex: endIndex + 1,
             };
         }
 

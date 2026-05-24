@@ -3030,6 +3030,9 @@ const Agent = (function() {
         const styleLayerSnapshot = pageContext?.projections?.styles
             ? JSON.stringify(pageContext.projections.styles, null, 2).slice(0, 5000)
             : '';
+        const sentenceLayerSnapshot = pageContext?.projections?.sentences
+            ? JSON.stringify(pageContext.projections.sentences, null, 2).slice(0, 5000)
+            : '';
         const pageReasoningMapSnapshot = pageContext?.projections?.pageMap
             ? JSON.stringify(pageContext.projections.pageMap, null, 2).slice(0, 9000)
             : '';
@@ -3080,6 +3083,7 @@ Use the smallest useful layer. Prefer block IDs from the outline, sections, styl
 - sections: read section heading IDs and their block ranges
 - styles: read block color, text color, font family, and font size
 - grep: limit visible blocks by word, block type, section, color, textColor, or block ID
+- sentence_index: search sentence-sized spans with block IDs and exact sentence text for precise highlighting or replacement
 - page_map: read layout regions, Mermaid steps, repeated concepts, cross-references, and color-coding hints
 - mermaid_sequences: read Mermaid blocks as ordered steps with related page block candidates
 
@@ -3088,6 +3092,9 @@ ${agentLayerSnapshot || '(no query projection available)'}
 
 STYLE LAYER SNAPSHOT:
 ${styleLayerSnapshot || '(no style projection available)'}
+
+SENTENCE SEARCH SNAPSHOT:
+${sentenceLayerSnapshot || '(no sentence projection available)'}
 
 PAGE REASONING MAP:
 ${pageReasoningMapSnapshot || '(no page reasoning map available)'}
@@ -3175,6 +3182,7 @@ When the user asks you to edit, create, delete, or reorganize content, respond w
     { "op": "update_block", "blockId": "block_abc123", "type": "text", "content": "New content here" },
     { "op": "replace_text", "blockId": "block_abc123", "findText": "old phrase", "replaceWith": "new phrase", "replaceAll": false },
     { "op": "highlight_text", "blockId": "block_abc123", "text": "important phrase", "color": "yellow" },
+    { "op": "highlight_text", "blockId": "block_abc123", "sentenceQuery": "phrase in the sentence", "scope": "sentence", "color": "blue" },
     { "op": "update_block", "blockId": "block_heading123", "type": "heading_3", "content": "Existing heading text" },
     { "op": "update_block", "blockId": "block_heading456", "type": "heading_2", "content": "Existing heading text", "textColor": "blue", "color": "gray" },
     { "op": "replace_block", "blockId": "block_abc123", "blocks": [{ "type": "heading_2", "content": "New Section" }, { "type": "text", "content": "Fresh opening" }] },
@@ -3200,7 +3208,7 @@ VALID OPERATIONS:
 - change_block_type: Convert an existing block to another type while preserving the best available text (requires blockId and type; optional content)
 - set_block_type: Alias for change_block_type
 - replace_text: Replace a specific phrase inside an existing block without rewriting the whole block (requires blockId, findText or oldText, replaceWith or newText; optional replaceAll and caseSensitive)
-- highlight_text: Highlight a specific phrase inside an existing text-like block (requires blockId and text; optional color)
+- highlight_text: Highlight a specific phrase or sentence inside an existing text-like block (requires blockId and text, or sentenceQuery with scope "sentence"; optional color)
 - replace_block: Replace block with new block(s) (requires blockId, blocks array)
 - move_block: Reorder an existing block relative to another block (requires blockId, targetBlockId, optional position "before"|"after")
 - replace_section: Replace a heading and all following blocks until the next same-or-higher heading (requires headingBlockId or blockId, blocks array)
@@ -3272,6 +3280,7 @@ GUIDELINES:
 - When editing an existing section, target the heading ID with replace_section, insert_after_section, move_section, or delete_section so the edit covers the heading and every block beneath it up to the next same-or-higher heading.
 - When the user asks to change a specific word, sentence, phrase, number, name, or small part of a block, prefer replace_text over rewriting the entire block.
 - When the user asks to highlight, mark, call out, emphasize, or visually tag specific text, use highlight_text on the smallest exact phrase inside the relevant block.
+- When the user asks to find or highlight a sentence, use sentence_index to pick the correct blockId and exactText. For full-sentence emphasis, use highlight_text with the full sentence text and "scope": "sentence"; if you only know a phrase, use "sentenceQuery" with "scope": "sentence".
 - Choose a best-fit page template from the template guidance above and adapt it to the user's request instead of inventing the page layout from scratch every time.
 - Also choose a matching visual recipe from the recipe guidance above so the page has a clear opening cluster, body rhythm, and support cluster.
 - Also choose a dominant design scheme from the scheme guidance above so the page has a coherent palette and header treatment.
@@ -7741,13 +7750,66 @@ Silently verify the lead cluster, section order, and final polish before returni
         return setBlockTextContent(block, nextText);
     }
 
+    function splitTextIntoSentences(value = '') {
+        if (window.NotesQuery?.splitSentences) {
+            return window.NotesQuery.splitSentences(value);
+        }
+
+        const source = String(value || '');
+        const sentences = [];
+        const pattern = /[^.!?\n]+(?:[.!?]+["')\]]*|(?=\n|$))/g;
+        let match;
+
+        while ((match = pattern.exec(source))) {
+            const exactText = match[0].trim();
+            if (!exactText) continue;
+            sentences.push({
+                sentenceIndex: sentences.length,
+                text: exactText.replace(/\s+/g, ' ').trim(),
+                exactText,
+            });
+        }
+
+        return sentences.length ? sentences : (source.trim()
+            ? [{ sentenceIndex: 0, text: source.trim().replace(/\s+/g, ' '), exactText: source.trim() }]
+            : []);
+    }
+
+    function resolveSentenceHighlightText(blockText = '', action = {}) {
+        const rawText = String(action.text || action.targetText || action.findText || action.sentenceText || '').trim();
+        const sentenceQuery = String(action.sentenceQuery || action.query || action.textIncludes || '').trim();
+        const wantsSentence = action.scope === 'sentence'
+            || action.match === 'sentence'
+            || action.fullSentence === true
+            || Boolean(sentenceQuery);
+        const queryText = sentenceQuery || rawText;
+
+        if (!wantsSentence || !queryText) {
+            return rawText;
+        }
+
+        const normalizedQuery = queryText.replace(/\s+/g, ' ').trim().toLowerCase();
+        const queryWords = normalizedQuery.split(/\s+/).filter(Boolean);
+        const sentence = splitTextIntoSentences(blockText).find((candidate) => {
+            const normalizedSentence = String(candidate.text || candidate.exactText || '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+            if (!normalizedSentence) return false;
+            return normalizedSentence.includes(normalizedQuery)
+                || queryWords.every((word) => normalizedSentence.includes(word));
+        });
+
+        return sentence?.exactText || rawText;
+    }
+
     function addBlockTextHighlight(block = null, action = {}) {
-        const highlightText = String(action.text || action.targetText || action.findText || '').trim();
+        const blockText = getBlockTextContent(block);
+        const highlightText = resolveSentenceHighlightText(blockText, action);
         if (!block || !highlightText) {
             return null;
         }
 
-        const blockText = getBlockTextContent(block);
         const haystack = action.caseSensitive ? blockText : blockText.toLowerCase();
         const needle = action.caseSensitive ? highlightText : highlightText.toLowerCase();
         if (!haystack.includes(needle)) {
