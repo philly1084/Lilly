@@ -83,6 +83,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          target: media
+          build-args: |
+            INSTALL_NPM_OPTIONAL=true
           push: ${{ github.event_name != 'pull_request' }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}

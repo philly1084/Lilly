@@ -35,6 +35,8 @@ async function main() {
         env.allowRemoteModels = allowRemoteModels;
     }
 
+    await verifySharpRuntime();
+
     const { KokoroTTS } = require('kokoro-js');
     const tts = await KokoroTTS.from_pretrained(modelId, {
         dtype,
@@ -51,6 +53,30 @@ async function main() {
     }
 
     console.log(`[TTS Build] Kokoro ready: model=${modelId} dtype=${dtype} device=${device} voice=${voice} bytes=${wav.length}`);
+}
+
+async function verifySharpRuntime() {
+    let sharp;
+    try {
+        sharp = require('sharp');
+    } catch (error) {
+        throw new Error(`sharp runtime unavailable: ${error.message}`);
+    }
+
+    const png = await sharp({
+        create: {
+            width: 1,
+            height: 1,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+        },
+    }).png().toBuffer();
+
+    if (!Buffer.isBuffer(png) || png.length < 8 || png.toString('ascii', 1, 4) !== 'PNG') {
+        throw new Error('sharp runtime generated invalid PNG output during build verification.');
+    }
+
+    console.log(`[TTS Build] sharp ready: sharp=${sharp.versions?.sharp || 'unknown'} vips=${sharp.versions?.vips || 'unknown'} arch=${process.arch}`);
 }
 
 main().catch((error) => {
