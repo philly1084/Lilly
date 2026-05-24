@@ -249,6 +249,7 @@ const TOOL_SUPPORT = {
   'web-fetch': { status: 'stable', notes: ['Static HTTP/HTTPS fetch with retries and caching.'] },
   'web-search': { status: 'stable', notes: ['Perplexity-backed raw Search, Sonar grounded answers/media, and Agent preset research modes are implemented.', 'Requires PERPLEXITY_API_KEY in the backend environment.'] },
   'web-scrape': { status: 'stable', notes: ['Supports static fetch and backend Chromium rendering for dynamic pages.', 'Can persist Playwright screenshot artifacts with desktop/mobile viewport overrides.'] },
+  'news-scraper': { status: 'stable', notes: ['Uses Perplexity pro-search for article discovery, then fetches source pages and extracts readable article text, byline, date, lead image, and source metadata.', 'Returns a static news-site HTML payload plus JSON injection data for news and weather widgets; public site output defaults to excerpts unless content rights allow full-text republication.'] },
   'security-scan': { status: 'stable', notes: ['Pattern-based source scanning for secrets and common issues.'] },
   'schema-generate': { status: 'stable', notes: ['Generates DDL, ORM schemas, and ER diagrams from entity specs.'] },
   'migration-create': { status: 'stable', notes: ['Builds SQL and framework migration output from schema diffs.'] },

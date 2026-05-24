@@ -928,6 +928,15 @@ function hasCurrentInfoIntentText(text = '') {
     return /\b(latest|current|today|news|headlines?|weather|forecast|temperature)\b/.test(normalized);
 }
 
+function hasNewsScraperIntentText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return /\b(news\s+(?:scraper|scrapper|source|website|site|feed|portal)|full\s+articles?|article\s+(?:harvest|extract|scrape|scraper)|direct\s+injection|news\s+and\s+weather)\b/.test(normalized);
+}
+
 function hasExplicitPodcastIntentText(text = '') {
     return hasExplicitPodcastIntent(text);
 }
@@ -1646,6 +1655,7 @@ function buildScoredCandidateToolMap({
     allowDeferredWorkloadShortcut = false,
     hasExplicitWebResearchIntent = false,
     hasExplicitScrapeIntent = false,
+    hasNewsScraperIntent = false,
     hasUrl = false,
     hasImageIntent = false,
     hasUnsplashIntent = false,
@@ -1717,6 +1727,7 @@ function buildScoredCandidateToolMap({
             break;
         case 'research':
         case 'research-deliverable':
+            adjustCandidateToolScore(scoreMap, 'news-scraper', hasNewsScraperIntent ? 1.35 : 0, 'News source, article harvesting, or injection wording should use the dedicated news scraper.');
             adjustCandidateToolScore(scoreMap, 'web-search', 1.25, 'Research intent favors search-first grounding.');
             adjustCandidateToolScore(scoreMap, 'web-fetch', hasUrl ? 0.95 : 0.55, 'Research intent benefits from direct source-page verification.');
             adjustCandidateToolScore(scoreMap, 'web-scrape', hasExplicitScrapeIntent ? 1.0 : 0.15, 'Research intent should only escalate to scraping when extraction is necessary.');
@@ -1792,6 +1803,10 @@ function buildScoredCandidateToolMap({
     if (hasExplicitScrapeIntent) {
         adjustCandidateToolScore(scoreMap, 'web-scrape', 1.0, 'Explicit scrape language favors web scraping.');
         adjustCandidateToolScore(scoreMap, 'web-search', 0.4, 'Scrape requests often still need discovery.');
+    }
+    if (hasNewsScraperIntent) {
+        adjustCandidateToolScore(scoreMap, 'news-scraper', 1.65, 'The request asks for news article extraction, a news source website, or direct news/weather injection.');
+        adjustCandidateToolScore(scoreMap, 'web-search', 0.35, 'News scraping still starts with source discovery when URLs are not supplied.');
     }
     if (hasUrl) {
         adjustCandidateToolScore(scoreMap, hasExplicitScrapeIntent ? 'web-scrape' : 'web-fetch', 0.9, 'The request includes a direct URL.');
@@ -1921,7 +1936,7 @@ function shouldAllowDirectAction(action = null, { toolPolicy = {}, toolEvents = 
     }
 
     if (classification.groundingRequirement === 'required') {
-        if (['web-search', 'web-fetch', 'web-scrape'].includes(action.tool)) {
+        if (['web-search', 'web-fetch', 'web-scrape', 'news-scraper'].includes(action.tool)) {
             return true;
         }
 
@@ -1937,7 +1952,7 @@ function shouldAllowDirectAction(action = null, { toolPolicy = {}, toolEvents = 
     }
 
     if (classification.preferredExecutionPath === 'plan-first') {
-        return ['web-search', 'web-fetch', 'web-scrape', 'agent-workload'].includes(action.tool);
+        return ['web-search', 'web-fetch', 'web-scrape', 'news-scraper', 'agent-workload'].includes(action.tool);
     }
 
     return true;
@@ -10808,6 +10823,7 @@ class ConversationOrchestrator extends EventEmitter {
         const hasUrl = /https?:\/\//i.test(prompt);
         const hasExplicitWebResearchIntent = hasExplicitWebResearchIntentText(prompt);
         const hasExplicitScrapeIntent = /\b(scrape|extract|selector|structured|parse)\b/.test(prompt);
+        const hasNewsScraperIntent = hasNewsScraperIntentText(prompt);
         const hasImageIntent = /\b(image|images|visual|visuals|illustration|illustrations|photo|photos|hero image|background image|cover image)\b/.test(prompt);
         const hasUnsplashIntent = /\bunsplash\b/.test(prompt);
         const hasImageUrlIntent = hasImageIntent && /\b(url|link)\b/.test(prompt);
@@ -10958,6 +10974,7 @@ class ConversationOrchestrator extends EventEmitter {
                 allowDeferredWorkloadShortcut,
                 hasExplicitWebResearchIntent,
                 hasExplicitScrapeIntent,
+                hasNewsScraperIntent,
                 hasUrl,
                 hasImageIntent,
                 hasUnsplashIntent,
@@ -11007,6 +11024,9 @@ class ConversationOrchestrator extends EventEmitter {
                 'web-search',
                 'tool-doc-read',
             ].forEach((toolId) => allowedToolIds.includes(toolId) && candidates.add(toolId));
+            if (hasNewsScraperIntent && allowedToolIds.includes('news-scraper')) {
+                candidates.add('news-scraper');
+            }
 
             if (allowedToolIds.includes('web-fetch')
                 && (hasInternalArtifactUrl
@@ -11154,6 +11174,9 @@ class ConversationOrchestrator extends EventEmitter {
             }
             if ((hasExplicitWebResearchIntent || /\b(latest|current|today|news|headlines?|weather|forecast|temperature|research|look up|search|browse)\b/.test(prompt)) && allowedToolIds.includes('web-search')) {
                 candidates.add('web-search');
+            }
+            if (hasNewsScraperIntent && allowedToolIds.includes('news-scraper')) {
+                candidates.add('news-scraper');
             }
             if ((hasExplicitWebResearchIntent || hasCurrentInfoIntentText(prompt))
                 && allowedToolIds.includes('web-fetch')) {
@@ -11635,6 +11658,25 @@ class ConversationOrchestrator extends EventEmitter {
             if (workflowPlan.length === 1) {
                 return finalizeAction(workflowPlan[0]);
             }
+        }
+
+        if (toolPolicy.executionProfile !== REMOTE_BUILD_EXECUTION_PROFILE
+            && toolPolicy.candidateToolIds.includes('news-scraper')
+            && hasNewsScraperIntentText(objective)) {
+            return finalizeAction({
+                tool: 'news-scraper',
+                reason: 'News source, article extraction, and direct injection requests should use the dedicated news scraper.',
+                params: {
+                    query: searchQuery || objective,
+                    limit: normalizeResearchSearchResultCount(),
+                    region: 'ca-en',
+                    timeRange: inferResearchTimeRangeFromText(objective),
+                    siteTextMode: 'excerpt',
+                    contentRights: 'unknown',
+                    includeWeatherPlaceholder: /\bweather\b/i.test(objective),
+                    title: 'KimiBuilt News Source',
+                },
+            });
         }
 
         if (toolPolicy.executionProfile !== REMOTE_BUILD_EXECUTION_PROFILE

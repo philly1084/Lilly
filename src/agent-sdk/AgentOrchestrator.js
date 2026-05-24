@@ -30,6 +30,7 @@ const REMOTE_BUILD_TOOL_ALLOWLIST = new Set([
   'web-search',
   'web-fetch',
   'web-scrape',
+  'news-scraper',
   'file-read',
   'file-write',
   'file-search',

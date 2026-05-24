@@ -14,10 +14,10 @@ const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 1;
 const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 1.8;
 const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 350;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
-const DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS = 12000;
-const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 10000;
-const DEFAULT_REALTIME_HEDGE_DELAY_MS = 1600;
-const DEFAULT_REALTIME_CHUNK_STALL_MS = 1800;
+const DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS = 8000;
+const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 7000;
+const DEFAULT_REALTIME_HEDGE_DELAY_MS = 900;
+const DEFAULT_REALTIME_CHUNK_STALL_MS = 1200;
 
 function normalizeSpeechSentence(line = '') {
     const trimmed = String(line || '').trim();
@@ -497,13 +497,13 @@ class WebChatTtsManager extends EventTarget {
             primaryTimeoutMs: clampNumber(
                 policy.primaryTimeoutMs,
                 DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS,
-                3000,
+                2000,
                 60000,
             ),
             fallbackTimeoutMs: clampNumber(
                 policy.fallbackTimeoutMs,
                 DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS,
-                3000,
+                2000,
                 60000,
             ),
             hedgeDelayMs: clampNumber(
@@ -1578,6 +1578,9 @@ class WebChatTtsManager extends EventTarget {
                 playbackContext: activePlaybackContext,
                 chunkIndex: index,
                 chunkCount: chunks.length,
+            }).then((result) => {
+                bufferedChunkResults.set(index, result);
+                return result;
             }).finally(() => {
                 preparingChunkIndexes.delete(index);
                 fillPreparedWindow(preparedWindowAnchor);

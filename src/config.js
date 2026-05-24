@@ -442,14 +442,14 @@ const normalizedTtsRealtimeSynthesisLanes = Math.max(
     1,
     Math.min(
         8,
-        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LANES, 10) || 2,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LANES, 10) || 4,
     ),
 );
 const normalizedTtsRealtimeSynthesisLookahead = Math.max(
     normalizedTtsRealtimeSynthesisLanes,
     Math.min(
         12,
-        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LOOKAHEAD, 10) || 3,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LOOKAHEAD, 10) || 6,
     ),
 );
 const normalizedTtsRealtimeChunkTargetChars = Math.max(
@@ -491,28 +491,28 @@ const normalizedTtsRealtimePrimaryTimeoutMs = Math.max(
     3000,
     Math.min(
         normalizedKokoroTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 12000,
+        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 8000,
     ),
 );
 const normalizedTtsRealtimeFallbackTimeoutMs = Math.max(
-    3000,
+    2000,
     Math.min(
         normalizedPiperTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 10000,
+        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 7000,
     ),
 );
 const normalizedTtsRealtimeHedgeDelayMs = Math.max(
     250,
     Math.min(
         5000,
-        parseInt(process.env.TTS_REALTIME_HEDGE_DELAY_MS, 10) || 1600,
+        parseInt(process.env.TTS_REALTIME_HEDGE_DELAY_MS, 10) || 900,
     ),
 );
 const normalizedTtsRealtimeChunkStallMs = Math.max(
     350,
     Math.min(
         5000,
-        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 1800,
+        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 1200,
     ),
 );
 const normalizedPodcastVideoSegmentTimeoutMs = Math.max(

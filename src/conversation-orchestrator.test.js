@@ -6419,6 +6419,44 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('routes news source website and direct injection requests to the news scraper', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['news-scraper', 'web-search', 'web-fetch'].includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Build a news source website that pulls full articles and has direct injection for news and weather.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('news-scraper');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'news-scraper',
+            params: expect.objectContaining({
+                query: 'Build a news source website that pulls full articles and has direct injection for news and weather',
+                siteTextMode: 'excerpt',
+                contentRights: 'unknown',
+                includeWeatherPlaceholder: true,
+            }),
+        }));
+    });
+
     test('forces a direct Perplexity-backed web-search action for current-info prompts like weather', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {

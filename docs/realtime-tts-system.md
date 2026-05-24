@@ -33,6 +33,7 @@ KimiBuilt web-chat TTS is designed as a layered realtime path rather than a sing
    - Keep `KOKORO_TTS_SYNTHESIS_CONCURRENCY=1` on ARM64 because in-process Kokoro fanout has previously crashed onnxruntime.
    - Scale `kokoro-tts` replicas for real parallelism.
    - Current manifests request four Kokoro replicas and four browser scheduler lanes.
+   - The hedge path starts quickly so a slow second sentence does not wait for the full primary-provider timeout.
 
 ## Primary Knobs
 
@@ -45,4 +46,4 @@ KimiBuilt web-chat TTS is designed as a layered realtime path rather than a sing
 - `TTS_REALTIME_CHUNK_STALL_MS`
 - `TTS_REALTIME_EMERGENCY_PROVIDER`
 
-For quality, raise chunk target and stall budgets. For speed, lower chunk target, hedge delay, and per-chunk timeouts, then add Kokoro replicas instead of increasing in-process Kokoro concurrency.
+For quality, raise chunk target and stall budgets. For speed, lower chunk target, hedge delay, and per-chunk timeouts, then add Kokoro replicas instead of increasing in-process Kokoro concurrency. If sentence two pauses, verify the live ConfigMap still has four lanes, six chunks of lookahead, a sub-second hedge delay, and four ready `kokoro-tts` pods.

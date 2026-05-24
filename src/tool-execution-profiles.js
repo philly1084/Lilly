@@ -23,6 +23,7 @@ const BASE_SHARED_TOOL_IDS = Object.freeze([
     'web-search',
     'web-fetch',
     'web-scrape',
+    'news-scraper',
     'image-generate',
     'image-search-unsplash',
     'image-from-url',

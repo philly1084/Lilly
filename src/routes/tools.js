@@ -489,6 +489,7 @@ function buildToolRuntime(toolId, options = {}) {
     'research-bucket-mkdir',
     'web-fetch',
     'web-scrape',
+    'news-scraper',
     'file-read',
     'file-write',
     'file-search',
