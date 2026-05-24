@@ -680,6 +680,39 @@ describe('ArtifactService', () => {
         expect(result.responseId).toBe('resp-frontend-1');
     });
 
+    test('strips progress prose around fenced html before rendering single-file frontend artifacts', async () => {
+        createResponse.mockResolvedValueOnce({
+            id: 'resp-frontend-wrapper-1',
+            output: [{
+                type: 'message',
+                content: [{
+                    text: [
+                        'Working in background...I\'ll rebuild this with fresh verification first, then return the page as clean HTML only so it can be pasted directly into a viewer without wrapper text.```html',
+                        '<!DOCTYPE html><html><head><title>Canada Ledger</title></head><body><main><h1>Canada Ledger</h1></main></body></html>',
+                    ].join('\n'),
+                }],
+            }],
+        });
+
+        await artifactService.generateArtifact({
+            session: { previousResponseId: 'prev-wrapper', metadata: {} },
+            sessionId: 'session-1',
+            mode: 'chat',
+            prompt: 'Build an HTML page about Canada ledger news and weather with a polished editorial feel.',
+            format: 'html',
+            artifactIds: [],
+            existingContent: '',
+            model: 'gpt-5.3',
+        });
+
+        const renderedHtml = renderArtifact.mock.calls[0][0]?.content || '';
+        expect(renderedHtml.trim()).toMatch(/^<!DOCTYPE html>/);
+        expect(renderedHtml).toContain('<h1>Canada Ledger</h1>');
+        expect(renderedHtml).not.toContain('Working in background');
+        expect(renderedHtml).not.toContain('clean HTML only');
+        expect(renderedHtml).not.toContain('```html');
+    });
+
     test('uses frontend artifact generation for interactive research documents', async () => {
         createResponse.mockResolvedValueOnce({
             id: 'resp-interactive-research-1',

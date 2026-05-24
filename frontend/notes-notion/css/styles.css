@@ -3677,8 +3677,10 @@ body {
 .notes-tts-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     min-width: 82px;
+    max-width: 156px;
     min-height: 36px;
     padding: 8px 12px;
     background: var(--bg-secondary);
@@ -3688,6 +3690,12 @@ body {
     color: var(--text-secondary);
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.notes-tts-btn span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .notes-tts-btn:hover:not(:disabled),
@@ -3728,6 +3736,13 @@ body {
 
 .block.is-voice-playing {
     background: color-mix(in srgb, var(--accent-color) 7%, transparent);
+    scroll-margin-block: 28vh;
+}
+
+.block.is-voice-up-next {
+    background: color-mix(in srgb, var(--accent-color) 3%, transparent);
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent-color) 42%, transparent);
+    scroll-margin-block: 28vh;
 }
 
 .export-menu {

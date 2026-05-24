@@ -1479,6 +1479,44 @@ Approved page plan:
         expect(normalizedActions[0].blocks[1].content.text).not.toContain('provider_or_backend_error');
     });
 
+    test('drops progress wrapper prose before fenced raw html documents', () => {
+        const agent = loadAgent();
+        const html = [
+            'Working in background...I\'ll rebuild this with fresh verification first, then return the page as clean HTML only.```html',
+            '<!doctype html>',
+            '<html lang="en">',
+            '<head><title>Canada Ledger</title></head>',
+            '<body><main><h1>Canada Ledger</h1></main></body>',
+            '</html>',
+        ].join('\n');
+
+        const normalizedActions = agent._normalizeStructuredPageActions([
+            {
+                op: 'rebuild_page',
+                blocks: [{
+                    type: 'text',
+                    content: html,
+                }],
+            },
+        ], 'Put this HTML document on the page without leaking wrapper text.', {
+            blockCount: 0,
+            outline: [],
+        });
+
+        expect(normalizedActions[0].blocks).toEqual([
+            expect.objectContaining({ type: 'heading_1', content: 'Canada Ledger' }),
+            expect.objectContaining({
+                type: 'code',
+                content: expect.objectContaining({
+                    language: 'html',
+                    text: expect.stringContaining('<!doctype html>'),
+                }),
+            }),
+        ]);
+        expect(normalizedActions[0].blocks[0].content).not.toContain('Working in background');
+        expect(normalizedActions[0].blocks[1].content.text).not.toContain('```');
+    });
+
     test('rehydrates collapsed one-line markdown into structured notes blocks', () => {
         const agent = loadAgent();
         const normalizedActions = agent._normalizeStructuredPageActions([

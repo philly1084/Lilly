@@ -4819,7 +4819,26 @@ GUIDELINES:
         }
 
         if (/(?:^|\n)\s*(?:analysis|reasoning|thinking|chain of thought|internal planning|diagnostics?|raw details|trace id|diagnostic code|provider_or_backend_error|model request failed|image request received|\+\d+ms)\b/i.test(text)
-            || /\bPAGE REASONING (?:MAP|RULES)\b/i.test(text)) {
+            || /\bPAGE REASONING (?:MAP|RULES)\b/i.test(text)
+            || /\bworking in background\b/i.test(text)
+            || (/^(?:i(?:'|’|â€™)?ll|i will|let me)\b/i.test(text)
+                && /\b(?:rebuild|build|return|deliver|compose|create|html|page|artifact|viewer|clean)\b/i.test(text))) {
+            return '';
+        }
+
+        return text;
+    }
+
+    function stripHtmlDocumentSuffix(suffix = '') {
+        const text = stripUnsafeNullCharacters(suffix).trim();
+        if (!text) {
+            return '';
+        }
+
+        if (/^```+\s*$/i.test(text)
+            || /^```+\s*(?:done|here you go|ready|finished)[.!]?\s*$/i.test(text)
+            || /^(?:done|here you go|ready|finished)[.!]?\s*$/i.test(text)
+            || stripInternalHtmlDocumentPreface(text) === '') {
             return '';
         }
 
@@ -4859,10 +4878,11 @@ GUIDELINES:
             },
         });
 
-        if (split.suffix && !/^(?:done|here you go|let me know)[.!]?\s*$/i.test(split.suffix)) {
+        const suffixText = stripHtmlDocumentSuffix(split.suffix);
+        if (suffixText) {
             blocks.push({
                 type: 'text',
-                content: stripMarkdownInlineFormatting(split.suffix),
+                content: stripMarkdownInlineFormatting(suffixText),
             });
         }
 

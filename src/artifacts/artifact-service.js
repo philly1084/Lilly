@@ -28,6 +28,7 @@ const {
     isComplexFrontendBundleRequest,
     normalizeFrontendMetadata,
     sanitizeFrontendArtifactMetadata,
+    sanitizeFrontendHtmlContent,
 } = require('../frontend-bundles');
 const { buildSandboxBrowserLibraryInstructions } = require('../sandbox-browser-libraries');
 const {
@@ -1729,16 +1730,19 @@ function shouldEnableArtifactToolOrchestration(prompt = '', format = '') {
 function buildFrontendArtifactPayload(responseText = '') {
     const parsed = safeJsonParse(responseText);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        const fallbackMetadata = buildFrontendFallbackMetadata(responseText);
+        const sanitizedContent = sanitizeFrontendHtmlContent(responseText);
+        const fallbackContent = sanitizedContent || responseText;
+        const fallbackMetadata = buildFrontendFallbackMetadata(fallbackContent);
         return {
-            content: responseText,
+            content: fallbackContent,
             metadata: fallbackMetadata,
         };
     }
 
-    const parsedContent = typeof parsed.content === 'string'
+    const rawParsedContent = typeof parsed.content === 'string'
         ? parsed.content
         : String(parsed.content || '');
+    const parsedContent = sanitizeFrontendHtmlContent(rawParsedContent) || rawParsedContent;
     const rawMetadata = parsed.metadata && typeof parsed.metadata === 'object' && !Array.isArray(parsed.metadata)
         ? { ...parsed.metadata }
         : {};
@@ -1775,7 +1779,7 @@ function buildFrontendArtifactPayload(responseText = '') {
         : parsedContent;
 
     return {
-        content: renderContent,
+        content: sanitizeFrontendHtmlContent(renderContent) || renderContent,
         metadata,
     };
 }
@@ -3145,7 +3149,12 @@ class ArtifactService {
             );
         const rawRenderSource = normalizedFrontendPayload
             ? normalizedFrontendPayload.content
-            : diversifyHtmlImageReferences(unwrapCodeFence(outputText), imageReferences);
+            : diversifyHtmlImageReferences(
+                ['html', 'pdf'].includes(normalizedFormat)
+                    ? (sanitizeFrontendHtmlContent(unwrapCodeFence(outputText)) || unwrapCodeFence(outputText))
+                    : unwrapCodeFence(outputText),
+                imageReferences,
+            );
         const restoredRenderSource = normalizedFrontendPayload
             ? { text: rawRenderSource, restorations: [] }
             : await restoreGeneratedPiiPlaceholders(rawRenderSource, piiRestoreOptions);

@@ -90,6 +90,18 @@ describe('model-output-parser', () => {
         expect(normalized).not.toContain('provider_or_backend_error');
     });
 
+    test('drops progress wrapper text before fenced full html documents', () => {
+        const normalized = parser.normalizeModelOutputMarkdown([
+            'Working in background...I\'ll rebuild this with fresh verification first, then return the page as clean HTML only.```html',
+            '<!doctype html>',
+            '<html><head><title>Clean</title></head><body><main>Ready</main></body></html>',
+        ].join('\n'));
+
+        expect(normalized).toContain('```html\n<!doctype html>');
+        expect(normalized).not.toContain('Working in background');
+        expect(normalized).not.toContain('clean HTML only');
+    });
+
     test('normalizes lightweight presentation markup outside code fences', () => {
         const normalized = parser.normalizeModelOutputMarkdown('This is ==important== and ::warning[check this].\n\n```md\n==literal== ::warning[literal]\n```');
 

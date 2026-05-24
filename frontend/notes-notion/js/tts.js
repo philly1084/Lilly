@@ -9,10 +9,16 @@ const NotesTts = (function() {
     const MESSAGE_PREFIX = 'notes-page-tts';
     const HIGHLIGHT_CLASS = 'tts-reading-highlight';
     const BLOCK_PLAYING_CLASS = 'is-voice-playing';
+    const BLOCK_LOOKAHEAD_CLASS = 'is-voice-up-next';
+    const READABLE_TEXT_SELECTOR = '.block-input, .image-caption, .bookmark-title, .bookmark-description, .ai-block-result';
 
     let initialized = false;
     let manager = null;
     let activeMessageId = '';
+    let activeReadRequest = null;
+    let lastSelectionReadRequest = null;
+    let lastReadAnchorBlockId = '';
+    let controlsUpdateFrame = 0;
     let messageCounter = 0;
     let speechHighlightState = {
         messageId: '',
@@ -26,6 +32,17 @@ const NotesTts = (function() {
 
     function getButtonLabel() {
         return document.getElementById('notes-tts-label');
+    }
+
+    function getEditorRoot() {
+        return document.getElementById('editor');
+    }
+
+    function escapeSelectorValue(value = '') {
+        const normalized = String(value || '');
+        return typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(normalized)
+            : normalized.replace(/["\\]/g, '\\$&');
     }
 
     function createMessageId() {
@@ -70,12 +87,12 @@ const NotesTts = (function() {
     }
 
     function getVisibleEditorText() {
-        const editor = document.getElementById('editor');
+        const editor = getEditorRoot();
         if (!editor) {
             return '';
         }
 
-        return Array.from(editor.querySelectorAll('.block-input, .image-caption, .bookmark-title, .bookmark-description, .ai-block-result'))
+        return Array.from(editor.querySelectorAll(READABLE_TEXT_SELECTOR))
             .map((element) => String(element.innerText || element.textContent || '').trim())
             .filter(Boolean)
             .join('\n');
@@ -90,6 +107,137 @@ const NotesTts = (function() {
         const page = window.Editor?.getCurrentPage?.();
         const blocks = Array.isArray(page?.blocks) ? page.blocks : [];
         return blocks.map(extractBlockText).filter(Boolean).join('\n').trim();
+    }
+
+    function getElementFromNode(node = null) {
+        if (!node) {
+            return null;
+        }
+        if (typeof Node !== 'undefined' && node.nodeType === Node.ELEMENT_NODE) {
+            return node;
+        }
+        return node.parentElement || null;
+    }
+
+    function isNodeInsideEditor(node = null, editor = getEditorRoot()) {
+        const element = getElementFromNode(node);
+        return Boolean(editor && element && editor.contains(element));
+    }
+
+    function getBlockElementFromNode(node = null) {
+        return getElementFromNode(node)?.closest?.('.block') || null;
+    }
+
+    function getSelectionRangeInsideEditor() {
+        const editor = getEditorRoot();
+        const selection = window.getSelection?.();
+        if (!editor || !selection || selection.rangeCount === 0) {
+            return null;
+        }
+
+        const range = selection.getRangeAt(0);
+        const selectedText = String(selection.toString?.() || '').trim();
+        if (range.collapsed || !selectedText) {
+            return null;
+        }
+
+        if (!isNodeInsideEditor(range.startContainer, editor) || !isNodeInsideEditor(range.endContainer, editor)) {
+            return null;
+        }
+
+        return {
+            editor,
+            range,
+            selectedText,
+            anchorBlock: getBlockElementFromNode(range.startContainer),
+        };
+    }
+
+    function getReadableBlockText(blockElement = null) {
+        if (!blockElement) {
+            return '';
+        }
+
+        return Array.from(blockElement.querySelectorAll(READABLE_TEXT_SELECTOR))
+            .filter((element) => element.closest?.('.block') === blockElement)
+            .map((element) => String(element.innerText || element.textContent || '').trim())
+            .filter(Boolean)
+            .join('\n')
+            .trim();
+    }
+
+    function getReadableBlockEntries(editor = getEditorRoot()) {
+        if (!editor) {
+            return [];
+        }
+
+        return Array.from(editor.querySelectorAll('.block'))
+            .map((element) => ({
+                element,
+                text: getReadableBlockText(element),
+            }))
+            .filter((entry) => entry.text);
+    }
+
+    function getReadableTextFromBlock(blockElement = null) {
+        const entries = getReadableBlockEntries();
+        const startIndex = entries.findIndex((entry) => entry.element === blockElement);
+        if (startIndex < 0) {
+            return '';
+        }
+
+        return entries
+            .slice(startIndex)
+            .map((entry) => entry.text)
+            .filter(Boolean)
+            .join('\n')
+            .trim();
+    }
+
+    function rememberReadAnchorFromDom(node = null) {
+        const editor = getEditorRoot();
+        if (!editor) {
+            return;
+        }
+
+        const sourceNode = node || document.activeElement;
+        const block = isNodeInsideEditor(sourceNode, editor)
+            ? getBlockElementFromNode(sourceNode)
+            : null;
+        const blockId = String(block?.dataset?.blockId || '').trim();
+        if (blockId) {
+            lastReadAnchorBlockId = blockId;
+        }
+    }
+
+    function getReadAnchorBlockElement() {
+        const selectionInfo = getSelectionRangeInsideEditor();
+        if (selectionInfo?.anchorBlock) {
+            rememberReadAnchorFromDom(selectionInfo.range.startContainer);
+            return selectionInfo.anchorBlock;
+        }
+
+        const editor = getEditorRoot();
+        const activeBlock = isNodeInsideEditor(document.activeElement, editor)
+            ? document.activeElement.closest?.('.block')
+            : null;
+        if (activeBlock?.dataset?.blockId) {
+            rememberReadAnchorFromDom(activeBlock);
+            return activeBlock;
+        }
+
+        const selectedBlockId = String(window.Selection?.getSelectedBlockId?.() || '').trim();
+        const selectedBlock = selectedBlockId
+            ? document.querySelector(`.block[data-block-id="${escapeSelectorValue(selectedBlockId)}"]`)
+            : null;
+        if (selectedBlock) {
+            lastReadAnchorBlockId = selectedBlockId;
+            return selectedBlock;
+        }
+
+        return lastReadAnchorBlockId
+            ? document.querySelector(`.block[data-block-id="${escapeSelectorValue(lastReadAnchorBlockId)}"]`)
+            : null;
     }
 
     function trimSpeechUrlToken(value = '') {
@@ -155,6 +303,98 @@ const NotesTts = (function() {
         range.setStart(start.node, start.offset);
         range.setEnd(end.node, end.offset + 1);
         return range;
+    }
+
+    function createCollapsedRangeAt(node = null, offset = 0) {
+        if (!node || typeof document === 'undefined' || typeof document.createRange !== 'function') {
+            return null;
+        }
+
+        try {
+            const range = document.createRange();
+            range.setStart(node, Math.max(0, Number(offset) || 0));
+            range.collapse(true);
+            return range;
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    function compareDomPoint(position = null, node = null, offset = 0) {
+        const positionRange = createCollapsedRangeAt(position?.node, position?.offset);
+        const targetRange = createCollapsedRangeAt(node, offset);
+        if (!positionRange || !targetRange || typeof Range === 'undefined') {
+            return 0;
+        }
+
+        try {
+            return positionRange.compareBoundaryPoints(Range.START_TO_START, targetRange);
+        } catch (_error) {
+            return 0;
+        } finally {
+            positionRange.detach?.();
+            targetRange.detach?.();
+        }
+    }
+
+    function findComparableSpeechIndexForDomPoint(textMap = {}, node = null, offset = 0, direction = 1) {
+        const text = String(textMap.text || '');
+        const positions = Array.isArray(textMap.positions) ? textMap.positions : [];
+        if (!text || positions.length === 0 || !node) {
+            return 0;
+        }
+
+        const forward = direction >= 0;
+        let fallbackIndex = forward ? 0 : Math.max(0, positions.length - 1);
+        for (
+            let index = forward ? 0 : positions.length - 1;
+            forward ? index < positions.length : index >= 0;
+            index += forward ? 1 : -1
+        ) {
+            if (!isComparableSpeechContentChar(text[index]) || !positions[index]?.node) {
+                continue;
+            }
+
+            fallbackIndex = index;
+            const comparison = compareDomPoint(positions[index], node, offset);
+            if ((forward && comparison >= 0) || (!forward && comparison <= 0)) {
+                return index;
+            }
+        }
+
+        return fallbackIndex;
+    }
+
+    function getDomPointBeforeElement(element = null) {
+        const parent = element?.parentNode || null;
+        if (!parent) {
+            return null;
+        }
+
+        return {
+            node: parent,
+            offset: Array.prototype.indexOf.call(parent.childNodes, element),
+        };
+    }
+
+    function getComparableStartOffsetForBlock(blockElement = null) {
+        const editor = getEditorRoot();
+        const point = getDomPointBeforeElement(blockElement);
+        if (!editor || !point) {
+            return 0;
+        }
+
+        const textMap = buildSpeechTextMap(editor);
+        return findComparableSpeechIndexForDomPoint(textMap, point.node, point.offset, 1);
+    }
+
+    function getComparableStartOffsetForRange(range = null, editor = getEditorRoot()) {
+        if (!range || !editor) {
+            return 0;
+        }
+
+        const textMap = buildSpeechTextMap(editor);
+        return findComparableSpeechIndexForDomPoint(textMap, range.startContainer, range.startOffset, 1);
     }
 
     function appendComparablePlainText(text = '', output, node = null, baseOffset = 0) {
@@ -233,7 +473,7 @@ const NotesTts = (function() {
     }
 
     function buildSpeechTextMap(root = null) {
-        if (!root || !document?.createTreeWalker || typeof NodeFilter === 'undefined') {
+        if (!root || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') {
             return {
                 text: '',
                 positions: [],
@@ -287,6 +527,65 @@ const NotesTts = (function() {
         return output;
     }
 
+    function createSelectionReadRequest(selectionInfo = null) {
+        if (selectionInfo?.selectedText) {
+            rememberReadAnchorFromDom(selectionInfo.range.startContainer);
+            return {
+                mode: 'selection',
+                label: 'Read selection',
+                title: `Read selected text aloud with ${manager?.getVoiceLabel?.() || 'Voice'}`,
+                text: selectionInfo.selectedText,
+                startSearchOffset: getComparableStartOffsetForRange(selectionInfo.range, selectionInfo.editor),
+                anchorBlockId: selectionInfo.anchorBlock?.dataset?.blockId || '',
+            };
+        }
+
+        return null;
+    }
+
+    function createReadRequest() {
+        const selectionRequest = createSelectionReadRequest(getSelectionRangeInsideEditor());
+        if (selectionRequest) {
+            lastSelectionReadRequest = selectionRequest;
+            return selectionRequest;
+        }
+
+        if (lastSelectionReadRequest && document.activeElement?.closest?.('#notes-tts-btn')) {
+            return lastSelectionReadRequest;
+        }
+
+        const editor = getEditorRoot();
+        const anchorBlock = getReadAnchorBlockElement();
+        const readableEntries = getReadableBlockEntries(editor);
+        const firstReadableBlock = readableEntries[0]?.element || null;
+        if (anchorBlock && anchorBlock !== firstReadableBlock) {
+            const anchorText = getReadableTextFromBlock(anchorBlock);
+            if (anchorText) {
+                return {
+                    mode: 'from-here',
+                    label: 'Read from here',
+                    title: `Read from the current block with ${manager?.getVoiceLabel?.() || 'Voice'}`,
+                    text: anchorText,
+                    startSearchOffset: getComparableStartOffsetForBlock(anchorBlock),
+                    anchorBlockId: anchorBlock.dataset?.blockId || '',
+                };
+            }
+        }
+
+        return {
+            mode: 'page',
+            label: 'Read',
+            title: `Read page aloud with ${manager?.getVoiceLabel?.() || 'Voice'}`,
+            text: getReadablePageText(),
+            startSearchOffset: 0,
+            anchorBlockId: '',
+        };
+    }
+
+    function getActiveReadStartOffset() {
+        return Math.max(0, Number(activeReadRequest?.startSearchOffset) || 0);
+    }
+
     function findSpeechHighlightRange(root = null, chunkText = '', options = {}) {
         const normalizedChunk = normalizeSpeechHighlightText(chunkText).toLowerCase();
         if (!root || !normalizedChunk) {
@@ -338,8 +637,44 @@ const NotesTts = (function() {
 
     function clearBlockPlayingState() {
         document
-            .querySelectorAll(`.block.${BLOCK_PLAYING_CLASS}`)
-            .forEach((block) => block.classList.remove(BLOCK_PLAYING_CLASS));
+            .querySelectorAll(`.block.${BLOCK_PLAYING_CLASS}, .block.${BLOCK_LOOKAHEAD_CLASS}`)
+            .forEach((block) => block.classList.remove(BLOCK_PLAYING_CLASS, BLOCK_LOOKAHEAD_CLASS));
+    }
+
+    function getNextReadableBlockElement(blockElement = null) {
+        if (!blockElement) {
+            return null;
+        }
+
+        const entries = getReadableBlockEntries();
+        const currentIndex = entries.findIndex((entry) => entry.element === blockElement);
+        return currentIndex >= 0
+            ? entries[currentIndex + 1]?.element || null
+            : null;
+    }
+
+    function markUpcomingSpeechBlock(blockElement = null) {
+        const nextBlock = getNextReadableBlockElement(blockElement);
+        if (nextBlock) {
+            nextBlock.classList.add(BLOCK_LOOKAHEAD_CLASS);
+        }
+        return nextBlock;
+    }
+
+    function scrollSpeechHighlightIntoView(highlight = null, blockElement = null) {
+        const target = blockElement || highlight;
+        if (!target?.scrollIntoView) {
+            return;
+        }
+
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+        requestAnimationFrame(() => {
+            target.scrollIntoView({
+                block: 'center',
+                inline: 'nearest',
+                behavior: reduceMotion ? 'auto' : 'smooth',
+            });
+        });
     }
 
     function clearSpeechHighlights(options = {}) {
@@ -356,10 +691,37 @@ const NotesTts = (function() {
         if (options.preserveState !== true) {
             speechHighlightState = {
                 messageId: '',
-                lastSearchOffset: 0,
+                lastSearchOffset: getActiveReadStartOffset(),
                 lastChunkIndex: -1,
             };
         }
+    }
+
+    function queueControlsUpdate() {
+        if (!initialized || controlsUpdateFrame) {
+            return;
+        }
+
+        controlsUpdateFrame = requestAnimationFrame(() => {
+            controlsUpdateFrame = 0;
+            updateControls();
+        });
+    }
+
+    function updateReadAnchorFromEvent(event = null) {
+        const target = event?.target || document.activeElement;
+        const editor = getEditorRoot();
+        if (isNodeInsideEditor(target, editor)) {
+            rememberReadAnchorFromDom(target);
+            queueControlsUpdate();
+            return;
+        }
+
+        if (!target?.closest?.('#notes-tts-btn')) {
+            lastReadAnchorBlockId = '';
+            lastSelectionReadRequest = null;
+        }
+        queueControlsUpdate();
     }
 
     function highlightSpeechChunk(messageId = '', chunkText = '', options = {}) {
@@ -381,7 +743,7 @@ const NotesTts = (function() {
         ) {
             speechHighlightState = {
                 messageId: normalizedMessageId,
-                lastSearchOffset: 0,
+                lastSearchOffset: getActiveReadStartOffset(),
                 lastChunkIndex: -1,
             };
         }
@@ -404,13 +766,15 @@ const NotesTts = (function() {
             const contents = match.range.extractContents();
             highlight.appendChild(contents);
             match.range.insertNode(highlight);
-            highlight.closest?.('.block')?.classList.add(BLOCK_PLAYING_CLASS);
+            const activeBlock = highlight.closest?.('.block') || null;
+            activeBlock?.classList.add(BLOCK_PLAYING_CLASS);
+            markUpcomingSpeechBlock(activeBlock);
             speechHighlightState = {
                 messageId: normalizedMessageId,
                 lastSearchOffset: Math.max(speechHighlightState.lastSearchOffset, Number(match.endIndex) || 0),
                 lastChunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : speechHighlightState.lastChunkIndex,
             };
-            highlight.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+            scrollSpeechHighlightIntoView(highlight, activeBlock);
             return true;
         } catch (error) {
             console.warn('[NotesTTS] Failed to highlight spoken text:', error);
@@ -427,28 +791,29 @@ const NotesTts = (function() {
         }
 
         const label = getButtonLabel();
-        const text = getReadablePageText();
+        const readRequest = createReadRequest();
+        const text = readRequest.text;
         const available = manager?.isAvailable?.() === true;
         const loading = activeMessageId && manager?.isLoadingMessage?.(activeMessageId) === true;
         const playing = activeMessageId && manager?.isPlayingMessage?.(activeMessageId) === true;
         const diagnostics = manager?.getDiagnostics?.() || {};
-        const voiceLabel = manager?.getVoiceLabel?.() || 'Voice';
         const disabled = !manager || !available || !text || loading;
 
         button.disabled = disabled;
         button.classList.toggle('is-active', Boolean(playing));
         button.classList.toggle('is-loading', Boolean(loading));
+        button.dataset.readMode = readRequest.mode || 'page';
         button.setAttribute('aria-pressed', playing ? 'true' : 'false');
 
         const title = !text
             ? 'No readable page text'
             : (!available
                 ? String(diagnostics.message || 'Voice playback is unavailable.')
-                : (playing ? 'Stop page narration' : `Read page aloud with ${voiceLabel}`));
+                : (playing ? 'Stop page narration' : readRequest.title));
         button.title = title;
         button.setAttribute('aria-label', title);
         if (label) {
-            label.textContent = loading ? 'Loading' : (playing ? 'Stop' : 'Read');
+            label.textContent = loading ? 'Loading' : (playing ? 'Stop' : readRequest.label);
         }
     }
 
@@ -463,8 +828,8 @@ const NotesTts = (function() {
             return;
         }
 
-        const text = getReadablePageText();
-        if (!text) {
+        const readRequest = createReadRequest();
+        if (!readRequest.text) {
             window.Sidebar?.showToast?.('There is no readable page text yet.', 'warning');
             return;
         }
@@ -479,15 +844,22 @@ const NotesTts = (function() {
             }
 
             activeMessageId = createMessageId();
+            activeReadRequest = readRequest;
+            speechHighlightState = {
+                messageId: activeMessageId,
+                lastSearchOffset: getActiveReadStartOffset(),
+                lastChunkIndex: -1,
+            };
             updateControls();
             await manager.speakMessage({
                 messageId: activeMessageId,
-                text,
+                text: readRequest.text,
             });
         } catch (error) {
             console.warn('[NotesTTS] Page narration failed:', error);
             window.Sidebar?.showToast?.(error.message || 'Failed to generate page narration.', 'warning');
         } finally {
+            activeReadRequest = null;
             updateControls();
         }
     }
@@ -526,6 +898,8 @@ const NotesTts = (function() {
             updateControls();
         });
         manager.addEventListener('playbackstop', () => {
+            activeReadRequest = null;
+            activeMessageId = '';
             clearSpeechHighlights();
             clearBlockPlayingState();
             updateControls();
@@ -534,6 +908,19 @@ const NotesTts = (function() {
         getButton()?.addEventListener('click', () => {
             void togglePageSpeech();
         });
+        document.addEventListener('selectionchange', () => {
+            const selectionInfo = getSelectionRangeInsideEditor();
+            if (selectionInfo?.range) {
+                lastSelectionReadRequest = createSelectionReadRequest(selectionInfo);
+                rememberReadAnchorFromDom(selectionInfo.range.startContainer);
+            } else if (!document.activeElement?.closest?.('#notes-tts-btn')) {
+                lastSelectionReadRequest = null;
+            }
+            queueControlsUpdate();
+        });
+        document.addEventListener('keyup', updateReadAnchorFromEvent);
+        document.addEventListener('focusin', updateReadAnchorFromEvent);
+        document.addEventListener('pointerup', updateReadAnchorFromEvent);
 
         void manager.ensureConfigLoaded({ quiet: true })
             .catch((error) => {
@@ -546,6 +933,8 @@ const NotesTts = (function() {
         init,
         togglePageSpeech,
         getReadablePageText,
+        getReadRequest: createReadRequest,
+        highlightSpeechChunk,
         clearSpeechHighlights,
     };
 })();

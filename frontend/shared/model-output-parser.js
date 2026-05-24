@@ -411,6 +411,81 @@
             || /<\/(?:html|body)>/i.test(value);
     }
 
+    function splitRawHtmlDocumentSource(source = '') {
+        const value = String(source || '').replace(/\r\n?/g, '\n').trim();
+        const startIndex = findRawHtmlDocumentStartIndex(value);
+        if (startIndex < 0) {
+            return null;
+        }
+
+        const prefix = value.slice(0, startIndex).trim();
+        const htmlTail = value.slice(startIndex).trim();
+        if (!looksLikeRawHtmlDocument(htmlTail)) {
+            return null;
+        }
+
+        const closeMatch = htmlTail.match(/<\/html\s*>/i);
+        const htmlEndIndex = closeMatch && Number.isInteger(closeMatch.index)
+            ? closeMatch.index + closeMatch[0].length
+            : htmlTail.length;
+
+        return {
+            prefix,
+            html: htmlTail.slice(0, htmlEndIndex).trim(),
+            suffix: htmlTail.slice(htmlEndIndex).trim(),
+        };
+    }
+
+    function extractRawHtmlDocumentSource(source = '') {
+        return splitRawHtmlDocumentSource(source)?.html || '';
+    }
+
+    function normalizeFencedHtmlDocumentWrappers(source = '') {
+        const value = String(source || '').replace(/\r\n?/g, '\n').trim();
+        if (!value || !/```/i.test(value)) {
+            return value;
+        }
+
+        const fencePattern = /```([a-z0-9_-]*)[^\S\n]*(?:\n)?([\s\S]*?)```/ig;
+        let match;
+        while ((match = fencePattern.exec(value)) !== null) {
+            const language = String(match[1] || '').trim().toLowerCase();
+            const fencedBody = String(match[2] || '').trim();
+            const htmlSource = extractRawHtmlDocumentSource(fencedBody);
+            if (!htmlSource || (language && language !== 'html' && language !== 'htm')) {
+                continue;
+            }
+
+            const prefix = value.slice(0, match.index).trim();
+            const suffix = value.slice(match.index + match[0].length).trim();
+            const safePrefix = stripInternalHtmlDocumentPreface(prefix);
+
+            return [
+                safePrefix,
+                `\`\`\`html\n${htmlSource}\n\`\`\``,
+                suffix,
+            ].filter(Boolean).join('\n\n');
+        }
+
+        const openFenceMatch = /```([a-z0-9_-]*)[^\S\n]*(?:\n)?/i.exec(value);
+        if (openFenceMatch) {
+            const language = String(openFenceMatch[1] || '').trim().toLowerCase();
+            const body = value.slice(openFenceMatch.index + openFenceMatch[0].length);
+            const split = splitRawHtmlDocumentSource(body);
+            if (split?.html && (!language || language === 'html' || language === 'htm')) {
+                const prefix = value.slice(0, openFenceMatch.index).trim();
+                const safePrefix = stripInternalHtmlDocumentPreface(prefix);
+                return [
+                    safePrefix,
+                    `\`\`\`html\n${split.html}\n\`\`\``,
+                    split.suffix,
+                ].filter(Boolean).join('\n\n');
+            }
+        }
+
+        return value;
+    }
+
     function fenceRawHtmlDocuments(source = '') {
         const value = String(source || '').replace(/\r\n?/g, '\n').trim();
         if (!value || /```/.test(value)) {
@@ -450,7 +525,10 @@
         }
 
         if (/(?:^|\n)\s*(?:analysis|reasoning|thinking|chain of thought|internal planning|diagnostics?|raw details|trace id|diagnostic code|provider_or_backend_error|model request failed|image request received|\+\d+ms)\b/i.test(text)
-            || /\bPAGE REASONING (?:MAP|RULES)\b/i.test(text)) {
+            || /\bPAGE REASONING (?:MAP|RULES)\b/i.test(text)
+            || /\bworking in background\b/i.test(text)
+            || (/^(?:i(?:'|’|â€™)?ll|i will|let me)\b/i.test(text)
+                && /\b(?:rebuild|build|return|deliver|compose|create|html|page|artifact|viewer|clean)\b/i.test(text))) {
             return '';
         }
 
@@ -458,7 +536,7 @@
     }
 
     function normalizeStructuredMarkdown(source = '') {
-        return restoreFlattenedCodeFences(fenceRawHtmlDocuments(source))
+        return restoreFlattenedCodeFences(normalizeFencedHtmlDocumentWrappers(fenceRawHtmlDocuments(source)))
             .split(/(```[\s\S]*?```)/g)
             .map((segment) => {
                 if (/^```[\s\S]*```$/.test(segment)) {
