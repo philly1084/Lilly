@@ -4,6 +4,12 @@ Purpose: run non-interactive commands on the configured remote host through the 
 
 Aliases: `remote CLI`, `direct CLI`, `remote command`, and `remote runner` all refer to this `remote-command` tool. These phrases should not be routed to the local execution sandbox.
 
+Boundary:
+- `remote-command` params require a non-empty `command` string.
+- The explicit phrase `remote cli agent`, `remote coding agent`, `assisted cli`, or `remote_code_run` points to `remote-cli-agent`, not this direct command lane.
+- For remote app/site/service work that needs source edits plus build/deploy/verify, use `remote-cli-agent` as the main loop and reserve `remote-command` for inspect, diagnosis, one-off repair, or verification.
+- For the short lane picker, read `src/agent-sdk/tool-docs/remote-tools.md`.
+
 Remote CLI agent pipeline:
 - Treat `remote-cli-agent` as the default owner for remote software creation/update/deployment loops when an app, website, service, dashboard, frontend, or game must be changed and put live.
 - Treat this tool as the default lane for quick remote inspect, one-off command execution, deploy verification, admin repairs, and cluster troubleshooting.

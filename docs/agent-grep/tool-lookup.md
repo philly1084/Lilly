@@ -42,6 +42,7 @@ Checks before use:
 - If the tool is new or undocumented, update `docs/agent-grep/adding-tools.md` requirements before relying on it.
 
 Longer docs:
+- `src/agent-sdk/tool-docs/remote-tools.md`
 - `src/agent-sdk/tool-docs/tool-doc-read.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`
 - `src/agent-sdk/tool-docs/remote-command.md`

@@ -3,6 +3,132 @@
 const { ToolBase } = require('../../ToolBase');
 const { remoteCliAgentsSdkRunner } = require('../../../../remote-cli/agents-sdk-runner');
 
+function parseObjectLike(value) {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || !/^[{[]/.test(trimmed)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function firstNonEmptyText(...values) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (text) {
+      return text;
+    }
+  }
+  return '';
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
+}
+
+function normalizeBoolean(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  return /^(?:1|true|yes|on|approved|admin)$/i.test(String(value).trim());
+}
+
+function normalizeInteger(value) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return undefined;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : undefined;
+}
+
+function applyAlias(params, targetKey, ...values) {
+  if (params[targetKey] !== undefined && params[targetKey] !== null && String(params[targetKey]).trim() !== '') {
+    return;
+  }
+  const value = firstDefined(...values);
+  if (value !== undefined) {
+    params[targetKey] = value;
+  }
+}
+
+function normalizeRemoteCliAgentParams(params = {}) {
+  const argumentObject = parseObjectLike(params.arguments);
+  const inputObject = parseObjectLike(params.input);
+  const nestedParams = parseObjectLike(params.params);
+  const remoteCodeRun = parseObjectLike(params.remoteCodeRun)
+    || parseObjectLike(params.remote_code_run)
+    || parseObjectLike(params.remoteCodeRunArgs)
+    || parseObjectLike(params.remote_code_run_args)
+    || (argumentObject?.name === 'remote_code_run' ? parseObjectLike(argumentObject.arguments) : null)
+    || {};
+
+  const task = firstNonEmptyText(
+    params.task,
+    params.prompt,
+    params.objective,
+    params.request,
+    params.message,
+    argumentObject?.task,
+    argumentObject?.prompt,
+    argumentObject?.objective,
+    inputObject?.task,
+    inputObject?.prompt,
+    nestedParams?.task,
+    nestedParams?.prompt,
+    remoteCodeRun?.task,
+    remoteCodeRun?.prompt,
+  );
+  if (!params.task && task) {
+    params.task = task;
+  }
+
+  if (!params.task && firstNonEmptyText(params.command, argumentObject?.command, nestedParams?.command)) {
+    const error = new Error('remote-cli-agent expects params.task for a remote coding/deploy objective. Use remote-command when you need to run one raw command.');
+    error.code = 'REMOTE_CLI_AGENT_TASK_REQUIRED';
+    throw error;
+  }
+
+  applyAlias(params, 'targetId', params.target_id, argumentObject?.targetId, argumentObject?.target_id, remoteCodeRun?.targetId, remoteCodeRun?.target_id);
+  applyAlias(params, 'cwd', params.workingDirectory, params.working_directory, argumentObject?.cwd, argumentObject?.workingDirectory, remoteCodeRun?.cwd);
+  applyAlias(params, 'sessionId', params.session_id, params.remoteSessionId, params.remote_session_id, argumentObject?.sessionId, argumentObject?.session_id, remoteCodeRun?.sessionId, remoteCodeRun?.session_id);
+  applyAlias(params, 'jobId', params.job_id, params.remoteCodeJobId, params.remote_code_job_id, argumentObject?.jobId, argumentObject?.job_id);
+  applyAlias(params, 'mcpSessionId', params.mcp_session_id, argumentObject?.mcpSessionId, argumentObject?.mcp_session_id);
+  applyAlias(params, 'remoteCodeModel', params.remote_code_model, argumentObject?.remoteCodeModel, argumentObject?.remote_code_model, remoteCodeRun?.model);
+
+  const waitMs = normalizeInteger(firstDefined(params.waitMs, params.wait_ms, argumentObject?.waitMs, argumentObject?.wait_ms, remoteCodeRun?.waitMs, remoteCodeRun?.wait_ms));
+  if (waitMs !== undefined) {
+    params.waitMs = waitMs;
+  }
+
+  const maxTurns = normalizeInteger(firstDefined(params.maxTurns, params.max_turns, argumentObject?.maxTurns, argumentObject?.max_turns));
+  if (maxTurns !== undefined) {
+    params.maxTurns = maxTurns;
+  }
+
+  const adminMode = normalizeBoolean(firstDefined(params.adminMode, params.admin_mode, params.runnerAdmin, params.runner_admin, argumentObject?.adminMode, argumentObject?.admin_mode));
+  if (adminMode !== undefined) {
+    params.adminMode = adminMode;
+  }
+}
+
 class RemoteCliAgentTool extends ToolBase {
   constructor(options = {}) {
     super({
@@ -121,6 +247,9 @@ class RemoteCliAgentTool extends ToolBase {
           model: { type: 'string' },
           apiMode: { type: 'string' },
         },
+      },
+      hooks: {
+        beforeExecute: normalizeRemoteCliAgentParams,
       },
     });
 

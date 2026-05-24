@@ -20,9 +20,10 @@ Sandbox path:
 - Keep preview bundles static-safe: one `index.html`, local CSS/assets, no uncompiled build-only classes.
 
 Remote path:
-- Prefer `remote-cli-agent` for scoped remote software creation, update, deploy, and verification loops.
-- Prefer `remote-command` for one-off kubectl, logs, service checks, network checks, and status inspection.
-- Prefer `k3s-deploy` for standard repo sync, manifest apply, image update, and rollout checks.
+- Prefer `remote-cli-agent` for scoped remote software creation, update, deploy, and verification loops. Its params use `task`, not `command`.
+- Prefer `remote-command` for one-off kubectl, logs, service checks, network checks, and status inspection. Its params use `command`.
+- Prefer `k3s-deploy` for standard repo sync, manifest apply, image update, and rollout checks after source/image/manifests already exist.
+- Read `docs/agent-grep/remote-tools.md` when the remote lane is not obvious.
 - Start remote reconnects with the baseline from `agents.md`.
 - Remote agents should report `WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, and `BLOCKER` when relevant.
 
@@ -34,6 +35,7 @@ Proof checklist:
 - Any blocker is reported plainly with the next distinct recovery path.
 
 Good grep targets:
+- `docs/agent-grep/remote-tools.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`
 - `src/agent-sdk/tool-docs/remote-command.md`
 - `src/agent-sdk/tool-docs/k3s-deploy.md`

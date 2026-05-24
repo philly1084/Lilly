@@ -5,6 +5,7 @@ const { config } = require('./config');
 const { runtimeDiagnostics } = require('./runtime-diagnostics');
 const { AGENT_NOTES_CHAR_LIMIT } = require('./agent-notes');
 const { SELF_REFLECTION_UPDATE_TOOL_ID } = require('./self-reflection-updater');
+const { hasSelfReflectionUpdateIntentText } = require('./self-reflection-intent');
 const { stripAgentJournalBlocks } = require('./agent-journal');
 const settingsController = require('./routes/admin/settings.controller');
 const {
@@ -2004,25 +2005,6 @@ function hasPublicSourceIndexIntent(prompt = '') {
     ].some((pattern) => pattern.test(source));
 }
 
-function hasSelfReflectionUpdateIntent(prompt = '') {
-    const source = String(prompt || '').trim();
-    if (!source) {
-        return false;
-    }
-
-    return [
-        /\bself[- ]reflection\b/i,
-        /\bself[- ]reflect(?:ive)?\b/i,
-        /\brecursive\s+updates?\b/i,
-        /\b(full\s+hermes|hermes\s+(?:style|mode|profile|files?))\b/i,
-        /\b(update|patch|revise)\b[\s\S]{0,80}\b(soul\.?md|user\.?md|soul file|user profile)\b/i,
-        /\bmodel card\b[\s\S]{0,80}\b(update|reflection|learning|skill|memory|notes?)\b/i,
-        /\b(update|patch|revise)\b[\s\S]{0,80}\b(skill|skills|user files?|carryover notes?|agent notes?|programming)\b/i,
-        /\b(save|remember)\b[\s\S]{0,80}\b(workflow|approach|for next time|future sessions?)\b/i,
-        /\bnext time\b[\s\S]{0,80}\b(skill|remember|update|notes?)\b/i,
-    ].some((pattern) => pattern.test(source));
-}
-
 function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     const executionProfile = normalizeExecutionProfile(
         options?.executionProfile
@@ -2109,7 +2091,7 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
         const sessionIsolation = isSessionIsolationEnabled({
             sessionIsolation: options?.toolContext?.sessionIsolation,
         });
-        return !sessionIsolation && hasSelfReflectionUpdateIntent(prompt);
+        return !sessionIsolation && hasSelfReflectionUpdateIntentText(prompt);
     }
 
     if (toolId === 'agent-delegate') {
@@ -3694,7 +3676,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add('agent-notes-write');
     }
 
-    if (!sessionIsolation && availableToolIds.has(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntent(prompt)) {
+    if (!sessionIsolation && availableToolIds.has(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
         selectedIds.add(SELF_REFLECTION_UPDATE_TOOL_ID);
     }
 
@@ -4084,6 +4066,8 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
 
     if (!sessionIsolation && automaticTools.some((entry) => entry.id === SELF_REFLECTION_UPDATE_TOOL_ID)) {
         guidance.push('- Use `self-reflection-update` when a user correction, model-card finding, or completed multi-step workflow should update Hermes-style `soul.md`/`user.md`, durable carryover notes, or the registered skill/procedure that governs future work.');
+        guidance.push('- If the user says the soul card or user card is not growing, map those cards to bounded `soul.md` and `user.md` updates through `self-reflection-update`.');
+        guidance.push('- When the user explicitly asks the agent to grow, learn, evolve, or adapt from your interactions, capture only stable durable lessons; prefer `user_profile_replace` for user/relationship facts and `soul_replace` only for lasting assistant voice or behavior changes.');
         guidance.push('- Prefer `self-reflection-update` over separate notes and skill writes when one reflection needs to apply multiple bounded updates. Include a short `reflection`, a trigger, and at most a few structured actions.');
         guidance.push('- Use `soul_replace` only for the complete bounded personality/voice file, `user_profile_replace` only for the complete bounded `user.md` profile, and `agent_notes_replace` only for the complete carryover notes file.');
         guidance.push('- Do not use `self-reflection-update` for prompt-surface rewrites outside the Hermes files, current task state, logs, secrets, or its own reflection result. Nested reflection calls are rejected.');

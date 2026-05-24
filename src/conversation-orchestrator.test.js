@@ -394,6 +394,8 @@ describe('Planner policy packs', () => {
 
         const plannerPrompt = llmClient.complete.mock.calls[0]?.[0] || '';
         expect(plannerPrompt).toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`');
+        expect(plannerPrompt).toContain('`remote-cli-agent` is the outer KimiBuilt tool');
+        expect(plannerPrompt).toContain('do not put raw shell fields');
         expect(plannerPrompt).not.toContain('Every `agent-workload` step must use the deferred workload schema only');
     });
 
@@ -417,7 +419,7 @@ describe('Planner policy packs', () => {
         const plannerPrompt = llmClient.complete.mock.calls[0]?.[0] || '';
         expect(plannerPrompt).toContain('require the builder to follow this frontend quality bar');
         expect(plannerPrompt).toContain('first viewport must communicate the product');
-        expect(plannerPrompt).toContain('real controls, states, and interactions');
+        expect(plannerPrompt).toContain('real state and interaction plumbing');
         expect(plannerPrompt).toContain('visual assets that reveal the actual product');
         expect(plannerPrompt).toContain('desktop and mobile screenshots');
         expect(plannerPrompt).toContain('iteration pass after the first render');
@@ -5490,6 +5492,37 @@ describe('ConversationOrchestrator', () => {
         expect(researchPolicy.candidateToolIds).toContain('web-search');
         expect(scrapePolicy.candidateToolIds).toContain('web-search');
         expect(scrapePolicy.candidateToolIds).toContain('web-scrape');
+    });
+
+    test('routes user and soul card growth requests to bounded self-reflection', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['self-reflection-update', 'agent-notes-write'].includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective: "The agent isn't updating the user card or soul card. Can we make sure the agents are growing with our interactions?",
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+        const runtimeInstructions = orchestrator.buildRuntimeInstructions({
+            executionProfile: 'default',
+            allowedToolIds: toolPolicy.allowedToolIds,
+            toolPolicy,
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('self-reflection-update');
+        expect(runtimeInstructions).toContain('soul cards and user cards');
+        expect(runtimeInstructions).toContain('stable durable lessons');
     });
 
     test('surfaces user-checkpoint to planners for web-chat decision gates', async () => {

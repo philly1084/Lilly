@@ -6,6 +6,28 @@ Use this tool when the user asks for backend CLI agents behind the router to wor
 
 For most remote software deployments, prefer `remote-cli-agent` over one-shot `remote-command`: if an app, website, service, dashboard, frontend, or game needs to be created or changed and put live, let the remote CLI agent own the author -> build/test -> deploy -> verify loop.
 
+Layer boundary:
+- `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `targetId`, `cwd`, `sessionId`, `mcpSessionId`, `waitMs`, and `adminMode`.
+- `remote_code_run` and `remote_code_status` are inner MCP tools used by the remote agent after this tool starts.
+- Do not send raw shell fields such as `command`, `args`, `executable`, or `shell` to `remote-cli-agent`. Use `remote-command` for one direct command.
+- Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
+
+Outer tool call shape:
+
+```json
+{
+  "task": "Build/fix/deploy the app and verify the public URL.",
+  "adminMode": true,
+  "targetId": "prod",
+  "cwd": "/srv/apps/my-app",
+  "waitMs": 30000,
+  "sessionId": "optional prior remote coding session",
+  "mcpSessionId": "optional prior MCP session"
+}
+```
+
+For the short lane picker, read `src/agent-sdk/tool-docs/remote-tools.md`.
+
 Server-side configuration:
 
 ```bash

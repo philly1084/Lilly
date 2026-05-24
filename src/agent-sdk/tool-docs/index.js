@@ -267,6 +267,7 @@ const TOOL_SUPPORT = {
     ],
   },
   'ssh-execute': { status: 'requires_setup', notes: ['Requires SSH target credentials or cluster secret configuration.'] },
+  'remote-tools': { status: 'stable', notes: ['Compact lane picker for remote-cli-agent, remote-command, remote-workbench, k3s-deploy, and inner remote_code_run/status boundaries.'] },
   'remote-command': { status: 'requires_setup', notes: ['Requires SSH target credentials or cluster secret configuration.', 'Optimized for Ubuntu/Linux host and k3s cluster operations in this project.', 'Includes a Playwright/Chromium UI visual-check catalog entry when the runner image exposes the helper.', 'Runner profile admin is available only for explicitly approved privileged operations.'] },
   'remote-workbench': { status: 'requires_setup', notes: ['Structured remote runner actions for repo inspection, guarded file reads/writes, patch application, build/test, logs, rollout, deployment verification, and UI visual checks.', 'Uses inspect/build/deploy runner profiles instead of sending every operation through the deploy lane.'] },
   'remote-cli-agent': {

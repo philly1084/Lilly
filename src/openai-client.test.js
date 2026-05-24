@@ -1170,12 +1170,18 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(selectedTools.map((tool) => tool.id)).not.toContain('agent-notes-write');
     });
 
-    test('selects self-reflection-update only for explicit durable learning requests', () => {
+    test('selects self-reflection-update for explicit durable learning and card growth requests', () => {
         const selectedTools = __testUtils.selectAutomaticToolDefinitions([
             { id: 'self-reflection-update' },
         ], 'Use the model card finding to update the user files and the skill we were working with.');
 
         expect(selectedTools.map((tool) => tool.id)).toContain('self-reflection-update');
+
+        const cardGrowthTools = __testUtils.selectAutomaticToolDefinitions([
+            { id: 'self-reflection-update' },
+        ], "The agent isn't updating the user card or soul card. Can we make sure the agents are growing with our interactions?");
+
+        expect(cardGrowthTools.map((tool) => tool.id)).toContain('self-reflection-update');
 
         const ordinaryTools = __testUtils.selectAutomaticToolDefinitions([
             { id: 'self-reflection-update' },
@@ -1190,6 +1196,8 @@ describe('openai-client automatic tool orchestration helpers', () => {
         ]);
 
         expect(guidance).toContain('Hermes-style `soul.md`/`user.md`');
+        expect(guidance).toContain('soul card or user card');
+        expect(guidance).toContain('grow, learn, evolve, or adapt');
         expect(guidance).toContain('`user_profile_replace`');
         expect(guidance).toContain('at most a few structured actions');
         expect(guidance).toContain('Nested reflection calls are rejected');

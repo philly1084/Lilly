@@ -54,7 +54,7 @@ Clients (CLI / Web Chat / Canvas / Notation)
 When an agent needs a small workflow doc instead of the full project instructions, start with `docs/agent-grep/`.
 
 ```bash
-rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY" docs/agent-grep src/agent-sdk/tool-docs data/skills
+rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|REMOTE_TOOLS|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY" docs/agent-grep src/agent-sdk/tool-docs data/skills
 ```
 
 Use these compact docs to find copyable grep commands, the tool-use rhythm, tool lookup paths, new-tool update checklist, design research steps, skill authoring rules, and build/verify proof loops before loading longer runbooks.
@@ -252,6 +252,9 @@ When agents are using SSH or remote command tools:
 - Prefer `remote-cli-agent` for most remote software creation, update, and deployment work where an app, website, service, dashboard, or frontend must be changed and put live. Use `adminMode: true` for these scoped deployment loops so the remote agent can use the configured admin-capable CLI runner lane.
 - Prefer `k3s-deploy` for standard deploy operations: repo sync, manifest apply, image update, and rollout checks.
 - Prefer `remote-command` for kubectl inspection, logs, service status, network checks, package installs, one-off fixes, and post-deploy verification.
+- Use `remote-workbench` for structured remote repo/file/build/test/log/rollout actions when the action exists; use `remote-command` for expert one-off shell that does not fit a structured action.
+- Keep the boundary clear: the KimiBuilt-side planner calls `remote-cli-agent` with params such as `task`, `adminMode`, `targetId`, `cwd`, `sessionId`, `mcpSessionId`, and `waitMs`; the inner remote agent is the one that calls `remote_code_run` and `remote_code_status`.
+- Do not send raw shell fields such as `command`, `args`, `shell`, or `executable` to `remote-cli-agent`. Use `remote-command` when the desired action is a single non-interactive command.
 - If `remote-cli-agent` asks for user input or emits `USER_INPUT_REQUIRED`, forward that concise decision to the user and continue the same remote CLI session with the answer. If it repeats the same blocked command or root error twice without a materially changed strategy, stop that loop and report the blocker plus the next distinct recovery path.
 - Default public web domain is `demoserver2.buzz` unless Admin deploy settings override it.
 - Wildcard DNS is in front of `demoserver2.buzz`; create concrete host routes such as `app.demoserver2.buzz`, not wildcard Ingress rules.
@@ -273,6 +276,7 @@ hostname && whoami && uname -m && (test -f /etc/os-release && sed -n '1,6p' /etc
 - For remote website/dashboard builds, run UI/UX self-checks with Playwright/Chromium when a preview or public URL exists. Prefer `node /app/bin/kimibuilt-ui-check.js <url> --out ui-checks` on the runner and use backend `web-scrape` with `browser: true`, `captureScreenshot: true`, and desktop/mobile `viewport` values to persist screenshot artifacts.
 - Keep remote command batches small and purposeful: baseline -> inspect -> fix -> verify.
 - Avoid interactive commands and editors unless the user explicitly asks for that style of access.
+- See `docs/agent-grep/remote-tools.md` or `src/agent-sdk/tool-docs/remote-tools.md` when choosing between remote tools.
 - See `src/agent-sdk/tool-docs/remote-command.md` for the reusable command catalog.
 - See `k8s/K3S_RANCHER_PLAYBOOK.md` for the repo-local k3s/Rancher deployment and TLS/DNS playbook.
 

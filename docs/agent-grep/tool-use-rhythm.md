@@ -27,6 +27,7 @@ Tool habits:
 - Use `skill-context` before inventing new instructions.
 - Use `remote-cli-agent` for remote build/deploy loops, not ad hoc local guesses.
 - Use `remote-command` for one-off remote status, logs, kubectl, and network checks.
+- Use `docs/agent-grep/remote-tools.md` before mixing `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
 - Use `self-reflection-update` only for bounded durable updates and dry-run first when unsure.
 
 Do not:
@@ -45,6 +46,7 @@ Good final answer shape:
 Good grep targets:
 - `docs/agent-grep/grep-quickstart.md`
 - `docs/agent-grep/tool-lookup.md`
+- `docs/agent-grep/remote-tools.md`
 - `docs/agent-grep/build-and-verify.md`
 - `src/agent-sdk/tool-docs/tool-doc-read.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`

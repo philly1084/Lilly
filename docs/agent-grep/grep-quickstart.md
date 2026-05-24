@@ -10,9 +10,9 @@ Use when:
 Local Windows/PowerShell:
 
 ```powershell
-rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY" docs/agent-grep agents.md
+rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|REMOTE_TOOLS|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY" docs/agent-grep AGENTS.md
 rg -n "tool-id|route-name|error text|user phrase" src frontend docs data/skills
-rg --files | rg "docs/agent-grep|src/agent-sdk/tool-docs|data/skills|agents.md"
+rg --files | rg "docs/agent-grep|src/agent-sdk/tool-docs|data/skills|AGENTS.md"
 ```
 
 Local repo map:
@@ -26,7 +26,7 @@ Remote Linux fallback:
 
 ```bash
 find docs/agent-grep src/agent-sdk/tool-docs data/skills -type f | sort | head -n 200
-grep -RIn "AGENT_DOC\|GREP_QUICKSTART\|TOOL_USE_RHYTHM\|TOOL_LOOKUP\|ADDING_TOOLS\|DESIGN_RESEARCH\|SKILL_AUTHORING\|BUILD_VERIFY" docs/agent-grep agents.md
+grep -RIn "AGENT_DOC\|GREP_QUICKSTART\|TOOL_USE_RHYTHM\|TOOL_LOOKUP\|REMOTE_TOOLS\|ADDING_TOOLS\|DESIGN_RESEARCH\|SKILL_AUTHORING\|BUILD_VERIFY" docs/agent-grep AGENTS.md
 grep -RIn "tool-id\|route-name\|error text\|user phrase" src frontend docs data/skills
 ```
 

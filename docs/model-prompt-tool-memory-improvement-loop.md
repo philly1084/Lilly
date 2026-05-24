@@ -58,6 +58,7 @@ Use it when one reflection should update more than one durable surface, such as:
 
 - Replacing the bounded `soul.md` personality/voice file with a better distilled version.
 - Replacing the bounded `user.md` profile file with better stable user and collaboration facts.
+- Updating the user-facing soul card or user card after an explicit growth request, using those card names as aliases for `soul.md` and `user.md`.
 - Replacing the compact `agent-notes.md` carryover file with a better distilled version.
 - Patching a precise sentence or paragraph inside one registered skill.
 - Creating or updating one compact registered skill.

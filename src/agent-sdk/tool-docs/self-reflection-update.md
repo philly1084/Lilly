@@ -1,9 +1,11 @@
 # self-reflection-update
 
-Purpose: apply a small, auditable self-reflection update to durable KimiBuilt guidance after a user correction, model-card finding, eval result, or completed workflow reveals a stable improvement.
+Purpose: apply a small, auditable self-reflection update to durable KimiBuilt guidance after a user correction, model-card finding, eval result, explicit user/soul card growth request, or completed workflow reveals a stable improvement.
 
 Use when:
 - a durable lesson should update Hermes-style `soul.md`/`user.md`, carryover notes, a registered skill, or a combination
+- the user says the soul card or user card is not growing; map those card names to bounded `soul.md` and `user.md` replacements
+- the user explicitly asks the agent to grow, learn, evolve, or adapt from interactions, and the lesson is stable enough for future sessions
 - a model-card finding needs a short audit note
 - one bounded reflection should coordinate up to four related durable updates
 

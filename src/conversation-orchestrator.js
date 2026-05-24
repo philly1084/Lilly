@@ -123,6 +123,7 @@ const {
     inferAgentRolePipeline,
 } = require('./orchestration/agent-roles');
 const { SELF_REFLECTION_UPDATE_TOOL_ID } = require('./self-reflection-updater');
+const { hasSelfReflectionUpdateIntentText } = require('./self-reflection-intent');
 const { normalizeBrowserReachableUrl } = require('./agent-sdk/tools/categories/web/internal-url');
 const {
     inferSurfaceFinisher,
@@ -163,6 +164,7 @@ const RELATIONSHIP_CALCULATION_TOOL_ID = 'pii-relationship-calculate';
 const DISABLED_AUTONOMOUS_TOOL_IDS = new Set([]);
 const AUTONOMY_CONTINUATION_CHECKPOINT_ID_PREFIX = 'checkpoint-autonomy-continue';
 const REMOTE_COMMAND_DOC_PATH = path.join(__dirname, 'agent-sdk', 'tool-docs', 'remote-command.md');
+const REMOTE_TOOLS_DOC_PATH = path.join(__dirname, 'agent-sdk', 'tool-docs', 'remote-tools.md');
 const K3S_PLAYBOOK_DOC_PATH = path.join(__dirname, '..', 'k8s', 'K3S_RANCHER_PLAYBOOK.md');
 const REMOTE_BLOCKING_ERROR_PATTERNS = [
     /no ssh host configured/i,
@@ -245,8 +247,19 @@ function extractMarkdownSection(content = '', heading = '') {
 }
 
 function buildHydratedRemoteOpsGuidanceText() {
+    const remoteToolsDoc = readLocalGuidanceFile(REMOTE_TOOLS_DOC_PATH);
     const remoteCommandDoc = readLocalGuidanceFile(REMOTE_COMMAND_DOC_PATH);
     const playbookDoc = readLocalGuidanceFile(K3S_PLAYBOOK_DOC_PATH);
+
+    const remoteToolsSections = [
+        'Remote Tool Decision Map',
+        'Call Shape Cheat Sheet',
+        'Failure Rules',
+        'Completion Proof',
+    ]
+        .map((heading) => extractMarkdownSection(remoteToolsDoc, heading))
+        .filter(Boolean)
+        .join('\n\n');
 
     const remoteCommandSections = [
         'Baseline',
@@ -282,6 +295,12 @@ function buildHydratedRemoteOpsGuidanceText() {
         .join('\n\n');
 
     return [
+        remoteToolsSections
+            ? [
+                '[Hydrated from src/agent-sdk/tool-docs/remote-tools.md]',
+                remoteToolsSections,
+            ].join('\n')
+            : '',
         remoteCommandSections
             ? [
                 '[Hydrated from src/agent-sdk/tool-docs/remote-command.md]',
@@ -1622,25 +1641,6 @@ function hasGroundedResearchToolResult(toolEvents = []) {
         const toolId = String(event?.result?.toolId || event?.toolCall?.function?.name || '').trim();
         return event?.result?.success !== false && ['web-search', 'web-fetch', 'web-scrape'].includes(toolId);
     });
-}
-
-function hasSelfReflectionUpdateIntentText(prompt = '') {
-    const source = String(prompt || '').trim();
-    if (!source) {
-        return false;
-    }
-
-    return [
-        /\bself[- ]reflection\b/i,
-        /\bself[- ]reflect(?:ive)?\b/i,
-        /\brecursive\s+updates?\b/i,
-        /\b(full\s+hermes|hermes\s+(?:style|mode|profile|files?))\b/i,
-        /\b(update|patch|revise)\b[\s\S]{0,80}\b(soul\.?md|user\.?md|soul file|user profile)\b/i,
-        /\bmodel card\b[\s\S]{0,80}\b(update|reflection|learning|skill|memory|notes?)\b/i,
-        /\b(update|patch|revise)\b[\s\S]{0,80}\b(skill|skills|user files?|carryover notes?|agent notes?|programming)\b/i,
-        /\b(save|remember)\b[\s\S]{0,80}\b(workflow|approach|for next time|future sessions?)\b/i,
-        /\bnext time\b[\s\S]{0,80}\b(skill|remember|update|notes?)\b/i,
-    ].some((pattern) => pattern.test(source));
 }
 
 function buildScoredCandidateToolMap({
@@ -8400,6 +8400,9 @@ function buildPlannerPolicyPacks({
         remote: remoteRelevant
             ? [
                 'Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`; do not route those phrases to a local shell or code sandbox.',
+                'Treat the explicit phrases "remote cli agent", "remote coding agent", "assisted cli", and `remote_code_run` as `remote-cli-agent` intent when source changes, build, deploy, or verification work should be owned by a remote coding agent.',
+                '`remote-cli-agent` is the outer KimiBuilt tool and its params use `task`, `adminMode`, `targetId`, `cwd`, `sessionId`, `mcpSessionId`, and `waitMs`; do not put raw shell fields such as `command`, `args`, `shell`, or `executable` in that tool.',
+                'The inner remote agent uses `remote_code_run` and `remote_code_status`; the planner should not invent direct MCP calls unless it is already inside the remote-cli-agent runner.',
                 'For most remote software creation, update, and deployment requests where an app, website, service, dashboard, or frontend must be changed and put live, prefer `remote-cli-agent` with `params.adminMode:true` so the remote coding agent owns authoring, build, deploy, and verification through the configured admin-capable CLI runner lane.',
                 `For remote website, dashboard, landing-page, app workspace, frontend demo, HTML prototype, or UI mockup work, include this frontend quality bar in the remote agent objective:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false })}`,
                 'Use `remote-command` for quick non-interactive host inspection, kubectl/log checks, one-off admin repairs, and post-deploy verification. Do not choose legacy raw SSH tooling when `remote-command` is available.',
@@ -11833,7 +11836,15 @@ class ConversationOrchestrator extends EventEmitter {
                 })
                 || '',
             ).trim();
-            const rawTask = String(normalizedStep.params.task || objective || '').trim();
+            const rawTask = String(
+                normalizedStep.params.task
+                || normalizedStep.params.prompt
+                || normalizedStep.params.objective
+                || normalizedStep.params.request
+                || normalizedStep.params.message
+                || objective
+                || '',
+            ).trim();
             const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
                 priorAgentState,
                 objective: rawTask || objective,
@@ -13245,6 +13256,7 @@ class ConversationOrchestrator extends EventEmitter {
             parts.push(`Remote CLI runtime inventory:\n${toolPolicy.remoteCliInventorySummary}`);
             parts.push('Use `remote-command` to run commands through the online remote runner and prefer commands that match the reported remote CLI inventory.');
             if (allowedToolIds.includes('remote-cli-agent')) {
+                parts.push('Remote tool boundary: call the outer `remote-cli-agent` tool with a prose `task`; do not pass `command`, `args`, `shell`, `executable`, or a direct `remote_code_run` wrapper as its params.');
                 parts.push('For remote app, website, service, dashboard, or frontend work that needs changes deployed, prefer `remote-cli-agent` with `adminMode:true` so the remote coding agent can use the configured admin-capable CLI runner lane for the scoped deployment.');
                 parts.push(`For remote website/dashboard/front-end builds, pass this frontend quality bar into the remote agent objective and hold deploy readiness on visual QA:\n${formatFrontendQualityBarForPrompt({ includeWrapper: false })}`);
                 parts.push('If a remote CLI agent run requests a user choice, forward the concise question and continue the same session with the answer. If it repeats the same blocked command or root error twice without a changed strategy, stop that loop and surface the blocker.');
@@ -13309,6 +13321,7 @@ class ConversationOrchestrator extends EventEmitter {
 
         if (allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID)) {
             parts.push('Use `self-reflection-update` when a user correction, model-card finding, or completed workflow reveals a durable improvement that should update Hermes-style soul/user files, carryover notes, or registered skill guidance.');
+            parts.push('Treat user-facing soul cards and user cards as the bounded `soul.md` and `user.md` surfaces; growth requests should update these only with stable durable lessons.');
             parts.push('Keep `self-reflection-update` sparse: one reflection, at most a few actions, no secrets or logs, and no recursive calls from its own result.');
             parts.push('Use `skill_patch` when updating a small part of an existing skill; use `soul_replace`, `user_profile_replace`, and `agent_notes_replace` only with the full compact replacement file.');
         }

@@ -4,6 +4,8 @@ Purpose: run restricted k3s deployment actions through the remote runner when av
 
 Lane boundary: `k3s-deploy` is the deploy-only lane. Use `remote-command` for remote CLI authoring, repo inspection, build/test loops, `kubectl describe`, logs, and HTTPS verification. Use `git-safe` for repository save/push work and `k3s-deploy` only when deployment is the next planned step.
 
+Short picker: read `src/agent-sdk/tool-docs/remote-tools.md` when choosing between `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
+
 Repository sync supports GitHub clone URLs and the configured Git provider host. For generated k3s websites/apps, prefer the configured GitLab repository as the editable source of truth; at minimum, deploy from a git-backed remote workspace and commit changes before running this tool.
 
 Allowed actions:

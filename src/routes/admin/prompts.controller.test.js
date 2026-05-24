@@ -274,6 +274,8 @@ describe('admin prompts controller', () => {
     const prompt = promptsController.getSurfaceById('conversation-planner');
 
     expect(prompt.content).toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for the `remote-command` tool.');
+    expect(prompt.content).toContain('explicit phrases "remote cli agent", "remote coding agent", "assisted cli", and remote_code_run');
+    expect(prompt.content).toContain('`remote-cli-agent` is the outer KimiBuilt tool');
     expect(prompt.content).toContain('prefer `remote-cli-agent` so the remote coding agent owns authoring, build, deploy, and verification');
     expect(prompt.content).toContain('pass `params.adminMode:true`');
     expect(prompt.content).toContain('Impressive Frontend Websites standard');
