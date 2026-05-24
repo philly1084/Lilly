@@ -1,7 +1,7 @@
 const DEFAULT_TTS_CACHE_LIMIT = 24;
 const DEFAULT_BROWSER_VOICE_ID = 'browser:default';
 const DEFAULT_PIPER_CHUNK_TARGET_CHARS = 760;
-const DEFAULT_REALTIME_CHUNK_TARGET_CHARS = 620;
+const DEFAULT_REALTIME_CHUNK_TARGET_CHARS = 72;
 const DEFAULT_TTS_MAX_TEXT_CHARS = 2400;
 const DEFAULT_PIPER_FIRST_CHUNK_SENTENCES = 1;
 const DEFAULT_PIPER_SECOND_CHUNK_SENTENCES = 1;
@@ -14,8 +14,8 @@ const DEFAULT_TTS_INITIAL_BUFFER_CHUNKS = 1;
 const DEFAULT_TTS_INITIAL_BUFFER_SECONDS = 2.2;
 const DEFAULT_TTS_INITIAL_BUFFER_MAX_WAIT_MS = 650;
 const DEFAULT_TTS_PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
-const DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS = 8000;
-const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 7000;
+const DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS = 24000;
+const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 24000;
 const DEFAULT_REALTIME_HEDGE_DELAY_MS = 900;
 const DEFAULT_REALTIME_CHUNK_STALL_MS = 2500;
 const DEFAULT_REALTIME_CHUNK_PAUSE_SECONDS = 0.08;
@@ -304,9 +304,9 @@ function splitPreparedSpeechChunk(text = '', options = {}) {
         return [];
     }
 
-    const absoluteMaxChars = Math.max(120, Number(options.absoluteMaxChars) || DEFAULT_TTS_MAX_TEXT_CHARS);
+    const absoluteMaxChars = Math.max(60, Number(options.absoluteMaxChars) || DEFAULT_TTS_MAX_TEXT_CHARS);
     const targetChunkChars = Math.max(
-        120,
+        60,
         Math.min(
             absoluteMaxChars,
             Number(options.targetChunkChars) || DEFAULT_PIPER_CHUNK_TARGET_CHARS,
@@ -328,9 +328,9 @@ function groupSpeechSentencesIntoChunks(sentences = [], options = {}) {
     }
 
     const targetChunkChars = Math.max(
-        120,
+        60,
         Math.min(
-            Math.max(120, Number(options.absoluteMaxChars) || DEFAULT_TTS_MAX_TEXT_CHARS),
+            Math.max(60, Number(options.absoluteMaxChars) || DEFAULT_TTS_MAX_TEXT_CHARS),
             Number(options.targetChunkChars) || DEFAULT_PIPER_CHUNK_TARGET_CHARS,
         ),
     );
@@ -415,9 +415,9 @@ function splitTextIntoSpeechChunks(input = '', options = {}) {
         return [];
     }
 
-    const absoluteMaxChars = Math.max(120, Number(options.absoluteMaxChars) || DEFAULT_TTS_MAX_TEXT_CHARS);
+    const absoluteMaxChars = Math.max(60, Number(options.absoluteMaxChars) || DEFAULT_TTS_MAX_TEXT_CHARS);
     const targetChunkChars = Math.max(
-        120,
+        60,
         Math.min(
             absoluteMaxChars,
             Number(options.targetChunkChars) || DEFAULT_PIPER_CHUNK_TARGET_CHARS,
@@ -524,7 +524,7 @@ class WebChatTtsManager extends EventTarget {
             chunkTargetChars: clampNumber(
                 policy.chunkTargetChars,
                 DEFAULT_REALTIME_CHUNK_TARGET_CHARS,
-                180,
+                60,
                 maxTextChars,
             ),
             initialBufferChunks: clampNumber(
@@ -1502,6 +1502,9 @@ class WebChatTtsManager extends EventTarget {
                 timeoutMs: options.timeoutMs,
                 allowProviderFallback: options.allowProviderFallback,
             });
+            if (!result?.blob) {
+                throw new Error('Voice synthesis returned no audio.');
+            }
             this.cachedAudioBlobs.set(cacheKey, result.blob);
             this.trimCache();
             return {

@@ -453,10 +453,10 @@ const normalizedTtsRealtimeSynthesisLookahead = Math.max(
     ),
 );
 const normalizedTtsRealtimeChunkTargetChars = Math.max(
-    180,
+    60,
     Math.min(
         normalizedKokoroMaxTextChars,
-        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 620,
+        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 72,
     ),
 );
 const normalizedTtsRealtimeInitialBufferChunks = Math.max(
@@ -491,14 +491,14 @@ const normalizedTtsRealtimePrimaryTimeoutMs = Math.max(
     3000,
     Math.min(
         normalizedKokoroTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 8000,
+        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 24000,
     ),
 );
 const normalizedTtsRealtimeFallbackTimeoutMs = Math.max(
     2000,
     Math.min(
         normalizedPiperTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 7000,
+        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 24000,
     ),
 );
 const normalizedTtsRealtimeHedgeDelayMs = Math.max(
@@ -511,8 +511,8 @@ const normalizedTtsRealtimeHedgeDelayMs = Math.max(
 const normalizedTtsRealtimeChunkStallMs = Math.max(
     350,
     Math.min(
-        5000,
-        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 2500,
+        30000,
+        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 9000,
     ),
 );
 const normalizedPodcastVideoSegmentTimeoutMs = Math.max(
@@ -701,6 +701,16 @@ const config = {
             podcastTimeoutMs: normalizedKokoroPodcastTimeoutMs,
             podcastChunkChars: normalizedKokoroPodcastChunkChars,
             synthesisConcurrency: normalizedKokoroSynthesisConcurrency,
+            workerIsolation: process.env.KOKORO_TTS_WORKER_ISOLATION || 'process',
+            httpRetryAttempts: Math.max(
+                1,
+                Math.min(4, parseInt(process.env.KOKORO_TTS_HTTP_RETRY_ATTEMPTS, 10) || 2),
+            ),
+            httpRetryDelayMs: Math.max(
+                0,
+                Math.min(2000, parseInt(process.env.KOKORO_TTS_HTTP_RETRY_DELAY_MS, 10) || 160),
+            ),
+            httpConnectionClose: process.env.KOKORO_TTS_HTTP_CONNECTION_CLOSE !== 'false',
         },
         piper: {
             enabled: process.env.PIPER_TTS_ENABLED !== 'false',

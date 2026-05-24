@@ -2,6 +2,20 @@ const { parentPort } = require('worker_threads');
 const { config } = require('../config');
 const { KokoroTtsService } = require('./kokoro-tts-service');
 
+const ipc = parentPort
+    ? {
+        postMessage: (message) => parentPort.postMessage(message),
+        onMessage: (handler) => parentPort.on('message', handler),
+    }
+    : {
+        postMessage: (message) => {
+            if (typeof process.send === 'function') {
+                process.send(message);
+            }
+        },
+        onMessage: (handler) => process.on('message', handler),
+    };
+
 const service = new KokoroTtsService({
     ...(config.tts?.kokoro || {}),
     workerEnabled: false,
@@ -22,7 +36,7 @@ async function handleMessage(message = {}) {
     try {
         if (message.action === 'warm') {
             await service.getModel();
-            parentPort.postMessage({
+            ipc.postMessage({
                 id,
                 ok: true,
                 result: {
@@ -35,7 +49,7 @@ async function handleMessage(message = {}) {
 
         if (message.action === 'synthesize') {
             const result = await service.synthesize(message.payload || {});
-            parentPort.postMessage({
+            ipc.postMessage({
                 id,
                 ok: true,
                 result,
@@ -48,7 +62,7 @@ async function handleMessage(message = {}) {
         error.code = 'tts_worker_bad_action';
         throw error;
     } catch (error) {
-        parentPort.postMessage({
+        ipc.postMessage({
             id,
             ok: false,
             error: serializeError(error),
@@ -56,6 +70,6 @@ async function handleMessage(message = {}) {
     }
 }
 
-parentPort.on('message', (message) => {
+ipc.onMessage((message) => {
     handleMessage(message);
 });

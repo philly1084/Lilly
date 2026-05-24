@@ -361,6 +361,134 @@ describe('KokoroTtsService', () => {
         expect(result.audioBuffer.equals(Buffer.from('RIFF-worker-audio'))).toBe(true);
     });
 
+    test('supports process-isolated workers and normalizes IPC buffer payloads', async () => {
+        class FakeProcessWorker extends EventEmitter {
+            constructor() {
+                super();
+                this.messages = [];
+                this.connected = true;
+            }
+
+            send(message) {
+                this.messages.push(message);
+                setImmediate(() => this.emit('message', {
+                    id: message.id,
+                    ok: true,
+                    result: {
+                        provider: 'kokoro',
+                        audioBuffer: {
+                            type: 'Buffer',
+                            data: Array.from(Buffer.from('RIFF-process-worker-audio')),
+                        },
+                        contentType: 'audio/wav',
+                        text: message.payload?.text || '',
+                        voice: { id: message.payload?.voiceId || 'af_heart', provider: 'kokoro' },
+                    },
+                }));
+            }
+
+            kill() {
+                this.connected = false;
+            }
+        }
+
+        const worker = new FakeProcessWorker();
+        const service = new KokoroTtsService({
+            enabled: true,
+            modelId: 'test-model',
+            defaultVoiceId: 'af_heart',
+            voices: [{ id: 'af_heart', label: 'Heart Studio' }],
+            timeoutMs: 5000,
+            workerEnabled: true,
+        }, {
+            createWorker: () => worker,
+        });
+
+        const result = await service.synthesize({
+            text: 'Process worker synthesis',
+            voiceId: 'af_heart',
+        });
+
+        expect(service.getPublicConfig().diagnostics).toEqual(expect.objectContaining({
+            workerEnabled: true,
+            workerIsolation: 'process',
+        }));
+        expect(worker.messages.map((message) => message.action)).toEqual(['synthesize']);
+        expect(Buffer.isBuffer(result.audioBuffer)).toBe(true);
+        expect(result.audioBuffer.equals(Buffer.from('RIFF-process-worker-audio'))).toBe(true);
+    });
+
+    test('recovers by replacing an isolated worker after a native-style worker exit', async () => {
+        const workers = [];
+
+        class FakeProcessWorker extends EventEmitter {
+            constructor(index) {
+                super();
+                this.index = index;
+                this.messages = [];
+                this.connected = true;
+            }
+
+            send(message) {
+                this.messages.push(message);
+                if (message.payload?.text === 'Crash this worker.') {
+                    setImmediate(() => {
+                        this.connected = false;
+                        this.emit('exit', 133);
+                    });
+                    return;
+                }
+
+                setImmediate(() => this.emit('message', {
+                    id: message.id,
+                    ok: true,
+                    result: {
+                        provider: 'kokoro',
+                        audioBuffer: Uint8Array.from(Buffer.from(`RIFF-worker-${this.index}`)),
+                        contentType: 'audio/wav',
+                        text: message.payload?.text || '',
+                        voice: { id: message.payload?.voiceId || 'af_heart', provider: 'kokoro' },
+                    },
+                }));
+            }
+
+            kill() {
+                this.connected = false;
+            }
+        }
+
+        const service = new KokoroTtsService({
+            enabled: true,
+            modelId: 'test-model',
+            defaultVoiceId: 'af_heart',
+            voices: [{ id: 'af_heart', label: 'Heart Studio' }],
+            timeoutMs: 5000,
+            workerEnabled: true,
+        }, {
+            createWorker: () => {
+                const worker = new FakeProcessWorker(workers.length);
+                workers.push(worker);
+                return worker;
+            },
+        });
+
+        await expect(service.synthesize({
+            text: 'Crash this worker',
+            voiceId: 'af_heart',
+        })).rejects.toMatchObject({
+            statusCode: 503,
+            code: 'tts_unavailable',
+        });
+
+        const result = await service.synthesize({
+            text: 'Next request survives',
+            voiceId: 'af_heart',
+        });
+
+        expect(workers).toHaveLength(2);
+        expect(result.audioBuffer.equals(Buffer.from('RIFF-worker-1'))).toBe(true);
+    });
+
     test('caps worker mode to one synthesis lane to avoid unsafe onnxruntime re-entry', async () => {
         let releaseFirst = null;
         let firstPosted = null;

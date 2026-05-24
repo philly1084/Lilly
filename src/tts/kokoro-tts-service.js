@@ -1,5 +1,6 @@
 const fsSync = require('fs');
 const path = require('path');
+const { fork } = require('child_process');
 const { Worker } = require('worker_threads');
 const { config } = require('../config');
 const { createServiceError, normalizeTextForSpeech } = require('./speech-text');
@@ -56,6 +57,36 @@ function withTimeout(promise, timeoutMs, message) {
         });
 }
 
+function normalizeWorkerIsolation(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['thread', 'worker', 'worker_thread', 'worker-thread'].includes(normalized)) {
+        return 'thread';
+    }
+    return 'process';
+}
+
+function normalizeWorkerAudioBuffer(value) {
+    if (Buffer.isBuffer(value)) {
+        return value;
+    }
+    if (value instanceof ArrayBuffer) {
+        return Buffer.from(value);
+    }
+    if (ArrayBuffer.isView(value)) {
+        return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    }
+    if (Array.isArray(value)) {
+        return Buffer.from(value);
+    }
+    if (value && value.type === 'Buffer' && Array.isArray(value.data)) {
+        return Buffer.from(value.data);
+    }
+    if (value && Array.isArray(value.data)) {
+        return Buffer.from(value.data);
+    }
+    return value;
+}
+
 class KokoroTtsService {
     constructor(ttsConfig = config.tts?.kokoro || {}, dependencies = {}) {
         this.ttsConfig = {
@@ -64,7 +95,22 @@ class KokoroTtsService {
         this.importKokoro = dependencies.importKokoro || (() => require('kokoro-js'));
         this.importTransformers = dependencies.importTransformers || (() => require('@huggingface/transformers'));
         this.workerEnabled = dependencies.workerEnabled ?? this.ttsConfig.workerEnabled === true;
-        this.createWorker = dependencies.createWorker || ((workerPath) => new Worker(workerPath));
+        this.workerIsolation = this.workerEnabled
+            ? normalizeWorkerIsolation(
+                dependencies.workerIsolation
+                || this.ttsConfig.workerIsolation
+                || process.env.KOKORO_TTS_WORKER_ISOLATION
+                || 'process',
+            )
+            : 'none';
+        this.createWorker = dependencies.createWorker || ((workerPath) => (
+            this.workerIsolation === 'thread'
+                ? new Worker(workerPath)
+                : fork(workerPath, [], {
+                    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+                    env: { ...process.env },
+                })
+        ));
         this.workerPath = dependencies.workerPath || path.join(__dirname, 'kokoro-synthesis-worker.js');
         this.worker = null;
         this.workerPool = [];
@@ -222,6 +268,7 @@ class KokoroTtsService {
             diagnostics: {
                 ...diagnostics,
                 workerEnabled: this.workerEnabled === true,
+                workerIsolation: this.workerIsolation,
                 synthesisConcurrency: this.maxSynthesisConcurrency,
             },
         };
@@ -341,9 +388,7 @@ class KokoroTtsService {
 
             if (message.ok) {
                 const result = message.result || {};
-                if (result.audioBuffer && !Buffer.isBuffer(result.audioBuffer)) {
-                    result.audioBuffer = Buffer.from(result.audioBuffer);
-                }
+                result.audioBuffer = normalizeWorkerAudioBuffer(result.audioBuffer);
                 request.resolve(result);
                 return;
             }
@@ -397,6 +442,30 @@ class KokoroTtsService {
         return descriptor;
     }
 
+    sendWorkerMessage(worker, message) {
+        if (typeof worker?.postMessage === 'function') {
+            worker.postMessage(message);
+            return;
+        }
+
+        if (typeof worker?.send === 'function' && worker.connected !== false) {
+            worker.send(message);
+            return;
+        }
+
+        throw createServiceError(503, 'Kokoro synthesis worker is not connected.', 'tts_unavailable');
+    }
+
+    async stopWorker(worker) {
+        if (typeof worker?.terminate === 'function') {
+            await worker.terminate();
+            return;
+        }
+        if (typeof worker?.kill === 'function') {
+            worker.kill();
+        }
+    }
+
     getWorkerDescriptor(options = {}) {
         const poolSize = this.getWorkerPoolSize();
         const requestedIndex = Number.isInteger(options.workerIndex)
@@ -431,9 +500,9 @@ class KokoroTtsService {
             this.workerPool[targetDescriptor.index] = null;
         }
         this.worker = this.workerPool[0]?.worker || null;
-        if (worker?.terminate) {
+        if (worker?.terminate || worker?.kill) {
             try {
-                await worker.terminate();
+                await this.stopWorker(worker);
             } catch (_error) {
                 // Best-effort recovery after a synthesis timeout.
             }
@@ -468,11 +537,18 @@ class KokoroTtsService {
             });
             descriptor.pendingRequestIds.add(id);
 
-            worker.postMessage({
-                id,
-                action,
-                payload,
-            });
+            try {
+                this.sendWorkerMessage(worker, {
+                    id,
+                    action,
+                    payload,
+                });
+            } catch (error) {
+                clearTimeout(timeoutId);
+                this.workerRequests.delete(id);
+                descriptor.pendingRequestIds.delete(id);
+                reject(error);
+            }
         });
     }
 
