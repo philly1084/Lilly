@@ -21,6 +21,7 @@ const DEFAULT_REALTIME_CHUNK_STALL_MS = 2500;
 const DEFAULT_REALTIME_CHUNK_PAUSE_SECONDS = 0.08;
 const DEFAULT_REALTIME_TRIM_EDGE_SECONDS = 0.12;
 const DEFAULT_REALTIME_TRIM_THRESHOLD = 0.0035;
+const DEFAULT_REALTIME_EMERGENCY_PROVIDER = 'kokoro';
 
 function getTtsProviderLabel(provider = '') {
     const normalizedProvider = String(provider || '').trim().toLowerCase();
@@ -55,6 +56,24 @@ function parsePolicyBoolean(value, fallback = false) {
     }
 
     return fallback;
+}
+
+function normalizeRealtimeEmergencyProvider(value = '', primaryProvider = 'kokoro', policy = {}) {
+    const normalizedPrimary = String(primaryProvider || 'kokoro').trim().toLowerCase() || 'kokoro';
+    const normalizedProvider = String(value || DEFAULT_REALTIME_EMERGENCY_PROVIDER).trim().toLowerCase();
+    if (!normalizedProvider || normalizedProvider === normalizedPrimary) {
+        return '';
+    }
+
+    const allowLowQualityFallback = parsePolicyBoolean(
+        policy.allowEmergencyProviderFallback ?? policy.allowLowQualityFallback,
+        false,
+    );
+    if (normalizedProvider === 'piper' && !allowLowQualityFallback) {
+        return '';
+    }
+
+    return normalizedProvider;
 }
 
 function normalizeSpeechSentence(line = '') {
@@ -578,7 +597,11 @@ class WebChatTtsManager extends EventTarget {
                 policy.skipStalledChunks ?? policy.allowChunkSkipping,
                 false,
             ),
-            emergencyProvider: String(policy.emergencyProvider || 'piper').trim().toLowerCase() || 'piper',
+            emergencyProvider: normalizeRealtimeEmergencyProvider(
+                policy.emergencyProvider,
+                policy.primaryProvider || this.getProvider?.() || this.provider || 'kokoro',
+                policy,
+            ),
         };
     }
 
@@ -900,8 +923,11 @@ class WebChatTtsManager extends EventTarget {
                 120,
                 Number(manifest?.maxTextChars) || DEFAULT_TTS_MAX_TEXT_CHARS,
             );
-            this.realtimePolicy = this.normalizeRealtimePolicy(manifest?.realtime || {});
             const manifestProvider = String(manifest?.provider || 'kokoro').trim() || 'kokoro';
+            this.realtimePolicy = this.normalizeRealtimePolicy({
+                ...(manifest?.realtime || {}),
+                primaryProvider: manifestProvider,
+            });
             const manifestProviderLabel = getTtsProviderLabel(manifestProvider);
             const manifestUnavailableMessage = manifestProvider === 'browser'
                 ? 'Browser voice playback is unavailable.'
@@ -927,11 +953,18 @@ class WebChatTtsManager extends EventTarget {
 
             if (manifestConfigured && manifestVoices.length > 0) {
                 this.available = true;
-                this.provider = manifest?.provider || manifestVoices[0]?.provider || 'piper';
-                this.voices = manifestVoices;
+                this.provider = manifestProvider;
+                const primaryVoices = manifestVoices.filter((voice) => {
+                    const voiceProvider = String(voice?.provider || manifestProvider).trim().toLowerCase();
+                    return voiceProvider === manifestProvider.toLowerCase();
+                });
+                this.voices = primaryVoices.length > 0 ? primaryVoices : manifestVoices;
                 this.diagnostics = manifestDiagnostics;
 
-                const fallbackVoiceId = String(manifest?.defaultVoiceId || this.voices[0]?.id || '').trim();
+                const manifestDefaultVoiceId = String(manifest?.defaultVoiceId || '').trim();
+                const fallbackVoiceId = this.voices.some((voice) => voice.id === manifestDefaultVoiceId)
+                    ? manifestDefaultVoiceId
+                    : String(this.voices[0]?.id || '').trim();
                 const requestedVoiceId = String(
                     this.storageGet(this.storageKeys.voiceId)
                     || this.selectedVoiceId
@@ -1187,12 +1220,18 @@ class WebChatTtsManager extends EventTarget {
     async synthesizeRealtimeChunkAudio(text, messageId = '', options = {}) {
         const policy = this.realtimePolicy || this.normalizeRealtimePolicy();
         const normalizedText = String(text || '').trim();
+        const primaryProvider = String(options.provider || this.getProvider() || this.provider || 'kokoro').trim().toLowerCase() || 'kokoro';
+        const emergencyProvider = normalizeRealtimeEmergencyProvider(
+            policy.emergencyProvider,
+            primaryProvider,
+            policy,
+        );
         const primaryOptions = {
             ...options,
             timeoutMs: this.getRealtimeChunkTimeoutMs(normalizedText, options),
             // Browser realtime playback owns failover with a separate hedged request.
-            // Keeping backend fallback off here prevents a slow Piper fallback from
-            // hiding the primary Kokoro result or surfacing as the main failure.
+            // Keeping backend fallback off here prevents a lower-quality provider
+            // from hiding the primary Kokoro result or surfacing as the main failure.
             allowProviderFallback: false,
         };
         let settled = false;
@@ -1208,15 +1247,19 @@ class WebChatTtsManager extends EventTarget {
             throw error;
         });
 
+        if (!emergencyProvider) {
+            return primaryPromise;
+        }
+
         const fallbackPromise = this.wait(policy.hedgeDelayMs).then(() => {
-            if (settled || !policy.emergencyProvider) {
+            if (settled) {
                 return new Promise(() => {});
             }
 
             fallbackStarted = true;
             return this.synthesizeAndPrepareMessageAudio(normalizedText, messageId, {
                 ...options,
-                provider: policy.emergencyProvider,
+                provider: emergencyProvider,
                 timeoutMs: this.getRealtimeChunkTimeoutMs(normalizedText, { ...options, fallback: true }),
                 allowProviderFallback: false,
                 showLoading: false,
@@ -1914,6 +1957,14 @@ class WebChatTtsManager extends EventTarget {
 }
 
 if (typeof window !== 'undefined') {
+    window.KimiBuiltRealtimeTts = {
+        getTtsProviderLabel,
+        normalizeSpeechSections,
+        normalizeTextForSpeech,
+        normalizeUrlForSpeech,
+        normalizeUrlsForSpeech,
+        splitTextIntoSpeechChunks,
+    };
     window.KimiBuiltRealtimeTtsManager = WebChatTtsManager;
     window.WebChatTtsManager = WebChatTtsManager;
 }
@@ -1927,6 +1978,7 @@ if (typeof module !== 'undefined' && module.exports) {
         WebChatTtsManager,
         getTtsProviderLabel,
         groupSpeechSentencesIntoChunks,
+        normalizeRealtimeEmergencyProvider,
         normalizeSpeechSections,
         normalizeTextForSpeech,
         normalizeUrlForSpeech,

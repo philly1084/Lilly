@@ -200,6 +200,14 @@
 
                 <!-- Page Actions -->
                 <div class="page-actions">
+                    <button id="notes-tts-btn" class="notes-tts-btn" title="Read page aloud" aria-label="Read page aloud" aria-pressed="false" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            <path d="M18.36 5.64a9 9 0 0 1 0 12.73"></path>
+                        </svg>
+                        <span id="notes-tts-label">Read</span>
+                    </button>
                     <div class="export-dropdown">
                         <button id="export-btn" class="export-btn" title="Export page" aria-label="Export page">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -668,6 +676,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="js/storage.js"></script>
     <script src="js/api.js"></script>
+    <script src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script src="js/api-client.js"></script>
     <script src="js/blocks.js"></script>
     <script src="js/blocks-patches.js"></script>
@@ -681,6 +690,7 @@
     <script src="js/design-layouts.js"></script>
     <script src="js/agent.js"></script>
     <script src="js/agent-ui.js"></script>
+    <script src="js/tts.js?v=20260524b"></script>
     <script src="js/app.js"></script>
 
     <!-- Agent Chat Modal -->

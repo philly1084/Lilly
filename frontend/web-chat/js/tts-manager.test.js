@@ -3,6 +3,7 @@ const {
     DEFAULT_PIPER_MAX_SENTENCES_PER_CHUNK,
     DEFAULT_REALTIME_SYNTHESIS_LANES,
     WebChatTtsManager,
+    normalizeRealtimeEmergencyProvider,
     normalizeTextForSpeech,
     splitTextIntoSpeechChunks,
 } = require('./tts-manager');
@@ -159,7 +160,7 @@ describe('splitTextIntoSpeechChunks', () => {
         }
     });
 
-    test('hedges a slow realtime chunk through the emergency provider', async () => {
+    test('does not hedge realtime chunks through Piper by default', async () => {
         const manager = new WebChatTtsManager();
         manager.realtimePolicy = {
             ...manager.realtimePolicy,
@@ -176,31 +177,24 @@ describe('splitTextIntoSpeechChunks', () => {
         const requests = [];
         manager.synthesizeMessageAudio = jest.fn((_text, _messageId, options) => {
             requests.push(options);
-            if (options.provider === 'piper') {
-                return Promise.resolve({
-                    blob: { provider: 'piper' },
-                    provider: 'piper',
-                });
-            }
-
-            return new Promise(() => {});
+            return Promise.resolve({
+                blob: { provider: 'kokoro' },
+                provider: 'kokoro',
+            });
         });
 
         const result = await manager.synthesizeRealtimeChunkAudio('Slow small sentence.', 'assistant-1', {
             playbackContext: 'ctx',
         });
 
-        expect(result.provider).toBe('piper');
+        expect(result.provider).toBe('kokoro');
+        expect(requests).toHaveLength(1);
         expect(requests[0]).toEqual(expect.objectContaining({
-            allowProviderFallback: false,
-        }));
-        expect(requests[1]).toEqual(expect.objectContaining({
-            provider: 'piper',
             allowProviderFallback: false,
         }));
     });
 
-    test('keeps the primary Kokoro error visible when the realtime hedge also fails', async () => {
+    test('keeps the primary Kokoro error visible when realtime Piper fallback is configured but not allowed', async () => {
         const manager = new WebChatTtsManager();
         manager.realtimePolicy = {
             ...manager.realtimePolicy,
@@ -209,9 +203,7 @@ describe('splitTextIntoSpeechChunks', () => {
         };
 
         manager.synthesizeMessageAudio = jest.fn((_text, _messageId, options) => {
-            const error = options.provider === 'piper'
-                ? new Error('Piper TTS timed out before audio generation completed.')
-                : new Error('Remote Kokoro TTS timed out before audio generation completed.');
+            const error = new Error('Remote Kokoro TTS timed out before audio generation completed.');
             error.code = 'tts_timeout';
             return Promise.reject(error);
         });
@@ -226,12 +218,16 @@ describe('splitTextIntoSpeechChunks', () => {
             'assistant-1',
             expect.objectContaining({ allowProviderFallback: false }),
         );
-        expect(manager.synthesizeMessageAudio).toHaveBeenNthCalledWith(
-            2,
-            'Slow small sentence.',
-            'assistant-1',
-            expect.objectContaining({ provider: 'piper', allowProviderFallback: false }),
-        );
+        expect(manager.synthesizeMessageAudio).toHaveBeenCalledTimes(1);
+    });
+
+    test('normalizes realtime emergency provider to keep the high-quality path', () => {
+        expect(normalizeRealtimeEmergencyProvider('piper', 'kokoro')).toBe('');
+        expect(normalizeRealtimeEmergencyProvider('kokoro', 'kokoro')).toBe('');
+        expect(normalizeRealtimeEmergencyProvider('', 'kokoro')).toBe('');
+        expect(normalizeRealtimeEmergencyProvider('piper', 'kokoro', {
+            allowEmergencyProviderFallback: true,
+        })).toBe('piper');
     });
 
     test('can skip a stalled chunk only when the realtime policy allows it', async () => {

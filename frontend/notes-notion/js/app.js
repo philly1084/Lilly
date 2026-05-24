@@ -254,6 +254,11 @@
         // Initialize sidebar
         console.log('[Notes] Initializing sidebar...');
         Sidebar.init();
+
+        if (window.NotesTts?.init) {
+            console.log('[Notes] Initializing realtime TTS...');
+            window.NotesTts.init();
+        }
     }
     
     /**

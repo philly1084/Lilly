@@ -14,6 +14,7 @@ const API = (function() {
         ? filePreviewBackendOrigin
         : currentOrigin;
     const BASE_URL = `${apiOrigin}/v1`;
+    const BASE_URL_WITHOUT_API = apiOrigin;
     const notesGatewayHelpers = window.KimiBuiltGatewaySSE || {};
     const buildGatewayHeaders = notesGatewayHelpers.buildGatewayHeaders || ((headers = {}) => ({
         ...headers,
@@ -775,6 +776,76 @@ const API = (function() {
             throw error;
         }
     }
+
+    async function parseSpeechErrorResponse(response) {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const payload = await response.json().catch(() => null);
+            return payload?.error?.message || payload?.message || '';
+        }
+
+        return response.text().catch(() => '');
+    }
+
+    async function getTtsVoices() {
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tts/voices`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+
+        if (!response.ok) {
+            const errorText = await parseSpeechErrorResponse(response);
+            throw new Error(errorText || `TTS voices failed: HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
+    async function synthesizeSpeech(text, options = {}) {
+        const payload = {
+            text: String(text || ''),
+        };
+
+        if (options.voiceId) {
+            payload.voiceId = String(options.voiceId || '');
+        }
+        if (options.provider) {
+            payload.provider = String(options.provider || '');
+        }
+        if (Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0) {
+            payload.timeoutMs = Number(options.timeoutMs);
+        }
+        if (typeof options.allowProviderFallback === 'boolean') {
+            payload.allowProviderFallback = options.allowProviderFallback;
+        }
+
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
+            method: 'POST',
+            headers: {
+                Accept: 'audio/wav, application/json',
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const errorText = await parseSpeechErrorResponse(response);
+            throw new Error(errorText || `TTS synthesis failed: HTTP ${response.status}`);
+        }
+
+        return {
+            blob: await response.blob(),
+            contentType: response.headers.get('content-type') || 'audio/wav',
+            voiceId: response.headers.get('x-tts-voice-id') || '',
+            voiceLabel: response.headers.get('x-tts-voice-label') || '',
+            provider: response.headers.get('x-tts-provider') || 'unknown',
+            fallbackProvider: response.headers.get('x-tts-fallback-provider') || '',
+            fallbackReason: response.headers.get('x-tts-fallback-reason') || '',
+        };
+    }
     
     // Clear model cache
     function clearModelCache() {
@@ -826,6 +897,8 @@ const API = (function() {
         streamChat,
         generate,
         generateImage,
+        getTtsVoices,
+        synthesizeSpeech,
         searchUnsplash,
         setSessionId,
         clearModelCache,
@@ -837,3 +910,6 @@ const API = (function() {
     };
 })();
 
+if (typeof window !== 'undefined') {
+    window.apiClient = window.apiClient || API;
+}

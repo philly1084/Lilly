@@ -19,6 +19,10 @@
     
     --accent-color: #2383e2;
     --accent-hover: #0077d4;
+    --tts-highlight-bg: color-mix(in srgb, var(--accent-color) 22%, #ffffff);
+    --tts-highlight-text: var(--text-primary);
+    --tts-highlight-border: color-mix(in srgb, var(--accent-color) 48%, transparent);
+    --tts-highlight-shadow: 0 0 0 1px var(--tts-highlight-border), 0 8px 18px color-mix(in srgb, var(--accent-color) 14%, transparent);
     
     --sidebar-width: 240px;
     --sidebar-collapsed-width: 0px;
@@ -89,6 +93,10 @@
     --agent-accent-start: #38bdf8;
     --agent-accent-end: #818cf8;
     --agent-accent-glow: rgba(56, 189, 248, 0.26);
+    --tts-highlight-bg: color-mix(in srgb, var(--agent-accent-start) 24%, rgba(15, 20, 26, 0.82));
+    --tts-highlight-text: var(--text-primary);
+    --tts-highlight-border: color-mix(in srgb, var(--agent-accent-start) 54%, transparent);
+    --tts-highlight-shadow: 0 0 0 1px var(--tts-highlight-border), 0 8px 22px color-mix(in srgb, var(--agent-accent-start) 18%, transparent);
 
     --color-gray: #293340;
     --color-brown: #352821;
@@ -3643,6 +3651,62 @@ body {
     background: var(--bg-hover);
     border-color: var(--border-hover);
     color: var(--text-primary);
+}
+
+.notes-tts-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 82px;
+    min-height: 36px;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.notes-tts-btn:hover:not(:disabled),
+.notes-tts-btn:focus-visible {
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+}
+
+.notes-tts-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-color) 60%, transparent);
+    outline-offset: 2px;
+}
+
+.notes-tts-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+}
+
+.notes-tts-btn.is-active {
+    color: var(--accent-color);
+    border-color: color-mix(in srgb, var(--accent-color) 48%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-secondary));
+}
+
+.notes-tts-btn.is-loading {
+    color: var(--text-tertiary);
+}
+
+.tts-reading-highlight {
+    color: var(--tts-highlight-text);
+    background: var(--tts-highlight-bg);
+    box-shadow: var(--tts-highlight-shadow);
+    border-radius: 4px;
+    padding: 0.04em 0.16em;
+    transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.block.is-voice-playing {
+    background: color-mix(in srgb, var(--accent-color) 7%, transparent);
 }
 
 .export-menu {

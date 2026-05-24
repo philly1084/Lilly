@@ -675,7 +675,7 @@ const config = {
             trimEdgeSeconds: parseOptionalFloat(process.env.TTS_REALTIME_TRIM_EDGE_SECONDS) ?? 0.12,
             trimThreshold: parseOptionalFloat(process.env.TTS_REALTIME_TRIM_THRESHOLD) ?? 0.0035,
             skipStalledChunks: process.env.TTS_REALTIME_SKIP_STALLED_CHUNKS === 'true',
-            emergencyProvider: process.env.TTS_REALTIME_EMERGENCY_PROVIDER || 'piper',
+            emergencyProvider: process.env.TTS_REALTIME_EMERGENCY_PROVIDER || 'kokoro',
         },
         kokoro: {
             enabled: process.env.KOKORO_TTS_ENABLED !== 'false',

@@ -1122,7 +1122,7 @@ class WebCLIAPI {
             contentType: response.headers.get('content-type') || 'audio/wav',
             voiceId: response.headers.get('x-tts-voice-id') || '',
             voiceLabel: response.headers.get('x-tts-voice-label') || '',
-            provider: response.headers.get('x-tts-provider') || 'piper',
+            provider: response.headers.get('x-tts-provider') || 'unknown',
             fallbackProvider: response.headers.get('x-tts-fallback-provider') || '',
             fallbackReason: response.headers.get('x-tts-fallback-reason') || '',
         };
