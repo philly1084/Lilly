@@ -1,0 +1,113 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3130/web-cli/",
+  "originalUrl": "http://127.0.0.1:3130/web-cli/",
+  "authenticated": false,
+  "generatedAt": "2026-05-24T00:10:36.196Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-help-command-menu\\kimibuilt-web-cli-desktop.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://127.0.0.1:3130/web-cli/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 833,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Connected auto auto gpt-image-2 gpt-image-1.5 gpt-image-1 gpt-image-1-mini New Chat Sessions Clear Export Theme Voice Buddy ? Home KIMIBUILT WEB CLI 5/23/2026, 9:10:32 PM AGENT COMMAND SURFACE Command from the browser, keep the terminal rhythm. Chat, inspect tools, run sandboxes, call remote agents, and keep generated files in the same session. MODE chat MODEL auto SESSION pending Ask Start with a normal request /tools Inspect available actions /skills Route with reusable skill",
+        "headings": [],
+        "interactiveControls": 40,
+        "textContrast": {
+          "checked": 71,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-help-command-menu\\kimibuilt-web-cli-mobile.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://127.0.0.1:3130/web-cli/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 711,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Connected auto gpt-image-2 gpt-image-1.5 gpt-image-1 gpt-image-1-mini ? KIMIBUILT WEB CLI AGENT COMMAND SURFACE Command from the browser, keep the terminal rhythm. Chat, inspect tools, run sandboxes, call remote agents, and keep generated files in the same session. MODE chat MODEL auto SESSION pending Ask Start with a normal request /tools Inspect available actions /skills Route with reusable skills /files Review generated artifacts /remote plan See remote deploy lanes Build Dr",
+        "headings": [],
+        "interactiveControls": 40,
+        "textContrast": {
+          "checked": 59,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-help-command-menu\\kimibuilt-web-cli-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-cli-help-command-menu\\kimibuilt-web-cli-mobile.png"
+    ],
+    "issues": []
+  }
+}

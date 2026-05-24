@@ -23,7 +23,7 @@
 
     <!-- PDF export for Mermaid diagrams -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <link rel="stylesheet" href="css/voxel.css?v=20260523b">
+    <link rel="stylesheet" href="css/voxel.css?v=20260523c">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
     
     <style>
@@ -45,6 +45,10 @@
             --warning: #d29922;
             --error: #f85149;
             --info: #58a6ff;
+            --tts-highlight-bg: color-mix(in srgb, var(--accent) 28%, rgba(8, 15, 26, 0.72));
+            --tts-highlight-text: var(--text-primary);
+            --tts-highlight-border: color-mix(in srgb, var(--accent) 62%, transparent);
+            --tts-highlight-shadow: 0 0 0 1px var(--tts-highlight-border), 0 8px 22px color-mix(in srgb, var(--accent) 18%, transparent);
         }
 
         [data-theme="light"] {
@@ -63,6 +67,10 @@
             --warning: #9a6700;
             --error: #cf222e;
             --info: #0969da;
+            --tts-highlight-bg: color-mix(in srgb, var(--accent) 22%, #ffffff);
+            --tts-highlight-text: var(--text-primary);
+            --tts-highlight-border: color-mix(in srgb, var(--accent) 48%, transparent);
+            --tts-highlight-shadow: 0 0 0 1px var(--tts-highlight-border), 0 8px 18px color-mix(in srgb, var(--accent) 14%, transparent);
         }
 
         body[data-chat-theme] {
@@ -315,6 +323,7 @@
         .cli-response-head {
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 8px;
             min-height: 34px;
             padding: 6px 10px;
@@ -325,6 +334,7 @@
         }
 
         .cli-response-title {
+            flex: 1 1 180px;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -334,6 +344,8 @@
         .cli-alignment-actions {
             display: inline-flex;
             align-items: center;
+            flex: 0 0 auto;
+            flex-wrap: nowrap;
             gap: 4px;
             margin-left: auto;
         }
@@ -341,8 +353,12 @@
         .cli-response-tools {
             display: inline-flex;
             align-items: center;
+            justify-content: flex-end;
+            flex: 0 1 auto;
+            flex-wrap: nowrap;
             gap: 4px;
             margin-left: auto;
+            min-width: fit-content;
         }
 
         .cli-response-tools .cli-alignment-actions {
@@ -358,6 +374,7 @@
             border-radius: 4px;
             font: inherit;
             font-size: 11px;
+            white-space: nowrap;
             cursor: pointer;
         }
 
@@ -383,6 +400,7 @@
             border-radius: 4px;
             font: inherit;
             font-size: 11px;
+            white-space: nowrap;
             cursor: pointer;
         }
 
@@ -411,12 +429,18 @@
         }
 
         .tts-reading-highlight {
-            color: #fff7ed;
-            background: rgba(239, 68, 68, 0.18);
-            box-shadow: 0 0 0 0.22rem rgba(239, 68, 68, 0.12);
+            color: var(--tts-highlight-text);
+            background: var(--tts-highlight-bg);
+            box-shadow: var(--tts-highlight-shadow);
             border-radius: 0.32em;
             padding: 0.02em 0.14em;
-            animation: voice-recording-pulse 1.6s ease-in-out infinite;
+            margin: 0 -0.02em;
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
+            transition:
+                background-color 120ms ease,
+                box-shadow 120ms ease,
+                color 120ms ease;
         }
 
         @keyframes voice-recording-pulse {
@@ -696,99 +720,6 @@
             color: var(--text-muted);
         }
 
-        .command-shelf {
-            display: grid;
-            grid-template-columns: auto minmax(0, 1fr);
-            align-items: center;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .command-shelf-label {
-            color: var(--text-muted);
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-
-        .command-quick-actions {
-            display: flex;
-            align-items: stretch;
-            gap: 8px;
-            min-width: 0;
-            overflow-x: auto;
-            padding: 2px 2px 4px;
-            scrollbar-color: var(--border-color) transparent;
-            scrollbar-width: thin;
-        }
-
-        .command-quick-btn {
-            display: grid;
-            grid-template-columns: 30px minmax(0, 1fr);
-            align-items: center;
-            gap: 8px;
-            flex: 0 0 154px;
-            min-height: 48px;
-            padding: 8px 10px;
-            color: var(--text-primary);
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            font: inherit;
-            text-align: left;
-            cursor: pointer;
-        }
-
-        .command-quick-btn:hover,
-        .command-quick-btn:focus-visible {
-            color: var(--text-primary);
-            background: var(--bg-hover);
-            border-color: var(--accent);
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.18);
-        }
-
-        .command-quick-icon {
-            width: 30px;
-            height: 30px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--bg-primary);
-            background: var(--accent);
-            border-radius: 5px;
-            font-size: 11px;
-            font-weight: 800;
-            line-height: 1;
-        }
-
-        .command-quick-copy {
-            display: grid;
-            gap: 2px;
-            min-width: 0;
-        }
-
-        .command-quick-name,
-        .command-quick-template {
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .command-quick-name {
-            color: var(--text-primary);
-            font-size: 12px;
-            line-height: 1.2;
-        }
-
-        .command-quick-template {
-            color: var(--text-secondary);
-            font-size: 11px;
-            line-height: 1.2;
-        }
-
         .command-assist {
             min-width: 0;
             max-width: min(420px, 44vw);
@@ -809,6 +740,130 @@
 
         .command-assist.is-error {
             color: var(--error);
+        }
+
+        .cli-help-menu {
+            display: grid;
+            gap: 14px;
+        }
+
+        .cli-help-menu__intro,
+        .cli-help-menu__footer {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 10px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .cli-help-menu__intro strong {
+            color: var(--text-primary);
+        }
+
+        .cli-help-group {
+            display: grid;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .cli-help-group h3 {
+            margin: 0;
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .cli-help-command-list {
+            display: grid;
+            gap: 6px;
+        }
+
+        .cli-help-command {
+            display: grid;
+            grid-template-columns: 22px minmax(0, 1fr) minmax(110px, 0.42fr);
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            min-height: 52px;
+            padding: 9px 10px;
+            color: var(--text-primary);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .cli-help-command:hover,
+        .cli-help-command:focus-visible {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.16);
+        }
+
+        .cli-help-command__prompt {
+            color: var(--accent);
+            font-weight: 800;
+        }
+
+        .cli-help-command__main {
+            display: grid;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .cli-help-command__top {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .cli-help-command__top code,
+        .cli-help-command__top strong,
+        .cli-help-command__desc,
+        .cli-help-command__meta,
+        .cli-help-command__meta span,
+        .cli-help-command__meta small {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cli-help-command__top code {
+            color: var(--accent);
+            font-size: 13px;
+        }
+
+        .cli-help-command__top strong {
+            color: var(--text-primary);
+            font-size: 12px;
+        }
+
+        .cli-help-command__desc {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .cli-help-command__meta {
+            display: grid;
+            justify-items: end;
+            gap: 2px;
+            color: var(--warning);
+            font-size: 10px;
+        }
+
+        .cli-help-command__meta small {
+            color: var(--text-muted);
         }
 
         /* CLI Status Indicator */
@@ -983,7 +1038,7 @@
 
         .autocomplete-item {
             display: grid;
-            grid-template-columns: 30px minmax(0, 1fr) minmax(86px, auto);
+            grid-template-columns: minmax(0, 1fr) minmax(86px, auto);
             align-items: center;
             gap: 9px;
             width: 100%;
@@ -1001,20 +1056,6 @@
         .autocomplete-item.selected {
             background: var(--bg-tertiary);
             color: var(--accent);
-        }
-
-        .autocomplete-icon {
-            width: 28px;
-            height: 28px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--bg-primary);
-            background: var(--accent);
-            border-radius: 5px;
-            font-size: 10px;
-            font-weight: 800;
-            line-height: 1;
         }
 
         .autocomplete-main {
@@ -1215,27 +1256,6 @@
                 padding: 10px 12px;
             }
 
-            .command-shelf {
-                grid-template-columns: 1fr;
-                gap: 6px;
-                margin-top: 8px;
-            }
-
-            .command-shelf-label {
-                display: none;
-            }
-
-            .command-quick-btn {
-                flex-basis: 136px;
-                min-height: 44px;
-                padding: 7px 8px;
-            }
-
-            .command-quick-icon {
-                width: 26px;
-                height: 26px;
-            }
-
             .command-assist {
                 order: 8;
                 width: 100%;
@@ -1247,15 +1267,46 @@
                 max-height: min(280px, 52vh);
             }
 
+            .cli-response-head {
+                align-items: flex-start;
+            }
+
+            .cli-response-tools {
+                width: 100%;
+                justify-content: flex-start;
+                flex-wrap: wrap;
+                margin-left: 32px;
+                min-width: 0;
+            }
+
+            .cli-alignment-actions {
+                margin-left: 0;
+            }
+
             .autocomplete-item {
-                grid-template-columns: 28px minmax(0, 1fr);
+                grid-template-columns: minmax(0, 1fr);
                 align-items: flex-start;
             }
 
             .autocomplete-args {
-                grid-column: 2;
                 justify-self: start;
                 max-width: 100%;
+            }
+
+            .cli-help-command {
+                grid-template-columns: 18px minmax(0, 1fr);
+                align-items: flex-start;
+            }
+
+            .cli-help-command__meta {
+                grid-column: 2;
+                justify-items: start;
+                max-width: 100%;
+            }
+
+            .cli-help-menu__intro,
+            .cli-help-menu__footer {
+                align-items: flex-start;
             }
 
             .header-title {
@@ -1486,10 +1537,6 @@
                             spellcheck="false"
                         >
                     </div>
-                    <div id="commandShelf" class="command-shelf" aria-label="Quick CLI commands">
-                        <span class="command-shelf-label">Commands</span>
-                        <div id="commandQuickActions" class="command-quick-actions" aria-label="Click a command to place it in the CLI input"></div>
-                    </div>
                     <div id="voxelToolbelt" class="voxel-toolbelt" aria-label="Voxel coding toolbelt">
                         <button type="button" class="voxel-tool-chip active" data-tool="chat" onclick="app.useVoxelQuickTool('chat')" title="Chat with the coding buddy">
                             <span class="voxel-tool-icon" aria-hidden="true"></span>
@@ -1510,7 +1557,7 @@
                         <span id="cliStatus" class="cli-status ready">Ready</span>
                         <span id="voxelPetStatus" class="voxel-pet-status">Voxel companion ready</span>
                         <span id="queueIndicator" class="queue-indicator hidden" title="Commands queued"></span>
-                        <span id="commandAssist" class="command-assist is-ready">Click a command or type / for autocomplete.</span>
+                        <span id="commandAssist" class="command-assist is-ready">Type /help for the command menu, or / for autocomplete.</span>
                         <span class="shortcut-hint">Ctrl+L=Clear | ↑↓=History | F1=Help</span>
                     </div>
                     <div id="autocomplete" class="autocomplete hidden"></div>
@@ -1626,10 +1673,10 @@
     <script src="../shared/openai-sse.js?v=20260424e"></script>
     <script src="../shared/model-output-parser.js?v=20260426b"></script>
     <script src="../shared/theme-presets.js?v=20260426a"></script>
-    <script src="js/api.js?v=20260523a"></script>
+    <script src="js/api.js?v=20260523b"></script>
     <script src="../web-chat/js/tts-manager.js?v=20260523a"></script>
     <script src="js/file-handler.js"></script>
     <script src="js/voxel-pets.js"></script>
-    <script src="js/app.js?v=20260523b"></script>
+    <script src="js/app.js?v=20260523c"></script>
 </body>
 </html>

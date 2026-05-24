@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "viewport": "desktop",
+      "screenshotPath": "ui-checks\\web-cli-help-command-menu-state\\web-cli-help-desktop.png",
+      "commandRows": 55,
+      "hasCommandShelf": 0,
+      "horizontalOverflow": false,
+      "bodyTextLength": 5231
+    },
+    {
+      "viewport": "mobile",
+      "screenshotPath": "ui-checks\\web-cli-help-command-menu-state\\web-cli-help-mobile.png",
+      "commandRows": 55,
+      "hasCommandShelf": 0,
+      "horizontalOverflow": false,
+      "bodyTextLength": 5080
+    }
+  ]
+}

@@ -1102,19 +1102,15 @@ class WebCLIAPI {
             payload.allowProviderFallback = options.allowProviderFallback;
         }
 
-        const response = await this.fetchWithTimeout(
-            `${BASE_URL_WITHOUT_API}/api/tts/synthesize`,
-            {
-                method: 'POST',
-                headers: {
-                    'Accept': 'audio/wav, application/json',
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify(payload),
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
+            method: 'POST',
+            headers: {
+                'Accept': 'audio/wav, application/json',
+                'Content-Type': 'application/json',
             },
-            Number(options.timeoutMs) || 30000
-        );
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+        });
 
         if (!response.ok) {
             const errorText = await this.parseErrorResponse(response);

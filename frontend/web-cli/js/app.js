@@ -113,7 +113,6 @@ class CodeCLIApp {
         this.shortcutsModal = document.getElementById('shortcutsModal');
         this.cliStatus = document.getElementById('cliStatus');
         this.queueIndicator = document.getElementById('queueIndicator');
-        this.commandQuickActions = document.getElementById('commandQuickActions');
         this.commandAssist = document.getElementById('commandAssist');
         // Queue elements removed - using inline status only
         this.queueSection = null;
@@ -140,7 +139,6 @@ class CodeCLIApp {
         this.voxelToolStat = document.getElementById('voxelToolStat');
         
         this.setupEventListeners();
-        this.renderCommandShelf();
         this.applyTheme(this.theme);
         this.initializeTts();
         this.renderVoxelPet();
@@ -822,7 +820,7 @@ class CodeCLIApp {
         
         // Focus input on click anywhere
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('button, input, textarea, select, a, [contenteditable="true"], .autocomplete, .command-shelf, .modal, .voxel-creator-modal, .file-manager-modal')) {
+            if (!e.target.closest('button, input, textarea, select, a, [contenteditable="true"], .autocomplete, .modal, .voxel-creator-modal, .file-manager-modal')) {
                 this.commandInput.focus();
             }
         });
@@ -1285,36 +1283,6 @@ class CodeCLIApp {
         handler();
     }
 
-    renderCommandShelf() {
-        if (!this.commandQuickActions) {
-            return;
-        }
-
-        const featuredCommands = this.commandCatalog.filter((command) => command.featured);
-        this.commandQuickActions.innerHTML = featuredCommands.map((command) => `
-            <button
-                type="button"
-                class="command-quick-btn"
-                data-command-id="${this.escapeHtml(command.id)}"
-                title="${this.escapeHtml(`${command.command === 'ask' ? 'Ask' : command.command} - ${command.description}`)}"
-                aria-label="${this.escapeHtml(`Use ${command.label} command`)}"
-            >
-                <span class="command-quick-icon" aria-hidden="true">${this.escapeHtml(command.icon || '/')}</span>
-                <span class="command-quick-copy">
-                    <strong class="command-quick-name">${this.escapeHtml(command.label)}</strong>
-                    <code class="command-quick-template">${this.escapeHtml(command.command === 'ask' ? 'message' : (command.template || command.command))}</code>
-                </span>
-            </button>
-        `).join('');
-
-        this.commandQuickActions.querySelectorAll('[data-command-id]').forEach((button) => {
-            button.addEventListener('click', () => {
-                const command = this.commandCatalog.find((entry) => entry.id === button.dataset.commandId);
-                this.activateCommandEntry(command, { source: 'shelf' });
-            });
-        });
-    }
-
     getCommandEntry(value = '') {
         const normalized = String(value || '').trim().toLowerCase();
         if (!normalized) {
@@ -1355,19 +1323,14 @@ class CodeCLIApp {
                     .map((candidate) => String(candidate).toLowerCase());
                 const startsWithCommand = commandCandidates.some((candidate) => candidate.startsWith(query));
                 const startsWithSegment = commandCandidates.some((candidate) => {
-                    const words = candidate.split(/\s+/);
-                    return words.some((word) => word.startsWith(query));
+                    if (!searchText) {
+                        return false;
+                    }
+                    const words = candidate.replace(/^\//, '').split(/[\s/-]+/).filter(Boolean);
+                    return words.some((word) => word.startsWith(searchText));
                 });
-                const haystack = [
-                    entry.label,
-                    entry.category,
-                    entry.description,
-                    entry.arguments,
-                    ...commandCandidates,
-                ].join(' ').toLowerCase();
-                const textMatch = searchText.length >= 2 && haystack.includes(searchText);
 
-                if (!startsWithCommand && !startsWithSegment && !textMatch) {
+                if (!startsWithCommand && !startsWithSegment) {
                     return null;
                 }
 
@@ -1376,7 +1339,6 @@ class CodeCLIApp {
                 if (startsWithCommand) score += 30;
                 if (entry.featured) score += 8;
                 if (startsWithSegment) score += 4;
-                if (textMatch) score += 2;
                 return { entry, score };
             })
             .filter(Boolean)
@@ -1446,6 +1408,26 @@ class CodeCLIApp {
         });
     }
 
+    useHelpCommandButton(button = null) {
+        const rawValue = String(button?.dataset?.commandValue || '');
+        if (!rawValue) {
+            return;
+        }
+
+        const entry = this.getCommandEntry(rawValue) || this.commandCatalog.find((command) => command.id === button.dataset.commandId);
+        this.activateCommandEntry(entry || {
+            id: rawValue,
+            command: rawValue,
+            label: rawValue,
+            description: 'CLI command',
+            template: rawValue,
+        }, {
+            value: rawValue,
+            source: 'help',
+        });
+        this.roamVoxelPet('prompt', 'guard', 1000, { thought: 'command staged' });
+    }
+
     updateCommandAssist(command = null, options = {}) {
         if (!this.commandAssist) {
             return;
@@ -1460,7 +1442,7 @@ class CodeCLIApp {
                 this.commandAssist.textContent = 'No exact command yet. Keep typing, press Tab, or choose from autocomplete.';
                 this.commandAssist.classList.add('is-error');
             } else {
-                this.commandAssist.textContent = 'Click a command or type / for autocomplete.';
+                this.commandAssist.textContent = 'Type /help for the command menu, or / for autocomplete.';
                 this.commandAssist.classList.add('is-ready');
             }
             return;
@@ -3394,8 +3376,8 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
     buildAlignmentActionsMarkup() {
         return `
             <div class="cli-alignment-actions" aria-label="Response alignment feedback">
-                <button type="button" class="cli-alignment-btn" data-alignment-rating="up" onclick="app.submitAlignmentFeedback(this, 'up')" title="Mark response aligned" aria-label="Mark response aligned" disabled>Thumbs up</button>
-                <button type="button" class="cli-alignment-btn" data-alignment-rating="down" onclick="app.submitAlignmentFeedback(this, 'down')" title="Review alignment" aria-label="Review alignment" disabled>Thumbs down</button>
+                <button type="button" class="cli-alignment-btn" data-alignment-rating="up" onclick="app.submitAlignmentFeedback(this, 'up')" title="Mark response aligned" aria-label="Mark response aligned" disabled>Good</button>
+                <button type="button" class="cli-alignment-btn" data-alignment-rating="down" onclick="app.submitAlignmentFeedback(this, 'down')" title="Review alignment" aria-label="Review alignment" disabled>Review</button>
             </div>
         `;
     }
@@ -3933,97 +3915,131 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         this.scrollToBottom();
     }
     
+    getHelpCommandGroups() {
+        const groups = new Map();
+        this.commandCatalog
+            .filter((command) => command.command && command.command.startsWith('/'))
+            .forEach((command) => {
+                const category = command.category || 'Commands';
+                if (!groups.has(category)) {
+                    groups.set(category, []);
+                }
+                groups.get(category).push(command);
+            });
+
+        const order = ['General', 'Session', 'AI Controls', 'Remote', 'Build', 'Media', 'Files', 'Voxel', 'System'];
+        return [...groups.entries()]
+            .sort((a, b) => {
+                const aIndex = order.indexOf(a[0]);
+                const bIndex = order.indexOf(b[0]);
+                if (aIndex >= 0 || bIndex >= 0) {
+                    return (aIndex >= 0 ? aIndex : 99) - (bIndex >= 0 ? bIndex : 99);
+                }
+                return a[0].localeCompare(b[0]);
+            })
+            .map(([category, commands]) => ({
+                category,
+                commands: commands.sort((a, b) => a.command.localeCompare(b.command)),
+            }));
+    }
+
+    renderHelpCommandMenu() {
+        const groups = this.getHelpCommandGroups();
+        const groupsMarkup = groups.map((group) => `
+            <section class="cli-help-group" aria-label="${this.escapeHtmlAttr(group.category)} commands">
+                <h3>${this.escapeHtml(group.category)}</h3>
+                <div class="cli-help-command-list">
+                    ${group.commands.map((command) => {
+                        const value = String(command.template || command.command || '').trimEnd();
+                        const stagedValue = command.requiresInput || command.arguments
+                            ? `${value}${value.endsWith(' ') ? '' : ' '}`
+                            : value;
+                        const aliasText = Array.isArray(command.aliases) && command.aliases.length > 0
+                            ? `aliases: ${command.aliases.join(', ')}`
+                            : '';
+                        return `
+                            <button
+                                type="button"
+                                class="cli-help-command"
+                                data-command-id="${this.escapeHtmlAttr(command.id || command.command)}"
+                                data-command-value="${this.escapeHtmlAttr(stagedValue)}"
+                                onclick="app.useHelpCommandButton(this)"
+                                title="Fill ${this.escapeHtmlAttr(stagedValue)}"
+                            >
+                                <span class="cli-help-command__prompt" aria-hidden="true">$</span>
+                                <span class="cli-help-command__main">
+                                    <span class="cli-help-command__top">
+                                        <code>${this.escapeHtml(command.command)}</code>
+                                        <strong>${this.escapeHtml(command.label || command.command)}</strong>
+                                    </span>
+                                    <span class="cli-help-command__desc">${this.escapeHtml(command.description || 'CLI command')}</span>
+                                </span>
+                                <span class="cli-help-command__meta">
+                                    ${command.arguments ? `<span>${this.escapeHtml(command.arguments)}</span>` : ''}
+                                    ${aliasText ? `<small>${this.escapeHtml(aliasText)}</small>` : ''}
+                                </span>
+                            </button>
+                        `;
+                    }).join('')}
+                </div>
+            </section>
+        `).join('');
+
+        return `
+            <div class="cli-help-menu">
+                <div class="cli-help-menu__intro">
+                    <strong>Click a row to stage that CLI command.</strong>
+                    <span>It fills the prompt only; press Enter when you are ready, or keep typing after commands that need details.</span>
+                </div>
+                ${groupsMarkup}
+                <div class="cli-help-menu__footer">
+                    <code>/</code><span> starts command autocomplete. Plain text still sends a normal chat request.</span>
+                </div>
+            </div>
+        `;
+    }
+
     printHelp() {
-        this.printAI(`
-## Available Commands
-
-**General:**
-  /help, /?          Show this help message
-  /clear, /cls       Clear the screen
-  /new [name]        Start a fresh isolated backend session
-  /sessions          List isolated Voxel CLI sessions
-  /switch <id>       Switch to a session by number, id, or id prefix
-  /delete <id>       Delete a session by number, id, or id prefix
-  /theme [name]      Set voxel or a shared web-chat theme
-  /theme list        Show available shared themes
-  /voxel             Switch back to the voxel CLI theme
-  /shortcuts, /keys  Show keyboard shortcuts
-
-**Voxel Command Deck:**
-  /pet <prompt>      Spawn a prompt-generated voxel pet
-  /pet random        Spawn a random 3D voxel character
-  /pet ai <prompt>   Ask AI to design and fill the voxel pet
-  /agent <prompt>    AI-backed voxel agent generator
-  /random-agent      Spawn a random 3D voxel character
-  /creator           Focus the voxel creator panel
-  /pet act <action>  Run jump, dance, scout, guard, or sleep
-  /pet name <name>   Rename the active pet
-  /pet hide|show     Hide prompt pet or open creator
-  /buddy             Open the voxel coding buddy panel
-  /toolbelt          Show chat/tools/files shortcuts
-  /build             Show the coding-agent build workflow
-  /long-agent on|off|status
-                     Enable, disable, or inspect long agent mode
-  /long-agent <goal> [--on|--off]
-                     Queue bounded long-form work with evaluator follow-ups
-  /remote <cmd>      status, tools, plan, run, or verify through remote CLI
-  /sandbox <lang>    Run code, or save previewable HTML/Vite-style projects
-
-**AI Controls:**
-  /models            List available AI models
-  /model <name>      Change AI model
-  /tts status        Show voice playback status
-  /tts on|off|stop   Autoplay new replies, disable autoplay, or stop audio
-  /tts voices        List available read-aloud voices
-  /voice <id>        Switch the read-aloud voice
-  /tools [category]  List frontend-available tools
-  /tool <id> <json>  Invoke a tool with JSON params
-  /tool-help <id>    Show on-demand documentation for a tool
-  /skills [search]   List registered low-context skills
-  /skill <id>        Show one registered skill
-  /skill-create <json>
-                     Create a reusable skill chain
-  /skill-update <id> <json>
-                     Update a reusable skill chain
-  /image <prompt>    Generate an image
-                     Defaults to the backend image model (official OpenAI if configured)
-                     Options: --model gpt-image-2|gpt-image-1.5|gpt-image-1|gpt-image-1-mini
-                     --size auto|1024x1024|1536x1024|1024x1536 --quality auto|low|medium|high
-                     --format png|jpeg|webp --compression 0-100 --background auto|opaque
-  /image-models      List available image models
-  /unsplash <query>  Search Unsplash for stock images
-                     Options: --orientation landscape|portrait|squarish
-  /podcast <topic>   Create a basic audio podcast
-                     Options: --music --audio --intro --outro --system "extra prompt"
-  /video-podcast <topic>
-                     Create a video podcast; add --music for background soundtrack
-  /diagram <type>    Generate Mermaid diagram
-  /upload            Upload a file for context
-
-**Session:**
-  /session           Show session information
-  /session new       Start a fresh isolated backend session
-  /session list      List isolated Voxel CLI sessions
-  /session switch    Switch to a session by number, id, or id prefix
-  /session delete    Delete a session by number, id, or id prefix
-  /history           Show persisted isolated session history
-  /artifacts         Show persisted isolated session artifacts
-  /stats             Show session statistics
-  /save <name>       Save conversation
-  /load <name>       Load conversation
-  /export            Export session to JSON file
-  /copy              Copy last response to clipboard
-
-**Files:**
-  /files, /ls        List session files
-  /download <id>     Download file by ID
-  /open              Open file manager (GUI)
-
-**System:**
-  /health            Check API connection health
-
-Type any message to chat with the AI.
-        `.trim());
+        const line = document.createElement('div');
+        line.className = 'line line-output ai';
+        const helpBody = this.renderHelpCommandMenu();
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>CLI Help</span>
+                    <button
+                        type="button"
+                        class="ai-response-toggle"
+                        onclick="app.toggleAIResponse(this)"
+                        title="Collapse response"
+                        aria-label="Collapse response"
+                        aria-expanded="true"
+                    >-</button>
+                    <span class="voxel-response-meta">command menu</span>
+                </div>
+                <div class="voxel-response-body">${helpBody}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button
+                            type="button"
+                            class="ai-response-toggle"
+                            onclick="app.toggleAIResponse(this)"
+                            title="Collapse response"
+                            aria-label="Collapse response"
+                            aria-expanded="true"
+                        >-</button>
+                        <span class="cli-response-title">CLI Help</span>
+                    </div>
+                    <div class="cli-response-body">${helpBody}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
     }
 
     printToolbeltCard() {
@@ -7047,7 +7063,6 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         
         this.autocompleteEl.innerHTML = matches.map((match, i) => `
             <button type="button" class="autocomplete-item ${i === 0 ? 'selected' : ''}" data-index="${i}">
-                <span class="autocomplete-icon" aria-hidden="true">${this.escapeHtml(match.icon || '/')}</span>
                 <span class="autocomplete-main">
                     <span class="autocomplete-title">
                         <code>${this.escapeHtml(match.command)}</code>
