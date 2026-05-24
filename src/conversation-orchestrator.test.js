@@ -1268,11 +1268,14 @@ describe('ConversationOrchestrator', () => {
                         sessionId: 'remote-code-session-2',
                         mcpSessionId: 'mcp-session-2',
                         cwd: '/srv/apps/calan-calendar',
+                        remoteCodeJobId: 'rcli_calan_2',
                         gitBranch: 'agent/calan-calendar',
                         gitBaseCommit: 'def5678',
                         gitCommit: 'abc1234',
                         changedFiles: ['src/app.js', 'k8s/deployment.yaml'],
                         publicHost: 'calan.demoserver2.buzz',
+                        completionStatus: 'blocked',
+                        blocker: 'remote_code_run still running after status polling.',
                     },
                 },
             }],
@@ -1287,11 +1290,14 @@ describe('ConversationOrchestrator', () => {
                     sessionId: 'remote-code-session-2',
                     mcpSessionId: 'mcp-session-2',
                     cwd: '/srv/apps/calan-calendar',
+                    remoteCodeJobId: 'rcli_calan_2',
                     gitBranch: 'agent/calan-calendar',
                     gitBaseCommit: 'def5678',
                     gitCommit: 'abc1234',
                     changedFiles: ['src/app.js', 'k8s/deployment.yaml'],
                     publicHost: 'calan.demoserver2.buzz',
+                    completionStatus: 'blocked',
+                    blocker: 'remote_code_run still running after status polling.',
                 }),
             }),
         );
@@ -9584,6 +9590,184 @@ describe('ConversationOrchestrator', () => {
             mcpSessionId: 'mcp-session-1',
             cwd: '/srv/apps/weather',
         }));
+    });
+
+    test('reuses a blocked remote_code_run job id for direct remote-cli-agent continuations', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+        settingsController.getEffectiveOpencodeConfig.mockReturnValue({
+            enabled: true,
+            remoteDefaultWorkspace: '/srv/apps/kimibuilt',
+            allowedWorkspaceRoots: ['C:/Users/phill/KimiBuilt'],
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'web-search', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'continue working on it with the remote cli agent';
+        const session = {
+            metadata: {},
+            controlState: {
+                remoteCliAgent: {
+                    lastTask: 'Fix the deployed Tetris game and verify the live buttons.',
+                    sessionId: 'remote-session-1',
+                    mcpSessionId: 'mcp-session-1',
+                    remoteCodeJobId: 'rcli_tetris_1',
+                    cwd: '/srv/apps/my-app',
+                    completionStatus: 'blocked',
+                    blocker: 'remote_code_run still running after 20 poll attempts.',
+                },
+            },
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            session,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session,
+            toolPolicy,
+            toolContext: {},
+        });
+
+        expect(directAction.params).toEqual(expect.objectContaining({
+            sessionId: 'remote-session-1',
+            mcpSessionId: 'mcp-session-1',
+            jobId: 'rcli_tetris_1',
+            cwd: '/srv/apps/my-app',
+        }));
+        expect(directAction.params.task).toContain('Original task:');
+        expect(directAction.params.task).toContain('Fix the deployed Tetris game');
+    });
+
+    test('does not attach a stale remote_code_run job id to a new remote-cli-agent task', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+        settingsController.getEffectiveOpencodeConfig.mockReturnValue({
+            enabled: true,
+            remoteDefaultWorkspace: '/srv/apps/kimibuilt',
+            allowedWorkspaceRoots: ['C:/Users/phill/KimiBuilt'],
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'web-search', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Build a new status dashboard site on the server and deploy it to k3s.';
+        const session = {
+            metadata: {},
+            controlState: {
+                remoteCliAgent: {
+                    lastTask: 'Fix the deployed Tetris game.',
+                    sessionId: 'remote-session-1',
+                    mcpSessionId: 'mcp-session-1',
+                    remoteCodeJobId: 'rcli_tetris_1',
+                    cwd: '/srv/apps/tetris',
+                    completionStatus: 'blocked',
+                    blocker: 'remote_code_run still running after 20 poll attempts.',
+                },
+            },
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            session,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session,
+            toolPolicy,
+            toolContext: {
+                remoteWorkspacePath: '/srv/apps/status-dashboard',
+            },
+        });
+
+        expect(directAction.params.jobId).toBeUndefined();
+        expect(directAction.params.task).toBe(objective);
+        expect(directAction.params.cwd).toBe('/srv/apps/tetris');
+    });
+
+    test('adds a prior remote_code_run job id when normalizing planned remote-cli-agent continuations', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn(() => null),
+            },
+        });
+
+        const normalizedStep = orchestrator.normalizePlannedStep({
+            tool: 'remote-cli-agent',
+            params: {
+                task: 'continue the same repair',
+            },
+        }, {
+            objective: 'continue the same remote job',
+            executionProfile: 'remote-build',
+            session: {
+                metadata: {},
+                controlState: {
+                    remoteCliAgent: {
+                        lastTask: 'Repair the live Tetris game.',
+                        sessionId: 'remote-session-2',
+                        mcpSessionId: 'mcp-session-2',
+                        remoteCodeJobId: 'rcli_tetris_2',
+                        cwd: '/srv/apps/my-app',
+                        completionStatus: 'blocked',
+                        blocker: 'remote_code_run still running; poll remote_code_status.',
+                    },
+                },
+            },
+        });
+
+        expect(normalizedStep.params).toEqual(expect.objectContaining({
+            sessionId: 'remote-session-2',
+            mcpSessionId: 'mcp-session-2',
+            jobId: 'rcli_tetris_2',
+            cwd: '/srv/apps/my-app',
+        }));
+        expect(normalizedStep.params.task).toContain('Original task:');
+        expect(normalizedStep.params.task).toContain('Repair the live Tetris game.');
     });
 
     test('keeps deploy-only workflow verification pinned to the configured ssh target when the prompt includes a registration email', () => {

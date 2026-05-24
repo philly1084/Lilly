@@ -3536,6 +3536,7 @@ function extractRemoteCliAgentControlStateFromToolEvents(toolEvents = []) {
         ...(data.targetId ? { targetId: data.targetId } : {}),
         ...(data.cwd || params.cwd ? { cwd: data.cwd || params.cwd } : {}),
         ...(data.remoteCodeSessionId ? { remoteCodeSessionId: data.remoteCodeSessionId } : {}),
+        ...(data.remoteCodeJobId ? { remoteCodeJobId: data.remoteCodeJobId } : {}),
         ...(data.gitRepo ? { gitRepo: data.gitRepo } : {}),
         ...(data.gitBranch ? { gitBranch: data.gitBranch } : {}),
         ...(data.gitBaseCommit ? { gitBaseCommit: data.gitBaseCommit } : {}),
@@ -5576,9 +5577,55 @@ function hasRemoteCliAgentContinuationIntent(text = '') {
 
     return [
         /^(?:yes|yeah|yep|ok|okay)?\s*(?:continue|resume|finish|complete|keep going|keep working|go ahead|proceed)\b/,
+        /^(?:try again|retry|rerun)\b/,
         /\b(?:continue|resume|finish|complete|keep going|keep working)\b[\s\S]{0,80}\b(?:it|that|same|app|site|project|work|task)\b/,
+        /\b(?:again|still|same)\b[\s\S]{0,80}\b(?:broken|failing|not working|snag|snags|button|buttons|app|site|game|repair|deploy|deployment)\b/,
         /\b(?:go ahead|proceed)\b[\s\S]{0,80}\b(?:remote cli agent|remote clie agent|remote coding agent|that app|the app|it)\b/,
     ].some((pattern) => pattern.test(normalized));
+}
+
+function shouldReuseRemoteCliAgentJobId(priorAgentState = {}, objective = '') {
+    const jobId = String(priorAgentState?.remoteCodeJobId || '').trim();
+    if (!jobId) {
+        return false;
+    }
+
+    const status = String(priorAgentState?.completionStatus || '').trim().toLowerCase();
+    const blocker = String(priorAgentState?.blocker || '').trim().toLowerCase();
+    const verifyResults = Array.isArray(priorAgentState?.verifyResults)
+        ? priorAgentState.verifyResults.join('\n').toLowerCase()
+        : '';
+    const statusText = [status, blocker, verifyResults].filter(Boolean).join('\n');
+    const normalizedObjective = String(objective || '').trim().toLowerCase();
+    const sameWorkIntent = hasRemoteCliAgentContinuationIntent(normalizedObjective)
+        || /\b(?:try again|retry|rerun|again|still|same|that|it|repair|fix|button|buttons|game|snag|snags)\b/.test(normalizedObjective);
+    const newDistinctTaskIntent = /\b(?:new|another|different|fresh)\b[\s\S]{0,60}\b(?:app|site|game|project|deploy|deployment)\b/.test(normalizedObjective)
+        || /\b(?:build|create|launch|deploy|publish)\b[\s\S]{0,40}\b(?:new|another|different|fresh)\b/.test(normalizedObjective);
+    const runningJobBlocker = status === 'blocked'
+        && (
+            /\b(?:remote_code_run|remote_code_status|running|poll|polling)\b/.test(statusText)
+            || (
+                /\b(?:job|jobid)\b/.test(statusText)
+                && /\b(?:running|poll|polling|status)\b/.test(statusText)
+            )
+        );
+
+    return sameWorkIntent && runningJobBlocker && !newDistinctTaskIntent;
+}
+
+function buildRemoteCliAgentJobContinuationParams({ priorAgentState = {}, objective = '', params = {} } = {}) {
+    const explicitJobId = String(params?.jobId || params?.remoteCodeJobId || '').trim();
+    if (explicitJobId) {
+        return { jobId: explicitJobId };
+    }
+
+    if (!shouldReuseRemoteCliAgentJobId(priorAgentState, objective)) {
+        return {};
+    }
+
+    return {
+        jobId: String(priorAgentState.remoteCodeJobId).trim(),
+    };
 }
 
 function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {} } = {}) {
@@ -11549,6 +11596,10 @@ class ConversationOrchestrator extends EventEmitter {
                 objective,
                 priorAgentState,
             });
+            const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
+                priorAgentState,
+                objective,
+            });
             return finalizeAction({
                 tool: 'remote-cli-agent',
                 reason: 'The request asks an assisted remote CLI agent to own the coding, build, deploy, and verification loop.',
@@ -11559,6 +11610,7 @@ class ConversationOrchestrator extends EventEmitter {
                     ...(cwd ? { cwd } : {}),
                     ...(priorAgentState.sessionId ? { sessionId: priorAgentState.sessionId } : {}),
                     ...(priorAgentState.mcpSessionId ? { mcpSessionId: priorAgentState.mcpSessionId } : {}),
+                    ...jobContinuationParams,
                 },
             });
         }
@@ -11740,6 +11792,11 @@ class ConversationOrchestrator extends EventEmitter {
                 || '',
             ).trim();
             const rawTask = String(normalizedStep.params.task || objective || '').trim();
+            const jobContinuationParams = buildRemoteCliAgentJobContinuationParams({
+                priorAgentState,
+                objective: rawTask || objective,
+                params: normalizedStep.params,
+            });
             normalizedStep.params = {
                 ...normalizedStep.params,
                 task: buildRemoteCliAgentTaskForPrompt({
@@ -11750,6 +11807,7 @@ class ConversationOrchestrator extends EventEmitter {
                 ...(cwd ? { cwd } : {}),
                 ...(normalizedStep.params.sessionId || priorAgentState.sessionId ? { sessionId: normalizedStep.params.sessionId || priorAgentState.sessionId } : {}),
                 ...(normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId ? { mcpSessionId: normalizedStep.params.mcpSessionId || priorAgentState.mcpSessionId } : {}),
+                ...jobContinuationParams,
             };
             delete normalizedStep.params.wait_ms;
             return normalizedStep;

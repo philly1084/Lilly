@@ -384,6 +384,7 @@ class ChatApp {
         this.isProcessing = false;
         this.isCancellingCurrentRequest = false;
         this.currentStreamingMessageId = null;
+        this.pendingCheckpointToolCallBuffers = new Map();
         this.liveIndicatorHideTimer = null;
         this.liveResponseState = {
             phase: 'idle',
@@ -6658,11 +6659,17 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return {};
         }
 
-        if (typeof uiHelpers?.parseJsonSafely === 'function') {
-            return uiHelpers.parseJsonSafely(rawArgs) || {};
+        if (typeof uiHelpers !== 'undefined' && typeof uiHelpers?.parseJsonSafely === 'function') {
+            const parsed = uiHelpers.parseJsonSafely(rawArgs);
+            return parsed && typeof parsed === 'object' ? parsed : {};
         }
 
-        return {};
+        try {
+            const parsed = JSON.parse(rawArgs);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (_error) {
+            return {};
+        }
     }
 
     extractSurveyDefinition(messageContent = '', fallbackId = '') {
@@ -6838,6 +6845,167 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return /```(?:survey|kb-survey)\s*[\s\S]*?```/i.test(String(value || ''));
     }
 
+    normalizeToolEventName(value = '') {
+        return String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '-');
+    }
+
+    getToolCallName(item = {}, fallbackName = '') {
+        return String(
+            item?.function?.name
+            || item?.name
+            || item?.toolName
+            || item?.tool_name
+            || fallbackName
+            || '',
+        ).trim();
+    }
+
+    getToolEventName(event = {}) {
+        const item = event?.item || event?.toolCall || event?.tool_call || event || {};
+        return this.getToolCallName(
+            item,
+            event?.toolName
+                || event?.tool_name
+                || event?.result?.toolId
+                || event?.result?.tool_id
+                || event?.toolCall?.function?.name
+                || event?.tool_call?.function?.name
+                || '',
+        );
+    }
+
+    isUserCheckpointToolName(name = '') {
+        return this.normalizeToolEventName(name) === 'user-checkpoint';
+    }
+
+    getToolCallBufferKey(item = {}, fallbackName = '') {
+        const rawIndex = Number(item?.index);
+        if (Number.isInteger(rawIndex) && rawIndex >= 0) {
+            return `index:${rawIndex}`;
+        }
+
+        const explicitId = String(
+            item?.id
+            || item?.call_id
+            || item?.callId
+            || item?.tool_call_id
+            || item?.toolCallId
+            || '',
+        ).trim();
+        if (explicitId) {
+            return `id:${explicitId}`;
+        }
+
+        return `tool:${this.normalizeToolEventName(this.getToolCallName(item, fallbackName) || fallbackName || 'tool')}`;
+    }
+
+    getToolCallArguments(item = {}, event = {}) {
+        return item?.function?.arguments
+            ?? item?.arguments
+            ?? item?.args
+            ?? item?.input
+            ?? item?.parameters
+            ?? event?.arguments
+            ?? event?.args
+            ?? event?.input
+            ?? event?.parameters
+            ?? null;
+    }
+
+    normalizeCheckpointDefinition(value = null, fallbackId = '') {
+        if (typeof uiHelpers !== 'undefined' && typeof uiHelpers?.normalizeSurveyDefinition === 'function') {
+            return uiHelpers.normalizeSurveyDefinition(value, fallbackId);
+        }
+
+        if (!value || typeof value !== 'object') {
+            return null;
+        }
+
+        const options = Array.isArray(value.options) ? value.options : [];
+        if (!String(value.question || '').trim() || options.length < 2) {
+            return null;
+        }
+
+        return {
+            id: String(value.id || fallbackId || `checkpoint-${Date.now().toString(36)}`).trim(),
+            question: String(value.question || '').trim(),
+            options,
+            steps: [{
+                id: String(value.id || fallbackId || 'checkpoint-step').trim(),
+                question: String(value.question || '').trim(),
+                inputType: value.inputType || 'choice',
+                options,
+            }],
+            inputType: value.inputType || 'choice',
+            allowMultiple: value.allowMultiple === true,
+            maxSelections: Number(value.maxSelections || 1) > 0 ? Number(value.maxSelections || 1) : 1,
+            allowFreeText: value.allowFreeText === true,
+        };
+    }
+
+    extractCheckpointFromToolEventResult(event = {}) {
+        if (event?.result?.success === false) {
+            return null;
+        }
+
+        const data = event?.result?.data || {};
+        const checkpoint = data.checkpoint && typeof data.checkpoint === 'object'
+            ? data.checkpoint
+            : (data && typeof data === 'object' ? data : null);
+
+        return this.normalizeCheckpointDefinition(checkpoint);
+    }
+
+    extractCheckpointFromToolEventChunk(event = {}) {
+        const item = event?.item || event?.toolCall || event?.tool_call || event || {};
+        const bufferKey = this.getToolCallBufferKey(item, this.getToolEventName(event));
+        const buffered = this.pendingCheckpointToolCallBuffers?.get(bufferKey) || null;
+        const toolName = this.getToolEventName(event) || buffered?.toolName || '';
+
+        if (!this.isUserCheckpointToolName(toolName)) {
+            return null;
+        }
+
+        const resultCheckpoint = this.extractCheckpointFromToolEventResult(event);
+        if (resultCheckpoint) {
+            this.pendingCheckpointToolCallBuffers?.delete(bufferKey);
+            return resultCheckpoint;
+        }
+
+        const rawArgs = this.getToolCallArguments(item, event);
+        if (rawArgs == null || rawArgs === '') {
+            this.pendingCheckpointToolCallBuffers?.set(bufferKey, {
+                toolName,
+                rawArguments: buffered?.rawArguments || '',
+            });
+            return null;
+        }
+
+        if (typeof rawArgs === 'object') {
+            const checkpoint = this.normalizeCheckpointDefinition(rawArgs);
+            if (checkpoint) {
+                this.pendingCheckpointToolCallBuffers?.delete(bufferKey);
+                return checkpoint;
+            }
+            return null;
+        }
+
+        const nextRawArguments = `${buffered?.rawArguments || ''}${String(rawArgs || '')}`;
+        this.pendingCheckpointToolCallBuffers?.set(bufferKey, {
+            toolName,
+            rawArguments: nextRawArguments,
+        });
+
+        const parsedArgs = this.parseToolArguments(nextRawArguments);
+        const checkpoint = this.normalizeCheckpointDefinition(parsedArgs);
+        if (!checkpoint) {
+            return null;
+        }
+
+        this.pendingCheckpointToolCallBuffers?.delete(bufferKey);
+        return checkpoint;
+    }
+
     assistantMentionsPendingSurvey(content = '') {
         return /\b(inline survey|survey card|questionnaire|popup question|multiple[- ]choice)\b/i.test(
             String(content || ''),
@@ -6848,7 +7016,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const checkpointEvent = [...(Array.isArray(toolEvents) ? toolEvents : [])]
             .reverse()
             .find((event) => (
-                (event?.toolCall?.function?.name || event?.result?.toolId || '') === 'user-checkpoint'
+                this.isUserCheckpointToolName(this.getToolEventName(event))
                 && event?.result?.success !== false
             ));
 
@@ -6856,12 +7024,8 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return null;
         }
 
-        const data = checkpointEvent?.result?.data || {};
-        const checkpoint = data.checkpoint && typeof data.checkpoint === 'object'
-            ? data.checkpoint
-            : (data && typeof data === 'object' ? data : null);
-
-        return uiHelpers.normalizeSurveyDefinition(checkpoint);
+        return this.extractCheckpointFromToolEventResult(checkpointEvent)
+            || this.extractCheckpointFromToolEventChunk(checkpointEvent);
     }
 
     updateLocalCheckpointControlState(sessionId, updater) {
@@ -6903,6 +7067,61 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 },
             };
         });
+    }
+
+    showPendingCheckpointFromToolCall(sessionId, checkpoint = null, parentMessageId = '') {
+        const normalizedCheckpoint = this.normalizeCheckpointDefinition(checkpoint);
+        if (!sessionId || !normalizedCheckpoint?.id) {
+            return false;
+        }
+
+        const existingPendingId = String(
+            this.getSessionRecord(sessionId)?.controlState?.userCheckpoint?.pending?.id || '',
+        ).trim();
+        const wasAlreadyPending = existingPendingId === normalizedCheckpoint.id;
+        this.restoreLocalCheckpointPending(sessionId, normalizedCheckpoint);
+        this.updateLiveResponsePhase('checkpoint', 'Waiting for your checkpoint answer.');
+
+        const messageId = String(parentMessageId || this.currentStreamingMessageId || '').trim();
+        let savedMessage = null;
+        if (messageId) {
+            const currentMessage = this.getSessionMessage(sessionId, messageId);
+            if (currentMessage?.role === 'assistant') {
+                savedMessage = this.upsertSessionMessage(sessionId, {
+                    ...currentMessage,
+                    content: normalizedCheckpoint.preamble
+                        || currentMessage.content
+                        || 'Choose an option below and I will continue from there.',
+                    displayContent: this.buildSurveyFenceContent(normalizedCheckpoint),
+                    isStreaming: true,
+                    progressState: null,
+                    liveState: {
+                        phase: 'checkpoint',
+                        detail: 'Waiting for your checkpoint answer.',
+                    },
+                    metadata: {
+                        ...(currentMessage.metadata || {}),
+                        pendingUserCheckpointId: normalizedCheckpoint.id,
+                    },
+                });
+            }
+        }
+
+        const messages = this.syncAnnotatedSurveyStates(sessionId);
+        if (this.isVisibleSession(sessionId)) {
+            this.renderMessages(messages);
+            const focusMessage = savedMessage || messages.find((message) => (
+                message?.role === 'assistant'
+                && this.getMessageSurveyDefinition(message)?.id === normalizedCheckpoint.id
+            ));
+            if (focusMessage && !wasAlreadyPending) {
+                this.presentAssistantMessage(focusMessage, [{ toolName: 'user-checkpoint' }]);
+            }
+            this.updateSessionInfo();
+            uiHelpers.renderSessionsList(sessionManager.sessions, sessionManager.currentSessionId);
+        }
+
+        return true;
     }
 
     markLocalCheckpointAnswered(sessionId, checkpointId = '', summary = '') {
@@ -6990,7 +7209,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const messages = sessionManager.getMessages(sessionId);
         const session = this.getSessionRecord(sessionId);
         const managedProjectActive = Boolean(this.getSessionActiveProject(sessionId));
-        const pendingCheckpoint = uiHelpers.normalizeSurveyDefinition(
+        const pendingCheckpoint = this.normalizeCheckpointDefinition(
             session?.controlState?.userCheckpoint?.pending || null,
         );
 
@@ -7138,7 +7357,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const checkpointEvent = [...(Array.isArray(toolEvents) ? toolEvents : [])]
             .reverse()
             .find((event) => (
-                (event?.toolCall?.function?.name || event?.result?.toolId || '') === 'user-checkpoint'
+                this.isUserCheckpointToolName(this.getToolEventName(event))
                 && event?.result?.success !== false
             ));
 
@@ -7149,7 +7368,11 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const data = checkpointEvent?.result?.data || {};
         const checkpoint = data.checkpoint && typeof data.checkpoint === 'object'
             ? data.checkpoint
-            : (data && typeof data === 'object' ? data : null);
+            : (
+                data && typeof data === 'object' && Object.keys(data).length > 0
+                    ? data
+                    : this.extractCheckpointFromToolEventChunk(checkpointEvent)
+            );
         const surveyFence = this.buildSurveyFenceContent(checkpoint);
         if (!surveyFence) {
             const message = String(data.message || '').trim();
@@ -7289,7 +7512,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
     hasSurveyToolEvent(toolEvents = []) {
         return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => (
-            (event?.toolCall?.function?.name || event?.result?.toolId || '') === 'user-checkpoint'
+            this.isUserCheckpointToolName(this.getToolEventName(event))
             && event?.result?.success !== false
         ));
     }
@@ -8399,6 +8622,12 @@ curl -fsSIL --max-time 20 "https://$host"`;
     handleToolEvent(chunk = {}) {
         const detail = extractChatDisplayText(chunk.detail, { maxLength: 220 }) || 'Checking tool results';
         this.updateLiveResponsePhase('checking-tools', detail);
+
+        const checkpoint = this.extractCheckpointFromToolEventChunk(chunk);
+        if (checkpoint) {
+            const sessionId = this.getStreamingMessageSessionId() || sessionManager.currentSessionId;
+            this.showPendingCheckpointFromToolCall(sessionId, checkpoint, this.currentStreamingMessageId);
+        }
     }
 
     handleDelta(content) {
