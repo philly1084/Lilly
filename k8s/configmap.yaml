@@ -23,8 +23,9 @@ data:
   # Server-side Agents SDK MCP connection for remote CLI coding agents.
   REMOTE_CLI_MCP_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local/mcp"
   REMOTE_CLI_MCP_NAME: "remote-cli"
-  REMOTE_CLI_DEFAULT_TARGET_ID: "prod"
+  REMOTE_CLI_DEFAULT_TARGET_ID: "k3s-prod"
   REMOTE_CLI_DEFAULT_CWD: "/srv/apps/my-app"
+  REMOTE_CLI_AGENT_MODEL: "gpt-5.5"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"
   REMOTE_CLI_AGENT_MAX_TURNS: "20"
   # Leave empty to use the gateway target's supported default model.
