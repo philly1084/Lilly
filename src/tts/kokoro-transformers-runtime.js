@@ -17,13 +17,13 @@ const KOKORO_PRONUNCIATION_OVERRIDES = new Map([
     ['grapheme', 'ɡɹˈæfim'],
     ['graphemes', 'ɡɹˈæfimz'],
     ['kimibuilt', 'kˈimi bˈɪlt'],
-    ['kokoro', 'kˈoʊkəɹoʊ'],
+    ['kokoro', 'kˈOkəɹO'],
     ['ng', 'ˌɛn ˈʤi'],
-    ['openai', 'ˌoʊpən ˈeɪˈaɪ'],
-    ['phoneme', 'fˈoʊnim'],
-    ['phonemes', 'fˈoʊnimz'],
-    ['phonemizer', 'fˈoʊnəmˌaɪzɚ'],
-    ['phonemize', 'fˈoʊnəmˌaɪz'],
+    ['openai', 'ˌOpən ˈAˈI'],
+    ['phoneme', 'fˈOnim'],
+    ['phonemes', 'fˈOnimz'],
+    ['phonemizer', 'fˈOnəmˌIzɜɹ'],
+    ['phonemize', 'fˈOnəmˌIz'],
     ['qdrant', 'kjˈudɹænt'],
     ['tts', 'tˈi tˈi ˈɛs'],
 ]);
@@ -216,7 +216,16 @@ function joinKokoroPhonemeTokens(tokens = []) {
 function normalizePhonemesForKokoro(value = '') {
     return String(value || '')
         .replace(/ɫ/g, 'l')
-        .replace(/ɝ/g, 'ɚ')
+        .replace(/ɝ/g, 'ɜɹ')
+        .replace(/ɚ/g, 'ɜɹ')
+        .replace(/tʃ/g, 'ʧ')
+        .replace(/dʒ/g, 'ʤ')
+        .replace(/eɪ/g, 'A')
+        .replace(/aɪ/g, 'I')
+        .replace(/aʊ/g, 'W')
+        .replace(/ɔɪ/g, 'Y')
+        .replace(/oʊ/g, 'O')
+        .replace(/əʊ/g, 'Q')
         .replace(/ʲ/g, 'j')
         .replace(/r/g, 'ɹ')
         .replace(/x/g, 'k')

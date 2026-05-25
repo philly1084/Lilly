@@ -52,6 +52,21 @@ describe('KimiBuiltKokoroTTS runtime', () => {
         expect(phonemes).not.toContain('ˈðə');
     });
 
+    test('converts IPA-ish fallback output into Kokoro Misaki-compatible symbols', () => {
+        const phonemes = phonemizeForKokoro('Joy chose our OpenAI voice.', 'af_heart');
+
+        expect(phonemes).toContain('ʤ');
+        expect(phonemes).toContain('ʧ');
+        expect(phonemes).toContain('ˌOpən ˈAˈI');
+        expect(phonemes).not.toContain('dʒ');
+        expect(phonemes).not.toContain('tʃ');
+        expect(phonemes).not.toContain('oʊ');
+        expect(phonemes).not.toContain('eɪ');
+        expect(phonemes).not.toContain('aɪ');
+        expect(phonemes).not.toContain('ɚ');
+        expect(phonemes).not.toContain('ɝ');
+    });
+
     test('generates audio with cached voices without importing kokoro-js phonemizer', async () => {
         const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kimibuilt-kokoro-runtime-'));
         writeVoice(cacheDir);
