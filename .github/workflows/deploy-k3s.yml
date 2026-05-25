@@ -189,13 +189,33 @@ jobs:
               --overwrite
           }
 
+          cleanup_stale_kokoro_hotfix_mounts() {
+            if ! kubectl get deployment kokoro-tts -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # Earlier live repairs mounted ConfigMap copies over the Kokoro source files.
+            # Remove those overrides so the rollout always uses the verified image content.
+            kubectl patch deployment/kokoro-tts -n "${KUBE_NAMESPACE}" \
+              --type=json \
+              -p='[
+                {"op":"remove","path":"/spec/template/spec/containers/0/volumeMounts"},
+                {"op":"remove","path":"/spec/template/spec/volumes"}
+              ]' >/dev/null 2>&1 || true
+            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
+              kokoro-service-process-isolation-hotfix \
+              kokoro-worker-process-isolation-hotfix \
+              --ignore-not-found=true
+          }
+
           # Apply namespace first
           kubectl apply -f k8s/namespace.yaml
           
           # Apply configmap
           kubectl apply -f k8s/configmap.yaml
           cleanup_stale_backend_env
-          
+          cleanup_stale_kokoro_hotfix_mounts
+
           # Create or patch runtime secrets from GitHub Actions secrets when they
           # are configured. Existing non-placeholder live values are preserved.
           effective_gateway_key="$(choose_secret_value "${GH_N8N_API_KEY:-}" N8N_API_KEY)"
