@@ -190,6 +190,98 @@ describe('self-reflection updater', () => {
     expect(fs.readFileSync(logPath, 'utf8')).toContain('user_profile_replace');
   });
 
+  test('appends and patches durable Hermes files without clobbering existing content', () => {
+    fs.writeFileSync(soulPath, '# Soul\n\n## Behavior\n- Stay grounded.\n', 'utf8');
+    fs.writeFileSync(userPath, '# User\n\n## Phil\n- Likes proof.\n', 'utf8');
+
+    const result = applySelfReflectionUpdate({
+      source: 'user_requested',
+      trigger: 'User said the soul and user files are not growing.',
+      reflection: 'Growth requests should preserve existing durable profile content while adding stable lessons.',
+      actions: [
+        {
+          type: 'soul_append',
+          reason: 'Add durable growth behavior without rewriting the whole soul file.',
+          content: '- Treat explicit growth requests as permission to update bounded durable memory while preserving existing content.',
+        },
+        {
+          type: 'user_profile_append',
+          reason: 'Record the stable user preference for additive durable learning.',
+          heading: '## Collaboration Defaults',
+          content: '- Wants the agent to grow with the working relationship through safe additive updates.',
+        },
+        {
+          type: 'user_profile_patch',
+          reason: 'Make the existing proof preference more concrete.',
+          oldText: '- Likes proof.',
+          newText: '- Likes concrete proof before reassurance.',
+        },
+      ],
+    }, {
+      skillStore,
+    });
+
+    const updatedSoul = fs.readFileSync(soulPath, 'utf8');
+    const updatedUser = fs.readFileSync(userPath, 'utf8');
+
+    expect(result.applied).toBe(true);
+    expect(updatedSoul).toContain('## Behavior');
+    expect(updatedSoul).toContain('## Growth Notes');
+    expect(updatedSoul).toContain('explicit growth requests');
+    expect(updatedUser).toContain('## Phil');
+    expect(updatedUser).toContain('concrete proof before reassurance');
+    expect(updatedUser).toContain('safe additive updates');
+    expect(result.actions[0].backupPath).toContain('history');
+    expect(fs.readFileSync(result.actions[0].backupPath, 'utf8')).toContain('- Stay grounded.');
+    expect(result.actions[1].backupPath).toBe(result.actions[2].backupPath);
+    expect(fs.readFileSync(result.actions[1].backupPath, 'utf8')).toContain('- Likes proof.');
+  });
+
+  test('requires compacted content when a durable append exceeds the file limit', () => {
+    const userProfile = require('./agent-user-profile');
+    const prefix = '# User\n\n## Phil\n- ';
+    const suffix = '\n';
+    const fillerLength = userProfile.USER_PROFILE_CHAR_LIMIT - prefix.length - suffix.length - 4;
+    fs.writeFileSync(userPath, `${prefix}${'x'.repeat(fillerLength)}${suffix}`, 'utf8');
+
+    expect(() => applySelfReflectionUpdate({
+      source: 'user_requested',
+      trigger: 'User asked the agent to grow with them.',
+      reflection: 'The user profile is near its limit, so appending requires compaction.',
+      actions: [{
+        type: 'user_profile_append',
+        reason: 'Durable lesson needs to be preserved without overflow.',
+        content: '- Durable lesson: compact old profile facts when adding stable new growth preferences.\n',
+      }],
+    }, {
+      skillStore,
+    })).toThrow(/provide compactedContent/);
+
+    const result = applySelfReflectionUpdate({
+      source: 'user_requested',
+      trigger: 'User asked the agent to grow with them.',
+      reflection: 'The user profile is near its limit, so append with compaction.',
+      actions: [{
+        type: 'user_profile_append',
+        reason: 'Durable lesson needs to be preserved without overflow.',
+        content: '- Durable lesson: compact old profile facts when adding stable new growth preferences.\n',
+        compactedContent: '# User\n\n## Phil\n- Durable lesson: compact old profile facts when adding stable new growth preferences while preserving essentials.\n',
+      }],
+    }, {
+      skillStore,
+    });
+
+    expect(result.actions[0]).toEqual(expect.objectContaining({
+      status: 'applied',
+      operation: 'compact-append',
+      characterLimit: userProfile.USER_PROFILE_CHAR_LIMIT,
+    }));
+    expect(result.actions[0].attemptedCharacters).toBeGreaterThan(userProfile.USER_PROFILE_CHAR_LIMIT);
+    expect(result.actions[0].compactedCharacters).toBeLessThan(userProfile.USER_PROFILE_CHAR_LIMIT);
+    expect(fs.readFileSync(userPath, 'utf8')).toContain('compact old profile facts');
+    expect(fs.readFileSync(result.actions[0].backupPath, 'utf8')).toContain('xxx');
+  });
+
   test('reads audit updates newest first with bounded limits', () => {
     applySelfReflectionUpdate({
       source: 'model_card',

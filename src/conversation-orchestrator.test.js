@@ -5514,6 +5514,14 @@ describe('ConversationOrchestrator', () => {
             executionProfile: 'default',
             toolManager: orchestrator.toolManager,
         });
+        const isolatedToolPolicy = orchestrator.buildToolPolicy({
+            objective: "The agent isn't updating the user card or soul card. Can we make sure the agents are growing with our interactions?",
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+            toolContext: {
+                sessionIsolation: true,
+            },
+        });
         const runtimeInstructions = orchestrator.buildRuntimeInstructions({
             executionProfile: 'default',
             allowedToolIds: toolPolicy.allowedToolIds,
@@ -5521,8 +5529,12 @@ describe('ConversationOrchestrator', () => {
         });
 
         expect(toolPolicy.candidateToolIds).toContain('self-reflection-update');
+        expect(isolatedToolPolicy.candidateToolIds).toContain('self-reflection-update');
+        expect(isolatedToolPolicy.candidateToolIds).not.toContain('agent-notes-write');
         expect(runtimeInstructions).toContain('soul cards and user cards');
         expect(runtimeInstructions).toContain('stable durable lessons');
+        expect(runtimeInstructions).toContain('Prefer `soul_append`');
+        expect(runtimeInstructions).toContain('compactedContent');
     });
 
     test('surfaces user-checkpoint to planners for web-chat decision gates', async () => {

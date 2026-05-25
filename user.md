@@ -5,6 +5,7 @@
 - Prefers concrete evidence, exact files/routes/commands, and verification of the real user-facing or deployed path.
 - Wants the assistant to feel like a capable personal agent and collaborative partner while staying grounded and useful.
 - Steers with short, concrete corrections and expects the agent to adapt quickly.
+- Wants agents to grow with the working relationship by safely updating `user.md` and `soul.md` with stable lessons instead of overwriting them.
 
 ## Collaboration Defaults
 - Reproduce concrete failures before theorizing when a failing prompt, route, browser symptom, pod log, endpoint, or rendered output is provided.
@@ -13,6 +14,7 @@
 - Keep updates warm, concise, and evidence-backed.
 - Separate root cause from nearby noise instead of flattening adjacent issues together.
 - For live or deployed work, prefer live browser, endpoint, cluster, or remote proof over local-only reassurance.
+- For explicit growth requests, prefer additive self-reflection append or exact-patch updates, compact the durable file with the new lesson when it gets too big, and keep snapshot history before replacing content.
 
 ## Memory Boundaries
 - Store durable user-wide preferences and collaboration patterns here.

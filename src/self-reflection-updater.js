@@ -9,6 +9,7 @@ const SELF_REFLECTION_UPDATE_TOOL_ID = 'self-reflection-update';
 const SELF_REFLECTION_UPDATE_ACTION_LIMIT = 4;
 const SELF_REFLECTION_MODEL_CARD_NOTE_LIMIT = 1200;
 const SELF_REFLECTION_LOG_FILE = path.join(PROJECT_ROOT, 'data', 'self-reflection-updates', 'updates.jsonl');
+const DURABLE_HISTORY_DIR = 'history';
 
 const BLOCKED_DURABLE_CONTENT_PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
@@ -139,6 +140,302 @@ function countOccurrences(source = '', needle = '') {
   return count;
 }
 
+function normalizeDurableMarkdown(value = '') {
+  const normalized = String(value || '').replace(/\r\n/g, '\n').trimEnd();
+  return normalized ? `${normalized}\n` : '';
+}
+
+function normalizeHistorySegment(value = '') {
+  return normalizeText(value || 'durable-file')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'durable-file';
+}
+
+function getDurableHistoryPath(label = 'durable-file', context = {}) {
+  const logPath = getLogFilePath();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const updateId = normalizeHistorySegment(context.updateId || 'update');
+  const fileBase = normalizeHistorySegment(label);
+  return path.join(path.dirname(logPath), DURABLE_HISTORY_DIR, fileBase, `${timestamp}-${updateId}.md`);
+}
+
+function saveDurableFileSnapshot(filePath = '', label = 'durable-file', context = {}) {
+  const absoluteFilePath = String(filePath || '').trim();
+  if (!absoluteFilePath || !fs.existsSync(absoluteFilePath)) {
+    return '';
+  }
+
+  const snapshotKey = path.resolve(absoluteFilePath);
+  if (context.snapshots?.has(snapshotKey)) {
+    return context.snapshots.get(snapshotKey);
+  }
+
+  const currentContent = fs.readFileSync(absoluteFilePath, 'utf8');
+  if (!currentContent) {
+    return '';
+  }
+
+  const historyPath = getDurableHistoryPath(label, context);
+  fs.mkdirSync(path.dirname(historyPath), { recursive: true });
+  fs.writeFileSync(historyPath, currentContent, 'utf8');
+  if (context.snapshots) {
+    context.snapshots.set(snapshotKey, historyPath);
+  }
+  return historyPath;
+}
+
+function getDurableFileTarget(kind = '', context = {}) {
+  if (kind === 'agent-notes') {
+    const helpers = context.agentNotesHelpers || getDefaultAgentNotesHelpers();
+    return {
+      label: 'agent-notes.md',
+      defaultHeading: '## Learned Carryover',
+      characterLimit: helpers.AGENT_NOTES_CHAR_LIMIT,
+      getFilePath: () => helpers.getAgentNotesFilePath?.() || helpers.getEffectiveAgentNotesConfig().absoluteFilePath,
+      read: () => helpers.getEffectiveAgentNotesConfig().content,
+      validate: (content) => helpers.validateAgentNotesContent(content),
+      write: (content) => helpers.writeAgentNotesFile(content),
+    };
+  }
+
+  if (kind === 'soul') {
+    const helpers = context.soulHelpers || getDefaultSoulHelpers();
+    return {
+      label: 'soul.md',
+      defaultHeading: '## Growth Notes',
+      characterLimit: helpers.SOUL_CHAR_LIMIT,
+      getFilePath: () => helpers.getSoulFilePath?.() || helpers.getEffectiveSoulConfig().absoluteFilePath,
+      read: () => helpers.getEffectiveSoulConfig().content,
+      validate: (content) => helpers.validateSoulContent(content),
+      write: (content) => helpers.writeSoulFile(content),
+    };
+  }
+
+  if (kind === 'user-profile') {
+    const helpers = context.userProfileHelpers || getDefaultUserProfileHelpers();
+    return {
+      label: 'user.md',
+      defaultHeading: '## Learned With Phil',
+      characterLimit: helpers.USER_PROFILE_CHAR_LIMIT,
+      getFilePath: () => helpers.getUserProfileFilePath?.() || helpers.getEffectiveUserProfileConfig().absoluteFilePath,
+      read: () => helpers.getEffectiveUserProfileConfig().content,
+      validate: (content) => helpers.validateUserProfileContent(content),
+      write: (content) => helpers.writeUserProfileFile(content),
+    };
+  }
+
+  const error = new Error(`Unsupported durable reflection target: ${kind || '(missing)'}`);
+  error.statusCode = 400;
+  throw error;
+}
+
+function hasMarkdownHeading(content = '', heading = '') {
+  const expected = String(heading || '').trim();
+  if (!expected) {
+    return false;
+  }
+  return String(content || '').split(/\r?\n/).some((line) => line.trim() === expected);
+}
+
+function buildAppendContent(existingContent = '', addition = '', heading = '') {
+  const existing = normalizeDurableMarkdown(existingContent);
+  const block = normalizeDurableMarkdown(addition).trim();
+  if (!block) {
+    const error = new Error('durable append requires non-empty content.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (existing.includes(block)) {
+    return {
+      changed: false,
+      content: existing,
+    };
+  }
+
+  const shouldAddHeading = Boolean(heading)
+    && !block.startsWith('#')
+    && !hasMarkdownHeading(existing, heading);
+  const nextParts = [existing.trimEnd()].filter(Boolean);
+  if (shouldAddHeading) {
+    nextParts.push(String(heading || '').trim());
+  }
+  nextParts.push(block);
+
+  return {
+    changed: true,
+    content: normalizeDurableMarkdown(nextParts.join('\n\n')),
+  };
+}
+
+function getCompactedAppendContent(action = {}) {
+  return String(
+    action.compactedContent
+    || action.compacted_content
+    || action.compacted
+    || action.replacementContent
+    || action.replacement_content
+    || '',
+  );
+}
+
+function isDurableLimitError(error = {}) {
+  const code = String(error?.code || '');
+  return code.endsWith('_LIMIT_EXCEEDED')
+    || Number.isFinite(Number(error?.details?.limit));
+}
+
+function createCompactionRequiredError(target = {}, attemptedCharacters = 0) {
+  const error = new Error(`${target.label} append would exceed ${target.characterLimit} characters; provide compactedContent with the full compacted file content including the new lesson.`);
+  error.code = 'DURABLE_COMPACTION_REQUIRED';
+  error.statusCode = 400;
+  error.details = {
+    target: target.label,
+    limit: target.characterLimit,
+    attemptedCharacters,
+    compactedContentField: 'compactedContent',
+  };
+  return error;
+}
+
+function buildPatchedContent(existingContent = '', action = {}, label = 'durable file') {
+  const oldText = String(action.oldText || action.old_string || action.find || '');
+  const newText = String(action.newText || action.new_string || action.replace || '');
+  if (!oldText) {
+    const error = new Error(`${label} patch requires oldText.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const existing = normalizeDurableMarkdown(existingContent);
+  const occurrences = countOccurrences(existing, oldText);
+  if (occurrences !== 1) {
+    const error = new Error(`${label} patch oldText must match exactly once; matched ${occurrences}.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return normalizeDurableMarkdown(existing.replace(oldText, newText));
+}
+
+function applyDurableAppend(action = {}, context = {}, kind = '') {
+  const content = String(action.content || action.notes || action.body || '');
+  if (!content.trim()) {
+    const error = new Error('durable append requires non-empty content.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const target = getDurableFileTarget(kind, context);
+  assertNoBlockedDurableContent(content, target.label);
+  const currentContent = target.read();
+  const heading = String(action.heading || action.section || target.defaultHeading || '').trim();
+  const next = buildAppendContent(currentContent, content, heading);
+  let normalized;
+  let operation = 'append';
+  let attemptedCharacters = next.content.length;
+  let compactedCharacters = 0;
+
+  try {
+    normalized = target.validate(next.content);
+  } catch (error) {
+    if (!isDurableLimitError(error)) {
+      throw error;
+    }
+
+    const compactedContent = getCompactedAppendContent(action);
+    if (!compactedContent.trim()) {
+      throw createCompactionRequiredError(target, attemptedCharacters);
+    }
+
+    assertNoBlockedDurableContent(compactedContent, target.label);
+    normalized = target.validate(compactedContent);
+    operation = 'compact-append';
+    compactedCharacters = normalized.length;
+  }
+
+  if (context.dryRun) {
+    return {
+      type: action.type,
+      status: next.changed ? 'validated' : 'unchanged',
+      operation,
+      target: target.label,
+      reason: action.reason,
+      characters: normalized.length,
+      characterLimit: target.characterLimit,
+      attemptedCharacters,
+      compactedCharacters,
+    };
+  }
+
+  if (!next.changed) {
+    return {
+      type: action.type,
+      status: 'unchanged',
+      operation,
+      target: target.label,
+      reason: action.reason,
+      characters: normalized.length,
+      characterLimit: target.characterLimit,
+      attemptedCharacters,
+      compactedCharacters,
+    };
+  }
+
+  const backupPath = saveDurableFileSnapshot(target.getFilePath(), target.label, context);
+  const saved = target.write(normalized);
+  return {
+    type: action.type,
+    status: 'applied',
+    operation,
+    target: saved.filePath,
+    reason: action.reason,
+    characters: saved.characterCount || normalized.length,
+    characterLimit: saved.characterLimit || target.characterLimit,
+    updatedAt: saved.updatedAt,
+    backupPath,
+    attemptedCharacters,
+    compactedCharacters,
+  };
+}
+
+function applyDurablePatch(action = {}, context = {}, kind = '') {
+  const target = getDurableFileTarget(kind, context);
+  const currentContent = target.read();
+  const normalized = target.validate(buildPatchedContent(currentContent, action, target.label));
+  assertNoBlockedDurableContent(normalized, target.label);
+
+  if (context.dryRun) {
+    return {
+      type: action.type,
+      status: 'validated',
+      operation: 'patch',
+      target: target.label,
+      reason: action.reason,
+      characters: normalized.length,
+      characterLimit: target.characterLimit,
+      replacements: 1,
+    };
+  }
+
+  const backupPath = saveDurableFileSnapshot(target.getFilePath(), target.label, context);
+  const saved = target.write(normalized);
+  return {
+    type: action.type,
+    status: 'applied',
+    operation: 'patch',
+    target: saved.filePath,
+    reason: action.reason,
+    characters: saved.characterCount || normalized.length,
+    characterLimit: saved.characterLimit || target.characterLimit,
+    updatedAt: saved.updatedAt,
+    replacements: 1,
+    backupPath,
+  };
+}
+
 function appendReflectionLog(entry = {}) {
   const logPath = getLogFilePath();
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
@@ -238,6 +535,7 @@ function applyNotesReplace(action = {}, context = {}) {
     };
   }
 
+  const backupPath = saveDurableFileSnapshot(helpers.getAgentNotesFilePath?.(), 'agent-notes.md', context);
   const saved = helpers.writeAgentNotesFile(normalized);
   return {
     type: action.type,
@@ -247,6 +545,7 @@ function applyNotesReplace(action = {}, context = {}) {
     characters: saved.characterCount,
     characterLimit: saved.characterLimit,
     updatedAt: saved.updatedAt,
+    backupPath,
   };
 }
 
@@ -273,6 +572,7 @@ function applySoulReplace(action = {}, context = {}) {
     };
   }
 
+  const backupPath = saveDurableFileSnapshot(helpers.getSoulFilePath?.(), 'soul.md', context);
   const saved = helpers.writeSoulFile(normalized);
   return {
     type: action.type,
@@ -282,6 +582,7 @@ function applySoulReplace(action = {}, context = {}) {
     characters: saved.characterCount || normalized.length,
     characterLimit: saved.characterLimit || helpers.SOUL_CHAR_LIMIT,
     updatedAt: saved.updatedAt,
+    backupPath,
   };
 }
 
@@ -308,6 +609,7 @@ function applyUserProfileReplace(action = {}, context = {}) {
     };
   }
 
+  const backupPath = saveDurableFileSnapshot(helpers.getUserProfileFilePath?.(), 'user.md', context);
   const saved = helpers.writeUserProfileFile(normalized);
   return {
     type: action.type,
@@ -317,6 +619,7 @@ function applyUserProfileReplace(action = {}, context = {}) {
     characters: saved.characterCount,
     characterLimit: saved.characterLimit,
     updatedAt: saved.updatedAt,
+    backupPath,
   };
 }
 
@@ -477,14 +780,36 @@ function applySelfReflectionAction(action = {}, context = {}) {
   case 'agent_notes_replace':
   case 'carryover_notes_replace':
     return applyNotesReplace(action, context);
+  case 'agent_notes_append':
+  case 'carryover_notes_append':
+    return applyDurableAppend(action, context, 'agent-notes');
+  case 'agent_notes_patch':
+  case 'carryover_notes_patch':
+    return applyDurablePatch(action, context, 'agent-notes');
   case 'soul_replace':
   case 'agent_soul_replace':
   case 'personality_replace':
     return applySoulReplace(action, context);
+  case 'soul_append':
+  case 'agent_soul_append':
+  case 'personality_append':
+    return applyDurableAppend(action, context, 'soul');
+  case 'soul_patch':
+  case 'agent_soul_patch':
+  case 'personality_patch':
+    return applyDurablePatch(action, context, 'soul');
   case 'user_notes_replace':
   case 'user_profile_replace':
   case 'user_md_replace':
     return applyUserProfileReplace(action, context);
+  case 'user_notes_append':
+  case 'user_profile_append':
+  case 'user_md_append':
+    return applyDurableAppend(action, context, 'user-profile');
+  case 'user_notes_patch':
+  case 'user_profile_patch':
+  case 'user_md_patch':
+    return applyDurablePatch(action, context, 'user-profile');
   case 'skill_create':
     return applySkillCreate(action, context);
   case 'skill_update':
@@ -522,6 +847,7 @@ function applySelfReflectionUpdate(input = {}, options = {}) {
   }
 
   const baseContext = {
+    updateId: result.id,
     targetSkillId: normalizeText(input.targetSkillId || input.skillId),
     skillStore: options.skillStore,
     agentNotesHelpers: options.agentNotesHelpers,
@@ -546,6 +872,7 @@ function applySelfReflectionUpdate(input = {}, options = {}) {
     ...baseContext,
     dryRun: false,
     modelCardNotes: [],
+    snapshots: new Map(),
   };
 
   result.actions = actions.map((action) => applySelfReflectionAction(action, context));

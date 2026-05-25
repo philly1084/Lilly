@@ -1871,8 +1871,8 @@ function buildScoredCandidateToolMap({
     }
     if (!sessionIsolation) {
         adjustCandidateToolScore(scoreMap, 'agent-notes-write', /\b(preference|remember|note for later|carryover|future sessions?|between sessions?|personal agent|know me|understand me|work with me)\b/.test(normalizedPrompt) ? 0.7 : 0, 'Durable carryover notes may help later sessions.');
-        adjustCandidateToolScore(scoreMap, SELF_REFLECTION_UPDATE_TOOL_ID, hasSelfReflectionUpdateIntentText(normalizedPrompt) ? 1.15 : 0, 'A bounded self-reflection update can patch durable notes and registered skills together.');
     }
+    adjustCandidateToolScore(scoreMap, SELF_REFLECTION_UPDATE_TOOL_ID, hasSelfReflectionUpdateIntentText(normalizedPrompt) ? 1.15 : 0, 'An explicit bounded self-reflection update can append or patch durable soul/user memory safely.');
     if (hasArchitectureIntent) {
         adjustCandidateToolScore(scoreMap, 'architecture-design', 1.0, 'Architecture intent is explicit.');
     }
@@ -11159,7 +11159,7 @@ class ConversationOrchestrator extends EventEmitter {
             if (!sessionIsolation && allowedToolIds.includes('agent-notes-write') && isAgentNotesAutoWriteEnabled()) {
                 candidates.add('agent-notes-write');
             }
-            if (!sessionIsolation && allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
+            if (allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
                 candidates.add(SELF_REFLECTION_UPDATE_TOOL_ID);
             }
         } else {
@@ -11257,7 +11257,7 @@ class ConversationOrchestrator extends EventEmitter {
             if (!sessionIsolation && allowedToolIds.includes('agent-notes-write') && isAgentNotesAutoWriteEnabled()) {
                 candidates.add('agent-notes-write');
             }
-            if (!sessionIsolation && allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
+            if (allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
                 candidates.add(SELF_REFLECTION_UPDATE_TOOL_ID);
             }
             if (hasRemoteCliAgentAuthoringRequest && allowedToolIds.includes('remote-cli-agent')) {
@@ -12377,7 +12377,11 @@ class ConversationOrchestrator extends EventEmitter {
             'Use `public-source-*` tools when the user asks about the public source index, public API catalog, dashboard sources, RSS/news feeds, data portals, or reusable public endpoints.',
             'For public source index work, list or search first, then read selected entries. Add sources only after discovery/verification, and refresh only when live status or content type matters.',
             ...(toolPolicy.sessionIsolation
-                ? ['Do not use `agent-notes-write` in this isolated session.']
+                ? [
+                    'Do not use `agent-notes-write` in this isolated session.',
+                    'Use `self-reflection-update` only when the user explicitly asks for durable growth, soul/user card updates, or a stable learning that belongs in Hermes-style `soul.md`/`user.md`.',
+                    'Prefer append actions for that growth; if an append would exceed the file limit, provide `compactedContent` with the complete compacted file body.',
+                ]
                 : [
                     'Use `agent-notes-write` only for concise, durable carryover notes that should help future sessions.',
                     'When a turn reveals a stable tone preference, collaboration style, or long-lived way Phil likes to work, proactively update `agent-notes-write` before finishing.',
@@ -12386,7 +12390,7 @@ class ConversationOrchestrator extends EventEmitter {
                     'Keep project-specific facts, current task state, and frontend-specific continuity in project/session memory instead of `agent-notes-write`.',
                     'Do not store secrets, code dumps, verbose logs, or temporary scratch notes in `agent-notes-write`.',
                     'Use `self-reflection-update` when the current learning should update Hermes-style `soul.md`/`user.md`, durable carryover notes, or the registered skill/procedure that should govern future work.',
-                    '`self-reflection-update` may record a `model_card_note`, replace the bounded soul or user profile files, replace carryover notes, patch one existing skill, or create/update one compact skill. Keep actions sparse and evidence-backed.',
+                    '`self-reflection-update` may record a `model_card_note`, append or exact-patch bounded soul/user/carryover files, compact appends through `compactedContent`, replace compacted files when cleanup is truly needed, patch one existing skill, or create/update one compact skill. Keep actions sparse and evidence-backed.',
                     'Do not use `self-reflection-update` for current task state, prompt-surface rewrites outside the Hermes files, logs, secrets, or recursive updates to its own result.',
                 ]),
             ...(executionProfile === REMOTE_BUILD_EXECUTION_PROFILE && hasRemoteWebsiteUpdateIntent(planningPrompt)
@@ -13323,7 +13327,9 @@ class ConversationOrchestrator extends EventEmitter {
             parts.push('Use `self-reflection-update` when a user correction, model-card finding, or completed workflow reveals a durable improvement that should update Hermes-style soul/user files, carryover notes, or registered skill guidance.');
             parts.push('Treat user-facing soul cards and user cards as the bounded `soul.md` and `user.md` surfaces; growth requests should update these only with stable durable lessons.');
             parts.push('Keep `self-reflection-update` sparse: one reflection, at most a few actions, no secrets or logs, and no recursive calls from its own result.');
-            parts.push('Use `skill_patch` when updating a small part of an existing skill; use `soul_replace`, `user_profile_replace`, and `agent_notes_replace` only with the full compact replacement file.');
+            parts.push('Prefer `soul_append`, `user_profile_append`, and `agent_notes_append` for ordinary growth so existing durable files are preserved; use exact patch actions for one sentence or bullet.');
+            parts.push('If an append would exceed a durable-file limit, provide `compactedContent` with the complete compacted file body preserving the essentials and the new lesson.');
+            parts.push('Use `skill_patch` when updating a small part of an existing skill; use `soul_replace`, `user_profile_replace`, and `agent_notes_replace` only with the full compact replacement file when compaction or cleanup is truly needed.');
         }
 
         if (allowedToolIds.includes('web-scrape')) {

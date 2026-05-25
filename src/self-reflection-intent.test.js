@@ -8,6 +8,9 @@ describe('self-reflection intent detection', () => {
     expect(hasSelfReflectionUpdateIntentText(
       'Please make Lilly learn from our conversations and update the user card when the lesson is stable.',
     )).toBe(true);
+    expect(hasSelfReflectionUpdateIntentText(
+      'agents arnt updating sould and user .md or its getting overwritten. can we make the agent grow with us',
+    )).toBe(true);
   });
 
   test('does not treat ordinary task wording as self-reflection intent', () => {

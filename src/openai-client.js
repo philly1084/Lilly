@@ -2088,10 +2088,7 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     }
 
     if (toolId === SELF_REFLECTION_UPDATE_TOOL_ID) {
-        const sessionIsolation = isSessionIsolationEnabled({
-            sessionIsolation: options?.toolContext?.sessionIsolation,
-        });
-        return !sessionIsolation && hasSelfReflectionUpdateIntentText(prompt);
+        return hasSelfReflectionUpdateIntentText(prompt);
     }
 
     if (toolId === 'agent-delegate') {
@@ -3676,7 +3673,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add('agent-notes-write');
     }
 
-    if (!sessionIsolation && availableToolIds.has(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
+    if (availableToolIds.has(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
         selectedIds.add(SELF_REFLECTION_UPDATE_TOOL_ID);
     }
 
@@ -4064,12 +4061,15 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
         guidance.push('- Do not store secrets, credentials, logs, or code snippets in the carryover notes.');
     }
 
-    if (!sessionIsolation && automaticTools.some((entry) => entry.id === SELF_REFLECTION_UPDATE_TOOL_ID)) {
+    if (automaticTools.some((entry) => entry.id === SELF_REFLECTION_UPDATE_TOOL_ID)) {
         guidance.push('- Use `self-reflection-update` when a user correction, model-card finding, or completed multi-step workflow should update Hermes-style `soul.md`/`user.md`, durable carryover notes, or the registered skill/procedure that governs future work.');
         guidance.push('- If the user says the soul card or user card is not growing, map those cards to bounded `soul.md` and `user.md` updates through `self-reflection-update`.');
-        guidance.push('- When the user explicitly asks the agent to grow, learn, evolve, or adapt from your interactions, capture only stable durable lessons; prefer `user_profile_replace` for user/relationship facts and `soul_replace` only for lasting assistant voice or behavior changes.');
+        guidance.push('- When the user explicitly asks the agent to grow, learn, evolve, or adapt from your interactions, capture only stable durable lessons; prefer `user_profile_append` for user/relationship facts and `soul_append` only for lasting assistant voice or behavior changes.');
+        guidance.push('- Prefer append actions such as `user_profile_append`, `soul_append`, or `agent_notes_append` for ordinary growth so existing durable content is preserved; use exact patch actions for one sentence or bullet.');
+        guidance.push('- If an append would exceed a durable-file limit, retry with `compactedContent`: the complete compacted file body that preserves essential existing guidance and includes the new lesson.');
         guidance.push('- Prefer `self-reflection-update` over separate notes and skill writes when one reflection needs to apply multiple bounded updates. Include a short `reflection`, a trigger, and at most a few structured actions.');
-        guidance.push('- Use `soul_replace` only for the complete bounded personality/voice file, `user_profile_replace` only for the complete bounded `user.md` profile, and `agent_notes_replace` only for the complete carryover notes file.');
+        guidance.push('- Use `soul_replace` only for the complete bounded personality/voice file, `user_profile_replace` only for the complete bounded `user.md` profile, and `agent_notes_replace` only for the complete carryover notes file when compaction or cleanup is truly needed.');
+        guidance.push('- Applied durable-file writes keep a snapshot in the self-reflection history directory before changing `soul.md`, `user.md`, or `agent-notes.md`.');
         guidance.push('- Do not use `self-reflection-update` for prompt-surface rewrites outside the Hermes files, current task state, logs, secrets, or its own reflection result. Nested reflection calls are rejected.');
     }
 

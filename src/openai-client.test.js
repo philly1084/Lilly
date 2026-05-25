@@ -1183,6 +1183,16 @@ describe('openai-client automatic tool orchestration helpers', () => {
 
         expect(cardGrowthTools.map((tool) => tool.id)).toContain('self-reflection-update');
 
+        const isolatedGrowthTools = __testUtils.selectAutomaticToolDefinitions([
+            { id: 'self-reflection-update' },
+        ], "The agent isn't updating the user card or soul card. Can we make sure the agents are growing with our interactions?", {
+            toolContext: {
+                sessionIsolation: true,
+            },
+        });
+
+        expect(isolatedGrowthTools.map((tool) => tool.id)).toContain('self-reflection-update');
+
         const ordinaryTools = __testUtils.selectAutomaticToolDefinitions([
             { id: 'self-reflection-update' },
         ], 'Summarize the latest product direction.');
@@ -1198,7 +1208,9 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(guidance).toContain('Hermes-style `soul.md`/`user.md`');
         expect(guidance).toContain('soul card or user card');
         expect(guidance).toContain('grow, learn, evolve, or adapt');
-        expect(guidance).toContain('`user_profile_replace`');
+        expect(guidance).toContain('`user_profile_append`');
+        expect(guidance).toContain('compactedContent');
+        expect(guidance).toContain('self-reflection history directory');
         expect(guidance).toContain('at most a few structured actions');
         expect(guidance).toContain('Nested reflection calls are rejected');
     });

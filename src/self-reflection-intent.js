@@ -9,7 +9,7 @@ function hasSelfReflectionUpdateIntentText(prompt = '') {
         /\bself[- ]reflect(?:ive)?\b/i,
         /\brecursive\s+updates?\b/i,
         /\b(full\s+hermes|hermes\s+(?:style|mode|profile|files?))\b/i,
-        /\b(update|patch|revise|refresh|maintain|rewrite)\b[\s\S]{0,80}\b(soul\.?md|user\.?md|soul file|user profile)\b/i,
+        /\b(update|patch|revise|refresh|maintain|rewrite)\b[\s\S]{0,80}\b(sou?ld?\s*\.?\s*md|user\s*\.?\s*md|soul file|user profile)\b/i,
         /\b(update|patch|revise|refresh|maintain|rewrite)\b[\s\S]{0,80}\b(user|soul|personality|profile|agent)\s+cards?\b/i,
         /\b(user|soul|personality|profile|agent)\s+cards?\b[\s\S]{0,80}\b(update|updated|patch|revise|refresh|maintain|rewrite|grow|growing|learn|learning|evolve|evolving)\b/i,
         /\bmodel card\b[\s\S]{0,80}\b(update|reflection|learning|skill|memory|notes?)\b/i,
