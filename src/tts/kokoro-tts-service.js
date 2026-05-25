@@ -92,7 +92,7 @@ class KokoroTtsService {
         this.ttsConfig = {
             ...ttsConfig,
         };
-        this.importKokoro = dependencies.importKokoro || (() => require('kokoro-js'));
+        this.importKokoro = dependencies.importKokoro || (() => require('./kokoro-transformers-runtime'));
         this.importTransformers = dependencies.importTransformers || (() => require('@huggingface/transformers'));
         this.workerEnabled = dependencies.workerEnabled ?? this.ttsConfig.workerEnabled === true;
         this.workerIsolation = this.workerEnabled
@@ -338,12 +338,18 @@ class KokoroTtsService {
                 .then((moduleExports) => {
                     const KokoroTTS = moduleExports?.KokoroTTS;
                     if (!KokoroTTS?.from_pretrained) {
-                        throw createServiceError(503, 'kokoro-js did not expose KokoroTTS.', 'tts_unavailable');
+                        throw createServiceError(503, 'Kokoro runtime did not expose KokoroTTS.', 'tts_unavailable');
                     }
-                    return KokoroTTS.from_pretrained(modelId, {
+                    const loadOptions = {
                         dtype: toDtype(this.ttsConfig.dtype),
                         device: toNodeDevice(this.ttsConfig.device),
-                    });
+                    };
+                    if (moduleExports.KIMIBUILT_KOKORO_RUNTIME === true) {
+                        loadOptions.transformers = this.importTransformers();
+                        loadOptions.cacheDir = String(this.ttsConfig.cacheDir || '').trim();
+                        loadOptions.allowRemoteModels = this.ttsConfig.allowRemoteModels;
+                    }
+                    return KokoroTTS.from_pretrained(modelId, loadOptions);
                 })
                 .catch((error) => {
                     this.modelPromise = null;

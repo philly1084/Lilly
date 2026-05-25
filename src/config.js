@@ -652,7 +652,7 @@ const config = {
 
     tts: {
         provider: process.env.TTS_PROVIDER || 'kokoro',
-        fallbackProvider: process.env.TTS_FALLBACK_PROVIDER || 'piper',
+        fallbackProvider: process.env.TTS_FALLBACK_PROVIDER || '',
         fallbackEnabled: process.env.TTS_FALLBACK_ENABLED !== 'false',
         realtime: {
             synthesisLanes: normalizedTtsRealtimeSynthesisLanes,

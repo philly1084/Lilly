@@ -16,7 +16,7 @@ describe('config bundled TTS defaults', () => {
         delete process.env.PIPER_TTS_CONFIG_PATH;
         delete process.env.PIPER_TTS_DEFAULT_VOICE_ID;
         delete process.env.TTS_PROVIDER;
-        delete process.env.TTS_FALLBACK_PROVIDER;
+        process.env.TTS_FALLBACK_PROVIDER = '';
         delete process.env.KOKORO_TTS_VOICES_PATH;
         delete process.env.KOKORO_TTS_VOICES_JSON;
         delete process.env.KOKORO_TTS_DEFAULT_VOICE_ID;
@@ -26,11 +26,11 @@ describe('config bundled TTS defaults', () => {
         process.env = ORIGINAL_ENV;
     });
 
-    test('loads bundled Kokoro defaults while keeping Piper fallback configured', () => {
+    test('loads bundled Kokoro defaults without enabling Piper fallback by default', () => {
         const { config } = require('./config');
 
         expect(config.tts.provider).toBe('kokoro');
-        expect(config.tts.fallbackProvider).toBe('piper');
+        expect(config.tts.fallbackProvider).toBe('');
         expect(config.tts.kokoro.voicesPath).toContain(path.join('data', 'kokoro', 'voices', 'manifest.json'));
         expect(config.tts.kokoro.voices).toEqual(expect.arrayContaining([
             expect.objectContaining({ id: 'af_heart', aliases: expect.arrayContaining(['lessac-high']) }),

@@ -44,7 +44,7 @@ describe('KokoroTtsService', () => {
         }));
     });
 
-    test('returns synthesized wav audio from kokoro-js', async () => {
+    test('returns synthesized wav audio from the Kokoro runtime', async () => {
         const generate = jest.fn(async () => createAudio());
         const fromPretrained = jest.fn(async () => ({ generate }));
         const service = new KokoroTtsService({

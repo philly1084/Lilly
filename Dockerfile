@@ -74,10 +74,6 @@ ENV OPENCODE_ENABLED=false
 # ================================
 FROM app-base AS media
 
-ARG PIPER_TTS_VERSION=1.4.2
-ARG PIPER_VOICES_REF=v1.0.0
-ARG PIPER_VOICES_BASE_URL=https://huggingface.co/rhasspy/piper-voices/resolve
-
 RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
@@ -86,61 +82,8 @@ RUN set -eux; \
     chromium \
     curl \
     ffmpeg \
-    fonts-liberation \
-    python3 \
-    python3-pip; \
-  python3 -m pip install --break-system-packages --no-cache-dir "piper-tts==${PIPER_TTS_VERSION}"; \
-  command -v piper >/dev/null; \
+    fonts-liberation; \
   rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /app/data/piper/voices && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/amy/medium/en_US-amy-medium.onnx" \
-    --output /app/data/piper/voices/en_US-amy-medium.onnx && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/amy/medium/en_US-amy-medium.onnx.json" \
-    --output /app/data/piper/voices/en_US-amy-medium.onnx.json && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx" \
-    --output /app/data/piper/voices/en_US-hfc_female-medium.onnx && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json" \
-    --output /app/data/piper/voices/en_US-hfc_female-medium.onnx.json && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/kathleen/low/en_US-kathleen-low.onnx" \
-    --output /app/data/piper/voices/en_US-kathleen-low.onnx && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/kathleen/low/en_US-kathleen-low.onnx.json" \
-    --output /app/data/piper/voices/en_US-kathleen-low.onnx.json && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/lessac/high/en_US-lessac-high.onnx" \
-    --output /app/data/piper/voices/en_US-lessac-high.onnx && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/lessac/high/en_US-lessac-high.onnx.json" \
-    --output /app/data/piper/voices/en_US-lessac-high.onnx.json && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx" \
-    --output /app/data/piper/voices/en_US-ljspeech-high.onnx && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_US/ljspeech/high/en_US-ljspeech-high.onnx.json" \
-    --output /app/data/piper/voices/en_US-ljspeech-high.onnx.json && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_GB/cori/high/en_GB-cori-high.onnx" \
-    --output /app/data/piper/voices/en_GB-cori-high.onnx && \
-  curl --fail --show-error --silent --location --retry 3 \
-    "${PIPER_VOICES_BASE_URL}/${PIPER_VOICES_REF}/en/en_GB/cori/high/en_GB-cori-high.onnx.json" \
-    --output /app/data/piper/voices/en_GB-cori-high.onnx.json
-
-RUN printf 'KimiBuilt Piper build check.\n' | piper \
-    --model /app/data/piper/voices/en_US-hfc_female-medium.onnx \
-    --config /app/data/piper/voices/en_US-hfc_female-medium.onnx.json \
-    --output_file /tmp/piper-check.wav \
-    --length_scale 1 \
-    --noise_scale 0.4 \
-    --noise_w 0.68 \
-    --sentence_silence 0.28 && \
-  test -s /tmp/piper-check.wav && \
-  rm -f /tmp/piper-check.wav
 
 RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
   KOKORO_TTS_MODEL_ID="${KOKORO_TTS_MODEL_ID}" \
@@ -148,6 +91,7 @@ RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
   KOKORO_TTS_DTYPE="${KOKORO_TTS_DTYPE}" \
   KOKORO_TTS_DEFAULT_VOICE_ID="${KOKORO_TTS_DEFAULT_VOICE_ID}" \
   KOKORO_TTS_CACHE_DIR="${KOKORO_TTS_CACHE_DIR}" \
+  KOKORO_TTS_ALLOW_REMOTE_MODELS=true \
   node bin/kimibuilt-verify-tts-build.js && \
   chown -R kimibuilt:kimibuilt /app/data
 
@@ -155,10 +99,10 @@ ENV KIMIBUILT_IMAGE_PROFILE=media
 ENV ARTIFACT_BROWSER_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium
 ENV TTS_PROVIDER=kokoro
-ENV TTS_FALLBACK_PROVIDER=piper
+ENV TTS_FALLBACK_PROVIDER=none
 ENV KOKORO_TTS_ENABLED=true
-ENV PIPER_TTS_ENABLED=true
-ENV PIPER_TTS_BINARY_PATH=/usr/local/bin/piper
+ENV PIPER_TTS_ENABLED=false
+ENV PIPER_TTS_BINARY_PATH=
 
 USER kimibuilt
 

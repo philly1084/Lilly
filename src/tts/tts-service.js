@@ -8,7 +8,8 @@ const defaultKokoroProvider = config.tts?.kokoro?.baseURL
     : kokoroTtsService;
 
 function normalizeProviderId(value = '', fallback = '') {
-    return String(value || fallback || '').trim().toLowerCase();
+    const normalized = String(value || fallback || '').trim().toLowerCase();
+    return ['none', 'disabled', 'off', 'false'].includes(normalized) ? '' : normalized;
 }
 
 function createUnavailableError() {
@@ -95,7 +96,7 @@ class TtsService {
 
     getFallbackProviderId() {
         const primaryProviderId = normalizeProviderId(this.ttsConfig.provider, 'kokoro');
-        const fallbackProviderId = normalizeProviderId(this.ttsConfig.fallbackProvider, 'piper');
+        const fallbackProviderId = normalizeProviderId(this.ttsConfig.fallbackProvider, '');
         if (!fallbackProviderId || fallbackProviderId === primaryProviderId) {
             return '';
         }
