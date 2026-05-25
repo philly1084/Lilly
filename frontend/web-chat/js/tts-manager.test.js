@@ -230,6 +230,12 @@ describe('splitTextIntoSpeechChunks', () => {
         })).toBe('piper');
     });
 
+    test('defaults realtime Kokoro chunks to a natural pacing size', () => {
+        const manager = new WebChatTtsManager();
+
+        expect(manager.realtimePolicy.chunkTargetChars).toBe(360);
+    });
+
     test('can skip a stalled chunk only when the realtime policy allows it', async () => {
         const previousCustomEvent = global.CustomEvent;
         global.CustomEvent = class CustomEvent extends Event {

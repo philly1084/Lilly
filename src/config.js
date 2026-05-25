@@ -456,7 +456,7 @@ const normalizedTtsRealtimeChunkTargetChars = Math.max(
     60,
     Math.min(
         normalizedKokoroMaxTextChars,
-        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 72,
+        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 360,
     ),
 );
 const normalizedTtsRealtimeInitialBufferChunks = Math.max(

@@ -40,6 +40,18 @@ describe('KimiBuiltKokoroTTS runtime', () => {
         expect(phonemes).not.toContain('ɝ');
     });
 
+    test('softens over-stressed English tokens for more natural Kokoro pacing', () => {
+        const phonemes = phonemizeForKokoro('This is a KimiBuilt TTS check for the G2P path.', 'af_heart');
+
+        expect(phonemes).toContain('ðɪs ɪz ə');
+        expect(phonemes).toContain('kˈimi bˈɪlt');
+        expect(phonemes).toContain('tˈi tˈi ˈɛs');
+        expect(phonemes).toContain('ʤˈitəpˈi');
+        expect(phonemes).not.toContain('ˈðɪs');
+        expect(phonemes).not.toContain('ˈɪz');
+        expect(phonemes).not.toContain('ˈðə');
+    });
+
     test('generates audio with cached voices without importing kokoro-js phonemizer', async () => {
         const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kimibuilt-kokoro-runtime-'));
         writeVoice(cacheDir);

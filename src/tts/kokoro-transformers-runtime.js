@@ -11,7 +11,207 @@ const VOICE_PREFIX_TO_LANGUAGE = {
     b: 'en-GB',
 };
 
+const KOKORO_PRONUNCIATION_OVERRIDES = new Map([
+    ['espeak', 'ˈispik'],
+    ['g2p', 'ʤˈitəpˈi'],
+    ['grapheme', 'ɡɹˈæfim'],
+    ['graphemes', 'ɡɹˈæfimz'],
+    ['kimibuilt', 'kˈimi bˈɪlt'],
+    ['kokoro', 'kˈoʊkəɹoʊ'],
+    ['ng', 'ˌɛn ˈʤi'],
+    ['openai', 'ˌoʊpən ˈeɪˈaɪ'],
+    ['phoneme', 'fˈoʊnim'],
+    ['phonemes', 'fˈoʊnimz'],
+    ['phonemizer', 'fˈoʊnəmˌaɪzɚ'],
+    ['phonemize', 'fˈoʊnəmˌaɪz'],
+    ['qdrant', 'kjˈudɹænt'],
+    ['tts', 'tˈi tˈi ˈɛs'],
+]);
+
+const UNSTRESSED_FUNCTION_WORDS = new Set([
+    'a',
+    'about',
+    'above',
+    'after',
+    'again',
+    'against',
+    'all',
+    'am',
+    'an',
+    'and',
+    'any',
+    'are',
+    'as',
+    'at',
+    'be',
+    'because',
+    'been',
+    'before',
+    'being',
+    'below',
+    'between',
+    'but',
+    'by',
+    'can',
+    'could',
+    'did',
+    'do',
+    'does',
+    'down',
+    'during',
+    'each',
+    'for',
+    'from',
+    'had',
+    'has',
+    'have',
+    'he',
+    'her',
+    'hers',
+    'him',
+    'his',
+    'i',
+    'if',
+    'in',
+    'into',
+    'is',
+    'it',
+    'its',
+    'me',
+    'might',
+    'must',
+    'my',
+    'nor',
+    'of',
+    'on',
+    'or',
+    'our',
+    'ours',
+    'out',
+    'over',
+    'shall',
+    'she',
+    'should',
+    'so',
+    'some',
+    'such',
+    'than',
+    'that',
+    'the',
+    'their',
+    'theirs',
+    'them',
+    'then',
+    'there',
+    'these',
+    'they',
+    'this',
+    'those',
+    'through',
+    'to',
+    'under',
+    'until',
+    'up',
+    'us',
+    'was',
+    'we',
+    'were',
+    'what',
+    'when',
+    'where',
+    'which',
+    'while',
+    'who',
+    'whom',
+    'why',
+    'will',
+    'with',
+    'would',
+    'you',
+    'your',
+    'yours',
+]);
+
 const voiceCache = new Map();
+
+function normalizePronunciationLookupWord(word = '') {
+    return String(word || '')
+        .toLowerCase()
+        .replace(/[’']/g, '')
+        .replace(/[^a-z0-9]+/g, '');
+}
+
+function isPunctuationToken(value = '') {
+    return /^[;:,.!?—…"“”()[\]{}]+$/.test(String(value || '').trim());
+}
+
+function stripStressMarkers(value = '') {
+    return String(value || '').replace(/[ˈˌ]/g, '');
+}
+
+function isInitialism(word = '') {
+    const normalized = String(word || '').replace(/[^A-Za-z]/g, '');
+    return normalized.length > 1 && normalized === normalized.toUpperCase();
+}
+
+function softenDenseWordStress(phonemes = '', word = '') {
+    const value = String(phonemes || '');
+    const stressIndexes = [];
+    value.replace(/ˈ/g, (_match, offset) => {
+        stressIndexes.push(offset);
+        return _match;
+    });
+
+    if (stressIndexes.length <= 1 || isInitialism(word)) {
+        return value;
+    }
+
+    const finalPrimaryStress = stressIndexes[stressIndexes.length - 1];
+    return value.replace(/ˈ/g, (match, offset) => (
+        offset === finalPrimaryStress ? match : ''
+    ));
+}
+
+function normalizeTokenPhonemesForKokoro(token = {}) {
+    const word = String(token.word || '').trim();
+    const lookupWord = normalizePronunciationLookupWord(word);
+    const override = KOKORO_PRONUNCIATION_OVERRIDES.get(lookupWord);
+    let phonemes = override || String(token.phoneme || '').trim();
+
+    if (!phonemes) {
+        return '';
+    }
+
+    if (!override && UNSTRESSED_FUNCTION_WORDS.has(lookupWord)) {
+        phonemes = stripStressMarkers(phonemes);
+    }
+
+    if (!override) {
+        phonemes = softenDenseWordStress(phonemes, word);
+    }
+
+    return normalizePhonemesForKokoro(phonemes);
+}
+
+function joinKokoroPhonemeTokens(tokens = []) {
+    const parts = [];
+
+    (Array.isArray(tokens) ? tokens : []).forEach((token = {}) => {
+        const phonemes = normalizeTokenPhonemesForKokoro(token);
+        if (!phonemes) {
+            return;
+        }
+
+        if (isPunctuationToken(token.word || phonemes) && parts.length > 0) {
+            parts[parts.length - 1] = `${parts[parts.length - 1]}${phonemes}`;
+            return;
+        }
+
+        parts.push(phonemes);
+    });
+
+    return parts.join(' ');
+}
 
 function normalizePhonemesForKokoro(value = '') {
     return String(value || '')
@@ -35,7 +235,13 @@ function resolveVoiceLanguage(voice = '') {
 
 function phonemizeForKokoro(text = '', voice = 'af_heart') {
     const language = resolveVoiceLanguage(voice);
-    const rawPhonemes = phonemize(String(text || ''), language);
+    const tokenizedPhonemes = phonemize(String(text || ''), {
+        language,
+        returnArray: true,
+    });
+    const rawPhonemes = Array.isArray(tokenizedPhonemes) && tokenizedPhonemes.length > 0
+        ? joinKokoroPhonemeTokens(tokenizedPhonemes)
+        : phonemize(String(text || ''), language);
     let phonemes = normalizePhonemesForKokoro(rawPhonemes);
     if (language === VOICE_PREFIX_TO_LANGUAGE.a) {
         phonemes = phonemes.replace(/(?<=nˈaɪn)ti(?!ː)/g, 'di');
@@ -166,6 +372,7 @@ module.exports = {
     KIMIBUILT_KOKORO_RUNTIME: true,
     KokoroTTS: KimiBuiltKokoroTTS,
     KimiBuiltKokoroTTS,
+    joinKokoroPhonemeTokens,
     normalizePhonemesForKokoro,
     phonemizeForKokoro,
 };

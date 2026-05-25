@@ -57,4 +57,4 @@ KimiBuilt web-chat, web-cli, and Notes TTS share a layered realtime path rather 
 - `TTS_REALTIME_SKIP_STALLED_CHUNKS`
 - `TTS_REALTIME_EMERGENCY_PROVIDER`
 
-For quality, raise chunk target, initial-buffer, and stall budgets. For speed, lower chunk target and per-chunk timeouts, then add Kokoro replicas instead of increasing in-process Kokoro concurrency. If sentence two pauses, verify the live ConfigMap still has four lanes, six chunks of lookahead, `TTS_REALTIME_EMERGENCY_PROVIDER=kokoro`, chunk skipping disabled, and four ready `kokoro-tts` pods.
+For quality, raise chunk target, initial-buffer, and stall budgets. For speed, lower chunk target and per-chunk timeouts, then add Kokoro replicas instead of increasing in-process Kokoro concurrency. If sentence two pauses, verify the live ConfigMap still has four lanes, six chunks of lookahead, a `TTS_REALTIME_CHUNK_TARGET_CHARS` value near `360`, `TTS_REALTIME_EMERGENCY_PROVIDER=kokoro`, chunk skipping disabled, and four ready `kokoro-tts` pods.
