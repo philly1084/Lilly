@@ -1769,9 +1769,25 @@ function promptHasExplicitSshIntent(prompt = '') {
     return /\bssh\b/i.test(normalizedPrompt)
         || /\b(remote host|remote server|remote machine)\b/i.test(normalizedPrompt)
         || /\b(remote command|run remotely|execute remotely)\b/i.test(normalizedPrompt)
+        || /\b(remote in|remote into|remote cli|remote-cli)\b/i.test(normalizedPrompt)
         || /\b(login to|log into|ssh into|ssh to|connect to)\b/i.test(normalizedPrompt)
         || (/\b(run|execute|deploy|inspect|troubleshoot|check)\b/i.test(normalizedPrompt)
             && /\b(over ssh|via ssh)\b/i.test(normalizedPrompt));
+}
+
+function hasExplicitRemoteCliAgentIntent(prompt = '') {
+    const normalizedPrompt = String(prompt || '').toLowerCase();
+
+    if (!normalizedPrompt) {
+        return false;
+    }
+
+    return /\bremote[-_\s]*cli[-_\s]*agent\b/i.test(normalizedPrompt)
+        || /\bremote coding agent\b/i.test(normalizedPrompt)
+        || /\bremote code run\b/i.test(normalizedPrompt)
+        || /\bremote_code_run\b/i.test(normalizedPrompt)
+        || /\bagents sdk remote cli\b/i.test(normalizedPrompt)
+        || /\bmcp remote cli\b/i.test(normalizedPrompt);
 }
 
 function hasExplicitSshTargetCue(prompt = '') {
@@ -3506,6 +3522,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         ? 'remote-command'
         : (availableToolIds.has('ssh-execute') ? 'ssh-execute' : null);
     const remoteCliAgentToolId = availableToolIds.has('remote-cli-agent') ? 'remote-cli-agent' : null;
+    const explicitRemoteCliAgentIntent = hasExplicitRemoteCliAgentIntent(prompt);
     const explicitLocalArtifact = hasExplicitLocalArtifactReference(prompt);
     const remoteWebsiteUpdateIntent = hasRemoteWebsiteUpdateIntent(prompt);
     const remoteSoftwareCreationIntent = executionProfile === 'remote-build'
@@ -3539,7 +3556,10 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && checkpointPolicy.enabled === true
         && Number(checkpointPolicy.remaining || 0) > 0
         && !checkpointPolicy.pending
-        && !isSurveyResponseTurn;
+        && !isSurveyResponseTurn
+        && !explicitRemoteCliAgentIntent
+        && !remoteSoftwareDeploymentIntent
+        && !stickyRemoteBuildContinuationIntent;
 
     if (hasWorkloadSetupIntent && availableToolIds.has('agent-workload')) {
         selectedIds.add('agent-workload');
@@ -3681,7 +3701,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add('managed-app');
     }
 
-    if (remoteCliAgentToolId && (remoteSoftwareDeploymentIntent || stickyRemoteBuildContinuationIntent) && !managedAppIntent) {
+    if (remoteCliAgentToolId && (explicitRemoteCliAgentIntent || remoteSoftwareDeploymentIntent || stickyRemoteBuildContinuationIntent) && !managedAppIntent) {
         selectedIds.add(remoteCliAgentToolId);
     }
 
@@ -3752,6 +3772,7 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
         ? 'remote-command'
         : (availableToolIds.has('ssh-execute') ? 'ssh-execute' : null);
     const remoteCliAgentToolId = availableToolIds.has('remote-cli-agent') ? 'remote-cli-agent' : null;
+    const explicitRemoteCliAgentIntent = hasExplicitRemoteCliAgentIntent(prompt);
     const explicitK3sDeployIntent = hasExplicitK3sDeployIntent(prompt);
     const explicitGitIntent = hasExplicitGitIntent(prompt);
     const explicitSubAgentIntent = hasExplicitSubAgentIntent(prompt);
@@ -3811,7 +3832,8 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
 
     if (remoteCliAgentToolId
         && (
-            hasRemoteSoftwareDeploymentIntent(prompt)
+            explicitRemoteCliAgentIntent
+            || hasRemoteSoftwareDeploymentIntent(prompt)
             || (
                 normalizeExecutionProfile(options?.executionProfile || options?.toolContext?.executionProfile) === 'remote-build'
                 && (
@@ -7187,6 +7209,7 @@ module.exports = {
         normalizeProviderTransportError,
         retryProviderWarmupRequest,
         promptHasExplicitSshIntent,
+        hasExplicitRemoteCliAgentIntent,
         shouldIncludeRemoteContinuityInstructions,
         buildEffectiveContinuityInstructions,
         hasExplicitPodcastIntent,

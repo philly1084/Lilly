@@ -2539,6 +2539,8 @@ describe('openai-client automatic tool orchestration helpers', () => {
     test('detects remote-command phrasing as remote execution intent', () => {
         expect(__testUtils.promptHasExplicitSshIntent('Run a remote command on root@77.42.44.98 to check its health.')).toBe(true);
         expect(__testUtils.promptHasExplicitSshIntent('Execute remotely on root@77.42.44.98 and check its health.')).toBe(true);
+        expect(__testUtils.promptHasExplicitSshIntent('Remote in and check what is acting up.')).toBe(true);
+        expect(__testUtils.promptHasExplicitSshIntent('Use the remote CLI path to inspect the configured server.')).toBe(true);
     });
 
     test('runs explicit ssh requests directly through remote-command without asking the model for tool selection', async () => {
@@ -2741,6 +2743,48 @@ describe('openai-client automatic tool orchestration helpers', () => {
             prompt,
             automaticTools.map((tool) => tool.id),
         )).not.toBe('image-generate');
+    });
+
+    test('forces explicit remote-cli-agent prompts ahead of checkpoint-only chat turns', () => {
+        const toolManager = createToolManager();
+        const prompt = [
+            'Use remote-cli-agent with adminMode true on targetId k3s-prod and cwd /srv/apps/my-app.',
+            'SMOKE ONLY: do not modify files. Run pwd and print REMOTE_AGENT_RESULT=chat-explicit-pwd:<pwd>.',
+        ].join(' ');
+        const toolContext = {
+            executionProfile: 'remote-build',
+            clientSurface: 'web-chat',
+            userCheckpointPolicy: {
+                enabled: true,
+                remaining: 2,
+                pending: null,
+            },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(
+            toolManager,
+            prompt,
+            { toolContext },
+        );
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(
+            automaticTools,
+            prompt,
+            { toolContext },
+        );
+        const selectedIds = selectedTools.map((tool) => tool.id);
+        const requiredToolId = __testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        );
+
+        expect(__testUtils.hasExplicitRemoteCliAgentIntent(prompt)).toBe(true);
+        expect(selectedIds).toContain('remote-cli-agent');
+        expect(selectedIds).not.toContain('user-checkpoint');
+        expect(requiredToolId).toBe('remote-cli-agent');
+        expect(__testUtils.buildAutomaticToolChoice(selectedTools, 'responses', { prompt, toolContext })).toEqual({
+            type: 'function',
+            name: 'remote-cli-agent',
+        });
     });
 
     test('runs required remote-cli-agent deployment requests directly without final model synthesis', async () => {
