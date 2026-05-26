@@ -348,6 +348,7 @@ class KokoroTtsService {
                         loadOptions.transformers = this.importTransformers();
                         loadOptions.cacheDir = String(this.ttsConfig.cacheDir || '').trim();
                         loadOptions.allowRemoteModels = this.ttsConfig.allowRemoteModels;
+                        loadOptions.g2p = this.ttsConfig.g2p || {};
                     }
                     return KokoroTTS.from_pretrained(modelId, loadOptions);
                 })

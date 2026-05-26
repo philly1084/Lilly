@@ -53,12 +53,20 @@ async function main() {
         transformers: { env, ...require('@huggingface/transformers') },
         cacheDir,
         allowRemoteModels,
+        g2p: {
+            required: process.env.KOKORO_G2P_REQUIRED === 'true',
+        },
     });
-    const audio = await tts.generate('KimiBuilt Kokoro build check.', {
-        voice,
-        speed: 1,
-    });
-    const wav = typeof audio?.toWav === 'function' ? Buffer.from(audio.toWav()) : Buffer.alloc(0);
+    let wav = Buffer.alloc(0);
+    try {
+        const audio = await tts.generate('KimiBuilt Kokoro build check.', {
+            voice,
+            speed: 1,
+        });
+        wav = typeof audio?.toWav === 'function' ? Buffer.from(audio.toWav()) : Buffer.alloc(0);
+    } finally {
+        tts.close?.();
+    }
 
     if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') {
         throw new Error('Kokoro generated invalid WAV audio during build verification.');

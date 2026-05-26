@@ -17,6 +17,8 @@ KimiBuilt web-chat, web-cli, and Notes TTS share a layered realtime path rather 
 
 3. High-quality realtime generation
    - Sends the primary chunk to the configured provider, normally Kokoro.
+   - Kokoro pods use the Apache-licensed `kokorog2p` bridge for Kokoro-compatible English G2P with eSpeak fallback disabled.
+   - The old pure-JS `phonemize` path remains only as a local/dev fallback when `KOKORO_G2P_REQUIRED` is not true.
    - Realtime chunks do not fall back to Piper by default. `TTS_REALTIME_EMERGENCY_PROVIDER=kokoro` is treated as Kokoro-only and avoids lower-quality mid-response voice changes.
    - Uses short per-chunk timeouts so one bad synthesis cannot consume the full backend TTS timeout.
    - Browser realtime playback disables backend provider fallback per chunk. This keeps a slow Piper fallback from becoming the visible error when Kokoro was the primary request.

@@ -41,6 +41,7 @@ RUN groupadd --gid 1001 kimibuilt && \
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY bin/ ./bin/
+COPY scripts/kokoro_g2p_bridge.py ./scripts/kokoro_g2p_bridge.py
 COPY src/ ./src/
 COPY frontend/ ./frontend/
 COPY data/kokoro/voices/manifest.json ./data/kokoro/voices/manifest.json
@@ -66,6 +67,11 @@ ENV KOKORO_TTS_DEFAULT_VOICE_ID=${KOKORO_TTS_DEFAULT_VOICE_ID}
 ENV KOKORO_TTS_CACHE_DIR=${KOKORO_TTS_CACHE_DIR}
 ENV KOKORO_TTS_ALLOW_REMOTE_MODELS=false
 ENV KOKORO_TTS_PORT=${KOKORO_TTS_PORT}
+ENV KOKORO_G2P_ENABLED=true
+ENV KOKORO_G2P_REQUIRED=false
+ENV KOKORO_G2P_COMMAND=/opt/kimibuilt-g2p/bin/python
+ENV KOKORO_G2P_SCRIPT_PATH=/app/scripts/kokoro_g2p_bridge.py
+ENV KOKORO_G2P_TIMEOUT_MS=3000
 ENV PIPER_TTS_VOICES_PATH=/app/data/piper/voices/manifest.json
 ENV OPENCODE_ENABLED=false
 
@@ -82,8 +88,15 @@ RUN set -eux; \
     chromium \
     curl \
     ffmpeg \
-    fonts-liberation; \
+    fonts-liberation \
+    python3 \
+    python3-venv; \
   rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+  python3 -m venv /opt/kimibuilt-g2p; \
+  /opt/kimibuilt-g2p/bin/pip install --no-cache-dir kokorog2p==0.6.7; \
+  chown -R kimibuilt:kimibuilt /opt/kimibuilt-g2p
 
 RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
   KOKORO_TTS_MODEL_ID="${KOKORO_TTS_MODEL_ID}" \
@@ -92,6 +105,7 @@ RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
   KOKORO_TTS_DEFAULT_VOICE_ID="${KOKORO_TTS_DEFAULT_VOICE_ID}" \
   KOKORO_TTS_CACHE_DIR="${KOKORO_TTS_CACHE_DIR}" \
   KOKORO_TTS_ALLOW_REMOTE_MODELS=true \
+  KOKORO_G2P_REQUIRED=true \
   node bin/kimibuilt-verify-tts-build.js && \
   chown -R kimibuilt:kimibuilt /app/data
 
@@ -101,6 +115,7 @@ ENV PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium
 ENV TTS_PROVIDER=kokoro
 ENV TTS_FALLBACK_PROVIDER=none
 ENV KOKORO_TTS_ENABLED=true
+ENV KOKORO_G2P_REQUIRED=true
 ENV PIPER_TTS_ENABLED=false
 ENV PIPER_TTS_BINARY_PATH=
 

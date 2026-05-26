@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const { phonemize } = require('phonemize');
+const { KokoroG2pBridge } = require('./kokoro-g2p-bridge');
 
 const DEFAULT_MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 const DEFAULT_CACHE_DIR = '/app/data/kokoro/cache';
@@ -12,21 +13,49 @@ const VOICE_PREFIX_TO_LANGUAGE = {
 };
 
 const KOKORO_PRONUNCIATION_OVERRIDES = new Map([
+    ['ai', 'ˈA ˈI'],
+    ['api', 'ˈA pˈi ˈI'],
+    ['cli', 'sˈi ˌɛl ˈI'],
+    ['cpu', 'sˌi pˌi ˈju'],
+    ['css', 'sˌi ˌɛs ˈɛs'],
+    ['docker', 'dˈɑkɜɹ'],
     ['espeak', 'ˈispik'],
     ['g2p', 'ʤˈitəpˈi'],
+    ['github', 'ɡˈɪthʌb'],
+    ['gpu', 'ʤˌi pˌi ˈju'],
     ['grapheme', 'ɡɹˈæfim'],
     ['graphemes', 'ɡɹˈæfimz'],
+    ['html', 'ˌAʧ tˌi ˌɛm ˈɛl'],
+    ['http', 'ˌAʧ tˌi tˌi pˈi'],
+    ['https', 'ˌAʧ tˌi tˌi pˌi ˈɛs'],
+    ['javascript', 'ʤˈɑvə skɹˌɪpt'],
+    ['json', 'ʤˈAsən'],
+    ['k3s', 'kˌeɪ θɹˈi ˈɛs'],
+    ['k8s', 'kˌeɪ ˈAt ˈɛs'],
     ['kimibuilt', 'kˈimi bˈɪlt'],
+    ['kubernetes', 'kˌubɜɹnˈɛtiz'],
     ['kokoro', 'kˈOkəɹO'],
     ['ng', 'ˌɛn ˈʤi'],
+    ['nodejs', 'nˈOd ʤˌeɪ ˈɛs'],
+    ['ollama', 'Olˈɑmə'],
     ['openai', 'ˌOpən ˈAˈI'],
     ['phoneme', 'fˈOnim'],
     ['phonemes', 'fˈOnimz'],
     ['phonemizer', 'fˈOnəmˌIzɜɹ'],
     ['phonemize', 'fˈOnəmˌIz'],
     ['qdrant', 'kjˈudɹænt'],
+    ['rancher', 'ɹˈænʧɜɹ'],
+    ['sse', 'ˌɛs ˌɛs ˈi'],
+    ['traefik', 'tɹˈæfɪk'],
     ['tts', 'tˈi tˈi ˈɛs'],
+    ['typescript', 'tˈIp skɹˌɪpt'],
+    ['ui', 'jˌu ˈI'],
+    ['uri', 'jˌu ˌɑɹ ˈI'],
+    ['url', 'jˌu ˌɑɹ ˈɛl'],
+    ['websocket', 'wˈɛb sˌɑkɪt'],
 ]);
+
+const defaultG2pBridge = new KokoroG2pBridge();
 
 const UNSTRESSED_FUNCTION_WORDS = new Set([
     'a',
@@ -141,6 +170,10 @@ function normalizePronunciationLookupWord(word = '') {
         .replace(/[^a-z0-9]+/g, '');
 }
 
+function isUnknownPhoneme(value = '') {
+    return /^❓+$/.test(String(value || '').trim());
+}
+
 function isPunctuationToken(value = '') {
     return /^[;:,.!?—…"“”()[\]{}]+$/.test(String(value || '').trim());
 }
@@ -176,10 +209,15 @@ function normalizeTokenPhonemesForKokoro(token = {}) {
     const word = String(token.word || '').trim();
     const lookupWord = normalizePronunciationLookupWord(word);
     const override = KOKORO_PRONUNCIATION_OVERRIDES.get(lookupWord);
-    let phonemes = override || String(token.phoneme || '').trim();
+    const rawPhonemes = String(token.phoneme || '').trim();
+    let phonemes = override || rawPhonemes;
 
-    if (!phonemes) {
+    if (!phonemes || (!override && isUnknownPhoneme(phonemes))) {
         return '';
+    }
+
+    if (!override && lookupWord === 'a' && word !== 'A') {
+        phonemes = 'ə';
     }
 
     if (!override && UNSTRESSED_FUNCTION_WORDS.has(lookupWord)) {
@@ -218,6 +256,7 @@ function normalizePhonemesForKokoro(value = '') {
         .replace(/ɫ/g, 'l')
         .replace(/ɝ/g, 'ɜɹ')
         .replace(/ɚ/g, 'ɜɹ')
+        .replace(/ᵊ/g, 'ə')
         .replace(/tʃ/g, 'ʧ')
         .replace(/dʒ/g, 'ʤ')
         .replace(/eɪ/g, 'A')
@@ -234,6 +273,7 @@ function normalizePhonemesForKokoro(value = '') {
         .replace(/kəkˈɔːɹəʊ/g, 'kˈəʊkəɹəʊ')
         .replace(/(?<=[a-zɹː])(?=hˈʌndɹɪd)/g, ' ')
         .replace(/ z(?=[;:,.!?—…"“” ]|$)/g, 'z')
+        .replace(/❓/g, '')
         .trim();
 }
 
@@ -242,7 +282,15 @@ function resolveVoiceLanguage(voice = '') {
     return VOICE_PREFIX_TO_LANGUAGE[prefix] || VOICE_PREFIX_TO_LANGUAGE.a;
 }
 
-function phonemizeForKokoro(text = '', voice = 'af_heart') {
+function finalizeKokoroPhonemes(rawPhonemes = '', language = VOICE_PREFIX_TO_LANGUAGE.a) {
+    let phonemes = normalizePhonemesForKokoro(rawPhonemes);
+    if (language === VOICE_PREFIX_TO_LANGUAGE.a) {
+        phonemes = phonemes.replace(/(?<=nˈaɪn)ti(?!ː)/g, 'di');
+    }
+    return phonemes;
+}
+
+function phonemizeForKokoroFallback(text = '', voice = 'af_heart') {
     const language = resolveVoiceLanguage(voice);
     const tokenizedPhonemes = phonemize(String(text || ''), {
         language,
@@ -251,11 +299,41 @@ function phonemizeForKokoro(text = '', voice = 'af_heart') {
     const rawPhonemes = Array.isArray(tokenizedPhonemes) && tokenizedPhonemes.length > 0
         ? joinKokoroPhonemeTokens(tokenizedPhonemes)
         : phonemize(String(text || ''), language);
-    let phonemes = normalizePhonemesForKokoro(rawPhonemes);
-    if (language === VOICE_PREFIX_TO_LANGUAGE.a) {
-        phonemes = phonemes.replace(/(?<=nˈaɪn)ti(?!ː)/g, 'di');
+    return finalizeKokoroPhonemes(rawPhonemes, language);
+}
+
+async function phonemizeForKokoro(text = '', voice = 'af_heart', options = {}) {
+    const language = resolveVoiceLanguage(voice);
+    const bridgeLanguage = language === VOICE_PREFIX_TO_LANGUAGE.b ? 'en-gb' : 'en-us';
+    const bridge = Object.prototype.hasOwnProperty.call(options, 'g2pBridge')
+        ? options.g2pBridge
+        : defaultG2pBridge;
+
+    if (bridge?.isEnabled?.()) {
+        try {
+            const result = await bridge.phonemize(String(text || ''), bridgeLanguage);
+            const rawPhonemes = Array.isArray(result?.tokens) && result.tokens.length > 0
+                ? joinKokoroPhonemeTokens(result.tokens)
+                : String(result?.phonemes || '').trim();
+            const phonemes = finalizeKokoroPhonemes(rawPhonemes, language);
+            if (phonemes) {
+                return phonemes;
+            }
+            if (bridge.required === true) {
+                throw new Error('Kokoro G2P bridge returned empty phonemes.');
+            }
+        } catch (error) {
+            if (bridge.required === true) {
+                throw error;
+            }
+            if (bridge.warnedUnavailable !== true) {
+                bridge.warnedUnavailable = true;
+                console.warn(`[KokoroTTS] Falling back to JS phonemizer because Kokoro G2P bridge failed: ${error.message}`);
+            }
+        }
     }
-    return phonemes;
+
+    return phonemizeForKokoroFallback(text, voice);
 }
 
 function toArrayBuffer(buffer) {
@@ -281,6 +359,9 @@ class KimiBuiltKokoroTTS {
         this.cacheDir = String(options.cacheDir || DEFAULT_CACHE_DIR).trim() || DEFAULT_CACHE_DIR;
         this.voiceBaseURL = String(options.voiceBaseURL || DEFAULT_VOICE_BASE_URL).replace(/\/+$/, '');
         this.allowRemoteModels = options.allowRemoteModels;
+        this.g2pBridge = Object.prototype.hasOwnProperty.call(options, 'g2pBridge')
+            ? options.g2pBridge
+            : defaultG2pBridge;
     }
 
     static async from_pretrained(modelId = DEFAULT_MODEL_ID, options = {}) {
@@ -309,12 +390,17 @@ class KimiBuiltKokoroTTS {
             AutoTokenizer.from_pretrained(modelId, tokenizerOptions),
         ]);
 
+        const g2pBridge = Object.prototype.hasOwnProperty.call(options, 'g2pBridge')
+            ? options.g2pBridge
+            : new KokoroG2pBridge(options.g2p || {});
+
         return new KimiBuiltKokoroTTS(model, tokenizer, {
             Tensor,
             RawAudio,
             cacheDir: options.cacheDir,
             voiceBaseURL: options.voiceBaseURL,
             allowRemoteModels: options.allowRemoteModels,
+            g2pBridge,
         });
     }
 
@@ -353,7 +439,7 @@ class KimiBuiltKokoroTTS {
     }
 
     async generate(text, { voice = 'af_heart', speed = 1 } = {}) {
-        const phonemes = phonemizeForKokoro(text, voice);
+        const phonemes = await phonemizeForKokoro(text, voice, { g2pBridge: this.g2pBridge });
         const { input_ids: inputIds } = this.tokenizer(phonemes, { truncation: true });
         return this.generate_from_ids(inputIds, { voice, speed });
     }
@@ -373,6 +459,10 @@ class KimiBuiltKokoroTTS {
         const { waveform } = await this.model(modelInput);
         return new this.RawAudio(waveform.data, 24000);
     }
+
+    close() {
+        this.g2pBridge?.close?.();
+    }
 }
 
 module.exports = {
@@ -384,4 +474,5 @@ module.exports = {
     joinKokoroPhonemeTokens,
     normalizePhonemesForKokoro,
     phonemizeForKokoro,
+    phonemizeForKokoroFallback,
 };

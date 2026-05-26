@@ -31,17 +31,44 @@ function writeVoice(cacheDir, voiceId = 'af_heart') {
     fs.writeFileSync(path.join(voiceDir, `${voiceId}.bin`), Buffer.from(voice.buffer));
 }
 
+const DISABLED_G2P_BRIDGE = {
+    isEnabled: () => false,
+};
+
 describe('KimiBuiltKokoroTTS runtime', () => {
-    test('normalizes permissive G2P output into the Kokoro tokenizer alphabet', () => {
-        const phonemes = phonemizeForKokoro('Hello world!', 'af_heart');
+    test('normalizes permissive JS fallback output into the Kokoro tokenizer alphabet', async () => {
+        const phonemes = await phonemizeForKokoro('Hello world!', 'af_heart', {
+            g2pBridge: DISABLED_G2P_BRIDGE,
+        });
 
         expect(phonemes).toContain('hə');
         expect(phonemes).not.toContain('ɫ');
         expect(phonemes).not.toContain('ɝ');
     });
 
-    test('softens over-stressed English tokens for more natural Kokoro pacing', () => {
-        const phonemes = phonemizeForKokoro('This is a KimiBuilt TTS check for the G2P path.', 'af_heart');
+    test('uses Kokoro G2P bridge tokens before JS fallback phonemes', async () => {
+        const bridge = {
+            required: true,
+            isEnabled: () => true,
+            phonemize: jest.fn(async () => ({
+                tokens: [
+                    { word: 'Hello', phoneme: 'həlˈO' },
+                    { word: 'world', phoneme: 'wˈɜɹld' },
+                    { word: '!', phoneme: '!' },
+                ],
+            })),
+        };
+
+        const phonemes = await phonemizeForKokoro('Hello world!', 'af_heart', { g2pBridge: bridge });
+
+        expect(bridge.phonemize).toHaveBeenCalledWith('Hello world!', 'en-us');
+        expect(phonemes).toBe('həlˈO wˈɜɹld!');
+    });
+
+    test('softens over-stressed English fallback tokens for more natural Kokoro pacing', async () => {
+        const phonemes = await phonemizeForKokoro('This is a KimiBuilt TTS check for the G2P path.', 'af_heart', {
+            g2pBridge: DISABLED_G2P_BRIDGE,
+        });
 
         expect(phonemes).toContain('ðɪs ɪz ə');
         expect(phonemes).toContain('kˈimi bˈɪlt');
@@ -52,8 +79,10 @@ describe('KimiBuiltKokoroTTS runtime', () => {
         expect(phonemes).not.toContain('ˈðə');
     });
 
-    test('converts IPA-ish fallback output into Kokoro Misaki-compatible symbols', () => {
-        const phonemes = phonemizeForKokoro('Joy chose our OpenAI voice.', 'af_heart');
+    test('converts IPA-ish fallback output into Kokoro Misaki-compatible symbols', async () => {
+        const phonemes = await phonemizeForKokoro('Joy chose our OpenAI voice.', 'af_heart', {
+            g2pBridge: DISABLED_G2P_BRIDGE,
+        });
 
         expect(phonemes).toContain('ʤ');
         expect(phonemes).toContain('ʧ');
@@ -87,6 +116,7 @@ describe('KimiBuiltKokoroTTS runtime', () => {
             RawAudio: FakeRawAudio,
             cacheDir,
             allowRemoteModels: false,
+            g2pBridge: DISABLED_G2P_BRIDGE,
         });
 
         try {

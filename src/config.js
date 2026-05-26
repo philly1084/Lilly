@@ -701,6 +701,16 @@ const config = {
             podcastTimeoutMs: normalizedKokoroPodcastTimeoutMs,
             podcastChunkChars: normalizedKokoroPodcastChunkChars,
             synthesisConcurrency: normalizedKokoroSynthesisConcurrency,
+            g2p: {
+                enabled: process.env.KOKORO_G2P_ENABLED !== 'false',
+                required: process.env.KOKORO_G2P_REQUIRED === 'true',
+                command: process.env.KOKORO_G2P_COMMAND || '',
+                scriptPath: resolveConfigPath(process.env.KOKORO_G2P_SCRIPT_PATH || ''),
+                timeoutMs: Math.max(
+                    250,
+                    Math.min(15000, parseInt(process.env.KOKORO_G2P_TIMEOUT_MS, 10) || 3000),
+                ),
+            },
             workerIsolation: process.env.KOKORO_TTS_WORKER_ISOLATION || 'process',
             httpRetryAttempts: Math.max(
                 1,
