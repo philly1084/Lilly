@@ -26,7 +26,7 @@ KimiBuilt web-chat, web-cli, and Notes TTS share a layered realtime path rather 
 4. Playback stall protection
    - Playback remains ordered by default.
    - Stalled chunks are not skipped by default; the reader may pause briefly, but it should not silently drop content.
-   - `TTS_REALTIME_SKIP_STALLED_CHUNKS=true` restores the older skip behavior for demos that value nonstop motion over completeness.
+   - Chunk skipping now also requires the internal `allowContentSkipping` policy flag, so an accidental or stale `skipStalledChunks` value cannot drop spoken lines.
 
 5. Presentation smoothing
    - The browser trims tiny leading/trailing silence from decoded chunks with `TTS_REALTIME_TRIM_EDGE_SECONDS` and `TTS_REALTIME_TRIM_THRESHOLD`.

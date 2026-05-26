@@ -67,6 +67,32 @@ function loadUIHelpersPrototype() {
 }
 
 describe('web-chat markdown normalization', () => {
+    test('finds speech highlight content indexes across comparable boundaries', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const node = {};
+        const textMap = {
+            text: ' first chunk ',
+            positions: [
+                null,
+                { node, offset: 0 },
+                { node, offset: 1 },
+                { node, offset: 2 },
+                { node, offset: 3 },
+                { node, offset: 4 },
+                null,
+                { node, offset: 6 },
+                { node, offset: 7 },
+                { node, offset: 8 },
+                { node, offset: 9 },
+                { node, offset: 10 },
+                null,
+            ],
+        };
+
+        expect(helper.findComparableSpeechContentIndex(textMap, 0, 12, 1)).toBe(1);
+        expect(helper.findComparableSpeechContentIndex(textMap, 12, 0, -1)).toBe(11);
+    });
+
     test('renders assistant alignment feedback buttons with thumbs icons', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAlignmentFeedbackButtonsMarkup('assistant-1', {

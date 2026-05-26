@@ -597,6 +597,10 @@ class WebChatTtsManager extends EventTarget {
                 policy.skipStalledChunks ?? policy.allowChunkSkipping,
                 false,
             ),
+            allowContentSkipping: parsePolicyBoolean(
+                policy.allowContentSkipping,
+                false,
+            ),
             emergencyProvider: normalizeRealtimeEmergencyProvider(
                 policy.emergencyProvider,
                 policy.primaryProvider || this.getProvider?.() || this.provider || 'kokoro',
@@ -1869,7 +1873,9 @@ class WebChatTtsManager extends EventTarget {
                 fillPreparedWindow(index);
             }
             const laterChunkReady = Array.from(bufferedChunkResults.keys()).some((readyIndex) => readyIndex > index);
-            const shouldSkipStalledChunk = policy.skipStalledChunks === true && laterChunkReady;
+            const shouldSkipStalledChunk = policy.skipStalledChunks === true
+                && policy.allowContentSkipping === true
+                && laterChunkReady;
             const preparedChunk = shouldSkipStalledChunk
                 ? await waitForPreparedChunk(index, Number(policy.chunkStallMs) || DEFAULT_REALTIME_CHUNK_STALL_MS)
                 : await waitForPreparedChunk(index);

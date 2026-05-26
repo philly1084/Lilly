@@ -252,6 +252,7 @@ describe('splitTextIntoSpeechChunks', () => {
                 ...manager.realtimePolicy,
                 chunkStallMs: 1,
                 skipStalledChunks: true,
+                allowContentSkipping: true,
                 synthesisLanes: 4,
                 synthesisLookahead: 4,
             };
@@ -309,6 +310,90 @@ describe('splitTextIntoSpeechChunks', () => {
 
             await expect(playbackPromise).resolves.toBe(true);
             expect(scheduledChunks).toEqual(['One.', 'Three. Four.']);
+        } finally {
+            global.CustomEvent = previousCustomEvent;
+        }
+    });
+
+    test('waits for stalled chunks unless content skipping is explicitly allowed', async () => {
+        const previousCustomEvent = global.CustomEvent;
+        global.CustomEvent = class CustomEvent extends Event {
+            constructor(type, params = {}) {
+                super(type);
+                this.detail = params.detail;
+            }
+        };
+
+        try {
+            const manager = new WebChatTtsManager();
+            manager.playbackToken = 1;
+            manager.realtimePolicy = {
+                ...manager.realtimePolicy,
+                chunkStallMs: 1,
+                skipStalledChunks: true,
+                allowContentSkipping: false,
+                synthesisLanes: 4,
+                synthesisLookahead: 4,
+            };
+
+            const fakeContext = {
+                currentTime: 0,
+                destination: {},
+                createBufferSource: () => {
+                    const sourceNode = {
+                        buffer: null,
+                        onended: null,
+                        connect: jest.fn(),
+                        disconnect: jest.fn(),
+                        start: jest.fn(() => setImmediate(() => sourceNode.onended?.())),
+                        stop: jest.fn(),
+                    };
+                    return sourceNode;
+                },
+                createGain: () => ({
+                    gain: { value: 1 },
+                    connect: jest.fn(),
+                    disconnect: jest.fn(),
+                }),
+            };
+            const scheduledChunks = [];
+            manager.preparePlayback = jest.fn(async () => fakeContext);
+            manager.synthesizeRealtimeChunkAudio = jest.fn((text) => {
+                if (text === 'Two.') {
+                    return new Promise((resolve) => {
+                        setTimeout(() => resolve({
+                            decodedBuffer: { duration: 1 },
+                            playbackContext: fakeContext,
+                        }), 20);
+                    });
+                }
+
+                return Promise.resolve({
+                    decodedBuffer: { duration: 1 },
+                    playbackContext: fakeContext,
+                });
+            });
+            manager.scheduleDecodedAudioBuffer = jest.fn((decodedBuffer, messageId, options) => {
+                scheduledChunks.push(options.chunkText);
+                if (options.isFinalChunk) {
+                    setImmediate(() => manager.resolvePlaybackWaiter(true));
+                }
+                return {
+                    playbackContext: fakeContext,
+                    startTime: scheduledChunks.length,
+                    endTime: scheduledChunks.length + 1,
+                };
+            });
+
+            const playbackPromise = manager.speakPiperChunks({
+                messageId: 'assistant-1',
+                text: 'One. Two. Three. Four.',
+                playbackToken: 1,
+                playbackContext: fakeContext,
+            });
+
+            await expect(playbackPromise).resolves.toBe(true);
+            expect(scheduledChunks).toEqual(['One.', 'Two.', 'Three. Four.']);
         } finally {
             global.CustomEvent = previousCustomEvent;
         }
