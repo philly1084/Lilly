@@ -401,4 +401,34 @@ describe('auth service OpenCode gateway access', () => {
             role: 'admin',
         });
     });
+
+    test('returns JSON auth errors for mounted API routes', () => {
+        const req = {
+            originalUrl: '/api/auth/protected-check',
+            baseUrl: '/api/auth',
+            path: '/protected-check',
+            url: '/protected-check',
+            method: 'GET',
+            headers: {},
+            secure: false,
+        };
+        const res = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn(),
+            redirect: jest.fn(),
+        };
+        const next = jest.fn();
+
+        requireAuth(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.redirect).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({
+            error: {
+                message: 'Authentication required',
+                code: 'missing_token',
+            },
+        });
+    });
 });

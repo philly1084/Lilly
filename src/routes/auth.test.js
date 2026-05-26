@@ -48,6 +48,21 @@ describe('/api/auth routes', () => {
         }));
     });
 
+    test('rejects unauthenticated WebSocket token requests with JSON', async () => {
+        const app = buildApp();
+        const response = await request(app)
+            .get('/api/auth/ws-token')
+            .expect(401);
+
+        expect(response.type).toBe('application/json');
+        expect(response.body).toEqual({
+            error: {
+                message: 'Authentication required',
+                code: 'missing_token',
+            },
+        });
+    });
+
     test('marks auth responses as non-cacheable', async () => {
         const app = buildApp();
         const response = await request(app)

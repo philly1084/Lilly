@@ -85,16 +85,30 @@ function parseCookies(cookieHeader = '') {
 }
 
 function getRequestPath(req = {}) {
-    const explicitPath = String(req.path || '').trim();
-    if (explicitPath) {
-        return explicitPath;
+    const candidates = [
+        req.originalUrl,
+        req.baseUrl && req.path ? `${req.baseUrl}${req.path}` : '',
+        req.url,
+        req.path,
+    ];
+
+    for (const candidate of candidates) {
+        const routePath = String(candidate || '').trim();
+        if (!routePath) {
+            continue;
+        }
+
+        try {
+            return new URL(routePath, 'http://localhost').pathname;
+        } catch (_error) {
+            const pathname = routePath.split(/[?#]/, 1)[0];
+            if (pathname.startsWith('/')) {
+                return pathname;
+            }
+        }
     }
 
-    try {
-        return new URL(String(req.url || ''), 'http://localhost').pathname;
-    } catch (_error) {
-        return '';
-    }
+    return '';
 }
 
 function extractPreviewRouteToken(routePath = '') {
