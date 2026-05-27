@@ -93,6 +93,32 @@ describe('web-chat markdown normalization', () => {
         expect(helper.findComparableSpeechContentIndex(textMap, 12, 0, -1)).toBe(11);
     });
 
+    test('does not backtrack into a previously spoken repeated sentence', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const node = {};
+        const text = 'alpha beta alpha beta';
+        helper.buildSpeechHighlightTextMap = () => ({
+            text,
+            positions: text.split('').map((char, index) => (
+                char === ' ' ? null : { node, offset: index }
+            )),
+        });
+        helper.createSpeechRangeFromComparableIndexes = (_textMap, startIndex, endIndex) => ({
+            startIndex,
+            endIndex,
+        });
+
+        const match = helper.findSpeechHighlightRange({}, 'Alpha beta.', {
+            startIndex: 'alpha beta '.length,
+            chunkIndex: 1,
+        });
+
+        expect(match.range).toEqual({
+            startIndex: 'alpha beta '.length,
+            endIndex: text.length - 1,
+        });
+    });
+
     test('renders assistant alignment feedback buttons with thumbs icons', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAlignmentFeedbackButtonsMarkup('assistant-1', {

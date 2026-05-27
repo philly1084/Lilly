@@ -19,7 +19,7 @@ const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 24000;
 const DEFAULT_REALTIME_HEDGE_DELAY_MS = 900;
 const DEFAULT_REALTIME_CHUNK_STALL_MS = 2500;
 const DEFAULT_REALTIME_CHUNK_PAUSE_SECONDS = 0.08;
-const DEFAULT_REALTIME_TRIM_EDGE_SECONDS = 0.12;
+const DEFAULT_REALTIME_TRIM_EDGE_SECONDS = 0;
 const DEFAULT_REALTIME_TRIM_THRESHOLD = 0.0035;
 const DEFAULT_REALTIME_EMERGENCY_PROVIDER = 'kokoro';
 
@@ -1041,6 +1041,7 @@ class WebChatTtsManager extends EventTarget {
             if (playbackNode.startTimer) {
                 clearTimeout(playbackNode.startTimer);
             }
+            playbackNode.resolveEnded?.(false);
             try {
                 playbackNode.sourceNode.onended = null;
             } catch (_error) {
@@ -1643,7 +1644,11 @@ class WebChatTtsManager extends EventTarget {
             sourceNode,
             gainNode,
             startTimer: null,
+            resolveEnded: null,
         };
+        const endedPromise = new Promise((resolve) => {
+            playbackNode.resolveEnded = resolve;
+        });
         this.activePlaybackNodes.add(playbackNode);
         this.currentSourceNode = sourceNode;
         this.currentGainNode = gainNode;
@@ -1693,10 +1698,12 @@ class WebChatTtsManager extends EventTarget {
             }
 
             if (!this.isPlaybackRequestActive(options.playbackToken)) {
+                playbackNode.resolveEnded?.(false);
                 return;
             }
 
             this.emitPlaybackEvent('chunkend', playbackEventDetail);
+            playbackNode.resolveEnded?.(true);
 
             if (options.isFinalChunk === true) {
                 this.loadingMessageId = '';
@@ -1712,6 +1719,7 @@ class WebChatTtsManager extends EventTarget {
             playbackContext: context,
             startTime: scheduledStartTime,
             endTime: scheduledStartTime + decodedBuffer.duration,
+            endedPromise,
         };
     }
 
@@ -1727,7 +1735,6 @@ class WebChatTtsManager extends EventTarget {
         let activePlaybackContext = playbackContext;
         let nextChunkToPrepare = 0;
         let preparedWindowAnchor = 0;
-        let scheduledEndTime = 0;
         const policy = this.realtimePolicy || this.normalizeRealtimePolicy();
         const synthesisLookahead = Math.max(
             1,
@@ -1894,17 +1901,25 @@ class WebChatTtsManager extends EventTarget {
 
             activePlaybackContext = chunkResult.playbackContext || activePlaybackContext || playbackContext;
             fillPreparedWindow(index + 1);
+            const chunkPauseSeconds = Math.max(0, Number(policy.chunkPauseSeconds) || 0);
 
             const scheduledChunk = this.scheduleDecodedAudioBuffer(chunkResult.decodedBuffer, normalizedMessageId, {
                 playbackContext: activePlaybackContext,
-                scheduledStartTime: scheduledEndTime,
+                scheduledStartTime: index > 0 && activePlaybackContext?.currentTime != null
+                    ? Number(activePlaybackContext.currentTime) + chunkPauseSeconds
+                    : 0,
                 playbackToken,
                 chunkText: chunks[index],
                 chunkIndex: index,
                 chunkCount: chunks.length,
                 isFinalChunk: index === (chunks.length - 1),
             });
-            scheduledEndTime = scheduledChunk.endTime + Math.max(0, Number(policy.chunkPauseSeconds) || 0);
+            if (scheduledChunk?.endedPromise) {
+                const chunkFinished = await scheduledChunk.endedPromise;
+                if (!chunkFinished || !this.isPlaybackRequestActive(playbackToken)) {
+                    return false;
+                }
+            }
         }
 
         return playbackCompleted;

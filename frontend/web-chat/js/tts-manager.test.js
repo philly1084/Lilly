@@ -160,6 +160,85 @@ describe('splitTextIntoSpeechChunks', () => {
         }
     });
 
+    test('waits for the actual audio end event before starting the next sentence', async () => {
+        const previousCustomEvent = global.CustomEvent;
+        global.CustomEvent = class CustomEvent extends Event {
+            constructor(type, params = {}) {
+                super(type);
+                this.detail = params.detail;
+            }
+        };
+
+        try {
+            const manager = new WebChatTtsManager();
+            manager.playbackToken = 1;
+
+            const sources = [];
+            const startedAt = [];
+            const fakeContext = {
+                currentTime: 0,
+                destination: {},
+                createBufferSource: () => {
+                    const sourceNode = {
+                        buffer: null,
+                        onended: null,
+                        connect: jest.fn(),
+                        disconnect: jest.fn(),
+                        start: jest.fn((time) => {
+                            startedAt.push(time);
+                        }),
+                        stop: jest.fn(),
+                    };
+                    sources.push(sourceNode);
+                    return sourceNode;
+                },
+                createGain: () => ({
+                    gain: { value: 1 },
+                    connect: jest.fn(),
+                    disconnect: jest.fn(),
+                }),
+            };
+
+            manager.preparePlayback = jest.fn(async () => fakeContext);
+            manager.synthesizeRealtimeChunkAudio = jest.fn(async () => ({
+                decodedBuffer: { duration: 0.01 },
+                playbackContext: fakeContext,
+            }));
+
+            const playbackPromise = manager.speakPiperChunks({
+                messageId: 'assistant-1',
+                text: 'One. Two. Three.',
+                playbackToken: 1,
+                playbackContext: fakeContext,
+            });
+
+            await Promise.resolve();
+            await new Promise((resolve) => setImmediate(resolve));
+            expect(startedAt).toHaveLength(1);
+            expect(sources).toHaveLength(1);
+
+            await new Promise((resolve) => setImmediate(resolve));
+            expect(startedAt).toHaveLength(1);
+
+            sources[0].onended?.();
+            await Promise.resolve();
+            await new Promise((resolve) => setImmediate(resolve));
+            expect(startedAt).toHaveLength(2);
+            expect(sources).toHaveLength(2);
+
+            sources[1].onended?.();
+            await Promise.resolve();
+            await new Promise((resolve) => setImmediate(resolve));
+            expect(startedAt).toHaveLength(3);
+            expect(sources).toHaveLength(3);
+
+            sources[2].onended?.();
+            await expect(playbackPromise).resolves.toBe(true);
+        } finally {
+            global.CustomEvent = previousCustomEvent;
+        }
+    });
+
     test('does not hedge realtime chunks through Piper by default', async () => {
         const manager = new WebChatTtsManager();
         manager.realtimePolicy = {

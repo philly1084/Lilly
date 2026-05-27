@@ -25,11 +25,12 @@ KimiBuilt web-chat, web-cli, and Notes TTS share a layered realtime path rather 
 
 4. Playback stall protection
    - Playback remains ordered by default.
+   - The next chunk starts only after the browser reports the current Web Audio source has ended, so punctuation-boundary timing cannot overlap and cut off the prior sentence.
    - Stalled chunks are not skipped by default; the reader may pause briefly, but it should not silently drop content.
    - Chunk skipping now also requires the internal `allowContentSkipping` policy flag, so an accidental or stale `skipStalledChunks` value cannot drop spoken lines.
 
 5. Presentation smoothing
-   - The browser trims tiny leading/trailing silence from decoded chunks with `TTS_REALTIME_TRIM_EDGE_SECONDS` and `TTS_REALTIME_TRIM_THRESHOLD`.
+   - The browser does not trim decoded chunk edges by default. `TTS_REALTIME_TRIM_EDGE_SECONDS` can be raised only if clipping tests stay clean.
    - The scheduler adds a small controlled pause with `TTS_REALTIME_CHUNK_PAUSE_SECONDS` so chunks feel like sentences, not disconnected clips.
 
 6. Backend provider routing

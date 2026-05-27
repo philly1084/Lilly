@@ -7251,7 +7251,9 @@ class UIHelpers {
 
         const preferredStartIndex = Math.max(0, Number(options.startIndex) || 0);
         const chunkIndex = Number(options.chunkIndex);
-        const searchStartIndex = Math.max(0, preferredStartIndex - 12);
+        const searchStartIndex = Number.isFinite(chunkIndex) && chunkIndex > 0
+            ? preferredStartIndex
+            : Math.max(0, preferredStartIndex - 12);
         const candidates = [
             normalizedChunk,
             normalizedChunk.length > 96 ? normalizedChunk.slice(0, 96).trim() : '',

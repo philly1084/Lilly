@@ -672,7 +672,7 @@ const config = {
             hedgeDelayMs: normalizedTtsRealtimeHedgeDelayMs,
             chunkStallMs: normalizedTtsRealtimeChunkStallMs,
             chunkPauseSeconds: parseOptionalFloat(process.env.TTS_REALTIME_CHUNK_PAUSE_SECONDS) ?? 0.08,
-            trimEdgeSeconds: parseOptionalFloat(process.env.TTS_REALTIME_TRIM_EDGE_SECONDS) ?? 0.12,
+            trimEdgeSeconds: parseOptionalFloat(process.env.TTS_REALTIME_TRIM_EDGE_SECONDS) ?? 0,
             trimThreshold: parseOptionalFloat(process.env.TTS_REALTIME_TRIM_THRESHOLD) ?? 0.0035,
             skipStalledChunks: process.env.TTS_REALTIME_SKIP_STALLED_CHUNKS === 'true',
             emergencyProvider: process.env.TTS_REALTIME_EMERGENCY_PROVIDER || 'kokoro',
