@@ -428,10 +428,13 @@ describe('RemoteCliAgentsSdkRunner', () => {
       args: {
         targetId: 'k3s-prod',
         cwd: '/srv/apps/my-app',
-        task: 'No changes. Run pwd.',
+        task: expect.stringContaining('No changes. Run pwd.'),
         waitMs: 30000,
       },
     }]);
+    expect(calls.toolCalls[0].args.task).toContain('You are already executing through the KimiBuilt remote_code_run gateway target "k3s-prod"');
+    expect(calls.toolCalls[0].args.task).toContain('The gateway has placed you in the remote workspace "/srv/apps/my-app"');
+    expect(calls.toolCalls[0].args.task).toContain('Do not ask the user for SSH details');
     expect(result).toMatchObject({
       targetId: 'k3s-prod',
       cwd: '/srv/apps/my-app',
@@ -540,12 +543,13 @@ describe('RemoteCliAgentsSdkRunner', () => {
       args: {
         targetId: 'prod',
         cwd: '/srv/apps/my-app',
-        task: 'Fix the deployed game and verify it.',
+        task: expect.stringContaining('Fix the deployed game and verify it.'),
         waitMs: 30000,
       },
     });
-    expect(JSON.stringify(calls.toolCalls[0].args)).not.toContain('command');
-    expect(JSON.stringify(calls.toolCalls[0].args)).not.toContain('shell');
+    expect(calls.toolCalls[0].args.task).toContain('Do not say that you cannot access the remote server');
+    expect(Object.keys(calls.toolCalls[0].args)).not.toContain('command');
+    expect(Object.keys(calls.toolCalls[0].args)).not.toContain('shell');
     expect(calls.toolCalls[1]).toEqual({
       name: 'remote_code_status',
       args: { jobId: 'rcli_123' },
@@ -652,7 +656,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         args: {
           targetId: 'prod',
           cwd: '/srv/apps/my-app',
-          task: 'Deploy the frontend remotely and verify the live route.',
+          task: expect.stringContaining('Deploy the frontend remotely and verify the live route.'),
           waitMs: 30000,
         },
       },
@@ -776,7 +780,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         args: {
           targetId: 'prod',
           cwd: '/srv/apps/my-app',
-          task: 'Deploy the live app and verify it.',
+          task: expect.stringContaining('Deploy the live app and verify it.'),
           waitMs: 30000,
         },
       },
@@ -899,7 +903,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         args: {
           targetId: 'prod',
           cwd: '/srv/apps/my-app',
-          task: 'Build the frontend remotely and verify the live route.',
+          task: expect.stringContaining('Build the frontend remotely and verify the live route.'),
           waitMs: 30000,
         },
       },

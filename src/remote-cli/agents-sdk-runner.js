@@ -1042,6 +1042,29 @@ function buildRemoteCliPrompt({
   ].filter(Boolean).join('\n');
 }
 
+function buildDirectRemoteCodeTask({
+  task,
+  targetId,
+  cwd,
+  sessionId = '',
+} = {}) {
+  return [
+    'Direct remote execution contract:',
+    `- You are already executing through the KimiBuilt remote_code_run gateway target "${targetId}".`,
+    cwd ? `- The gateway has placed you in the remote workspace "${cwd}".` : '- Use the gateway target default workspace.',
+    sessionId ? `- Continue the prior remote CLI session "${sessionId}" when relevant.` : '',
+    '- Treat references to "remote", "server", "site", or "remote into the server" as instructions to work inside this current gateway target and workspace.',
+    '- Do not say that you cannot access the remote server. Do not ask the user for SSH details. Do not provide SSH instructions as the answer.',
+    '- Use the local shell/tools available in this remote execution environment to inspect, edit, build, deploy, and verify as the task requires.',
+    '- Keep changes scoped to the requested workspace and task. Avoid destructive operations and secret changes unless explicitly requested.',
+    '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
+    '- Include REMOTE_CLI_SESSION_ID=<session id>, WORKSPACE=<path>, REMOTE_CLI_JOB_ID=<job id if known>, and any requested REMOTE_AGENT_RESULT=<value> markers when known.',
+    '',
+    'User task:',
+    task,
+  ].filter(Boolean).join('\n');
+}
+
 class RemoteCliAgentsSdkRunner {
   constructor(options = {}) {
     this.sdkLoader = options.sdkLoader || loadAgentsSdk;
@@ -1152,7 +1175,12 @@ class RemoteCliAgentsSdkRunner {
       const runArgs = {
         targetId,
         ...(cwd ? { cwd } : {}),
-        task,
+        task: buildDirectRemoteCodeTask({
+          task,
+          targetId,
+          cwd,
+          sessionId: remoteSessionId,
+        }),
         ...(model ? { model } : {}),
         ...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
         waitMs,
