@@ -564,6 +564,250 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('forces direct remote_code_run when the inner agent returns unproved prose without tool use', async () => {
+    const calls = {
+      toolCalls: [],
+      progress: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-contract';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_run') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                status: 'running',
+                jobId: 'rcli_contract',
+                sessionId: 'remote-session-contract',
+              }),
+            }],
+          };
+        }
+        if (name === 'remote_code_status') {
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                'REMOTE_CLI_JOB_ID=rcli_contract',
+                'REMOTE_CLI_SESSION_ID=remote-session-contract',
+                'WORKSPACE=/srv/apps/my-app',
+                'WHAT_CHANGED=Ran the remote build through the direct fallback.',
+                'VERIFY_COMMANDS=remote_code_status',
+                'VERIFY_RESULTS=Remote job completed after direct fallback.',
+                'PUBLIC_URL=not_available',
+                'BLOCKER=none',
+              ].join('\n'),
+            }],
+          };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      }
+    }
+
+    class FakeAgent {}
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: 'I can help with that remote build.',
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'kimi-for-coding',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Build the frontend remotely and verify the live route.',
+      waitMs: 30000,
+      maxStatusPolls: 2,
+      statusPollIntervalMs: 0,
+      onProgress: (progress) => calls.progress.push(progress),
+    });
+
+    expect(calls.progress.some((progress) => /without calling remote_code_run/i.test(progress.reasoningSummary))).toBe(true);
+    expect(calls.toolCalls).toEqual([
+      {
+        name: 'remote_code_run',
+        args: {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Build the frontend remotely and verify the live route.',
+          waitMs: 30000,
+        },
+      },
+      {
+        name: 'remote_code_status',
+        args: { jobId: 'rcli_contract' },
+      },
+    ]);
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_contract',
+      sessionId: 'remote-session-contract',
+      whatChanged: 'Ran the remote build through the direct fallback.',
+      verifyResults: ['Remote job completed after direct fallback.'],
+      completionStatus: 'complete',
+    });
+  });
+
+  test('polls an observed remote_code_run job when the inner agent returns no proof markers', async () => {
+    const calls = {
+      toolCalls: [],
+      progress: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-observed';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_run') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                status: 'running',
+                jobId: 'rcli_observed',
+                sessionId: 'remote-session-observed',
+              }),
+            }],
+          };
+        }
+        if (name === 'remote_code_status') {
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                'REMOTE_CLI_JOB_ID=rcli_observed',
+                'REMOTE_CLI_SESSION_ID=remote-session-observed',
+                'WORKSPACE=/srv/apps/my-app',
+                'WHAT_CHANGED=Polled the remote job the inner agent started.',
+                'VERIFY_COMMANDS=remote_code_status',
+                'VERIFY_RESULTS=Observed remote job completed.',
+                'PUBLIC_URL=not_available',
+                'BLOCKER=none',
+              ].join('\n'),
+            }],
+          };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      }
+    }
+
+    class FakeAgent {
+      constructor(config) {
+        this.config = config;
+      }
+    }
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run(agent) {
+        await agent.config.mcpServers[0].callTool('remote_code_run', {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Build started by the inner agent.',
+          waitMs: 30000,
+        });
+        return {
+          finalOutput: 'Started the remote job and will report back.',
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'kimi-for-coding',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Build the frontend remotely and verify the live route.',
+      waitMs: 30000,
+      maxStatusPolls: 2,
+      statusPollIntervalMs: 0,
+      onProgress: (progress) => calls.progress.push(progress),
+    });
+
+    expect(calls.progress.some((progress) => /polling remote_code_status for job rcli_observed/i.test(progress.reasoningSummary))).toBe(true);
+    expect(calls.toolCalls).toEqual([
+      {
+        name: 'remote_code_run',
+        args: {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Build started by the inner agent.',
+          waitMs: 30000,
+        },
+      },
+      {
+        name: 'remote_code_status',
+        args: { jobId: 'rcli_observed' },
+      },
+    ]);
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_observed',
+      sessionId: 'remote-session-observed',
+      whatChanged: 'Polled the remote job the inner agent started.',
+      verifyResults: ['Observed remote job completed.'],
+      completionStatus: 'complete',
+    });
+  });
+
   test('continues an existing remote_code_run job with status-only polling', async () => {
     const calls = {
       toolCalls: [],

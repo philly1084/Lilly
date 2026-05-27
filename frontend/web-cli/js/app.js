@@ -4521,21 +4521,44 @@ Examples:
 
     formatRemoteAgentResult(result = {}) {
         const finalOutput = String(result.finalOutput || result.output || '').trim();
+        const completionStatus = String(result.completionStatus || '').trim();
+        const blocker = String(result.blocker || '').trim();
+        const verifyCommands = Array.isArray(result.verifyCommands) ? result.verifyCommands.filter(Boolean) : [];
+        const verifyResults = Array.isArray(result.verifyResults) ? result.verifyResults.filter(Boolean) : [];
         const lines = ['## Remote CLI Agent Result', ''];
         const metadata = [
+            completionStatus ? `Status: \`${completionStatus}\`` : '',
             result.targetId ? `Target: \`${result.targetId}\`` : '',
             result.cwd ? `Workspace: \`${result.cwd}\`` : '',
             result.sessionId ? `Remote session: \`${result.sessionId}\`` : '',
+            result.remoteCodeJobId ? `Remote job: \`${result.remoteCodeJobId}\`` : '',
             result.mcpSessionId ? `MCP session: \`${result.mcpSessionId}\`` : '',
             result.model ? `Agent model: \`${result.model}\`` : '',
             result.gitRepo ? `Repo: \`${result.gitRepo}\`` : '',
             result.gitCommit ? `Commit: \`${result.gitCommit}\`` : '',
             result.publicHost ? `Public host: \`${result.publicHost}\`` : '',
+            result.publicUrl ? `Public URL: ${result.publicUrl}` : '',
             result.uiCheckReport ? `UI check: \`${result.uiCheckReport}\`` : '',
+            blocker ? `Blocker: ${blocker}` : '',
         ].filter(Boolean);
 
         if (metadata.length > 0) {
             lines.push('### Run Metadata', '', ...metadata.map((item) => `- ${item}`), '');
+        }
+
+        if (result.whatChanged) {
+            lines.push('### What Changed', '', String(result.whatChanged).trim(), '');
+        }
+
+        if (verifyCommands.length > 0 || verifyResults.length > 0) {
+            lines.push('### Verification', '');
+            if (verifyCommands.length > 0) {
+                lines.push(...verifyCommands.slice(0, 8).map((item) => `- Command: \`${item}\``));
+            }
+            if (verifyResults.length > 0) {
+                lines.push(...verifyResults.slice(0, 8).map((item) => `- Result: ${item}`));
+            }
+            lines.push('');
         }
 
         const actionItems = this.extractRemoteAgentActionItems(finalOutput);
@@ -4728,7 +4751,15 @@ Raw expert access remains available:
                     ],
                 });
                 this.renderLiveProgressCard();
-                this.finalizeLiveProgressCard({ detail: 'Remote CLI agent completed.' });
+                const finalStatus = String(result.completionStatus || '').trim().toLowerCase();
+                this.finalizeLiveProgressCard({
+                    phase: finalStatus === 'blocked' ? 'blocked' : 'ready',
+                    detail: result.blocker
+                        ? `Remote CLI agent blocked: ${result.blocker}`
+                        : (finalStatus === 'complete'
+                            ? 'Remote CLI agent completed with verification.'
+                            : 'Remote CLI agent returned a report.'),
+                });
                 this.printAI(this.formatRemoteAgentResult(result));
             } catch (error) {
                 this.liveProgressState = this.normalizeProgressState({

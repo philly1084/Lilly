@@ -1177,6 +1177,26 @@ class RemoteCliAgentsSdkRunner {
 
     const remoteCli = this.createMcpServer(MCPServerStreamableHttp, input);
     const remoteCodeCallState = attachRemoteCodeCallTracker(remoteCli);
+    const emitContractProgress = (detail, extra = {}) => {
+      if (typeof input.onProgress !== 'function' || !detail) {
+        return;
+      }
+      try {
+        input.onProgress({
+          phase: 'executing',
+          reasoningSummary: detail,
+          detail,
+          percent: extra.percent || 47,
+          toolEvents: [{
+            toolId: 'remote-cli-agent',
+            stage: extra.stage || 'fallback',
+            detail,
+          }],
+        });
+      } catch (error) {
+        console.warn('[RemoteCliAgentsSdkRunner] Failed to emit remote-cli contract progress:', error?.message || error);
+      }
+    };
     const instructions = buildRemoteCliInstructions({
       targetId,
       cwd,
@@ -1308,7 +1328,58 @@ class RemoteCliAgentsSdkRunner {
           });
         }
       }
-      const runMetadata = extractRemoteCliRunMetadata(finalOutput);
+      let runMetadata = extractRemoteCliRunMetadata(finalOutput);
+      if (runMetadata.completionStatus === 'unknown') {
+        if (remoteCodeCallState.jobId) {
+          emitContractProgress(
+            `Remote CLI agent returned without proof markers; polling remote_code_status for job ${remoteCodeCallState.jobId}.`,
+            { percent: 50 },
+          );
+          finalOutput = await this.executeRemoteCodeRun(remoteCli, {
+            targetId,
+            cwd,
+            task,
+            model: remoteCodeModel,
+            sessionId: remoteCodeCallState.sessionId || sessionId,
+            waitMs,
+            jobId: remoteCodeCallState.jobId,
+            maxStatusPolls,
+            statusPollIntervalMs,
+            onProgress: input.onProgress,
+          });
+          runMetadata = extractRemoteCliRunMetadata(finalOutput);
+        } else if (!remoteCodeCallState.sawRemoteCodeRun) {
+          emitContractProgress(
+            'Remote CLI agent returned without calling remote_code_run or producing proof markers; starting direct remote_code_run.',
+            { percent: 50 },
+          );
+          finalOutput = await this.executeRemoteCodeRun(remoteCli, {
+            targetId,
+            cwd,
+            task,
+            model: remoteCodeModel,
+            sessionId: remoteCodeCallState.sessionId || sessionId,
+            waitMs,
+            maxStatusPolls,
+            statusPollIntervalMs,
+            onProgress: input.onProgress,
+          });
+          runMetadata = extractRemoteCliRunMetadata(finalOutput);
+        } else {
+          finalOutput = buildRemoteCodeFinalText({
+            fragments: [finalOutput],
+            targetId,
+            cwd,
+            sessionId: remoteCodeCallState.sessionId || sessionId,
+            status: remoteCodeCallState.status || 'unknown',
+            fallbackWhatChanged: 'The inner agent called remote_code_run, but the gateway response did not include proof markers or a jobId to poll.',
+            fallbackVerifyCommand: 'remote_code_run',
+            fallbackVerifyResult: 'remote_code_run did not expose a resumable jobId or final proof markers.',
+            blocker: 'remote_code_run returned without a jobId or proof markers',
+          });
+          runMetadata = extractRemoteCliRunMetadata(finalOutput);
+        }
+      }
 
       return {
         finalOutput,

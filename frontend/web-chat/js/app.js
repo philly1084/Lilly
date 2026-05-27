@@ -5831,7 +5831,14 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
     formatRemoteAgentResult(result = {}) {
         const output = String(result.finalOutput || result.output || '').trim();
+        const completionStatus = String(result.completionStatus || '').trim();
+        const blocker = String(result.blocker || '').trim();
+        const verifyCommands = Array.isArray(result.verifyCommands) ? result.verifyCommands.filter(Boolean) : [];
+        const verifyResults = Array.isArray(result.verifyResults) ? result.verifyResults.filter(Boolean) : [];
         const metadata = [];
+        if (completionStatus) {
+            metadata.push(`Status: \`${completionStatus}\``);
+        }
         if (result.targetId) {
             metadata.push(`Target: \`${result.targetId}\``);
         }
@@ -5841,17 +5848,41 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (result.sessionId) {
             metadata.push(`Remote session: \`${result.sessionId}\``);
         }
+        if (result.remoteCodeJobId) {
+            metadata.push(`Remote job: \`${result.remoteCodeJobId}\``);
+        }
         if (result.mcpSessionId) {
             metadata.push(`MCP session: \`${result.mcpSessionId}\``);
         }
         if (result.model) {
             metadata.push(`Model: \`${result.model}\``);
         }
+        if (result.publicUrl) {
+            metadata.push(`Public URL: ${result.publicUrl}`);
+        }
+        if (blocker) {
+            metadata.push(`Blocker: ${blocker}`);
+        }
+
+        const proofSections = [];
+        if (result.whatChanged) {
+            proofSections.push('', '### What Changed', '', String(result.whatChanged).trim());
+        }
+        if (verifyCommands.length > 0 || verifyResults.length > 0) {
+            proofSections.push('', '### Verification', '');
+            if (verifyCommands.length > 0) {
+                proofSections.push(...verifyCommands.slice(0, 8).map((item) => `- Command: \`${item}\``));
+            }
+            if (verifyResults.length > 0) {
+                proofSections.push(...verifyResults.slice(0, 8).map((item) => `- Result: ${item}`));
+            }
+        }
 
         return [
             '## Remote CLI Agent Result',
             '',
             ...metadata.map((line) => `- ${line}`),
+            ...proofSections,
             ...(output
                 ? ['', output]
                 : ['', '```json', JSON.stringify(result, null, 2), '```']),
