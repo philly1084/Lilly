@@ -4,7 +4,7 @@ const { memoryService } = require('../memory/memory-service');
 const { config } = require('../config');
 const notationRouter = require('../routes/notation');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
-const { executeConversationRuntime, resolveConversationExecutorFlag } = require('../runtime-execution');
+const { executeConversationRuntime, inferExecutionProfile, resolveConversationExecutorFlag } = require('../runtime-execution');
 const {
     buildInstructionsWithArtifacts,
     maybeGenerateOutputArtifact,
@@ -598,6 +598,15 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
             }
             : {}),
     };
+    const effectiveExecutionProfile = inferExecutionProfile({
+        executionProfile,
+        taskType,
+        clientSurface,
+        input: effectiveMessage,
+        memoryInput: message,
+        session,
+        metadata: effectiveRequestMetadata,
+    });
     const requestFrame = buildRequestDecisionFrame({
         text: message,
         session,
@@ -606,7 +615,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         outputFormatProvided,
         artifactIds,
         effectiveArtifactIds,
-        executionProfile,
+        executionProfile: effectiveExecutionProfile,
         taskType,
         clientSurface,
         route: '/ws',
@@ -812,7 +821,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                     artifactIds: preparedImages.artifactIds,
                     workloadService: ws.app?.locals?.agentWorkloadService || null,
                 },
-                executionProfile,
+                executionProfile: effectiveExecutionProfile,
             });
             const responseArtifacts = mergeRuntimeArtifacts(
                 preparedImages.artifacts,
@@ -940,7 +949,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                 workloadService: ws.app?.locals?.agentWorkloadService || null,
                 userCheckpointPolicy,
             },
-            executionProfile,
+            executionProfile: effectiveExecutionProfile,
             enableAutomaticToolCalls: true,
             enableConversationExecutor,
             taskType,

@@ -1948,8 +1948,11 @@ function hasRemoteSoftwareInspectionIntent(prompt = '') {
     const inspectionIntent = /\b(check|check on|inspect|status|state|health|verify|debug|diagnose|troubleshoot|look at|see what'?s going on|find out|what'?s going on|logs?|is it working|still running)\b/.test(normalized);
     const infraOnly = /\b(kubectl get|kubectl describe|journalctl|systemctl status|uptime|df -h|free -m)\b/.test(normalized)
         && !softwareTarget;
+    const namedRemoteTargetInspection = remoteTarget
+        && inspectionIntent
+        && /\b(?:check on|look at|inspect|debug|diagnose|troubleshoot|status of|state of|health of)\s+(?:the\s+|our\s+|my\s+)?(?!(?:server|host|machine|cluster|namespace|pod|pods|deployment|deployments|service|services)\b)[a-z][a-z0-9_-]{2,}(?:\s+(?:app|application|site|website|service|game|workload|deployment))?\b/.test(normalized);
 
-    return softwareTarget && remoteTarget && inspectionIntent && !infraOnly;
+    return (softwareTarget || namedRemoteTargetInspection) && remoteTarget && inspectionIntent && !infraOnly;
 }
 
 function hasRemoteBuildAuthoringContinuationIntent(prompt = '') {

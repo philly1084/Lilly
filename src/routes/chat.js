@@ -4,7 +4,7 @@ const { validate } = require('../middleware/validate');
 const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
-const { executeConversationRuntime, resolveConversationExecutorFlag } = require('../runtime-execution');
+const { executeConversationRuntime, inferExecutionProfile, resolveConversationExecutorFlag } = require('../runtime-execution');
 const {
     buildInstructionsWithArtifacts,
     maybeGenerateOutputArtifact,
@@ -1468,6 +1468,15 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 }
                 : {}),
         };
+        const effectiveExecutionProfile = inferExecutionProfile({
+            executionProfile,
+            taskType,
+            clientSurface,
+            input: effectiveMessage,
+            memoryInput: message,
+            session: effectiveSession,
+            metadata: effectiveRequestMetadata,
+        });
         const requestFrame = buildRequestDecisionFrame({
             text: message,
             session,
@@ -1476,7 +1485,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             outputFormatProvided,
             artifactIds,
             effectiveArtifactIds,
-            executionProfile,
+            executionProfile: effectiveExecutionProfile,
             taskType,
             clientSurface,
             route: '/api/chat',
@@ -1887,7 +1896,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     workloadService: req.app.locals.agentWorkloadService,
                     managedAppService: req.app.locals.managedAppService || null,
                 },
-                executionProfile,
+                executionProfile: effectiveExecutionProfile,
             });
             const responseArtifacts = mergeRuntimeArtifacts(
                 preparedImages.artifacts,
@@ -2139,7 +2148,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     ],
                     piiWorkbookRelationship,
                 },
-                executionProfile,
+                executionProfile: effectiveExecutionProfile,
                 enableAutomaticToolCalls: true,
                 enableConversationExecutor,
                 taskType,
@@ -2372,7 +2381,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 ],
                 piiWorkbookRelationship,
             },
-            executionProfile,
+            executionProfile: effectiveExecutionProfile,
             enableAutomaticToolCalls: true,
             enableConversationExecutor,
             taskType,

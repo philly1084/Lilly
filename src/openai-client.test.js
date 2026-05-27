@@ -3276,7 +3276,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
 
         const toolManager = createToolManager();
-        const prompt = 'can you remote into the server and check on the tetris game';
+        const prompt = 'can you remote into the server and check on tetris';
         const toolContext = {
             executionProfile: 'remote-build',
             userCheckpointPolicy: {

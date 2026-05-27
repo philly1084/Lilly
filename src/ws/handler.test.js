@@ -27,7 +27,23 @@ jest.mock('../runtime-tool-manager', () => ({
 
 jest.mock('../runtime-execution', () => ({
     executeConversationRuntime: jest.fn(),
+    inferExecutionProfile: jest.fn(() => 'default'),
     resolveConversationExecutorFlag: jest.fn(() => false),
+}));
+
+jest.mock('../pii', () => ({
+    sanitizeText: jest.fn(async (text, options = {}) => ({
+        text,
+        contextId: null,
+        contextIds: [],
+        replacements: [],
+        policy: options.policy || { enabled: false },
+    })),
+    rehydrateText: jest.fn(async (text) => ({
+        text,
+        restorations: [],
+        enabled: false,
+    })),
 }));
 
 jest.mock('../ai-route-utils', () => ({
@@ -148,7 +164,7 @@ jest.mock('../realtime-hub', () => ({
 const { WebSocket } = require('ws');
 const { sessionStore } = require('../session-store');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
-const { executeConversationRuntime } = require('../runtime-execution');
+const { executeConversationRuntime, inferExecutionProfile } = require('../runtime-execution');
 const {
     generateOutputArtifactFromPrompt,
     inferRequestedOutputFormat,
@@ -187,6 +203,7 @@ describe('websocket chat handler', () => {
         sessionStore.get.mockResolvedValue(session);
         sessionStore.getRecentMessages.mockResolvedValue([]);
         sessionStore.update.mockResolvedValue(session);
+        inferExecutionProfile.mockReturnValue('default');
         executeConversationRuntime.mockResolvedValue({
             handledPersistence: false,
             response: (async function* responseEvents() {

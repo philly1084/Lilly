@@ -36,6 +36,7 @@ jest.mock('../runtime-tool-manager', () => ({
 
 jest.mock('../runtime-execution', () => ({
     executeConversationRuntime: jest.fn(),
+    inferExecutionProfile: jest.fn(() => 'default'),
     resolveConversationExecutorFlag: jest.fn(() => false),
 }));
 
@@ -206,7 +207,7 @@ jest.mock('../alignment/evaluator-service', () => ({
 const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
-const { executeConversationRuntime } = require('../runtime-execution');
+const { executeConversationRuntime, inferExecutionProfile } = require('../runtime-execution');
 const settingsController = require('./admin/settings.controller');
 const { artifactService } = require('../artifacts/artifact-service');
 const alignmentEvaluator = require('../alignment/evaluator-service');
@@ -266,6 +267,7 @@ describe('/api/chat route', () => {
         stripInjectedNotesPageEditDirective.mockImplementation((text) => text);
         resolveSshRequestContext.mockReturnValue({});
         resolveReasoningEffort.mockReturnValue(null);
+        inferExecutionProfile.mockReturnValue('default');
         resolveDeferredWorkloadPreflight.mockReturnValue({
             timing: 'now',
             shouldSchedule: false,
@@ -820,6 +822,54 @@ describe('/api/chat route', () => {
             useAgentDirectedRuntime: true,
         }));
         expect(runtimeParams.instructions).not.toContain('<skills_tree>');
+    });
+
+    test('infers remote-build profile for normal chat remote inspection prompts', async () => {
+        const toolManager = {
+            executeTool: jest.fn(),
+            getTool: jest.fn(),
+        };
+        ensureRuntimeToolManager.mockResolvedValue(toolManager);
+        inferExecutionProfile.mockReturnValue('remote-build');
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: {
+                id: 'resp-remote-profile-1',
+                model: 'gpt-test',
+                output: [{
+                    type: 'message',
+                    content: [{ text: 'Remote tool path used.' }],
+                }],
+                metadata: {
+                    toolEvents: [],
+                },
+            },
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat')
+            .send({
+                sessionId: 'session-1',
+                message: 'Can you remote into the server and check on tetris',
+                stream: false,
+            });
+
+        expect(response.status).toBe(200);
+        expect(inferExecutionProfile).toHaveBeenCalledWith(expect.objectContaining({
+            input: 'Can you remote into the server and check on tetris',
+            memoryInput: 'Can you remote into the server and check on tetris',
+            executionProfile: null,
+        }));
+        expect(executeConversationRuntime).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                executionProfile: 'remote-build',
+            }),
+        );
     });
 
     test('uses the admin orchestration setting for agent-directed chat turns', async () => {
