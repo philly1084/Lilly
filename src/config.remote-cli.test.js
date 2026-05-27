@@ -13,6 +13,7 @@ describe('remote CLI MCP configuration', () => {
     delete process.env.REMOTE_CLI_AGENT_MODEL;
     delete process.env.REMOTE_CLI_REMOTE_CODE_MODEL;
     delete process.env.REMOTE_CODE_MODEL;
+    delete process.env.REMOTE_CLI_AGENT_DIRECT_RUN;
     delete process.env.REMOTE_CLI_AGENT_RUN_TIMEOUT_MS;
     delete process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS;
     delete process.env.REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS;
@@ -58,6 +59,7 @@ describe('remote CLI MCP configuration', () => {
     const { config } = require('./config');
 
     expect(config.remoteCliMcp.remoteCodeModel).toBe('');
+    expect(config.remoteCliMcp.directRun).toBe(true);
     expect(config.remoteCliMcp.agentRunTimeoutMs).toBe(180000);
     expect(config.remoteCliMcp.maxStatusPolls).toBe(3);
     expect(config.remoteCliMcp.statusPollIntervalMs).toBe(2000);
@@ -75,6 +77,14 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.agentRunTimeoutMs).toBe(5000);
     expect(config.remoteCliMcp.maxStatusPolls).toBe(7);
     expect(config.remoteCliMcp.statusPollIntervalMs).toBe(25);
+  });
+
+  test('allows the legacy inner-agent remote CLI mode to be explicitly restored', () => {
+    process.env.REMOTE_CLI_AGENT_DIRECT_RUN = 'false';
+
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.directRun).toBe(false);
   });
 
 });

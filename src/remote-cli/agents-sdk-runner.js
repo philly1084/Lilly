@@ -9,6 +9,16 @@ const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
 const DEFAULT_MAX_STATUS_POLLS = 3;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
 
+function normalizeBooleanFlag(value, fallback = false) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return fallback;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return /^(?:1|true|yes|on|enabled)$/i.test(String(value).trim());
+}
+
 function normalizeText(value = '') {
   return String(value || '').trim();
 }
@@ -975,6 +985,7 @@ class RemoteCliAgentsSdkRunner {
       defaultCwd: normalizeText(this.config.defaultCwd),
       agentModel: normalizeText(this.config.agentModel),
       remoteCodeModel: normalizeText(this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL,
+      directRun: this.config.directRun !== false,
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
       agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 }),
@@ -993,7 +1004,7 @@ class RemoteCliAgentsSdkRunner {
     if (!normalizeText(this.config.apiKey)) {
       throw new Error('REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY is required for remote-cli-agent.');
     }
-    if (!normalizeText(this.config.agentApiKey)) {
+    if (this.config.directRun === false && !normalizeText(this.config.agentApiKey)) {
       throw new Error('REMOTE_CLI_AGENT_OPENAI_API_KEY or OPENAI_API_KEY is required for remote-cli-agent.');
     }
   }
@@ -1160,8 +1171,12 @@ class RemoteCliAgentsSdkRunner {
       Runner,
       setOpenAIAPI,
     } = sdk;
+    const directRun = normalizeBooleanFlag(input.directRun ?? input.direct_run, this.config.directRun !== false);
 
-    if (!Agent || !MCPServerStreamableHttp || !OpenAIProvider || !Runner) {
+    if (!MCPServerStreamableHttp) {
+      throw new Error('@openai/agents is installed but did not expose MCPServerStreamableHttp.');
+    }
+    if (!directRun && (!Agent || !OpenAIProvider || !Runner)) {
       throw new Error('@openai/agents is installed but did not expose the expected Agents SDK classes.');
     }
 
@@ -1211,26 +1226,32 @@ class RemoteCliAgentsSdkRunner {
         console.warn('[RemoteCliAgentsSdkRunner] Failed to emit remote-cli contract progress:', error?.message || error);
       }
     };
-    const instructions = buildRemoteCliInstructions({
-      targetId,
-      cwd,
-      sessionId,
-      waitMs,
-      adminMode,
-      extraInstructions: input.instructions || input.extraInstructions || '',
-    });
-    const agent = new Agent({
-      name: normalizeText(input.agentName || input.agent_name) || 'Remote coding agent',
-      model,
-      instructions,
-      mcpServers: [remoteCli],
-    });
-    const runner = new Runner({
-      model,
-      modelProvider: this.createModelProvider(OpenAIProvider),
-      tracingDisabled: true,
-      workflowName: 'Remote CLI MCP coding task',
-    });
+    const instructions = directRun
+      ? ''
+      : buildRemoteCliInstructions({
+        targetId,
+        cwd,
+        sessionId,
+        waitMs,
+        adminMode,
+        extraInstructions: input.instructions || input.extraInstructions || '',
+      });
+    const agent = directRun
+      ? null
+      : new Agent({
+        name: normalizeText(input.agentName || input.agent_name) || 'Remote coding agent',
+        model,
+        instructions,
+        mcpServers: [remoteCli],
+      });
+    const runner = directRun
+      ? null
+      : new Runner({
+        model,
+        modelProvider: this.createModelProvider(OpenAIProvider),
+        tracingDisabled: true,
+        workflowName: 'Remote CLI MCP coding task',
+      });
 
     try {
       try {
@@ -1254,7 +1275,7 @@ class RemoteCliAgentsSdkRunner {
       }
 
       let finalOutput = '';
-      if (jobId) {
+      if (directRun || jobId) {
         finalOutput = await this.executeRemoteCodeRun(remoteCli, {
           targetId,
           cwd,

@@ -276,6 +276,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'gpt-4o',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
         timeoutMs: 60000,
@@ -325,6 +326,85 @@ describe('RemoteCliAgentsSdkRunner', () => {
       verifyCommands: ['npm test'],
       verifyResults: ['npm test passed.'],
       completionStatus: 'complete',
+    });
+  });
+
+  test('directly passes remote-cli-agent tasks to remote_code_run by default', async () => {
+    const calls = {
+      toolCalls: [],
+      connected: false,
+      closed: false,
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-direct';
+      }
+
+      async connect() {
+        calls.connected = true;
+      }
+
+      async close() {
+        calls.closed = true;
+      }
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              'REMOTE_AGENT_RESULT=pwd:/srv/apps/my-app',
+              'REMOTE_CLI_SESSION_ID=remote-session-direct',
+              'WORKSPACE=/srv/apps/my-app',
+              'WHAT_CHANGED=Ran the OpenAI CLI passthrough task on the remote site.',
+              'VERIFY_COMMANDS=remote_code_run',
+              'VERIFY_RESULTS=REMOTE_AGENT_RESULT=pwd:/srv/apps/my-app',
+              'PUBLIC_URL=not_available',
+              'BLOCKER=none',
+            ].join('\n'),
+          }],
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'No changes. Run pwd.',
+      waitMs: 30000,
+    });
+
+    expect(calls.connected).toBe(true);
+    expect(calls.closed).toBe(true);
+    expect(calls.toolCalls).toEqual([{
+      name: 'remote_code_run',
+      args: {
+        targetId: 'k3s-prod',
+        cwd: '/srv/apps/my-app',
+        task: 'No changes. Run pwd.',
+        waitMs: 30000,
+      },
+    }]);
+    expect(result).toMatchObject({
+      targetId: 'k3s-prod',
+      cwd: '/srv/apps/my-app',
+      sessionId: 'remote-session-direct',
+      completionStatus: 'complete',
+      whatChanged: 'Ran the OpenAI CLI passthrough task on the remote site.',
     });
   });
 
@@ -401,6 +481,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'kimi-for-coding',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
       },
@@ -512,6 +593,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'kimi-for-coding',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
       },
@@ -631,6 +713,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'kimi-for-coding',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
       },
@@ -755,6 +838,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'kimi-for-coding',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
       },
@@ -882,6 +966,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'kimi-for-coding',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
       },
@@ -982,6 +1067,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'kimi-for-coding',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
       },
@@ -1045,6 +1131,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         agentBaseURL: 'http://gateway.example.com/v1',
         agentApiMode: 'chat',
         agentModel: 'gpt-5.5',
+        directRun: false,
         defaultTargetId: 'prod',
         defaultCwd: '/srv/apps/my-app',
       },

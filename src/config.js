@@ -1048,6 +1048,7 @@ const config = {
             || '',
         agentModel: process.env.REMOTE_CLI_AGENT_MODEL || 'gpt-5.4',
         remoteCodeModel: process.env.REMOTE_CLI_REMOTE_CODE_MODEL || process.env.REMOTE_CODE_MODEL || '',
+        directRun: process.env.REMOTE_CLI_AGENT_DIRECT_RUN !== 'false',
         agentApiKey: process.env.REMOTE_CLI_AGENT_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '',
         agentBaseURL: process.env.REMOTE_CLI_AGENT_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
         agentApiMode: process.env.REMOTE_CLI_AGENT_OPENAI_API_MODE || process.env.OPENAI_API_MODE || 'auto',
