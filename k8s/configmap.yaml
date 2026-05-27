@@ -25,13 +25,13 @@ data:
   REMOTE_CLI_MCP_NAME: "remote-cli"
   REMOTE_CLI_DEFAULT_TARGET_ID: "k3s-prod"
   REMOTE_CLI_DEFAULT_CWD: "/srv/apps/my-app"
-  REMOTE_CLI_AGENT_MODEL: "gpt-5.5"
+  REMOTE_CLI_AGENT_MODEL: "gpt-5.4"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"
   REMOTE_CLI_AGENT_MAX_TURNS: "20"
   REMOTE_CLI_AGENT_RUN_TIMEOUT_MS: "180000"
   # Leave empty to use the gateway target's supported default model.
   REMOTE_CLI_REMOTE_CODE_MODEL: ""
-  REMOTE_CLI_AGENT_MAX_STATUS_POLLS: "90"
+  REMOTE_CLI_AGENT_MAX_STATUS_POLLS: "3"
   REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS: "2000"
 
   # The official OpenAI media endpoint remains available for video generation and image fallback.

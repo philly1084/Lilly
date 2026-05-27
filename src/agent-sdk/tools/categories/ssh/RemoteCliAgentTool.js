@@ -196,8 +196,8 @@ class RemoteCliAgentTool extends ToolBase {
           },
           maxStatusPolls: {
             type: 'integer',
-            default: 90,
-            description: 'Maximum remote_code_status polls after remote_code_run returns a jobId.',
+            default: 3,
+            description: 'Maximum compatibility-fallback remote_code_status polls after remote_code_run returns a jobId. Defaults low so running jobs return resumable job/session markers instead of freezing the caller.',
           },
           statusPollIntervalMs: {
             type: 'integer',

@@ -38,12 +38,12 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.apiKey).toBe('mcp-token');
   });
 
-  test('inherits the general chat model for the remote CLI agent lane by default', () => {
+  test('does not inherit the general chat model for the remote CLI agent lane by default', () => {
     process.env.OPENAI_MODEL = 'kimi-for-coding';
 
     const { config } = require('./config');
 
-    expect(config.remoteCliMcp.agentModel).toBe('kimi-for-coding');
+    expect(config.remoteCliMcp.agentModel).toBe('gpt-5.4');
   });
 
   test('allows the remote CLI agent model to be explicitly configured', () => {
@@ -59,7 +59,7 @@ describe('remote CLI MCP configuration', () => {
 
     expect(config.remoteCliMcp.remoteCodeModel).toBe('');
     expect(config.remoteCliMcp.agentRunTimeoutMs).toBe(180000);
-    expect(config.remoteCliMcp.maxStatusPolls).toBe(90);
+    expect(config.remoteCliMcp.maxStatusPolls).toBe(3);
     expect(config.remoteCliMcp.statusPollIntervalMs).toBe(2000);
   });
 

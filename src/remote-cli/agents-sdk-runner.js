@@ -6,7 +6,7 @@ const { parseLenientJson } = require('../utils/lenient-json');
 
 const DEFAULT_REMOTE_CODE_MODEL = '';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
-const DEFAULT_MAX_STATUS_POLLS = 90;
+const DEFAULT_MAX_STATUS_POLLS = 3;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
 
 function normalizeText(value = '') {
@@ -978,7 +978,7 @@ class RemoteCliAgentsSdkRunner {
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
       agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 }),
-      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 300 }),
+      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 }),
       statusPollIntervalMs: normalizePositiveInteger(this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 }),
     };
   }
@@ -1097,7 +1097,7 @@ class RemoteCliAgentsSdkRunner {
       });
     }
 
-    const pollLimit = normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 300 });
+    const pollLimit = normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
     const pollDelay = normalizePositiveInteger(statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
 
     while (remoteJobId && (isRunningRemoteCodeStatus(latestStatus) || !latestStatus) && statusPolls < pollLimit) {
@@ -1177,7 +1177,7 @@ class RemoteCliAgentsSdkRunner {
     const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
     const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';
     const remoteCodeModel = normalizeText(input.remoteCodeModel || input.remote_code_model || this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL;
-    const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 300 });
+    const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
     const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs || input.status_poll_interval_ms || this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
     const adminMode = resolveAdminMode(input, task);
     const apiMode = resolveAgentsApiMode({
