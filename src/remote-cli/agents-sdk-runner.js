@@ -179,6 +179,74 @@ function cleanMarkerValue(value = '') {
     .replace(/^'+|'+$/g, '');
 }
 
+function collectCodexJsonlTextFragments(value = '', depth = 0) {
+  if (depth > 3) {
+    return [];
+  }
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) {
+    return [];
+  }
+
+  const fragments = [];
+  const addString = (candidate = '') => {
+    const normalized = typeof candidate === 'string' ? candidate.trim() : '';
+    if (normalized) {
+      fragments.push(normalized);
+      fragments.push(...collectCodexJsonlTextFragments(normalized, depth + 1));
+    }
+  };
+  const visit = (candidate) => {
+    if (!candidate || typeof candidate !== 'object') {
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(visit);
+      return;
+    }
+
+    [
+      candidate.text,
+      candidate.stdout,
+      candidate.stderr,
+      candidate.aggregated_output,
+      candidate.output_text,
+      candidate.finalOutput,
+      candidate.final_output,
+      candidate.message,
+    ].forEach(addString);
+    visit(candidate.item);
+    visit(candidate.result);
+    visit(candidate.data);
+    visit(candidate.structuredContent);
+    visit(candidate.content);
+  };
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith('{')) {
+      continue;
+    }
+    const parsed = parseLenientJson(trimmed);
+    if (parsed) {
+      visit(parsed);
+    }
+  }
+
+  const parsedWhole = parseLenientJson(text);
+  if (parsedWhole) {
+    visit(parsedWhole);
+  }
+
+  return fragments;
+}
+
+function expandRemoteCliProofText(text = '') {
+  const source = String(text || '');
+  const fragments = [source, ...collectCodexJsonlTextFragments(source)];
+  return Array.from(new Set(fragments.map((value) => String(value || '').trim()).filter(Boolean))).join('\n\n');
+}
+
 function isPublicGitProviderHost(value = '') {
   const normalized = normalizeText(value).toLowerCase();
   return [
@@ -265,14 +333,19 @@ function normalizeOptionalProofValue(value = '') {
   return normalized;
 }
 
-function resolveCompletionStatus({ blocker = '', whatChanged = '', verifyResults = [], publicUrl = '', publicHost = '', uiCheckReport = '', gitCommit = '' } = {}) {
+function resolveCompletionStatus({ blocker = '', blockerMarker = '', whatChanged = '', verifyResults = [], publicUrl = '', publicHost = '', uiCheckReport = '', gitCommit = '' } = {}) {
   if (normalizeOptionalProofValue(blocker)) {
     return 'blocked';
   }
 
   const hasVerification = verifyResults.length > 0 || Boolean(publicUrl || publicHost || uiCheckReport);
   const hasChangeEvidence = Boolean(whatChanged || gitCommit);
+  const explicitlyUnblocked = Boolean(blockerMarker)
+    && !normalizeOptionalProofValue(blockerMarker);
   if (hasChangeEvidence && hasVerification) {
+    return 'complete';
+  }
+  if (explicitlyUnblocked && hasVerification) {
     return 'complete';
   }
   if (hasChangeEvidence || hasVerification) {
@@ -287,7 +360,7 @@ function hasTerminalRemoteCliProof(metadata = {}) {
 }
 
 function extractRemoteCliRunMetadata(finalOutput = '') {
-  const text = String(finalOutput || '');
+  const text = expandRemoteCliProofText(finalOutput);
   const sessionId = readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID'])
     || cleanMarkerValue(text.match(/remote\s+session\s*:\s*`?([^`\s]+)/i)?.[1] || '');
   const jobId = readMarkerLine(text, ['REMOTE_CLI_JOB_ID', 'REMOTE_CODE_JOB_ID', 'JOB_ID'])
@@ -316,12 +389,12 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
   const verifyResults = readMarkerLines(text, ['VERIFY_RESULTS', 'VERIFY_RESULT'])
     .map((value) => normalizeOptionalProofValue(value))
     .filter(Boolean);
-  const blocker = normalizeOptionalProofValue(
-    readMarkerLine(text, ['BLOCKER', 'BLOCKED_BY'])
-      || readMarkerLine(text, ['USER_INPUT_REQUIRED']),
-  );
+  const blockerMarker = readMarkerLine(text, ['BLOCKER', 'BLOCKED_BY'])
+    || readMarkerLine(text, ['USER_INPUT_REQUIRED']);
+  const blocker = normalizeOptionalProofValue(blockerMarker);
   const completionStatus = resolveCompletionStatus({
     blocker,
+    blockerMarker,
     whatChanged,
     verifyResults,
     publicUrl,

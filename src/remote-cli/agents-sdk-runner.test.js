@@ -155,6 +155,39 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('classifies proof markers embedded in Codex JSONL agent messages', () => {
+    const output = JSON.stringify({
+      id: 'rcli_jsonl',
+      targetId: 'k3s-prod',
+      cwd: '/srv/apps/my-app',
+      status: 'completed',
+      stdout: [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread_jsonl' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: {
+            id: 'item_1',
+            type: 'agent_message',
+            text: [
+              'REMOTE_AGENT_RESULT=live-token-exchange:/srv/apps/my-app',
+              'WHAT_CHANGED=none',
+              'VERIFY_COMMANDS=pwd',
+              'VERIFY_RESULTS=/srv/apps/my-app',
+              'PUBLIC_URL=not_available',
+              'BLOCKER=none',
+            ].join('\n'),
+          },
+        }),
+      ].join('\n'),
+    });
+
+    expect(extractRemoteCliRunMetadata(output)).toMatchObject({
+      verifyCommands: ['pwd'],
+      verifyResults: ['/srv/apps/my-app'],
+      completionStatus: 'complete',
+    });
+  });
+
   test('uses chat mode automatically for custom gateway base URLs', () => {
     expect(resolveAgentsApiMode({
       requestedMode: 'auto',
