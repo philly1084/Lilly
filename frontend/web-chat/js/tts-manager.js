@@ -19,8 +19,9 @@ const DEFAULT_REALTIME_FALLBACK_TIMEOUT_MS = 24000;
 const DEFAULT_REALTIME_HEDGE_DELAY_MS = 900;
 const DEFAULT_REALTIME_CHUNK_STALL_MS = 2500;
 const DEFAULT_REALTIME_CHUNK_PAUSE_SECONDS = 0.08;
-const DEFAULT_REALTIME_TRIM_EDGE_SECONDS = 0;
-const DEFAULT_REALTIME_TRIM_THRESHOLD = 0.0035;
+const DEFAULT_REALTIME_TRIM_EDGE_SECONDS = 0.45;
+const DEFAULT_REALTIME_TRIM_TAIL_PADDING_SECONDS = 0.14;
+const DEFAULT_REALTIME_TRIM_THRESHOLD = 0.0015;
 const DEFAULT_REALTIME_EMERGENCY_PROVIDER = 'kokoro';
 
 function getTtsProviderLabel(provider = '') {
@@ -585,7 +586,13 @@ class WebChatTtsManager extends EventTarget {
                 policy.trimEdgeSeconds,
                 DEFAULT_REALTIME_TRIM_EDGE_SECONDS,
                 0,
-                0.5,
+                0.8,
+            ),
+            trimTailPaddingSeconds: clampNumber(
+                policy.trimTailPaddingSeconds,
+                DEFAULT_REALTIME_TRIM_TAIL_PADDING_SECONDS,
+                0.04,
+                0.3,
             ),
             trimThreshold: clampNumber(
                 policy.trimThreshold,
@@ -1572,16 +1579,22 @@ class WebChatTtsManager extends EventTarget {
             return true;
         };
 
-        let startIndex = 0;
-        const maxStartIndex = Math.min(length - 1, maxEdgeSamples);
-        while (startIndex < maxStartIndex && isSilentSample(startIndex)) {
-            startIndex += 1;
+        const startIndex = 0;
+        const tailPaddingSamples = Math.max(
+            1,
+            Math.floor(sampleRate * (Number(policy.trimTailPaddingSeconds) || DEFAULT_REALTIME_TRIM_TAIL_PADDING_SECONDS)),
+        );
+        const minTrimSamples = Math.max(1, Math.floor(sampleRate * 0.08));
+        let lastAudibleIndex = length - 1;
+        while (lastAudibleIndex > 0 && isSilentSample(lastAudibleIndex)) {
+            lastAudibleIndex -= 1;
         }
 
-        let endIndex = length - 1;
-        const minEndIndex = Math.max(startIndex, length - 1 - maxEdgeSamples);
-        while (endIndex > minEndIndex && isSilentSample(endIndex)) {
-            endIndex -= 1;
+        const maxTrimStartIndex = Math.max(0, length - maxEdgeSamples);
+        const paddedEndIndex = Math.min(length - 1, lastAudibleIndex + tailPaddingSamples);
+        const endIndex = Math.max(maxTrimStartIndex, paddedEndIndex);
+        if ((length - 1 - endIndex) < minTrimSamples) {
+            return decodedBuffer;
         }
 
         const nextLength = Math.max(1, endIndex - startIndex + 1);

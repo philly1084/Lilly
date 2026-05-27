@@ -8,6 +8,32 @@ const {
     splitTextIntoSpeechChunks,
 } = require('./tts-manager');
 
+function createFakeAudioBuffer(samples = [], sampleRate = 1000) {
+    const data = Float32Array.from(samples);
+    return {
+        length: data.length,
+        sampleRate,
+        numberOfChannels: 1,
+        duration: data.length / sampleRate,
+        getChannelData: () => data,
+    };
+}
+
+function createFakeAudioContext() {
+    return {
+        createBuffer: (_channelCount, length, sampleRate) => {
+            const data = new Float32Array(length);
+            return {
+                length,
+                sampleRate,
+                numberOfChannels: 1,
+                duration: length / sampleRate,
+                getChannelData: () => data,
+            };
+        },
+    };
+}
+
 describe('splitTextIntoSpeechChunks', () => {
     test('normalizes raw websites before chunking for speech', () => {
         const normalized = normalizeTextForSpeech(
@@ -313,6 +339,48 @@ describe('splitTextIntoSpeechChunks', () => {
         const manager = new WebChatTtsManager();
 
         expect(manager.realtimePolicy.chunkTargetChars).toBe(360);
+    });
+
+    test('trims end-of-sentence silence while preserving a final speech tail pad', () => {
+        const manager = new WebChatTtsManager();
+        manager.realtimePolicy = {
+            ...manager.realtimePolicy,
+            trimEdgeSeconds: 0.45,
+            trimTailPaddingSeconds: 0.14,
+            trimThreshold: 0.0015,
+        };
+        const samples = [
+            ...Array(600).fill(0.02),
+            ...Array(400).fill(0),
+        ];
+
+        const trimmed = manager.trimDecodedAudioBuffer(
+            createFakeAudioBuffer(samples, 1000),
+            createFakeAudioContext(),
+        );
+
+        expect(trimmed.length).toBe(740);
+        Array.from(trimmed.getChannelData(0)).slice(0, 600).forEach((sample) => {
+            expect(sample).toBeCloseTo(0.02, 6);
+        });
+    });
+
+    test('does not trim short quiet sentence tails', () => {
+        const manager = new WebChatTtsManager();
+        manager.realtimePolicy = {
+            ...manager.realtimePolicy,
+            trimEdgeSeconds: 0.45,
+            trimTailPaddingSeconds: 0.14,
+            trimThreshold: 0.0015,
+        };
+        const audioBuffer = createFakeAudioBuffer([
+            ...Array(600).fill(0.02),
+            ...Array(80).fill(0),
+        ], 1000);
+
+        const trimmed = manager.trimDecodedAudioBuffer(audioBuffer, createFakeAudioContext());
+
+        expect(trimmed).toBe(audioBuffer);
     });
 
     test('can skip a stalled chunk only when the realtime policy allows it', async () => {
