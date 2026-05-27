@@ -1936,6 +1936,22 @@ function hasRemoteSoftwareDeploymentIntent(prompt = '') {
     return softwareTarget && remoteTarget && deploymentIntent && authoringIntent && !infraOnly;
 }
 
+function hasRemoteSoftwareInspectionIntent(prompt = '') {
+    const normalized = String(prompt || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|service|game|software|deployment|workload)\b/.test(normalized);
+    const remoteTarget = /\b(remote|server|host|runner|cli runner|gitlab|gitea|cluster|k3s|k8s|kubernetes|domain|dns|ingress|traefik|tls|deployed|deployment|live|online|public|production)\b/.test(normalized)
+        || /\b[a-z0-9-]+(?:\.[a-z0-9-]+){1,}\b/.test(normalized);
+    const inspectionIntent = /\b(check|check on|inspect|status|state|health|verify|debug|diagnose|troubleshoot|look at|see what'?s going on|find out|what'?s going on|logs?|is it working|still running)\b/.test(normalized);
+    const infraOnly = /\b(kubectl get|kubectl describe|journalctl|systemctl status|uptime|df -h|free -m)\b/.test(normalized)
+        && !softwareTarget;
+
+    return softwareTarget && remoteTarget && inspectionIntent && !infraOnly;
+}
+
 function hasRemoteBuildAuthoringContinuationIntent(prompt = '') {
     const normalized = String(prompt || '').trim().toLowerCase();
     if (!normalized) {
@@ -3529,6 +3545,8 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && hasRemoteSoftwareCreationIntent(prompt);
     const remoteSoftwareDeploymentIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareDeploymentIntent(prompt);
+    const remoteSoftwareInspectionIntent = executionProfile === 'remote-build'
+        && hasRemoteSoftwareInspectionIntent(prompt);
     const metadata = getToolContextMetadata(options);
     const stickyRemoteBuildContinuationIntent = executionProfile === 'remote-build'
         && (
@@ -3540,6 +3558,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
     const managedAppIntent = shouldPreferManagedAppForRemoteBuild(prompt, options);
     const shouldSuppressDocumentWorkflowForRemoteDeploy = remoteSoftwareCreationIntent
         || remoteSoftwareDeploymentIntent
+        || remoteSoftwareInspectionIntent
         || managedAppIntent;
     const internalArtifactReference = hasInternalArtifactReference(prompt);
     const shouldPreferRemoteWorkspaceSource = Boolean(
@@ -3559,6 +3578,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && !isSurveyResponseTurn
         && !explicitRemoteCliAgentIntent
         && !remoteSoftwareDeploymentIntent
+        && !remoteSoftwareInspectionIntent
         && !stickyRemoteBuildContinuationIntent;
 
     if (hasWorkloadSetupIntent && availableToolIds.has('agent-workload')) {
@@ -3701,7 +3721,14 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         selectedIds.add('managed-app');
     }
 
-    if (remoteCliAgentToolId && (explicitRemoteCliAgentIntent || remoteSoftwareDeploymentIntent || stickyRemoteBuildContinuationIntent) && !managedAppIntent) {
+    if (remoteCliAgentToolId
+        && (
+            explicitRemoteCliAgentIntent
+            || remoteSoftwareDeploymentIntent
+            || remoteSoftwareInspectionIntent
+            || stickyRemoteBuildContinuationIntent
+        )
+        && !managedAppIntent) {
         selectedIds.add(remoteCliAgentToolId);
     }
 
@@ -3776,6 +3803,10 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
     const explicitK3sDeployIntent = hasExplicitK3sDeployIntent(prompt);
     const explicitGitIntent = hasExplicitGitIntent(prompt);
     const explicitSubAgentIntent = hasExplicitSubAgentIntent(prompt);
+    const executionProfile = normalizeExecutionProfile(options?.executionProfile || options?.toolContext?.executionProfile);
+    const metadata = getToolContextMetadata(options);
+    const remoteSoftwareInspectionIntent = executionProfile === 'remote-build'
+        && hasRemoteSoftwareInspectionIntent(prompt);
     const isDeferredWorkloadRun = options?.workloadRun === true
         || options?.clientSurface === 'workload'
         || options?.toolContext?.workloadRun === true
@@ -3834,12 +3865,13 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
         && (
             explicitRemoteCliAgentIntent
             || hasRemoteSoftwareDeploymentIntent(prompt)
+            || remoteSoftwareInspectionIntent
             || (
-                normalizeExecutionProfile(options?.executionProfile || options?.toolContext?.executionProfile) === 'remote-build'
+                executionProfile === 'remote-build'
                 && (
-                    getToolContextMetadata(options).stickyRemoteContext === true
-                    || getToolContextMetadata(options).remoteBuildContinuation === true
-                    || Boolean(getToolContextMetadata(options).lastRemoteObjective)
+                    metadata.stickyRemoteContext === true
+                    || metadata.remoteBuildContinuation === true
+                    || Boolean(metadata.lastRemoteObjective)
                 )
                 && hasRemoteBuildAuthoringContinuationIntent(prompt)
             )

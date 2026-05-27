@@ -3265,6 +3265,46 @@ describe('openai-client automatic tool orchestration helpers', () => {
         )).toBe('remote-cli-agent');
     });
 
+    test('routes remote-build app inspection prompts to remote-cli-agent instead of checkpoint chat', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'can you remote into the server and check on the tetris game';
+        const toolContext = {
+            executionProfile: 'remote-build',
+            userCheckpointPolicy: {
+                enabled: true,
+                remaining: 2,
+                pending: false,
+            },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(automaticTools.map((tool) => tool.id)).toContain('remote-cli-agent');
+        expect(selectedIds).toContain('remote-cli-agent');
+        expect(selectedIds).not.toContain('user-checkpoint');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('remote-cli-agent');
+        expect(__testUtils.buildAutomaticToolChoice(selectedTools, 'chat', { prompt, toolContext })).toEqual({
+            type: 'function',
+            function: {
+                name: 'remote-cli-agent',
+            },
+        });
+    });
+
     test('does not misclassify research html documents about public or live events as remote website work', () => {
         jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
             enabled: true,
