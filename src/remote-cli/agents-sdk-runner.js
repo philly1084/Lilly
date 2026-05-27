@@ -272,6 +272,10 @@ function resolveCompletionStatus({ blocker = '', whatChanged = '', verifyResults
   return 'unknown';
 }
 
+function hasTerminalRemoteCliProof(metadata = {}) {
+  return metadata?.completionStatus === 'complete' || metadata?.completionStatus === 'blocked';
+}
+
 function extractRemoteCliRunMetadata(finalOutput = '') {
   const text = String(finalOutput || '');
   const sessionId = readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID'])
@@ -668,6 +672,14 @@ function buildRemoteCodeFinalText({
 } = {}) {
   const source = fragments.map((value) => normalizeText(value)).filter(Boolean).join('\n\n').trim();
   const metadata = extractRemoteCliRunMetadata(source);
+  const hasTerminalProof = hasTerminalRemoteCliProof(metadata);
+  const explicitBlocker = normalizeOptionalProofValue(blocker || metadata.blocker);
+  const missingProofBlocker = hasTerminalProof
+    ? ''
+    : 'remote_code_run completed without task proof markers; inspect the remote job output and continue with REMOTE_CLI_JOB_ID';
+  const resolvedBlocker = explicitBlocker
+    || (isFailedRemoteCodeStatus(status) ? `remote_code_run ${status}` : '')
+    || missingProofBlocker;
   const lines = [source || fallbackVerifyResult || 'remote_code_run completed without text output.'];
 
   if (!metadata.sessionId && sessionId) {
@@ -680,7 +692,9 @@ function buildRemoteCodeFinalText({
     lines.push(`WORKSPACE=${cwd}`);
   }
   if (!metadata.whatChanged) {
-    lines.push(`WHAT_CHANGED=${fallbackWhatChanged || 'Executed remote_code_run through the MCP gateway.'}`);
+    lines.push(`WHAT_CHANGED=${hasTerminalProof
+      ? (fallbackWhatChanged || 'Executed remote_code_run through the MCP gateway.')
+      : 'remote_code_run transport finished, but task-level changes were not proven.'}`);
   }
   if (!Array.isArray(metadata.verifyCommands) || metadata.verifyCommands.length === 0) {
     lines.push(`VERIFY_COMMANDS=${fallbackVerifyCommand || 'remote_code_run'}`);
@@ -692,7 +706,7 @@ function buildRemoteCodeFinalText({
     lines.push('PUBLIC_URL=not_available');
   }
   if (!metadata.blocker) {
-    lines.push(`BLOCKER=${blocker || (isFailedRemoteCodeStatus(status) ? `remote_code_run ${status}` : 'none')}`);
+    lines.push(`BLOCKER=${resolvedBlocker || 'none'}`);
   }
   if (targetId) {
     lines.push(`REMOTE_CLI_TARGET=${targetId}`);
@@ -1101,7 +1115,7 @@ class RemoteCliAgentsSdkRunner {
       statusPolls += 1;
 
       const metadata = extractRemoteCliRunMetadata(fragments.join('\n\n'));
-      if (metadata.completionStatus && metadata.completionStatus !== 'unknown') {
+      if (hasTerminalRemoteCliProof(metadata)) {
         latestStatus = metadata.completionStatus === 'blocked' ? 'blocked' : 'completed';
         break;
       }
@@ -1329,7 +1343,7 @@ class RemoteCliAgentsSdkRunner {
         }
       }
       let runMetadata = extractRemoteCliRunMetadata(finalOutput);
-      const hasTerminalRemoteProof = ['complete', 'blocked'].includes(runMetadata.completionStatus);
+      const hasTerminalRemoteProof = hasTerminalRemoteCliProof(runMetadata);
       if (!hasTerminalRemoteProof) {
         if (remoteCodeCallState.jobId) {
           emitContractProgress(
@@ -1366,7 +1380,7 @@ class RemoteCliAgentsSdkRunner {
             onProgress: input.onProgress,
           });
           runMetadata = extractRemoteCliRunMetadata(finalOutput);
-        } else if (runMetadata.completionStatus === 'unknown') {
+        } else if (runMetadata.completionStatus !== 'complete' && runMetadata.completionStatus !== 'blocked') {
           finalOutput = buildRemoteCodeFinalText({
             fragments: [finalOutput],
             targetId,

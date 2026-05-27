@@ -445,6 +445,120 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('blocks completed remote_code_status output when task proof markers are missing', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-preview';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_run') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                status: 'running',
+                jobId: 'rcli_preview',
+                sessionId: 'remote-session-preview',
+              }),
+            }],
+          };
+        }
+        if (name === 'remote_code_status') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                status: 'completed',
+                jobId: 'rcli_preview',
+                sessionId: 'remote-session-preview',
+                stdout: '<!doctype html><html><body><pre>kubectl apply -f k8s/app.yaml</pre></body></html>',
+              }),
+            }],
+          };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      }
+    }
+
+    class FakeAgent {}
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: 'I will use the remote runner.',
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'kimi-for-coding',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Deploy the frontend remotely and verify the live route.',
+      waitMs: 30000,
+      maxStatusPolls: 2,
+      statusPollIntervalMs: 0,
+    });
+
+    expect(calls.toolCalls).toEqual([
+      {
+        name: 'remote_code_run',
+        args: {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Deploy the frontend remotely and verify the live route.',
+          waitMs: 30000,
+        },
+      },
+      {
+        name: 'remote_code_status',
+        args: { jobId: 'rcli_preview' },
+      },
+    ]);
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_preview',
+      sessionId: 'remote-session-preview',
+      cwd: '/srv/apps/my-app',
+      completionStatus: 'blocked',
+    });
+    expect(result.blocker).toContain('without task proof markers');
+    expect(result.whatChanged).toBe('remote_code_run transport finished, but task-level changes were not proven.');
+    expect(result.verifyResults).toEqual(['remote_code_run reached status completed.']);
+    expect(result.finalOutput).toContain('REMOTE_CLI_JOB_ID=rcli_preview');
+    expect(result.finalOutput).toContain('BLOCKER=remote_code_run completed without task proof markers');
+  });
+
   test('falls back to direct remote_code_run when the inner agent run times out', async () => {
     const calls = {
       toolCalls: [],
