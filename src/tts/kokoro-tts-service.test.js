@@ -10,6 +10,12 @@ function createAudio(wav = Buffer.from('RIFF-kokoro-audio')) {
     };
 }
 
+function writeCachedVoice(cacheDir, voiceId) {
+    const voicesDir = path.join(cacheDir, 'voices');
+    fs.mkdirSync(voicesDir, { recursive: true });
+    fs.writeFileSync(path.join(voicesDir, `${voiceId}.bin`), Buffer.from(`voice:${voiceId}`));
+}
+
 describe('KokoroTtsService', () => {
     test('exposes configured voices and resolves aliases', () => {
         const service = new KokoroTtsService({
@@ -42,6 +48,64 @@ describe('KokoroTtsService', () => {
         expect(service.resolveVoiceProfile('lessac-high')).toEqual(expect.objectContaining({
             id: 'af_heart',
         }));
+    });
+
+    test('filters uncached voices when remote model loading is disabled', () => {
+        const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kimibuilt-kokoro-cache-'));
+        writeCachedVoice(cacheDir, 'af_heart');
+        const service = new KokoroTtsService({
+            enabled: true,
+            modelId: 'test-model',
+            defaultVoiceId: 'bf_emma',
+            cacheDir,
+            allowRemoteModels: false,
+            voices: [
+                { id: 'af_heart', label: 'Heart Studio' },
+                { id: 'bf_emma', label: 'Emma Editorial', aliases: ['cori-high'] },
+            ],
+        });
+
+        try {
+            const publicConfig = service.getPublicConfig();
+            expect(publicConfig.defaultVoiceId).toBe('af_heart');
+            expect(publicConfig.voices.map((voice) => voice.id)).toEqual(['af_heart']);
+            expect(publicConfig.diagnostics).toEqual(expect.objectContaining({
+                status: 'ready',
+                cachedVoicesRequired: true,
+                uncachedVoiceIds: ['bf_emma'],
+            }));
+            expect(service.resolveVoiceProfile('bf_emma')).toBeNull();
+            expect(service.resolveVoiceProfile('cori-high')).toBeNull();
+        } finally {
+            fs.rmSync(cacheDir, { recursive: true, force: true });
+        }
+    });
+
+    test('keeps uncached configured voices when remote model loading is allowed', () => {
+        const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kimibuilt-kokoro-cache-'));
+        const service = new KokoroTtsService({
+            enabled: true,
+            modelId: 'test-model',
+            defaultVoiceId: 'bf_emma',
+            cacheDir,
+            allowRemoteModels: true,
+            voices: [
+                { id: 'af_heart', label: 'Heart Studio' },
+                { id: 'bf_emma', label: 'Emma Editorial', aliases: ['cori-high'] },
+            ],
+        });
+
+        try {
+            const publicConfig = service.getPublicConfig();
+            expect(publicConfig.defaultVoiceId).toBe('bf_emma');
+            expect(publicConfig.voices.map((voice) => voice.id)).toEqual(['af_heart', 'bf_emma']);
+            expect(publicConfig.diagnostics.uncachedVoiceIds).toEqual([]);
+            expect(service.resolveVoiceProfile('cori-high')).toEqual(expect.objectContaining({
+                id: 'bf_emma',
+            }));
+        } finally {
+            fs.rmSync(cacheDir, { recursive: true, force: true });
+        }
     });
 
     test('returns synthesized wav audio from the Kokoro runtime', async () => {
@@ -86,6 +150,7 @@ describe('KokoroTtsService', () => {
     test('configures Transformers runtime before loading the model', async () => {
         const transformersEnv = {};
         const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kimibuilt-kokoro-cache-'));
+        writeCachedVoice(cacheDir, 'af_heart');
         const fromPretrained = jest.fn(async () => ({ generate: jest.fn() }));
         const service = new KokoroTtsService({
             enabled: true,

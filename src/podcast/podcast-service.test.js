@@ -1720,6 +1720,66 @@ describe('PodcastService', () => {
     });
   });
 
+  test('does not select uncached Kokoro voices that are absent from public TTS config', async () => {
+    ttsService.getPublicConfig.mockReturnValueOnce({
+      configured: true,
+      provider: 'kokoro',
+      maxTextChars: 2400,
+      timeoutMs: 45000,
+      podcastTimeoutMs: 210000,
+      podcastChunkChars: 760,
+      defaultVoiceId: 'af_heart',
+      voices: [
+        { id: 'af_heart', label: 'Heart Studio', provider: 'kokoro' },
+        { id: 'af_bella', label: 'Bella Expressive', provider: 'kokoro' },
+        { id: 'af_nicole', label: 'Nicole Clear', provider: 'kokoro' },
+      ],
+    });
+    const executeTool = jest.fn(async (toolId) => {
+      if (toolId === 'web-search') {
+        return {
+          success: true,
+          data: {
+            results: [
+              { title: 'Voice cache guide', url: 'https://example.com/cache', snippet: 'Only cached voices should be eligible.' },
+            ],
+          },
+        };
+      }
+
+      if (toolId === 'web-fetch') {
+        return {
+          success: true,
+          data: {
+            headers: { 'content-type': 'text/html' },
+            body: '<p>Cached voice pools keep podcast generation reliable.</p>',
+          },
+        };
+      }
+
+      throw new Error(`Unexpected tool: ${toolId}`);
+    });
+
+    const service = new PodcastService();
+    const result = await service.createPodcast({
+      topic: 'podcast voice cache reliability',
+      hostBVoiceIds: ['bf_emma', 'cori-high', 'af_nicole'],
+      cycleHostVoices: true,
+    }, {
+      sessionId: 'session-1',
+      clientSurface: 'chat',
+      toolManager: { executeTool },
+    });
+
+    const usedVoiceIds = ttsService.synthesize.mock.calls.map(([call]) => call.voiceId);
+    expect(result.hosts.flatMap((host) => host.voiceIds || [host.voiceId])).not.toEqual(expect.arrayContaining([
+      'bf_emma',
+      'cori-high',
+    ]));
+    expect(usedVoiceIds).not.toEqual(expect.arrayContaining(['bf_emma', 'cori-high']));
+    expect(usedVoiceIds).toEqual(expect.arrayContaining(['af_nicole']));
+  });
+
   test('keeps one voice per host when cycleHostVoices is disabled', async () => {
     const executeTool = jest.fn(async (toolId) => {
       if (toolId === 'web-search') {

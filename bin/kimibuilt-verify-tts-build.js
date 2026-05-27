@@ -28,6 +28,7 @@ async function main() {
     const device = process.env.KOKORO_TTS_DEVICE || 'cpu';
     const dtype = process.env.KOKORO_TTS_DTYPE || 'q8';
     const voice = process.env.KOKORO_TTS_DEFAULT_VOICE_ID || 'af_heart';
+    const voiceIds = loadBuildVoiceIds(voice);
     const cacheDir = process.env.KOKORO_TTS_CACHE_DIR || '/app/data/kokoro/cache';
     const localModelPath = process.env.KOKORO_TTS_LOCAL_MODEL_PATH || '';
     const allowRemoteModels = parseOptionalBoolean(process.env.KOKORO_TTS_ALLOW_REMOTE_MODELS);
@@ -57,26 +58,51 @@ async function main() {
             required: process.env.KOKORO_G2P_REQUIRED === 'true',
         },
     });
-    let wav = Buffer.alloc(0);
     try {
-        const audio = await tts.generate('KimiBuilt Kokoro build check.', {
-            voice,
-            speed: 1,
-        });
-        wav = typeof audio?.toWav === 'function' ? Buffer.from(audio.toWav()) : Buffer.alloc(0);
+        for (const voiceId of voiceIds) {
+            const audio = await tts.generate(`KimiBuilt Kokoro build check for ${voiceId}.`, {
+                voice: voiceId,
+                speed: 1,
+            });
+            const wav = typeof audio?.toWav === 'function' ? Buffer.from(audio.toWav()) : Buffer.alloc(0);
+            if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') {
+                throw new Error(`Kokoro generated invalid WAV audio during build verification for voice ${voiceId}.`);
+            }
+            console.log(`[TTS Build] Kokoro voice cached: ${voiceId} bytes=${wav.length}`);
+        }
     } finally {
         tts.close?.();
     }
 
-    if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') {
-        throw new Error('Kokoro generated invalid WAV audio during build verification.');
-    }
-
-    console.log(`[TTS Build] Kokoro ready: model=${modelId} dtype=${dtype} device=${device} voice=${voice} bytes=${wav.length}`);
+    console.log(`[TTS Build] Kokoro ready: model=${modelId} dtype=${dtype} device=${device} voices=${voiceIds.join(',')}`);
 }
 
 function readJsonFile(filePath) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function loadBuildVoiceIds(defaultVoiceId = '') {
+    const voiceIds = [];
+    const pushVoiceId = (value = '') => {
+        const voiceId = String(value || '').trim();
+        if (voiceId && !voiceIds.includes(voiceId)) {
+            voiceIds.push(voiceId);
+        }
+    };
+
+    pushVoiceId(defaultVoiceId);
+
+    const voicesPath = process.env.KOKORO_TTS_VOICES_PATH || path.resolve(__dirname, '../data/kokoro/voices/manifest.json');
+    try {
+        const manifest = readJsonFile(voicesPath);
+        (Array.isArray(manifest) ? manifest : []).forEach((voice) => {
+            pushVoiceId(voice?.id || voice?.voiceId);
+        });
+    } catch (error) {
+        console.warn(`[TTS Build] Kokoro voice manifest unavailable at ${voicesPath}: ${error.message}`);
+    }
+
+    return voiceIds.length > 0 ? voiceIds : ['af_heart'];
 }
 
 function verifyPermissiveTtsDependencyGraph() {

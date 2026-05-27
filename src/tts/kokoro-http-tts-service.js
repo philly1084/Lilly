@@ -1,23 +1,14 @@
 const { config } = require('../config');
 const { createServiceError, normalizeTextForSpeech } = require('./speech-text');
+const {
+    getCachedKokoroVoiceAvailability,
+    normalizeKokoroVoiceList,
+} = require('./kokoro-voice-cache');
 
 const DEFAULT_PROVIDER = 'kokoro';
 const DEFAULT_VOICE_ID = 'af_heart';
 const DEFAULT_VOICE_LABEL = 'Heart Studio';
 const DEFAULT_VOICE_DESCRIPTION = 'Primary high-quality Kokoro voice for polished local speech.';
-
-function normalizeVoiceList(voices = []) {
-    return (Array.isArray(voices) ? voices : [])
-        .map((voice) => ({
-            id: String(voice?.id || voice?.voiceId || '').trim(),
-            label: String(voice?.label || voice?.voiceLabel || '').trim(),
-            description: String(voice?.description || voice?.voiceDescription || '').trim(),
-            aliases: Array.isArray(voice?.aliases)
-                ? voice.aliases.map((alias) => String(alias || '').trim()).filter(Boolean)
-                : [],
-        }))
-        .filter((voice) => voice.id);
-}
 
 function toPublicVoiceProfile(voice = {}) {
     return {
@@ -72,16 +63,25 @@ class KokoroHttpTtsService {
     }
 
     getVoiceProfiles() {
-        const configured = normalizeVoiceList(this.ttsConfig.voices);
-        if (configured.length > 0) {
-            return configured.map((voice) => toPublicVoiceProfile(voice));
-        }
-
-        return [toPublicVoiceProfile({
+        const configured = normalizeKokoroVoiceList(this.ttsConfig.voices);
+        const voices = configured.length > 0 ? configured : [toPublicVoiceProfile({
             id: DEFAULT_VOICE_ID,
             label: DEFAULT_VOICE_LABEL,
             description: DEFAULT_VOICE_DESCRIPTION,
         })];
+        return getCachedKokoroVoiceAvailability(this.ttsConfig, voices).voices
+            .map((voice) => toPublicVoiceProfile(voice));
+    }
+
+    getUnavailableVoiceProfiles() {
+        const configured = normalizeKokoroVoiceList(this.ttsConfig.voices);
+        const voices = configured.length > 0 ? configured : [{
+            id: DEFAULT_VOICE_ID,
+            label: DEFAULT_VOICE_LABEL,
+            description: DEFAULT_VOICE_DESCRIPTION,
+        }];
+        return getCachedKokoroVoiceAvailability(this.ttsConfig, voices).uncachedVoices
+            .map((voice) => toPublicVoiceProfile(voice));
     }
 
     resolveVoiceProfile(voiceId = '') {
@@ -101,12 +101,30 @@ class KokoroHttpTtsService {
     getDiagnostics() {
         const baseURL = this.getBaseURL();
         const voices = this.getVoiceProfiles();
+        const uncachedVoices = this.getUnavailableVoiceProfiles();
+        const uncachedVoiceIds = uncachedVoices.map((voice) => voice.id);
+        const cachedVoicesRequired = this.ttsConfig.allowRemoteModels === false;
         if (!baseURL) {
             return {
                 status: 'misconfigured',
                 modelReachable: false,
                 voicesLoaded: voices.length > 0,
+                cachedVoicesRequired,
+                uncachedVoiceIds,
                 message: 'Remote Kokoro TTS base URL is not configured.',
+            };
+        }
+
+        if (voices.length === 0) {
+            return {
+                status: 'misconfigured',
+                modelReachable: true,
+                voicesLoaded: false,
+                cachedVoicesRequired,
+                uncachedVoiceIds,
+                message: uncachedVoiceIds.length > 0
+                    ? `Remote Kokoro TTS has no cached voices available. Missing cached voice files for: ${uncachedVoiceIds.join(', ')}.`
+                    : 'Remote Kokoro TTS has no configured voices.',
             };
         }
 
@@ -114,7 +132,12 @@ class KokoroHttpTtsService {
             status: 'ready',
             modelReachable: true,
             voicesLoaded: voices.length > 0,
-            message: `Remote Kokoro TTS configured at ${baseURL}.`,
+            cachedVoicesRequired,
+            uncachedVoiceIds,
+            message: `Remote Kokoro TTS configured at ${baseURL}.`
+                + (uncachedVoiceIds.length > 0
+                    ? ` Skipped ${uncachedVoiceIds.length} uncached configured voice${uncachedVoiceIds.length === 1 ? '' : 's'}.`
+                    : ''),
         };
     }
 

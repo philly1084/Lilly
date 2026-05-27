@@ -4,24 +4,15 @@ const { fork } = require('child_process');
 const { Worker } = require('worker_threads');
 const { config } = require('../config');
 const { createServiceError, normalizeTextForSpeech } = require('./speech-text');
+const {
+    getCachedKokoroVoiceAvailability,
+    normalizeKokoroVoiceList,
+} = require('./kokoro-voice-cache');
 
 const DEFAULT_MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 const DEFAULT_VOICE_ID = 'af_heart';
 const DEFAULT_VOICE_LABEL = 'Heart Studio';
 const DEFAULT_VOICE_DESCRIPTION = 'Primary high-quality Kokoro voice for polished local speech.';
-
-function normalizeVoiceList(voices = []) {
-    return (Array.isArray(voices) ? voices : [])
-        .map((voice) => ({
-            id: String(voice?.id || voice?.voiceId || '').trim(),
-            label: String(voice?.label || voice?.voiceLabel || '').trim(),
-            description: String(voice?.description || voice?.voiceDescription || '').trim(),
-            aliases: Array.isArray(voice?.aliases)
-                ? voice.aliases.map((alias) => String(alias || '').trim()).filter(Boolean)
-                : [],
-        }))
-        .filter((voice) => voice.id);
-}
 
 function toNodeDevice(value = '') {
     const normalized = String(value || '').trim().toLowerCase();
@@ -142,24 +133,39 @@ class KokoroTtsService {
     }
 
     getVoiceProfiles() {
-        const configured = normalizeVoiceList(this.ttsConfig.voices);
-        if (configured.length > 0) {
-            return configured.map((voice) => ({
-                ...voice,
-                ...this.toPublicVoiceProfile(voice),
-            }));
-        }
-
-        return [this.toPublicVoiceProfile({
+        const configured = normalizeKokoroVoiceList(this.ttsConfig.voices);
+        const voices = configured.length > 0 ? configured : [this.toPublicVoiceProfile({
             id: DEFAULT_VOICE_ID,
             label: DEFAULT_VOICE_LABEL,
             description: DEFAULT_VOICE_DESCRIPTION,
         })];
+        return getCachedKokoroVoiceAvailability(this.ttsConfig, voices).voices
+            .map((voice) => ({
+                ...voice,
+                ...this.toPublicVoiceProfile(voice),
+            }));
+    }
+
+    getUnavailableVoiceProfiles() {
+        const configured = normalizeKokoroVoiceList(this.ttsConfig.voices);
+        const voices = configured.length > 0 ? configured : [{
+            id: DEFAULT_VOICE_ID,
+            label: DEFAULT_VOICE_LABEL,
+            description: DEFAULT_VOICE_DESCRIPTION,
+        }];
+        return getCachedKokoroVoiceAvailability(this.ttsConfig, voices).uncachedVoices
+            .map((voice) => ({
+                ...voice,
+                ...this.toPublicVoiceProfile(voice),
+            }));
     }
 
     getDiagnostics() {
         const enabled = this.ttsConfig.enabled !== false;
         const voices = this.getVoiceProfiles();
+        const uncachedVoices = this.getUnavailableVoiceProfiles();
+        const uncachedVoiceIds = uncachedVoices.map((voice) => voice.id);
+        const cachedVoicesRequired = this.ttsConfig.allowRemoteModels === false;
         const hasModelId = Boolean(String(this.ttsConfig.modelId || DEFAULT_MODEL_ID).trim());
 
         if (!enabled) {
@@ -167,6 +173,8 @@ class KokoroTtsService {
                 status: 'unavailable',
                 modelReachable: false,
                 voicesLoaded: voices.length > 0,
+                cachedVoicesRequired,
+                uncachedVoiceIds,
                 message: 'Kokoro TTS is disabled.',
             };
         }
@@ -176,16 +184,23 @@ class KokoroTtsService {
                 status: 'misconfigured',
                 modelReachable: false,
                 voicesLoaded: voices.length > 0,
+                cachedVoicesRequired,
+                uncachedVoiceIds,
                 message: 'Kokoro TTS is enabled, but no model ID is configured.',
             };
         }
 
         if (voices.length === 0) {
+            const missingMessage = uncachedVoiceIds.length > 0
+                ? `No cached Kokoro voices are available. Missing cached voice files for: ${uncachedVoiceIds.join(', ')}.`
+                : 'Kokoro voices are not configured.';
             return {
                 status: 'misconfigured',
                 modelReachable: true,
                 voicesLoaded: false,
-                message: 'Kokoro voices are not configured.',
+                cachedVoicesRequired,
+                uncachedVoiceIds,
+                message: missingMessage,
             };
         }
 
@@ -193,7 +208,12 @@ class KokoroTtsService {
             status: 'ready',
             modelReachable: true,
             voicesLoaded: true,
-            message: `${voices.length} Kokoro voice${voices.length === 1 ? '' : 's'} ready.`,
+            cachedVoicesRequired,
+            uncachedVoiceIds,
+            message: `${voices.length} Kokoro voice${voices.length === 1 ? '' : 's'} ready.`
+                + (uncachedVoiceIds.length > 0
+                    ? ` Skipped ${uncachedVoiceIds.length} uncached configured voice${uncachedVoiceIds.length === 1 ? '' : 's'}.`
+                    : ''),
         };
     }
 

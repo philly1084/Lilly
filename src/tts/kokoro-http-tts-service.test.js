@@ -1,4 +1,13 @@
 const { KokoroHttpTtsService } = require('./kokoro-http-tts-service');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+function writeCachedVoice(cacheDir, voiceId) {
+    const voicesDir = path.join(cacheDir, 'voices');
+    fs.mkdirSync(voicesDir, { recursive: true });
+    fs.writeFileSync(path.join(voicesDir, `${voiceId}.bin`), Buffer.from(`voice:${voiceId}`));
+}
 
 function createHeaders(values = {}) {
     const normalized = Object.entries(values).reduce((acc, [key, value]) => {
@@ -11,6 +20,44 @@ function createHeaders(values = {}) {
 }
 
 describe('KokoroHttpTtsService', () => {
+    test('filters uncached remote voices before synthesis in offline mode', async () => {
+        const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kimibuilt-kokoro-http-cache-'));
+        writeCachedVoice(cacheDir, 'af_heart');
+        const fetch = jest.fn();
+        const service = new KokoroHttpTtsService({
+            baseURL: 'http://kokoro-tts:3001',
+            defaultVoiceId: 'bf_emma',
+            cacheDir,
+            allowRemoteModels: false,
+            voices: [
+                { id: 'af_heart', label: 'Heart Studio' },
+                { id: 'bf_emma', label: 'Emma Editorial', aliases: ['cori-high'] },
+            ],
+        }, { fetch });
+
+        try {
+            const publicConfig = service.getPublicConfig();
+            expect(publicConfig.defaultVoiceId).toBe('af_heart');
+            expect(publicConfig.voices.map((voice) => voice.id)).toEqual(['af_heart']);
+            expect(publicConfig.diagnostics).toEqual(expect.objectContaining({
+                status: 'ready',
+                cachedVoicesRequired: true,
+                uncachedVoiceIds: ['bf_emma'],
+            }));
+
+            await expect(service.synthesize({
+                text: 'Hello.',
+                voiceId: 'bf_emma',
+            })).rejects.toMatchObject({
+                statusCode: 400,
+                code: 'unknown_voice',
+            });
+            expect(fetch).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(cacheDir, { recursive: true, force: true });
+        }
+    });
+
     test('posts normalized synthesis requests to the remote Kokoro service', async () => {
         const fetch = jest.fn(async () => ({
             ok: true,
