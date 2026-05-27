@@ -564,7 +564,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
-  test('forces direct remote_code_run when the inner agent returns unproved prose without tool use', async () => {
+  test('forces direct remote_code_run when the inner agent returns partial proof without tool use', async () => {
     const calls = {
       toolCalls: [],
       progress: [],
@@ -621,7 +621,12 @@ describe('RemoteCliAgentsSdkRunner', () => {
     class FakeRunner {
       async run() {
         return {
-          finalOutput: 'I can help with that remote build.',
+          finalOutput: [
+            'I can help with that remote build.',
+            'WHAT_CHANGED=Prepared to inspect the remote workspace.',
+            'PUBLIC_URL=not_available',
+            'BLOCKER=none',
+          ].join('\n'),
         };
       }
     }

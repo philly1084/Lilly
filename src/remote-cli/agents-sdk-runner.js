@@ -1329,7 +1329,8 @@ class RemoteCliAgentsSdkRunner {
         }
       }
       let runMetadata = extractRemoteCliRunMetadata(finalOutput);
-      if (runMetadata.completionStatus === 'unknown') {
+      const hasTerminalRemoteProof = ['complete', 'blocked'].includes(runMetadata.completionStatus);
+      if (!hasTerminalRemoteProof) {
         if (remoteCodeCallState.jobId) {
           emitContractProgress(
             `Remote CLI agent returned without proof markers; polling remote_code_status for job ${remoteCodeCallState.jobId}.`,
@@ -1350,7 +1351,7 @@ class RemoteCliAgentsSdkRunner {
           runMetadata = extractRemoteCliRunMetadata(finalOutput);
         } else if (!remoteCodeCallState.sawRemoteCodeRun) {
           emitContractProgress(
-            'Remote CLI agent returned without calling remote_code_run or producing proof markers; starting direct remote_code_run.',
+            'Remote CLI agent returned without calling remote_code_run or producing terminal proof markers; starting direct remote_code_run.',
             { percent: 50 },
           );
           finalOutput = await this.executeRemoteCodeRun(remoteCli, {
@@ -1365,7 +1366,7 @@ class RemoteCliAgentsSdkRunner {
             onProgress: input.onProgress,
           });
           runMetadata = extractRemoteCliRunMetadata(finalOutput);
-        } else {
+        } else if (runMetadata.completionStatus === 'unknown') {
           finalOutput = buildRemoteCodeFinalText({
             fragments: [finalOutput],
             targetId,
