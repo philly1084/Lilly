@@ -5,6 +5,7 @@ const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
 
 const DEFAULT_REMOTE_CODE_MODEL = '';
+const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
 const DEFAULT_MAX_STATUS_POLLS = 90;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
 
@@ -15,6 +16,43 @@ function normalizeText(value = '') {
 function sleep(ms = 0) {
   const delay = Number(ms) || 0;
   return delay > 0 ? new Promise((resolve) => setTimeout(resolve, delay)) : Promise.resolve();
+}
+
+class RemoteCliAgentRunTimeoutError extends Error {
+  constructor(timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
+    super(`remote-cli-agent inner model run timed out after ${timeoutMs}ms.`);
+    this.name = 'RemoteCliAgentRunTimeoutError';
+    this.code = 'REMOTE_CLI_AGENT_RUN_TIMEOUT';
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+function isRemoteCliAgentRunTimeoutError(error = null) {
+  return error?.name === 'RemoteCliAgentRunTimeoutError'
+    || error?.code === 'REMOTE_CLI_AGENT_RUN_TIMEOUT';
+}
+
+async function withTimeout(promise, timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
+  const normalizedTimeoutMs = normalizePositiveInteger(timeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, {
+    min: 1,
+    max: 900000,
+  });
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new RemoteCliAgentRunTimeoutError(normalizedTimeoutMs)), normalizedTimeoutMs);
+        if (typeof timer.unref === 'function') {
+          timer.unref();
+        }
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function normalizeKey(value = '') {
@@ -458,6 +496,37 @@ function extractRemoteCodeJobState(result = {}, textOverride = '') {
   };
 }
 
+function attachRemoteCodeCallTracker(remoteCli = null) {
+  const state = {
+    sawRemoteCodeRun: false,
+    sawRemoteCodeStatus: false,
+    jobId: '',
+    sessionId: '',
+    status: '',
+  };
+  if (!remoteCli || typeof remoteCli.callTool !== 'function') {
+    return state;
+  }
+
+  const originalCallTool = remoteCli.callTool.bind(remoteCli);
+  remoteCli.callTool = async (name, args) => {
+    const result = await originalCallTool(name, args);
+    const toolName = normalizeToolName(name);
+    if (toolName === 'remote_code_run' || toolName === 'remote_code_status') {
+      state.sawRemoteCodeRun = state.sawRemoteCodeRun || toolName === 'remote_code_run';
+      state.sawRemoteCodeStatus = state.sawRemoteCodeStatus || toolName === 'remote_code_status';
+      const text = normalizeMcpContentText(result);
+      const remoteState = extractRemoteCodeJobState(result, text);
+      state.jobId = remoteState.jobId || state.jobId;
+      state.sessionId = remoteState.sessionId || state.sessionId;
+      state.status = remoteState.status || state.status;
+    }
+    return result;
+  };
+
+  return state;
+}
+
 function isRunningRemoteCodeStatus(status = '') {
   return /^(?:running|queued|pending|active|started|in_progress|in-progress|processing|working)$/.test(
     normalizeText(status).toLowerCase().replace(/\s+/g, '_'),
@@ -473,11 +542,14 @@ function isFailedRemoteCodeStatus(status = '') {
 function extractRawMcpToolCallsFromLooseText(finalOutput = '') {
   const text = String(finalOutput || '');
   const normalizedText = normalizeKey(text);
-  if (!normalizedText.includes('toolcalls') && !normalizedText.includes('remotecoderun') && !normalizedText.includes('remotecodestatus')) {
+  const extractedName = normalizeToolName(extractLooseJsonStringField(text, ['name', 'toolName']) || '');
+  const hasToolCallEnvelope = normalizedText.includes('toolcall')
+    || normalizedText.includes('functioncall')
+    || Boolean(extractedName);
+  if (!hasToolCallEnvelope) {
     return [];
   }
 
-  const extractedName = normalizeToolName(extractLooseJsonStringField(text, ['name', 'toolName']) || '');
   const name = extractedName === 'remote_code_run' || normalizedText.includes('remotecoderun')
     ? 'remote_code_run'
     : (extractedName === 'remote_code_status' || normalizedText.includes('remotecodestatus')
@@ -891,6 +963,7 @@ class RemoteCliAgentsSdkRunner {
       remoteCodeModel: normalizeText(this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL,
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
+      agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 }),
       maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 300 }),
       statusPollIntervalMs: normalizePositiveInteger(this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 }),
     };
@@ -1087,6 +1160,7 @@ class RemoteCliAgentsSdkRunner {
     const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
     const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
     const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
+    const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
     const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';
     const remoteCodeModel = normalizeText(input.remoteCodeModel || input.remote_code_model || this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL;
     const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 300 });
@@ -1102,6 +1176,7 @@ class RemoteCliAgentsSdkRunner {
     }
 
     const remoteCli = this.createMcpServer(MCPServerStreamableHttp, input);
+    const remoteCodeCallState = attachRemoteCodeCallTracker(remoteCli);
     const instructions = buildRemoteCliInstructions({
       targetId,
       cwd,
@@ -1159,17 +1234,61 @@ class RemoteCliAgentsSdkRunner {
           onProgress: input.onProgress,
         });
       } else {
-        const result = await runner.run(agent, buildRemoteCliPrompt({
-          task,
-          targetId,
-          cwd,
-          sessionId,
-          waitMs,
-          adminMode,
-        }), {
-          maxTurns,
-        });
-        finalOutput = result.finalOutput || '';
+        let result = null;
+        try {
+          result = await withTimeout(runner.run(agent, buildRemoteCliPrompt({
+            task,
+            targetId,
+            cwd,
+            sessionId,
+            waitMs,
+            adminMode,
+          }), {
+            maxTurns,
+          }), agentRunTimeoutMs);
+        } catch (error) {
+          if (!isRemoteCliAgentRunTimeoutError(error)) {
+            throw error;
+          }
+
+          if (typeof input.onProgress === 'function') {
+            const pollExistingJob = Boolean(remoteCodeCallState.jobId);
+            input.onProgress({
+              phase: 'executing',
+              reasoningSummary: pollExistingJob
+                ? 'Remote CLI agent model run timed out; polling the remote_code_run job it already started.'
+                : 'Remote CLI agent model run timed out; falling back to direct remote_code_run.',
+              detail: pollExistingJob
+                ? 'Inner agent timeout reached; continuing with remote_code_status.'
+                : 'Inner agent timeout reached; starting remote_code_run directly.',
+              percent: 46,
+              toolEvents: [{
+                toolId: 'remote-cli-agent',
+                stage: 'fallback',
+                detail: pollExistingJob
+                  ? 'Polling the existing remote_code_run job after inner model timeout.'
+                  : 'Starting direct remote_code_run after inner model timeout.',
+              }],
+            });
+          }
+
+          finalOutput = await this.executeRemoteCodeRun(remoteCli, {
+            targetId,
+            cwd,
+            task,
+            model: remoteCodeModel,
+            sessionId: remoteCodeCallState.sessionId || sessionId,
+            waitMs,
+            jobId: remoteCodeCallState.jobId || '',
+            maxStatusPolls,
+            statusPollIntervalMs,
+            onProgress: input.onProgress,
+          });
+        }
+
+        if (!finalOutput) {
+          finalOutput = result?.finalOutput || '';
+        }
         const leakedMcpToolCalls = extractRawMcpToolCalls(finalOutput);
         if (leakedMcpToolCalls.length > 0) {
           const call = leakedMcpToolCalls.find((entry) => entry.name === 'remote_code_run')

@@ -28,6 +28,7 @@ data:
   REMOTE_CLI_AGENT_MODEL: "gpt-5.5"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"
   REMOTE_CLI_AGENT_MAX_TURNS: "20"
+  REMOTE_CLI_AGENT_RUN_TIMEOUT_MS: "180000"
   # Leave empty to use the gateway target's supported default model.
   REMOTE_CLI_REMOTE_CODE_MODEL: ""
   REMOTE_CLI_AGENT_MAX_STATUS_POLLS: "90"

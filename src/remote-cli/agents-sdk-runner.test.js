@@ -445,6 +445,125 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('falls back to direct remote_code_run when the inner agent run times out', async () => {
+    const calls = {
+      toolCalls: [],
+      progress: [],
+      runnerCalled: false,
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-timeout';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_run') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                status: 'running',
+                jobId: 'rcli_timeout',
+                sessionId: 'remote-session-timeout',
+              }),
+            }],
+          };
+        }
+        if (name === 'remote_code_status') {
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                'REMOTE_CLI_JOB_ID=rcli_timeout',
+                'REMOTE_CLI_SESSION_ID=remote-session-timeout',
+                'WORKSPACE=/srv/apps/my-app',
+                'WHAT_CHANGED=Finished after direct fallback.',
+                'VERIFY_COMMANDS=remote_code_status',
+                'VERIFY_RESULTS=Remote job completed.',
+                'PUBLIC_URL=not_available',
+                'BLOCKER=none',
+              ].join('\n'),
+            }],
+          };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      }
+    }
+
+    class FakeAgent {}
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run() {
+        calls.runnerCalled = true;
+        return new Promise(() => {});
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'kimi-for-coding',
+        defaultTargetId: 'prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Deploy the live app and verify it.',
+      waitMs: 30000,
+      agentRunTimeoutMs: 1,
+      maxStatusPolls: 1,
+      statusPollIntervalMs: 0,
+      onProgress: (progress) => calls.progress.push(progress),
+    });
+
+    expect(calls.runnerCalled).toBe(true);
+    expect(calls.progress.some((progress) => /falling back to direct remote_code_run/i.test(progress.reasoningSummary))).toBe(true);
+    expect(calls.toolCalls).toEqual([
+      {
+        name: 'remote_code_run',
+        args: {
+          targetId: 'prod',
+          cwd: '/srv/apps/my-app',
+          task: 'Deploy the live app and verify it.',
+          waitMs: 30000,
+        },
+      },
+      {
+        name: 'remote_code_status',
+        args: { jobId: 'rcli_timeout' },
+      },
+    ]);
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_timeout',
+      sessionId: 'remote-session-timeout',
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Finished after direct fallback.',
+      completionStatus: 'complete',
+    });
+  });
+
   test('continues an existing remote_code_run job with status-only polling', async () => {
     const calls = {
       toolCalls: [],
