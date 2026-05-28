@@ -8654,10 +8654,38 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const detail = extractChatDisplayText(chunk.detail, { maxLength: 220 }) || 'Checking tool results';
         this.updateLiveResponsePhase('checking-tools', detail);
 
+        const sessionId = this.getStreamingMessageSessionId();
+        const currentMessage = this.getSessionMessage(sessionId, this.currentStreamingMessageId);
+        const existingProgress = currentMessage?.progressState
+            || currentMessage?.metadata?.progressState
+            || {};
+        const toolEvent = {
+            toolId: extractChatDisplayText(chunk.toolId || chunk.tool_id || chunk.toolName || chunk.tool_name || '', { maxLength: 120 }),
+            toolName: extractChatDisplayText(chunk.toolName || chunk.tool_name || chunk.toolId || chunk.tool_id || '', { maxLength: 120 }),
+            stage: extractChatDisplayText(chunk.stage || '', { maxLength: 80 }) || 'in_progress',
+            detail,
+        };
+        const existingToolEvents = Array.isArray(existingProgress.toolEvents)
+            ? existingProgress.toolEvents
+            : [];
+        this.updateStreamingMessageState({
+            progressState: {
+                ...existingProgress,
+                phase: 'checking-tools',
+                detail,
+                toolEvents: [...existingToolEvents, toolEvent].slice(-6),
+            },
+            isStreaming: true,
+        }, {
+            render: true,
+            buffer: true,
+            scroll: false,
+        });
+
         const checkpoint = this.extractCheckpointFromToolEventChunk(chunk);
         if (checkpoint) {
-            const sessionId = this.getStreamingMessageSessionId() || sessionManager.currentSessionId;
-            this.showPendingCheckpointFromToolCall(sessionId, checkpoint, this.currentStreamingMessageId);
+            const checkpointSessionId = sessionId || sessionManager.currentSessionId;
+            this.showPendingCheckpointFromToolCall(checkpointSessionId, checkpoint, this.currentStreamingMessageId);
         }
     }
 

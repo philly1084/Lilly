@@ -562,11 +562,6 @@ Next recovery path is straightforward: patch site/index.html, refresh the Config
             progressState: {
                 phase: 'executing',
                 reasoningSummary: 'Remote CLI agent is still working (390s elapsed).',
-                steps: [
-                    { title: 'Choose remote agent lane', status: 'completed' },
-                    { title: 'Remote CLI agent run', status: 'in_progress' },
-                    { title: 'Return proof markers', status: 'pending' },
-                ],
                 toolEvents: [
                     {
                         toolId: 'remote-cli-agent',
@@ -585,7 +580,8 @@ Next recovery path is straightforward: patch site/index.html, refresh the Config
             summary: 'Remote CLI agent is still working (390s elapsed).',
         }));
         expect(html).toContain('Remote CLI agent is still working (390s elapsed).');
-        expect(html).toContain('Remote CLI agent run');
+        expect(html).toContain('Connect remote CLI runner');
+        expect(html).toContain('Return verification result');
         expect(html).not.toContain('Working through the next step.');
     });
 

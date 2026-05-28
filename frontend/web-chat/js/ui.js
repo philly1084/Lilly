@@ -3334,6 +3334,73 @@ class UIHelpers {
         return labels[index % labels.length] || `Step ${index + 1}`;
     }
 
+    isRemoteCliProgressState(rawProgress = null) {
+        if (!rawProgress || typeof rawProgress !== 'object') {
+            return false;
+        }
+
+        const toolEvents = Array.isArray(rawProgress.toolEvents) ? rawProgress.toolEvents : [];
+        const toolEventText = toolEvents.map((event) => [
+            event?.toolId,
+            event?.toolName,
+            event?.tool_name,
+            event?.name,
+            event?.detail,
+            event?.message,
+            event?.summary,
+        ].filter(Boolean).join(' ')).join(' ');
+        const progressText = [
+            rawProgress.phase,
+            rawProgress.detail,
+            rawProgress.summary,
+            rawProgress.reasoningSummary,
+            rawProgress.reasoning_summary,
+            rawProgress.message,
+            toolEventText,
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        return /\b(remote[-_\s]*cli[-_\s]*agent|remote_code_(?:run|status)|rcli_[a-z0-9]+|mcp gateway)\b/i.test(progressText);
+    }
+
+    buildFallbackAssistantProgressSteps(rawProgress = null) {
+        if (!this.isRemoteCliProgressState(rawProgress)) {
+            return [];
+        }
+
+        const detail = this.extractDisplayText(
+            rawProgress.detail
+            || rawProgress.reasoningSummary
+            || rawProgress.reasoning_summary
+            || rawProgress.summary
+            || rawProgress.message,
+            { maxLength: 140 },
+        );
+        const phase = this.extractDisplayText(rawProgress.phase, { maxLength: 80 }).toLowerCase();
+        const terminal = rawProgress.terminal === true || ['ready', 'complete', 'completed', 'blocked', 'failed'].includes(phase);
+        const blocked = phase === 'blocked';
+        const runningTitle = detail
+            ? detail.replace(/\.$/, '')
+            : 'Run remote CLI task';
+
+        return [
+            {
+                id: 'remote-cli-start',
+                title: 'Connect remote CLI runner',
+                status: 'completed',
+            },
+            {
+                id: 'remote-cli-run',
+                title: runningTitle,
+                status: terminal ? (blocked ? 'failed' : 'completed') : 'in_progress',
+            },
+            {
+                id: 'remote-cli-proof',
+                title: 'Return verification result',
+                status: terminal ? (blocked ? 'skipped' : 'completed') : 'pending',
+            },
+        ];
+    }
+
     getAssistantProgressState(message = null) {
         const rawProgress = message?.progressState
             || message?.metadata?.progressState
@@ -3366,6 +3433,9 @@ class UIHelpers {
                 };
             })
             .filter(Boolean);
+        if (steps.length < 2) {
+            steps = this.buildFallbackAssistantProgressSteps(rawProgress);
+        }
         const requestedTotalSteps = Number.isFinite(Number(rawProgress.totalSteps)) && Number(rawProgress.totalSteps) > 0
             ? Math.max(steps.length, Math.round(Number(rawProgress.totalSteps)))
             : steps.length;
