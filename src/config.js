@@ -1062,7 +1062,7 @@ const config = {
         ),
         maxStatusPolls: Math.max(
             1,
-            Math.min(parseInt(process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS, 10) || 3, 80),
+            Math.min(parseInt(process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS, 10) || 20, 80),
         ),
         statusPollIntervalMs: Math.max(
             0,

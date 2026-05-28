@@ -61,7 +61,7 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.remoteCodeModel).toBe('');
     expect(config.remoteCliMcp.directRun).toBe(true);
     expect(config.remoteCliMcp.agentRunTimeoutMs).toBe(180000);
-    expect(config.remoteCliMcp.maxStatusPolls).toBe(3);
+    expect(config.remoteCliMcp.maxStatusPolls).toBe(20);
     expect(config.remoteCliMcp.statusPollIntervalMs).toBe(2000);
   });
 

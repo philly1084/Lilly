@@ -6,7 +6,7 @@ const { parseLenientJson } = require('../utils/lenient-json');
 
 const DEFAULT_REMOTE_CODE_MODEL = '';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
-const DEFAULT_MAX_STATUS_POLLS = 3;
+const DEFAULT_MAX_STATUS_POLLS = 20;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
 
 function normalizeBooleanFlag(value, fallback = false) {
@@ -688,6 +688,7 @@ function normalizeRemoteCodeArguments(args = {}) {
   const sessionId = getValueByNormalizedKey(args, ['sessionId', 'session_id', 'remoteSessionId', 'remote_session_id']);
   const jobId = getValueByNormalizedKey(args, ['jobId', 'job_id', 'runId', 'run_id', 'id']);
   const model = getValueByNormalizedKey(args, ['model']);
+  const adminMode = getValueByNormalizedKey(args, ['adminMode', 'admin_mode', 'runnerAdmin', 'runner_admin']);
 
   if (targetId !== undefined) {
     normalized.targetId = normalizeText(targetId);
@@ -706,6 +707,9 @@ function normalizeRemoteCodeArguments(args = {}) {
   }
   if (model !== undefined) {
     normalized.model = normalizeText(model);
+  }
+  if (adminMode !== undefined) {
+    normalized.adminMode = normalizeBooleanFlag(adminMode, false);
   }
 
   return normalized;
@@ -756,6 +760,7 @@ function buildRemoteCodeFinalText({
   const source = fragments.map((value) => normalizeText(value)).filter(Boolean).join('\n\n').trim();
   const metadata = extractRemoteCliRunMetadata(source);
   const hasTerminalProof = hasTerminalRemoteCliProof(metadata);
+  const isStillRunning = isRunningRemoteCodeStatus(status);
   const explicitBlocker = normalizeOptionalProofValue(blocker || metadata.blocker);
   const missingProofBlocker = hasTerminalProof
     ? ''
@@ -763,7 +768,8 @@ function buildRemoteCodeFinalText({
   const resolvedBlocker = explicitBlocker
     || (isFailedRemoteCodeStatus(status) ? `remote_code_run ${status}` : '')
     || missingProofBlocker;
-  const lines = [source || fallbackVerifyResult || 'remote_code_run completed without text output.'];
+  const displaySource = isStillRunning && !hasTerminalProof ? '' : source;
+  const lines = [displaySource || fallbackVerifyResult || 'remote_code_run completed without text output.'];
 
   if (!metadata.sessionId && sessionId) {
     lines.push(`REMOTE_CLI_SESSION_ID=${sessionId}`);
@@ -1047,12 +1053,14 @@ function buildDirectRemoteCodeTask({
   targetId,
   cwd,
   sessionId = '',
+  adminMode = false,
 } = {}) {
   return [
     'Direct remote execution contract:',
     `- You are already executing through the KimiBuilt remote_code_run gateway target "${targetId}".`,
     cwd ? `- The gateway has placed you in the remote workspace "${cwd}".` : '- Use the gateway target default workspace.',
     sessionId ? `- Continue the prior remote CLI session "${sessionId}" when relevant.` : '',
+    adminMode ? '- Admin runner mode is enabled for this task. Live deployment, HTTP, and Kubernetes verification are allowed when scoped to the requested app/workspace.' : '',
     '- Treat references to "remote", "server", "site", or "remote into the server" as instructions to work inside this current gateway target and workspace.',
     '- Do not say that you cannot access the remote server. Do not ask the user for SSH details. Do not provide SSH instructions as the answer.',
     '- Use the local shell/tools available in this remote execution environment to inspect, edit, build, deploy, and verify as the task requires.',
@@ -1142,6 +1150,7 @@ class RemoteCliAgentsSdkRunner {
     jobId = '',
     maxStatusPolls = DEFAULT_MAX_STATUS_POLLS,
     statusPollIntervalMs = DEFAULT_STATUS_POLL_INTERVAL_MS,
+    adminMode = false,
     onProgress = null,
   } = {}) {
     const emitProgress = (detail, extra = {}) => {
@@ -1180,9 +1189,11 @@ class RemoteCliAgentsSdkRunner {
           targetId,
           cwd,
           sessionId: remoteSessionId,
+          adminMode,
         }),
         ...(model ? { model } : {}),
         ...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
+        ...(adminMode ? { adminMode: true } : {}),
         waitMs,
       };
       emitProgress('Calling remote_code_run through the MCP gateway.', { percent: 48 });
@@ -1387,6 +1398,7 @@ class RemoteCliAgentsSdkRunner {
           jobId,
           maxStatusPolls,
           statusPollIntervalMs,
+          adminMode,
           onProgress: input.onProgress,
         });
       } else {
@@ -1438,6 +1450,7 @@ class RemoteCliAgentsSdkRunner {
             jobId: remoteCodeCallState.jobId || '',
             maxStatusPolls,
             statusPollIntervalMs,
+            adminMode,
             onProgress: input.onProgress,
           });
         }
@@ -1460,6 +1473,7 @@ class RemoteCliAgentsSdkRunner {
             jobId: call?.name === 'remote_code_status' ? normalizeText(leakedArgs.jobId || jobId) : '',
             maxStatusPolls,
             statusPollIntervalMs,
+            adminMode: normalizeBooleanFlag(leakedArgs.adminMode, adminMode),
             onProgress: input.onProgress,
           });
         }
@@ -1482,6 +1496,7 @@ class RemoteCliAgentsSdkRunner {
             jobId: remoteCodeCallState.jobId,
             maxStatusPolls,
             statusPollIntervalMs,
+            adminMode,
             onProgress: input.onProgress,
           });
           runMetadata = extractRemoteCliRunMetadata(finalOutput);
@@ -1499,6 +1514,7 @@ class RemoteCliAgentsSdkRunner {
             waitMs,
             maxStatusPolls,
             statusPollIntervalMs,
+            adminMode,
             onProgress: input.onProgress,
           });
           runMetadata = extractRemoteCliRunMetadata(finalOutput);

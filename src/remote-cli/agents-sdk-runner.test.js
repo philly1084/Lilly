@@ -444,6 +444,143 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('passes admin mode through direct remote_code_run for live verification', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-admin-direct';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              'REMOTE_AGENT_RESULT=admin:/srv/apps/my-app',
+              'WORKSPACE=/srv/apps/my-app',
+              'WHAT_CHANGED=Ran live verification with admin mode.',
+              'VERIFY_COMMANDS=kubectl get pods',
+              'VERIFY_RESULTS=pass',
+              'PUBLIC_URL=not_available',
+              'BLOCKER=none',
+            ].join('\n'),
+          }],
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Deploy the app and verify kubectl status.',
+      adminMode: true,
+      waitMs: 30000,
+    });
+
+    expect(calls.toolCalls[0]).toMatchObject({
+      name: 'remote_code_run',
+      args: {
+        targetId: 'k3s-prod',
+        cwd: '/srv/apps/my-app',
+        adminMode: true,
+        waitMs: 30000,
+      },
+    });
+    expect(calls.toolCalls[0].args.task).toContain('Admin runner mode is enabled');
+    expect(result).toMatchObject({
+      completionStatus: 'complete',
+      whatChanged: 'Ran live verification with admin mode.',
+    });
+  });
+
+  test('summarizes running remote_code_run jobs without dumping repeated JSON status bodies', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-running';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              id: 'rcli_running',
+              targetId: 'k3s-prod',
+              cwd: '/srv/apps/my-app',
+              status: 'running',
+              stdout: '',
+              stderr: '',
+            }),
+          }],
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Build the app remotely.',
+      waitMs: 30000,
+      maxStatusPolls: 2,
+      statusPollIntervalMs: 0,
+    });
+
+    expect(calls.toolCalls.map((call) => call.name)).toEqual([
+      'remote_code_run',
+      'remote_code_status',
+      'remote_code_status',
+    ]);
+    expect(result.finalOutput).toContain('REMOTE_CLI_JOB_ID=rcli_running');
+    expect(result.finalOutput).toContain('VERIFY_RESULTS=remote_code_status remained running after 2 poll attempt(s).');
+    expect(result.finalOutput).not.toContain('{"id":"rcli_running"');
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_running',
+      completionStatus: 'blocked',
+      blocker: 'remote_code_run still running; continue with the returned remote job id',
+    });
+  });
+
   test('executes leaked remote_code_run JSON through MCP with sanitized arguments', async () => {
     const calls = {
       toolCalls: [],
@@ -657,6 +794,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           targetId: 'prod',
           cwd: '/srv/apps/my-app',
           task: expect.stringContaining('Deploy the frontend remotely and verify the live route.'),
+          adminMode: true,
           waitMs: 30000,
         },
       },
@@ -781,6 +919,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           targetId: 'prod',
           cwd: '/srv/apps/my-app',
           task: expect.stringContaining('Deploy the live app and verify it.'),
+          adminMode: true,
           waitMs: 30000,
         },
       },
@@ -904,6 +1043,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
           targetId: 'prod',
           cwd: '/srv/apps/my-app',
           task: expect.stringContaining('Build the frontend remotely and verify the live route.'),
+          adminMode: true,
           waitMs: 30000,
         },
       },
