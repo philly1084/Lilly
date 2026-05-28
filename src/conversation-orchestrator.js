@@ -1671,6 +1671,7 @@ function buildScoredCandidateToolMap({
     hasSubAgentIntent = false,
     hasManagedAppIntent = false,
     hasRemoteCliAgentAuthoringRequest = false,
+    hasExplicitRemoteCliAgentRequest = false,
     explicitGitIntent = false,
     explicitK3sDeployIntent = false,
     hasWorkloadSetupIntent = false,
@@ -1789,9 +1790,9 @@ function buildScoredCandidateToolMap({
     if (executionProfile === REMOTE_BUILD_EXECUTION_PROFILE && hasStructuredRemoteWorkbenchIntent) {
         adjustCandidateToolScore(scoreMap, 'remote-workbench', 0.65, 'The request names a structured remote repo, file, build, test, log, rollout, or verification action.');
     }
-    if (hasRemoteCliAgentAuthoringRequest) {
-        adjustCandidateToolScore(scoreMap, 'remote-cli-agent', 1.35, 'The request explicitly asks an assisted remote CLI agent to own a coding/build/deploy task.');
-        adjustCandidateToolScore(scoreMap, remoteToolId, -0.2, 'The assisted remote CLI agent is a better fit than one-shot remote commands for this authoring loop.');
+    if (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest) {
+        adjustCandidateToolScore(scoreMap, 'remote-cli-agent', hasRemoteCliAgentAuthoringRequest ? 1.35 : 1.15, 'The request explicitly asks an assisted remote CLI agent to own the remote task.');
+        adjustCandidateToolScore(scoreMap, remoteToolId, hasRemoteCliAgentAuthoringRequest ? -0.2 : -1.2, 'The assisted remote CLI agent is a better fit than one-shot remote commands for this request.');
     }
     if (hasManagedAppIntent) {
         adjustCandidateToolScore(scoreMap, 'managed-app', 1.45, 'GitLab-backed managed apps provide repository, pipeline, registry, and build-event observability.');
@@ -5540,7 +5541,7 @@ function hasRemoteCliAgentAuthoringIntent(text = '') {
         return true;
     }
 
-    const explicitAssistedCli = /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|agents sdk remote cli|assisted cli|cli tool)\b/.test(normalized);
+    const explicitAssistedCli = hasExplicitRemoteCliAgentIntentText(normalized);
     const authoringIntent = /\b(create|make|build|generate|implement|develop|write|update|fix|finish|continue|resume|complete|deploy|publish|launch|ship)\b/.test(normalized);
     const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|visualization|visualisation|viewer|map|globe|world|service)\b/.test(normalized);
     const continuationTarget = /\b(it|that|same|work|project|task)\b/.test(normalized);
@@ -5555,6 +5556,15 @@ function hasRemoteCliAgentAuthoringIntent(text = '') {
     }
 
     return authoringIntent && softwareTarget && remoteTarget && deploymentIntent && !infraOnly;
+}
+
+function hasExplicitRemoteCliAgentIntentText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized || hasDiscoveryPlanningIntentText(normalized)) {
+        return false;
+    }
+
+    return /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|agents sdk remote cli|assisted cli|cli tool)\b/.test(normalized);
 }
 
 function hasExplicitDirectRemoteCliIntent(text = '') {
@@ -10960,6 +10970,8 @@ class ConversationOrchestrator extends EventEmitter {
         const hasManagedAppIntent = hasManagedAppIntentText(prompt);
         const hasManagedAppAuthoringRequest = hasManagedAppAuthoringIntent(prompt, { executionProfile });
         const hasRemoteCliAgentAuthoringRequest = hasRemoteCliAgentAuthoringIntent(prompt);
+        const hasExplicitRemoteCliAgentRequest = hasExplicitRemoteCliAgentIntentText(prompt)
+            && !hasExplicitDirectRemoteCliIntent(prompt);
         const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
             && getRemoteBuildMetadataPreference(metadata, toolContext)
             && hasRemoteCliAgentAuthoringRequest
@@ -11025,7 +11037,7 @@ class ConversationOrchestrator extends EventEmitter {
         ).trim();
         const shouldBypassEndToEndWorkflow = shouldPreferRemoteWebsiteSource;
         const shouldUseRemoteCliAgentAuthoring = allowedToolIds.includes('remote-cli-agent')
-            && hasRemoteCliAgentAuthoringRequest;
+            && (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest);
         const inferredWorkflowSeed = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
             && !shouldBypassEndToEndWorkflow
             && !shouldUseRemoteCliAgentAuthoring
@@ -11105,6 +11117,7 @@ class ConversationOrchestrator extends EventEmitter {
                 hasSubAgentIntent,
                 hasManagedAppIntent: hasManagedAppIntent || hasManagedAppAuthoringRequest,
                 hasRemoteCliAgentAuthoringRequest,
+                hasExplicitRemoteCliAgentRequest,
                 explicitGitIntent,
                 explicitK3sDeployIntent,
                 hasWorkloadSetupIntent,
@@ -11163,7 +11176,7 @@ class ConversationOrchestrator extends EventEmitter {
             if ((explicitGitIntent || workflowNeedsDeployLane) && allowedToolIds.includes('git-safe')) {
                 candidates.add('git-safe');
             }
-            if (hasRemoteCliAgentAuthoringRequest && allowedToolIds.includes('remote-cli-agent')) {
+            if ((hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest) && allowedToolIds.includes('remote-cli-agent')) {
                 candidates.add('remote-cli-agent');
             }
             if ((hasManagedAppIntent || hasManagedAppAuthoringRequest || hasManagedAppContinuationRecovery || prefersManagedAppForRemoteBuild)
@@ -11372,7 +11385,7 @@ class ConversationOrchestrator extends EventEmitter {
             if (allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
                 candidates.add(SELF_REFLECTION_UPDATE_TOOL_ID);
             }
-            if (hasRemoteCliAgentAuthoringRequest && allowedToolIds.includes('remote-cli-agent')) {
+            if ((hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest) && allowedToolIds.includes('remote-cli-agent')) {
                 candidates.add('remote-cli-agent');
             }
             if (effectiveRolePipelineSeed?.requiresDesign && allowedToolIds.includes('design-resource-search')) {
@@ -11723,7 +11736,11 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         if (toolPolicy.candidateToolIds.includes('remote-cli-agent')
-            && hasRemoteCliAgentAuthoringIntent(objective)) {
+            && (hasRemoteCliAgentAuthoringIntent(objective) || (
+                hasExplicitRemoteCliAgentIntentText(objective)
+                && !hasExplicitDirectRemoteCliIntent(objective)
+            ))) {
+            const authoringIntent = hasRemoteCliAgentAuthoringIntent(objective);
             const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
             const cwd = String(priorAgentState.cwd || '').trim()
                 || resolvePreferredRemoteCliWorkspacePath({
@@ -11740,7 +11757,9 @@ class ConversationOrchestrator extends EventEmitter {
             });
             return finalizeAction({
                 tool: 'remote-cli-agent',
-                reason: 'The request asks an assisted remote CLI agent to own the coding, build, deploy, and verification loop.',
+                reason: authoringIntent
+                    ? 'The request asks an assisted remote CLI agent to own the coding, build, deploy, and verification loop.'
+                    : 'The request explicitly asks the assisted remote CLI agent to own the remote task.',
                 params: {
                     task,
                     waitMs: 30000,

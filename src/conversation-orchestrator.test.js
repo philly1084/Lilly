@@ -9616,6 +9616,61 @@ describe('ConversationOrchestrator', () => {
         });
     });
 
+    test('routes explicit remote CLI agent connection checks to remote-cli-agent instead of direct SSH', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'git-safe', 'k3s-deploy', 'web-search', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Can you remote cli agent into our server and check the workspace?';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session: {
+                metadata: {},
+            },
+            toolPolicy,
+            toolContext: {
+                remoteWorkspacePath: '/srv/apps/my-app',
+            },
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(directAction).toEqual({
+            tool: 'remote-cli-agent',
+            reason: 'The request explicitly asks the assisted remote CLI agent to own the remote task.',
+            params: {
+                task: objective,
+                waitMs: 30000,
+                adminMode: true,
+                cwd: '/srv/apps/my-app',
+            },
+        });
+    });
+
     test('anchors remote-cli-agent continuation prompts to the original task and prior session', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
