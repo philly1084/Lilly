@@ -61,6 +61,25 @@ describe('RemoteCliAgentTool', () => {
     }));
   });
 
+  test('advertises the runner poll default and normalizes status poll aliases', async () => {
+    const { tool, runner } = buildTool();
+
+    expect(tool.inputSchema.properties.maxStatusPolls.default).toBe(20);
+
+    const result = await tool.execute({
+      task: 'Continue the remote build.',
+      max_status_polls: '21',
+      status_poll_interval_ms: '1500',
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      task: 'Continue the remote build.',
+      maxStatusPolls: 21,
+      statusPollIntervalMs: 1500,
+    }));
+  });
+
   test('reports a lane-specific error when a raw command is sent without a task', async () => {
     const { tool, runner } = buildTool();
 

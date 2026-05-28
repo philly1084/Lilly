@@ -191,6 +191,13 @@ function cleanMarkerValue(value = '') {
     .replace(/^'+|'+$/g, '');
 }
 
+function pushUniqueLine(lines = [], line = '') {
+  const normalized = normalizeText(line);
+  if (normalized && !lines.includes(normalized)) {
+    lines.push(normalized);
+  }
+}
+
 function collectCodexJsonlTextFragments(value = '', depth = 0) {
   if (depth > 3) {
     return [];
@@ -373,10 +380,10 @@ function hasTerminalRemoteCliProof(metadata = {}) {
 
 function extractRemoteCliRunMetadata(finalOutput = '') {
   const text = expandRemoteCliProofText(finalOutput);
-  const sessionId = readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID'])
-    || cleanMarkerValue(text.match(/remote\s+session\s*:\s*`?([^`\s]+)/i)?.[1] || '');
-  const jobId = readMarkerLine(text, ['REMOTE_CLI_JOB_ID', 'REMOTE_CODE_JOB_ID', 'JOB_ID'])
-    || cleanMarkerValue(text.match(/(?:job\s*id|jobId|job_id|runId|run_id)\s*[:=]\s*`?([a-z0-9_.:-]{3,128})/i)?.[1] || '');
+  const sessionId = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID']))
+    || normalizeOptionalProofValue(text.match(/remote\s+session\s*:\s*`?([^`\s]+)/i)?.[1] || '');
+  const jobId = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_CLI_JOB_ID', 'REMOTE_CODE_JOB_ID', 'JOB_ID']))
+    || normalizeOptionalProofValue(text.match(/(?:job\s*id|jobId|job_id|runId|run_id)\s*[:=]\s*`?([a-z0-9_.:-]{3,128})/i)?.[1] || '');
   const workspace = readMarkerLine(text, ['WORKSPACE', 'REMOTE_WORKSPACE', 'CWD'])
     || cleanMarkerValue(text.match(/workspace\s*:\s*`?([^`\n]+)/i)?.[1] || '');
   const gitRepo = readMarkerLine(text, ['GIT_REPO', 'GIT_REMOTE', 'REPOSITORY'])
@@ -432,6 +439,61 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     ...(blocker ? { blocker } : {}),
     completionStatus,
   };
+}
+
+function buildRemoteCliProofDisplay(source = '', metadata = {}) {
+  const text = expandRemoteCliProofText(source);
+  const lines = [];
+
+  readMarkerLines(text, ['STALE_REMOTE_CLI_JOB_ID'])
+    .forEach((value) => pushUniqueLine(lines, `STALE_REMOTE_CLI_JOB_ID=${value}`));
+
+  const remoteAgentResult = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_AGENT_RESULT']));
+  if (remoteAgentResult) {
+    pushUniqueLine(lines, `REMOTE_AGENT_RESULT=${remoteAgentResult}`);
+  }
+
+  if (metadata.sessionId) {
+    pushUniqueLine(lines, `REMOTE_CLI_SESSION_ID=${metadata.sessionId}`);
+  }
+  if (metadata.workspace) {
+    pushUniqueLine(lines, `WORKSPACE=${metadata.workspace}`);
+  }
+  if (metadata.jobId) {
+    pushUniqueLine(lines, `REMOTE_CLI_JOB_ID=${metadata.jobId}`);
+  }
+  if (metadata.gitRepo) {
+    pushUniqueLine(lines, `GIT_REPO=${metadata.gitRepo}`);
+  }
+  if (metadata.gitCommit) {
+    pushUniqueLine(lines, `GIT_COMMIT=${metadata.gitCommit}`);
+  }
+  if (metadata.deployment) {
+    pushUniqueLine(lines, `DEPLOYMENT=${metadata.deployment}`);
+  }
+  if (metadata.publicHost) {
+    pushUniqueLine(lines, `PUBLIC_HOST=${metadata.publicHost}`);
+  }
+  if (metadata.publicUrl) {
+    pushUniqueLine(lines, `PUBLIC_URL=${metadata.publicUrl}`);
+  }
+  if (metadata.uiCheckReport) {
+    pushUniqueLine(lines, `UI_CHECK_REPORT=${metadata.uiCheckReport}`);
+  }
+  if (metadata.whatChanged) {
+    pushUniqueLine(lines, `WHAT_CHANGED=${metadata.whatChanged}`);
+  }
+  (metadata.verifyCommands || []).forEach((value) => {
+    pushUniqueLine(lines, `VERIFY_COMMANDS=${value}`);
+  });
+  (metadata.verifyResults || []).forEach((value) => {
+    pushUniqueLine(lines, `VERIFY_RESULTS=${value}`);
+  });
+  if (metadata.blocker) {
+    pushUniqueLine(lines, `BLOCKER=${metadata.blocker}`);
+  }
+
+  return lines.join('\n');
 }
 
 function normalizePositiveInteger(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
@@ -780,7 +842,7 @@ function buildRemoteCodeFinalText({
   const resolvedBlocker = explicitBlocker
     || (isFailedRemoteCodeStatus(status) ? `remote_code_run ${status}` : '')
     || missingProofBlocker;
-  const displaySource = isStillRunning && !hasTerminalProof ? '' : source;
+  const displaySource = isStillRunning && !hasTerminalProof ? '' : buildRemoteCliProofDisplay(source, metadata);
   const lines = [displaySource || fallbackVerifyResult || 'remote_code_run completed without text output.'];
 
   if (!metadata.sessionId && sessionId) {

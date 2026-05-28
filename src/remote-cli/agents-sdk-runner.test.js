@@ -513,6 +513,95 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('compacts completed Codex JSONL remote_code_run output before returning it to chat', async () => {
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-jsonl';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool() {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              id: 'rcli_jsonl',
+              targetId: 'k3s-prod',
+              cwd: '/srv/apps/my-app',
+              status: 'completed',
+              stdout: [
+                JSON.stringify({ type: 'thread.started', thread_id: 'thread-jsonl' }),
+                JSON.stringify({
+                  type: 'item.completed',
+                  item: {
+                    type: 'command_execution',
+                    command: '/bin/bash -lc pwd',
+                    aggregated_output: '/srv/apps/my-app\n',
+                    status: 'completed',
+                  },
+                }),
+                JSON.stringify({
+                  type: 'item.completed',
+                  item: {
+                    type: 'agent_message',
+                    text: [
+                      'REMOTE_AGENT_RESULT=jsonl-compact:/srv/apps/my-app',
+                      'REMOTE_CLI_SESSION_ID=not_available',
+                      'WORKSPACE=/srv/apps/my-app',
+                      'REMOTE_CLI_JOB_ID=not_available',
+                      'WHAT_CHANGED=verified remote workspace only',
+                      'VERIFY_COMMANDS=pwd',
+                      'VERIFY_RESULTS=pass: pwd returned /srv/apps/my-app',
+                      'PUBLIC_URL=not_available',
+                      'BLOCKER=none',
+                    ].join('\n'),
+                  },
+                }),
+              ].join('\n'),
+              stderr: 'Reading additional input from stdin...\n',
+            }),
+          }],
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Verify the remote workspace.',
+      waitMs: 30000,
+    });
+
+    expect(result).toMatchObject({
+      remoteCodeJobId: 'rcli_jsonl',
+      remoteCodeSessionId: null,
+      cwd: '/srv/apps/my-app',
+      completionStatus: 'complete',
+      whatChanged: 'verified remote workspace only',
+    });
+    expect(result.finalOutput).toContain('REMOTE_AGENT_RESULT=jsonl-compact:/srv/apps/my-app');
+    expect(result.finalOutput).toContain('VERIFY_RESULTS=pass: pwd returned /srv/apps/my-app');
+    expect(result.finalOutput).not.toContain('"type":"thread.started"');
+    expect(result.finalOutput).not.toContain('"stdout"');
+    expect(result.finalOutput).not.toContain('/bin/bash -lc pwd');
+    expect(result.finalOutput).not.toContain('Reading additional input from stdin');
+  });
+
   test('summarizes running remote_code_run jobs without dumping repeated JSON status bodies', async () => {
     const calls = {
       toolCalls: [],

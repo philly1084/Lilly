@@ -123,6 +123,30 @@ function normalizeRemoteCliAgentParams(params = {}) {
     params.maxTurns = maxTurns;
   }
 
+  const maxStatusPolls = normalizeInteger(firstDefined(
+    params.maxStatusPolls,
+    params.max_status_polls,
+    argumentObject?.maxStatusPolls,
+    argumentObject?.max_status_polls,
+    remoteCodeRun?.maxStatusPolls,
+    remoteCodeRun?.max_status_polls,
+  ));
+  if (maxStatusPolls !== undefined) {
+    params.maxStatusPolls = maxStatusPolls;
+  }
+
+  const statusPollIntervalMs = normalizeInteger(firstDefined(
+    params.statusPollIntervalMs,
+    params.status_poll_interval_ms,
+    argumentObject?.statusPollIntervalMs,
+    argumentObject?.status_poll_interval_ms,
+    remoteCodeRun?.statusPollIntervalMs,
+    remoteCodeRun?.status_poll_interval_ms,
+  ));
+  if (statusPollIntervalMs !== undefined) {
+    params.statusPollIntervalMs = statusPollIntervalMs;
+  }
+
   const adminMode = normalizeBoolean(firstDefined(params.adminMode, params.admin_mode, params.runnerAdmin, params.runner_admin, argumentObject?.adminMode, argumentObject?.admin_mode));
   if (adminMode !== undefined) {
     params.adminMode = adminMode;
@@ -196,8 +220,8 @@ class RemoteCliAgentTool extends ToolBase {
           },
           maxStatusPolls: {
             type: 'integer',
-            default: 3,
-            description: 'Maximum compatibility-fallback remote_code_status polls after remote_code_run returns a jobId. Defaults low so running jobs return resumable job/session markers instead of freezing the caller.',
+            default: 20,
+            description: 'Maximum compatibility-fallback remote_code_status polls after remote_code_run returns a jobId. Defaults high enough for normal remote coding jobs to finish before returning resumable job/session markers.',
           },
           statusPollIntervalMs: {
             type: 'integer',
