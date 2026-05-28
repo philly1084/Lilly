@@ -7,6 +7,8 @@ const BLOCKED_TTS_PACKAGES = new Map([
     ['kokoro-js', 'imports the eSpeak NG-backed phonemizer package at module load time'],
     ['phonemizer', 'bundles an eSpeak NG-based G2P runtime'],
     ['ffmpeg-static', 'ships a GPL-licensed ffmpeg binary package in node_modules'],
+    ['gsap', 'uses a non-standard no-charge license and should not be bundled in the product image'],
+    ['p5', 'uses LGPL-2.1 and should remain an explicit user/runtime choice instead of a bundled product dependency'],
 ]);
 
 function parseOptionalBoolean(value) {
@@ -45,7 +47,7 @@ async function main() {
         env.allowRemoteModels = allowRemoteModels;
     }
 
-    await verifySharpRuntime();
+    verifyNoBundledOptionalMediaRuntimes();
 
     const { KokoroTTS } = require('../src/tts/kokoro-transformers-runtime');
     const tts = await KokoroTTS.from_pretrained(modelId, {
@@ -122,31 +124,22 @@ function verifyPermissiveTtsDependencyGraph() {
         throw new Error(`permissive TTS dependency guard failed (${blocked.join('; ')})`);
     }
 
-    console.log('[TTS Build] permissive TTS dependency guard ready: no kokoro-js, phonemizer, or ffmpeg-static package entries.');
+    console.log('[TTS Build] permissive TTS dependency guard ready: no blocked TTS/browser media package entries.');
 }
 
-async function verifySharpRuntime() {
-    let sharp;
-    try {
-        sharp = require('sharp');
-    } catch (error) {
-        throw new Error(`sharp runtime unavailable: ${error.message}`);
+function verifyNoBundledOptionalMediaRuntimes() {
+    const rootDir = path.resolve(__dirname, '..');
+    const blockedInstallPaths = [
+        path.join(rootDir, 'node_modules/sharp'),
+        path.join(rootDir, 'node_modules/@img'),
+    ];
+    const installed = blockedInstallPaths.filter((targetPath) => fs.existsSync(targetPath));
+
+    if (installed.length > 0) {
+        throw new Error(`optional Sharp/libvips runtime should not be bundled in the product image: ${installed.join(', ')}`);
     }
 
-    const png = await sharp({
-        create: {
-            width: 1,
-            height: 1,
-            channels: 3,
-            background: { r: 0, g: 0, b: 0 },
-        },
-    }).png().toBuffer();
-
-    if (!Buffer.isBuffer(png) || png.length < 8 || png.toString('ascii', 1, 4) !== 'PNG') {
-        throw new Error('sharp runtime generated invalid PNG output during build verification.');
-    }
-
-    console.log(`[TTS Build] sharp ready: sharp=${sharp.versions?.sharp || 'unknown'} vips=${sharp.versions?.vips || 'unknown'} arch=${process.arch}`);
+    console.log('[TTS Build] optional Sharp/libvips runtime omitted from bundled image.');
 }
 
 main().catch((error) => {
