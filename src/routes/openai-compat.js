@@ -570,10 +570,31 @@ function isFinalSynthesisPlaceholder(text = '') {
 function summarizeCompatToolEvent(event = {}) {
     const toolName = String(event?.toolCall?.function?.name || event?.result?.toolId || 'tool').trim();
     const success = event?.result?.success !== false;
-    const stdout = stripNullCharacters(String(event?.result?.data?.stdout || '')).trim();
-    const stderr = stripNullCharacters(String(event?.result?.data?.stderr || '')).trim();
+    const data = event?.result?.data || {};
+    const stdout = stripNullCharacters(String(data?.stdout || '')).trim();
+    const stderr = stripNullCharacters(String(data?.stderr || '')).trim();
     const error = stripNullCharacters(String(event?.result?.error || '')).trim();
     const preview = stdout || stderr || error;
+
+    if (toolName === 'remote-cli-agent' && data && typeof data === 'object') {
+        const parts = [
+            data.completionStatus === 'complete' ? 'Remote CLI task completed.' : '',
+            data.completionStatus === 'blocked' ? 'Remote CLI task is blocked.' : '',
+            data.cwd ? `Workspace: ${data.cwd}.` : '',
+            data.whatChanged ? `What changed: ${data.whatChanged}.` : '',
+            Array.isArray(data.verifyCommands) && data.verifyCommands.length > 0
+                ? `Verification commands: ${data.verifyCommands.join('; ')}.`
+                : '',
+            Array.isArray(data.verifyResults) && data.verifyResults.length > 0
+                ? `Verification results: ${data.verifyResults.join('; ')}.`
+                : '',
+            data.publicUrl ? `Public URL: ${data.publicUrl}.` : '',
+            data.blocker ? `Blocker: ${data.blocker}.` : '',
+        ].filter(Boolean).join(' ');
+        if (parts) {
+            return `- ${toolName}: ${success ? 'succeeded' : 'failed'}. ${parts}`;
+        }
+    }
 
     if (!success) {
         return [

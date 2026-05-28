@@ -7729,6 +7729,55 @@ function summarizeImageGenerateToolEvent(event = {}) {
     ].filter(Boolean).join(' ');
 }
 
+function summarizeRemoteCliAgentDataForUser(data = {}) {
+    const lines = [];
+    const completionStatus = String(data?.completionStatus || '').trim();
+    const whatChanged = String(data?.whatChanged || '').trim();
+    const cwd = String(data?.cwd || '').trim();
+    const publicUrl = String(data?.publicUrl || '').trim();
+    const blocker = String(data?.blocker || '').trim();
+    const verifyCommands = Array.isArray(data?.verifyCommands) ? data.verifyCommands.filter(Boolean) : [];
+    const verifyResults = Array.isArray(data?.verifyResults) ? data.verifyResults.filter(Boolean) : [];
+
+    if (!whatChanged && verifyResults.length === 0 && !publicUrl && !blocker) {
+        return '';
+    }
+
+    if (completionStatus === 'complete') {
+        lines.push('Remote CLI task completed.');
+    } else if (completionStatus === 'blocked') {
+        lines.push('Remote CLI task is blocked.');
+    } else if (completionStatus) {
+        lines.push(`Remote CLI task status: ${completionStatus}.`);
+    } else {
+        lines.push('Remote CLI task returned a result.');
+    }
+
+    if (cwd) {
+        lines.push(`Workspace: ${cwd}.`);
+    }
+    if (whatChanged) {
+        lines.push(`What changed: ${whatChanged}.`);
+    }
+    if (verifyCommands.length > 0) {
+        lines.push(`Verification commands: ${verifyCommands.join('; ')}.`);
+    }
+    if (verifyResults.length > 0) {
+        lines.push(`Verification results: ${verifyResults.join('; ')}.`);
+    }
+    if (publicUrl) {
+        lines.push(`Public URL: ${publicUrl}.`);
+    }
+    if (blocker) {
+        lines.push(`Blocker: ${blocker}.`);
+    }
+    if (data?.remoteCodeJobId) {
+        lines.push(`Remote job id: ${data.remoteCodeJobId}.`);
+    }
+
+    return lines.join(' ');
+}
+
 function summarizeToolEventForUser(event = {}) {
     const tool = String(event?.toolCall?.function?.name || event?.result?.toolId || 'tool').trim();
     const reason = String(event?.reason || '').trim();
@@ -7747,6 +7796,7 @@ function summarizeToolEventForUser(event = {}) {
 
     if (tool === 'remote-cli-agent') {
         const finalOutput = String(data?.finalOutput || '').trim();
+        const structuredSummary = summarizeRemoteCliAgentDataForUser(data);
         const continuity = [
             data?.sessionId ? `remote session: ${data.sessionId}` : '',
             data?.cwd ? `workspace: ${data.cwd}` : '',
@@ -7758,7 +7808,7 @@ function summarizeToolEventForUser(event = {}) {
             data?.publicHost ? `public host: ${data.publicHost}` : '',
         ].filter(Boolean).join('; ');
         preview = [
-            finalOutput ? truncateText(normalizeInlineText(finalOutput), REMOTE_CLI_FINAL_OUTPUT_SUMMARY_CHARS) : '',
+            structuredSummary || (finalOutput ? truncateText(normalizeInlineText(finalOutput), REMOTE_CLI_FINAL_OUTPUT_SUMMARY_CHARS) : ''),
             continuity,
         ].filter(Boolean).join(' ');
     } else if (tool === 'web-search') {

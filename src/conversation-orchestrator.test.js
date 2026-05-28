@@ -2909,6 +2909,61 @@ describe('ConversationOrchestrator', () => {
         expect(prompt).not.toContain('[truncated');
     });
 
+    test('tool synthesis summarizes structured remote-cli-agent results without marker dumps', async () => {
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse('Remote CLI answer', 'resp_remote_cli_structured')),
+            complete: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: null,
+            sessionStore: null,
+            memoryService: null,
+        });
+
+        await orchestrator.buildFinalResponse({
+            input: 'Can you remote cli agent into our server?',
+            objective: 'Can you remote cli agent into our server?',
+            toolEvents: [{
+                toolCall: {
+                    function: {
+                        name: 'remote-cli-agent',
+                    },
+                },
+                result: {
+                    success: true,
+                    toolId: 'remote-cli-agent',
+                    data: {
+                        finalOutput: [
+                            'REMOTE_AGENT_RESULT=chat-output-clean:/srv/apps/my-app',
+                            'WORKSPACE=/srv/apps/my-app',
+                            'VERIFY_COMMANDS=pwd; hostname',
+                            'VERIFY_RESULTS=pass: pwd returned /srv/apps/my-app; hostname returned ubuntu-32gb-fsn1-1',
+                            'REMOTE_CLI_JOB_ID=rcli_clean',
+                            'WHAT_CHANGED=verified remote CLI workspace access only',
+                            'PUBLIC_URL=not_available',
+                            'BLOCKER=none',
+                        ].join('\n'),
+                        remoteCodeJobId: 'rcli_clean',
+                        cwd: '/srv/apps/my-app',
+                        whatChanged: 'verified remote CLI workspace access only',
+                        verifyCommands: ['pwd; hostname'],
+                        verifyResults: ['pass: pwd returned /srv/apps/my-app; hostname returned ubuntu-32gb-fsn1-1'],
+                        completionStatus: 'complete',
+                    },
+                },
+            }],
+        });
+
+        const prompt = llmClient.createResponse.mock.calls[0][0].input;
+        expect(prompt).toContain('Remote CLI task completed.');
+        expect(prompt).toContain('Workspace: /srv/apps/my-app.');
+        expect(prompt).toContain('Verification results: pass: pwd returned /srv/apps/my-app; hostname returned ubuntu-32gb-fsn1-1.');
+        expect(prompt).not.toContain('REMOTE_AGENT_RESULT=');
+        expect(prompt).not.toContain('VERIFY_COMMANDS=');
+        expect(prompt).not.toContain('"type":"thread.started"');
+    });
+
     test('recovers missing file-write content from recent assistant html when the planner omits it', async () => {
         const llmClient = {
             createResponse: jest.fn().mockResolvedValue(buildResponse('Saved the HTML file.', 'resp_file_write')),
