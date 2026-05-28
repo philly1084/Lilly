@@ -5,6 +5,7 @@
 const { ToolBase } = require('../../ToolBase');
 const { config } = require('../../../../config');
 const { normalizeDomainList } = require('./research-site-policy');
+const { applyResearchFreshnessDefaults } = require('../../../../research-freshness');
 
 const DEFAULT_SEARCH_LIMIT = Math.min(config.search.defaultLimit, config.search.maxLimit);
 const DEFAULT_MAX_TOKENS = Math.max(10000, Number(config.search.defaultMaxTokens) || 50000);
@@ -190,6 +191,10 @@ class WebSearchTool extends ToolBase {
           query: {
             type: 'string',
             description: 'Search query',
+          },
+          prompt: {
+            type: 'string',
+            description: 'Optional original request text used to infer safe freshness defaults when the query has no timeframe.',
           },
           engine: {
             type: 'string',
@@ -491,6 +496,7 @@ class WebSearchTool extends ToolBase {
       reasoning_effort: snakeReasoningEffort = null,
       languagePreference = null,
       language_preference: snakeLanguagePreference = null,
+      prompt = '',
     } = params;
     const returnImages = normalizeBoolean(params.returnImages ?? params.return_images ?? false);
     const returnVideos = normalizeBoolean(params.returnVideos ?? params.return_videos ?? false);
@@ -532,14 +538,25 @@ class WebSearchTool extends ToolBase {
     const domainFilter = normalizeSearchDomainFilters(domains);
     const normalizedLanguageFilter = normalizeLanguageFilter(languageFilter);
     const normalizedUserLocation = normalizeUserLocation(userLocation, region);
+    const freshnessDefaults = applyResearchFreshnessDefaults({
+      query,
+      prompt,
+      timeRange,
+      publishedAfter,
+      publishedBefore,
+      updatedAfter,
+      updatedBefore,
+    });
+    const resolvedQuery = freshnessDefaults.query;
+    const resolvedTimeRange = freshnessDefaults.timeRange;
     const startTime = Date.now();
     const result = resolvedResearchMode === 'search'
       ? await this.searchPerplexity({
-        query,
+        query: resolvedQuery,
         limit,
         safeSearch,
         region,
-        timeRange,
+        timeRange: resolvedTimeRange,
         includeSnippets,
         includeUrls,
         domains: domainFilter,
@@ -555,11 +572,11 @@ class WebSearchTool extends ToolBase {
       })
       : isSonarResearchMode(resolvedResearchMode)
         ? await this.sonarPerplexity({
-          query,
+          query: resolvedQuery,
           researchMode: resolvedResearchMode,
           limit,
           region,
-          timeRange,
+          timeRange: resolvedTimeRange,
           includeSnippets,
           includeUrls,
           domains: domainFilter,
@@ -582,11 +599,11 @@ class WebSearchTool extends ToolBase {
           languagePreference: resolvedLanguagePreference,
         })
       : await this.researchPerplexity({
-        query,
+        query: resolvedQuery,
         researchMode: resolvedResearchMode,
         limit,
         region,
-        timeRange,
+        timeRange: resolvedTimeRange,
         includeSnippets,
         includeUrls,
         domains: domainFilter,
@@ -615,7 +632,7 @@ class WebSearchTool extends ToolBase {
     );
 
     return {
-      query,
+      query: resolvedQuery,
       engine,
       researchMode: resolvedResearchMode,
       domainFilter,

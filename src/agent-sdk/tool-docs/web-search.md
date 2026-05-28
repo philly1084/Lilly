@@ -9,6 +9,7 @@ Use when:
 
 Key params:
 - `query`
+- `prompt`
 - `engine`
 - `researchMode`
 - `limit`
@@ -37,6 +38,7 @@ Notes:
 - `perplexity` is the working engine in this backend.
 - Requires `PERPLEXITY_API_KEY` in the backend environment.
 - Default locality is Canadian: use `region: "ca-en"` and `userLocation: { "country": "CA" }` for ordinary searches, and prefer Canadian sources or official Canadian source families first unless the user explicitly asks for another country, region, or publisher set.
+- If the user gives no timeframe, make the search freshness-aware. Use "modern" in broad provider/tool/best-practice queries, and for news or technology topics add terms like "recent" or "this month" and set `timeRange: "month"` unless the user asks for a different period.
 - `researchMode: "search"` uses Perplexity's raw `/search` endpoint for ranked results.
 - `researchMode: "sonar" | "sonar-pro" | "sonar-reasoning-pro" | "sonar-deep-research"` uses Perplexity Sonar `/v1/sonar` for grounded answers, citations, search results, and optional media.
 - `researchMode: "fast-search" | "pro-search" | "deep-research" | "advanced-deep-research"` uses Perplexity's `/v1/agent` presets for autonomous searched answers plus source results.

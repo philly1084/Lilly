@@ -5821,9 +5821,10 @@ describe('ConversationOrchestrator', () => {
             reason: 'Explicit research request should start with Perplexity-backed web search.',
             params: expect.objectContaining({
                 engine: 'perplexity',
-                query: 'managed Postgres providers for startups',
+                query: 'managed Postgres providers for startups modern',
                 researchMode: 'search',
                 region: 'ca-en',
+                timeRange: 'all',
                 userLocation: {
                     country: 'CA',
                 },
@@ -6588,6 +6589,41 @@ describe('ConversationOrchestrator', () => {
                 searchContextSize: 'medium',
                 maxOutputTokens: expect.any(Number),
                 maxSteps: 4,
+            }),
+        }));
+    });
+
+    test('adds month freshness to undated technology research', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    toolId === 'web-search'
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Please research AI chip startups';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            toolPolicy,
+        });
+
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'web-search',
+            params: expect.objectContaining({
+                query: 'AI chip startups recent this month',
+                timeRange: 'month',
             }),
         }));
     });

@@ -129,6 +129,10 @@ const {
     inferSurfaceFinisher,
     scorePerceivedIntelligence,
 } = require('./perceived-intelligence-harness');
+const {
+    applyResearchFreshnessDefaults,
+    inferDefaultResearchTimeRange,
+} = require('./research-freshness');
 const SYNTHETIC_STREAM_CHUNK_SIZE = 120;
 const MAX_PLAN_STEPS = 4;
 const MAX_TOOL_RESULT_CHARS = config.memory.toolResultCharLimit;
@@ -2425,24 +2429,7 @@ function normalizeResearchSearchResultCount() {
 }
 
 function inferResearchTimeRangeFromText(text = '') {
-    const normalized = String(text || '').trim().toLowerCase();
-    if (!normalized) {
-        return 'all';
-    }
-
-    if (/\b(today|latest|current|breaking|news|headlines?|weather|forecast|temperature)\b/.test(normalized)) {
-        return 'day';
-    }
-
-    if (/\b(this week|weekly|past week|last week)\b/.test(normalized)) {
-        return 'week';
-    }
-
-    if (/\b(this month|monthly|past month|last month)\b/.test(normalized)) {
-        return 'month';
-    }
-
-    return 'all';
+    return inferDefaultResearchTimeRange(text);
 }
 
 function inferPerplexityResearchModeFromText(text = '') {
@@ -2550,12 +2537,12 @@ function extractExplicitWebResearchQuery(text = '') {
     }
 
     const patterns = [
-        /\b(?:do|perform|run)\s+research\s+(?:on|about|into)?\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bweb research\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bresearch\s+(?:on|about|into)?\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\blook up\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bsearch for\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bsearch the web for\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
+        /\b(?:do|perform|run)\s+research(?:\s+(?:on|about|into))?\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bweb research\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bresearch(?:\s+(?:on|about|into))?\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\blook up\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bsearch for\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bsearch the web for\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
     ];
 
     for (const pattern of patterns) {
@@ -11817,6 +11804,10 @@ class ConversationOrchestrator extends EventEmitter {
             && toolPolicy.candidateToolIds.includes('web-search')
             && searchQuery) {
             const localeParams = inferWebSearchLocaleParamsFromText(objective, searchQuery);
+            const freshnessParams = applyResearchFreshnessDefaults({
+                query: localeParams.query || searchQuery,
+                prompt: objective,
+            });
             const expandedResearchParams = inferExpandedResearchParamsFromText(objective);
             return finalizeAction({
                 tool: 'web-search',
@@ -11824,12 +11815,13 @@ class ConversationOrchestrator extends EventEmitter {
                     ? 'Explicit research request should start with Perplexity-backed web search.'
                     : 'Current-information request should start with Perplexity-backed web search.',
                 params: {
-                    query: localeParams.query || searchQuery,
+                    query: freshnessParams.query,
+                    prompt: objective,
                     engine: 'perplexity',
                     researchMode: inferPerplexityResearchModeFromText(objective),
                     limit: normalizeResearchSearchResultCount(),
                     region: localeParams.region || 'ca-en',
-                    timeRange: inferResearchTimeRangeFromText(objective),
+                    timeRange: freshnessParams.timeRange,
                     includeSnippets: true,
                     includeUrls: true,
                     ...expandedResearchParams,
@@ -12140,17 +12132,22 @@ class ConversationOrchestrator extends EventEmitter {
         if (toolPolicy.candidateToolIds.includes('web-search') && hasExplicitWebResearchIntentText(prompt)) {
             const query = extractExplicitWebResearchQuery(prompt) || prompt;
             const localeParams = inferWebSearchLocaleParamsFromText(prompt, query);
+            const freshnessParams = applyResearchFreshnessDefaults({
+                query: localeParams.query || query,
+                prompt,
+            });
             const expandedResearchParams = inferExpandedResearchParamsFromText(prompt);
             return [{
                 tool: 'web-search',
                 reason: 'Fallback for explicit research intent.',
                 params: {
-                    query: localeParams.query || query,
+                    query: freshnessParams.query,
+                    prompt,
                     engine: 'perplexity',
                     researchMode: inferPerplexityResearchModeFromText(prompt),
                     limit: normalizeResearchSearchResultCount(),
                     region: localeParams.region || 'ca-en',
-                    timeRange: 'all',
+                    timeRange: freshnessParams.timeRange,
                     includeSnippets: true,
                     includeUrls: true,
                     ...expandedResearchParams,
@@ -12463,6 +12460,7 @@ class ConversationOrchestrator extends EventEmitter {
             'When the latest user turn starts with `Survey response (`, treat that as the resolved answer to the prior checkpoint and continue the work instead of planning another survey.',
             'For research, web-search, web-fetch, or web-scrape work, avoid long scrape surveys and example-heavy intake. If clarification is truly needed, use one short choice hotlist with 2 to 4 concrete options, then continue after the answer.',
             'For routine public research and research-backed slides or documents, do not stop to ask which websites to scrape. Use Perplexity-backed `web-search` to discover candidate URLs, choose the strongest public sources yourself, verify them with `web-fetch` first, and use `web-scrape` only when a page needs rendered or structured extraction unless the user explicitly wants a constrained source list.',
+            'When a research search has no timeframe, keep the query freshness-aware: use "modern" for broad provider/tool/best-practice searches, and use "recent" or "this month" plus `timeRange: "month"` for news or technology topics.',
             'Every `document-workflow` step must include `params.action` set to `recommend`, `plan`, `generate`, `assemble`, or `generate-suite`.',
             'Use `document-workflow generate` for final briefs, reports, documents, HTML pages, and slide decks. For slides, slide decks, presentations, and PowerPoint requests, default the final deliverable to PPTX unless the user explicitly asks for interactive or HTML output.',
             'Do not ask the user to supply generic design-prompt quality wording for documents; document-workflow already applies built-in strategy, background design, evidence, accessibility, and final polish passes.',
@@ -13477,6 +13475,7 @@ class ConversationOrchestrator extends EventEmitter {
         if (allowedToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)) {
             parts.push('Use `document-workflow` to recommend, plan, and generate reports, briefs, HTML documents, and slide decks.');
             parts.push('For routine public research behind those deliverables, discover candidate source URLs through Perplexity-backed `web-search`, choose the strongest sites yourself, verify them with `web-fetch` first, and use `web-scrape` only when deeper extraction is needed instead of asking the user which websites to scrape.');
+            parts.push('When a search has no user-provided timeframe, make it freshness-aware: use "modern" for broad provider/tool/best-practice searches, and use "recent" or "this month" plus `timeRange: "month"` for news or technology topics.');
             parts.push('For research-backed deliverables, gather verified facts with `web-search` and `web-fetch` first, then use `web-scrape` only when a page needs rendered or structured extraction before calling `document-workflow generate` with grounded `sources` built from those verified results.');
             parts.push('For previewable website/dashboard/front-end/game/Vite artifacts, use `document-workflow generate-suite` with `formats:["html"]`, `buildMode:"sandbox"`, and `useSandbox:true` so the workflow can create a sandbox bundle.');
             parts.push('For explicit document packages or web-chat PDF/PPTX/XLSX deliverables, prefer `document-workflow generate-suite` with all requested formats and include `html` as a preview companion when useful.');

@@ -19,10 +19,11 @@ Primary tools:
 Quick flow:
 1. Define surface: website, dashboard, document, presentation, canvas, or sandbox preview.
 2. Call or grep `design-resource-search` for approved fonts, icons, images, and CSS references.
-3. Fetch 1 to 3 selected sources with `web-fetch`; use `web-scrape` only when rendering or extraction is needed.
-4. Pick explicit design tokens: `--text`, `--muted`, `--surface`, `--panel`, `--accent`, `--border`.
-5. Build real content and real assets. Avoid placeholder-heavy design.
-6. Verify with `node bin/kimibuilt-ui-check.js <url-or-file-url> --out ui-checks/<name>` when browser QA is available.
+3. For undated public web research, use freshness-aware terms such as "modern"; for news or technology references use "recent" or "this month" with `timeRange: "month"`.
+4. Fetch 1 to 3 selected sources with `web-fetch`; use `web-scrape` only when rendering or extraction is needed.
+5. Pick explicit design tokens: `--text`, `--muted`, `--surface`, `--panel`, `--accent`, `--border`.
+6. Build real content and real assets. Avoid placeholder-heavy design.
+7. Verify with `node bin/kimibuilt-ui-check.js <url-or-file-url> --out ui-checks/<name>` when browser QA is available.
 
 Design guardrails:
 - No white text on pale backgrounds or dark text on dark backgrounds.

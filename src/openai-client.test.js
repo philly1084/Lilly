@@ -1301,7 +1301,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
             {
                 toolId: 'web-search',
                 params: expect.objectContaining({
-                    query: 'research daily news about Canadian AI regulation and gather article sources',
+                    query: 'daily news about Canadian AI regulation and gather article sources',
                     engine: 'perplexity',
                     researchMode: 'pro-search',
                     maxTokens: expect.any(Number),
@@ -1309,6 +1309,25 @@ describe('openai-client automatic tool orchestration helpers', () => {
                     searchContextSize: 'medium',
                     maxOutputTokens: expect.any(Number),
                     maxSteps: 4,
+                }),
+            },
+        ]);
+    });
+
+    test('adds month freshness to undated technology preflight searches', () => {
+        const actions = __testUtils.buildDeterministicPreflightActions(
+            [
+                { id: 'web-search' },
+            ],
+            'Please research AI chip startups',
+        );
+
+        expect(actions).toEqual([
+            {
+                toolId: 'web-search',
+                params: expect.objectContaining({
+                    query: 'AI chip startups recent this month',
+                    timeRange: 'month',
                 }),
             },
         ]);

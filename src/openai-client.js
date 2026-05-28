@@ -12,6 +12,7 @@ const {
     hasExplicitImageGenerationIntent,
     normalizeReasoningEffort,
 } = require('./ai-route-utils');
+const { applyResearchFreshnessDefaults } = require('./research-freshness');
 const {
     buildRemoteContinuityInstructions,
 } = require('./runtime-prompts');
@@ -2391,12 +2392,12 @@ function extractExplicitWebResearchQuery(prompt = '') {
     }
 
     const patterns = [
-        /\b(?:do|perform|run)\s+research\s+(?:on|about|into)?\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bweb research\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bresearch\s+(?:on|about|into)?\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\blook up\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bsearch for\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
-        /\bsearch the web for\s+(.+?)(?:[.?!]\s|[\r\n]|$)/i,
+        /\b(?:do|perform|run)\s+research(?:\s+(?:on|about|into))?\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bweb research\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bresearch(?:\s+(?:on|about|into))?\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\blook up\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bsearch for\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
+        /\bsearch the web for\s+(.+?)(?:[.?!](?:\s|$)|[\r\n]|$)/i,
     ];
 
     for (const pattern of patterns) {
@@ -2905,10 +2906,15 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '', to
     }
 
     if (webQuery) {
+        const freshnessParams = applyResearchFreshnessDefaults({
+            query: webQuery,
+            prompt,
+        });
         actions.push({
             toolId: 'web-search',
             params: {
-                query: webQuery,
+                query: freshnessParams.query,
+                prompt,
                 engine: 'perplexity',
                 researchMode: inferPerplexityResearchModeForPreflight(prompt),
                 limit: normalizeResearchSearchResultCount(),
@@ -2916,7 +2922,7 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '', to
                 userLocation: {
                     country: 'CA',
                 },
-                timeRange: 'all',
+                timeRange: freshnessParams.timeRange,
                 includeSnippets: true,
                 includeUrls: true,
                 ...inferExpandedResearchParamsForPreflight(prompt),
@@ -4004,6 +4010,7 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
         guidance.push('- When the user explicitly asks for research, call `web-search` first. This backend routes it through the configured Perplexity provider.');
         guidance.push('- Treat strong `web-search` results as approved candidate sources for routine research, best-practice lookups, and news gathering. Do not stop to ask the user to pre-approve normal public domains unless they explicitly want a specific source list.');
         guidance.push('- For URL discovery, scraping prep, Playwright candidate pages, and routine public research, use `web-search` with `researchMode: "search"` first. It uses Perplexity raw Search without an LLM pass.');
+        guidance.push('- When a research search has no timeframe, make the query freshness-aware instead of generic: use "modern" for broad best-practice/provider/tool searches, and use `timeRange: "month"` plus words like "recent" or "this month" for news or technology topics.');
         guidance.push('- For a one-shot grounded answer with citations, use `web-search` with `researchMode: "sonar"` or `"sonar-pro"`; use `"sonar-pro"` for complex comparisons.');
         guidance.push('- For image URL hotlisting, use `web-search` with `researchMode: "sonar"`, `returnImages: true`, and optional `imageDomains` / `imageFormats` filters. Use `returnVideos: true` only when videos materially help.');
         guidance.push('- For autonomous one-call research that should plan, search, and fetch itself, use `researchMode: "pro-search"`; prefer this middle tier for daily news, article roundups, source-backed briefings, and gathered research data where snippets/headlines are too thin but full deep research is not justified.');
