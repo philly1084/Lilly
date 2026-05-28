@@ -2915,6 +2915,46 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(text).toContain('Next check: Verify REMOTE_CLI_AGENT_MODEL');
     });
 
+    test('summarizes direct remote-cli-agent marker output before streaming to chat', () => {
+        const text = __testUtils.formatDirectToolResultMessage({
+            toolCall: {
+                function: {
+                    name: 'remote-cli-agent',
+                },
+            },
+            result: {
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: {
+                    finalOutput: [
+                        'WORKSPACE=/srv/apps/my-app',
+                        'VERIFY_COMMANDS=pwd && hostname',
+                        'VERIFY_RESULTS=pass: /srv/apps/my-app, ubuntu-32gb-fsn1-1',
+                        'REMOTE_CLI_JOB_ID=rcli_marker',
+                        'WHAT_CHANGED=Executed remote_code_run through the MCP gateway and checked remote_code_status.',
+                        'PUBLIC_URL=not_available',
+                        'BLOCKER=none',
+                        'REMOTE_CLI_TARGET=k3s-prod',
+                    ].join('\n'),
+                    cwd: '/srv/apps/my-app',
+                    whatChanged: 'Executed remote_code_run through the MCP gateway and checked remote_code_status.',
+                    verifyCommands: ['pwd && hostname'],
+                    verifyResults: ['pass: /srv/apps/my-app, ubuntu-32gb-fsn1-1'],
+                    remoteCodeJobId: 'rcli_marker',
+                    completionStatus: 'complete',
+                },
+            },
+        });
+
+        expect(text).toContain('Remote CLI task completed.');
+        expect(text).toContain('Workspace: /srv/apps/my-app.');
+        expect(text).toContain('Verification commands: pwd && hostname.');
+        expect(text).toContain('Verification results: pass: /srv/apps/my-app, ubuntu-32gb-fsn1-1.');
+        expect(text).toContain('Remote job id: rcli_marker.');
+        expect(text).not.toContain('WORKSPACE=');
+        expect(text).not.toContain('REMOTE_CLI_JOB_ID=');
+    });
+
     test('runs explicit web-scrape requests directly for sensitive image capture flows', async () => {
         const toolManager = createToolManager();
         const automaticTools = __testUtils.buildAutomaticToolDefinitions(

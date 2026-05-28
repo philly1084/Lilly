@@ -5050,7 +5050,9 @@ function formatDirectToolResultMessage(toolEvent = {}) {
         }
 
         const data = result?.data || {};
-        return String(data.finalOutput || '').trim()
+        const finalOutput = String(data.finalOutput || '').trim();
+        return (isRemoteCliDirectMarkerDumpText(finalOutput) ? summarizeRemoteCliAgentDirectResult(data) : finalOutput)
+            || summarizeRemoteCliAgentDirectResult(data)
             || `remote-cli-agent completed for target ${data.targetId || 'default target'}.`;
     }
 
@@ -5179,6 +5181,83 @@ function hasRemoteCliAgentContinuationIntent(text = '') {
         /\b(?:continue|resume|finish|complete|keep going|keep working)\b[\s\S]{0,80}\b(?:it|that|same|app|site|project|work|task)\b/,
         /\b(?:go ahead|proceed)\b[\s\S]{0,80}\b(?:remote cli agent|remote clie agent|remote coding agent|that app|the app|it)\b/,
     ].some((pattern) => pattern.test(normalized));
+}
+
+function hasRemoteCliDirectValue(value) {
+    const text = String(value ?? '').trim();
+    return Boolean(text) && !/^(?:none|not_available|n\/a|null|undefined|unknown)$/i.test(text);
+}
+
+function normalizeRemoteCliDirectText(value) {
+    return String(value ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function remoteCliDirectList(value) {
+    if (Array.isArray(value)) {
+        return value.map(normalizeRemoteCliDirectText).filter(hasRemoteCliDirectValue);
+    }
+    const text = normalizeRemoteCliDirectText(value);
+    return hasRemoteCliDirectValue(text) ? [text] : [];
+}
+
+function isRemoteCliDirectMarkerDumpText(text = '') {
+    const markerMatches = String(text || '')
+        .match(/\b(REMOTE_AGENT_RESULT|WORKSPACE|WHAT_CHANGED|VERIFY_COMMANDS|VERIFY_RESULTS|PUBLIC_URL|BLOCKER|REMOTE_CLI_JOB_ID|REMOTE_CLI_TARGET)=/g);
+    return (markerMatches || []).length >= 2;
+}
+
+function summarizeRemoteCliAgentDirectResult(data = {}) {
+    if (!data || typeof data !== 'object') {
+        return '';
+    }
+
+    const lines = [];
+    const status = String(data.completionStatus || data.status || '').trim().toLowerCase();
+    if (status === 'blocked' || hasRemoteCliDirectValue(data.blocker)) {
+        lines.push('Remote CLI task is blocked.');
+    } else if (status === 'running') {
+        lines.push('Remote CLI task is still running.');
+    } else {
+        lines.push('Remote CLI task completed.');
+    }
+
+    const workspace = data.cwd || data.workspace || data.workingDirectory;
+    if (hasRemoteCliDirectValue(workspace)) {
+        lines.push(`Workspace: ${normalizeRemoteCliDirectText(workspace)}.`);
+    }
+
+    const whatChanged = data.whatChanged || data.what_changed;
+    if (hasRemoteCliDirectValue(whatChanged)) {
+        lines.push(`What changed: ${normalizeRemoteCliDirectText(whatChanged)}.`);
+    }
+
+    const verifyCommands = remoteCliDirectList(data.verifyCommands || data.verify_commands);
+    if (verifyCommands.length > 0) {
+        lines.push(`Verification commands: ${verifyCommands.join('; ')}.`);
+    }
+
+    const verifyResults = remoteCliDirectList(data.verifyResults || data.verify_results);
+    if (verifyResults.length > 0) {
+        lines.push(`Verification results: ${verifyResults.join('; ')}.`);
+    }
+
+    const publicUrl = data.publicUrl || data.public_url;
+    if (hasRemoteCliDirectValue(publicUrl)) {
+        lines.push(`Public URL: ${normalizeRemoteCliDirectText(publicUrl)}.`);
+    }
+
+    if (hasRemoteCliDirectValue(data.blocker)) {
+        lines.push(`Blocker: ${normalizeRemoteCliDirectText(data.blocker)}.`);
+    }
+
+    const remoteJobId = data.remoteCodeJobId || data.remote_code_job_id || data.jobId;
+    if (hasRemoteCliDirectValue(remoteJobId)) {
+        lines.push(`Remote job id: ${normalizeRemoteCliDirectText(remoteJobId)}.`);
+    }
+
+    return lines.join(' ');
 }
 
 function buildRemoteCliAgentTaskForDirectMode(prompt = '', priorAgentState = {}) {
