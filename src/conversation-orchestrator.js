@@ -7738,8 +7738,12 @@ function summarizeRemoteCliAgentDataForUser(data = {}) {
     const blocker = String(data?.blocker || '').trim();
     const verifyCommands = Array.isArray(data?.verifyCommands) ? data.verifyCommands.filter(Boolean) : [];
     const verifyResults = Array.isArray(data?.verifyResults) ? data.verifyResults.filter(Boolean) : [];
+    const hasMeaningfulValue = (value) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        return normalized && !['none', 'not_available', 'not available', 'n/a', 'na', 'null', 'undefined'].includes(normalized);
+    };
 
-    if (!whatChanged && verifyResults.length === 0 && !publicUrl && !blocker) {
+    if (!whatChanged && verifyResults.length === 0 && !hasMeaningfulValue(publicUrl) && !hasMeaningfulValue(blocker)) {
         return '';
     }
 
@@ -7765,10 +7769,10 @@ function summarizeRemoteCliAgentDataForUser(data = {}) {
     if (verifyResults.length > 0) {
         lines.push(`Verification results: ${verifyResults.join('; ')}.`);
     }
-    if (publicUrl) {
+    if (hasMeaningfulValue(publicUrl)) {
         lines.push(`Public URL: ${publicUrl}.`);
     }
-    if (blocker) {
+    if (hasMeaningfulValue(blocker)) {
         lines.push(`Blocker: ${blocker}.`);
     }
     if (data?.remoteCodeJobId) {
@@ -7776,6 +7780,51 @@ function summarizeRemoteCliAgentDataForUser(data = {}) {
     }
 
     return lines.join(' ');
+}
+
+function isRemoteCliMarkerDumpText(text = '') {
+    const markerMatches = String(text || '')
+        .match(/\b(REMOTE_AGENT_RESULT|WORKSPACE|WHAT_CHANGED|VERIFY_COMMANDS|VERIFY_RESULTS|PUBLIC_URL|BLOCKER|REMOTE_CLI_JOB_ID|REMOTE_CLI_TARGET)=/g);
+
+    return (markerMatches || []).length >= 2;
+}
+
+function buildRemoteCliAgentSummaryFromToolEvents(toolEvents = []) {
+    const event = [...(Array.isArray(toolEvents) ? toolEvents : [])]
+        .reverse()
+        .find((candidate) => (
+            String(candidate?.toolCall?.function?.name || candidate?.result?.toolId || '').trim() === 'remote-cli-agent'
+        ));
+    const data = event?.result?.data || {};
+    return summarizeRemoteCliAgentDataForUser(data);
+}
+
+function replaceRemoteCliMarkerDumpResponse(response = null, toolEvents = []) {
+    const output = extractResponseText(response);
+    if (!isRemoteCliMarkerDumpText(output)) {
+        return response;
+    }
+
+    const replacementText = buildRemoteCliAgentSummaryFromToolEvents(toolEvents);
+    if (!replacementText) {
+        return response;
+    }
+
+    const replacement = buildSyntheticResponse({
+        output: replacementText,
+        responseId: response?.id,
+        model: response?.model,
+        metadata: response?.metadata && typeof response.metadata === 'object' ? response.metadata : {},
+    });
+
+    return {
+        ...response,
+        output: replacement.output,
+        metadata: {
+            ...(response?.metadata && typeof response.metadata === 'object' ? response.metadata : {}),
+            remoteCliMarkerDumpRewritten: true,
+        },
+    };
 }
 
 function summarizeToolEventForUser(event = {}) {
@@ -13165,6 +13214,7 @@ class ConversationOrchestrator extends EventEmitter {
             runtimeMode,
             phase: 'tool-synthesis',
         });
+        response = replaceRemoteCliMarkerDumpResponse(response, toolEvents);
 
         return this.withResponseMetadata(response, {
             executionProfile,

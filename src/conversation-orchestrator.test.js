@@ -2964,6 +2964,65 @@ describe('ConversationOrchestrator', () => {
         expect(prompt).not.toContain('"type":"thread.started"');
     });
 
+    test('rewrites remote-cli-agent marker dump synthesis output before returning it', async () => {
+        const markerDump = [
+            'WORKSPACE=/srv/apps/my-app',
+            'WHAT_CHANGED=verified pwd and hostname only; no files changed',
+            'VERIFY_COMMANDS=pwd; hostname',
+            'VERIFY_RESULTS=pass: pwd=/srv/apps/my-app, hostname=ubuntu-32gb-fsn1-1',
+            'REMOTE_CLI_JOB_ID=rcli_marker',
+            'PUBLIC_URL=not_available',
+            'BLOCKER=none',
+            'REMOTE_CLI_TARGET=k3s-prod',
+        ].join('\n');
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse(markerDump, 'resp_remote_cli_marker_dump')),
+            complete: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: null,
+            sessionStore: null,
+            memoryService: null,
+        });
+
+        const response = await orchestrator.buildFinalResponse({
+            input: 'Can you remote cli agent into our server?',
+            objective: 'Can you remote cli agent into our server?',
+            toolEvents: [{
+                toolCall: {
+                    function: {
+                        name: 'remote-cli-agent',
+                    },
+                },
+                result: {
+                    success: true,
+                    toolId: 'remote-cli-agent',
+                    data: {
+                        finalOutput: markerDump,
+                        remoteCodeJobId: 'rcli_marker',
+                        cwd: '/srv/apps/my-app',
+                        whatChanged: 'verified pwd and hostname only; no files changed',
+                        verifyCommands: ['pwd; hostname'],
+                        verifyResults: ['pass: pwd=/srv/apps/my-app, hostname=ubuntu-32gb-fsn1-1'],
+                        publicUrl: 'not_available',
+                        blocker: 'none',
+                        completionStatus: 'complete',
+                    },
+                },
+            }],
+        });
+
+        const text = response.output[0].content[0].text;
+        expect(text).toContain('Remote CLI task completed.');
+        expect(text).toContain('Workspace: /srv/apps/my-app.');
+        expect(text).toContain('Verification results: pass: pwd=/srv/apps/my-app, hostname=ubuntu-32gb-fsn1-1.');
+        expect(text).not.toContain('WORKSPACE=');
+        expect(text).not.toContain('VERIFY_COMMANDS=');
+        expect(text).not.toContain('REMOTE_CLI_JOB_ID=');
+        expect(response.metadata.remoteCliMarkerDumpRewritten).toBe(true);
+    });
+
     test('recovers missing file-write content from recent assistant html when the planner omits it', async () => {
         const llmClient = {
             createResponse: jest.fn().mockResolvedValue(buildResponse('Saved the HTML file.', 'resp_file_write')),

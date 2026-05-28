@@ -577,6 +577,10 @@ function summarizeCompatToolEvent(event = {}) {
     const preview = stdout || stderr || error;
 
     if (toolName === 'remote-cli-agent' && data && typeof data === 'object') {
+        const hasMeaningfulValue = (value) => {
+            const normalized = String(value || '').trim().toLowerCase();
+            return normalized && !['none', 'not_available', 'not available', 'n/a', 'na', 'null', 'undefined'].includes(normalized);
+        };
         const parts = [
             data.completionStatus === 'complete' ? 'Remote CLI task completed.' : '',
             data.completionStatus === 'blocked' ? 'Remote CLI task is blocked.' : '',
@@ -588,8 +592,8 @@ function summarizeCompatToolEvent(event = {}) {
             Array.isArray(data.verifyResults) && data.verifyResults.length > 0
                 ? `Verification results: ${data.verifyResults.join('; ')}.`
                 : '',
-            data.publicUrl ? `Public URL: ${data.publicUrl}.` : '',
-            data.blocker ? `Blocker: ${data.blocker}.` : '',
+            hasMeaningfulValue(data.publicUrl) ? `Public URL: ${data.publicUrl}.` : '',
+            hasMeaningfulValue(data.blocker) ? `Blocker: ${data.blocker}.` : '',
         ].filter(Boolean).join(' ');
         if (parts) {
             return `- ${toolName}: ${success ? 'succeeded' : 'failed'}. ${parts}`;
@@ -608,6 +612,30 @@ function summarizeCompatToolEvent(event = {}) {
         `- ${toolName}: succeeded.`,
         preview ? `Output: ${preview.slice(0, 600)}` : '',
     ].filter(Boolean).join(' ');
+}
+
+function isRemoteCliMarkerDumpText(text = '') {
+    const markerMatches = stripNullCharacters(String(text || ''))
+        .match(/\b(REMOTE_AGENT_RESULT|WORKSPACE|WHAT_CHANGED|VERIFY_COMMANDS|VERIFY_RESULTS|PUBLIC_URL|BLOCKER|REMOTE_CLI_JOB_ID|REMOTE_CLI_TARGET)=/g);
+
+    return (markerMatches || []).length >= 2;
+}
+
+function summarizeCompatRemoteCliAgentEvents(toolEvents = []) {
+    const event = [...(Array.isArray(toolEvents) ? toolEvents : [])]
+        .reverse()
+        .find((candidate) => (
+            String(candidate?.toolCall?.function?.name || candidate?.result?.toolId || '').trim() === 'remote-cli-agent'
+        ));
+    if (!event) {
+        return '';
+    }
+
+    return summarizeCompatToolEvent(event)
+        .replace(/^- remote-cli-agent:\s*/i, '')
+        .replace(/^succeeded\.\s*/i, '')
+        .replace(/^failed\.\s*/i, '')
+        .trim();
 }
 
 function buildCompatToolFallbackText({ userText = '', toolEvents = [] } = {}) {
@@ -691,6 +719,16 @@ function applyCompatFallbackToResponse(response = {}, text = '') {
 
 function resolveCompatAssistantText({ response = {}, outputText = '', userText = '' } = {}) {
     const toolEvents = response?.metadata?.toolEvents || [];
+    if (toolEvents.length > 0 && isRemoteCliMarkerDumpText(outputText)) {
+        const replacementText = summarizeCompatRemoteCliAgentEvents(toolEvents);
+        if (replacementText) {
+            return {
+                outputText: replacementText,
+                response: applyCompatFallbackToResponse(response, replacementText),
+            };
+        }
+    }
+
     if (toolEvents.length === 0 || !isFinalSynthesisPlaceholder(outputText)) {
         return {
             outputText,
