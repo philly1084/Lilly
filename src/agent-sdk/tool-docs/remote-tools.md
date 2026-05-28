@@ -1,6 +1,6 @@
 # remote tools
 
-Purpose: choose the correct remote execution lane without confusing the outer KimiBuilt tools with the inner remote-cli MCP tools.
+Purpose: choose the correct remote execution lane without confusing the outer KimiBuilt tools with transport internals.
 
 Use this first when a task mentions remote servers, remote CLI, remote agents, k3s, Kubernetes, deployment, public URLs, or live website/app changes.
 
@@ -26,8 +26,11 @@ Outer KimiBuilt tool call for the remote coding agent:
     "adminMode": true,
     "targetId": "prod",
     "cwd": "/srv/apps/my-app",
+    "workspacePath": "/srv/apps/my-app",
+    "transport": "codex-agent",
     "waitMs": 30000,
     "sessionId": "optional prior remote coding session",
+    "threadId": "optional prior Codex thread",
     "mcpSessionId": "optional prior MCP session"
   }
 }
@@ -45,7 +48,14 @@ Outer KimiBuilt tool call for direct remote inspection:
 }
 ```
 
-Inner MCP calls used by `remote-cli-agent` only:
+Preferred gateway transport used by `remote-cli-agent`:
+
+```text
+POST /api/codex-agent/run
+GET /api/codex-agent/runs/:runId/events
+```
+
+Legacy MCP calls used by `remote-cli-agent` only:
 
 ```text
 remote_code_run({ "targetId": "prod", "cwd": "/srv/apps/my-app", "task": "clear task", "waitMs": 30000 })
@@ -53,8 +63,9 @@ remote_code_status({ "jobId": "returned job id only" })
 ```
 
 Important boundary:
-- The planner calls `remote-cli-agent`; it does not call `remote_code_run` directly.
-- The inner remote agent calls `remote_code_run` and then `remote_code_status`.
+- The planner calls `remote-cli-agent`; it does not call transport internals directly.
+- The preferred runner transport calls `/api/codex-agent/run` and streams `/events` SSE.
+- The legacy MCP fallback calls `remote_code_run` and then `remote_code_status`.
 - Never put `command`, `args`, `executable`, or `shell` in `remote-cli-agent` params.
 - Never put `targetId`, `cwd`, `sessionId`, or `waitMs` in `remote_code_status`; it accepts `jobId` only.
 

@@ -3,9 +3,16 @@ param(
   [string]$Deployment = "backend",
   [string]$SecretName = "kimibuilt-secrets",
   [string]$ConfigMapName = "kimibuilt-config",
+  [string]$RemoteCliAgentTransport = $env:REMOTE_CLI_AGENT_TRANSPORT,
+  [string]$RemoteCliCodexAgentBaseUrl = $env:REMOTE_CLI_CODEX_AGENT_BASE_URL,
+  [string]$RemoteCliCodexAgentBearerToken = $env:REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN,
+  [string]$RemoteCliCodexAgentWorkspacePath = $env:REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH,
+  [string]$RemoteCliCodexAgentApprovalPolicy = $env:REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY,
+  [string]$RemoteCliCodexAgentThreadSandbox = $env:REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX,
   [string]$RemoteCliMcpUrl = $env:REMOTE_CLI_MCP_URL,
   [string]$GatewayUrl = $env:GATEWAY_URL,
   [string]$RemoteCliBearerToken = $env:REMOTE_CLI_MCP_BEARER_TOKEN,
+  [string]$FrontendApiKey = $env:FRONTEND_API_KEY,
   [string]$N8nApiKey = $env:N8N_API_KEY,
   [string]$DockerHost = $env:DOCKER_HOST,
   [string]$DockerApiVersion = $env:DOCKER_API_VERSION,
@@ -99,9 +106,16 @@ function Resolve-Namespace {
 
 Read-DotEnv
 
+if (!$RemoteCliAgentTransport -and $env:REMOTE_CLI_AGENT_TRANSPORT) { $RemoteCliAgentTransport = $env:REMOTE_CLI_AGENT_TRANSPORT }
+if (!$RemoteCliCodexAgentBaseUrl -and $env:REMOTE_CLI_CODEX_AGENT_BASE_URL) { $RemoteCliCodexAgentBaseUrl = $env:REMOTE_CLI_CODEX_AGENT_BASE_URL }
+if (!$RemoteCliCodexAgentBearerToken -and $env:REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN) { $RemoteCliCodexAgentBearerToken = $env:REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN }
+if (!$RemoteCliCodexAgentWorkspacePath -and $env:REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH) { $RemoteCliCodexAgentWorkspacePath = $env:REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH }
+if (!$RemoteCliCodexAgentApprovalPolicy -and $env:REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY) { $RemoteCliCodexAgentApprovalPolicy = $env:REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY }
+if (!$RemoteCliCodexAgentThreadSandbox -and $env:REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX) { $RemoteCliCodexAgentThreadSandbox = $env:REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX }
 if (!$RemoteCliMcpUrl -and $env:REMOTE_CLI_MCP_URL) { $RemoteCliMcpUrl = $env:REMOTE_CLI_MCP_URL }
 if (!$GatewayUrl -and $env:GATEWAY_URL) { $GatewayUrl = $env:GATEWAY_URL }
 if (!$RemoteCliBearerToken -and $env:REMOTE_CLI_MCP_BEARER_TOKEN) { $RemoteCliBearerToken = $env:REMOTE_CLI_MCP_BEARER_TOKEN }
+if (!$FrontendApiKey -and $env:FRONTEND_API_KEY) { $FrontendApiKey = $env:FRONTEND_API_KEY }
 if (!$N8nApiKey -and $env:N8N_API_KEY) { $N8nApiKey = $env:N8N_API_KEY }
 if (!$DockerHost -and $env:DOCKER_HOST) { $DockerHost = $env:DOCKER_HOST }
 if (!$DockerApiVersion -and $env:DOCKER_API_VERSION) { $DockerApiVersion = $env:DOCKER_API_VERSION }
@@ -111,8 +125,41 @@ if (!$RemoteCliRemoteCodeModel -and $env:REMOTE_CLI_REMOTE_CODE_MODEL) { $Remote
 if (!$RemoteCliAgentMaxStatusPolls -and $env:REMOTE_CLI_AGENT_MAX_STATUS_POLLS) { $RemoteCliAgentMaxStatusPolls = $env:REMOTE_CLI_AGENT_MAX_STATUS_POLLS }
 if (!$RemoteCliAgentStatusPollIntervalMs -and $env:REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS) { $RemoteCliAgentStatusPollIntervalMs = $env:REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS }
 
-if (!$RemoteCliMcpUrl -and $GatewayUrl) {
-  $RemoteCliMcpUrl = $GatewayUrl.TrimEnd("/") + "/mcp"
+$gatewayBaseUrl = ""
+if ($RemoteCliCodexAgentBaseUrl) {
+  $gatewayBaseUrl = $RemoteCliCodexAgentBaseUrl.TrimEnd("/") -replace "/mcp$", ""
+} elseif ($GatewayUrl) {
+  $gatewayBaseUrl = $GatewayUrl.TrimEnd("/") -replace "/mcp$", ""
+} elseif ($RemoteCliMcpUrl) {
+  $gatewayBaseUrl = $RemoteCliMcpUrl.TrimEnd("/") -replace "/mcp$", ""
+}
+
+if (!$gatewayBaseUrl) {
+  $gatewayBaseUrl = "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local"
+}
+
+if (!$RemoteCliAgentTransport) {
+  $RemoteCliAgentTransport = "codex-agent"
+}
+
+if (!$RemoteCliCodexAgentBaseUrl) {
+  $RemoteCliCodexAgentBaseUrl = $gatewayBaseUrl
+}
+
+if (!$RemoteCliCodexAgentWorkspacePath) {
+  $RemoteCliCodexAgentWorkspacePath = "/srv/apps/my-app"
+}
+
+if (!$RemoteCliCodexAgentApprovalPolicy) {
+  $RemoteCliCodexAgentApprovalPolicy = "never"
+}
+
+if (!$RemoteCliCodexAgentThreadSandbox) {
+  $RemoteCliCodexAgentThreadSandbox = "workspace-write"
+}
+
+if (!$RemoteCliMcpUrl) {
+  $RemoteCliMcpUrl = $gatewayBaseUrl.TrimEnd("/") + "/mcp"
 }
 
 if (!$RemoteCliMcpUrl) {
@@ -127,6 +174,12 @@ if (!(Test-Kubectl get configmap $ConfigMapName -n $resolvedNamespace)) {
 
 Invoke-Kubectl patch configmap $ConfigMapName -n $resolvedNamespace --type merge -p (@{
   data = @{
+    REMOTE_CLI_AGENT_TRANSPORT = $RemoteCliAgentTransport
+    REMOTE_CLI_CODEX_AGENT_BASE_URL = $RemoteCliCodexAgentBaseUrl
+    REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH = $RemoteCliCodexAgentWorkspacePath
+    REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY = $RemoteCliCodexAgentApprovalPolicy
+    REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX = $RemoteCliCodexAgentThreadSandbox
+    REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX = $RemoteCliCodexAgentThreadSandbox
     REMOTE_CLI_MCP_URL = $RemoteCliMcpUrl
     REMOTE_CLI_MCP_NAME = "remote-cli"
     REMOTE_CLI_DEFAULT_TARGET_ID = $(if ($DefaultTargetId) { $DefaultTargetId } else { "prod" })
@@ -158,10 +211,16 @@ $secretArgs = @(
 
 if ($RemoteCliBearerToken) {
   $secretArgs += "--from-literal=REMOTE_CLI_MCP_BEARER_TOKEN=$RemoteCliBearerToken"
+}
+
+if ($RemoteCliCodexAgentBearerToken) {
+  $secretArgs += "--from-literal=REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN=$RemoteCliCodexAgentBearerToken"
+} elseif ($FrontendApiKey) {
+  $secretArgs += "--from-literal=FRONTEND_API_KEY=$FrontendApiKey"
 } elseif ($N8nApiKey) {
   $secretArgs += "--from-literal=N8N_API_KEY=$N8nApiKey"
 } else {
-  Write-Warning "No REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY was found in the environment or .env. Secret was created/kept, but Remote CLI Agent still needs one of those keys."
+  Write-Warning "No REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, FRONTEND_API_KEY, REMOTE_CLI_MCP_BEARER_TOKEN, or N8N_API_KEY was found in the environment or .env. Secret was created/kept, but Remote CLI Agent still needs a gateway key."
 }
 
 if ($DockerHost) {
@@ -184,7 +243,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $secretKeys = (Invoke-Kubectl get secret $SecretName -n $resolvedNamespace -o jsonpath="{.data}" | ConvertFrom-Json).PSObject.Properties.Name
-$hasRemoteToken = $secretKeys -contains "REMOTE_CLI_MCP_BEARER_TOKEN" -or $secretKeys -contains "N8N_API_KEY"
+$hasRemoteToken = $secretKeys -contains "REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN" -or $secretKeys -contains "FRONTEND_API_KEY" -or $secretKeys -contains "REMOTE_CLI_MCP_BEARER_TOKEN" -or $secretKeys -contains "N8N_API_KEY"
 
 if (!$NoRestart -and (Test-Kubectl get deployment $Deployment -n $resolvedNamespace)) {
   Invoke-Kubectl rollout restart deployment/$Deployment -n $resolvedNamespace | Out-Null
@@ -195,6 +254,9 @@ Write-Host "Remote CLI Agent cluster setup checked."
 Write-Host "Namespace: $resolvedNamespace"
 Write-Host "ConfigMap: $ConfigMapName"
 Write-Host "Secret: $SecretName"
+Write-Host "REMOTE_CLI_AGENT_TRANSPORT: $RemoteCliAgentTransport"
+Write-Host "REMOTE_CLI_CODEX_AGENT_BASE_URL: $RemoteCliCodexAgentBaseUrl"
+Write-Host "REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: $RemoteCliCodexAgentWorkspacePath"
 Write-Host "REMOTE_CLI_MCP_URL: $RemoteCliMcpUrl"
 Write-Host "REMOTE_CLI_REMOTE_CODE_MODEL: $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { '(gateway target default)' })"
 Write-Host "Remote CLI token present: $hasRemoteToken"

@@ -5,18 +5,18 @@ GREP_HANDLES: AGENT_DOC REMOTE_TOOLS REMOTE_CLI_AGENT REMOTE_COMMAND REMOTE_WORK
 Use when:
 - A user asks for remote CLI, remote agents, server work, k3s, deployment, a public URL, or live app/site changes.
 - The planner is about to choose between `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
-- An orchestrated agent leaked `remote_code_run`, stalled polling, or turned a remote blocker into a questionnaire.
+- An orchestrated agent leaked a transport-specific runner call, stalled polling, or turned a remote blocker into a questionnaire.
 
 Small decision map:
-- `remote-cli-agent`: remote software author/build/deploy/verify loop. Use for app, website, service, dashboard, frontend, or game changes that must go live. Params use `task`, usually `adminMode:true`, plus optional `targetId`, `cwd`, `sessionId`, `mcpSessionId`, and `waitMs`.
+- `remote-cli-agent`: remote software author/build/deploy/verify loop. Use for app, website, service, dashboard, frontend, or game changes that must go live. Params use `task`, usually `adminMode:true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `mcpSessionId`, `waitMs`, and `transport`.
 - `remote-command`: one direct remote command for inspect, logs, kubectl, network, DNS/TLS, one-off repair, or post-deploy verification. Params use `command`.
 - `remote-workbench`: structured remote repo/file/build/test/log/rollout actions when a matching action exists.
 - `k3s-deploy`: standard deploy-only lane for repo sync, manifest apply, image update, and rollout status after source/image/manifests already exist.
 
 Boundary:
-- The KimiBuilt planner calls `remote-cli-agent`; it does not call `remote_code_run` directly.
-- The inner remote-cli agent calls `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })`.
-- The inner remote-cli agent polls `remote_code_status({ jobId })` with the job id only.
+- The KimiBuilt planner calls `remote-cli-agent`; it does not call transport internals directly.
+- Preferred transport: KimiBuilt calls `POST /api/codex-agent/run` and streams `GET /api/codex-agent/runs/:runId/events` SSE from the `nuts` gateway.
+- Legacy MCP fallback: the runner calls `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })` and polls `remote_code_status({ jobId })` with the job id only.
 - Do not put raw shell fields like `command`, `args`, `shell`, or `executable` in `remote-cli-agent`.
 - Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
 

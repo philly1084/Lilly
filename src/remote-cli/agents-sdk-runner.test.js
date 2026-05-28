@@ -1,5 +1,7 @@
 'use strict';
 
+const { ReadableStream } = require('stream/web');
+
 const {
   RemoteCliAgentsSdkRunner,
   buildRemoteCliInstructions,
@@ -53,6 +55,25 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(resolveRemoteCliTargetId('https://github.com/example/app.git', 'prod')).toBe('prod');
     expect(resolveRemoteCliTargetId('', 'github.com')).toBe('prod');
     expect(resolveRemoteCliTargetId('staging', 'prod')).toBe('staging');
+  });
+
+  test('reports codex-agent readiness when auto transport has run/events credentials', () => {
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        transport: 'auto',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'front-key',
+      },
+      fetchImpl: jest.fn(),
+    });
+
+    expect(runner.getPublicConfig()).toEqual(expect.objectContaining({
+      configured: true,
+      transport: 'codex-agent',
+      requestedTransport: 'auto',
+      codexAgentBaseUrl: 'https://gateway.example.com',
+      codexAgentConfigured: true,
+    }));
   });
 
   test('adds admin runner guidance for real remote deployment work', () => {
@@ -359,6 +380,106 @@ describe('RemoteCliAgentsSdkRunner', () => {
       verifyCommands: ['npm test'],
       verifyResults: ['npm test passed.'],
       completionStatus: 'complete',
+    });
+  });
+
+  test('uses the /api/codex-agent/run plus /events SSE transport when configured', async () => {
+    const progress = [];
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/api/codex-agent/run') {
+        const body = JSON.parse(options.body);
+        expect(options.method).toBe('POST');
+        expect(options.headers.Authorization).toBe('Bearer frontend-secret');
+        expect(body.workspacePath).toBe('/srv/apps/my-app');
+        expect(body.prompt).toContain('Fix the remote app and verify it.');
+        expect(body.prompt).toContain('/api/codex-agent/run');
+        expect(body.config).toMatchObject({
+          approvalPolicy: 'never',
+          threadSandbox: 'workspace-write',
+          model: 'codex-latest',
+        });
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              ok: true,
+              runId: 'run_codex_1',
+              threadId: 'thread_codex_1',
+              turnId: 'turn_codex_1',
+              sessionId: 'thread_codex_1-turn_codex_1',
+              status: 'running',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_codex_1/events') {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              [
+                'event: session_started\n',
+                'data: {"event":"session_started","thread_id":"thread_codex_1","turn_id":"turn_codex_1","session_id":"thread_codex_1-turn_codex_1"}\n\n',
+                'event: output\n',
+                'data: {"event":"output","text":"Checking workspace. "}\n\n',
+                'event: turn_completed\n',
+                'data: {"event":"turn_completed","thread_id":"thread_codex_1","turn_id":"turn_codex_1","result":{"output_text":"REMOTE_AGENT_RESULT=codex-agent:/srv/apps/my-app\\nREMOTE_CLI_SESSION_ID=thread_codex_1\\nWORKSPACE=/srv/apps/my-app\\nWHAT_CHANGED=Fixed the remote app through the Codex agent contract.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nPUBLIC_URL=not_available\\nBLOCKER=none"}}\n\n',
+              ].forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
+              controller.close();
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentWorkspacePath: '/srv/apps/my-app',
+        codexAgentApprovalPolicy: 'never',
+        codexAgentThreadSandbox: 'workspace-write',
+        agentModel: 'codex-latest',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => {
+        throw new Error('codex-agent transport should not load the Agents SDK MCP client');
+      },
+      fetchImpl,
+    });
+
+    const result = await runner.run({
+      task: 'Fix the remote app and verify it.',
+      adminMode: true,
+      onProgress: (event) => progress.push(event),
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(progress.map((event) => event.codexAgentEvent?.event).filter(Boolean)).toEqual([
+      'session_started',
+      'session_started',
+      'output',
+      'turn_completed',
+    ]);
+    expect(result).toMatchObject({
+      transport: 'codex-agent',
+      codexAgentRunId: 'run_codex_1',
+      codexThreadId: 'thread_codex_1',
+      codexTurnId: 'turn_codex_1',
+      targetId: 'k3s-prod',
+      cwd: '/srv/apps/my-app',
+      sessionId: 'thread_codex_1',
+      whatChanged: 'Fixed the remote app through the Codex agent contract.',
+      verifyCommands: ['npm test'],
+      verifyResults: ['passed'],
+      completionStatus: 'complete',
+      apiMode: 'codex-agent',
     });
   });
 

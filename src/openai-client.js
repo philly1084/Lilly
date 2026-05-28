@@ -5397,7 +5397,7 @@ function startDirectRemoteCliProgress(toolContext = {}, toolId = 'tool') {
         interval.unref();
     }
 
-    emit('started', 'Remote CLI agent started; waiting for remote_code_run/status proof markers.');
+    emit('started', 'Remote CLI agent started; waiting for Codex-agent or compatibility proof markers.');
 
     return {
         complete() {

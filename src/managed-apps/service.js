@@ -2638,7 +2638,7 @@ class ManagedAppService {
             ? this.remoteCliAgentRunner.getPublicConfig()
             : {};
         if (runnerConfig && runnerConfig.configured === false) {
-            const error = new Error('Managed app remote CLI iterations require REMOTE_CLI_MCP_URL and credentials.');
+            const error = new Error('Managed app remote CLI iterations require configured remote-cli-agent transport and credentials.');
             error.statusCode = 503;
             throw error;
         }

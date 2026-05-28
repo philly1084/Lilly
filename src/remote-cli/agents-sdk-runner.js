@@ -8,6 +8,14 @@ const DEFAULT_REMOTE_CODE_MODEL = '';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
 const DEFAULT_MAX_STATUS_POLLS = 20;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
+const DEFAULT_CODEX_AGENT_STALL_TIMEOUT_MS = 300000;
+
+const CODEX_AGENT_TERMINAL_EVENTS = new Set([
+  'turn_completed',
+  'turn_failed',
+  'turn_cancelled',
+  'turn_input_required',
+]);
 
 function normalizeBooleanFlag(value, fallback = false) {
   if (value === undefined || value === null || String(value).trim() === '') {
@@ -830,6 +838,8 @@ function buildRemoteCodeFinalText({
   fallbackVerifyCommand = '',
   fallbackVerifyResult = '',
   blocker = '',
+  transportLabel = 'remote_code_run',
+  transportDescription = 'remote_code_run through the MCP gateway',
 } = {}) {
   const source = fragments.map((value) => normalizeText(value)).filter(Boolean).join('\n\n').trim();
   const metadata = extractRemoteCliRunMetadata(source);
@@ -838,7 +848,7 @@ function buildRemoteCodeFinalText({
   const explicitBlocker = normalizeOptionalProofValue(blocker || metadata.blocker);
   const missingProofBlocker = hasTerminalProof
     ? ''
-    : 'remote_code_run completed without task proof markers; inspect the remote job output and continue with REMOTE_CLI_JOB_ID';
+    : `${transportLabel} completed without task proof markers; inspect the agent output and continue with the returned continuity id`;
   const resolvedBlocker = explicitBlocker
     || (isFailedRemoteCodeStatus(status) ? `remote_code_run ${status}` : '')
     || missingProofBlocker;
@@ -856,14 +866,14 @@ function buildRemoteCodeFinalText({
   }
   if (!metadata.whatChanged) {
     lines.push(`WHAT_CHANGED=${hasTerminalProof
-      ? (fallbackWhatChanged || 'Executed remote_code_run through the MCP gateway.')
-      : 'remote_code_run transport finished, but task-level changes were not proven.'}`);
+      ? (fallbackWhatChanged || `Executed ${transportDescription}.`)
+      : `${transportLabel} transport finished, but task-level changes were not proven.`}`);
   }
   if (!Array.isArray(metadata.verifyCommands) || metadata.verifyCommands.length === 0) {
-    lines.push(`VERIFY_COMMANDS=${fallbackVerifyCommand || 'remote_code_run'}`);
+    lines.push(`VERIFY_COMMANDS=${fallbackVerifyCommand || transportLabel}`);
   }
   if (!Array.isArray(metadata.verifyResults) || metadata.verifyResults.length === 0) {
-    lines.push(`VERIFY_RESULTS=${fallbackVerifyResult || `remote_code_run status: ${status || 'unknown'}.`}`);
+    lines.push(`VERIFY_RESULTS=${fallbackVerifyResult || `${transportLabel} status: ${status || 'unknown'}.`}`);
   }
   if (!metadata.publicUrl) {
     lines.push('PUBLIC_URL=not_available');
@@ -892,6 +902,157 @@ function resolveAgentsApiMode({ requestedMode = '', baseURL = '' } = {}) {
     return normalized;
   }
   return isOfficialOpenAIBaseURL(baseURL) ? 'responses' : 'chat';
+}
+
+function normalizeRemoteCliTransport(value = '') {
+  const normalized = normalizeText(value).toLowerCase().replace(/[_\s]+/g, '-');
+  if (['codex-agent', 'codexagent', 'codex', 'api', 'sse', 'run-events'].includes(normalized)) {
+    return 'codex-agent';
+  }
+  if (['mcp', 'remote-code', 'remote-code-run', 'remote-code-mcp'].includes(normalized)) {
+    return 'mcp';
+  }
+  if (normalized === 'auto') {
+    return 'auto';
+  }
+  return normalized || 'mcp';
+}
+
+function resolveRemoteCliTransport(input = {}, runnerConfig = {}) {
+  const requested = normalizeRemoteCliTransport(
+    input.transport
+    || input.runnerTransport
+    || input.remoteCliTransport
+    || input.remote_cli_transport
+    || runnerConfig.transport
+    || 'mcp',
+  );
+  if (requested === 'auto') {
+    return normalizeText(input.codexAgentBaseUrl || runnerConfig.codexAgentBaseUrl)
+      && normalizeText(input.codexAgentApiKey || runnerConfig.codexAgentApiKey)
+      ? 'codex-agent'
+      : 'mcp';
+  }
+  return requested === 'codex-agent' ? 'codex-agent' : 'mcp';
+}
+
+function resolveCodexAgentBaseUrl(input = {}, runnerConfig = {}) {
+  const direct = normalizeText(
+    input.codexAgentBaseUrl
+    || input.codex_agent_base_url
+    || runnerConfig.codexAgentBaseUrl,
+  );
+  if (direct) {
+    return direct.replace(/\/+$/, '');
+  }
+
+  const mcpUrl = normalizeText(input.url || runnerConfig.url);
+  if (mcpUrl) {
+    return mcpUrl.replace(/\/mcp\/?$/i, '').replace(/\/+$/, '');
+  }
+
+  return '';
+}
+
+function resolveCodexAgentApiKey(input = {}, runnerConfig = {}) {
+  return normalizeText(
+    input.codexAgentApiKey
+    || input.codex_agent_api_key
+    || input.codexAgentBearerToken
+    || input.codex_agent_bearer_token
+    || runnerConfig.codexAgentApiKey
+    || runnerConfig.apiKey,
+  );
+}
+
+function buildCodexAgentUrl(baseUrl = '', path = '') {
+  const base = normalizeText(baseUrl).replace(/\/+$/, '');
+  const suffix = `/${normalizeText(path).replace(/^\/+/, '')}`;
+  return `${base}${suffix}`;
+}
+
+function parseSseEventFrames(buffer = '', onEvent = () => {}) {
+  const normalizedBuffer = String(buffer || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const frames = normalizedBuffer.split('\n\n');
+  const remainder = frames.pop() || '';
+
+  for (const frame of frames) {
+    let eventName = '';
+    const dataLines = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event:')) {
+        eventName = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).replace(/^\s/, ''));
+      }
+    }
+    if (dataLines.length === 0) {
+      continue;
+    }
+    const rawData = dataLines.join('\n');
+    let payload = {};
+    try {
+      payload = JSON.parse(rawData);
+    } catch (_error) {
+      payload = { message: rawData };
+    }
+    onEvent({
+      ...(payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : { data: payload }),
+      event: normalizeText(payload?.event || eventName || 'message'),
+    });
+  }
+
+  return remainder;
+}
+
+function extractCodexAgentEventText(event = {}) {
+  return normalizeText(
+    event.text
+    || event.message
+    || event.result?.output_text
+    || event.result?.outputText
+    || event.result?.text
+    || event.result?.message
+    || event.error,
+  );
+}
+
+function summarizeCodexAgentEvent(event = {}) {
+  const eventName = normalizeText(event.event || 'event');
+  const text = extractCodexAgentEventText(event);
+  if (text) {
+    return `${eventName}: ${text.slice(0, 1200)}`;
+  }
+  if (eventName === 'session_started') {
+    return `session_started: ${normalizeText(event.session_id || event.sessionId || event.thread_id || event.threadId)}`;
+  }
+  return eventName;
+}
+
+function isCodexAgentTerminalEvent(event = {}) {
+  return CODEX_AGENT_TERMINAL_EVENTS.has(normalizeText(event.event));
+}
+
+function buildCodexAgentPrompt({
+  task = '',
+  workspacePath = '',
+  priorThreadId = '',
+  adminMode = false,
+} = {}) {
+  return [
+    'Codex-agent execution contract:',
+    '- You are running through the KimiBuilt /api/codex-agent/run gateway contract.',
+    workspacePath ? `- Your process cwd is the checked-out workspace "${workspacePath}".` : '',
+    priorThreadId ? `- Continue prior Codex thread "${priorThreadId}" when relevant.` : '',
+    adminMode ? '- Admin runner mode was requested. Keep privilege use scoped to the task and stop on repeated blocked commands.' : '',
+    '- Work in the current workspace. Do not ask for SSH details unless the task explicitly needs a separate server not represented by this workspace.',
+    '- Inspect before editing, keep changes scoped, and verify the exact requested path.',
+    '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
+    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_COMMIT=<sha>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
+    '',
+    'User task:',
+    task,
+  ].filter(Boolean).join('\n');
 }
 
 function summarizeUrl(value = '') {
@@ -1151,16 +1312,28 @@ class RemoteCliAgentsSdkRunner {
   constructor(options = {}) {
     this.sdkLoader = options.sdkLoader || loadAgentsSdk;
     this.config = options.config || config.remoteCliMcp || {};
+    this.fetch = options.fetchImpl || global.fetch;
   }
 
   getPublicConfig() {
+    const requestedTransport = normalizeRemoteCliTransport(this.config.transport || 'mcp');
+    const transport = resolveRemoteCliTransport({}, this.config);
+    const codexAgentBaseUrl = resolveCodexAgentBaseUrl({}, this.config);
+    const codexAgentApiKey = resolveCodexAgentApiKey({}, this.config);
     return {
       enabled: this.config.enabled !== false,
-      configured: Boolean(normalizeText(this.config.url) && normalizeText(this.config.apiKey)),
+      configured: transport === 'codex-agent'
+        ? Boolean(codexAgentBaseUrl && codexAgentApiKey)
+        : Boolean(normalizeText(this.config.url) && normalizeText(this.config.apiKey)),
+      transport,
+      requestedTransport,
       url: normalizeText(this.config.url),
+      codexAgentBaseUrl,
+      codexAgentConfigured: Boolean(codexAgentBaseUrl && codexAgentApiKey),
       name: normalizeText(this.config.name) || 'remote-cli',
       defaultTargetId: resolveRemoteCliTargetId('', this.config.defaultTargetId || 'prod'),
       defaultCwd: normalizeText(this.config.defaultCwd),
+      codexAgentWorkspacePath: normalizeText(this.config.codexAgentWorkspacePath),
       agentModel: normalizeText(this.config.agentModel),
       remoteCodeModel: normalizeText(this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL,
       directRun: this.config.directRun !== false,
@@ -1172,9 +1345,21 @@ class RemoteCliAgentsSdkRunner {
     };
   }
 
-  assertConfigured() {
+  assertConfigured({ transport = 'mcp', input = {} } = {}) {
     if (this.config.enabled === false) {
       throw new Error('Remote CLI MCP integration is disabled.');
+    }
+    if (transport === 'codex-agent') {
+      if (typeof this.fetch !== 'function') {
+        throw new Error('Fetch is required for remote-cli-agent codex-agent transport.');
+      }
+      if (!resolveCodexAgentBaseUrl(input, this.config)) {
+        throw new Error('REMOTE_CLI_CODEX_AGENT_BASE_URL, CODEX_AGENT_BASE_URL, or GATEWAY_URL is required for remote-cli-agent codex-agent transport.');
+      }
+      if (!resolveCodexAgentApiKey(input, this.config)) {
+        throw new Error('REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, CODEX_AGENT_API_KEY, FRONTEND_API_KEY, or REMOTE_CLI_MCP_BEARER_TOKEN is required for remote-cli-agent codex-agent transport.');
+      }
+      return;
     }
     if (!normalizeText(this.config.url)) {
       throw new Error('REMOTE_CLI_MCP_URL or GATEWAY_URL is required for remote-cli-agent.');
@@ -1212,6 +1397,303 @@ class RemoteCliAgentsSdkRunner {
       apiKey: normalizeText(this.config.agentApiKey),
       baseURL: normalizeText(this.config.agentBaseURL) || undefined,
     });
+  }
+
+  async readJsonResponse(response) {
+    const text = typeof response?.text === 'function' ? await response.text() : '';
+    if (!text) {
+      return null;
+    }
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      error.responseText = text;
+      throw error;
+    }
+  }
+
+  async consumeCodexAgentEvents(response, {
+    onEvent = () => {},
+    signal = null,
+  } = {}) {
+    if (!response?.body) {
+      throw new Error('codex-agent events response did not include a readable body.');
+    }
+
+    if (typeof response.body.getReader === 'function') {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      try {
+        while (true) {
+          if (signal?.aborted) {
+            throw new Error('codex-agent run aborted.');
+          }
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          buffer = parseSseEventFrames(buffer, onEvent);
+        }
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          parseSseEventFrames(`${buffer}\n\n`, onEvent);
+        }
+      } finally {
+        reader.releaseLock?.();
+      }
+      return;
+    }
+
+    if (typeof response.text === 'function') {
+      parseSseEventFrames(await response.text(), onEvent);
+      return;
+    }
+
+    throw new Error('codex-agent events response body is unreadable.');
+  }
+
+  async executeCodexAgentRun({
+    input = {},
+    targetId = 'prod',
+    cwd = '',
+    task = '',
+    model = '',
+    sessionId = '',
+    agentRunTimeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS,
+    adminMode = false,
+    onProgress = null,
+  } = {}) {
+    const baseUrl = resolveCodexAgentBaseUrl(input, this.config);
+    const apiKey = resolveCodexAgentApiKey(input, this.config);
+    const workspacePath = normalizeText(
+      input.workspacePath
+      || input.workspace_path
+      || input.codexAgentWorkspacePath
+      || input.codex_agent_workspace_path
+      || cwd
+      || this.config.codexAgentWorkspacePath
+      || this.config.defaultCwd,
+    );
+    const priorThreadId = normalizeText(
+      input.threadId
+      || input.thread_id
+      || input.codexThreadId
+      || input.codex_thread_id
+      || '',
+    );
+    if (!workspacePath) {
+      throw new Error('remote-cli-agent codex-agent transport requires cwd, workspacePath, or REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH.');
+    }
+
+    const timeoutMs = normalizePositiveInteger(agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+    if (timer && typeof timer.unref === 'function') {
+      timer.unref();
+    }
+
+    const emitProgress = (detail, extra = {}) => {
+      if (typeof onProgress !== 'function' || !detail) {
+        return;
+      }
+      try {
+        onProgress({
+          phase: 'executing',
+          reasoningSummary: detail,
+          detail,
+          percent: extra.percent || 45,
+          codexAgentEvent: extra.event || null,
+          toolEvents: [{
+            toolId: 'remote-cli-agent',
+            stage: extra.stage || 'in_progress',
+            detail,
+            transport: 'codex-agent',
+            ...(extra.event ? { event: extra.event.event || null, cursor: extra.event.cursor || null } : {}),
+          }],
+        });
+      } catch (error) {
+        console.warn('[RemoteCliAgentsSdkRunner] Failed to emit codex-agent progress:', error?.message || error);
+      }
+    };
+
+    const runBody = {
+      workspacePath,
+      prompt: buildCodexAgentPrompt({
+        task,
+        workspacePath,
+        priorThreadId,
+        adminMode,
+      }),
+      continuation: Boolean(priorThreadId),
+      ...(priorThreadId ? { threadId: priorThreadId } : {}),
+      config: {
+        approvalPolicy: normalizeText(input.approvalPolicy || this.config.codexAgentApprovalPolicy) || 'never',
+        threadSandbox: adminMode
+          ? (normalizeText(input.threadSandbox || this.config.codexAgentAdminThreadSandbox) || 'workspace-write')
+          : (normalizeText(input.threadSandbox || this.config.codexAgentThreadSandbox) || 'workspace-write'),
+        turnTimeoutMs: timeoutMs,
+        stallTimeoutMs: normalizePositiveInteger(
+          input.stallTimeoutMs || input.stall_timeout_ms || this.config.codexAgentStallTimeoutMs,
+          DEFAULT_CODEX_AGENT_STALL_TIMEOUT_MS,
+          { min: 1000, max: 3600000 },
+        ),
+        ...(model ? { model } : {}),
+        ...(normalizeText(input.reasoningEffort || input.reasoning_effort || this.config.codexAgentReasoningEffort)
+          ? { reasoningEffort: normalizeText(input.reasoningEffort || input.reasoning_effort || this.config.codexAgentReasoningEffort) }
+          : {}),
+      },
+    };
+
+    try {
+      emitProgress('Starting Codex agent through /api/codex-agent/run.', { percent: 35, stage: 'starting' });
+      const startResponse = await this.fetch(buildCodexAgentUrl(baseUrl, '/api/codex-agent/run'), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(runBody),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      const startBody = await this.readJsonResponse(startResponse);
+      if (!startResponse?.ok || startBody?.ok === false) {
+        const error = new Error(startBody?.error || startBody?.message || `codex-agent run failed with status ${startResponse?.status || 'unknown'}`);
+        error.status = startResponse?.status;
+        error.body = startBody;
+        throw error;
+      }
+      const runId = normalizeText(startBody?.runId || startBody?.id);
+      if (!runId) {
+        throw new Error('codex-agent run response did not include runId.');
+      }
+
+      emitProgress(`Codex agent run ${runId} started; streaming /events.`, {
+        percent: 42,
+        stage: 'started',
+        event: {
+          event: 'session_started',
+          runId,
+          threadId: startBody?.threadId || null,
+          turnId: startBody?.turnId || null,
+          sessionId: startBody?.sessionId || null,
+        },
+      });
+
+      const outputParts = [];
+      const eventFragments = [];
+      let terminalEvent = null;
+      let latestEvent = null;
+      const eventsResponse = await this.fetch(buildCodexAgentUrl(baseUrl, `/api/codex-agent/runs/${encodeURIComponent(runId)}/events`), {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'text/event-stream',
+        },
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (!eventsResponse?.ok) {
+        throw new Error(`codex-agent events failed with status ${eventsResponse?.status || 'unknown'}.`);
+      }
+
+      await this.consumeCodexAgentEvents(eventsResponse, {
+        signal: controller?.signal || null,
+        onEvent: (event) => {
+          latestEvent = event;
+          const detail = summarizeCodexAgentEvent(event);
+          if (detail) {
+            emitProgress(detail, {
+              percent: isCodexAgentTerminalEvent(event) ? 92 : 55,
+              stage: isCodexAgentTerminalEvent(event) ? 'completed' : 'in_progress',
+              event,
+            });
+          }
+          const text = extractCodexAgentEventText(event);
+          if (text && event.event === 'output') {
+            outputParts.push(text);
+          }
+          if (text) {
+            eventFragments.push(text);
+          }
+          if (isCodexAgentTerminalEvent(event)) {
+            terminalEvent = event;
+          }
+        },
+      });
+
+      if (!terminalEvent) {
+        throw new Error(`codex-agent events stream ended without a terminal event${latestEvent?.event ? ` after ${latestEvent.event}` : ''}.`);
+      }
+
+      const terminalName = normalizeText(terminalEvent.event);
+      const terminalOutput = normalizeText(
+        terminalEvent.result?.output_text
+        || terminalEvent.result?.outputText
+        || terminalEvent.output_text
+        || terminalEvent.outputText
+        || '',
+      );
+      const finalOutputSource = terminalOutput || outputParts.join('\n').trim() || eventFragments.join('\n').trim();
+      const failed = terminalName !== 'turn_completed';
+      const finalOutput = buildRemoteCodeFinalText({
+        fragments: [finalOutputSource],
+        targetId,
+        cwd: workspacePath,
+        sessionId: normalizeText(terminalEvent.thread_id || terminalEvent.threadId || startBody?.threadId || startBody?.sessionId || sessionId),
+        status: failed ? 'failed' : 'completed',
+        fallbackWhatChanged: failed
+          ? 'Started the Codex agent through /api/codex-agent/run, but it did not complete successfully.'
+          : 'Executed the Codex agent through /api/codex-agent/run and streamed /events to completion.',
+        fallbackVerifyCommand: 'POST /api/codex-agent/run; GET /api/codex-agent/runs/:runId/events',
+        fallbackVerifyResult: failed
+          ? `codex-agent terminal event ${terminalName}: ${extractCodexAgentEventText(terminalEvent) || 'no message'}`
+          : `codex-agent terminal event ${terminalName} received for run ${runId}.`,
+        blocker: failed ? (extractCodexAgentEventText(terminalEvent) || terminalName) : '',
+        transportLabel: 'codex-agent',
+        transportDescription: '/api/codex-agent run/events contract',
+      });
+      const runMetadata = extractRemoteCliRunMetadata(finalOutput);
+      return {
+        finalOutput,
+        transport: 'codex-agent',
+        codexAgentRunId: runId,
+        codexThreadId: normalizeText(terminalEvent.thread_id || terminalEvent.threadId || startBody?.threadId) || null,
+        codexTurnId: normalizeText(terminalEvent.turn_id || terminalEvent.turnId || startBody?.turnId) || null,
+        targetId,
+        cwd: runMetadata.workspace || workspacePath,
+        sessionId: runMetadata.sessionId || startBody?.threadId || startBody?.sessionId || sessionId || null,
+        remoteCodeSessionId: runMetadata.sessionId || startBody?.threadId || startBody?.sessionId || sessionId || null,
+        remoteCodeJobId: null,
+        gitRepo: runMetadata.gitRepo || null,
+        gitCommit: runMetadata.gitCommit || null,
+        deployment: runMetadata.deployment || null,
+        publicHost: runMetadata.publicHost || null,
+        publicUrl: runMetadata.publicUrl || null,
+        uiCheckReport: runMetadata.uiCheckReport || null,
+        uiScreenshots: runMetadata.uiScreenshots || [],
+        whatChanged: runMetadata.whatChanged || null,
+        verifyCommands: runMetadata.verifyCommands || [],
+        verifyResults: runMetadata.verifyResults || [],
+        blocker: runMetadata.blocker || null,
+        completionStatus: runMetadata.completionStatus || 'unknown',
+        model,
+        apiMode: 'codex-agent',
+      };
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeoutError = new RemoteCliAgentRunTimeoutError(timeoutMs);
+        timeoutError.cause = error;
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   async executeRemoteCodeRun(remoteCli, {
@@ -1368,7 +1850,38 @@ class RemoteCliAgentsSdkRunner {
     if (!task) {
       throw new Error('remote-cli-agent requires a task.');
     }
-    this.assertConfigured();
+    const transport = resolveRemoteCliTransport(input, this.config);
+    this.assertConfigured({ transport, input });
+
+    const targetId = resolveRemoteCliTargetId(
+      input.targetId || input.target_id,
+      this.config.defaultTargetId || 'prod',
+    );
+    const cwd = normalizeText(input.cwd || input.workingDirectory || input.working_directory || this.config.defaultCwd);
+    const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
+    const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
+    const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
+    const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
+    const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
+    const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';
+    const remoteCodeModel = normalizeText(input.remoteCodeModel || input.remote_code_model || this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL;
+    const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
+    const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs || input.status_poll_interval_ms || this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
+    const adminMode = resolveAdminMode(input, task);
+
+    if (transport === 'codex-agent') {
+      return this.executeCodexAgentRun({
+        input,
+        targetId,
+        cwd,
+        task,
+        model,
+        sessionId,
+        agentRunTimeoutMs,
+        adminMode,
+        onProgress: input.onProgress,
+      });
+    }
 
     const sdk = this.sdkLoader();
     const {
@@ -1387,21 +1900,6 @@ class RemoteCliAgentsSdkRunner {
       throw new Error('@openai/agents is installed but did not expose the expected Agents SDK classes.');
     }
 
-    const targetId = resolveRemoteCliTargetId(
-      input.targetId || input.target_id,
-      this.config.defaultTargetId || 'prod',
-    );
-    const cwd = normalizeText(input.cwd || input.workingDirectory || input.working_directory || this.config.defaultCwd);
-    const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
-    const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
-    const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
-    const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
-    const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
-    const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';
-    const remoteCodeModel = normalizeText(input.remoteCodeModel || input.remote_code_model || this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL;
-    const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
-    const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs || input.status_poll_interval_ms || this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
-    const adminMode = resolveAdminMode(input, task);
     const apiMode = resolveAgentsApiMode({
       requestedMode: this.config.agentApiMode,
       baseURL: this.config.agentBaseURL,

@@ -108,10 +108,13 @@ function normalizeRemoteCliAgentParams(params = {}) {
 
   applyAlias(params, 'targetId', params.target_id, argumentObject?.targetId, argumentObject?.target_id, remoteCodeRun?.targetId, remoteCodeRun?.target_id);
   applyAlias(params, 'cwd', params.workingDirectory, params.working_directory, argumentObject?.cwd, argumentObject?.workingDirectory, remoteCodeRun?.cwd);
+  applyAlias(params, 'workspacePath', params.workspace_path, params.codexAgentWorkspacePath, params.codex_agent_workspace_path, argumentObject?.workspacePath, argumentObject?.workspace_path);
   applyAlias(params, 'sessionId', params.session_id, params.remoteSessionId, params.remote_session_id, argumentObject?.sessionId, argumentObject?.session_id, remoteCodeRun?.sessionId, remoteCodeRun?.session_id);
+  applyAlias(params, 'threadId', params.thread_id, params.codexThreadId, params.codex_thread_id, argumentObject?.threadId, argumentObject?.thread_id);
   applyAlias(params, 'jobId', params.job_id, params.remoteCodeJobId, params.remote_code_job_id, argumentObject?.jobId, argumentObject?.job_id);
   applyAlias(params, 'mcpSessionId', params.mcp_session_id, argumentObject?.mcpSessionId, argumentObject?.mcp_session_id);
   applyAlias(params, 'remoteCodeModel', params.remote_code_model, argumentObject?.remoteCodeModel, argumentObject?.remote_code_model, remoteCodeRun?.model);
+  applyAlias(params, 'transport', params.remoteCliTransport, params.remote_cli_transport, argumentObject?.transport, argumentObject?.remoteCliTransport, argumentObject?.remote_cli_transport);
 
   const waitMs = normalizeInteger(firstDefined(params.waitMs, params.wait_ms, argumentObject?.waitMs, argumentObject?.wait_ms, remoteCodeRun?.waitMs, remoteCodeRun?.wait_ms));
   if (waitMs !== undefined) {
@@ -159,8 +162,8 @@ class RemoteCliAgentTool extends ToolBase {
       id: options.id || 'remote-cli-agent',
       name: options.name || 'Remote CLI Agent',
       description: options.description || [
-        'Run a server-side OpenAI Agents SDK coding agent with the remote-cli Streamable HTTP MCP gateway attached.',
-        'Use for remote server coding/build/deploy tasks that should go through remote_code_run and remote_code_status, with adminMode for scoped live software changes.',
+        'Run a server-side Codex coding agent through the gateway /api/codex-agent/run plus /events SSE contract, with the legacy remote-cli MCP lane available for compatibility.',
+        'Use for remote/server coding/build/deploy tasks that should stream progress through the trusted backend runner, with adminMode for scoped live software changes.',
         'Remote deployments must preserve Git visibility: inspect status/remotes, create or reuse a git-backed workspace, commit before deploy, return GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, CHANGED_FILES, verification markers, and use git revert plus redeploy for rollback.',
       ].join(' '),
       category: 'ssh',
@@ -184,11 +187,19 @@ class RemoteCliAgentTool extends ToolBase {
           },
           cwd: {
             type: 'string',
-            description: 'Allowed working directory on the target. Defaults to REMOTE_CLI_DEFAULT_CWD or the gateway target default.',
+            description: 'Allowed working directory/workspace path. Defaults to REMOTE_CLI_DEFAULT_CWD or REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH.',
+          },
+          workspacePath: {
+            type: 'string',
+            description: 'Workspace path for the /api/codex-agent/run contract. Defaults to cwd or configured workspace path.',
           },
           sessionId: {
             type: 'string',
-            description: 'Remote coding session ID returned by remote_code_run for continuing prior work.',
+            description: 'Remote coding session ID or Codex session marker returned by a prior run.',
+          },
+          threadId: {
+            type: 'string',
+            description: 'Codex thread id for continuing a prior /api/codex-agent/run conversation.',
           },
           jobId: {
             type: 'string',
@@ -233,6 +244,11 @@ class RemoteCliAgentTool extends ToolBase {
             default: false,
             description: 'Allow the remote CLI agent to use the configured admin-capable runner lane for real remote change/deploy work. Privileged use remains scoped by runner policy and task instructions.',
           },
+          transport: {
+            type: 'string',
+            enum: ['codex-agent', 'mcp', 'auto'],
+            description: 'Transport contract override. Use codex-agent for POST /api/codex-agent/run plus /events SSE; mcp uses legacy remote_code_run/status.',
+          },
           model: {
             type: 'string',
             description: 'Optional model override for the inner OpenAI Agents SDK agent.',
@@ -248,6 +264,10 @@ class RemoteCliAgentTool extends ToolBase {
         properties: {
           finalOutput: { type: 'string' },
           mcpSessionId: { type: 'string' },
+          transport: { type: 'string' },
+          codexAgentRunId: { type: 'string' },
+          codexThreadId: { type: 'string' },
+          codexTurnId: { type: 'string' },
           targetId: { type: 'string' },
           cwd: { type: 'string' },
           sessionId: { type: 'string' },

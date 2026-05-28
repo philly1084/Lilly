@@ -1,14 +1,15 @@
 # remote-cli-agent
 
-Purpose: run a server-side OpenAI Agents SDK coding agent with the remote-cli Streamable HTTP MCP gateway attached.
+Purpose: run a server-side Codex coding agent through the gateway's `/api/codex-agent/run` plus `/events` SSE contract.
 
-Use this tool when the user asks for backend CLI agents behind the router to work on a remote server, especially coding/build/deploy tasks that should go through the gateway's `remote_code_run` and `remote_code_status` tool schema.
+Use this tool when the user asks for backend CLI agents behind the router to work on a remote/server workspace, especially coding/build/deploy tasks where KimiBuilt should stream progress from the `nuts` backend while the Codex agent owns the implementation loop.
 
 For most remote software deployments, prefer `remote-cli-agent` over one-shot `remote-command`: if an app, website, service, dashboard, frontend, or game needs to be created or changed and put live, let the remote CLI agent own the author -> build/test -> deploy -> verify loop.
 
 Layer boundary:
-- `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `targetId`, `cwd`, `sessionId`, `mcpSessionId`, `waitMs`, and `adminMode`.
-- `remote_code_run` and `remote_code_status` are inner MCP tools used by the remote agent after this tool starts.
+- `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `cwd` or `workspacePath`, `threadId`, `sessionId`, `waitMs`, `transport`, and `adminMode`.
+- The preferred transport is `codex-agent`: KimiBuilt calls `POST /api/codex-agent/run`, then consumes `GET /api/codex-agent/runs/:runId/events` as SSE.
+- The legacy `mcp` transport is still available for `remote_code_run` / `remote_code_status` compatibility.
 - Do not send raw shell fields such as `command`, `args`, `executable`, or `shell` to `remote-cli-agent`. Use `remote-command` for one direct command.
 - Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
 
@@ -18,11 +19,10 @@ Outer tool call shape:
 {
   "task": "Build/fix/deploy the app and verify the public URL.",
   "adminMode": true,
-  "targetId": "prod",
   "cwd": "/srv/apps/my-app",
+  "transport": "codex-agent",
   "waitMs": 30000,
-  "sessionId": "optional prior remote coding session",
-  "mcpSessionId": "optional prior MCP session"
+  "threadId": "optional prior Codex thread id"
 }
 ```
 
@@ -31,6 +31,14 @@ For the short lane picker, read `src/agent-sdk/tool-docs/remote-tools.md`.
 Server-side configuration:
 
 ```bash
+REMOTE_CLI_AGENT_TRANSPORT=codex-agent
+REMOTE_CLI_CODEX_AGENT_BASE_URL=https://gateway.example.com
+REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN=server-side-frontend-or-admin-key
+REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH=/srv/apps/my-app
+REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY=never
+REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX=workspace-write
+
+# Legacy MCP fallback:
 REMOTE_CLI_MCP_URL=https://gateway.example.com/mcp
 # Or set GATEWAY_URL=https://gateway.example.com and the backend will append /mcp.
 N8N_API_KEY=server-side-admin-or-n8n-key
@@ -45,10 +53,20 @@ REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS=2000
 Gateway-side requirements:
 
 ```bash
+CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS=/srv/apps
+FRONTEND_API_KEY=<server-side key accepted by /api/codex-agent/*>
 REMOTE_CLI_TOOL_AUTH_SCOPES=n8n,frontend,admin
 ```
 
-MCP gateway contract:
+Codex-agent gateway contract:
+
+- `POST /api/codex-agent/run` with `{ workspacePath, prompt, continuation?, threadId?, config? }`.
+- `GET /api/codex-agent/runs/:runId/events` returns SSE frames with named events.
+- Expected stream events are `session_started`, `output`, and one terminal event: `turn_completed`, `turn_failed`, `turn_cancelled`, or `turn_input_required`.
+- KimiBuilt forwards these events through its own chat SSE progress payloads so the browser sees live throughput instead of waiting for the final answer.
+- Use `threadId` for continuation when a prior Codex thread id is known.
+
+Legacy MCP gateway contract:
 
 - The backend connects to `POST /mcp` with bearer auth. This is JSON-RPC request/response plus polling, not SSE.
 - Coding work must call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })`; omit `model` unless the configured gateway target supports the override.
@@ -80,8 +98,8 @@ remoteCliTargets:
 
 Behavior:
 - The bearer key is used only by backend Node.js code. Do not expose it to browser JavaScript.
-- The inner agent receives instructions to use `remote_code_run`, poll `remote_code_status` when jobs are still running, and reuse returned session IDs for continuation.
-- The backend stores returned `sessionId` and `mcpSessionId` in the conversation control state, so follow-up requests can continue the same remote workbench session.
+- The Codex agent receives instructions to work inside `workspacePath`, emit proof markers, and avoid waiting forever on approval or user input.
+- The backend stores returned session/thread metadata in the conversation control state, so follow-up requests can continue the same remote workbench session when possible.
 - For k3s website/app creation or edits, the remote CLI agent must use a git-backed workspace as the editable source of truth. Prefer an existing configured GitLab origin; if none exists, check configured GitLab context and non-interactive credentials before asking the user to do manual programming or repo setup.
 - For retry requests like "the deployed address did not work, try again", do not patch the live cluster first. Re-open the owning git workspace or managed-app repo, inspect the current tree and manifests, make the durable change there, then rebuild/deploy through GitLab or the documented fallback path.
 - GitLab source-control skill:
@@ -108,7 +126,8 @@ Behavior:
 - The final output should also include continuity markers when known: `REMOTE_CLI_SESSION_ID=...`, `WORKSPACE=...`, `GIT_REPO=...`, `GIT_BRANCH=...`, `GIT_BASE_COMMIT=...`, `GIT_COMMIT=...`, `CHANGED_FILES=...`, `DEPLOYMENT=...`, `PUBLIC_HOST=...`, `UI_CHECK_REPORT=...`, and `UI_SCREENSHOTS=...`.
 - Prefer `waitMs: 30000` for long coding tasks.
 - Pass `sessionId` when continuing a previous remote coding session.
-- Pass `mcpSessionId` when continuing a previous Streamable HTTP MCP session.
+- Pass `threadId` when continuing a previous `/api/codex-agent/run` Codex thread.
+- Pass `mcpSessionId` only when using the legacy `mcp` transport.
 - Frontends expose `/remote agent <task>` for handing a full coding, build, deploy, and verification loop to this tool.
 
 Use `remote-command` instead for quick non-interactive host inspection, one-off repairs, or small kubectl/log checks. Use `remote-cli-agent` when the remote code agent should own the coding and deployment loop.

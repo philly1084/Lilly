@@ -1028,10 +1028,40 @@ const config = {
 
     remoteCliMcp: {
         enabled: process.env.REMOTE_CLI_MCP_ENABLED !== 'false',
+        transport: process.env.REMOTE_CLI_AGENT_TRANSPORT
+            || process.env.REMOTE_CLI_TRANSPORT
+            || 'mcp',
         url: process.env.REMOTE_CLI_MCP_URL || (
             process.env.GATEWAY_URL
                 ? `${String(process.env.GATEWAY_URL).replace(/\/+$/, '')}/mcp`
                 : ''
+        ),
+        codexAgentBaseUrl: process.env.REMOTE_CLI_CODEX_AGENT_BASE_URL
+            || process.env.CODEX_AGENT_BASE_URL
+            || process.env.SYMPHONY_CODEX_AGENT_BASE_URL
+            || process.env.KIMIBUILT_CODEX_AGENT_BASE_URL
+            || process.env.GATEWAY_URL
+            || '',
+        codexAgentApiKey: process.env.REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN
+            || process.env.REMOTE_CLI_CODEX_AGENT_API_KEY
+            || process.env.CODEX_AGENT_API_KEY
+            || process.env.FRONTEND_API_KEY
+            || process.env.KIMIBUILT_FRONTEND_API_KEY
+            || process.env.REMOTE_CLI_MCP_BEARER_TOKEN
+            || process.env.N8N_API_KEY
+            || '',
+        codexAgentWorkspacePath: process.env.REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH
+            || process.env.CODEX_AGENT_WORKSPACE_PATH
+            || '',
+        codexAgentApprovalPolicy: process.env.REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY || 'never',
+        codexAgentThreadSandbox: process.env.REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX || 'workspace-write',
+        codexAgentAdminThreadSandbox: process.env.REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX
+            || process.env.REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX
+            || 'workspace-write',
+        codexAgentReasoningEffort: process.env.REMOTE_CLI_CODEX_AGENT_REASONING_EFFORT || '',
+        codexAgentStallTimeoutMs: Math.max(
+            1000,
+            Math.min(parseInt(process.env.REMOTE_CLI_CODEX_AGENT_STALL_TIMEOUT_MS, 10) || 300000, 3600000),
         ),
         name: process.env.REMOTE_CLI_MCP_NAME || 'remote-cli',
         apiKey: process.env.REMOTE_CLI_MCP_BEARER_TOKEN

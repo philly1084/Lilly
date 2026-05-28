@@ -343,22 +343,27 @@ async function getRuntimeSupport(toolId) {
             status: ready ? 'stable' : 'requires_setup',
             notes: ready
                 ? [
-                    `Remote CLI MCP server ${publicConfig.name} is configured at ${publicConfig.url}.`,
+                    publicConfig.transport === 'codex-agent'
+                        ? `Remote CLI Codex-agent API is configured at ${publicConfig.codexAgentBaseUrl}.`
+                        : `Remote CLI MCP server ${publicConfig.name} is configured at ${publicConfig.url}.`,
                     `Default target is ${publicConfig.defaultTargetId}${publicConfig.defaultCwd ? ` with cwd ${publicConfig.defaultCwd}` : ''}.`,
                     runner
                         ? `Deploy-capable remote runner ${runner.runnerId} is online${runnerWorkspace ? ` with workspace ${runnerWorkspace}` : ''}.`
-                        : 'No deploy-capable remote runner is online; remote-cli-agent can still use MCP targets, but direct k3s build feedback is unavailable.',
+                        : 'No deploy-capable remote runner is online; remote-cli-agent can still use the configured gateway transport, but direct k3s build feedback is unavailable.',
                     k3sFeedback.buildToK3sReady
                         ? 'K3s feedback check reports buildctl, kubectl, BuildKit, Kubernetes config, and image prefix are ready.'
                         : `K3s feedback blockers: ${k3sFeedback.blockers.join(' ')}`,
                     gitProviderConfig?.baseURL ? `Configured Git provider is ${gitProviderConfig.provider || 'gitlab'} at ${gitProviderConfig.baseURL}.` : 'No configured GitLab base URL is visible to the runtime; remote builds should fall back to local git/direct runner and report the missing source-control automation.',
                     'Use adminMode for scoped remote software deployment loops that need real changes through the admin-capable CLI runner lane.',
-                    'Tool-call contract: backend callers should invoke remote-cli-agent; the inner agent should use remote_code_run, poll remote_code_status for in-progress jobs, and continue with returned session IDs.',
+                    publicConfig.transport === 'codex-agent'
+                        ? 'Tool-call contract: backend callers should invoke remote-cli-agent; KimiBuilt will call POST /api/codex-agent/run and stream GET /api/codex-agent/runs/:runId/events progress.'
+                        : 'Tool-call contract: backend callers should invoke remote-cli-agent; the inner agent should use remote_code_run, poll remote_code_status for in-progress jobs, and continue with returned session IDs.',
                     'Remote deployment contract: Git visibility is required even for local fallback repos; report GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, CHANGED_FILES, verification markers, and rollback through git revert plus redeploy.',
                 ]
                 : [
-                    'Remote CLI MCP needs REMOTE_CLI_MCP_URL or GATEWAY_URL.',
-                    'Remote CLI MCP needs REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY in the backend environment.',
+                    'Remote CLI codex-agent transport needs REMOTE_CLI_CODEX_AGENT_BASE_URL, CODEX_AGENT_BASE_URL, or GATEWAY_URL.',
+                    'Remote CLI codex-agent transport needs REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, CODEX_AGENT_API_KEY, FRONTEND_API_KEY, or a compatible gateway bearer token.',
+                    'Legacy MCP fallback still needs REMOTE_CLI_MCP_URL and REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY.',
                 ],
             runtime: {
                 ready,

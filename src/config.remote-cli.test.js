@@ -10,6 +10,11 @@ describe('remote CLI MCP configuration', () => {
     };
     delete process.env.REMOTE_CLI_MCP_BEARER_TOKEN;
     delete process.env.N8N_API_KEY;
+    delete process.env.REMOTE_CLI_AGENT_TRANSPORT;
+    delete process.env.REMOTE_CLI_CODEX_AGENT_BASE_URL;
+    delete process.env.REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN;
+    delete process.env.REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH;
+    delete process.env.FRONTEND_API_KEY;
     delete process.env.REMOTE_CLI_AGENT_MODEL;
     delete process.env.REMOTE_CLI_REMOTE_CODE_MODEL;
     delete process.env.REMOTE_CODE_MODEL;
@@ -58,11 +63,27 @@ describe('remote CLI MCP configuration', () => {
   test('uses the gateway remote_code_run model and status polling defaults', () => {
     const { config } = require('./config');
 
+    expect(config.remoteCliMcp.transport).toBe('mcp');
     expect(config.remoteCliMcp.remoteCodeModel).toBe('');
     expect(config.remoteCliMcp.directRun).toBe(true);
     expect(config.remoteCliMcp.agentRunTimeoutMs).toBe(180000);
     expect(config.remoteCliMcp.maxStatusPolls).toBe(20);
     expect(config.remoteCliMcp.statusPollIntervalMs).toBe(2000);
+  });
+
+  test('configures the codex-agent run/events transport explicitly', () => {
+    process.env.REMOTE_CLI_AGENT_TRANSPORT = 'codex-agent';
+    process.env.REMOTE_CLI_CODEX_AGENT_BASE_URL = 'https://gateway.example';
+    process.env.FRONTEND_API_KEY = 'frontend-key';
+    process.env.REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH = '/srv/apps/my-app';
+
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.transport).toBe('codex-agent');
+    expect(config.remoteCliMcp.codexAgentBaseUrl).toBe('https://gateway.example');
+    expect(config.remoteCliMcp.codexAgentApiKey).toBe('frontend-key');
+    expect(config.remoteCliMcp.codexAgentWorkspacePath).toBe('/srv/apps/my-app');
+    expect(config.remoteCliMcp.codexAgentApprovalPolicy).toBe('never');
   });
 
   test('allows the remote_code_run model and status polling to be explicitly configured', () => {
