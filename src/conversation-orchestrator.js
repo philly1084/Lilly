@@ -7819,7 +7819,20 @@ function replaceRemoteCliMarkerDumpResponse(response = null, toolEvents = []) {
 
     return {
         ...response,
+        output_text: replacementText,
         output: replacement.output,
+        ...(Array.isArray(response?.choices)
+            ? {
+                choices: response.choices.map((choice, index) => ({
+                    ...choice,
+                    message: {
+                        ...(choice?.message || {}),
+                        role: choice?.message?.role || 'assistant',
+                        content: index === 0 ? replacementText : (choice?.message?.content || ''),
+                    },
+                })),
+            }
+            : {}),
         metadata: {
             ...(response?.metadata && typeof response.metadata === 'object' ? response.metadata : {}),
             remoteCliMarkerDumpRewritten: true,

@@ -2975,8 +2975,18 @@ describe('ConversationOrchestrator', () => {
             'BLOCKER=none',
             'REMOTE_CLI_TARGET=k3s-prod',
         ].join('\n');
+        const markerDumpResponse = {
+            ...buildResponse(markerDump, 'resp_remote_cli_marker_dump'),
+            output_text: markerDump,
+            choices: [{
+                message: {
+                    role: 'assistant',
+                    content: markerDump,
+                },
+            }],
+        };
         const llmClient = {
-            createResponse: jest.fn().mockResolvedValue(buildResponse(markerDump, 'resp_remote_cli_marker_dump')),
+            createResponse: jest.fn().mockResolvedValue(markerDumpResponse),
             complete: jest.fn(),
         };
         const orchestrator = new ConversationOrchestrator({
@@ -3020,6 +3030,10 @@ describe('ConversationOrchestrator', () => {
         expect(text).not.toContain('WORKSPACE=');
         expect(text).not.toContain('VERIFY_COMMANDS=');
         expect(text).not.toContain('REMOTE_CLI_JOB_ID=');
+        expect(response.output_text).toContain('Remote CLI task completed.');
+        expect(response.output_text).not.toContain('WORKSPACE=');
+        expect(response.choices[0].message.content).toContain('Remote CLI task completed.');
+        expect(response.choices[0].message.content).not.toContain('WORKSPACE=');
         expect(response.metadata.remoteCliMarkerDumpRewritten).toBe(true);
     });
 

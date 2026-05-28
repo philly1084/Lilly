@@ -31,7 +31,7 @@ data:
   REMOTE_CLI_AGENT_RUN_TIMEOUT_MS: "180000"
   # Leave empty to use the gateway target's supported default model.
   REMOTE_CLI_REMOTE_CODE_MODEL: ""
-  REMOTE_CLI_AGENT_MAX_STATUS_POLLS: "3"
+  REMOTE_CLI_AGENT_MAX_STATUS_POLLS: "20"
   REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS: "2000"
 
   # The official OpenAI media endpoint remains available for video generation and image fallback.
