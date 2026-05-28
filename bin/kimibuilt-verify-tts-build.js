@@ -47,7 +47,7 @@ async function main() {
         env.allowRemoteModels = allowRemoteModels;
     }
 
-    verifyNoBundledOptionalMediaRuntimes();
+    await verifySharpRuntime();
 
     const { KokoroTTS } = require('../src/tts/kokoro-transformers-runtime');
     const tts = await KokoroTTS.from_pretrained(modelId, {
@@ -127,19 +127,28 @@ function verifyPermissiveTtsDependencyGraph() {
     console.log('[TTS Build] permissive TTS dependency guard ready: no blocked TTS/browser media package entries.');
 }
 
-function verifyNoBundledOptionalMediaRuntimes() {
-    const rootDir = path.resolve(__dirname, '..');
-    const blockedInstallPaths = [
-        path.join(rootDir, 'node_modules/sharp'),
-        path.join(rootDir, 'node_modules/@img'),
-    ];
-    const installed = blockedInstallPaths.filter((targetPath) => fs.existsSync(targetPath));
-
-    if (installed.length > 0) {
-        throw new Error(`optional Sharp/libvips runtime should not be bundled in the product image: ${installed.join(', ')}`);
+async function verifySharpRuntime() {
+    let sharp;
+    try {
+        sharp = require('sharp');
+    } catch (error) {
+        throw new Error(`sharp runtime unavailable: ${error.message}`);
     }
 
-    console.log('[TTS Build] optional Sharp/libvips runtime omitted from bundled image.');
+    const png = await sharp({
+        create: {
+            width: 1,
+            height: 1,
+            channels: 3,
+            background: { r: 0, g: 0, b: 0 },
+        },
+    }).png().toBuffer();
+
+    if (!Buffer.isBuffer(png) || png.length < 8 || png.toString('ascii', 1, 4) !== 'PNG') {
+        throw new Error('sharp runtime generated invalid PNG output during build verification.');
+    }
+
+    console.log(`[TTS Build] sharp ready: sharp=${sharp.versions?.sharp || 'unknown'} vips=${sharp.versions?.vips || 'unknown'} arch=${process.arch}`);
 }
 
 main().catch((error) => {
