@@ -1277,6 +1277,183 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('starts a fresh remote_code_run when a saved job id is no longer known by the gateway', async () => {
+    const calls = {
+      toolCalls: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-stale';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_status') {
+          throw new Error('MCP error -32000: Unknown remote CLI job: rcli_stale');
+        }
+        if (name === 'remote_code_run') {
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                'REMOTE_AGENT_RESULT=fresh-after-stale:/srv/apps/my-app',
+                'WORKSPACE=/srv/apps/my-app',
+                'WHAT_CHANGED=Started a fresh remote job after stale job id.',
+                'VERIFY_COMMANDS=pwd',
+                'VERIFY_RESULTS=/srv/apps/my-app',
+                'PUBLIC_URL=not_available',
+                'BLOCKER=none',
+              ].join('\n'),
+            }],
+          };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Check pwd on the remote server.',
+      jobId: 'rcli_stale',
+      maxStatusPolls: 3,
+      statusPollIntervalMs: 0,
+    });
+
+    expect(calls.toolCalls.map((call) => call.name)).toEqual([
+      'remote_code_status',
+      'remote_code_run',
+    ]);
+    expect(calls.toolCalls[1].args).toMatchObject({
+      targetId: 'k3s-prod',
+      cwd: '/srv/apps/my-app',
+      task: expect.stringContaining('Check pwd on the remote server.'),
+    });
+    expect(result).toMatchObject({
+      remoteCodeJobId: null,
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Started a fresh remote job after stale job id.',
+      completionStatus: 'complete',
+    });
+  });
+
+  test('falls back to fresh direct run when the inner agent polls a stale job id', async () => {
+    const calls = {
+      toolCalls: [],
+      progress: [],
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor() {
+        this.sessionId = 'mcp-session-inner-stale';
+      }
+
+      async connect() {}
+
+      async close() {}
+
+      async callTool(name, args) {
+        calls.toolCalls.push({ name, args });
+        if (name === 'remote_code_status') {
+          throw new Error('MCP error -32000: Unknown remote CLI job: rcli_inner_stale');
+        }
+        if (name === 'remote_code_run') {
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                'REMOTE_AGENT_RESULT=inner-fresh:/srv/apps/my-app',
+                'WORKSPACE=/srv/apps/my-app',
+                'WHAT_CHANGED=Recovered from stale inner job id.',
+                'VERIFY_COMMANDS=pwd',
+                'VERIFY_RESULTS=/srv/apps/my-app',
+                'PUBLIC_URL=not_available',
+                'BLOCKER=none',
+              ].join('\n'),
+            }],
+          };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      }
+    }
+
+    class FakeAgent {
+      constructor(config) {
+        this.config = config;
+      }
+    }
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run(agent) {
+        await agent.config.mcpServers[0].callTool('remote_code_status', {
+          jobId: 'rcli_inner_stale',
+        });
+        return { finalOutput: 'unreachable' };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        name: 'remote-cli',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-5.4',
+        directRun: false,
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Check pwd on the remote server.',
+      maxStatusPolls: 3,
+      statusPollIntervalMs: 0,
+      onProgress: (progress) => calls.progress.push(progress),
+    });
+
+    expect(calls.progress.some((progress) => /stale remote_code_run job/i.test(progress.reasoningSummary))).toBe(true);
+    expect(calls.toolCalls.map((call) => call.name)).toEqual([
+      'remote_code_status',
+      'remote_code_run',
+    ]);
+    expect(calls.toolCalls[1].args.task).toContain('Check pwd on the remote server.');
+    expect(result).toMatchObject({
+      cwd: '/srv/apps/my-app',
+      whatChanged: 'Recovered from stale inner job id.',
+      completionStatus: 'complete',
+    });
+  });
+
   test('wraps runner failures with model, API mode, and gateway diagnostics', async () => {
     class FakeMCPServerStreamableHttp {
       constructor() {

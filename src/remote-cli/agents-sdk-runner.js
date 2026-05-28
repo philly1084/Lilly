@@ -42,6 +42,18 @@ function isRemoteCliAgentRunTimeoutError(error = null) {
     || error?.code === 'REMOTE_CLI_AGENT_RUN_TIMEOUT';
 }
 
+function isUnknownRemoteCliJobError(error = null) {
+  const message = [
+    error?.message,
+    error?.cause?.message,
+    error?.response?.data?.error?.message,
+    error?.response?.data?.message,
+    error?.body?.error?.message,
+    error?.body?.message,
+  ].map((value) => normalizeText(value)).filter(Boolean).join('\n');
+  return /\bUnknown remote CLI job\b/i.test(message);
+}
+
 async function withTimeout(promise, timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
   const normalizedTimeoutMs = normalizePositiveInteger(timeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, {
     min: 1,
@@ -1180,7 +1192,7 @@ class RemoteCliAgentsSdkRunner {
     const fragments = [];
     let statusPolls = 0;
 
-    if (!remoteJobId) {
+    const startRemoteCodeRun = async () => {
       const runArgs = {
         targetId,
         ...(cwd ? { cwd } : {}),
@@ -1204,6 +1216,10 @@ class RemoteCliAgentsSdkRunner {
       remoteJobId = runState.jobId || remoteJobId;
       remoteSessionId = runState.sessionId || remoteSessionId;
       latestStatus = runState.status || latestStatus;
+    };
+
+    if (!remoteJobId) {
+      await startRemoteCodeRun();
     }
 
     if (!remoteJobId && isRunningRemoteCodeStatus(latestStatus)) {
@@ -1228,7 +1244,24 @@ class RemoteCliAgentsSdkRunner {
         await sleep(pollDelay);
       }
       emitProgress(`Polling remote_code_status for job ${remoteJobId}.`, { percent: Math.min(85, 52 + statusPolls) });
-      const statusResult = await remoteCli.callTool('remote_code_status', { jobId: remoteJobId });
+      let statusResult = null;
+      try {
+        statusResult = await remoteCli.callTool('remote_code_status', { jobId: remoteJobId });
+      } catch (error) {
+        if (!isUnknownRemoteCliJobError(error) || !normalizeText(task)) {
+          throw error;
+        }
+        const staleJobId = remoteJobId;
+        fragments.push([
+          `STALE_REMOTE_CLI_JOB_ID=${staleJobId}`,
+          `VERIFY_RESULTS=remote_code_status reported unknown job ${staleJobId}; starting a fresh remote_code_run.`,
+        ].join('\n'));
+        remoteJobId = '';
+        latestStatus = '';
+        statusPolls += 1;
+        await startRemoteCodeRun();
+        continue;
+      }
       const statusText = normalizeMcpContentText(statusResult);
       fragments.push(...collectRemoteCodeTextFragments(statusResult, statusText));
       const statusState = extractRemoteCodeJobState(statusResult, statusText);
@@ -1415,25 +1448,32 @@ class RemoteCliAgentsSdkRunner {
             maxTurns,
           }), agentRunTimeoutMs);
         } catch (error) {
-          if (!isRemoteCliAgentRunTimeoutError(error)) {
+          if (!isRemoteCliAgentRunTimeoutError(error) && !isUnknownRemoteCliJobError(error)) {
             throw error;
           }
 
           if (typeof input.onProgress === 'function') {
             const pollExistingJob = Boolean(remoteCodeCallState.jobId);
+            const staleExistingJob = isUnknownRemoteCliJobError(error);
             input.onProgress({
               phase: 'executing',
-              reasoningSummary: pollExistingJob
+              reasoningSummary: staleExistingJob
+                ? 'Remote CLI agent tried to poll a stale remote_code_run job; starting a fresh remote_code_run.'
+                : pollExistingJob
                 ? 'Remote CLI agent model run timed out; polling the remote_code_run job it already started.'
                 : 'Remote CLI agent model run timed out; falling back to direct remote_code_run.',
-              detail: pollExistingJob
+              detail: staleExistingJob
+                ? 'Gateway no longer knows the prior remote job id, likely after a gateway restart.'
+                : pollExistingJob
                 ? 'Inner agent timeout reached; continuing with remote_code_status.'
                 : 'Inner agent timeout reached; starting remote_code_run directly.',
               percent: 46,
               toolEvents: [{
                 toolId: 'remote-cli-agent',
                 stage: 'fallback',
-                detail: pollExistingJob
+                detail: staleExistingJob
+                  ? 'Starting a new remote_code_run because the prior job id is stale.'
+                  : pollExistingJob
                   ? 'Polling the existing remote_code_run job after inner model timeout.'
                   : 'Starting direct remote_code_run after inner model timeout.',
               }],
@@ -1447,7 +1487,7 @@ class RemoteCliAgentsSdkRunner {
             model: remoteCodeModel,
             sessionId: remoteCodeCallState.sessionId || sessionId,
             waitMs,
-            jobId: remoteCodeCallState.jobId || '',
+            jobId: isUnknownRemoteCliJobError(error) ? '' : (remoteCodeCallState.jobId || ''),
             maxStatusPolls,
             statusPollIntervalMs,
             adminMode,
@@ -1534,6 +1574,11 @@ class RemoteCliAgentsSdkRunner {
         }
       }
 
+      const expandedFinalOutput = expandRemoteCliProofText(finalOutput);
+      const staleRemoteJobIds = readMarkerLines(expandedFinalOutput, ['STALE_REMOTE_CLI_JOB_ID']);
+      const metadataRemoteJobId = staleRemoteJobIds.includes(runMetadata.jobId) ? '' : runMetadata.jobId;
+      const fallbackRemoteJobId = staleRemoteJobIds.includes(jobId) ? null : jobId;
+
       return {
         finalOutput,
         mcpSessionId: remoteCli.sessionId || input.mcpSessionId || null,
@@ -1541,7 +1586,7 @@ class RemoteCliAgentsSdkRunner {
         cwd: runMetadata.workspace || cwd,
         sessionId: runMetadata.sessionId || sessionId || null,
         remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
-        remoteCodeJobId: runMetadata.jobId || jobId || null,
+        remoteCodeJobId: metadataRemoteJobId || fallbackRemoteJobId || null,
         gitRepo: runMetadata.gitRepo || null,
         gitCommit: runMetadata.gitCommit || null,
         deployment: runMetadata.deployment || null,
