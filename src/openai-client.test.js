@@ -3397,6 +3397,40 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
+    test('routes remote server app repair prompts to remote-cli-agent instead of local sandbox', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'can you remote into the server and fix the tetris game';
+        const toolContext = {
+            executionProfile: 'remote-build',
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(selectedIds).toContain('remote-cli-agent');
+        expect(selectedIds).not.toContain('code-sandbox');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('remote-cli-agent');
+        expect(__testUtils.buildAutomaticToolChoice(selectedTools, 'chat', { prompt, toolContext })).toEqual({
+            type: 'function',
+            function: {
+                name: 'remote-cli-agent',
+            },
+        });
+    });
+
     test('does not misclassify research html documents about public or live events as remote website work', () => {
         jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
             enabled: true,

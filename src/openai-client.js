@@ -1937,6 +1937,24 @@ function hasRemoteSoftwareDeploymentIntent(prompt = '') {
     return softwareTarget && remoteTarget && deploymentIntent && authoringIntent && !infraOnly;
 }
 
+function hasRemoteSoftwareAuthoringIntent(prompt = '') {
+    const normalized = String(prompt || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|service|game|software)\b/.test(normalized);
+    const remoteTarget = /\b(remote|server|host|runner|cli runner|gitlab|gitea|cluster|k3s|k8s|kubernetes|domain|dns|ingress|traefik|tls|deployed|deployment|live|online|public|production)\b/.test(normalized)
+        || /\b(remote into|remote in|ssh into|ssh to|connect to|log into|login to)\b/.test(normalized)
+        || /\b[a-z0-9-]+(?:\.[a-z0-9-]+){1,}\b/.test(normalized);
+    const authoringIntent = /\b(create|develop|build|make|ship|launch|publish|scaffold|prototype|implement|update|fix|repair|edit|change|patch|modify)\b/.test(normalized);
+    const localOnly = /\b(local sandbox|locally|on my machine|on this computer|in this repo only|without the server)\b/.test(normalized);
+    const infraOnly = /\b(kubectl get|kubectl describe|logs?|status|health|uptime|journalctl|systemctl status|inspect|diagnose|debug|check)\b/.test(normalized)
+        && !authoringIntent;
+
+    return softwareTarget && remoteTarget && authoringIntent && !localOnly && !infraOnly;
+}
+
 function hasRemoteSoftwareInspectionIntent(prompt = '') {
     const normalized = String(prompt || '').trim().toLowerCase();
     if (!normalized) {
@@ -3554,6 +3572,8 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && hasRemoteSoftwareCreationIntent(prompt);
     const remoteSoftwareDeploymentIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareDeploymentIntent(prompt);
+    const remoteSoftwareAuthoringIntent = executionProfile === 'remote-build'
+        && hasRemoteSoftwareAuthoringIntent(prompt);
     const remoteSoftwareInspectionIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareInspectionIntent(prompt);
     const metadata = getToolContextMetadata(options);
@@ -3567,6 +3587,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
     const managedAppIntent = shouldPreferManagedAppForRemoteBuild(prompt, options);
     const shouldSuppressDocumentWorkflowForRemoteDeploy = remoteSoftwareCreationIntent
         || remoteSoftwareDeploymentIntent
+        || remoteSoftwareAuthoringIntent
         || remoteSoftwareInspectionIntent
         || managedAppIntent;
     const internalArtifactReference = hasInternalArtifactReference(prompt);
@@ -3734,6 +3755,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && (
             explicitRemoteCliAgentIntent
             || remoteSoftwareDeploymentIntent
+            || remoteSoftwareAuthoringIntent
             || remoteSoftwareInspectionIntent
             || stickyRemoteBuildContinuationIntent
         )
@@ -3816,6 +3838,8 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
     const metadata = getToolContextMetadata(options);
     const remoteSoftwareInspectionIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareInspectionIntent(prompt);
+    const remoteSoftwareAuthoringIntent = executionProfile === 'remote-build'
+        && hasRemoteSoftwareAuthoringIntent(prompt);
     const isDeferredWorkloadRun = options?.workloadRun === true
         || options?.clientSurface === 'workload'
         || options?.toolContext?.workloadRun === true
@@ -3874,6 +3898,7 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
         && (
             explicitRemoteCliAgentIntent
             || hasRemoteSoftwareDeploymentIntent(prompt)
+            || remoteSoftwareAuthoringIntent
             || remoteSoftwareInspectionIntent
             || (
                 executionProfile === 'remote-build'
