@@ -300,6 +300,7 @@ describe('settings.controller personality support', () => {
       defaultModel: 'gpt-5.5',
       plannerModel: 'gpt-5.5',
       fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
+      neuralWaveResearchMode: false,
     }));
   });
 
@@ -321,6 +322,7 @@ describe('settings.controller personality support', () => {
           enableAlignmentEvaluator: true,
           applyAlignmentGuidance: false,
           agentDirectedRuntime: true,
+          neuralWaveResearchMode: true,
         },
       },
     };
@@ -343,6 +345,7 @@ describe('settings.controller personality support', () => {
       enableAlignmentEvaluator: true,
       applyAlignmentGuidance: false,
       agentDirectedRuntime: true,
+      neuralWaveResearchMode: true,
     }));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
@@ -353,6 +356,7 @@ describe('settings.controller personality support', () => {
           fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
           applyAlignmentGuidance: false,
           agentDirectedRuntime: true,
+          neuralWaveResearchMode: true,
         }),
       }),
     }));

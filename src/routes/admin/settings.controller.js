@@ -1204,6 +1204,9 @@ class SettingsController {
     next.agentDirectedRuntime = value.agentDirectedRuntime !== undefined
       ? Boolean(value.agentDirectedRuntime)
       : current.agentDirectedRuntime === true;
+    next.neuralWaveResearchMode = value.neuralWaveResearchMode !== undefined
+      ? Boolean(value.neuralWaveResearchMode)
+      : current.neuralWaveResearchMode === true;
 
     next.fallbackModels = this.normalizeStringArray(
       value.fallbackModels ?? value.fallbackModelList ?? next.fallbackModels,
@@ -1544,6 +1547,8 @@ class SettingsController {
       applyAlignmentGuidance: merged.applyAlignmentGuidance !== false,
       agentDirectedRuntime: merged.agentDirectedRuntime === true
         || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_AGENT_DIRECTED_RUNTIME || '').trim().toLowerCase()),
+      neuralWaveResearchMode: merged.neuralWaveResearchMode === true
+        || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_NEURAL_WAVE_RESEARCH_MODE || '').trim().toLowerCase()),
       fallbackModels: this.normalizeStringArray(merged.fallbackModels, defaults.fallbackModels),
       source: this.canUsePostgresSettings() ? 'postgres' : 'file',
     };
@@ -1609,6 +1614,7 @@ class SettingsController {
         enableAlignmentEvaluator: true,
         applyAlignmentGuidance: true,
         agentDirectedRuntime: false,
+        neuralWaveResearchMode: false,
       },
       personality: {
         enabled: true,

@@ -2,6 +2,7 @@ jest.mock('./routes/admin/settings.controller', () => ({
     getEffectiveSshConfig: jest.fn(),
     getEffectiveOpencodeConfig: jest.fn(),
     getEffectiveDeployConfig: jest.fn(),
+    getEffectiveOrchestrationConfig: jest.fn(() => ({ enabled: true, neuralWaveResearchMode: false })),
 }));
 
 const settingsController = require('./routes/admin/settings.controller');
@@ -331,6 +332,13 @@ describe('HarnessRunState', () => {
 });
 
 describe('Planner policy packs', () => {
+    beforeEach(() => {
+        settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+            enabled: true,
+            neuralWaveResearchMode: false,
+        });
+    });
+
     test('omits workload and remote packs when tools are unavailable', async () => {
         const llmClient = {
             createResponse: jest.fn(),
@@ -424,6 +432,40 @@ describe('Planner policy packs', () => {
         expect(plannerPrompt).toContain('desktop and mobile screenshots');
         expect(plannerPrompt).toContain('iteration pass after the first render');
     });
+
+    test('includes neural-wave research guidance when the admin mode is enabled', async () => {
+        settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+            enabled: true,
+            neuralWaveResearchMode: true,
+        });
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({ llmClient });
+        const toolPolicy = {
+            candidateToolIds: ['web-search', 'web-fetch', 'document-workflow', 'agent-delegate'],
+            toolDescriptions: {
+                'web-search': 'web-search',
+                'web-fetch': 'web-fetch',
+                'document-workflow': 'document-workflow',
+                'agent-delegate': 'agent-delegate',
+            },
+        };
+
+        await orchestrator.planToolUse({
+            objective: 'Research neural wave computing and grow the answer through small chunks, templates, direction, pieces, two review waves, and a final collection.',
+            executionProfile: 'default',
+            toolPolicy,
+        });
+
+        const plannerPrompt = llmClient.complete.mock.calls[0]?.[0] || '';
+        expect(plannerPrompt).toContain('Neural-wave R&D mode is active');
+        expect(plannerPrompt).toContain('Wave 1 fan-out');
+        expect(plannerPrompt).toContain('Wave 6 polish');
+        expect(plannerPrompt).toContain('final collection');
+        expect(plannerPrompt).toContain('at most three bounded helper tasks');
+    });
 });
 
 describe('ConversationOrchestrator', () => {
@@ -437,6 +479,10 @@ describe('ConversationOrchestrator', () => {
         config.config.runtime.plannerReasoningEffort = '';
         config.config.runtime.synthesisReasoningEffort = '';
         config.config.runtime.repairReasoningEffort = '';
+        settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+            enabled: true,
+            neuralWaveResearchMode: false,
+        });
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: false,
             host: '',
@@ -471,6 +517,35 @@ describe('ConversationOrchestrator', () => {
 
     afterEach(() => {
         remoteRunnerService.runners.clear();
+    });
+
+    test('adds neural-wave guidance to runtime instructions when enabled for broad R&D work', () => {
+        settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+            enabled: true,
+            neuralWaveResearchMode: true,
+        });
+        const orchestrator = new ConversationOrchestrator({});
+
+        const instructions = orchestrator.buildRuntimeInstructions({
+            objective: 'Build an R&D document by expanding chunks, templates, direction, pieces, reviews, and final collection.',
+            executionProfile: 'default',
+            allowedToolIds: ['web-search', 'document-workflow', 'agent-delegate'],
+            toolPolicy: {
+                allowedToolIds: ['web-search', 'document-workflow', 'agent-delegate'],
+                classification: {
+                    taskFamily: 'research-deliverable',
+                    surfaceMode: 'web-chat',
+                    preferredExecutionPath: 'plan-first',
+                    confidence: 0.9,
+                },
+            },
+            clientSurface: 'web-chat',
+        });
+
+        expect(instructions).toContain('Neural-wave R&D mode is active');
+        expect(instructions).toContain('Wave 1 fan-out');
+        expect(instructions).toContain('Wave 5 review');
+        expect(instructions).toContain('Final collection');
     });
 
     test('uses a plain model response when no tools are selected', async () => {

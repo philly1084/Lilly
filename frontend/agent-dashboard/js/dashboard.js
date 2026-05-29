@@ -274,6 +274,12 @@ class Dashboard {
         document.getElementById('orchestrationAgentDirectedRuntime')?.addEventListener('change', (e) => {
             this.setCheckboxValue('settingsAgentDirectedRuntime', e.target.value === 'true');
         });
+        document.getElementById('settingsNeuralWaveResearchMode')?.addEventListener('change', (e) => {
+            this.setInputValue('orchestrationNeuralWaveResearchMode', String(e.target.checked));
+        });
+        document.getElementById('orchestrationNeuralWaveResearchMode')?.addEventListener('change', (e) => {
+            this.setCheckboxValue('settingsNeuralWaveResearchMode', e.target.value === 'true');
+        });
         
         document.getElementById('addModelBtn')?.addEventListener('click', () => {
             this.showToast('Add model functionality coming soon', 'info');
@@ -3025,6 +3031,7 @@ class Dashboard {
                     enableAlignmentEvaluator: document.getElementById('orchestrationEnableAlignmentEvaluator').value === 'true',
                     applyAlignmentGuidance: document.getElementById('orchestrationApplyAlignmentGuidance').value === 'true',
                     agentDirectedRuntime: document.getElementById('orchestrationAgentDirectedRuntime').value === 'true',
+                    neuralWaveResearchMode: document.getElementById('orchestrationNeuralWaveResearchMode').value === 'true',
                 },
             };
 
@@ -3044,6 +3051,7 @@ class Dashboard {
                 orchestration: {
                     ...existing,
                     agentDirectedRuntime: document.getElementById('settingsAgentDirectedRuntime').checked,
+                    neuralWaveResearchMode: document.getElementById('settingsNeuralWaveResearchMode').checked,
                 },
             };
 
@@ -6009,6 +6017,8 @@ class Dashboard {
         this.setInputValue('orchestrationApplyAlignmentGuidance', String(orchestration.applyAlignmentGuidance !== false));
         this.setInputValue('orchestrationAgentDirectedRuntime', String(orchestration.agentDirectedRuntime === true));
         this.setCheckboxValue('settingsAgentDirectedRuntime', orchestration.agentDirectedRuntime === true);
+        this.setInputValue('orchestrationNeuralWaveResearchMode', String(orchestration.neuralWaveResearchMode === true));
+        this.setCheckboxValue('settingsNeuralWaveResearchMode', orchestration.neuralWaveResearchMode === true);
         apiClient.baseUrl = window.location.origin;
 
         this.setCheckboxValue('featureWebsocket', Boolean(features.realTimeUpdates));

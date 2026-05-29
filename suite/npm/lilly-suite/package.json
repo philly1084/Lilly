@@ -1,0 +1,24 @@
+{
+  "name": "lilly-suite",
+  "version": "0.0.0",
+  "description": "Lilly Suite compose bundle CLI wrapper",
+  "license": "MIT",
+  "homepage": "https://example.com/lilly-suite",
+  "type": "commonjs",
+  "bin": {
+    "lilly-suite": "bin/lilly-suite.js"
+  },
+  "files": [
+    "README.md",
+    "bin/",
+    "lib/",
+    "bundle/"
+  ],
+  "scripts": {
+    "test": "node bin/lilly-suite.js help && node bin/lilly-suite.js install --dry-run && node bin/lilly-suite.js uninstall --install-root ./tmp/install --state-root ./tmp/state --dry-run",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

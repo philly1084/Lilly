@@ -813,6 +813,82 @@ function hasMultiAgentIntentText(text = '') {
     ].some((pattern) => pattern.test(normalized));
 }
 
+function hasNeuralWaveResearchIntentText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return [
+        /\bneural[- ]wave\b/,
+        /\bmany[- ]brain\b/,
+        /\bbrain\s+theory\b/,
+        /\bsmall\b[\s\S]{0,40}\bagents?\b[\s\S]{0,80}\bbig\b[\s\S]{0,30}\bpasses?\b/,
+        /\bmulti[- ]chunk\b/,
+        /\bchunk(?:ed|ing)?\b[\s\S]{0,40}\b(response|document|draft|generation|answer)\b/,
+        /\btemplates?\b[\s\S]{0,40}\bdirections?\b/,
+        /\bflush out\b[\s\S]{0,60}\b(templates?|directions?|pieces?|response|document)\b/,
+        /\b(two|2)\s+(?:waves?\s+of\s+)?(?:review|polish|synthesis)\b/,
+        /\bfinal\s+collection\b/,
+        /\br&d\b/,
+        /\bresearch\s+and\s+development\b/,
+        /\bstable\s+diffusion\b/,
+    ].some((pattern) => pattern.test(normalized));
+}
+
+function isBroadNeuralWaveOutputText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const broadWork = /\b(research|develop|design|architect|strategy|strategic|proposal|plan|playbook|brief|report|document|doc|guide|manual|framework|template|templates|direction|directions|synthesis|review|polish|comprehensive|long[- ]form|deep dive|deep[- ]dive)\b/.test(normalized);
+    const growthWork = /\b(grow|expand|flesh out|flush out|iterate|iteration|draft|pieces?|sections?|chunks?|passes?|waves?|agents?|workers?)\b/.test(normalized);
+
+    return broadWork && growthWork;
+}
+
+function shouldApplyNeuralWaveResearchMode({
+    objective = '',
+    toolPolicy = {},
+} = {}) {
+    const orchestrationConfig = getEffectiveOrchestrationConfig();
+    if (orchestrationConfig?.neuralWaveResearchMode !== true) {
+        return false;
+    }
+
+    const text = String(objective || '').trim();
+    if (hasNeuralWaveResearchIntentText(text) || isBroadNeuralWaveOutputText(text)) {
+        return true;
+    }
+
+    const taskFamily = String(toolPolicy?.classification?.taskFamily || '').trim();
+    if (['research-deliverable', 'document', 'planning', 'delegation'].includes(taskFamily)) {
+        return true;
+    }
+
+    const rolePipeline = toolPolicy?.rolePipeline || {};
+    return rolePipeline.requiresResearch === true
+        && (rolePipeline.requiresDesign === true || rolePipeline.requiresSandbox === true);
+}
+
+function buildNeuralWaveResearchInstructions() {
+    return [
+        'Neural-wave R&D mode is active. Treat it as an orchestration pattern inspired by iterative diffusion/refinement, not as a claim that a neural-network compute engine is running.',
+        'Use a fan-out then fan-in shape for broad research, strategy, document, and complex answer work:',
+        '- Wave 0 brief: restate the objective, assumptions, acceptance target, and what the final collection should contain.',
+        '- Wave 1 fan-out: split the request into several small bounded chunks or specialist agents. For very large scope, include one or two wider scout agents, but keep their output compact and directional.',
+        '- Wave 2 templates: turn early findings into reusable outlines, section templates, decision frames, and answer/document skeletons.',
+        '- Wave 3 direction: choose the strongest direction, name rejected directions briefly, and map the work into individual pieces.',
+        '- Wave 4 pieces: expand each piece independently with sources, examples, caveats, or implementation notes as appropriate.',
+        '- Wave 5 review: run a structural/factual review pass that checks gaps, contradictions, unsupported claims, and missing pieces.',
+        '- Wave 6 polish: run a final synthesis review that improves flow, consistency, voice, and usefulness.',
+        '- Final collection: merge the best pieces into one complete deliverable with a short note about remaining assumptions or next experiments.',
+        'Prefer visible small chunk progress over one giant draft. When sub-agents are available and the task explicitly benefits from delegation, spawn at most three bounded helper tasks at a time and converge their outputs through the two larger final passes.',
+        'For simple factual answers, use the lightweight version: brief decomposition, direct answer, and one polish check.',
+    ].join('\n');
+}
+
 function inferAgencyProfile({
     objective = '',
     executionProfile = DEFAULT_EXECUTION_PROFILE,
@@ -1693,6 +1769,7 @@ function buildScoredCandidateToolMap({
     hasSecurityIntent = false,
     agencyProfile = null,
     rolePipeline = null,
+    neuralWaveResearchMode = false,
 } = {}) {
     const scoreMap = Object.fromEntries(
         allowedToolIds.map((toolId) => [toolId, { score: 0, reasons: [] }]),
@@ -1784,6 +1861,12 @@ function buildScoredCandidateToolMap({
 
     if (canUseSubAgents && hasSubAgentIntent) {
         adjustCandidateToolScore(scoreMap, 'agent-delegate', 1.2, 'The user explicitly requested delegated or parallel agent work.');
+    }
+    if (neuralWaveResearchMode) {
+        adjustCandidateToolScore(scoreMap, 'agent-delegate', canUseSubAgents ? 1.0 : 0, 'Neural-wave R&D mode can fan broad work into bounded helper agents before synthesis.');
+        adjustCandidateToolScore(scoreMap, 'web-search', hasExplicitWebResearchIntent || classification?.groundingRequirement === 'required' ? 0.9 : 0.25, 'Neural-wave R&D mode benefits from early research fan-out.');
+        adjustCandidateToolScore(scoreMap, 'web-fetch', hasUrl || hasExplicitWebResearchIntent || classification?.groundingRequirement === 'required' ? 0.6 : 0.2, 'Neural-wave R&D mode verifies selected source pages before final collection.');
+        adjustCandidateToolScore(scoreMap, DOCUMENT_WORKFLOW_TOOL_ID, hasDocumentWorkflowIntent || classification?.taskFamily === 'research-deliverable' ? 0.75 : 0.35, 'Neural-wave R&D mode can collect expanded chunks into a final document or response package.');
     }
     if (!isDeferredWorkloadRun && allowDeferredWorkloadShortcut && hasWorkloadSetupIntent) {
         adjustCandidateToolScore(scoreMap, 'agent-workload', 1.2, 'The request describes future or recurring work.');
@@ -8477,6 +8560,10 @@ function buildPlannerPolicyPacks({
 } = {}) {
     const candidateToolIds = Array.isArray(toolPolicy?.candidateToolIds) ? toolPolicy.candidateToolIds : [];
     const normalizedObjective = String(objective || '');
+    const neuralWaveRelevant = shouldApplyNeuralWaveResearchMode({
+        objective: normalizedObjective,
+        toolPolicy,
+    });
 
     const workloadRelevant = candidateToolIds.includes('agent-workload');
     const remoteRelevant = Boolean(remoteToolId)
@@ -8534,6 +8621,13 @@ function buildPlannerPolicyPacks({
                 'Every direct `code-sandbox` website/game/Vite build step must use `params.mode:"project"` plus complete previewable `files` or non-empty `code`. `params.prompt` alone is invalid because `code-sandbox` persists supplied files; it does not generate React/Vite code from a prompt. Use `document-workflow generate-suite` with `buildMode:"sandbox"` when generation from a prompt is needed. Use `params.language:"vite"` for multi-file apps, games, simulations, and richer interactive previews. Do not use `code-sandbox` execute mode unless a separate confirmation policy explicitly allows executable code.',
                 'For screenshot QA after a sandbox build, set `web-scrape.params.url` to the verified preview/public URL. Do not plan a `web-scrape` QA step with an empty, placeholder-only, or guessed URL; if the sandbox has not been built yet, build it first. Use `browser:true` and `captureScreenshot:true`, omit `selectors` unless extracting fields, and never send `selectors` as an array. If the URL is produced earlier in the same plan, use `{{lastPreviewUrl}}`; the runtime also resolves legacy `{{steps[n].previewUrl}}` placeholders before browser execution. Authentication walls, missing-token pages, empty bodies, low contrast, horizontal overflow, or page errors are blockers that require another build/repair pass instead of a final caveat.',
                 'After fallback or screenshot evidence, explicitly choose repair, redesign, ask, or ready. Use repair for broken implementation or missing assets when the visual direction is sound; use redesign when the output still feels generic, samey, cheap, or mismatched. Communicate that decision in the next step or final response.',
+            ]
+            : [],
+        neuralWave: neuralWaveRelevant
+            ? [
+                buildNeuralWaveResearchInstructions(),
+                'Planning shape for neural-wave mode: favor breadth early and consolidation late. Use web-search/web-fetch or bounded sub-agents for the early fan-out only when those tools are candidates and useful; then converge through document-workflow, synthesis, or a plain final response.',
+                'Do not spawn sub-agents just to imitate a pattern. Use them when independent research/template/direction/piece lanes would reduce context load or improve final quality.',
             ]
             : [],
     };
@@ -11057,6 +11151,14 @@ class ConversationOrchestrator extends EventEmitter {
             classification,
             executionProfile,
         });
+        const neuralWaveResearchMode = shouldApplyNeuralWaveResearchMode({
+            objective: prompt,
+            toolPolicy: {
+                classification,
+                agencyProfile: effectiveAgencyProfile,
+                rolePipeline: rolePipelineSeed,
+            },
+        });
         const continuationGate = normalizeForegroundContinuationGate(getSessionControlState(session).foregroundContinuationGate);
         const autonomyContinuationDecision = parseAutonomyContinuationDecision(objective);
         const shouldClearContinuationPause = autonomyContinuationDecision === 'continue'
@@ -11122,10 +11224,17 @@ class ConversationOrchestrator extends EventEmitter {
                 hasSecurityIntent,
                 agencyProfile: effectiveAgencyProfile,
                 rolePipeline: effectiveRolePipelineSeed,
+                neuralWaveResearchMode,
             })
             : null;
 
         if (executionProfile === REMOTE_BUILD_EXECUTION_PROFILE) {
+            if (neuralWaveResearchMode) {
+                ['web-search', 'web-fetch', DOCUMENT_WORKFLOW_TOOL_ID].forEach((toolId) => allowedToolIds.includes(toolId) && candidates.add(toolId));
+                if (canUseSubAgents && allowedToolIds.includes('agent-delegate')) {
+                    candidates.add('agent-delegate');
+                }
+            }
             if (canUseSubAgents && hasSubAgentIntent && allowedToolIds.includes('agent-delegate')) {
                 candidates.add('agent-delegate');
             }
@@ -11275,6 +11384,12 @@ class ConversationOrchestrator extends EventEmitter {
                 candidates.add(SELF_REFLECTION_UPDATE_TOOL_ID);
             }
         } else {
+            if (neuralWaveResearchMode) {
+                ['web-search', 'web-fetch', DOCUMENT_WORKFLOW_TOOL_ID].forEach((toolId) => allowedToolIds.includes(toolId) && candidates.add(toolId));
+                if (canUseSubAgents && allowedToolIds.includes('agent-delegate')) {
+                    candidates.add('agent-delegate');
+                }
+            }
             if (canUseSubAgents && hasSubAgentIntent && allowedToolIds.includes('agent-delegate')) {
                 candidates.add('agent-delegate');
             }
@@ -11495,6 +11610,7 @@ class ConversationOrchestrator extends EventEmitter {
             classification,
             agencyProfile: effectiveAgencyProfile,
             rolePipeline: effectiveRolePipelineSeed,
+            neuralWaveResearchMode,
             workflow: effectiveWorkflowSeed,
             projectPlan: effectiveProjectPlanSeed,
             clusterRegistrySummary,
@@ -12426,6 +12542,7 @@ class ConversationOrchestrator extends EventEmitter {
             ...(plannerPolicyPacks.workload.length > 0 ? ['', ...plannerPolicyPacks.workload] : []),
             ...(plannerPolicyPacks.remote.length > 0 ? ['', ...plannerPolicyPacks.remote] : []),
             ...(plannerPolicyPacks.frontend.length > 0 ? ['', ...plannerPolicyPacks.frontend] : []),
+            ...(plannerPolicyPacks.neuralWave.length > 0 ? ['', ...plannerPolicyPacks.neuralWave] : []),
             '',
             'Return exactly this shape:',
             '{"steps":[{"tool":"tool-id","reason":"why","params":{}}]}',
@@ -13308,6 +13425,10 @@ class ConversationOrchestrator extends EventEmitter {
             if (toolPolicy.classification.checkpointNeed === 'required') {
                 parts.push('This request has a required decision gate before major work. Prefer `user-checkpoint` over guessing or overcommitting to one implementation path.');
             }
+        }
+
+        if (shouldApplyNeuralWaveResearchMode({ objective, toolPolicy })) {
+            parts.push(buildNeuralWaveResearchInstructions());
         }
 
         if (toolPolicy?.rolePipeline) {

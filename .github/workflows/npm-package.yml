@@ -1,0 +1,148 @@
+name: Lilly Suite npm Package
+
+on:
+  push:
+    branches: [ "master", "main" ]
+    paths:
+      - ".github/workflows/npm-package.yml"
+      - "suite/npm/lilly-suite/**"
+      - "suite/scripts/build-release-bundle.mjs"
+      - "suite/install-compose.sh"
+      - "suite/scripts/uninstall-compose.mjs"
+  pull_request:
+    branches: [ "master", "main" ]
+    paths:
+      - ".github/workflows/npm-package.yml"
+      - "suite/npm/lilly-suite/**"
+      - "suite/scripts/build-release-bundle.mjs"
+      - "suite/install-compose.sh"
+      - "suite/scripts/uninstall-compose.mjs"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Manual npm publish gate. Kept disabled by default; requires NPM_TOKEN."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  PACKAGE_DIR: suite/npm/lilly-suite
+  PACKAGE_NAME: lilly-suite
+  CLI_NAME: lilly-suite
+
+jobs:
+  validate-package:
+    name: Validate and pack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify package path
+        run: |
+          set -euo pipefail
+          test -f "${PACKAGE_DIR}/package.json" || {
+            echo "::error::Missing ${PACKAGE_DIR}/package.json. Add the Lilly Suite npm package before this workflow can validate it."
+            exit 1
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify package identity
+        run: |
+          set -euo pipefail
+          cd "${PACKAGE_DIR}"
+
+          actual_name="$(node -p "require('./package.json').name")"
+          if [ "${actual_name}" != "${PACKAGE_NAME}" ]; then
+            echo "::error::Expected package name ${PACKAGE_NAME}, found ${actual_name}."
+            exit 1
+          fi
+
+          node -e "const pkg=require('./package.json'); const bin=pkg.bin && (typeof pkg.bin === 'string' ? pkg.bin : pkg.bin['${CLI_NAME}']); if (!bin) { throw new Error('package.json must expose the ${CLI_NAME} CLI in bin'); } console.log('cli-bin=' + bin);"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          cd "${PACKAGE_DIR}"
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Run package checks
+        run: |
+          set -euo pipefail
+          cd "${PACKAGE_DIR}"
+          npm run lint --if-present
+          npm run check --if-present
+          npm test --if-present
+          npm run build --if-present
+
+      - name: Pack dry run
+        run: |
+          set -euo pipefail
+          cd "${PACKAGE_DIR}"
+          npm pack --dry-run
+
+      - name: Pack tarball
+        id: pack
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/npm-pack"
+          cd "${PACKAGE_DIR}"
+
+          tarball="$(npm pack --pack-destination "${RUNNER_TEMP}/npm-pack")"
+          tarball_path="${RUNNER_TEMP}/npm-pack/${tarball}"
+          test -f "${tarball_path}"
+
+          echo "tarball=${tarball_path}" >> "${GITHUB_OUTPUT}"
+          echo "tarball_name=${tarball}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install packed CLI into temp prefix
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/lilly-suite-prefix"
+          npm install --global --prefix "${prefix}" "${{ steps.pack.outputs.tarball }}"
+
+          bin_dir="${prefix}/bin"
+          cli="${bin_dir}/${CLI_NAME}"
+          test -x "${cli}" || {
+            echo "::error::Installed CLI is missing or not executable: ${cli}"
+            ls -la "${bin_dir}" || true
+            exit 1
+          }
+
+          echo "${bin_dir}" >> "${GITHUB_PATH}"
+
+      - name: Run CLI dry-run checks
+        run: |
+          set -euo pipefail
+          lilly-suite --help
+          lilly-suite help
+          lilly-suite install --dry-run \
+            --install-root "${RUNNER_TEMP}/lilly-suite-install" \
+            --state-root "${RUNNER_TEMP}/lilly-suite-state"
+
+      - name: Upload npm package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lilly-suite-npm-package-${{ github.sha }}
+          path: ${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish disabled by default
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        run: |
+          set -euo pipefail
+          echo "::error::Publishing is intentionally not wired yet. Add NPM_TOKEN, npm provenance policy, and release tag rules before enabling this step."
+          exit 1

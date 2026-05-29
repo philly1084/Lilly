@@ -562,6 +562,14 @@
                                         </select>
                                         <p class="text-muted">Bypass the heavy conversation orchestrator and let the agent choose progress and tools from cards plus compact registry context.</p>
                                     </div>
+                                    <div class="form-group">
+                                        <label for="orchestrationNeuralWaveResearchMode">Neural-wave R&amp;D mode</label>
+                                        <select class="form-control" id="orchestrationNeuralWaveResearchMode">
+                                            <option value="false">Off</option>
+                                            <option value="true">On</option>
+                                        </select>
+                                        <p class="text-muted">Use small early agent waves and chunk growth for broad research or document work, then converge through two larger review passes.</p>
+                                    </div>
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
@@ -1543,6 +1551,16 @@
                                                 </div>
                                                 <label class="toggle">
                                                     <input type="checkbox" id="settingsAgentDirectedRuntime">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
+                                                    <span class="feature-name">Neural-wave R&amp;D mode</span>
+                                                    <span class="feature-desc">Fan broad requests into small research/template/direction chunks, then collect them through two larger review and polish waves.</span>
+                                                </div>
+                                                <label class="toggle">
+                                                    <input type="checkbox" id="settingsNeuralWaveResearchMode">
                                                     <span class="toggle-slider"></span>
                                                 </label>
                                             </div>
