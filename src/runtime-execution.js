@@ -304,6 +304,10 @@ function inferExecutionProfile(payload = {}) {
             /\b(current page|this page|the page|this note|the note)\b/,
         ].some((pattern) => pattern.test(normalized))
         : false;
+    const knownDeployDomainStatusIntent = /\b(check|verify|inspect|debug|diagnose|troubleshoot|status|health|working|live|up)\b/.test(normalized)
+        && /\b(?:[a-z0-9-]+\.)+(?:demoserver2\.buzz|secdevsolutions\.help)\b/i.test(normalized);
+    const deployedPublicDomainStatusIntent = /\b(check|verify|inspect|debug|diagnose|troubleshoot|status|health|working|live|up)\b[\s\S]{0,60}\b(deployed|deployment|live|public|routed|ingress|tls|dns|site|website|app)\b[\s\S]{0,120}\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/i.test(normalized)
+        || /\b(deployed|deployment|live|public|routed|ingress|tls|dns|site|website|app)\b[\s\S]{0,120}\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b[\s\S]{0,60}\b(check|verify|inspect|debug|diagnose|troubleshoot|status|health|working|live|up)\b/i.test(normalized);
 
     if (!normalized) {
         return requestedNotesProfile ? NOTES_EXECUTION_PROFILE : DEFAULT_EXECUTION_PROFILE;
@@ -347,7 +351,7 @@ function inferExecutionProfile(payload = {}) {
         return NOTES_EXECUTION_PROFILE;
     }
 
-    return (remoteBuildIntent || remoteContinuationIntent || stickyRemoteWorkIntent || stickyRemoteStatusIntent || stickyRemoteApprovalIntent || remoteSoftwareCreationIntent)
+    return (remoteBuildIntent || remoteContinuationIntent || stickyRemoteWorkIntent || stickyRemoteStatusIntent || stickyRemoteApprovalIntent || remoteSoftwareCreationIntent || knownDeployDomainStatusIntent || deployedPublicDomainStatusIntent)
         ? REMOTE_BUILD_EXECUTION_PROFILE
         : DEFAULT_EXECUTION_PROFILE;
 }

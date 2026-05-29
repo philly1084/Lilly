@@ -6448,6 +6448,97 @@ describe('ConversationOrchestrator', () => {
         });
     });
 
+    test('keeps explicit remote-cli-agent requests from being cancelled by runtime guidance', async () => {
+        const originalRewriteEnabled = process.env.ORCHESTRATION_REWRITE_ENABLED;
+        process.env.ORCHESTRATION_REWRITE_ENABLED = 'true';
+
+        const objective = 'Use the remote cli agent to do a read-only diagnostic only: print pwd in the configured remote workspace and return WHAT_CHANGED, VERIFY_COMMANDS, VERIFY_RESULTS, PUBLIC_URL, BLOCKER. Do not edit or deploy anything.';
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse('Remote CLI diagnostic completed.')),
+            complete: jest.fn(),
+        };
+        const toolManager = {
+            getTool: jest.fn((toolId) => (
+                ['remote-cli-agent', 'remote-command', 'remote-workbench', 'k3s-deploy', 'web-search', 'web-fetch', 'file-read', 'file-write', 'file-search', 'agent-notes-write', 'tool-doc-read']
+                    .includes(toolId)
+                    ? { id: toolId, description: toolId }
+                    : null
+            )),
+            getToolReadiness: jest.fn((toolId) => ({
+                toolId,
+                status: ['remote-command', 'remote-workbench', 'k3s-deploy'].includes(toolId) ? 'unavailable' : 'ready',
+                reason: ['remote-command', 'remote-workbench', 'k3s-deploy'].includes(toolId)
+                    ? 'SSH client is not installed in the backend container.'
+                    : 'Tool is registered and executable.',
+                executableShape: 'execute',
+            })),
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: {
+                    finalOutput: 'WHAT_CHANGED: none\nVERIFY_RESULTS: /opt/kimibuilt\nBLOCKER: none',
+                },
+            }),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({ id: 'session-explicit-remote-cli', metadata: {} }),
+            getOrCreate: jest.fn().mockResolvedValue({ id: 'session-explicit-remote-cli', metadata: {} }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue([]),
+            rememberResponse: jest.fn(),
+        };
+
+        try {
+            const orchestrator = new ConversationOrchestrator({
+                llmClient,
+                toolManager,
+                sessionStore,
+                memoryService,
+            });
+
+            const result = await orchestrator.executeConversation({
+                input: objective,
+                memoryInput: objective,
+                sessionId: 'session-explicit-remote-cli',
+                executionProfile: 'remote-build',
+                metadata: {
+                    clientSurface: 'web-chat',
+                },
+                toolContext: {
+                    clientSurface: 'web-chat',
+                    remoteWorkspacePath: '/opt/kimibuilt',
+                },
+            });
+
+            expect(toolManager.executeTool).toHaveBeenCalledTimes(1);
+            expect(toolManager.executeTool).toHaveBeenCalledWith(
+                'remote-cli-agent',
+                expect.objectContaining({
+                    task: objective,
+                    adminMode: true,
+                    cwd: '/opt/kimibuilt',
+                }),
+                expect.any(Object),
+            );
+            expect(result.response.metadata.runtimeMode).toBe('direct-tool');
+            expect(result.response.metadata.toolPolicy.preferredRemoteToolId).toBe('remote-cli-agent');
+            expect(result.response.metadata.toolPolicy.candidateToolIds[0]).toBe('remote-cli-agent');
+            expect(result.response.metadata.toolPolicy.candidateToolIds).not.toContain('remote-command');
+            expect(result.response.metadata.toolPolicy.candidateToolIds).not.toContain('remote-workbench');
+        } finally {
+            if (originalRewriteEnabled === undefined) {
+                delete process.env.ORCHESTRATION_REWRITE_ENABLED;
+            } else {
+                process.env.ORCHESTRATION_REWRITE_ENABLED = originalRewriteEnabled;
+            }
+        }
+    });
+
     test.skip('managed-app platform diagnose routing was deleted from orchestration', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {
@@ -9647,7 +9738,11 @@ describe('ConversationOrchestrator', () => {
         });
 
         expect(toolPolicy.workflow).toBeNull();
+        expect(toolPolicy.preferredRemoteToolId).toBe('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds[0]).toBe('remote-cli-agent');
         expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('remote-command');
+        expect(toolPolicy.candidateToolIds).not.toContain('remote-workbench');
         expect(directAction).toEqual({
             tool: 'remote-cli-agent',
             reason: 'The request asks an assisted remote CLI agent to own the coding, build, deploy, and verification loop.',
@@ -9714,7 +9809,11 @@ describe('ConversationOrchestrator', () => {
         });
 
         expect(toolPolicy.workflow).toBeNull();
+        expect(toolPolicy.preferredRemoteToolId).toBe('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds[0]).toBe('remote-cli-agent');
         expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('remote-command');
+        expect(toolPolicy.candidateToolIds).not.toContain('remote-workbench');
         expect(directAction).toEqual({
             tool: 'remote-cli-agent',
             reason: 'The request asks an assisted remote CLI agent to own the coding, build, deploy, and verification loop.',
@@ -9769,7 +9868,11 @@ describe('ConversationOrchestrator', () => {
             },
         });
 
+        expect(toolPolicy.preferredRemoteToolId).toBe('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds[0]).toBe('remote-cli-agent');
         expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('remote-command');
+        expect(toolPolicy.candidateToolIds).not.toContain('remote-workbench');
         expect(directAction).toEqual({
             tool: 'remote-cli-agent',
             reason: 'The request explicitly asks the assisted remote CLI agent to own the remote task.',

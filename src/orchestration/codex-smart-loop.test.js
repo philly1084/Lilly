@@ -3,7 +3,10 @@ const {
   evaluateToolReadiness,
   READINESS_DEGRADED,
   READINESS_READY,
+  READINESS_UNAVAILABLE,
+  resetRuntimeReadinessProbeCacheForTests,
 } = require('./tool-readiness');
+const childProcess = require('child_process');
 const {
   classifyFailureText,
   classifyToolEventFailure,
@@ -29,6 +32,29 @@ describe('Codex-smart orchestration primitives', () => {
     });
     expect(degraded.status).toBe(READINESS_DEGRADED);
     expect(degraded.recoveryHints.join(' ')).toMatch(/no executable handler/i);
+  });
+
+  test('tool readiness marks SSH-backed remote tools unavailable when ssh is missing', () => {
+    resetRuntimeReadinessProbeCacheForTests();
+    const spawnSpy = jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
+      error: Object.assign(new Error('spawn ssh ENOENT'), { code: 'ENOENT' }),
+    });
+
+    try {
+      const readiness = evaluateToolReadiness('remote-command', { id: 'remote-command', execute: async () => ({}) }, {
+        skill: { enabled: true },
+      });
+
+      expect(readiness.status).toBe(READINESS_UNAVAILABLE);
+      expect(readiness.reason).toMatch(/SSH client is not installed/i);
+      expect(readiness.runtimeProbe).toMatchObject({
+        kind: 'ssh-binary',
+        ok: false,
+      });
+    } finally {
+      spawnSpy.mockRestore();
+      resetRuntimeReadinessProbeCacheForTests();
+    }
   });
 
   test('plan validation rejects unavailable or non-executable degraded tools', () => {

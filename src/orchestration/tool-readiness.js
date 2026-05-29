@@ -1,6 +1,56 @@
+const childProcess = require('child_process');
+
 const READINESS_READY = 'ready';
 const READINESS_DEGRADED = 'degraded';
 const READINESS_UNAVAILABLE = 'unavailable';
+
+const SSH_BACKED_TOOL_IDS = new Set([
+  'ssh-execute',
+  'remote-command',
+  'remote-workbench',
+  'k3s-deploy',
+]);
+
+let cachedSshProbe = null;
+
+function probeSshBinary() {
+  const now = Date.now();
+  if (cachedSshProbe && now - cachedSshProbe.checkedAt < 30000) {
+    return cachedSshProbe;
+  }
+
+  const candidates = process.platform === 'win32'
+    ? ['ssh.exe', 'ssh']
+    : ['/usr/bin/ssh', '/bin/ssh', 'ssh'];
+  let lastError = '';
+
+  for (const candidate of candidates) {
+    const result = childProcess.spawnSync(candidate, ['-V'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 1500,
+      windowsHide: true,
+    });
+    if (!result.error || result.error.code !== 'ENOENT') {
+      cachedSshProbe = {
+        ok: true,
+        path: candidate,
+        checkedAt: now,
+      };
+      return cachedSshProbe;
+    }
+    lastError = result.error.message;
+  }
+
+  cachedSshProbe = {
+    ok: false,
+    path: '',
+    reason: 'SSH client is not installed in the backend container.',
+    lastError,
+    checkedAt: now,
+  };
+  return cachedSshProbe;
+}
 
 function normalizeText(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -80,6 +130,12 @@ function evaluateToolReadiness(toolId = '', tool = null, {
     reason = 'Tool is registered but has no executable handler.';
   }
 
+  const sshProbe = SSH_BACKED_TOOL_IDS.has(id) ? probeSshBinary() : null;
+  if (sshProbe && !sshProbe.ok) {
+    status = READINESS_UNAVAILABLE;
+    reason = sshProbe.reason;
+  }
+
   if (probe?.status && [READINESS_READY, READINESS_DEGRADED, READINESS_UNAVAILABLE].includes(probe.status)) {
     status = probe.status;
     reason = probe.reason || reason;
@@ -97,6 +153,12 @@ function evaluateToolReadiness(toolId = '', tool = null, {
       ...defaultRecoveryHints({ toolId: id, status, executableShape }),
     ])),
     lastProbe: probe?.lastProbe || previous?.lastProbe || null,
+    runtimeProbe: sshProbe ? {
+      kind: 'ssh-binary',
+      ok: sshProbe.ok,
+      path: sshProbe.path,
+      reason: sshProbe.reason || '',
+    } : null,
     lastCheckedAt: now,
   };
 }
@@ -113,10 +175,15 @@ function summarizeToolReadiness(readiness = {}) {
   };
 }
 
+function resetRuntimeReadinessProbeCacheForTests() {
+  cachedSshProbe = null;
+}
+
 module.exports = {
   READINESS_READY,
   READINESS_DEGRADED,
   READINESS_UNAVAILABLE,
   evaluateToolReadiness,
   summarizeToolReadiness,
+  resetRuntimeReadinessProbeCacheForTests,
 };
