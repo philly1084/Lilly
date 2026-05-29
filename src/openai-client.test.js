@@ -2974,6 +2974,39 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(text).not.toContain('REMOTE_CLI_JOB_ID=');
     });
 
+    test('prefers structured remote-cli-agent proof over verbose final output', () => {
+        const text = __testUtils.formatDirectToolResultMessage({
+            toolCall: {
+                function: {
+                    name: 'remote-cli-agent',
+                },
+            },
+            result: {
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: {
+                    finalOutput: [
+                        'raw terminal line 1',
+                        'raw terminal line 2',
+                        'raw transport callback payload',
+                    ].join('\n'),
+                    cwd: '/srv/apps/my-app',
+                    whatChanged: 'Verified the deployed service health.',
+                    verifyCommands: ['curl -fsS https://app.example.com/ready'],
+                    verifyResults: ['pass: ready returned 200'],
+                    completionStatus: 'complete',
+                },
+            },
+        });
+
+        expect(text).toContain('Remote CLI task completed.');
+        expect(text).toContain('Workspace: /srv/apps/my-app.');
+        expect(text).toContain('What changed: Verified the deployed service health.');
+        expect(text).toContain('Verification results: pass: ready returned 200.');
+        expect(text).not.toContain('raw terminal line');
+        expect(text).not.toContain('raw transport callback payload');
+    });
+
     test('runs explicit web-scrape requests directly for sensitive image capture flows', async () => {
         const toolManager = createToolManager();
         const automaticTools = __testUtils.buildAutomaticToolDefinitions(

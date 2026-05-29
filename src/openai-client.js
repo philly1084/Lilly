@@ -5058,8 +5058,12 @@ function formatDirectToolResultMessage(toolEvent = {}) {
 
         const data = result?.data || {};
         const finalOutput = String(data.finalOutput || '').trim();
-        return (isRemoteCliDirectMarkerDumpText(finalOutput) ? summarizeRemoteCliAgentDirectResult(data) : finalOutput)
-            || summarizeRemoteCliAgentDirectResult(data)
+        const structuredSummary = summarizeRemoteCliAgentDirectResult(data);
+        return ((isRemoteCliDirectMarkerDumpText(finalOutput) || hasRemoteCliStructuredEvidence(data))
+            ? structuredSummary
+            : finalOutput)
+            || structuredSummary
+            || finalOutput
             || `remote-cli-agent completed for target ${data.targetId || 'default target'}.`;
     }
 
@@ -5209,6 +5213,30 @@ function remoteCliDirectList(value) {
     return hasRemoteCliDirectValue(text) ? [text] : [];
 }
 
+function hasRemoteCliStructuredEvidence(data = {}) {
+    if (!data || typeof data !== 'object') {
+        return false;
+    }
+
+    return [
+        data.completionStatus,
+        data.status,
+        data.cwd,
+        data.workspace,
+        data.workingDirectory,
+        data.whatChanged,
+        data.what_changed,
+        data.publicUrl,
+        data.public_url,
+        data.blocker,
+        data.remoteCodeJobId,
+        data.remote_code_job_id,
+        data.jobId,
+    ].some(hasRemoteCliDirectValue)
+        || remoteCliDirectList(data.verifyCommands || data.verify_commands).length > 0
+        || remoteCliDirectList(data.verifyResults || data.verify_results).length > 0;
+}
+
 function isRemoteCliDirectMarkerDumpText(text = '') {
     const markerMatches = String(text || '')
         .match(/\b(REMOTE_AGENT_RESULT|WORKSPACE|WHAT_CHANGED|VERIFY_COMMANDS|VERIFY_RESULTS|PUBLIC_URL|BLOCKER|REMOTE_CLI_JOB_ID|REMOTE_CLI_TARGET)=/g);
@@ -5226,8 +5254,12 @@ function summarizeRemoteCliAgentDirectResult(data = {}) {
         lines.push('Remote CLI task is blocked.');
     } else if (status === 'running') {
         lines.push('Remote CLI task is still running.');
-    } else {
+    } else if (status === 'partially_verified' || status === 'partial') {
+        lines.push('Remote CLI task returned partial verification.');
+    } else if (status === 'complete' || status === 'completed' || hasRemoteCliStructuredEvidence(data)) {
         lines.push('Remote CLI task completed.');
+    } else {
+        return '';
     }
 
     const workspace = data.cwd || data.workspace || data.workingDirectory;

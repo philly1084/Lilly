@@ -1059,6 +1059,9 @@ const config = {
             || process.env.REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX
             || 'workspace-write',
         codexAgentReasoningEffort: process.env.REMOTE_CLI_CODEX_AGENT_REASONING_EFFORT || '',
+        codexAgentModel: process.env.REMOTE_CLI_CODEX_AGENT_MODEL
+            || process.env.CODEX_AGENT_MODEL
+            || '',
         codexAgentStallTimeoutMs: Math.max(
             1000,
             Math.min(parseInt(process.env.REMOTE_CLI_CODEX_AGENT_STALL_TIMEOUT_MS, 10) || 300000, 3600000),

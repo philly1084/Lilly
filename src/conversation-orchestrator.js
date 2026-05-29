@@ -5634,7 +5634,7 @@ function hasExplicitRemoteCliAgentIntentText(text = '') {
         return false;
     }
 
-    return /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|agents sdk remote cli|assisted cli|cli tool)\b/.test(normalized);
+    return /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli|cli tool)\b/.test(normalized);
 }
 
 function hasExplicitDirectRemoteCliIntent(text = '') {

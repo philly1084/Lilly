@@ -62,6 +62,7 @@ const BASE_SHARED_TOOL_IDS = Object.freeze([
 const PROFILE_TOOL_ALLOWLISTS = Object.freeze({
     [DEFAULT_EXECUTION_PROFILE]: Object.freeze([
         'remote-command',
+        'remote-cli-agent',
         'remote-workbench',
         ...BASE_SHARED_TOOL_IDS,
     ]),

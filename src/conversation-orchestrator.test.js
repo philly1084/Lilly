@@ -202,6 +202,71 @@ describe('HarnessRunState', () => {
         expect(plan[0].params.command).toContain('kubectl exec -n "$ns" deployment/"$app"');
     });
 
+    test('treats the literal remote-cli-agent tool id as assisted CLI intent', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+        settingsController.getEffectiveDeployConfig.mockReturnValue({});
+        const toolIds = [
+            'managed-app',
+            'remote-command',
+            'remote-workbench',
+            'remote-cli-agent',
+            'k3s-deploy',
+            'web-search',
+            'tool-doc-read',
+            'user-checkpoint',
+        ];
+        const toolManager = {
+            getTool: jest.fn((toolId) => (
+                toolIds.includes(toolId)
+                    ? { id: toolId, description: toolId }
+                    : null
+            )),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: { createResponse: jest.fn() },
+            toolManager,
+            sessionStore: {},
+            memoryService: {},
+        });
+        const objective = [
+            'Use remote-cli-agent read-only to verify Codex-agent transport is alive.',
+            'Run only hostname and pwd, no file edits.',
+            'Cap status polling at 3.',
+        ].join(' ');
+        const session = { id: 'session-remote-cli-hyphen', metadata: {} };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            session,
+            executionProfile: 'remote-build',
+            toolManager,
+            metadata: { clientSurface: 'web-chat' },
+            toolContext: { clientSurface: 'web-chat' },
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session,
+            toolPolicy,
+            toolContext: { clientSurface: 'web-chat' },
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.preferredRemoteToolId).toBe('remote-cli-agent');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                adminMode: true,
+                waitMs: 30000,
+            }),
+        }));
+    });
+
     test('tracks completion criteria, evidence, and resumeable control state', () => {
         const harness = new HarnessRunState({
             objective: 'Deploy the app and verify it is live.',

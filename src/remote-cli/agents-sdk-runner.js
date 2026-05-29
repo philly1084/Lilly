@@ -1033,6 +1033,21 @@ function isCodexAgentTerminalEvent(event = {}) {
   return CODEX_AGENT_TERMINAL_EVENTS.has(normalizeText(event.event));
 }
 
+function codexAgentStatusToTerminalEvent(status = '') {
+  switch (normalizeText(status)) {
+    case 'completed':
+      return 'turn_completed';
+    case 'failed':
+      return 'turn_failed';
+    case 'cancelled':
+      return 'turn_cancelled';
+    case 'input_required':
+      return 'turn_input_required';
+    default:
+      return '';
+  }
+}
+
 function buildCodexAgentPrompt({
   task = '',
   workspacePath = '',
@@ -1334,6 +1349,7 @@ class RemoteCliAgentsSdkRunner {
       defaultTargetId: resolveRemoteCliTargetId('', this.config.defaultTargetId || 'prod'),
       defaultCwd: normalizeText(this.config.defaultCwd),
       codexAgentWorkspacePath: normalizeText(this.config.codexAgentWorkspacePath),
+      codexAgentModel: normalizeText(this.config.codexAgentModel),
       agentModel: normalizeText(this.config.agentModel),
       remoteCodeModel: normalizeText(this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL,
       directRun: this.config.directRun !== false,
@@ -1416,11 +1432,7 @@ class RemoteCliAgentsSdkRunner {
     onEvent = () => {},
     signal = null,
   } = {}) {
-    if (!response?.body) {
-      throw new Error('codex-agent events response did not include a readable body.');
-    }
-
-    if (typeof response.body.getReader === 'function') {
+    if (response?.body && typeof response.body.getReader === 'function') {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -1451,6 +1463,10 @@ class RemoteCliAgentsSdkRunner {
       return;
     }
 
+    if (!response?.body) {
+      throw new Error('codex-agent events response did not include a readable body.');
+    }
+
     throw new Error('codex-agent events response body is unreadable.');
   }
 
@@ -1462,6 +1478,8 @@ class RemoteCliAgentsSdkRunner {
     model = '',
     sessionId = '',
     agentRunTimeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS,
+    maxStatusPolls = DEFAULT_MAX_STATUS_POLLS,
+    statusPollIntervalMs = DEFAULT_STATUS_POLL_INTERVAL_MS,
     adminMode = false,
     onProgress = null,
   } = {}) {
@@ -1587,6 +1605,27 @@ class RemoteCliAgentsSdkRunner {
       const eventFragments = [];
       let terminalEvent = null;
       let latestEvent = null;
+      const handleCodexAgentEvent = (event) => {
+        latestEvent = event;
+        const detail = summarizeCodexAgentEvent(event);
+        if (detail) {
+          emitProgress(detail, {
+            percent: isCodexAgentTerminalEvent(event) ? 92 : 55,
+            stage: isCodexAgentTerminalEvent(event) ? 'completed' : 'in_progress',
+            event,
+          });
+        }
+        const text = extractCodexAgentEventText(event);
+        if (text && event.event === 'output') {
+          outputParts.push(text);
+        }
+        if (text) {
+          eventFragments.push(text);
+        }
+        if (isCodexAgentTerminalEvent(event)) {
+          terminalEvent = event;
+        }
+      };
       const eventsResponse = await this.fetch(buildCodexAgentUrl(baseUrl, `/api/codex-agent/runs/${encodeURIComponent(runId)}/events`), {
         method: 'GET',
         headers: {
@@ -1601,28 +1640,63 @@ class RemoteCliAgentsSdkRunner {
 
       await this.consumeCodexAgentEvents(eventsResponse, {
         signal: controller?.signal || null,
-        onEvent: (event) => {
-          latestEvent = event;
-          const detail = summarizeCodexAgentEvent(event);
-          if (detail) {
-            emitProgress(detail, {
-              percent: isCodexAgentTerminalEvent(event) ? 92 : 55,
-              stage: isCodexAgentTerminalEvent(event) ? 'completed' : 'in_progress',
-              event,
+        onEvent: handleCodexAgentEvent,
+      });
+
+      if (!terminalEvent) {
+        emitProgress('Codex agent events stream closed before a terminal event; checking the run snapshot.', {
+          percent: 74,
+          stage: 'reconnecting',
+          event: latestEvent || null,
+        });
+        const snapshotPolls = Math.min(maxStatusPolls, 3);
+        for (let attempt = 1; attempt <= snapshotPolls && !terminalEvent; attempt += 1) {
+          if (attempt > 1) {
+            await sleep(Math.min(statusPollIntervalMs * attempt, 3000));
+          }
+          const after = normalizePositiveInteger(latestEvent?.cursor, 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+          const snapshotUrl = `${buildCodexAgentUrl(baseUrl, `/api/codex-agent/runs/${encodeURIComponent(runId)}/events`)}?follow=false&after=${after}`;
+          const snapshotResponse = await this.fetch(snapshotUrl, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              Accept: 'text/event-stream',
+            },
+            ...(controller ? { signal: controller.signal } : {}),
+          });
+          if (snapshotResponse?.ok) {
+            await this.consumeCodexAgentEvents(snapshotResponse, {
+              signal: controller?.signal || null,
+              onEvent: handleCodexAgentEvent,
             });
           }
-          const text = extractCodexAgentEventText(event);
-          if (text && event.event === 'output') {
-            outputParts.push(text);
+          if (terminalEvent) {
+            break;
           }
-          if (text) {
-            eventFragments.push(text);
+
+          const statusResponse = await this.fetch(buildCodexAgentUrl(baseUrl, `/api/codex-agent/runs/${encodeURIComponent(runId)}`), {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              Accept: 'application/json',
+            },
+            ...(controller ? { signal: controller.signal } : {}),
+          });
+          const statusBody = statusResponse?.ok ? await this.readJsonResponse(statusResponse) : null;
+          const terminalName = codexAgentStatusToTerminalEvent(statusBody?.status);
+          if (terminalName) {
+            terminalEvent = {
+              event: terminalName,
+              message: normalizeText(statusBody?.error || statusBody?.message),
+              thread_id: statusBody?.threadId || startBody?.threadId || null,
+              turn_id: statusBody?.turnId || startBody?.turnId || null,
+              result: {
+                output_text: outputParts.join('\n').trim(),
+              },
+            };
           }
-          if (isCodexAgentTerminalEvent(event)) {
-            terminalEvent = event;
-          }
-        },
-      });
+        }
+      }
 
       if (!terminalEvent) {
         throw new Error(`codex-agent events stream ended without a terminal event${latestEvent?.event ? ` after ${latestEvent.event}` : ''}.`);
@@ -1863,7 +1937,9 @@ class RemoteCliAgentsSdkRunner {
     const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
     const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
     const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
-    const model = normalizeText(input.model || this.config.agentModel) || 'gpt-4o';
+    const model = transport === 'codex-agent'
+      ? normalizeText(input.codexAgentModel || input.codex_agent_model || input.model || this.config.codexAgentModel)
+      : (normalizeText(input.model || this.config.agentModel) || 'gpt-4o');
     const remoteCodeModel = normalizeText(input.remoteCodeModel || input.remote_code_model || this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL;
     const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
     const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs || input.status_poll_interval_ms || this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
@@ -1878,6 +1954,8 @@ class RemoteCliAgentsSdkRunner {
         model,
         sessionId,
         agentRunTimeoutMs,
+        maxStatusPolls,
+        statusPollIntervalMs,
         adminMode,
         onProgress: input.onProgress,
       });

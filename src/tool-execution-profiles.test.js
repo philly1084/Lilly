@@ -29,6 +29,7 @@ describe('tool execution profiles', () => {
             'schema-generate',
             'migration-create',
             'remote-command',
+            'remote-cli-agent',
         ]));
     });
 

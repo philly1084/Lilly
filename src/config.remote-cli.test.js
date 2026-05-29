@@ -14,6 +14,8 @@ describe('remote CLI MCP configuration', () => {
     delete process.env.REMOTE_CLI_CODEX_AGENT_BASE_URL;
     delete process.env.REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN;
     delete process.env.REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH;
+    delete process.env.REMOTE_CLI_CODEX_AGENT_MODEL;
+    delete process.env.CODEX_AGENT_MODEL;
     delete process.env.FRONTEND_API_KEY;
     delete process.env.REMOTE_CLI_AGENT_MODEL;
     delete process.env.REMOTE_CLI_REMOTE_CODE_MODEL;
@@ -84,6 +86,15 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.codexAgentApiKey).toBe('frontend-key');
     expect(config.remoteCliMcp.codexAgentWorkspacePath).toBe('/srv/apps/my-app');
     expect(config.remoteCliMcp.codexAgentApprovalPolicy).toBe('never');
+    expect(config.remoteCliMcp.codexAgentModel).toBe('');
+  });
+
+  test('allows the codex-agent run/events model to be explicitly configured separately', () => {
+    process.env.REMOTE_CLI_CODEX_AGENT_MODEL = 'codex-latest';
+
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.codexAgentModel).toBe('codex-latest');
   });
 
   test('allows the remote_code_run model and status polling to be explicitly configured', () => {

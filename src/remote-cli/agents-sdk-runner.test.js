@@ -444,7 +444,8 @@ describe('RemoteCliAgentsSdkRunner', () => {
         codexAgentWorkspacePath: '/srv/apps/my-app',
         codexAgentApprovalPolicy: 'never',
         codexAgentThreadSandbox: 'workspace-write',
-        agentModel: 'codex-latest',
+        codexAgentModel: 'codex-latest',
+        agentModel: 'gpt-5.4',
         defaultTargetId: 'k3s-prod',
         defaultCwd: '/srv/apps/my-app',
       },
@@ -480,6 +481,153 @@ describe('RemoteCliAgentsSdkRunner', () => {
       verifyResults: ['passed'],
       completionStatus: 'complete',
       apiMode: 'codex-agent',
+    });
+  });
+
+  test('does not pass the legacy Agents SDK model into codex-agent runs by default', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/api/codex-agent/run') {
+        const body = JSON.parse(options.body);
+        expect(body.config.model).toBeUndefined();
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              ok: true,
+              runId: 'run_codex_default_model',
+              threadId: 'thread_default_model',
+              turnId: 'turn_default_model',
+              sessionId: 'thread_default_model-turn_default_model',
+              status: 'running',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_codex_default_model/events') {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode('event: turn_completed\n'));
+              controller.enqueue(encoder.encode('data: {"event":"turn_completed","thread_id":"thread_default_model","turn_id":"turn_default_model","result":{"output_text":"WHAT_CHANGED=Ran with gateway default.\\nVERIFY_RESULTS=passed\\nBLOCKER=none"}}\n\n'));
+              controller.close();
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentWorkspacePath: '/srv/apps/my-app',
+        agentModel: 'gpt-5.4',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => {
+        throw new Error('codex-agent transport should not load the Agents SDK MCP client');
+      },
+      fetchImpl,
+    });
+
+    const result = await runner.run({
+      task: 'Check the workspace.',
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      transport: 'codex-agent',
+      model: '',
+      whatChanged: 'Ran with gateway default.',
+      completionStatus: 'complete',
+    });
+  });
+
+  test('rechecks codex-agent event snapshots when the follow stream closes before a terminal event', async () => {
+    const fetchImpl = jest.fn(async (url) => {
+      if (url === 'https://gateway.example.com/api/codex-agent/run') {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              ok: true,
+              runId: 'run_codex_reconnect',
+              threadId: 'thread_reconnect',
+              turnId: 'turn_reconnect',
+              status: 'running',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_codex_reconnect/events') {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode('event: session_started\n'));
+              controller.enqueue(encoder.encode('data: {"event":"session_started","cursor":1,"thread_id":"thread_reconnect","turn_id":"turn_reconnect"}\n\n'));
+              controller.close();
+            },
+          }),
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_codex_reconnect/events?follow=false&after=1') {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return [
+              'event: turn_completed',
+              'data: {"event":"turn_completed","cursor":2,"thread_id":"thread_reconnect","turn_id":"turn_reconnect","result":{"output_text":"WHAT_CHANGED=Recovered after stream close.\\nVERIFY_COMMANDS=GET /events?follow=false&after=1\\nVERIFY_RESULTS=terminal event found\\nBLOCKER=none"}}',
+              '',
+              '',
+            ].join('\n');
+          },
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentWorkspacePath: '/srv/apps/my-app',
+        agentModel: 'gpt-5.4',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+        maxStatusPolls: 20,
+      },
+      sdkLoader: () => {
+        throw new Error('codex-agent transport should not load the Agents SDK MCP client');
+      },
+      fetchImpl,
+    });
+
+    const result = await runner.run({
+      task: 'Check reconnect.',
+      statusPollIntervalMs: 1,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(result).toMatchObject({
+      transport: 'codex-agent',
+      codexAgentRunId: 'run_codex_reconnect',
+      whatChanged: 'Recovered after stream close.',
+      verifyCommands: ['GET /events?follow=false&after=1'],
+      verifyResults: ['terminal event found'],
+      completionStatus: 'complete',
     });
   });
 
