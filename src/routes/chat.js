@@ -16,6 +16,7 @@ const {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    shouldGenerateOutputArtifactForToolResponse,
     shouldSuppressResearchFirstArtifactGeneration,
     isArtifactStorageAvailable,
     stripInjectedNotesPageEditDirective,
@@ -2223,7 +2224,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                         effectiveSession,
                         toolEvents,
                     );
-                    const generatedArtifacts = effectiveOutputFormat
+                    const shouldGenerateArtifacts = shouldGenerateOutputArtifactForToolResponse({
+                        outputFormat: effectiveOutputFormat,
+                        outputFormatProvided,
+                        toolEvents,
+                    });
+                    const generatedArtifacts = shouldGenerateArtifacts
                         ? await maybeGenerateOutputArtifact({
                             sessionId,
                             session: effectiveSession,
@@ -2418,7 +2424,13 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             effectiveSession,
             response?.metadata?.toolEvents || [],
         );
-        const generatedArtifacts = effectiveOutputFormat
+        const toolEvents = response?.metadata?.toolEvents || [];
+        const shouldGenerateArtifacts = shouldGenerateOutputArtifactForToolResponse({
+            outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
+            toolEvents,
+        });
+        const generatedArtifacts = shouldGenerateArtifacts
             ? await maybeGenerateOutputArtifact({
                 sessionId,
                 session: effectiveSession,
@@ -2444,7 +2456,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             })
             : [];
         const artifacts = mergeRuntimeArtifacts(
-            extractArtifactsFromToolEvents(response?.metadata?.toolEvents || []),
+            extractArtifactsFromToolEvents(toolEvents),
             generatedArtifacts,
             saveableDocumentArtifacts,
         );

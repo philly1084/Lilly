@@ -50,6 +50,8 @@ const {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    hasRemoteCliAgentToolEvent,
+    shouldGenerateOutputArtifactForToolResponse,
     shouldSuppressResearchFirstArtifactGeneration,
     buildPiiWorkbookRelationshipToolContext,
 } = require('./ai-route-utils');
@@ -533,6 +535,29 @@ describe('ai-route-utils', () => {
             text: 'Create a PDF artifact for the Halifax weekend dinner guide.',
             outputFormat: 'pdf',
         })).toBe(false);
+    });
+
+    test('implicit artifact generation is suppressed after remote-cli-agent evidence', () => {
+        const toolEvents = [{
+            toolCall: { function: { name: 'remote-cli-agent' } },
+            result: {
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: { completionStatus: 'complete' },
+            },
+        }];
+
+        expect(hasRemoteCliAgentToolEvent(toolEvents)).toBe(true);
+        expect(shouldGenerateOutputArtifactForToolResponse({
+            outputFormat: 'html',
+            outputFormatProvided: false,
+            toolEvents,
+        })).toBe(false);
+        expect(shouldGenerateOutputArtifactForToolResponse({
+            outputFormat: 'html',
+            outputFormatProvided: true,
+            toolEvents,
+        })).toBe(true);
     });
 
     test('buildPiiWorkbookRelationshipToolContext accepts stored artifacts with snake_case session ids', async () => {

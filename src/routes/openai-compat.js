@@ -17,6 +17,7 @@ const {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    shouldGenerateOutputArtifactForToolResponse,
     shouldSuppressResearchFirstArtifactGeneration,
     isArtifactStorageAvailable,
     stripInjectedNotesPageEditDirective,
@@ -2233,19 +2234,26 @@ router.post('/chat/completions', async (req, res, next) => {
                         await sessionStore.update(sessionId, { metadata: sshMetadata });
                     }
                     session = await applyAskedUserCheckpointState(sessionId, session, toolEvents);
-                    const generatedArtifacts = await maybeGenerateOutputArtifact({
-                        sessionId,
-                        session,
-                        mode: taskType,
+                    const shouldGenerateArtifacts = shouldGenerateOutputArtifactForToolResponse({
                         outputFormat: effectiveOutputFormat,
-                        content: fullText,
-                        prompt: artifactPrompt,
-                        title: 'chat-output',
-                        responseId: resolvedCompletion.response.id,
-                        artifactIds: artifact_ids,
-                        model,
-                        reasoningEffort,
+                        outputFormatProvided,
+                        toolEvents,
                     });
+                    const generatedArtifacts = shouldGenerateArtifacts
+                        ? await maybeGenerateOutputArtifact({
+                            sessionId,
+                            session,
+                            mode: taskType,
+                            outputFormat: effectiveOutputFormat,
+                            content: fullText,
+                            prompt: artifactPrompt,
+                            title: 'chat-output',
+                            responseId: resolvedCompletion.response.id,
+                            artifactIds: artifact_ids,
+                            model,
+                            reasoningEffort,
+                        })
+                        : [];
                     const artifacts = mergeRuntimeArtifacts(
                         extractArtifactsFromToolEvents(toolEvents),
                         generatedArtifacts,
@@ -2451,22 +2459,30 @@ router.post('/chat/completions', async (req, res, next) => {
         if (sshMetadata) {
             await sessionStore.update(sessionId, { metadata: sshMetadata });
         }
-        session = await applyAskedUserCheckpointState(sessionId, session, response?.metadata?.toolEvents || []);
-        const generatedArtifacts = await maybeGenerateOutputArtifact({
-            sessionId,
-            session,
-            mode: taskType,
+        const toolEvents = response?.metadata?.toolEvents || [];
+        session = await applyAskedUserCheckpointState(sessionId, session, toolEvents);
+        const shouldGenerateArtifacts = shouldGenerateOutputArtifactForToolResponse({
             outputFormat: effectiveOutputFormat,
-            content: outputText,
-            prompt: artifactPrompt,
-            title: 'chat-output',
-            responseId: response.id,
-            artifactIds: artifact_ids,
-            model,
-            reasoningEffort,
+            outputFormatProvided,
+            toolEvents,
         });
+        const generatedArtifacts = shouldGenerateArtifacts
+            ? await maybeGenerateOutputArtifact({
+                sessionId,
+                session,
+                mode: taskType,
+                outputFormat: effectiveOutputFormat,
+                content: outputText,
+                prompt: artifactPrompt,
+                title: 'chat-output',
+                responseId: response.id,
+                artifactIds: artifact_ids,
+                model,
+                reasoningEffort,
+            })
+            : [];
         const artifacts = mergeRuntimeArtifacts(
-            extractArtifactsFromToolEvents(response?.metadata?.toolEvents || []),
+            extractArtifactsFromToolEvents(toolEvents),
             generatedArtifacts,
         );
         const piiContextIds = compactPiiContextIds(routePii, execution.pii);
@@ -3196,25 +3212,33 @@ router.post('/responses', async (req, res, next) => {
                             ...(sessionIsolation ? { sessionIsolation: true } : {}),
                         }));
                     }
-                    const sshMetadata = extractSshSessionMetadataFromToolEvents(resolvedCompletion.response?.metadata?.toolEvents);
+                    const toolEvents = resolvedCompletion.response?.metadata?.toolEvents || [];
+                    const sshMetadata = extractSshSessionMetadataFromToolEvents(toolEvents);
                     if (sshMetadata) {
                         await sessionStore.update(sessionId, { metadata: sshMetadata });
                     }
-                    const generatedArtifacts = await maybeGenerateOutputArtifact({
-                        sessionId,
-                        session,
-                        mode: taskType,
+                    const shouldGenerateArtifacts = shouldGenerateOutputArtifactForToolResponse({
                         outputFormat: effectiveOutputFormat,
-                        content: fullText,
-                        prompt: artifactPrompt,
-                        title: 'response-output',
-                        responseId: resolvedCompletion.response.id,
-                        artifactIds: artifact_ids,
-                        model,
-                        reasoningEffort,
+                        outputFormatProvided,
+                        toolEvents,
                     });
+                    const generatedArtifacts = shouldGenerateArtifacts
+                        ? await maybeGenerateOutputArtifact({
+                            sessionId,
+                            session,
+                            mode: taskType,
+                            outputFormat: effectiveOutputFormat,
+                            content: fullText,
+                            prompt: artifactPrompt,
+                            title: 'response-output',
+                            responseId: resolvedCompletion.response.id,
+                            artifactIds: artifact_ids,
+                            model,
+                            reasoningEffort,
+                        })
+                        : [];
                     const artifacts = mergeRuntimeArtifacts(
-                        extractArtifactsFromToolEvents(resolvedCompletion.response?.metadata?.toolEvents || []),
+                        extractArtifactsFromToolEvents(toolEvents),
                         generatedArtifacts,
                     );
                     const piiContextIds = compactPiiContextIds(routePii, execution.pii);
@@ -3230,7 +3254,7 @@ router.post('/responses', async (req, res, next) => {
                     await updateSessionProjectMemory(sessionId, {
                         userText: userInput,
                         assistantText: fullText,
-                        toolEvents: resolvedCompletion.response?.metadata?.toolEvents || [],
+                        toolEvents,
                         artifacts,
                     }, ownerId);
                     if (!execution.handledPersistence) {
@@ -3397,25 +3421,33 @@ router.post('/responses', async (req, res, next) => {
                 ...(sessionIsolation ? { sessionIsolation: true } : {}),
             }));
         }
-        const sshMetadata = extractSshSessionMetadataFromToolEvents(response?.metadata?.toolEvents);
+        const toolEvents = response?.metadata?.toolEvents || [];
+        const sshMetadata = extractSshSessionMetadataFromToolEvents(toolEvents);
         if (sshMetadata) {
             await sessionStore.update(sessionId, { metadata: sshMetadata });
         }
-        const generatedArtifacts = await maybeGenerateOutputArtifact({
-            sessionId,
-            session,
-            mode: taskType,
+        const shouldGenerateArtifacts = shouldGenerateOutputArtifactForToolResponse({
             outputFormat: effectiveOutputFormat,
-            content: outputText,
-            prompt: artifactPrompt,
-            title: 'response-output',
-            responseId: response.id,
-            artifactIds: artifact_ids,
-            model,
-            reasoningEffort,
+            outputFormatProvided,
+            toolEvents,
         });
+        const generatedArtifacts = shouldGenerateArtifacts
+            ? await maybeGenerateOutputArtifact({
+                sessionId,
+                session,
+                mode: taskType,
+                outputFormat: effectiveOutputFormat,
+                content: outputText,
+                prompt: artifactPrompt,
+                title: 'response-output',
+                responseId: response.id,
+                artifactIds: artifact_ids,
+                model,
+                reasoningEffort,
+            })
+            : [];
         const artifacts = mergeRuntimeArtifacts(
-            extractArtifactsFromToolEvents(response?.metadata?.toolEvents || []),
+            extractArtifactsFromToolEvents(toolEvents),
             generatedArtifacts,
         );
         const piiContextIds = compactPiiContextIds(routePii, execution.pii);
@@ -3431,7 +3463,7 @@ router.post('/responses', async (req, res, next) => {
         await updateSessionProjectMemory(sessionId, {
             userText: userInput,
             assistantText: outputText,
-            toolEvents: response?.metadata?.toolEvents || [],
+            toolEvents,
             artifacts,
         }, ownerId);
         if (!execution.handledPersistence) {

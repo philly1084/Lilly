@@ -651,6 +651,34 @@ function shouldSuppressArtifactGenerationForRemoteAction({
     return remoteTarget && deploymentAction && websiteTarget;
 }
 
+function hasRemoteCliAgentToolEvent(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : []).some((event) => {
+        const toolId = String(
+            event?.toolCall?.function?.name
+            || event?.result?.toolId
+            || event?.toolName
+            || event?.tool
+            || '',
+        ).trim();
+        return toolId === 'remote-cli-agent';
+    });
+}
+
+function shouldGenerateOutputArtifactForToolResponse({
+    outputFormat = null,
+    outputFormatProvided = false,
+    toolEvents = [],
+} = {}) {
+    if (!normalizeFormat(outputFormat)) {
+        return false;
+    }
+    if (outputFormatProvided) {
+        return true;
+    }
+
+    return !hasRemoteCliAgentToolEvent(toolEvents);
+}
+
 function hasVerifiedResearchContext(recentMessages = []) {
     return (Array.isArray(recentMessages) ? recentMessages : []).some((message) => {
         const text = String(message?.content || message?.text || '').toLowerCase();
@@ -2180,6 +2208,8 @@ module.exports = {
     shouldSuppressImplicitMermaidArtifact,
     shouldSuppressWebChatImplicitHtmlArtifact,
     shouldSuppressArtifactGenerationForRemoteAction,
+    hasRemoteCliAgentToolEvent,
+    shouldGenerateOutputArtifactForToolResponse,
     shouldSuppressResearchFirstArtifactGeneration,
     isArtifactStorageAvailable,
     isWebsiteDesignExampleRequest,
