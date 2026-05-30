@@ -3931,6 +3931,87 @@ describe('ConversationOrchestrator', () => {
         expect(result.output).toBe('The remote inspection ran, but the deployment is not verified yet. The cluster status still needs ingress, DNS, and HTTPS validation before it can be called live.');
     });
 
+    test('recovers bwrap sandbox failures for public deployment checks through remote-command', async () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '168.119.176.121',
+            port: 22,
+            username: 'root',
+            password: '',
+            privateKeyPath: '/home/kimibuilt/.ssh/id_ed25519',
+        });
+
+        const llmClient = {
+            createResponse: jest.fn()
+                .mockResolvedValueOnce(buildResponse(
+                    'I could not complete a fresh check from this runtime. The remote inspection command failed before SSH could start with: bwrap: No permissions to create a new namespace. Last known server state says awesome.demoserver2.buzz returned HTTP 502.',
+                    'resp_bwrap_invalid',
+                ))
+                .mockResolvedValueOnce(buildResponse(
+                    'I reran the check through remote-command and inspected the k3s ingress, service, pods, and public URL.',
+                    'resp_bwrap_repaired',
+                )),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const toolManager = {
+            getTool: jest.fn((toolId) => (
+                ['remote-command', 'web-search', 'web-fetch', 'file-read', 'file-search', 'tool-doc-read']
+                    .includes(toolId)
+                    ? { id: toolId, description: toolId }
+                    : null
+            )),
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                toolId: 'remote-command',
+                data: {
+                    stdout: 'awesome.demoserver2.buzz tetris-site 1/1 Running HTTP/2 502',
+                    stderr: '',
+                    host: '168.119.176.121:22',
+                },
+            }),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({ id: 'session-bwrap-recovery', metadata: {} }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue([]),
+            rememberResponse: jest.fn(),
+        };
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager,
+            sessionStore,
+            memoryService,
+        });
+
+        const result = await orchestrator.executeConversation({
+            input: 'Check why awesome.demoserver2.buzz is still returning 502 for the deployed Tetris site.',
+            sessionId: 'session-bwrap-recovery',
+            executionProfile: 'remote-build',
+            stream: false,
+        });
+
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'remote-command',
+            expect.objectContaining({
+                command: expect.stringContaining('awesome.demoserver2.buzz'),
+            }),
+            expect.objectContaining({
+                sessionId: 'session-bwrap-recovery',
+            }),
+        );
+        const command = toolManager.executeTool.mock.calls[0][1].command;
+        expect(command).toContain('kubectl get ingress -A');
+        expect(command).toContain('kubectl get deploy,svc,pods,ingress,certificate');
+        expect(command).toContain('curl -kfsSIL');
+        expect(result.output).toContain('remote-command');
+    });
+
     test('continues through multiple remote-build rounds after broad user approval', async () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

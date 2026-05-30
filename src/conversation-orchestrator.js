@@ -4140,6 +4140,19 @@ function inferFallbackSshCommand(text = '', executionProfile = DEFAULT_EXECUTION
         return `hostname && uname -m && curl -IkfsS --max-time 20 ${shellQuote(firstUrl)}`;
     }
 
+    const publicHost = firstUrl
+        ? extractLikelyPublicHost(firstUrl, '')
+        : extractLikelyPublicHost(source, '');
+    const hasPublicHostInspectionIntent = publicHost
+        && hasInspectionIntent
+        && (
+            /\b(deployed|deployment|live|public|routed|ingress|tls|dns|site|website|app|workload|service|502|bad gateway|not healthy|rollout)\b/.test(normalized)
+            || /\.(?:demoserver2\.buzz|secdevsolutions\.help)\b/i.test(publicHost)
+        );
+    if (hasPublicHostInspectionIntent) {
+        return buildPublicHostK3sInspectionCommand(publicHost);
+    }
+
     if (/\b(health|status|healthy|uptime)\b/.test(normalized)) {
         return 'hostname && uptime && (df -h / || true) && (free -m || true)';
     }
@@ -4485,6 +4498,35 @@ function extractLikelyPublicHost(text = '', fallbackHost = '') {
         && !candidate.includes('cluster.local')
         && !candidate.startsWith('api.'));
     return match || fallbackHost;
+}
+
+function buildPublicHostK3sInspectionCommand(host = '') {
+    const normalizedHost = String(host || '').trim();
+    if (!normalizedHost) {
+        return '';
+    }
+
+    return [
+        'set -e',
+        `host=${shellQuote(normalizedHost)}`,
+        'echo "__KIMIBUILT_PUBLIC_HOST__=$host"',
+        'hostname && uname -m',
+        'echo "--- nodes ---"',
+        'kubectl get nodes -o wide || true',
+        'echo "--- matching ingress ---"',
+        'kubectl get ingress -A -o wide 2>/dev/null | grep -F "$host" || true',
+        'ns=$(kubectl get ingress -A --no-headers 2>/dev/null | awk -v h="$host" \'index($0,h)>0 { print $1; exit }\')',
+        'ingress=$(kubectl get ingress -A --no-headers 2>/dev/null | awk -v h="$host" \'index($0,h)>0 { print $2; exit }\')',
+        'echo "__KIMIBUILT_NAMESPACE__=${ns:-not_found}"',
+        'echo "__KIMIBUILT_INGRESS__=${ingress:-not_found}"',
+        'if [ -n "$ns" ]; then kubectl get deploy,svc,pods,ingress,certificate -n "$ns" -o wide || true; fi',
+        'if [ -n "$ns" ] && [ -n "$ingress" ]; then kubectl describe ingress "$ingress" -n "$ns" || true; fi',
+        'if [ -z "$ns" ]; then kubectl get deploy,svc,pods,ingress,certificate -A -o wide 2>/dev/null | grep -Ei "NAMESPACE|tetris|awesome|orbit-effects|site|game" || true; fi',
+        'echo "--- public https headers ---"',
+        'curl -kfsSIL --max-time 20 "https://$host" || true',
+        'echo "--- public body preview ---"',
+        'curl -kfsSL --max-time 20 "https://$host" | head -c 500 || true',
+    ].join(' && ');
 }
 
 function extractKubernetesNamespaceFromText(text = '', fallbackNamespace = 'web') {
@@ -5675,7 +5717,7 @@ function hasRemoteCliAgentContinuationIntent(text = '') {
         /^(?:try again|retry|rerun)\b/,
         /\b(?:continue|resume|finish|complete|keep going|keep working)\b[\s\S]{0,80}\b(?:it|that|same|app|site|project|work|task)\b/,
         /\b(?:again|still|same)\b[\s\S]{0,80}\b(?:broken|failing|not working|snag|snags|button|buttons|app|site|game|repair|deploy|deployment)\b/,
-        /\b(?:go ahead|proceed)\b[\s\S]{0,80}\b(?:remote cli agent|remote clie agent|remote coding agent|that app|the app|it)\b/,
+        /\b(?:go ahead|proceed)\b[\s\S]{0,80}\b(?:remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|that app|the app|it)\b/,
     ].some((pattern) => pattern.test(normalized));
 }
 
@@ -6008,7 +6050,7 @@ function shouldUseRemoteCliForManagedAppIteration(text = '', options = {}) {
     const executionProfile = String(options.executionProfile || '').trim();
     const workflowLane = String(options.workflow?.lane || '').trim();
     const hasGitLabSourceCue = /\b(gitlab|gitlab ci|gitlab[-_ ]runner|build events webhook|registry\.gitlab|source[- ]?to[- ]?public|pipeline|pipelines)\b/i.test(normalized);
-    const hasRemoteCliCue = /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|backend cli|cli worker|agents sdk remote cli)\b/i.test(normalized);
+    const hasRemoteCliCue = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|backend cli|cli worker|agents sdk remote cli)\b/i.test(normalized);
     const hasClusterDeployCue = /\b(k3s|k8s|kubernetes|cluster|kubectl|ingress|traefik|tls|dns|rollout|route|public host|public url)\b/i.test(normalized);
     const hasComplexBuildCue = /\b(build|create|update|edit|fix|patch|deploy|redeploy|publish|launch|ship|verify)\b/i.test(normalized)
         && /\b(app|website|site|frontend|service|game|dashboard|workspace|repo|repository)\b/i.test(normalized);

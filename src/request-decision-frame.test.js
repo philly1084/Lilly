@@ -49,6 +49,19 @@ describe('request-decision-frame', () => {
         expect(prompt).toContain('Proof expected:');
     });
 
+    test('routes hyphenated remote-cli-agent requests to the remote lane', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Deploy the selected HTML artifact to menu.demoserver2.buzz using remote-cli-agent.',
+            candidateOutputFormat: 'html',
+            effectiveArtifactIds: ['artifact-html-1'],
+            executionProfile: 'remote-build',
+        });
+
+        expect(frame.intent).toBe('remote_deploy_existing_artifact');
+        expect(frame.preferredTool).toBe('remote-cli-agent');
+        expect(frame.orchestrationHints.mustNotDo).toContain('answer_without_remote_verification');
+    });
+
     test('metadata preserves cards and routing decision for the frontend', () => {
         const frame = buildRequestDecisionFrame({
             text: 'Create a PDF document for the Halifax dinner guide.',

@@ -511,6 +511,7 @@ describe('ai-route-utils', () => {
     test('remote CLI deployment prompts do not short-circuit into direct artifact generation', () => {
         const firstPrompt = 'can you put the amazing halifax weekend dinner guide artifact as the website in our menu.demoserver2.buzz website on the remote server. use the remote cli agent to find the nginx holding the website location and put a html with the pdf file converted in it.';
         const secondPrompt = 'halifax-weekend-dinner-guide-curated-menu-ijh00u.pdf is the file I want you to put that as html page for the menu site. use remote cli agent to do it';
+        const hyphenatedPrompt = 'Deploy the selected HTML artifact to menu.demoserver2.buzz with remote-cli-agent.';
 
         expect(inferRequestedOutputFormat(firstPrompt)).toBe('pdf');
         expect(shouldSuppressArtifactGenerationForRemoteAction({
@@ -520,6 +521,10 @@ describe('ai-route-utils', () => {
         expect(shouldSuppressArtifactGenerationForRemoteAction({
             text: secondPrompt,
             outputFormat: 'pdf',
+        })).toBe(true);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: hyphenatedPrompt,
+            outputFormat: 'html',
         })).toBe(true);
     });
 

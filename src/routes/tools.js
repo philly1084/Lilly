@@ -540,11 +540,32 @@ function resolveRequiresSetup(toolId, fallback = false, runtime = null, support 
     return Boolean(fallback);
   }
 
+  if (runtime?.configured || support?.runtime?.ready) {
+    return false;
+  }
+
   if (support?.status) {
     return support.status === 'requires_setup';
   }
 
-  return !Boolean(runtime?.configured || support?.runtime?.ready);
+  return true;
+}
+
+function reconcileSupportWithRuntime(toolId, support = null, runtime = null) {
+  if (!REMOTE_SERVICE_TOOL_IDS.has(toolId) || !support || !runtime?.configured) {
+    return support;
+  }
+
+  if (support.status !== 'requires_setup') {
+    return support;
+  }
+
+  return {
+    ...support,
+    status: 'stable',
+    notes: (Array.isArray(support.notes) ? support.notes : [])
+      .filter((note) => !/^\s*(requires|needs|missing|no online|ssh client is unavailable|remote runner or ssh configuration)\b/i.test(String(note || ''))),
+  };
 }
 
 function isToolVisibleByRuntime(toolId, runtime = null, support = null) {
@@ -584,16 +605,18 @@ async function buildFrontendToolCatalog({ req, category = null, sessionId = null
       buildToolRuntime(tool.id, { managedAppService }),
       docMetadata.support,
     );
+    const support = reconcileSupportWithRuntime(tool.id, docMetadata.support, runtime);
     const availableInExecutionProfile = allowedToolIds.includes(tool.id);
-    const runtimeVisible = isToolVisibleByRuntime(tool.id, runtime, docMetadata.support);
+    const runtimeVisible = isToolVisibleByRuntime(tool.id, runtime, support);
 
     return {
       ...tool,
-      requiresSetup: resolveRequiresSetup(tool.id, tool.requiresSetup, runtime, docMetadata.support),
+      requiresSetup: resolveRequiresSetup(tool.id, tool.requiresSetup, runtime, support),
       runtime,
       availableInExecutionProfile,
       runtimeVisible,
       ...docMetadata,
+      support,
     };
   }));
 
@@ -1131,10 +1154,11 @@ router.get('/:id', async (req, res) => {
       }),
       docMetadata.support,
     );
+    const support = reconcileSupportWithRuntime(id, docMetadata.support, runtime);
     const effectiveManifest = manifest
       ? {
           ...manifest,
-          requiresSetup: resolveRequiresSetup(id, manifest.requiresSetup, runtime, docMetadata.support),
+          requiresSetup: resolveRequiresSetup(id, manifest.requiresSetup, runtime, support),
         }
       : manifest;
 
@@ -1147,7 +1171,7 @@ router.get('/:id', async (req, res) => {
         category: tool.category,
         version: tool.version,
         manifest: effectiveManifest,
-        requiresSetup: resolveRequiresSetup(id, manifest?.requiresSetup, runtime, docMetadata.support),
+        requiresSetup: resolveRequiresSetup(id, manifest?.requiresSetup, runtime, support),
         runtime,
         skill: skill ? {
           enabled: skill.enabled,
@@ -1157,6 +1181,7 @@ router.get('/:id', async (req, res) => {
         } : null,
         parameters: manifest?.parameters || [],
         ...docMetadata,
+        support,
       },
       meta: {
         runtime: buildRuntimeSummary(toolManager, {

@@ -158,7 +158,7 @@ FROM app-base AS lite
 
 RUN set -eux; \
   apt-get update; \
-  apt-get install -y --no-install-recommends bash ca-certificates curl; \
+  apt-get install -y --no-install-recommends bash ca-certificates curl openssh-client; \
   rm -rf /var/lib/apt/lists/*
 
 ENV KIMIBUILT_IMAGE_PROFILE=lite

@@ -65,7 +65,7 @@ function detectRequestSignals(text = '', {
         ...(Array.isArray(artifactIds) ? artifactIds : []),
     ]);
 
-    const explicitRemoteAgent = /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
+    const explicitRemoteAgent = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
     const remoteTarget = explicitRemoteAgent
         || hasAny(normalized, [
             /\b(remote server|remote site|remote host|remote machine|on the server)\b/,

@@ -641,7 +641,7 @@ function shouldSuppressArtifactGenerationForRemoteAction({
         return false;
     }
 
-    const explicitRemoteAgent = /\b(remote cli agent|remote clie agent|remote coding agent|remote code run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
+    const explicitRemoteAgent = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
     const remoteTarget = explicitRemoteAgent
         || /\b(remote server|remote site|remote host|remote machine|on the server|cluster|k3s|k8s|kubernetes|kubectl|nginx|ingress|traefik|tls|ssh)\b/.test(normalized)
         || /\b[a-z0-9-]+\.demoserver2\.buzz\b/.test(normalized);
