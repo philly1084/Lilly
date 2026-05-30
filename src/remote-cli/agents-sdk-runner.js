@@ -1237,6 +1237,7 @@ function buildRemoteCliInstructions({
     'You can modify the remote server using the remote-cli MCP tools.',
     '',
     'You are already inside KimiBuilt `remote-cli-agent`. Do not try to call outer KimiBuilt tools such as `remote-command`, `k3s-deploy`, or `tool-doc-read` from here.',
+    'If the task text mentions `remote-cli-agent`, treat that as the already-selected outer KimiBuilt tool, not as a command, binary, package, or script to run on the target host.',
     'Your remote execution boundary is the MCP gateway: use `remote_code_run` to start coding/build/deploy work and `remote_code_status` to poll any returned job id.',
     '',
     'Use remote_code_run for coding tasks.',

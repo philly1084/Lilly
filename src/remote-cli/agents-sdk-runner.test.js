@@ -35,6 +35,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
 
     expect(instructions).toContain('Use remote_code_run for coding tasks.');
+    expect(instructions).toContain('already-selected outer KimiBuilt tool');
     expect(instructions).toContain('Default targetId: prod');
     expect(instructions).toContain('Default cwd: /srv/apps/my-app');
     expect(instructions).toContain('repo-map');

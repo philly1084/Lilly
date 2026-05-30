@@ -61,6 +61,23 @@ describe('RemoteCliAgentTool', () => {
     }));
   });
 
+  test('strips outer remote-cli-agent wording before passing task to the runner', async () => {
+    const { tool, runner } = buildTool();
+
+    const result = await tool.execute({
+      task: 'Use remote-cli-agent once for a streamed live reasoning proof on k3s-prod in /opt/kimibuilt. Print hostname and pwd only.',
+      targetId: 'k3s-prod',
+      cwd: '/opt/kimibuilt',
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      task: 'Run a streamed live reasoning proof on k3s-prod in /opt/kimibuilt. Print hostname and pwd only.',
+      targetId: 'k3s-prod',
+      cwd: '/opt/kimibuilt',
+    }));
+  });
+
   test('advertises the runner poll default and normalizes status poll aliases', async () => {
     const { tool, runner } = buildTool();
 

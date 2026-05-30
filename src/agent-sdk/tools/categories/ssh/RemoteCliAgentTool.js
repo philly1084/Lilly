@@ -69,6 +69,31 @@ function applyAlias(params, targetKey, ...values) {
   }
 }
 
+function sanitizeOuterRemoteCliToolReferences(task = '') {
+  let text = String(task || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  text = text
+    .replace(/\buse\s+(?:the\s+)?remote[-_\s]+cli[-_\s]+agent\s+(?:once\s+)?(?:to|for)\s+/ig, '')
+    .replace(/\b(?:through|via|with|using|inside)\s+(?:the\s+)?remote[-_\s]+cli[-_\s]+agent\b/ig, '')
+    .replace(/\bcall\s+(?:the\s+)?remote[-_\s]+cli[-_\s]+agent\s+(?:once\s+)?(?:to|for)\s+/ig, '')
+    .replace(/\brun\s+(?:the\s+)?remote[-_\s]+cli[-_\s]+agent\s+(?:once\s+)?(?:to|for)\s+/ig, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.,;:!?])/g, '$1')
+    .trim();
+
+  if (!text) {
+    return String(task || '').trim();
+  }
+  if (/^(?:a|an|the)\s+/i.test(text)) {
+    return `Run ${text}`;
+  }
+
+  return text;
+}
+
 function normalizeRemoteCliAgentParams(params = {}) {
   const argumentObject = parseObjectLike(params.arguments);
   const inputObject = parseObjectLike(params.input);
@@ -98,6 +123,9 @@ function normalizeRemoteCliAgentParams(params = {}) {
   );
   if (!params.task && task) {
     params.task = task;
+  }
+  if (params.task) {
+    params.task = sanitizeOuterRemoteCliToolReferences(params.task);
   }
 
   if (!params.task && firstNonEmptyText(params.command, argumentObject?.command, nestedParams?.command)) {
