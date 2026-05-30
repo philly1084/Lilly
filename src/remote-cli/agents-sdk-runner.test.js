@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { ReadableStream } = require('stream/web');
 
 const {
@@ -14,6 +16,16 @@ const {
 } = require('./agents-sdk-runner');
 
 describe('RemoteCliAgentsSdkRunner', () => {
+  test('keeps the MCP SDK as a production dependency for Docker optional-omit installs', () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+    const packageLock = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package-lock.json'), 'utf8'));
+    const sdkVersion = packageJson.dependencies['@modelcontextprotocol/sdk'];
+
+    expect(sdkVersion).toBeTruthy();
+    expect(packageLock.packages[''].dependencies['@modelcontextprotocol/sdk']).toBe(sdkVersion);
+    expect(packageLock.packages['node_modules/@modelcontextprotocol/sdk'].optional).not.toBe(true);
+  });
+
   test('builds remote CLI instructions with target defaults and polling guidance', () => {
     const instructions = buildRemoteCliInstructions({
       targetId: 'prod',
@@ -482,6 +494,59 @@ describe('RemoteCliAgentsSdkRunner', () => {
       completionStatus: 'complete',
       apiMode: 'codex-agent',
     });
+  });
+
+  test('wraps codex-agent unauthorized failures with masked credential diagnostics', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      expect(url).toBe('https://gateway.example.com/api/codex-agent/run');
+      expect(options.headers.Authorization).toBe('Bearer frontend-secret');
+      return {
+        ok: false,
+        status: 401,
+        async text() {
+          return 'Unauthorized';
+        },
+      };
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentWorkspacePath: '/srv/apps/my-app',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/srv/apps/my-app',
+      },
+      sdkLoader: () => {
+        throw new Error('codex-agent transport should not load the Agents SDK MCP client');
+      },
+      fetchImpl,
+    });
+
+    const rejection = await runner.run({ task: 'Fix the remote app.' }).catch((error) => error);
+
+    expect(rejection).toMatchObject({
+      name: 'RemoteCliAgentError',
+      code: 'REMOTE_CLI_AGENT_FAILED',
+      diagnostics: {
+        remoteCliAgent: {
+          stage: 'codex_agent_run',
+          apiMode: 'codex-agent',
+          targetId: 'k3s-prod',
+          cwd: '/srv/apps/my-app',
+          codexAgentBaseURL: 'https://gateway.example.com',
+          hasCodexAgentApiKey: true,
+          error: {
+            message: 'Unauthorized',
+            statusCode: 401,
+          },
+        },
+      },
+    });
+    expect(rejection.message).toBe('remote-cli-agent codex-agent transport failed: Unauthorized');
+    expect(rejection.diagnostics.remoteCliAgent.hint).toContain('bearer token');
+    expect(JSON.stringify(rejection.diagnostics)).not.toContain('frontend-secret');
   });
 
   test('does not pass the legacy Agents SDK model into codex-agent runs by default', async () => {

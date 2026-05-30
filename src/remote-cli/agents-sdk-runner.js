@@ -1078,7 +1078,8 @@ function summarizeUrl(value = '') {
 
   try {
     const parsed = new URL(normalized);
-    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+    const pathname = parsed.pathname === '/' ? '' : parsed.pathname;
+    return `${parsed.protocol}//${parsed.host}${pathname}`;
   } catch (_error) {
     return normalized.replace(/([?&](?:token|key|api_key|apikey|bearer|password|secret)=)[^&]+/gi, '$1[redacted]');
   }
@@ -1117,6 +1118,8 @@ function buildRemoteCliDiagnostics({
 } = {}) {
   const errorSummary = summarizeRemoteCliError(error);
   const agentBaseURL = normalizeText(runnerConfig.agentBaseURL);
+  const codexAgentBaseURL = normalizeText(runnerConfig.codexAgentBaseUrl);
+  const codexAgentApiKey = resolveCodexAgentApiKey({}, runnerConfig);
   const mcpURL = normalizeText(runnerConfig.url);
   const hintParts = [];
 
@@ -1129,6 +1132,9 @@ function buildRemoteCliDiagnostics({
   if (model) {
     hintParts.push(`Verify REMOTE_CLI_AGENT_MODEL or OPENAI_MODEL is accepted by that gateway: ${model}.`);
   }
+  if (errorSummary.statusCode === 401 || errorSummary.statusCode === 403 || /\bunauthori[sz]ed\b|\bforbidden\b/i.test(errorSummary.message)) {
+    hintParts.push('The gateway rejected the bearer token; verify REMOTE_CLI_MCP_BEARER_TOKEN/N8N_API_KEY for MCP transport or REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN/FRONTEND_API_KEY for codex-agent transport.');
+  }
 
   return {
     remoteCliAgent: {
@@ -1139,9 +1145,12 @@ function buildRemoteCliDiagnostics({
       cwd: cwd || null,
       mcpSessionId: mcpSessionId || null,
       mcpURL: summarizeUrl(mcpURL) || null,
+      codexAgentBaseURL: summarizeUrl(codexAgentBaseURL) || null,
       agentBaseURL: summarizeUrl(agentBaseURL) || null,
       hasMcpToken: Boolean(normalizeText(runnerConfig.apiKey)),
       mcpTokenFingerprint: maskSecretValue(runnerConfig.apiKey),
+      hasCodexAgentApiKey: Boolean(codexAgentApiKey),
+      codexAgentApiKeyFingerprint: maskSecretValue(codexAgentApiKey),
       hasAgentApiKey: Boolean(normalizeText(runnerConfig.agentApiKey)),
       agentApiKeyFingerprint: maskSecretValue(runnerConfig.agentApiKey),
       error: errorSummary,
@@ -1422,9 +1431,8 @@ class RemoteCliAgentsSdkRunner {
     }
     try {
       return JSON.parse(text);
-    } catch (error) {
-      error.responseText = text;
-      throw error;
+    } catch (_error) {
+      return { message: text };
     }
   }
 
@@ -1946,19 +1954,37 @@ class RemoteCliAgentsSdkRunner {
     const adminMode = resolveAdminMode(input, task);
 
     if (transport === 'codex-agent') {
-      return this.executeCodexAgentRun({
-        input,
-        targetId,
-        cwd,
-        task,
-        model,
-        sessionId,
-        agentRunTimeoutMs,
-        maxStatusPolls,
-        statusPollIntervalMs,
-        adminMode,
-        onProgress: input.onProgress,
-      });
+      try {
+        return await this.executeCodexAgentRun({
+          input,
+          targetId,
+          cwd,
+          task,
+          model,
+          sessionId,
+          agentRunTimeoutMs,
+          maxStatusPolls,
+          statusPollIntervalMs,
+          adminMode,
+          onProgress: input.onProgress,
+        });
+      } catch (error) {
+        const diagnostics = buildRemoteCliDiagnostics({
+          stage: 'codex_agent_run',
+          error,
+          model,
+          apiMode: 'codex-agent',
+          targetId,
+          cwd,
+          config: this.config,
+          mcpSessionId: input.mcpSessionId,
+        });
+        throw createRemoteCliAgentError(
+          `remote-cli-agent codex-agent transport failed: ${summarizeRemoteCliError(error).message}`,
+          diagnostics,
+          error,
+        );
+      }
     }
 
     const sdk = this.sdkLoader();
