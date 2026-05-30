@@ -170,6 +170,8 @@ describe('/api/tools routes', () => {
         const response = await request(app).get('/api/tools/remote-workbench');
 
         expect(response.status).toBe(200);
+        expect(response.body.data.support.status).toBe('stable');
+        expect(response.body.data.support.notes.join('\n')).toContain('Remote workbench server-runner is online');
         expect(response.body.data.runtime.runnerAvailable).toBe(true);
         expect(response.body.data.runtime.structuredActions).toEqual(expect.arrayContaining([
             'grep',

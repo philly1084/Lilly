@@ -271,16 +271,17 @@ async function getRuntimeSupport(toolId) {
         ? settingsController.getEffectiveManagedAppsConfig()
         : {};
 
-    if (toolId === 'ssh-execute' || toolId === 'remote-command') {
+    if (toolId === 'ssh-execute' || toolId === 'remote-command' || toolId === 'remote-workbench') {
         const runner = remoteRunnerService.getHealthyRunner();
         const runnerWorkspace = runner?.metadata?.defaultCwd || runner?.metadata?.workspace || '';
         const runnerCliTools = getRunnerCliTools(runner);
         const runnerCliToolsNote = formatRunnerCliToolsNote(runnerCliTools);
+        const toolLabel = toolId === 'remote-workbench' ? 'Remote workbench' : 'Remote runner';
         return {
             status: (runner || snapshot.ssh.ready) ? 'stable' : 'requires_setup',
             notes: runner
                 ? [
-                    `Remote runner ${runner.runnerId} is online${runnerWorkspace ? ` with workspace ${runnerWorkspace}` : ''}.`,
+                    `${toolLabel} ${runner.runnerId} is online${runnerWorkspace ? ` with workspace ${runnerWorkspace}` : ''}.`,
                     runnerCliToolsNote,
                     ...snapshot.ssh.notes,
                 ].filter(Boolean)
