@@ -1420,6 +1420,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         if (shouldSuppressArtifactGenerationForRemoteAction({
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
         })) {
             effectiveOutputFormat = null;
         }

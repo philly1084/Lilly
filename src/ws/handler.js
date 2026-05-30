@@ -557,6 +557,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
     if (shouldSuppressArtifactGenerationForRemoteAction({
         text: message,
         outputFormat: effectiveOutputFormat,
+        outputFormatProvided,
     })) {
         effectiveOutputFormat = null;
     }

@@ -631,8 +631,12 @@ function shouldSuppressWebChatImplicitHtmlArtifact({
 function shouldSuppressArtifactGenerationForRemoteAction({
     text = '',
     outputFormat = null,
+    outputFormatProvided = false,
 } = {}) {
     if (!normalizeFormat(outputFormat)) {
+        return false;
+    }
+    if (outputFormatProvided) {
         return false;
     }
 
@@ -648,7 +652,7 @@ function shouldSuppressArtifactGenerationForRemoteAction({
     const deploymentAction = /\b(deploy|redeploy|publish|launch|ship|go live|put|place|upload|copy|install|replace|update|serve)\b/.test(normalized);
     const websiteTarget = /\b(site|website|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|pdf|artifact|file)\b/.test(normalized);
 
-    return remoteTarget && deploymentAction && websiteTarget;
+    return explicitRemoteAgent || (remoteTarget && deploymentAction && websiteTarget);
 }
 
 function hasRemoteCliAgentToolEvent(toolEvents = []) {

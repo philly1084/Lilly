@@ -1550,6 +1550,7 @@ router.post('/chat/completions', async (req, res, next) => {
         if (shouldSuppressArtifactGenerationForRemoteAction({
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
         })) {
             effectiveOutputFormat = null;
         }
@@ -2820,6 +2821,7 @@ router.post('/responses', async (req, res, next) => {
         if (shouldSuppressArtifactGenerationForRemoteAction({
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
+            outputFormatProvided,
         })) {
             effectiveOutputFormat = null;
         }

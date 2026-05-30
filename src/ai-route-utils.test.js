@@ -528,6 +528,15 @@ describe('ai-route-utils', () => {
             text: hyphenatedPrompt,
             outputFormat: 'html',
         })).toBe(true);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'Use remote-cli-agent once for a streamed live reasoning proof on k3s-prod in /opt/kimibuilt.',
+            outputFormat: 'html',
+        })).toBe(true);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'Use remote-cli-agent once for a streamed live reasoning proof on k3s-prod in /opt/kimibuilt.',
+            outputFormat: 'html',
+            outputFormatProvided: true,
+        })).toBe(false);
     });
 
     test('remote artifact suppression preserves ordinary PDF artifact creation', () => {
