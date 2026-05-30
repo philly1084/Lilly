@@ -23,7 +23,7 @@ data:
   # Default remote CLI transport is the legacy MCP remote_code_run/status lane; codex-agent SSE remains configured for explicit opt-in.
   REMOTE_CLI_AGENT_TRANSPORT: "mcp"
   REMOTE_CLI_CODEX_AGENT_BASE_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local"
-  REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: "/srv/apps/my-app"
+  REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: "/opt/kimibuilt"
   REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY: "never"
   REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX: "workspace-write"
   REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX: "workspace-write"
@@ -31,7 +31,7 @@ data:
   REMOTE_CLI_MCP_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local/mcp"
   REMOTE_CLI_MCP_NAME: "remote-cli"
   REMOTE_CLI_DEFAULT_TARGET_ID: "k3s-prod"
-  REMOTE_CLI_DEFAULT_CWD: "/srv/apps/my-app"
+  REMOTE_CLI_DEFAULT_CWD: "/opt/kimibuilt"
   REMOTE_CLI_AGENT_MODEL: "gpt-5.4"
   REMOTE_CLI_AGENT_OPENAI_API_MODE: "chat"
   REMOTE_CLI_AGENT_MAX_TURNS: "20"

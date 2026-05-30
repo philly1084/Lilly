@@ -2898,6 +2898,8 @@ describe('openai-client automatic tool orchestration helpers', () => {
                     sessionId: 'remote-session-1',
                     mcpSessionId: 'mcp-session-1',
                     remoteCodeJobId: 'job-123',
+                    completionStatus: 'blocked',
+                    blocker: 'remote_code_run still running after status polling.',
                 },
             },
             model: 'gpt-5.5',
@@ -2915,6 +2917,53 @@ describe('openai-client automatic tool orchestration helpers', () => {
                 jobId: 'job-123',
                 waitMs: 30000,
                 adminMode: true,
+            }),
+            expect.any(Object),
+        );
+    });
+
+    test('does not poll a completed remote-cli-agent job in direct required tool mode', async () => {
+        const toolManager = createToolManager();
+        const prompt = 'try again';
+
+        const response = await __testUtils.runDirectRequiredToolAction({
+            toolManager,
+            requiredToolId: 'remote-cli-agent',
+            selectedTools: [{ id: 'remote-cli-agent' }],
+            prompt,
+            toolContext: {
+                executionProfile: 'remote-build',
+                remoteCliAgent: {
+                    lastTask: 'Build and deploy the themed dashboard.',
+                    targetId: 'prod',
+                    cwd: '/srv/apps/my-app',
+                    sessionId: 'remote-session-1',
+                    mcpSessionId: 'mcp-session-1',
+                    remoteCodeJobId: 'job-complete-123',
+                    completionStatus: 'complete',
+                    blocker: null,
+                    verifyResults: ['pass: remote_code_status completed'],
+                },
+            },
+            model: 'gpt-5.5',
+        });
+
+        expect(response.output[0].content[0].text).toContain('Remote app deployed.');
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'remote-cli-agent',
+            expect.not.objectContaining({
+                jobId: 'job-complete-123',
+            }),
+            expect.any(Object),
+        );
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'remote-cli-agent',
+            expect.objectContaining({
+                task: expect.stringContaining('Original task:'),
+                targetId: 'prod',
+                cwd: '/srv/apps/my-app',
+                sessionId: 'remote-session-1',
+                mcpSessionId: 'mcp-session-1',
             }),
             expect.any(Object),
         );

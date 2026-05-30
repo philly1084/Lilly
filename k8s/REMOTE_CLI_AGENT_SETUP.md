@@ -44,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File k8s/setup-remote-cli-agent.ps1 `
   -Namespace kimibuilt `
   -RemoteCliAgentTransport "mcp" `
   -RemoteCliCodexAgentBaseUrl "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local" `
-  -RemoteCliCodexAgentWorkspacePath "/srv/apps/my-app" `
+  -RemoteCliCodexAgentWorkspacePath "/opt/kimibuilt" `
   -RemoteCliCodexAgentBearerToken $env:FRONTEND_API_KEY
 ```
 

@@ -5234,7 +5234,9 @@ function hasRemoteCliAgentContinuationIntent(text = '') {
 
     return [
         /^(?:yes|yeah|yep|ok|okay)?\s*(?:continue|resume|finish|complete|keep going|keep working|go ahead|proceed)\b/,
+        /^(?:try again|retry|rerun)\b/,
         /\b(?:continue|resume|finish|complete|keep going|keep working)\b[\s\S]{0,80}\b(?:it|that|same|app|site|project|work|task)\b/,
+        /\b(?:again|still|same)\b[\s\S]{0,80}\b(?:broken|failing|not working|snag|snags|button|buttons|app|site|game|repair|deploy|deployment)\b/,
         /\b(?:go ahead|proceed)\b[\s\S]{0,80}\b(?:remote cli agent|remote clie agent|remote coding agent|that app|the app|it)\b/,
     ].some((pattern) => pattern.test(normalized));
 }
@@ -5362,6 +5364,38 @@ function buildRemoteCliAgentTaskForDirectMode(prompt = '', priorAgentState = {})
         '',
         'Continuity requirement: keep the same remote session/workspace when available, do not replace the task with a progress callback or status-card text, and keep working through authoring, build, deploy, and live verification unless a real blocker requires user input.',
     ].join('\n');
+}
+
+function shouldReuseRemoteCliAgentJobIdForDirectMode(priorAgentState = {}, prompt = '') {
+    const jobId = String(priorAgentState?.remoteCodeJobId || '').trim();
+    if (!jobId) {
+        return false;
+    }
+
+    const status = String(priorAgentState?.completionStatus || priorAgentState?.status || '').trim().toLowerCase();
+    const blocker = String(priorAgentState?.blocker || '').trim().toLowerCase();
+    const verifyResults = Array.isArray(priorAgentState?.verifyResults)
+        ? priorAgentState.verifyResults.join('\n').toLowerCase()
+        : '';
+    const statusText = [status, blocker, verifyResults].filter(Boolean).join('\n');
+    const normalizedPrompt = String(prompt || '').trim().toLowerCase();
+    const sameWorkIntent = hasRemoteCliAgentContinuationIntent(normalizedPrompt)
+        || /\b(?:try again|retry|rerun|again|still|same|that|it|repair|fix|button|buttons|app|site|game|deployment|deploy)\b/.test(normalizedPrompt);
+    const newDistinctTaskIntent = /\b(?:new|another|different|fresh)\b[\s\S]{0,60}\b(?:app|site|game|project|deploy|deployment)\b/.test(normalizedPrompt)
+        || /\b(?:build|create|launch|deploy|publish)\b[\s\S]{0,40}\b(?:new|another|different|fresh)\b/.test(normalizedPrompt);
+    const runningJobBlocker = status === 'running'
+        || (
+            status === 'blocked'
+            && (
+                /\b(?:remote_code_run|remote_code_status|running|poll|polling)\b/.test(statusText)
+                || (
+                    /\b(?:job|jobid)\b/.test(statusText)
+                    && /\b(?:running|poll|polling|status)\b/.test(statusText)
+                )
+            )
+        );
+
+    return sameWorkIntent && runningJobBlocker && !newDistinctTaskIntent;
 }
 
 function getRemoteCliAgentStateFromToolContext(toolContext = {}) {
@@ -5575,7 +5609,9 @@ async function runDirectRequiredToolAction({
                 ? { sessionId: priorRemoteCliAgentState.sessionId || priorRemoteCliAgentState.remoteCodeSessionId }
                 : {}),
             ...(priorRemoteCliAgentState.mcpSessionId ? { mcpSessionId: priorRemoteCliAgentState.mcpSessionId } : {}),
-            ...(priorRemoteCliAgentState.remoteCodeJobId ? { jobId: priorRemoteCliAgentState.remoteCodeJobId } : {}),
+            ...(shouldReuseRemoteCliAgentJobIdForDirectMode(priorRemoteCliAgentState, prompt)
+                ? { jobId: priorRemoteCliAgentState.remoteCodeJobId }
+                : {}),
         }
         : requiredToolId === 'image-generate'
             ? (actions[0]?.params || { prompt })

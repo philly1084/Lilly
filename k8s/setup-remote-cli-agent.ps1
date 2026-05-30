@@ -147,7 +147,7 @@ if (!$RemoteCliCodexAgentBaseUrl) {
 }
 
 if (!$RemoteCliCodexAgentWorkspacePath) {
-  $RemoteCliCodexAgentWorkspacePath = "/srv/apps/my-app"
+  $RemoteCliCodexAgentWorkspacePath = "/opt/kimibuilt"
 }
 
 if (!$RemoteCliCodexAgentApprovalPolicy) {
