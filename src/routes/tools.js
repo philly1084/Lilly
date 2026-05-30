@@ -38,6 +38,12 @@ const {
 const registry = getUnifiedRegistry();
 const DISABLED_TOOL_IDS = new Set([]);
 const DISABLED_TOOL_MESSAGE = 'Tool is disabled.';
+const REMOTE_SERVICE_TOOL_IDS = new Set([
+  'remote-command',
+  'remote-workbench',
+  'remote-cli-agent',
+  'k3s-deploy',
+]);
 
 function getRequestOwnerId(req) {
   return String(req.user?.username || '').trim() || null;
@@ -529,6 +535,18 @@ function reconcileRuntimeWithSupport(toolId, runtime = null, support = null) {
   return runtime;
 }
 
+function resolveRequiresSetup(toolId, fallback = false, runtime = null, support = null) {
+  if (!REMOTE_SERVICE_TOOL_IDS.has(toolId)) {
+    return Boolean(fallback);
+  }
+
+  if (support?.status) {
+    return support.status === 'requires_setup';
+  }
+
+  return !Boolean(runtime?.configured || support?.runtime?.ready);
+}
+
 function isToolVisibleByRuntime(toolId, runtime = null, support = null) {
   if (HIDDEN_FRONTEND_TOOL_IDS.includes(toolId)) {
     return false;
@@ -571,6 +589,7 @@ async function buildFrontendToolCatalog({ req, category = null, sessionId = null
 
     return {
       ...tool,
+      requiresSetup: resolveRequiresSetup(tool.id, tool.requiresSetup, runtime, docMetadata.support),
       runtime,
       availableInExecutionProfile,
       runtimeVisible,
@@ -1112,6 +1131,12 @@ router.get('/:id', async (req, res) => {
       }),
       docMetadata.support,
     );
+    const effectiveManifest = manifest
+      ? {
+          ...manifest,
+          requiresSetup: resolveRequiresSetup(id, manifest.requiresSetup, runtime, docMetadata.support),
+        }
+      : manifest;
 
     res.json({
       success: true,
@@ -1121,7 +1146,8 @@ router.get('/:id', async (req, res) => {
         description: tool.description,
         category: tool.category,
         version: tool.version,
-        manifest,
+        manifest: effectiveManifest,
+        requiresSetup: resolveRequiresSetup(id, manifest?.requiresSetup, runtime, docMetadata.support),
         runtime,
         skill: skill ? {
           enabled: skill.enabled,

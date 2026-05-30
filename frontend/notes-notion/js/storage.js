@@ -29,7 +29,7 @@ const Storage = (function() {
             {
                 id: 'welcome',
                 title: 'Welcome to Notes',
-                icon: 'note',
+                icon: '📝',
                 cover: null,
                 defaultModel: null,
                 properties: [],

@@ -2077,7 +2077,7 @@ const Editor = (function() {
             if (coverArea && coverImage) {
                 if (currentPage.cover) {
                     coverArea.style.display = 'block';
-                    coverImage.style.backgroundImage = `url(${currentPage.cover})`;
+                    coverImage.style.backgroundImage = formatCoverBackground(currentPage.cover);
                     if (addCoverBtn) addCoverBtn.style.display = 'none';
                 } else {
                     coverArea.style.display = 'none';
@@ -2122,6 +2122,15 @@ const Editor = (function() {
 
         document.title = currentPage.title ? `${currentPage.title} - Notes` : 'Notes - Lilly Style';
         savePage();
+    }
+
+    function formatCoverBackground(cover) {
+        const value = String(cover || '').trim();
+        if (!value) return '';
+        if (/^(linear|radial|conic|repeating-linear|repeating-radial)-gradient\(/i.test(value) || /^url\(/i.test(value)) {
+            return value;
+        }
+        return `url("${value.replace(/"/g, '\\"')}")`;
     }
 
     function getBlock(blockId) {

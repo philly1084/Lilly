@@ -8,6 +8,39 @@ const Sidebar = (function() {
     let outlineSectionEl = null;
     let outlineToggleEl = null;
     let expandedPages = new Set();
+    let pageIconDelegationBound = false;
+    let coverDelegationBound = false;
+    const legacyPageIcons = {
+        note: '📝',
+        page: '📄',
+        document: '📄',
+        doc: '📄'
+    };
+    const pageIconCatalog = {
+        recent: ['📝', '📄', '📔', '📌', '✨', '⭐', '💡', '✅', '🎯', '🚀', '🔎', '📅', '🧠', '🧩', '🛠️', '📊', '💬', '🎨', '🌱', '☕', '💖', '🌙', '🌈', '🍓'],
+        smileys: ['😀', '😄', '😁', '😊', '🙂', '😍', '🤩', '😎', '🥳', '🤔', '😌', '🤗', '😇', '🙃', '😉', '😋', '😺', '😸', '😻', '🙌', '👏', '💪', '🫶', '✌️'],
+        people: ['👋', '🧑‍💻', '👩‍💻', '🧑‍🎨', '👩‍🔬', '🧑‍🏫', '👩‍🍳', '🧑‍🚀', '🧙', '🧚', '👑', '🎓', '🧘', '🏃', '💃', '🕺', '🤝', '👥', '🗣️', '🧵', '🪄', '🎤', '🎧', '📣'],
+        animals: ['🐱', '🐶', '🐰', '🦊', '🐻', '🐼', '🐨', '🐸', '🐢', '🦋', '🐝', '🐞', '🐙', '🐠', '🐳', '🦉', '🦄', '🐧', '🦕', '🦖', '🐿️', '🦔', '🐾', '🌸'],
+        food: ['🍓', '🍒', '🍑', '🍋', '🍊', '🍉', '🍇', '🥑', '🥐', '🥨', '🧁', '🍰', '🍩', '🍪', '🍯', '🍵', '☕', '🧋', '🍜', '🍱', '🍕', '🍣', '🥗', '🍿'],
+        activities: ['🎨', '🎵', '🎬', '📷', '🎮', '🧸', '🪁', '🎲', '♟️', '🏆', '🏅', '🎪', '🎭', '🎧', '🎹', '🎸', '🛼', '🚲', '🏕️', '🗺️', '🧭', '✈️', '🧳', '🎟️'],
+        travel: ['🏡', '🏙️', '🌆', '🌉', '🏔️', '⛱️', '🏝️', '🌋', '🏜️', '🌲', '🌊', '🛶', '🚗', '🚆', '🚀', '🛸', '🗽', '🗼', '⛩️', '🕌', '🏰', '🛤️', '🛣️', '🧭'],
+        objects: ['📓', '📒', '📚', '📎', '✏️', '🖊️', '🖍️', '📐', '📏', '🗂️', '🗃️', '🧾', '💼', '💻', '⌨️', '🖥️', '📱', '📸', '🔬', '🔭', '🧪', '🧰', '🪴', '🕯️'],
+        symbols: ['✨', '💫', '🌟', '⭐', '⚡', '🔥', '💎', '🔮', '🎀', '💌', '💖', '💚', '💙', '💜', '🧡', '🤍', '🖤', '☀️', '🌙', '☁️', '🌈', '🍀', '🔔', '🏷️']
+    };
+    const coverPresets = [
+        { name: 'Cozy Desk', value: 'radial-gradient(circle at 14% 20%, rgba(255, 255, 255, 0.95) 0 8%, transparent 9%), radial-gradient(circle at 82% 26%, rgba(255, 237, 213, 0.92) 0 10%, transparent 11%), linear-gradient(135deg, #fef3c7 0%, #fecaca 48%, #ddd6fe 100%)' },
+        { name: 'Mint Meadow', value: 'radial-gradient(circle at 22% 70%, rgba(187, 247, 208, 0.95) 0 12%, transparent 13%), radial-gradient(circle at 76% 28%, rgba(204, 251, 241, 0.9) 0 14%, transparent 15%), linear-gradient(135deg, #f0fdfa 0%, #dcfce7 50%, #dbeafe 100%)' },
+        { name: 'Lavender Notes', value: 'linear-gradient(90deg, rgba(124, 58, 237, 0.08) 1px, transparent 1px), linear-gradient(0deg, rgba(124, 58, 237, 0.08) 1px, transparent 1px), linear-gradient(135deg, #faf5ff 0%, #ede9fe 48%, #fce7f3 100%)' },
+        { name: 'Peach Picnic', value: 'radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.75) 0 8%, transparent 9%), radial-gradient(circle at 72% 72%, rgba(254, 205, 211, 0.92) 0 12%, transparent 13%), linear-gradient(135deg, #ffedd5 0%, #fed7aa 46%, #fbcfe8 100%)' },
+        { name: 'Blue Stationery', value: 'linear-gradient(115deg, rgba(255, 255, 255, 0.74) 0 18%, transparent 19% 100%), radial-gradient(circle at 75% 28%, rgba(191, 219, 254, 0.95) 0 15%, transparent 16%), linear-gradient(135deg, #eff6ff 0%, #bfdbfe 52%, #a7f3d0 100%)' },
+        { name: 'Starry Study', value: 'radial-gradient(circle at 18% 28%, rgba(250, 204, 21, 0.95) 0 2px, transparent 3px), radial-gradient(circle at 72% 36%, rgba(255, 255, 255, 0.9) 0 2px, transparent 3px), radial-gradient(circle at 48% 72%, rgba(165, 180, 252, 0.85) 0 3px, transparent 4px), linear-gradient(135deg, #172554 0%, #312e81 52%, #701a75 100%)' },
+        { name: 'Strawberry Milk', value: 'radial-gradient(circle at 24% 30%, rgba(251, 113, 133, 0.55) 0 7%, transparent 8%), radial-gradient(circle at 76% 62%, rgba(252, 165, 165, 0.72) 0 10%, transparent 11%), linear-gradient(135deg, #fff1f2 0%, #fecdd3 48%, #fbcfe8 100%)' },
+        { name: 'Sunny Planner', value: 'radial-gradient(circle at 78% 24%, rgba(253, 224, 71, 0.9) 0 16%, transparent 17%), linear-gradient(135deg, #fefce8 0%, #fde68a 45%, #bae6fd 100%)' },
+        { name: 'Ocean Tabs', value: 'linear-gradient(120deg, rgba(255, 255, 255, 0.4) 0 18%, transparent 18% 36%, rgba(255, 255, 255, 0.26) 36% 54%, transparent 54%), linear-gradient(135deg, #e0f2fe 0%, #7dd3fc 52%, #0f766e 100%)' },
+        { name: 'Forest Margin', value: 'radial-gradient(circle at 18% 86%, rgba(22, 163, 74, 0.52) 0 14%, transparent 15%), radial-gradient(circle at 44% 86%, rgba(21, 128, 61, 0.44) 0 18%, transparent 19%), linear-gradient(135deg, #ecfdf5 0%, #bbf7d0 48%, #86efac 100%)' },
+        { name: 'Candy Grid', value: 'linear-gradient(90deg, rgba(236, 72, 153, 0.12) 1px, transparent 1px), linear-gradient(0deg, rgba(14, 165, 233, 0.12) 1px, transparent 1px), linear-gradient(135deg, #fdf2f8 0%, #cffafe 100%)' },
+        { name: 'Moon Journal', value: 'radial-gradient(circle at 78% 26%, #f8fafc 0 11%, transparent 12%), radial-gradient(circle at 72% 22%, #1e1b4b 0 10%, transparent 11%), linear-gradient(135deg, #0f172a 0%, #3730a3 52%, #0f766e 100%)' }
+    ];
     
     /**
      * Initialize sidebar
@@ -131,13 +164,38 @@ const Sidebar = (function() {
         if (removeCoverBtn) {
             removeCoverBtn.addEventListener('click', removeCover);
         }
+
+        if (!coverDelegationBound) {
+            document.addEventListener('click', (e) => {
+                const addOrChange = e.target.closest?.('#add-cover-btn, #cover-change-btn');
+                const remove = e.target.closest?.('#cover-remove-btn');
+                if (!addOrChange && !remove) return;
+
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (remove) {
+                    removeCover();
+                } else {
+                    showCoverPicker();
+                }
+            }, true);
+            coverDelegationBound = true;
+        }
         
         // Page icon button
         const pageIconBtn = document.getElementById('page-icon-btn');
         if (pageIconBtn) {
-            pageIconBtn.addEventListener('click', (e) => {
-                showEmojiPicker(e.currentTarget);
-            });
+            pageIconBtn.addEventListener('click', handlePageIconButtonClick);
+        }
+
+        if (!pageIconDelegationBound) {
+            document.addEventListener('click', (e) => {
+                const iconButton = e.target.closest?.('#page-icon-btn');
+                if (!iconButton) return;
+                handlePageIconButtonClick(e, iconButton);
+            }, true);
+            pageIconDelegationBound = true;
         }
         
         // Page title input
@@ -169,6 +227,8 @@ const Sidebar = (function() {
                 }
             });
         }
+
+        setupEmojiPickerEvents();
     }
     
     /**
@@ -696,7 +756,7 @@ const Sidebar = (function() {
         // Icon
         const icon = document.createElement('span');
         icon.className = 'page-icon';
-        icon.textContent = page.icon || (page.title ? '📄' : '📄');
+        icon.textContent = normalizePageIcon(page.icon) || '📄';
         pageEl.appendChild(icon);
         
         // Title
@@ -816,9 +876,13 @@ const Sidebar = (function() {
         // Icon
         const iconEl = document.getElementById('page-icon');
         const addIconHint = document.querySelector('.add-icon-hint');
+        const normalizedIcon = normalizePageIcon(page.icon);
+        if (page.icon !== normalizedIcon) {
+            page.icon = normalizedIcon;
+        }
         if (iconEl) {
-            iconEl.textContent = page.icon || '';
-            if (page.icon) {
+            iconEl.textContent = normalizedIcon;
+            if (normalizedIcon) {
                 iconEl.style.display = 'inline';
                 if (addIconHint) addIconHint.style.display = 'none';
             } else {
@@ -834,7 +898,7 @@ const Sidebar = (function() {
         
         if (page.cover) {
             coverArea.style.display = 'block';
-            coverImage.style.backgroundImage = `url(${page.cover})`;
+            applyCoverBackground(coverImage, page.cover);
             if (addCoverBtn) addCoverBtn.style.display = 'none';
         } else {
             coverArea.style.display = 'none';
@@ -938,6 +1002,15 @@ const Sidebar = (function() {
             themeText.textContent = newTheme === 'light' ? 'Dark mode' : 'Light mode';
         }
     }
+
+    function handlePageIconButtonClick(e, buttonOverride = null) {
+        const button = buttonOverride || e.currentTarget;
+        if (!button) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        showEmojiPicker(button);
+    }
     
     /**
      * Show emoji picker
@@ -947,17 +1020,21 @@ const Sidebar = (function() {
         if (!picker) return;
         
         const rect = target.getBoundingClientRect();
-        picker.style.left = `${rect.left}px`;
-        picker.style.top = `${rect.bottom + 8}px`;
+        const pickerWidth = Math.min(320, window.innerWidth - 16);
+        const left = Math.max(8, Math.min(rect.left, window.innerWidth - pickerWidth - 8));
+        const top = Math.min(rect.bottom + 8, window.innerHeight - 260);
+        picker.style.left = `${left}px`;
+        picker.style.top = `${Math.max(8, top)}px`;
         picker.style.display = 'block';
+        picker.classList.add('is-open');
         
         // Render emojis
         renderEmojiGrid('recent');
         
         // Close on outside click
         const closePicker = (e) => {
-            if (!picker.contains(e.target) && e.target !== target) {
-                picker.style.display = 'none';
+            if (!picker.contains(e.target) && !target.contains(e.target)) {
+                hideEmojiPicker();
                 document.removeEventListener('click', closePicker);
             }
         };
@@ -965,6 +1042,36 @@ const Sidebar = (function() {
         setTimeout(() => {
             document.addEventListener('click', closePicker);
         }, 0);
+    }
+
+    function hideEmojiPicker() {
+        const picker = document.getElementById('emoji-picker');
+        if (!picker) return;
+
+        picker.classList.remove('is-open');
+        picker.style.display = 'none';
+    }
+
+    function setupEmojiPickerEvents() {
+        const picker = document.getElementById('emoji-picker');
+        if (!picker || picker.dataset.sidebarEventsBound === 'true') return;
+
+        picker.dataset.sidebarEventsBound = 'true';
+
+        picker.querySelectorAll('.emoji-category').forEach(category => {
+            category.addEventListener('click', () => {
+                picker.querySelectorAll('.emoji-category').forEach(item => item.classList.remove('active'));
+                category.classList.add('active');
+                renderEmojiGrid(category.dataset.category || 'recent');
+            });
+        });
+
+        const searchInput = document.getElementById('emoji-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                renderEmojiSearch(searchInput.value);
+            });
+        }
     }
     
     /**
@@ -974,7 +1081,7 @@ const Sidebar = (function() {
         const grid = document.getElementById('emoji-grid');
         if (!grid) return;
         
-        const emojis = Blocks.getEmojis(category);
+        const emojis = pageIconCatalog[category] || Blocks.getEmojis(category);
         grid.innerHTML = '';
         
         emojis.forEach(emoji => {
@@ -982,7 +1089,66 @@ const Sidebar = (function() {
             span.textContent = emoji;
             span.addEventListener('click', () => {
                 selectEmoji(emoji);
-                document.getElementById('emoji-picker').style.display = 'none';
+                hideEmojiPicker();
+            });
+            grid.appendChild(span);
+        });
+    }
+
+    function renderEmojiSearch(query) {
+        const grid = document.getElementById('emoji-grid');
+        if (!grid) return;
+
+        const normalizedQuery = String(query || '').trim().toLowerCase();
+        if (!normalizedQuery) {
+            renderEmojiGrid('recent');
+            return;
+        }
+
+        const emojiNames = {
+            note: '📝',
+            document: '📄',
+            page: '📄',
+            book: '📔',
+            pin: '📌',
+            search: '🔎',
+            rocket: '🚀',
+            target: '🎯',
+            calendar: '📅',
+            light: '💡',
+            check: '✅',
+            star: '⭐',
+            heart: '❤️',
+            fire: '🔥',
+            cute: '✨',
+            idea: '💡',
+            work: '💼',
+            code: '🧑‍💻',
+            art: '🎨',
+            coffee: '☕',
+            garden: '🌱',
+            moon: '🌙',
+            ocean: '🌊',
+            music: '🎵',
+            camera: '📷'
+        };
+        const matches = Object.entries(emojiNames)
+            .filter(([name]) => name.includes(normalizedQuery))
+            .map(([, emoji]) => emoji);
+
+        const all = [
+            ...Object.values(pageIconCatalog).flat(),
+            ...Blocks.getEmojiCategories().flatMap(category => Blocks.getEmojis(category))
+        ];
+        const results = [...new Set([...matches, ...all])].slice(0, 64);
+
+        grid.innerHTML = '';
+        results.forEach(emoji => {
+            const span = document.createElement('span');
+            span.textContent = emoji;
+            span.addEventListener('click', () => {
+                selectEmoji(emoji);
+                hideEmojiPicker();
             });
             grid.appendChild(span);
         });
@@ -995,12 +1161,12 @@ const Sidebar = (function() {
         const page = window.Editor?.getCurrentPage?.();
         if (!page) return;
         
-        page.icon = emoji;
+        page.icon = normalizePageIcon(emoji);
         
         const iconEl = document.getElementById('page-icon');
         const addIconHint = document.querySelector('.add-icon-hint');
         if (iconEl) {
-            iconEl.textContent = emoji;
+            iconEl.textContent = page.icon;
             iconEl.style.display = 'inline';
             if (addIconHint) addIconHint.style.display = 'none';
         }
@@ -1008,37 +1174,124 @@ const Sidebar = (function() {
         window.Editor?.savePage?.();
         refreshPageTree();
     }
+
+    function normalizePageIcon(icon) {
+        const value = String(icon || '').trim();
+        if (!value) return '';
+
+        return legacyPageIcons[value.toLowerCase()] || value;
+    }
     
     /**
      * Show cover picker
      */
     function showCoverPicker() {
-        // Predefined gradients and colors
-        const covers = [
-            'linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%)',
-            'linear-gradient(120deg, #fccb90 0%, #d57eeb 100%)',
-            'linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%)',
-            'linear-gradient(120deg, #f093fb 0%, #f5576c 100%)',
-            'linear-gradient(120deg, #4facfe 0%, #00f2fe 100%)',
-            'linear-gradient(120deg, #43e97b 0%, #38f9d7 100%)',
-            'linear-gradient(120deg, #fa709a 0%, #fee140 100%)',
-            'linear-gradient(120deg, #30cfd0 0%, #330867 100%)'
-        ];
-        
-        // For simplicity, use first gradient or allow URL input
-        const url = prompt('Enter cover image URL (or leave empty for random gradient):');
-        
         const page = window.Editor?.getCurrentPage?.();
         if (!page) return;
-        
-        if (url) {
-            page.cover = url;
-        } else {
-            page.cover = covers[Math.floor(Math.random() * covers.length)];
-        }
-        
+
+        document.getElementById('cover-picker-modal')?.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'cover-picker-modal';
+        modal.className = 'cover-picker-modal is-open';
+        modal.innerHTML = `
+            <div class="cover-picker-backdrop" data-cover-action="close"></div>
+            <section class="cover-picker-panel" role="dialog" aria-modal="true" aria-labelledby="cover-picker-title">
+                <header class="cover-picker-header">
+                    <div>
+                        <h2 id="cover-picker-title">Pick a top image</h2>
+                        <p>Choose a cute preset or paste an image URL.</p>
+                    </div>
+                    <button class="cover-picker-close" type="button" data-cover-action="close" aria-label="Close cover picker">&times;</button>
+                </header>
+                <div class="cover-preset-grid">
+                    ${coverPresets.map((cover, index) => `
+                        <button class="cover-preset" type="button" data-cover-index="${index}">
+                            <span class="cover-preset-preview" style="background-image: ${escapeHtmlAttribute(formatCoverBackground(cover.value))};"></span>
+                            <span class="cover-preset-name">${escapeHtml(cover.name)}</span>
+                        </button>
+                    `).join('')}
+                </div>
+                <form class="cover-url-form">
+                    <label for="cover-url-input">Image URL</label>
+                    <div class="cover-url-row">
+                        <input id="cover-url-input" type="url" placeholder="https://example.com/cute-cover.jpg" autocomplete="off">
+                        <button type="submit">Use URL</button>
+                    </div>
+                </form>
+                <footer class="cover-picker-footer">
+                    <button type="button" data-cover-action="random">Random cute cover</button>
+                    <button type="button" data-cover-action="clear">Remove cover</button>
+                </footer>
+            </section>
+        `;
+
+        modal.querySelectorAll('[data-cover-index]').forEach(button => {
+            button.addEventListener('click', () => {
+                const cover = coverPresets[Number(button.dataset.coverIndex)];
+                if (cover) {
+                    setPageCover(cover.value);
+                    modal.remove();
+                }
+            });
+        });
+
+        modal.querySelector('.cover-url-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = modal.querySelector('#cover-url-input');
+            const value = String(input?.value || '').trim();
+            if (!value) return;
+            setPageCover(value);
+            modal.remove();
+        });
+
+        modal.addEventListener('click', (e) => {
+            const action = e.target.dataset.coverAction;
+            if (!action) return;
+            if (action === 'close') {
+                modal.remove();
+            } else if (action === 'random') {
+                const cover = coverPresets[Math.floor(Math.random() * coverPresets.length)];
+                setPageCover(cover.value);
+                modal.remove();
+            } else if (action === 'clear') {
+                setPageCover(null);
+                modal.remove();
+            }
+        });
+
+        document.body.appendChild(modal);
+    }
+
+    function setPageCover(cover) {
+        const page = window.Editor?.getCurrentPage?.();
+        if (!page) return;
+
+        page.cover = cover;
         updatePageHeader(page);
         window.Editor?.savePage?.();
+    }
+
+    function applyCoverBackground(element, cover) {
+        if (!element) return;
+
+        element.style.backgroundImage = formatCoverBackground(cover);
+    }
+
+    function formatCoverBackground(cover) {
+        const value = String(cover || '').trim();
+        if (!value) return '';
+        if (/^(linear|radial|conic|repeating-linear|repeating-radial)-gradient\(/i.test(value)) {
+            return value;
+        }
+        if (/^url\(/i.test(value)) {
+            return value;
+        }
+        return `url("${value.replace(/"/g, '\\"')}")`;
+    }
+
+    function escapeHtmlAttribute(value) {
+        return escapeHtml(value).replace(/"/g, '&quot;');
     }
     
     /**

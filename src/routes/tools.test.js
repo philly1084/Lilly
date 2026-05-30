@@ -5,13 +5,18 @@ const request = require('supertest');
 
 const toolsRouter = require('./tools');
 const { remoteRunnerService } = require('../remote-runner/service');
+const { remoteCliAgentsSdkRunner } = require('../remote-cli/agents-sdk-runner');
 
 describe('/api/tools routes', () => {
+    let originalRemoteCliConfig;
+
     beforeEach(() => {
+        originalRemoteCliConfig = remoteCliAgentsSdkRunner.config;
         remoteRunnerService.runners.clear();
     });
 
     afterEach(() => {
+        remoteCliAgentsSdkRunner.config = originalRemoteCliConfig;
         remoteRunnerService.runners.clear();
     });
 
@@ -250,6 +255,53 @@ describe('/api/tools routes', () => {
             'kubectl',
         ]));
         expect(k3sDeploy.runtime.k3sFeedback.buildToK3sReady).toBe(true);
+    });
+
+    test('remote service tools clear setup warning when live runtime support is ready', async () => {
+        const app = buildApp();
+        remoteCliAgentsSdkRunner.config = {
+            ...originalRemoteCliConfig,
+            enabled: true,
+            transport: 'mcp',
+            url: 'https://gateway.example.test/mcp',
+            apiKey: 'test-token',
+            defaultTargetId: 'prod',
+            defaultCwd: '/workspace',
+        };
+        remoteRunnerService.registerRunner({
+            runnerId: 'remote-service-runner',
+            capabilities: ['inspect', 'build', 'deploy', 'admin'],
+            metadata: {
+                defaultCwd: '/workspace',
+                shell: '/bin/bash',
+                buildkitHostConfigured: true,
+                kubernetesConfigured: true,
+                imagePrefix: 'registry.gitlab.demoserver2.buzz/agent-apps',
+                cliTools: [
+                    { name: 'git', available: true, path: '/usr/bin/git' },
+                    { name: 'buildctl', available: true, path: '/usr/bin/buildctl' },
+                    { name: 'kubectl', available: true, path: '/usr/bin/kubectl' },
+                ],
+            },
+        }, { readyState: 1, send: jest.fn() });
+
+        const response = await request(app).get('/api/tools/available?includeAll=true');
+
+        expect(response.status).toBe(200);
+        const toolsById = new Map(response.body.data.map((tool) => [tool.id, tool]));
+        [
+            'remote-command',
+            'remote-workbench',
+            'remote-cli-agent',
+            'k3s-deploy',
+        ].forEach((toolId) => {
+            const tool = toolsById.get(toolId);
+            expect(tool).toBeDefined();
+            expect(tool.requiresSetup).toBe(false);
+            expect(tool.support.status).toBe('stable');
+        });
+        expect(toolsById.get('remote-command').support.notes.join('\n')).not.toContain('Requires SSH');
+        expect(toolsById.get('k3s-deploy').support.notes.join('\n')).not.toContain('Requires SSH');
     });
 
     test('k3s feedback reports missing build and deploy prerequisites', async () => {

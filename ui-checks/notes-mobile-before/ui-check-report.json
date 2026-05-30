@@ -1,0 +1,311 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3000/notes/",
+  "originalUrl": "http://127.0.0.1:3000/notes/",
+  "authenticated": false,
+  "generatedAt": "2026-05-30T16:00:35.661Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-mobile-before\\codex-image-reload-qa-notes-desktop.png",
+      "metrics": {
+        "title": "Codex image reload QA - Notes",
+        "url": "http://127.0.0.1:3000/notes/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 416,
+        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE note Codex image reload QA Outline 0 ▾ Add headings to see an outline. Trash Settings Dark mode AI Ready on this page Ask AI Ready to work this page › Codex image reload QA GPT-4o note Read Export Add cover + AI Generate Unsplash Search GPT Image 2 GPT Image 1.5 Auto 1024x1024 (Square) 1536x1024 (Landscape) 1024x1536 (Portrait) Auto low medium high Generate Image Cancel + + +",
+        "headings": [],
+        "interactiveControls": 93,
+        "textContrast": {
+          "checked": 51,
+          "lowContrastCount": 3,
+          "lowContrast": [
+            {
+              "tag": "div",
+              "id": "",
+              "className": "outline-empty",
+              "text": "Add headings to see an outline.",
+              "contrast": 2.21,
+              "required": 4.5,
+              "color": "#afaeac",
+              "background": "#ffffff",
+              "fontSize": 13,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 711,
+              "left": 23
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "ai-image-tab active",
+              "text": "AI Generate",
+              "contrast": 3.88,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#2383e2",
+              "fontSize": 13,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 355,
+              "left": 567
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "ai-image-btn primary",
+              "text": "Generate Image",
+              "contrast": 1.07,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#f7f7f5",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 592,
+              "left": 567
+            }
+          ]
+        },
+        "images": {
+          "count": 1,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": [
+        "low-contrast-text"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-mobile-before\\codex-image-reload-qa-notes-mobile.png",
+      "metrics": {
+        "title": "Codex image reload QA - Notes",
+        "url": "http://127.0.0.1:3000/notes/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "LB LillyBuilt New page Import PRIVATE note Codex image reload QA Outline 0 ▾ Add",
+            "left": -390,
+            "right": 0,
+            "width": 390
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-header",
+            "text": "LB LillyBuilt",
+            "left": -390,
+            "right": -1,
+            "width": 389
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "workspace-info",
+            "text": "LB LillyBuilt",
+            "left": -374,
+            "right": -47,
+            "width": 327
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "workspace-avatar",
+            "text": "LB",
+            "left": -360,
+            "right": -340,
+            "width": 20
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "workspace-name",
+            "text": "LillyBuilt",
+            "left": -330,
+            "right": -276,
+            "width": 54
+          },
+          {
+            "tag": "button",
+            "id": "sidebar-toggle",
+            "className": "icon-btn",
+            "text": "",
+            "left": -47,
+            "right": -17,
+            "width": 30
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -40,
+            "right": -24,
+            "width": 16
+          },
+          {
+            "tag": "path",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -36,
+            "right": -28,
+            "width": 8
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-actions",
+            "text": "New page Import",
+            "left": -390,
+            "right": -1,
+            "width": 389
+          },
+          {
+            "tag": "button",
+            "id": "new-page-btn",
+            "className": "new-page-btn",
+            "text": "New page",
+            "left": -368,
+            "right": -23,
+            "width": 345
+          },
+          {
+            "tag": "svg",
+            "id": "",
+            "className": "[object SVGAnimatedString]",
+            "text": "",
+            "left": -356,
+            "right": -340,
+            "width": 16
+          },
+          {
+            "tag": "button",
+            "id": "import-btn",
+            "className": "new-page-btn import-btn",
+            "text": "Import",
+            "left": -368,
+            "right": -23,
+            "width": 345
+          }
+        ],
+        "bodyTextLength": 392,
+        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE note Codex image reload QA Outline 0 ▾ Add headings to see an outline. Trash Settings Dark mode AI Ready on this page Ask AI › Codex image reload QA GPT-4o note Read Export Add cover + AI Generate Unsplash Search GPT Image 2 GPT Image 1.5 Auto 1024x1024 (Square) 1536x1024 (Landscape) 1024x1536 (Portrait) Auto low medium high Generate Image Cancel + + +",
+        "headings": [],
+        "interactiveControls": 94,
+        "textContrast": {
+          "checked": 51,
+          "lowContrastCount": 3,
+          "lowContrast": [
+            {
+              "tag": "div",
+              "id": "",
+              "className": "outline-empty",
+              "text": "Add headings to see an outline.",
+              "contrast": 2.21,
+              "required": 4.5,
+              "color": "#afaeac",
+              "background": "#ffffff",
+              "fontSize": 13,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 614,
+              "left": -367
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "ai-image-tab active",
+              "text": "AI Generate",
+              "contrast": 3.88,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#2383e2",
+              "fontSize": 13,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 387,
+              "left": 82
+            },
+            {
+              "tag": "button",
+              "id": "",
+              "className": "ai-image-btn primary",
+              "text": "Generate Image",
+              "contrast": 1.07,
+              "required": 4.5,
+              "color": "#ffffff",
+              "background": "#f7f7f5",
+              "fontSize": 14,
+              "fontWeight": 400,
+              "largeText": false,
+              "top": 773,
+              "left": 82
+            }
+          ]
+        },
+        "images": {
+          "count": 1,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": [
+        "low-contrast-text"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-mobile-before\\codex-image-reload-qa-notes-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-mobile-before\\codex-image-reload-qa-notes-mobile.png"
+    ],
+    "issues": [
+      "low-contrast-text"
+    ]
+  }
+}

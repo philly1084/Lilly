@@ -355,10 +355,21 @@ async function readToolDoc(toolId) {
 async function getToolDocMetadata(toolId) {
   const staticSupport = TOOL_SUPPORT[toolId] || { status: 'unknown', notes: [] };
   const runtimeSupport = await getRuntimeSupport(toolId);
+  const staticNotes = Array.isArray(staticSupport.notes) ? staticSupport.notes : [];
+  const runtimeNotes = Array.isArray(runtimeSupport?.notes) ? runtimeSupport.notes : [];
+  const setupOnlyStaticNotes = runtimeSupport?.status
+    && runtimeSupport.status !== 'requires_setup'
+    && staticSupport.status === 'requires_setup';
+  const notes = setupOnlyStaticNotes
+    ? [...new Set([
+        ...staticNotes.filter((note) => !/^\s*(requires|needs|default setup uses)\b/i.test(String(note || ''))),
+        ...runtimeNotes,
+      ])]
+    : [...new Set([...staticNotes, ...runtimeNotes])];
   const support = runtimeSupport
     ? {
         status: runtimeSupport.status,
-        notes: [...new Set([...(staticSupport.notes || []), ...(runtimeSupport.notes || [])])],
+        notes,
         runtime: runtimeSupport.runtime || null,
       }
     : staticSupport;
