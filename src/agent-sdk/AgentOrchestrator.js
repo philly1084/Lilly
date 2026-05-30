@@ -26,6 +26,7 @@ const TRACE_OUTPUT_PREVIEW_CHARS = Math.max(400, parseInt(process.env.TRACE_OUTP
 const REMOTE_BUILD_TOOL_ALLOWLIST = new Set([
   'remote-command',
   'remote-cli-agent',
+  'remote-workbench',
   'k3s-deploy',
   'web-search',
   'web-fetch',

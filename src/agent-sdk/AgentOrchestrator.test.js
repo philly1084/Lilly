@@ -387,6 +387,12 @@ describe('AgentOrchestrator', () => {
             handler: async () => ({}),
         }));
         orchestrator.registerTool(new ToolDefinition({
+            id: 'remote-workbench',
+            name: 'Remote Workbench',
+            description: 'Run structured remote repo, file, build, and deploy actions',
+            handler: async () => ({}),
+        }));
+        orchestrator.registerTool(new ToolDefinition({
             id: 'architecture-design',
             name: 'Architecture Design',
             description: 'Generate design docs',
@@ -400,6 +406,7 @@ describe('AgentOrchestrator', () => {
         );
 
         expect(toolIds).toContain('remote-command');
+        expect(toolIds).toContain('remote-workbench');
         expect(toolIds).not.toContain('ssh-execute');
         expect(toolIds).not.toContain('docker-exec');
         expect(toolIds).toContain('web-search');
