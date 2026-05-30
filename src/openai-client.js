@@ -1974,6 +1974,20 @@ function hasRemoteSoftwareInspectionIntent(prompt = '') {
     return (softwareTarget || namedRemoteTargetInspection) && remoteTarget && inspectionIntent && !infraOnly;
 }
 
+function hasRemoteBuildIncidentContinuationIntent(prompt = '') {
+    const normalized = String(prompt || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const incidentCue = /\b(still|same|again|live|deployment|deployed|remote|polling|poll|not communicating|communicating|stuck|broken|failing|not working|doesn['’]?t work|isn['’]?t working|won['’]?t work|hung|hanging|frozen|issue|problem|failure|error)\b/.test(normalized);
+    const remoteCue = /\b(live|deployment|deployed|remote|server|gateway|router|backend|cli|agent|polling|poll|communicating|communication|remote_code_status|remote_code_run|mcp|sse)\b/.test(normalized);
+    const actionCue = /\b(check|look|inspect|debug|diagnose|troubleshoot|verify|fix|repair|try again|retry|rerun|see|issue|problem|failure|error|communicating|communication)\b/.test(normalized)
+        || /\bwhat'?s going on\b/.test(normalized);
+
+    return incidentCue && remoteCue && actionCue;
+}
+
 function hasRemoteBuildAuthoringContinuationIntent(prompt = '') {
     const normalized = String(prompt || '').trim().toLowerCase();
     if (!normalized) {
@@ -3596,6 +3610,8 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && hasRemoteSoftwareAuthoringIntent(prompt);
     const remoteSoftwareInspectionIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareInspectionIntent(prompt);
+    const remoteBuildIncidentContinuationIntent = executionProfile === 'remote-build'
+        && hasRemoteBuildIncidentContinuationIntent(prompt);
     const metadata = getToolContextMetadata(options);
     const stickyRemoteBuildContinuationIntent = executionProfile === 'remote-build'
         && (
@@ -3609,6 +3625,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         || remoteSoftwareDeploymentIntent
         || remoteSoftwareAuthoringIntent
         || remoteSoftwareInspectionIntent
+        || remoteBuildIncidentContinuationIntent
         || managedAppIntent;
     const internalArtifactReference = hasInternalArtifactReference(prompt);
     const shouldPreferRemoteWorkspaceSource = Boolean(
@@ -3629,6 +3646,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
         && !explicitRemoteCliAgentIntent
         && !remoteSoftwareDeploymentIntent
         && !remoteSoftwareInspectionIntent
+        && !remoteBuildIncidentContinuationIntent
         && !stickyRemoteBuildContinuationIntent;
 
     if (hasWorkloadSetupIntent && availableToolIds.has('agent-workload')) {
@@ -3777,6 +3795,7 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
             || remoteSoftwareDeploymentIntent
             || remoteSoftwareAuthoringIntent
             || remoteSoftwareInspectionIntent
+            || remoteBuildIncidentContinuationIntent
             || stickyRemoteBuildContinuationIntent
         )
         && !managedAppIntent) {
@@ -3860,6 +3879,8 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
         && hasRemoteSoftwareInspectionIntent(prompt);
     const remoteSoftwareAuthoringIntent = executionProfile === 'remote-build'
         && hasRemoteSoftwareAuthoringIntent(prompt);
+    const remoteBuildIncidentContinuationIntent = executionProfile === 'remote-build'
+        && hasRemoteBuildIncidentContinuationIntent(prompt);
     const isDeferredWorkloadRun = options?.workloadRun === true
         || options?.clientSurface === 'workload'
         || options?.toolContext?.workloadRun === true
@@ -3920,6 +3941,7 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
             || hasRemoteSoftwareDeploymentIntent(prompt)
             || remoteSoftwareAuthoringIntent
             || remoteSoftwareInspectionIntent
+            || remoteBuildIncidentContinuationIntent
             || (
                 executionProfile === 'remote-build'
                 && (
