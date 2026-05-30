@@ -68,6 +68,7 @@ jest.mock('../ai-route-utils', () => ({
     inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
+    buildPiiWorkbookRelationshipToolContext: jest.fn(() => null),
     resolveReasoningEffort: jest.fn(() => null),
 }));
 
@@ -310,13 +311,22 @@ describe('/v1/chat/completions stream forwarding', () => {
         executeConversationRuntime.mockImplementation(async (_app, params) => {
             params.onProgress?.({
                 phase: 'executing',
-                detail: 'Running remote command',
+                detail: 'Running remote command with a very long internal background payload that should be clipped before it reaches the readable SSE preview card.'.repeat(4),
+                summary: 'Inspecting live remote work.',
+                backgroundData: 'this should not be streamed to the progress card',
                 steps: [
                     { id: 'step-1', title: 'Inspect runtime', status: 'in_progress' },
                     { id: 'step-2', title: 'Summarize result', status: 'pending' },
+                    { id: 'step-3', title: 'Hidden noisy implementation note'.repeat(20), status: 'pending' },
+                    { id: 'step-4', title: 'Extra step', status: 'pending' },
+                    { id: 'step-5', title: 'Another extra step', status: 'pending' },
+                ],
+                toolEvents: [
+                    { toolId: 'asset-search', detail: 'Background artifact index payload should stay out of the live card.' },
+                    { toolId: 'remote-cli-agent', stage: 'started', detail: 'Remote CLI agent is checking the live deployment.' },
                 ],
                 completedSteps: 0,
-                totalSteps: 2,
+                totalSteps: 5,
                 percent: 0,
             });
 
@@ -366,7 +376,12 @@ describe('/v1/chat/completions stream forwarding', () => {
         expect(response.status).toBe(200);
         expect(response.text).toContain('"type":"progress"');
         expect(response.text).toContain('"phase":"executing"');
-        expect(response.text).toContain('"detail":"Running remote command"');
+        expect(response.text).toContain('"detail":"Running remote command');
+        expect(response.text).toContain('"minUpdateMs":1500');
+        expect(response.text).toContain('"toolName":"remote-cli-agent"');
+        expect(response.text).not.toContain('backgroundData');
+        expect(response.text).not.toContain('asset-search');
+        expect(response.text).not.toContain('Another extra step');
         expect(response.text).toContain('"delta":{"content":"Done"}');
         expect(response.text).toContain('data: [DONE]');
     });

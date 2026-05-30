@@ -98,6 +98,18 @@ const { rehydrateText, sanitizeText } = require('../pii');
 const router = Router();
 const FINAL_SYNTHESIS_PLACEHOLDER = 'I completed the request, but the final answer could not be synthesized from the model response.';
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
+const COMPAT_PROGRESS_TEXT_LIMIT = 220;
+const COMPAT_PROGRESS_STEP_LIMIT = 4;
+const COMPAT_PROGRESS_STEP_TEXT_LIMIT = 80;
+const COMPAT_PROGRESS_MIN_UPDATE_MS = 1500;
+const COMPAT_PROGRESS_AGENT_TOOL_IDS = new Set([
+    'remote-cli-agent',
+    'remote-command',
+    'remote-workbench',
+    'k3s-deploy',
+    'managed-app',
+    'agent-workload',
+]);
 
 function compactPiiContextIds(...sources) {
     const ids = [];
@@ -234,6 +246,93 @@ function isAbortLikeError(error, signal = null) {
         || ['abort', 'aborted', 'foreground_request_aborted'].includes(code)
         || message.includes('aborted')
         || message.includes('cancelled');
+}
+
+function compactPreviewText(value = '', limit = COMPAT_PROGRESS_TEXT_LIMIT) {
+    const normalized = stripNullCharacters(String(value || '')).replace(/\s+/g, ' ').trim();
+    const safeLimit = Math.max(20, Number(limit) || COMPAT_PROGRESS_TEXT_LIMIT);
+    if (normalized.length <= safeLimit) {
+        return normalized;
+    }
+
+    return `${normalized.slice(0, safeLimit - 1).trimEnd()}…`;
+}
+
+function getCompatProgressToolId(event = {}) {
+    return String(
+        event?.toolId
+        || event?.toolName
+        || event?.tool_name
+        || event?.toolCall?.function?.name
+        || event?.result?.toolId
+        || '',
+    ).trim();
+}
+
+function sanitizeCompatProgressToolEvents(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : [])
+        .map((event) => {
+            const toolId = getCompatProgressToolId(event);
+            if (!COMPAT_PROGRESS_AGENT_TOOL_IDS.has(toolId)) {
+                return null;
+            }
+            const stage = String(event?.stage || event?.status || '').trim().toLowerCase();
+            const detail = compactPreviewText(
+                event?.detail
+                || event?.summary
+                || event?.message
+                || (stage.includes('complete') ? `Finished ${toolId}` : `Running ${toolId}`),
+                140,
+            );
+
+            return {
+                toolId,
+                toolName: toolId,
+                stage: stage.includes('complete') || stage === 'done' ? 'completed' : (stage || 'started'),
+                detail,
+            };
+        })
+        .filter(Boolean)
+        .slice(-3);
+}
+
+function sanitizeCompatProgressSteps(steps = []) {
+    return (Array.isArray(steps) ? steps : [])
+        .slice(0, COMPAT_PROGRESS_STEP_LIMIT)
+        .map((step, index) => ({
+            id: String(step?.id || `step-${index + 1}`).trim() || `step-${index + 1}`,
+            title: compactPreviewText(step?.title || step?.label || `Step ${index + 1}`, COMPAT_PROGRESS_STEP_TEXT_LIMIT),
+            status: String(step?.status || 'pending').trim().toLowerCase() || 'pending',
+        }))
+        .filter((step) => step.title);
+}
+
+function buildCompatPreviewProgress(progress = {}) {
+    const source = progress && typeof progress === 'object' ? progress : {};
+    const phase = compactPreviewText(source.phase || 'thinking', 32) || 'thinking';
+    const detail = compactPreviewText(source.detail || source.message || '', COMPAT_PROGRESS_TEXT_LIMIT);
+    const summary = compactPreviewText(source.summary || '', COMPAT_PROGRESS_TEXT_LIMIT);
+    const steps = sanitizeCompatProgressSteps(source.steps);
+    const toolEvents = sanitizeCompatProgressToolEvents(source.toolEvents || source.tool_events);
+    const completedSteps = Number(source.completedSteps ?? source.completed_steps);
+    const totalSteps = Number(source.totalSteps ?? source.total_steps);
+    const percent = Number(source.percent);
+
+    return {
+        phase,
+        ...(detail ? { detail } : {}),
+        ...(summary ? { summary } : {}),
+        ...(steps.length > 0 ? { steps } : {}),
+        ...(Number.isFinite(completedSteps) ? { completedSteps } : {}),
+        ...(Number.isFinite(totalSteps) ? { totalSteps } : {}),
+        ...(Number.isFinite(percent) ? { percent: Math.max(0, Math.min(100, Math.round(percent))) } : {}),
+        ...(source.terminal === true ? { terminal: true } : {}),
+        ...(toolEvents.length > 0 ? { toolEvents } : {}),
+        display: {
+            minUpdateMs: COMPAT_PROGRESS_MIN_UPDATE_MS,
+            compact: true,
+        },
+    };
 }
 
 function normalizeClientNow(value = '') {
@@ -1062,12 +1161,15 @@ function writeCompatSseProgressPayload(sse, sessionId, progress = {}) {
     if (!sse || sse.isClosed()) {
         return false;
     }
+    const previewProgress = buildCompatPreviewProgress(progress);
 
     return sse.write(`data: ${JSON.stringify({
         type: 'progress',
         session_id: sessionId,
         sessionId,
-        progress,
+        progress: previewProgress,
+        phase: previewProgress.phase,
+        detail: previewProgress.detail || '',
     })}\n\n`);
 }
 

@@ -74,6 +74,8 @@ class CodeCLIApp {
         this.liveProgressState = null;
         this.liveReasoningSummary = '';
         this.liveToolEvents = [];
+        this.liveProgressLastRenderAt = 0;
+        this.liveProgressRenderTimer = null;
         this.installTtsStorageBridge();
         const RealtimeTtsManager = window.KimiBuiltRealtimeTtsManager || window.WebChatTtsManager;
         this.ttsManager = RealtimeTtsManager ? new RealtimeTtsManager() : null;
@@ -3624,11 +3626,20 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         const raw = typeof value === 'string'
             ? value
             : String(value?.title || value?.label || value?.summary || value?.reason || value?.text || fallback || '');
-        return raw
+        return this.compactProgressText(raw
             .replace(/\s*\[truncated\s+\d+\s+chars\]\s*$/i, '')
             .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 180);
+            .trim(), 80);
+    }
+
+    compactProgressText(value = '', limit = 180) {
+        const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+        const safeLimit = Math.max(24, Number(limit) || 180);
+        if (normalized.length <= safeLimit) {
+            return normalized;
+        }
+
+        return `${normalized.slice(0, safeLimit - 1).trimEnd()}…`;
     }
 
     buildFallbackProgressSteps(phase = 'thinking', detail = '') {
@@ -3657,7 +3668,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
     normalizeProgressState(rawProgress = {}, options = {}) {
         const progress = rawProgress && typeof rawProgress === 'object' ? rawProgress : {};
         const phase = String(progress.phase || options.phase || 'thinking').trim() || 'thinking';
-        const detail = String(progress.detail || options.detail || '').replace(/\s+/g, ' ').trim();
+        const detail = this.compactProgressText(progress.detail || options.detail || '', 180);
         let steps = (Array.isArray(progress.steps) ? progress.steps : [])
             .map((step, index) => {
                 const title = this.normalizeProgressStepTitle(step, `Step ${index + 1}`);
@@ -3715,7 +3726,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             ...progress,
             phase,
             detail,
-            summary: String(progress.summary || `${completedSteps}/${totalSteps} steps complete`).trim(),
+            summary: this.compactProgressText(progress.summary || `${completedSteps}/${totalSteps} steps complete`, 160),
             terminal: progress.terminal === true || options.terminal === true,
             totalSteps,
             completedSteps,
@@ -3753,6 +3764,32 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         return labels[normalized] || 'Working';
     }
 
+    scheduleLiveProgressCardRender(options = {}) {
+        const immediate = options.immediate === true;
+        const minUpdateMs = Math.max(
+            900,
+            Number(this.liveProgressState?.display?.minUpdateMs || 1500) || 1500,
+        );
+
+        if (this.liveProgressRenderTimer) {
+            clearTimeout(this.liveProgressRenderTimer);
+            this.liveProgressRenderTimer = null;
+        }
+
+        const now = Date.now();
+        if (immediate || !this.liveProgressLastRenderAt || now - this.liveProgressLastRenderAt >= minUpdateMs) {
+            this.liveProgressLastRenderAt = now;
+            this.renderLiveProgressCard();
+            return;
+        }
+
+        this.liveProgressRenderTimer = setTimeout(() => {
+            this.liveProgressRenderTimer = null;
+            this.liveProgressLastRenderAt = Date.now();
+            this.renderLiveProgressCard();
+        }, minUpdateMs - (now - this.liveProgressLastRenderAt));
+    }
+
     renderLiveProgressCard() {
         const progressState = this.liveProgressState;
         if (!progressState) {
@@ -3761,7 +3798,10 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
 
         const line = this.ensureLiveProgressCard();
         const phaseLabel = this.getProgressPhaseLabel(progressState.phase);
-        const reasoning = this.liveReasoningSummary || progressState.detail || progressState.summary || 'Working through the next step.';
+        const reasoning = this.compactProgressText(
+            this.liveReasoningSummary || progressState.detail || progressState.summary || 'Working through the next step.',
+            220,
+        );
         const toolEvents = this.liveToolEvents.slice(-3);
         const toolMarkup = toolEvents.length
             ? `<div class="agent-progress-card__tools">${toolEvents.map((event) => `
@@ -3797,15 +3837,18 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
 
     updateLiveProgressCardFromChunk(chunk = {}) {
         const progress = chunk.progress && typeof chunk.progress === 'object' ? chunk.progress : {};
+        if (Array.isArray(progress.toolEvents)) {
+            progress.toolEvents.forEach((event) => this.updateLiveToolEvent(event));
+        }
         this.liveProgressState = this.normalizeProgressState(progress, {
             phase: chunk.phase || progress.phase || 'thinking',
             detail: chunk.detail || progress.detail || '',
         });
-        this.renderLiveProgressCard();
+        this.scheduleLiveProgressCardRender();
     }
 
     updateLiveReasoningSummary(summary = '') {
-        const normalized = String(summary || '').replace(/\s+/g, ' ').trim();
+        const normalized = this.compactProgressText(summary, 220);
         if (!normalized) {
             return;
         }
@@ -3814,14 +3857,30 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             phase: 'reasoning',
             detail: normalized,
         });
-        this.renderLiveProgressCard();
+        this.scheduleLiveProgressCardRender();
+    }
+
+    isDisplayableLiveToolName(toolName = '') {
+        return [
+            'remote-cli-agent',
+            'remote-command',
+            'remote-workbench',
+            'k3s-deploy',
+            'managed-app',
+            'agent-workload',
+        ].includes(String(toolName || '').trim());
     }
 
     updateLiveToolEvent(chunk = {}) {
+        const toolName = String(chunk.toolName || chunk.tool_name || 'tool');
+        if (!this.isDisplayableLiveToolName(toolName)) {
+            return;
+        }
+
         const event = {
             stage: String(chunk.stage || '').toLowerCase().includes('complete') ? 'completed' : 'started',
-            toolName: String(chunk.toolName || chunk.tool_name || 'tool'),
-            detail: String(chunk.detail || 'Running tool').replace(/\s+/g, ' ').trim(),
+            toolName,
+            detail: this.compactProgressText(chunk.detail || `Running ${toolName}`, 120),
         };
         this.liveToolEvents.push(event);
         this.liveToolEvents = this.liveToolEvents.slice(-8);
@@ -3829,7 +3888,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             phase: event.stage === 'completed' ? 'checking-tools' : 'executing',
             detail: event.detail,
         });
-        this.renderLiveProgressCard();
+        this.scheduleLiveProgressCardRender();
     }
 
     finalizeLiveProgressCard(options = {}) {
@@ -3841,6 +3900,10 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         const finalPhase = String(options.phase || 'ready').trim().toLowerCase();
         const removeOnComplete = options.removeOnComplete !== false && finalPhase !== 'blocked';
         if (removeOnComplete) {
+            if (this.liveProgressRenderTimer) {
+                clearTimeout(this.liveProgressRenderTimer);
+                this.liveProgressRenderTimer = null;
+            }
             const line = existing || this.terminalOutput.querySelector('.line-output.agent-progress-card-line');
             if (line) {
                 line.remove();
@@ -3848,6 +3911,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             this.liveProgressState = null;
             this.liveReasoningSummary = '';
             this.liveToolEvents = [];
+            this.liveProgressLastRenderAt = 0;
             return;
         }
 
@@ -3862,7 +3926,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                 phase: options.phase || 'ready',
                 detail: options.detail || this.liveProgressState.detail,
             }, { terminal: true });
-            this.renderLiveProgressCard();
+            this.scheduleLiveProgressCardRender({ immediate: true });
         }
 
         const line = this.terminalOutput.querySelector('.line-output.agent-progress-card-line.stream-progress');
@@ -3872,6 +3936,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         this.liveProgressState = null;
         this.liveReasoningSummary = '';
         this.liveToolEvents = [];
+        this.liveProgressLastRenderAt = 0;
     }
 
     updateProgressLine(text) {

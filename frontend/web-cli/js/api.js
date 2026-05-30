@@ -220,6 +220,18 @@ class WebCLIAPI {
         };
     }
 
+    isDisplayableStreamTool(toolName = '') {
+        const normalized = String(toolName || '').trim();
+        return [
+            'remote-cli-agent',
+            'remote-command',
+            'remote-workbench',
+            'k3s-deploy',
+            'managed-app',
+            'agent-workload',
+        ].includes(normalized);
+    }
+
     buildToolEventDetail(toolCall = {}, stage = 'started') {
         const rawToolName = String(
             toolCall?.function?.name
@@ -248,19 +260,28 @@ class WebCLIAPI {
         const choiceToolCalls = payload?.choices?.[0]?.delta?.tool_calls;
         if (Array.isArray(choiceToolCalls)) {
             choiceToolCalls.forEach((toolCall) => {
-                events.push(this.buildToolEventDetail(toolCall, 'started'));
+                const event = this.buildToolEventDetail(toolCall, 'started');
+                if (this.isDisplayableStreamTool(event.toolName)) {
+                    events.push(event);
+                }
             });
         }
 
         if (Array.isArray(payload?.tool_calls)) {
             payload.tool_calls.forEach((toolCall) => {
-                events.push(this.buildToolEventDetail(toolCall, 'started'));
+                const event = this.buildToolEventDetail(toolCall, 'started');
+                if (this.isDisplayableStreamTool(event.toolName)) {
+                    events.push(event);
+                }
             });
         }
 
         if ((payload?.type === 'response.output_item.added' || payload?.type === 'response.output_item.done')
             && payload?.item) {
-            events.push(this.buildToolEventDetail(payload.item, payload.type.endsWith('.done') ? 'done' : 'started'));
+            const event = this.buildToolEventDetail(payload.item, payload.type.endsWith('.done') ? 'done' : 'started');
+            if (this.isDisplayableStreamTool(event.toolName)) {
+                events.push(event);
+            }
         }
 
         return events;
