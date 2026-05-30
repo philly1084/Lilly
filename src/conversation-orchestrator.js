@@ -3592,12 +3592,7 @@ function buildActiveTaskFrame({
 }
 
 function extractRemoteCliAgentControlStateFromToolEvents(toolEvents = []) {
-    const event = [...(Array.isArray(toolEvents) ? toolEvents : [])]
-        .reverse()
-        .find((entry) => {
-            const toolId = String(entry?.toolCall?.function?.name || entry?.result?.toolId || '').trim();
-            return toolId === 'remote-cli-agent';
-        });
+    const event = selectRemoteCliAgentEvent(toolEvents);
     if (!event) {
         return null;
     }
@@ -4389,6 +4384,70 @@ function getLastSuccessfulToolEvent(toolEvents = [], toolId = '') {
     }
 
     return null;
+}
+
+function isRemoteCliAgentEvent(event = {}) {
+    return String(event?.toolCall?.function?.name || event?.result?.toolId || '').trim() === 'remote-cli-agent';
+}
+
+function getRemoteCliAgentEventData(event = {}) {
+    return event?.result?.data && typeof event.result.data === 'object'
+        ? event.result.data
+        : {};
+}
+
+function isMeaningfulRemoteCliBlocker(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    return Boolean(normalized && !['none', 'not_available', 'not available', 'n/a', 'na', 'null', 'undefined'].includes(normalized));
+}
+
+function isCompletedRemoteCliAgentEvent(event = {}) {
+    if (!isRemoteCliAgentEvent(event) || event?.result?.success === false) {
+        return false;
+    }
+
+    const data = getRemoteCliAgentEventData(event);
+    return String(data?.completionStatus || '').trim().toLowerCase() === 'complete'
+        && !isMeaningfulRemoteCliBlocker(data?.blocker);
+}
+
+function selectRemoteCliAgentEvent(toolEvents = []) {
+    const events = Array.isArray(toolEvents) ? toolEvents : [];
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (isCompletedRemoteCliAgentEvent(events[index])) {
+            return events[index];
+        }
+    }
+
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (isRemoteCliAgentEvent(events[index])) {
+            return events[index];
+        }
+    }
+
+    return null;
+}
+
+function hasCompletedRemoteCliAgentEvent(toolEvents = []) {
+    return Boolean(selectRemoteCliAgentEvent(toolEvents) && isCompletedRemoteCliAgentEvent(selectRemoteCliAgentEvent(toolEvents)));
+}
+
+function limitRemoteCliAgentStepsPerPlan(plan = []) {
+    if (!Array.isArray(plan) || plan.length < 2) {
+        return Array.isArray(plan) ? plan : [];
+    }
+
+    let hasRemoteCliAgentStep = false;
+    return plan.filter((step) => {
+        if (String(step?.tool || '').trim() !== 'remote-cli-agent') {
+            return true;
+        }
+        if (hasRemoteCliAgentStep) {
+            return false;
+        }
+        hasRemoteCliAgentStep = true;
+        return true;
+    });
 }
 
 function parseToolCallArguments(rawArguments = '{}') {
@@ -7912,11 +7971,7 @@ function isRemoteCliMarkerDumpText(text = '') {
 }
 
 function buildRemoteCliAgentSummaryFromToolEvents(toolEvents = []) {
-    const event = [...(Array.isArray(toolEvents) ? toolEvents : [])]
-        .reverse()
-        .find((candidate) => (
-            String(candidate?.toolCall?.function?.name || candidate?.result?.toolId || '').trim() === 'remote-cli-agent'
-        ));
+    const event = selectRemoteCliAgentEvent(toolEvents);
     const data = event?.result?.data || {};
     return summarizeRemoteCliAgentDataForUser(data);
 }
@@ -8131,11 +8186,27 @@ function buildFallbackSynthesisText({ objective = '', toolEvents = [] } = {}) {
 }
 
 function buildVerifiedToolFindingsText(toolEvents = []) {
-    return (Array.isArray(toolEvents) ? toolEvents : [])
+    const events = Array.isArray(toolEvents) ? toolEvents : [];
+    const selectedRemoteCliAgentEvent = selectRemoteCliAgentEvent(events);
+    const remoteCliAgentEventCount = events.filter(isRemoteCliAgentEvent).length;
+    const findings = events
         .slice(-12)
         .map((event) => summarizeToolEventForUser(event))
         .filter(Boolean)
         .join('\n');
+
+    if (selectedRemoteCliAgentEvent && remoteCliAgentEventCount > 1) {
+        const authoritativeSummary = summarizeToolEventForUser(selectedRemoteCliAgentEvent);
+        return [
+            authoritativeSummary
+                ? `Authoritative remote-cli-agent result: ${authoritativeSummary}`
+                : '',
+            findings ? 'All verified tool results:' : '',
+            findings,
+        ].filter(Boolean).join('\n');
+    }
+
+    return findings;
 }
 
 function buildCompactToolSynthesisPrompt({
@@ -9892,6 +9963,19 @@ class ConversationOrchestrator extends EventEmitter {
 
                 const repeatedPlanReport = filterRepeatedPlanStepsWithReport(nextPlan, executedStepSignatures, executedStepSignatureCounts);
                 nextPlan = repeatedPlanReport.accepted;
+                const remoteCliLimitedPlan = limitRemoteCliAgentStepsPerPlan(nextPlan);
+                if (remoteCliLimitedPlan.length !== nextPlan.length) {
+                    executionTrace.push(createExecutionTraceEntry({
+                        type: 'planning',
+                        name: `Repeated remote-cli-agent steps limited in round ${round}`,
+                        details: {
+                            round,
+                            removed: nextPlan.length - remoteCliLimitedPlan.length,
+                            reason: 'remote-cli-agent is a long-running owner lane; run one job, inspect its result, then re-plan if needed.',
+                        },
+                    }));
+                    nextPlan = remoteCliLimitedPlan;
+                }
                 for (const rejectedStep of repeatedPlanReport.rejected) {
                     harnessRun.recordBlocker({
                         type: 'repeated_tool_signature',
@@ -10042,6 +10126,20 @@ class ConversationOrchestrator extends EventEmitter {
                 if (nextPlan.length > 0) {
                     const remainingToolBudget = Math.max(0, budgetState.maxToolCalls - toolEvents.length);
                     nextPlan = nextPlan.slice(0, remainingToolBudget);
+                }
+
+                const finalRemoteCliLimitedPlan = limitRemoteCliAgentStepsPerPlan(nextPlan);
+                if (finalRemoteCliLimitedPlan.length !== nextPlan.length) {
+                    executionTrace.push(createExecutionTraceEntry({
+                        type: 'planning',
+                        name: `Repeated remote-cli-agent steps limited before execution in round ${round}`,
+                        details: {
+                            round,
+                            removed: nextPlan.length - finalRemoteCliLimitedPlan.length,
+                            reason: 'remote-cli-agent results must be observed before scheduling another remote-cli-agent call.',
+                        },
+                    }));
+                    nextPlan = finalRemoteCliLimitedPlan;
                 }
 
                 executionTrace.push(createExecutionTraceEntry({
@@ -10389,6 +10487,21 @@ class ConversationOrchestrator extends EventEmitter {
                             ...(activeProjectPlan ? { projectPlan: activeProjectPlan } : {}),
                         },
                     });
+                }
+
+                if (hasCompletedRemoteCliAgentEvent(toolEvents)) {
+                    executionTrace.push(createExecutionTraceEntry({
+                        type: 'review',
+                        name: `Remote CLI completed after round ${round}`,
+                        details: {
+                            round,
+                            decision: 'synthesize',
+                            reason: 'A remote-cli-agent call completed without a meaningful blocker; do not start another remote-cli-agent job in the same response.',
+                            toolCalls: toolEvents.length,
+                        },
+                    }));
+                    refreshHarnessMetadata('synthesize', 'remote-cli-agent completed; final response synthesis is next.');
+                    break;
                 }
 
                 const legacyRoundReview = reviewExecutionRound({

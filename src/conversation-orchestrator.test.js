@@ -3104,6 +3104,79 @@ describe('ConversationOrchestrator', () => {
         expect(prompt).not.toContain('"type":"thread.started"');
     });
 
+    test('tool synthesis prefers a completed remote-cli-agent result over a later running blocker', async () => {
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse('Remote CLI answer', 'resp_remote_cli_complete_wins')),
+            complete: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: null,
+            sessionStore: null,
+            memoryService: null,
+        });
+
+        await orchestrator.buildFinalResponse({
+            input: 'Use remote-cli-agent for a passthrough proof.',
+            objective: 'Use remote-cli-agent for a passthrough proof.',
+            toolEvents: [
+                {
+                    toolCall: { function: { name: 'remote-cli-agent' } },
+                    result: {
+                        success: true,
+                        toolId: 'remote-cli-agent',
+                        data: {
+                            remoteCodeJobId: 'rcli_running_first',
+                            cwd: '/opt/kimibuilt',
+                            blocker: 'remote_code_run still running; continue with the returned remote job id',
+                            completionStatus: 'blocked',
+                        },
+                    },
+                },
+                {
+                    toolCall: { function: { name: 'remote-cli-agent' } },
+                    result: {
+                        success: true,
+                        toolId: 'remote-cli-agent',
+                        data: {
+                            remoteCodeJobId: 'rcli_completed',
+                            cwd: '/opt/kimibuilt',
+                            whatChanged: 'read-only passthrough proof only',
+                            verifyCommands: ['hostname && pwd'],
+                            verifyResults: ['pass_printed_hostname_and_pwd'],
+                            blocker: null,
+                            completionStatus: 'complete',
+                        },
+                    },
+                },
+                {
+                    toolCall: { function: { name: 'remote-cli-agent' } },
+                    result: {
+                        success: true,
+                        toolId: 'remote-cli-agent',
+                        data: {
+                            remoteCodeJobId: 'rcli_running_last',
+                            cwd: '/opt/kimibuilt',
+                            blocker: 'remote_code_run still running; continue with the returned remote job id',
+                            completionStatus: 'blocked',
+                        },
+                    },
+                },
+            ],
+        });
+
+        const prompt = llmClient.createResponse.mock.calls[0][0].input;
+        const authoritativeIndex = prompt.indexOf('Authoritative remote-cli-agent result');
+        const completeIndex = prompt.indexOf('Remote CLI task completed.');
+        const blockedIndex = prompt.indexOf('Remote CLI task is blocked.');
+
+        expect(authoritativeIndex).toBeGreaterThanOrEqual(0);
+        expect(completeIndex).toBeGreaterThan(authoritativeIndex);
+        expect(prompt).toContain('Remote job id: rcli_completed.');
+        expect(prompt).toContain('All verified tool results:');
+        expect(blockedIndex).toBeGreaterThan(completeIndex);
+    });
+
     test('rewrites remote-cli-agent marker dump synthesis output before returning it', async () => {
         const markerDump = [
             'WORKSPACE=/srv/apps/my-app',
@@ -4831,6 +4904,100 @@ describe('ConversationOrchestrator', () => {
             config.runtime.remoteBuildContinuationCheckpointEnabled = originalContinuationCheckpointEnabled;
             nowSpy.mockRestore();
         }
+    });
+
+    test('stops the same chat turn after remote-cli-agent completes cleanly', async () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+        settingsController.getEffectiveOpencodeConfig.mockReturnValue({
+            enabled: true,
+            remoteDefaultWorkspace: '/srv/apps/weather',
+            allowedWorkspaceRoots: ['C:/Users/phill/KimiBuilt'],
+        });
+
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse('Remote CLI completed cleanly.')),
+            complete: jest.fn(),
+        };
+        const toolManager = {
+            getTool: jest.fn((toolId) => (
+                ['remote-cli-agent', 'remote-command', 'web-search', 'tool-doc-read']
+                    .includes(toolId)
+                    ? { id: toolId, description: toolId }
+                    : null
+            )),
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: {
+                    remoteCodeJobId: 'rcli_complete_once',
+                    cwd: '/srv/apps/weather',
+                    whatChanged: 'read-only passthrough proof only',
+                    verifyCommands: ['hostname && pwd'],
+                    verifyResults: ['pass_printed_hostname_and_pwd'],
+                    blocker: null,
+                    completionStatus: 'complete',
+                },
+            }),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({ id: 'session-remote-cli-complete', metadata: {} }),
+            getOrCreate: jest.fn().mockResolvedValue({ id: 'session-remote-cli-complete', metadata: {} }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue([]),
+            rememberResponse: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager,
+            sessionStore,
+            memoryService,
+        });
+        jest.spyOn(orchestrator, 'buildDirectAction').mockReturnValue({
+            tool: 'remote-cli-agent',
+            reason: 'The request explicitly asks the assisted remote CLI agent to own the remote task.',
+            params: {
+                task: 'Run a read-only passthrough proof.',
+                waitMs: 30000,
+                adminMode: true,
+                cwd: '/srv/apps/weather',
+            },
+        });
+
+        const result = await orchestrator.executeConversation({
+            input: 'Use remote-cli-agent to run a passthrough proof.',
+            sessionId: 'session-remote-cli-complete',
+            executionProfile: 'remote-build',
+            stream: false,
+            metadata: {
+                remoteBuildAutonomyApproved: true,
+                clientSurface: 'web-chat',
+            },
+            toolContext: {
+                clientSurface: 'web-chat',
+                remoteWorkspacePath: '/srv/apps/weather',
+            },
+        });
+
+        expect(toolManager.executeTool).toHaveBeenCalledTimes(1);
+        expect(result.response.metadata.toolEvents).toHaveLength(1);
+        expect(result.response.metadata.executionTrace).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                name: expect.stringContaining('Remote CLI completed after round'),
+            }),
+        ]));
+        expect(result.output).toContain('Remote CLI completed cleanly.');
     });
 
     test('extends the autonomous round budget when remote-build work is still productive', async () => {
