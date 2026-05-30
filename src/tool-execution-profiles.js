@@ -64,6 +64,7 @@ const PROFILE_TOOL_ALLOWLISTS = Object.freeze({
         'remote-command',
         'remote-cli-agent',
         'remote-workbench',
+        'k3s-deploy',
         ...BASE_SHARED_TOOL_IDS,
     ]),
     [NOTES_EXECUTION_PROFILE]: Object.freeze([

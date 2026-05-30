@@ -30,6 +30,7 @@ describe('tool execution profiles', () => {
             'migration-create',
             'remote-command',
             'remote-cli-agent',
+            'k3s-deploy',
         ]));
     });
 

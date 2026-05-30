@@ -2173,6 +2173,19 @@ function hasExplicitK3sDeployIntent(prompt = '') {
         || /\b(k3s|k8s|kubernetes|kubectl)\b[\s\S]{0,60}\b(deploy|rollout|apply|set image|manifest|deployment|sync)\b/i.test(text);
 }
 
+function buildK3sDeployPreflightParams(prompt = '') {
+    const text = String(prompt || '');
+    if (/\b(rollout status|check rollout|verify rollout)\b/i.test(text)) {
+        return { action: 'rollout-status' };
+    }
+
+    if (/\b(kubectl apply|apply manifests?|apply.*\b(k3s|k8s|kubernetes|kubectl|manifest))\b/i.test(text)) {
+        return { action: 'apply-manifests' };
+    }
+
+    return { action: 'sync-and-apply' };
+}
+
 function shouldIncludeRemoteContinuityInstructions({
     prompt = '',
     executionProfile = DEFAULT_EXECUTION_PROFILE,
@@ -2983,6 +2996,13 @@ function buildDeterministicPreflightActions(automaticTools = [], prompt = '', to
                 ...(sshTarget?.port ? { port: sshTarget.port } : {}),
                 command: sshCommand,
             },
+        });
+    }
+
+    if (availableToolIds.has('k3s-deploy') && hasExplicitK3sDeployIntent(prompt)) {
+        actions.push({
+            toolId: 'k3s-deploy',
+            params: buildK3sDeployPreflightParams(prompt),
         });
     }
 
@@ -5484,7 +5504,7 @@ async function runDirectRequiredToolAction({
     toolContext = {},
     model = null,
 }) {
-    if (!['ssh-execute', 'remote-command', 'remote-cli-agent', 'web-scrape', 'agent-workload', 'podcast', 'image-generate'].includes(requiredToolId)) {
+    if (!['ssh-execute', 'remote-command', 'remote-cli-agent', 'k3s-deploy', 'web-scrape', 'agent-workload', 'podcast', 'image-generate'].includes(requiredToolId)) {
         return null;
     }
 

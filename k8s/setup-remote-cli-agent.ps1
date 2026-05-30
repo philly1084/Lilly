@@ -139,7 +139,7 @@ if (!$gatewayBaseUrl) {
 }
 
 if (!$RemoteCliAgentTransport) {
-  $RemoteCliAgentTransport = "codex-agent"
+  $RemoteCliAgentTransport = "mcp"
 }
 
 if (!$RemoteCliCodexAgentBaseUrl) {

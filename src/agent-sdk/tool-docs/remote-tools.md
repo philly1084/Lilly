@@ -27,7 +27,7 @@ Outer KimiBuilt tool call for the remote coding agent:
     "targetId": "prod",
     "cwd": "/srv/apps/my-app",
     "workspacePath": "/srv/apps/my-app",
-    "transport": "codex-agent",
+    "transport": "mcp",
     "waitMs": 30000,
     "sessionId": "optional prior remote coding session",
     "threadId": "optional prior Codex thread",
@@ -64,8 +64,8 @@ remote_code_status({ "jobId": "returned job id only" })
 
 Important boundary:
 - The planner calls `remote-cli-agent`; it does not call transport internals directly.
-- The preferred runner transport calls `/api/codex-agent/run` and streams `/events` SSE.
-- The legacy MCP fallback calls `remote_code_run` and then `remote_code_status`.
+- The default runner transport calls `remote_code_run` through MCP and then `remote_code_status`.
+- The codex-agent opt-in transport calls `/api/codex-agent/run` and streams `/events` SSE.
 - Never put `command`, `args`, `executable`, or `shell` in `remote-cli-agent` params.
 - Never put `targetId`, `cwd`, `sessionId`, or `waitMs` in `remote_code_status`; it accepts `jobId` only.
 

@@ -2159,6 +2159,46 @@ describe('openai-client automatic tool orchestration helpers', () => {
         ]));
     });
 
+    test('keeps explicit k3s deploy available in default chats and runs it directly', async () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Deploy the latest repo to k3s and check the rollout.';
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt);
+        const selectedIds = selectedTools.map((tool) => tool.id);
+        const requiredToolId = __testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+        );
+        const response = await __testUtils.runDirectRequiredToolAction({
+            toolManager,
+            requiredToolId,
+            selectedTools,
+            prompt,
+            toolContext: {},
+            model: 'gpt-5.5',
+        });
+
+        expect(automaticTools.map((tool) => tool.id)).toContain('k3s-deploy');
+        expect(selectedIds).toContain('k3s-deploy');
+        expect(requiredToolId).toBe('k3s-deploy');
+        expect(response.output[0].content[0].text).toContain('"action": "sync-and-apply"');
+        expect(response.output[0].content[0].text).toContain('deployment.apps/backend configured');
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'k3s-deploy',
+            { action: 'sync-and-apply' },
+            expect.any(Object),
+        );
+    });
+
     test('selects agent-workload for recurring setup requests and forces the tool choice', () => {
         const toolManager = createToolManager();
         const prompt = 'Set up a daily agent workload to summarize blockers every day at 11:05 PM.';
