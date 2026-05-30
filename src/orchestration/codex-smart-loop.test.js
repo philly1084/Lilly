@@ -57,6 +57,33 @@ describe('Codex-smart orchestration primitives', () => {
     }
   });
 
+  test('tool readiness allows a healthy remote runner to override missing SSH fallback', () => {
+    resetRuntimeReadinessProbeCacheForTests();
+    const spawnSpy = jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
+      error: Object.assign(new Error('spawn ssh ENOENT'), { code: 'ENOENT' }),
+    });
+
+    try {
+      const readiness = evaluateToolReadiness('remote-command', { id: 'remote-command', execute: async () => ({}) }, {
+        skill: { enabled: true },
+        probe: {
+          status: READINESS_READY,
+          reason: 'Remote runner server-runner is online; SSH fallback is optional.',
+        },
+      });
+
+      expect(readiness.status).toBe(READINESS_READY);
+      expect(readiness.reason).toContain('Remote runner server-runner is online');
+      expect(readiness.runtimeProbe).toMatchObject({
+        kind: 'ssh-binary',
+        ok: false,
+      });
+    } finally {
+      spawnSpy.mockRestore();
+      resetRuntimeReadinessProbeCacheForTests();
+    }
+  });
+
   test('plan validation rejects unavailable or non-executable degraded tools', () => {
     const validation = validatePlanStep({
       tool: 'web-fetch',

@@ -65,6 +65,7 @@ const {
 } = require('../../orchestration/tool-readiness');
 const { classifyFailureText } = require('../../orchestration/recovery-policy');
 const { validatePlanStep } = require('../../orchestration/plan-validator');
+const { remoteRunnerService } = require('../../remote-runner/service');
 const { getHostnameFromUrl, normalizeDomainList } = require('./categories/web/research-site-policy');
 const {
   RELATIONSHIP_CALCULATION_TOOL_ID,
@@ -73,6 +74,12 @@ const {
 } = require('../../pii');
 
 const MAX_VERIFIED_REFERENCE_IMAGES = 20;
+const RUNNER_BACKED_REMOTE_TOOL_IDS = new Set([
+  'ssh-execute',
+  'remote-command',
+  'remote-workbench',
+  'k3s-deploy',
+]);
 const IMAGE_REFERENCE_VERIFY_TIMEOUT_MS = 15000;
 const DOCUMENT_WORKFLOW_TOOL_ID = 'document-workflow';
 const DEEP_RESEARCH_PRESENTATION_TOOL_ID = 'deep-research-presentation';
@@ -278,6 +285,29 @@ function normalizeInlineFileContent(value) {
   }
 
   return String(value);
+}
+
+function buildRemoteRunnerReadinessProbe(toolId = '') {
+  const id = String(toolId || '').trim();
+  if (!RUNNER_BACKED_REMOTE_TOOL_IDS.has(id)) {
+    return null;
+  }
+
+  const runner = remoteRunnerService.getHealthyRunner();
+  if (!runner) {
+    return null;
+  }
+
+  return {
+    status: READINESS_READY,
+    reason: `Remote runner ${runner.runnerId || 'default'} is online; SSH fallback is optional.`,
+    lastProbe: {
+      kind: 'remote-runner',
+      ok: true,
+      runnerId: runner.runnerId || '',
+      status: runner.status || 'online',
+    },
+  };
 }
 
 function normalizeFileWriteParams(params = {}) {
@@ -5660,11 +5690,15 @@ class ToolManager {
         ...this.registry.getAllTools().map((tool) => tool.id),
         ...this.loadedTools.keys(),
       ]));
-    return toolIds.map((id) => this.registry.refreshToolReadiness(id, this.getTool(id)));
+    return toolIds.map((id) => this.registry.refreshToolReadiness(
+      id,
+      this.getTool(id),
+      buildRemoteRunnerReadinessProbe(id),
+    ));
   }
 
   getToolReadiness(id) {
-    return this.registry.refreshToolReadiness(id, this.getTool(id));
+    return this.registry.refreshToolReadiness(id, this.getTool(id), buildRemoteRunnerReadinessProbe(id));
   }
 
   getToolReadinessSummary(ids = null) {
