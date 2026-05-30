@@ -18,7 +18,11 @@ describe('sandbox libraries route', () => {
       expect.objectContaining({ id: 'three', packageName: 'three' }),
       expect.objectContaining({ id: 'chartjs', packageName: 'chart.js' }),
       expect.objectContaining({ id: 'force-graph-3d', packageName: '3d-force-graph' }),
+      expect.objectContaining({ id: 'codemirror', category: 'code-viewing' }),
+      expect.objectContaining({ id: 'pdfjs', category: 'document-viewing' }),
     ]));
+    expect(response.body.guidance).toContain('CodeMirror');
+    expect(response.body.guidance).toContain('Mammoth');
   });
 
   test('returns 404 for unknown libraries and unavailable assets', async () => {

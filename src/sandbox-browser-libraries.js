@@ -334,6 +334,189 @@ const LIBRARIES = Object.freeze([
       'https://cdn.jsdelivr.net/npm/3d-force-graph/dist/3d-force-graph.min.js',
     ],
   },
+  {
+    id: 'highlightjs',
+    label: 'highlight.js',
+    packageName: 'highlight.js',
+    category: 'code-viewing',
+    purpose: 'Syntax-highlighted code blocks for generated docs, reports, code viewers, and build logs.',
+    globals: ['hljs'],
+    aliases: ['highlight', 'highlight.js', 'hljs'],
+    assets: [
+      {
+        publicPath: 'highlight.min.js',
+        packagePaths: ['lib/common.js', 'build/highlight.min.js'],
+        type: 'script',
+      },
+      {
+        publicPath: 'github-dark.min.css',
+        packagePaths: ['styles/github-dark.min.css'],
+        type: 'style',
+      },
+      {
+        publicPath: 'github.min.css',
+        packagePaths: ['styles/github.min.css'],
+        type: 'style',
+      },
+    ],
+    snippets: [
+      '<link rel="stylesheet" href="/api/sandbox-libraries/highlightjs/github.min.css">',
+      '<script src="/api/sandbox-libraries/highlightjs/highlight.min.js"></script>',
+      '<script>document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll("pre code").forEach((block)=>hljs.highlightElement(block)))</script>',
+    ],
+    cdn: [
+      'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css',
+      'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js',
+    ],
+  },
+  {
+    id: 'marked',
+    label: 'Marked',
+    packageName: 'marked',
+    category: 'document-viewing',
+    purpose: 'Fast Markdown-to-HTML rendering for documentation, briefs, README previews, and generated notes.',
+    globals: ['marked'],
+    aliases: ['markedjs', 'marked.js', 'markdown'],
+    assets: [
+      {
+        publicPath: 'marked.min.js',
+        packagePaths: ['marked.min.js', 'lib/marked.umd.js', 'lib/marked.esm.js'],
+        type: 'script',
+      },
+    ],
+    snippets: [
+      '<script src="/api/sandbox-libraries/marked/marked.min.js"></script>',
+    ],
+    cdn: [
+      'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
+    ],
+  },
+  {
+    id: 'codemirror',
+    label: 'CodeMirror',
+    packageName: 'codemirror',
+    category: 'code-viewing',
+    purpose: 'In-browser code editing, line numbers, search-friendly source panes, and document/code workbenches.',
+    globals: ['CodeMirror'],
+    aliases: ['code-mirror', 'codemirror5', 'code editor'],
+    assets: [
+      {
+        publicPath: 'codemirror.min.css',
+        packagePaths: ['lib/codemirror.css'],
+        type: 'style',
+      },
+      {
+        publicPath: 'codemirror.min.js',
+        packagePaths: ['lib/codemirror.js'],
+        type: 'script',
+      },
+      {
+        publicPath: 'mode/javascript/javascript.min.js',
+        packagePaths: ['mode/javascript/javascript.js'],
+        type: 'script',
+      },
+      {
+        publicPath: 'mode/markdown/markdown.min.js',
+        packagePaths: ['mode/markdown/markdown.js'],
+        type: 'script',
+      },
+      {
+        publicPath: 'mode/xml/xml.min.js',
+        packagePaths: ['mode/xml/xml.js'],
+        type: 'script',
+      },
+      {
+        publicPath: 'mode/css/css.min.js',
+        packagePaths: ['mode/css/css.js'],
+        type: 'script',
+      },
+    ],
+    snippets: [
+      '<link rel="stylesheet" href="/api/sandbox-libraries/codemirror/codemirror.min.css">',
+      '<script src="/api/sandbox-libraries/codemirror/codemirror.min.js"></script>',
+      '<script src="/api/sandbox-libraries/codemirror/mode/javascript/javascript.min.js"></script>',
+      '<script src="/api/sandbox-libraries/codemirror/mode/markdown/markdown.min.js"></script>',
+    ],
+    cdn: [
+      'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css',
+      'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js',
+    ],
+  },
+  {
+    id: 'pdfjs',
+    label: 'PDF.js',
+    packageName: 'pdfjs-dist',
+    category: 'document-viewing',
+    purpose: 'Browser PDF page rendering, previews, page thumbnails, and text extraction for document sandboxes.',
+    globals: ['pdfjsLib'],
+    aliases: ['pdf.js', 'pdfjs', 'pdf viewer'],
+    assets: [
+      {
+        publicPath: 'pdf.min.js',
+        packagePaths: ['legacy/build/pdf.min.js', 'build/pdf.min.js'],
+        type: 'script',
+      },
+      {
+        publicPath: 'pdf.worker.min.js',
+        packagePaths: ['legacy/build/pdf.worker.min.js', 'build/pdf.worker.min.js'],
+        type: 'script',
+      },
+    ],
+    snippets: [
+      '<script src="/api/sandbox-libraries/pdfjs/pdf.min.js"></script>',
+      '<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc="/api/sandbox-libraries/pdfjs/pdf.worker.min.js"}</script>',
+    ],
+    cdn: [
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+    ],
+  },
+  {
+    id: 'mammoth',
+    label: 'Mammoth',
+    packageName: 'mammoth',
+    category: 'document-viewing',
+    purpose: 'DOCX-to-HTML extraction for Word document previews and document import sandboxes.',
+    globals: ['mammoth'],
+    aliases: ['mammoth.js', 'docx viewer', 'word viewer'],
+    assets: [
+      {
+        publicPath: 'mammoth.browser.min.js',
+        packagePaths: ['mammoth.browser.min.js'],
+        type: 'script',
+      },
+    ],
+    snippets: [
+      '<script src="/api/sandbox-libraries/mammoth/mammoth.browser.min.js"></script>',
+    ],
+    cdn: [
+      'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js',
+    ],
+  },
+  {
+    id: 'docx',
+    label: 'docx.js',
+    packageName: 'docx',
+    category: 'document-viewing',
+    purpose: 'Browser-side DOCX creation for document export prototypes and office-format handoff experiments.',
+    globals: ['docx'],
+    aliases: ['docx.js', 'word export'],
+    assets: [
+      {
+        publicPath: 'docx.umd.min.js',
+        packagePaths: ['build/index.umd.min.js'],
+        type: 'script',
+      },
+    ],
+    snippets: [
+      '<script src="/api/sandbox-libraries/docx/docx.umd.min.js"></script>',
+    ],
+    cdn: [
+      'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js',
+    ],
+  },
 ]);
 
 function normalizeLibraryId(value = '') {
@@ -433,6 +616,27 @@ function getSandboxBrowserLibraryCatalog() {
   return LIBRARIES.map(serializeLibrary);
 }
 
+function libraryHasAllLocalAssets(library = {}) {
+  return Array.isArray(library.assets)
+    && library.assets.length > 0
+    && library.assets.every((asset) => asset.available);
+}
+
+function buildSnippetSummary(snippets = []) {
+  return (Array.isArray(snippets) ? snippets : [])
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buildCdnFallbackSummary(library = {}) {
+  const cdn = Array.isArray(library.cdn) ? library.cdn.filter(Boolean) : [];
+  if (cdn.length === 0) {
+    return '';
+  }
+
+  return `${library.label}: ${cdn.join(' + ')}`;
+}
+
 function resolveSandboxBrowserLibraryAsset(libraryId = '', requestedPath = '') {
   const normalizedLibraryId = normalizeLibraryId(libraryId);
   const library = LIBRARIES.find((entry) => entry.id === normalizedLibraryId);
@@ -494,17 +698,19 @@ function resolveSandboxBrowserLibraryContentType(filePath = '') {
 function buildSandboxBrowserLibraryInstructions() {
   const catalog = getSandboxBrowserLibraryCatalog();
   const primarySnippets = catalog
-    .filter((library) => library.assets.some((asset) => asset.available))
-    .map((library) => `${library.label}: ${library.snippets[0]}`)
+    .filter(libraryHasAllLocalAssets)
+    .map((library) => `${library.label}: ${buildSnippetSummary(library.snippets)}`)
     .join('; ');
   const fallbackSnippets = catalog
-    .filter((library) => !library.assets.some((asset) => asset.available))
-    .map((library) => `${library.label}: ${library.cdn[0]}`)
+    .filter((library) => !libraryHasAllLocalAssets(library))
+    .map(buildCdnFallbackSummary)
+    .filter(Boolean)
     .join('; ');
 
   return [
     'Sandbox HTML/browser library defaults are available from local routes under `/api/sandbox-libraries/` when the npm packages are installed in the backend image.',
     'Use these local routes for generated HTML documents, dashboards, graph-heavy pages, and sandbox previews before reaching for external CDNs; keep designs static-safe and browser-runnable without a build step.',
+    'For code and document viewing sandboxes, prefer the viewer stack that matches the job: CodeMirror for editable source panes, highlight.js for static code blocks/logs, Marked for Markdown documents, PDF.js for PDF previews, Mammoth for DOCX import/preview, and docx.js only for explicit browser-side DOCX export prototypes.',
     'Three.js module setup: add `<script type="importmap">{"imports":{"three":"/api/sandbox-libraries/three/three.module.js","three/addons/":"/api/sandbox-libraries/three/addons/"}}</script>`, then use `import * as THREE from "three"` inside a module script.',
     primarySnippets ? `Available local library paths in this runtime: ${primarySnippets}.` : '',
     fallbackSnippets ? `CDN fallback library paths when local routes are unavailable: ${fallbackSnippets}.` : '',

@@ -20,7 +20,7 @@ class SandboxTool extends ToolBase {
     super({
       id: 'code-sandbox',
       name: 'Code Sandbox',
-      description: 'Execute code in isolated Docker containers with resource limits and optional package installs, or persist previewable frontend project files with local sandbox browser libraries such as Three.js, Chart.js, D3, Mermaid, Cytoscape, Plotly, ECharts, vis-network, GSAP, Matter.js, p5.js, and force-graph',
+      description: 'Execute code in isolated Docker containers with resource limits and optional package installs, or persist previewable frontend project files with local sandbox browser libraries such as Three.js, Chart.js, D3, Mermaid, Cytoscape, Plotly, ECharts, vis-network, GSAP, Matter.js, p5.js, force-graph, CodeMirror, highlight.js, Marked, PDF.js, Mammoth, and docx.js',
       category: 'sandbox',
       version: '1.0.0',
       backend: {
@@ -77,7 +77,7 @@ class SandboxTool extends ToolBase {
           dependencies: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Package dependencies to install before execution. Supported for javascript/npm and python/pip execution; frontend project previews should prefer static browser imports from /api/sandbox-libraries or CDN fallbacks so the saved site works immediately.'
+            description: 'Package dependencies to install before execution. Supported for javascript/npm and python/pip execution; frontend project previews should prefer static browser imports from /api/sandbox-libraries or CDN fallbacks so the saved site works immediately. For code/document viewers, use CodeMirror, highlight.js, Marked, PDF.js, Mammoth, or docx.js through the sandbox browser library catalog when possible.'
           },
           environment: {
             type: 'object',

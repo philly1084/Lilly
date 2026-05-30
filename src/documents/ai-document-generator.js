@@ -862,6 +862,7 @@ Return JSON:
       '- Avoid dark text on dark panels; normal body text should have strong contrast and muted text must still be readable.',
       '- For HTML, PDF, and presentation-oriented outputs, assume the renderer will be visually checked on desktop and mobile and keep layouts free of overlapping or clipped text.',
       '- For PDF outputs, choose the intended page geometry before writing CSS, declare it with @page size and margin, and compose the layout to that page rather than relying on export-time scaling.',
+      '- For PDF outputs, constrain all shells, grids, tables, images, figures, and pre/code blocks to the printable content box. Avoid fixed widths that exceed the page after margins; use max-width:100%, table-layout:fixed, and wrapping for long tokens or code.',
       '</visual_safety>',
       '<output_contract>',
       'Return a JSON object with this exact structure:',

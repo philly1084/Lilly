@@ -282,7 +282,7 @@ const TOOL_SUPPORT = {
   },
   'k3s-deploy': { status: 'requires_setup', notes: ['Requires SSH target credentials and kubectl/git on the remote host.'] },
   'docker-exec': { status: 'requires_setup', notes: ['Requires explicit Docker CLI/socket access in the backend runtime; not part of the default remote host lane.'] },
-  'code-sandbox': { status: 'requires_setup', notes: ['Execute mode requires Docker image pull/run capability in the backend runtime.', 'Project mode can persist previewable frontend bundles without Docker.', 'Sandbox HTML previews can load installed browser libraries from /api/sandbox-libraries; the catalog documents local availability plus CDN fallbacks for Three.js, Chart.js, D3, Mermaid, Cytoscape, Plotly, ECharts, vis-network, GSAP, Matter.js, p5.js, Rough.js, Force Graph, and 3D Force Graph.'] },
+  'code-sandbox': { status: 'requires_setup', notes: ['Execute mode requires Docker image pull/run capability in the backend runtime.', 'Project mode can persist previewable frontend bundles without Docker.', 'Sandbox HTML previews can load installed browser libraries from /api/sandbox-libraries; the catalog documents local availability plus CDN fallbacks for Three.js, Chart.js, D3, Mermaid, Cytoscape, Plotly, ECharts, vis-network, GSAP, Matter.js, p5.js, Rough.js, Force Graph, 3D Force Graph, CodeMirror, highlight.js, Marked, PDF.js, Mammoth, and docx.js.'] },
   'git-safe': { status: 'requires_setup', notes: ['Requires a git repository in the backend-accessible filesystem and working git credentials for push.'] },
   'tool-doc-read': { status: 'stable', notes: ['Reads detailed tool documentation from the backend docs directory on demand.'] },
   'self-reflection-update': {

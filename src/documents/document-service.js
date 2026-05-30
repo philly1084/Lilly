@@ -1335,7 +1335,7 @@ class DocumentService {
         ...common,
         renderPipeline: ['ai-document-generator', 'multi-agent-quality-pass', 'document-design-engine', 'html-renderer'],
         computeTools: ['graph-diagram', 'code-sandbox'],
-        visualCapabilities: ['background surface system', 'curated layout shells', 'section images', 'inline charts', 'Mermaid-ready HTML', 'local Chart.js/D3/Three.js/Plotly/ECharts sandbox libraries'],
+        visualCapabilities: ['background surface system', 'curated layout shells', 'section images', 'inline charts', 'Mermaid-ready HTML', 'local Chart.js/D3/Three.js/Plotly/ECharts sandbox libraries', 'CodeMirror/highlight.js/Marked/PDF.js/Mammoth document and code viewers'],
         packageTargets: ['static-html', 'vite-preview-bundle'],
         browserLibraries: buildSandboxBrowserLibraryInstructions(),
       },
@@ -2759,6 +2759,10 @@ class DocumentService {
 
     return `
       <style>
+        @page {
+          size: 11.33in 14.67in portrait;
+          margin: 0.72in 0.65in 0.68in;
+        }
         :root {
           --doc-bg: ${theme.background};
           --doc-bg-end: ${resolvedBackground.canvasEnd || theme.background};
@@ -2834,8 +2838,9 @@ class DocumentService {
         .document-table-wrap { margin: 20px 0; }
         .document-table-caption { font-size: 0.92rem; color: var(--doc-muted); margin-bottom: 10px; }
         table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 14px; background: var(--doc-panel); }
-        th, td { padding: 12px 14px; border-bottom: 1px solid var(--doc-border); text-align: left; }
+        th, td { padding: 12px 14px; border-bottom: 1px solid var(--doc-border); text-align: left; overflow-wrap: anywhere; }
         th { background: var(--doc-panel-alt); color: var(--doc-text); }
+        pre, code { overflow-wrap: anywhere; }
         .document-chart { margin: 24px 0; }
         .chart-stack { display: grid; gap: 10px; }
         .chart-row { display: grid; grid-template-columns: 140px 1fr 64px; gap: 12px; align-items: center; }
@@ -2876,8 +2881,17 @@ class DocumentService {
           .document-layout-field-guide-rail .document-outline { position: static; }
         }
         @media print {
+          html, body { max-width: 100% !important; overflow: visible !important; }
           body { background: var(--doc-print-bg) !important; color: var(--doc-print-text) !important; }
-          .document-shell { max-width: none; padding: 0; }
+          .document-shell { max-width: none; width: 100%; padding: 0; }
+          .document-hero,
+          .document-layout-frame,
+          .document-outline,
+          .document-flow,
+          .document-section,
+          .section-content {
+            max-width: 100% !important;
+          }
           .document-hero,
           .document-summary-panel,
           .insight-card,
@@ -2893,6 +2907,19 @@ class DocumentService {
             border-color: var(--doc-print-border) !important;
             box-shadow: none !important;
           }
+          .document-hero,
+          .document-section,
+          .document-outline,
+          .document-callout,
+          .document-table-wrap,
+          .document-image,
+          .insight-card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          table { table-layout: fixed; width: 100% !important; max-width: 100% !important; }
+          img, svg, canvas { max-width: 100% !important; height: auto !important; }
+          pre, code { white-space: pre-wrap !important; overflow-wrap: anywhere !important; }
           .document-subtitle,
           .document-hero-narrative,
           .summary-panel-label + strong + p,

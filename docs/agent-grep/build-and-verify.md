@@ -16,7 +16,7 @@ Local path:
 
 Sandbox path:
 - Use `code-sandbox` for static preview bundles or runnable snippets.
-- For browser libraries, prefer `/api/sandbox-libraries/catalog.json` and local `/api/sandbox-libraries/...` routes before CDNs.
+- For browser libraries, prefer `/api/sandbox-libraries/catalog.json` and local `/api/sandbox-libraries/...` routes before CDNs. Use chart/graph/3D libraries for visual experiences and CodeMirror, highlight.js, Marked, PDF.js, Mammoth, or docx.js for code/document viewer sandboxes.
 - Keep preview bundles static-safe: one `index.html`, local CSS/assets, no uncompiled build-only classes.
 
 Remote path:

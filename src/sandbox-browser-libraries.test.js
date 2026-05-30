@@ -25,6 +25,12 @@ describe('sandbox browser library catalog', () => {
       'rough',
       'force-graph',
       'force-graph-3d',
+      'highlightjs',
+      'marked',
+      'codemirror',
+      'pdfjs',
+      'mammoth',
+      'docx',
     ]));
   });
 
@@ -34,6 +40,10 @@ describe('sandbox browser library catalog', () => {
     expect(guidance).toContain('/api/sandbox-libraries/chartjs/chart.umd.js');
     expect(guidance).toContain('/api/sandbox-libraries/three/three.module.js');
     expect(guidance).toContain('three/addons/');
+    expect(guidance).toContain('CodeMirror');
+    expect(guidance).toContain('highlight.js');
+    expect(guidance).toContain('PDF.js');
+    expect(guidance).toContain('https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js');
   });
 
   test('normalizes aliases and rejects unsafe asset paths', () => {

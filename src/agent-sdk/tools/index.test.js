@@ -1483,6 +1483,8 @@ describe('ToolManager image tools', () => {
     expect(handoff).toContain('Kimi K2.6-style creation loop');
     expect(handoff).toContain('alignment snapshot');
     expect(handoff).toContain('acceptance checks');
+    expect(handoff).toContain('CodeMirror');
+    expect(handoff).toContain('PDF.js');
     expect(result.data.sandboxBuild).toEqual(expect.objectContaining({ mode: 'project' }));
   });
 

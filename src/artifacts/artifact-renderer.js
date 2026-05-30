@@ -1313,10 +1313,59 @@ function inferPdfPageOptionsFromHtml(html = '', options = {}) {
 }
 
 function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
+    const pageOverflowSafetyCss = `
+        html, body {
+            max-width: 100% !important;
+            overflow-x: clip !important;
+        }
+        body > header,
+        body > main,
+        body > section,
+        body > article,
+        body > footer,
+        .document-shell,
+        .document-hero,
+        .document-layout-frame,
+        .document-outline,
+        .document-flow,
+        .document-section,
+        .section-content,
+        .deck-track {
+            max-width: 100% !important;
+        }
+        img, video, canvas, svg, iframe {
+            max-width: 100% !important;
+            height: auto !important;
+        }
+        table {
+            width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed;
+        }
+        th, td {
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+        pre, code {
+            white-space: pre-wrap !important;
+            overflow-wrap: anywhere !important;
+        }
+        .document-hero,
+        .document-section,
+        .document-outline,
+        .document-callout,
+        .document-table-wrap,
+        figure {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+    `;
+
     if (pageOptions?.explicitCssPageSize) {
         return `
         html, body { overflow: visible !important; }
         *, *::before, *::after { box-sizing: border-box; }
+        ${pageOverflowSafetyCss}
     `;
     }
 
@@ -1325,6 +1374,7 @@ function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
         @page { size: ${DEFAULT_PORTRAIT_PDF_WIDTH} ${DEFAULT_PORTRAIT_PDF_HEIGHT} portrait; margin: 0.72in 0.65in 0.68in; }
         html, body { min-height: ${DEFAULT_PORTRAIT_PDF_HEIGHT}; overflow: visible !important; }
         *, *::before, *::after { box-sizing: border-box; }
+        ${pageOverflowSafetyCss}
     `;
     }
 
@@ -1332,6 +1382,7 @@ function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
         @page { size: 13.333in 7.5in landscape; margin: 0; }
         html, body { width: 13.333in; min-height: 7.5in; overflow: visible !important; }
         *, *::before, *::after { box-sizing: border-box; }
+        ${pageOverflowSafetyCss}
         .presentation-deck { width: 13.333in; padding: 0 !important; }
         .deck-meta, .deck-footer { display: none !important; }
         .deck-track { max-width: none !important; width: 100% !important; gap: 0 !important; }
@@ -1562,6 +1613,7 @@ async function renderArtifact({ format, content, title = 'artifact', workbookSpe
 }
 
 module.exports = {
+    buildPdfRuntimeStyleOverrides,
     buildStyledPdfBufferFromHtml,
     buildXlsxBufferFromWorkbookSpec,
     ensureHtmlDocument,

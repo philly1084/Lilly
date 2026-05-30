@@ -1194,6 +1194,8 @@ function buildSandboxAgentHandoffPrompt(title = 'Document Suite') {
     '- Establish a compact brief from the task; infer audience, primary actions, content hierarchy, brand mood, and target devices when the user did not spell them out.',
     '- Build the actual usable experience with real controls, states, navigation, data regions, empty/loading/error/disabled treatments, and purposeful interactions where the workflow implies them.',
     '- For games, playable simulations, or multi-step Vite apps, create separate project files and include a real game loop or workflow state machine, input handling, score/progress, pause/restart/reset, responsive sizing, and a visible fallback if canvas/WebGL/module loading fails.',
+    '- For code and document viewing sandboxes, build real viewing/editing surfaces: source tabs, line numbers, syntax highlighting, outline/search, rendered Markdown, PDF/DOCX preview import where relevant, copy/download controls, and clear empty/error/loading states.',
+    '- Use CodeMirror for editable code/source panes, highlight.js for static snippets and logs, Marked for Markdown renderers, PDF.js for PDF previews, Mammoth for DOCX previews/import, and docx.js only when a browser-side Word export prototype is explicitly useful.',
     '- Use visual assets that reveal the product, place, workflow, audience, or state. Avoid vague decorative gradients, blobs, blurred stock-like backgrounds, and screenshot-only mockups.',
     '- Use relative links for local files such as ./styles.css and ./app.js.',
     '- Keep the preview browser-runnable without npm install or a separate build step. Include Vite handoff files when useful, but do not depend on unresolved bare imports for the saved preview.',

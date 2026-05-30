@@ -1207,6 +1207,7 @@ function buildVisualSafetyInstructions() {
         'Check desktop and mobile composition for clipped text, overlapping cards, unreadable buttons, and horizontal overflow.',
         'For PDF-oriented HTML, keep print styles high-contrast and avoid white text unless the printed background is explicitly dark.',
         'For PDF-oriented HTML, declare the intended page size and margins with @page and design content to that physical page to avoid widescreen cropping or accidental portrait slicing.',
+        'For PDF-oriented HTML, keep every section, table, figure, pre/code block, and grid inside the printable content box; avoid fixed pixel widths larger than the page after margins, use max-width:100%, table-layout:fixed, and wrapping for long text/code.',
     ].join('\n');
 }
 

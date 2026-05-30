@@ -6,6 +6,7 @@ jest.mock('./artifact-store', () => ({
 
 const { artifactStore } = require('./artifact-store');
 const {
+    buildPdfRuntimeStyleOverrides,
     buildStyledPdfBufferFromHtml,
     normalizeMermaidSource,
     ensureHtmlDocument,
@@ -114,6 +115,25 @@ describe('normalizeMermaidSource', () => {
             },
             preferCSSPageSize: true,
         }));
+    });
+
+    test('adds PDF runtime overflow guards for wide generated layouts', () => {
+        const css = buildPdfRuntimeStyleOverrides({
+            width: '11.33in',
+            height: '14.67in',
+            margin: {
+                top: '0.72in',
+                right: '0.65in',
+                bottom: '0.68in',
+                left: '0.65in',
+            },
+        });
+
+        expect(css).toContain('@page { size: 11.33in 14.67in portrait');
+        expect(css).toContain('.document-shell');
+        expect(css).toContain('max-width: 100% !important');
+        expect(css).toContain('table-layout: fixed');
+        expect(css).toContain('white-space: pre-wrap');
     });
 
     test('splits collapsed flowchart statements onto separate lines', () => {
