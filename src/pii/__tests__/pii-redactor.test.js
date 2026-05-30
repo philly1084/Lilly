@@ -6,17 +6,18 @@ const {
 } = require('../pii-policy');
 
 describe('PII redactor framing', () => {
-  test('defaults PII protection to opaque placeholders', () => {
+  test('defaults PII protection off with opaque placeholders', () => {
     expect(DEFAULT_PRIVACY_PII_SETTINGS).toEqual(expect.objectContaining({
       defaultsVersion: 6,
-      enabled: true,
+      enabled: false,
+      webChatEnabled: false,
       placeholderMode: 'opaque-random',
       failClosed: true,
       enablePersonNames: true,
       relationshipCalculations: expect.objectContaining({
-        enabled: true,
-        autoDetect: true,
-        allowExplicitRequest: true,
+        enabled: false,
+        autoDetect: false,
+        allowExplicitRequest: false,
       }),
     }));
     expect(DEFAULT_PRIVACY_PII_SETTINGS.detectors).toEqual(expect.arrayContaining([
@@ -32,7 +33,11 @@ describe('PII redactor framing', () => {
 
   test('normalizes relationship calculation settings and auto-detects spreadsheet math', () => {
     const settings = normalizePrivacyPiiSettings({
+      enabled: true,
       relationshipCalculations: {
+        enabled: true,
+        autoDetect: true,
+        allowExplicitRequest: true,
         maxRows: 25,
         maxCells: 500,
       },
@@ -198,6 +203,7 @@ describe('PII redactor framing', () => {
     const result = await sanitizeText('Please improve Resume-Sample-Person-Acme.pdf.', {
       policy: {
         ...DEFAULT_PRIVACY_PII_SETTINGS,
+        enabled: true,
         failClosed: false,
         hasMasterKey: false,
         storageReady: false,
@@ -222,6 +228,7 @@ describe('PII redactor framing', () => {
     const result = await sanitizeText(sample, {
       policy: {
         ...DEFAULT_PRIVACY_PII_SETTINGS,
+        enabled: true,
         failClosed: false,
         hasMasterKey: false,
         storageReady: false,
@@ -258,6 +265,7 @@ describe('PII redactor framing', () => {
     const result = await sanitizeText(sample, {
       policy: {
         ...DEFAULT_PRIVACY_PII_SETTINGS,
+        enabled: true,
         failClosed: false,
         hasMasterKey: false,
         storageReady: false,
@@ -288,6 +296,7 @@ describe('PII redactor framing', () => {
       sessionId: 'session-calc',
       policy: {
         ...DEFAULT_PRIVACY_PII_SETTINGS,
+        enabled: true,
         failClosed: true,
         hasMasterKey: true,
         storageReady: true,
@@ -336,9 +345,16 @@ describe('PII redactor framing', () => {
     }, {
       policy: {
         ...DEFAULT_PRIVACY_PII_SETTINGS,
+        enabled: true,
         failClosed: false,
         hasMasterKey: false,
         storageReady: false,
+        relationshipCalculations: {
+          ...DEFAULT_PRIVACY_PII_SETTINGS.relationshipCalculations,
+          enabled: true,
+          autoDetect: true,
+          allowExplicitRequest: true,
+        },
       },
     });
 

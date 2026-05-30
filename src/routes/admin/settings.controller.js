@@ -26,8 +26,8 @@ const { detectPii, normalizeDetectorId } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
   defaultsVersion: 6,
-  enabled: true,
-  webChatEnabled: true,
+  enabled: false,
+  webChatEnabled: false,
   highlightRestored: true,
   allowUserOverride: false,
   placeholderMode: 'opaque-random',
@@ -46,9 +46,9 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
     requireRestoreHighlight: true,
   },
   relationshipCalculations: {
-    enabled: true,
-    autoDetect: true,
-    allowExplicitRequest: true,
+    enabled: false,
+    autoDetect: false,
+    allowExplicitRequest: false,
     maxRows: 1000,
     maxCells: 20000,
     maxOperations: 25,
@@ -766,7 +766,8 @@ class SettingsController {
     next.privacyPii = {
       ...privacyPii,
       defaultsVersion: 6,
-      enabled: true,
+      enabled: privacyPii.enabled === true,
+      webChatEnabled: privacyPii.webChatEnabled === true,
       placeholderMode: privacyPii.placeholderMode === 'stable-per-value'
         ? 'stable-per-value'
         : 'opaque-random',

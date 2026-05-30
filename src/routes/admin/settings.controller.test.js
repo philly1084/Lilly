@@ -504,21 +504,21 @@ describe('settings.controller personality support', () => {
     expect(controller.settings.privacyPii.customPatterns).toEqual([]);
   });
 
-  test('defaults PII protection on with opaque placeholder IDs', () => {
+  test('defaults PII protection off with opaque placeholder IDs', () => {
     const defaults = controller.getDefaultSettings().privacyPii;
 
     expect(defaults).toEqual(expect.objectContaining({
       defaultsVersion: 6,
-      enabled: true,
-      webChatEnabled: true,
+      enabled: false,
+      webChatEnabled: false,
       placeholderMode: 'opaque-random',
       failClosed: true,
       enablePersonNames: true,
       auditProfile: 'strict',
       relationshipCalculations: expect.objectContaining({
-        enabled: true,
-        autoDetect: true,
-        allowExplicitRequest: true,
+        enabled: false,
+        autoDetect: false,
+        allowExplicitRequest: false,
         maxRows: 1000,
         maxCells: 20000,
       }),
@@ -526,7 +526,7 @@ describe('settings.controller personality support', () => {
     expect(defaults.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
   });
 
-  test('upgrades old persisted PII defaults to enabled opaque identity protection on restart', () => {
+  test('upgrades old persisted PII defaults without enabling the feature flag', () => {
     const upgraded = controller.upgradeStoredSettingsDefaults({
       privacyPii: {
         enabled: false,
@@ -537,11 +537,12 @@ describe('settings.controller personality support', () => {
 
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
       defaultsVersion: 6,
-      enabled: true,
+      enabled: false,
+      webChatEnabled: false,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
-      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
+      relationshipCalculations: expect.objectContaining({ enabled: false, autoDetect: false }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
@@ -565,10 +566,11 @@ describe('settings.controller personality support', () => {
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
       defaultsVersion: 6,
       enabled: true,
+      webChatEnabled: false,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
-      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
+      relationshipCalculations: expect.objectContaining({ enabled: false, autoDetect: false }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
@@ -592,10 +594,11 @@ describe('settings.controller personality support', () => {
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
       defaultsVersion: 6,
       enabled: true,
+      webChatEnabled: false,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
-      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
+      relationshipCalculations: expect.objectContaining({ enabled: false, autoDetect: false }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['email', 'phone', 'dateOfBirth', 'personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['personName', 'organization', 'medicalRecordNumber', 'patientIdentifier', 'healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
@@ -619,10 +622,11 @@ describe('settings.controller personality support', () => {
     expect(upgraded.privacyPii).toEqual(expect.objectContaining({
       defaultsVersion: 6,
       enabled: true,
+      webChatEnabled: false,
       placeholderMode: 'opaque-random',
       enablePersonNames: true,
       auditProfile: 'strict',
-      relationshipCalculations: expect.objectContaining({ enabled: true, autoDetect: true }),
+      relationshipCalculations: expect.objectContaining({ enabled: false, autoDetect: false }),
     }));
     expect(upgraded.privacyPii.detectors).toEqual(expect.arrayContaining(['healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
     expect(upgraded.privacyPii.auditCriteria.requiredDetectors).toEqual(expect.arrayContaining(['healthCardNumber', 'socialInsuranceNumber', 'postalCode']));
