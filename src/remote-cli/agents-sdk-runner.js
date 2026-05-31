@@ -4,7 +4,7 @@ const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
 
-const DEFAULT_REMOTE_CODE_MODEL = '';
+const DEFAULT_REMOTE_CODE_MODEL = 'gpt-5.4';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
 const DEFAULT_MAX_STATUS_POLLS = 20;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
@@ -1340,6 +1340,7 @@ function buildRemoteCliInstructions({
   sessionId = '',
   waitMs = 30000,
   adminMode = false,
+  remoteCodeModel = DEFAULT_REMOTE_CODE_MODEL,
   extraInstructions = '',
   gitea = resolveConfiguredGitProviderContext(),
 } = {}) {
@@ -1351,11 +1352,12 @@ function buildRemoteCliInstructions({
     'Your remote execution boundary is the MCP gateway: use `remote_code_run` to start coding/build/deploy work and `remote_code_status` to poll any returned job id.',
     '',
     'Use remote_code_run for coding tasks.',
-    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","model":"<optional supported model>","sessionId":"<optional prior sessionId>","waitMs":30000}. Omit model unless a supported gateway model was explicitly configured.',
+    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","model":"<supported model>","sessionId":"<optional prior sessionId>","waitMs":30000}. Include the configured model when provided.',
     'Then poll with remote_code_status using only {"jobId":"<job id from remote_code_run>"}. Do not send command, args, executable, shell, targetId, cwd, sessionId, or waitMs to remote_code_status.',
     'Do not send raw command execution fields to remote_code_run. The allowed execution fields are targetId, cwd, task, model, sessionId, and waitMs.',
     `Default targetId: ${targetId}`,
     cwd ? `Default cwd: ${cwd}` : 'Default cwd: use the gateway target default.',
+    remoteCodeModel ? `Configured remote_code_run model: ${remoteCodeModel}. Use this exact model for remote_code_run calls.` : '',
     '',
     'The targetId is the remote-cli gateway target identifier, not a Git remote, URL, or raw user@host SSH string. Use the configured default targetId unless the user explicitly names another configured gateway target.',
     'Public Git hosts such as github.com, gitlab.com, and bitbucket.org are repository endpoints, never deployment SSH targets. If a transcript mentions a root@github.com permission failure, treat that as the previous mistake and retarget to the real server/gateway target described by the user.',
@@ -2154,6 +2156,7 @@ class RemoteCliAgentsSdkRunner {
         sessionId,
         waitMs,
         adminMode,
+        remoteCodeModel,
         extraInstructions: input.instructions || input.extraInstructions || '',
       });
     const agent = directRun
