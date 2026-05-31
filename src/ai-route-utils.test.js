@@ -1115,6 +1115,43 @@ describe('ai-route-utils', () => {
         });
     });
 
+    test('resolveSshRequestContext infers a direct baseline command for remote server status questions', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const sshContext = resolveSshRequestContext('hows the remote server?');
+
+        expect(sshContext.command).toBe('hostname && uptime && (df -h / || true) && (free -m || true)');
+        expect(sshContext.directParams).toEqual({
+            host: '10.0.0.5',
+            username: 'ubuntu',
+            port: 22,
+            command: 'hostname && uptime && (df -h / || true) && (free -m || true)',
+        });
+    });
+
+    test('resolveSshRequestContext leaves cluster state questions for cluster planning', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const sshContext = resolveSshRequestContext('Inspect the k3s cluster state on the server.');
+
+        expect(sshContext.command).toBeNull();
+        expect(sshContext.directParams).toBeNull();
+    });
+
     test('resolveSshRequestContext treats remote CLI into user@host as an explicit remote target', () => {
         const sshContext = resolveSshRequestContext('Use remote CLI into root@162.55.163.199 and check server health');
 

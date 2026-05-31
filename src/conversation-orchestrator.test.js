@@ -3428,6 +3428,87 @@ describe('ConversationOrchestrator', () => {
         }
     });
 
+    test('remote-build status questions run remote-command instead of completing from memory', async () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse('Remote server health checked.', 'resp_remote_health')),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const toolManager = {
+            getTool: jest.fn((toolId) => (
+                ['remote-command', 'web-search', 'web-fetch', 'file-read', 'file-search', 'tool-doc-read']
+                    .includes(toolId)
+                    ? { id: toolId, description: toolId }
+                    : null
+            )),
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                toolId: 'remote-command',
+                data: {
+                    stdout: 'host-a\nup 10 days\nFilesystem      Size  Used Avail Use% Mounted on',
+                    stderr: '',
+                    host: '10.0.0.5:22',
+                },
+            }),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({ id: 'session-remote-health', metadata: {} }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue([]),
+            rememberResponse: jest.fn(),
+        };
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager,
+            sessionStore,
+            memoryService,
+        });
+
+        const result = await orchestrator.executeConversation({
+            input: 'hows the remote server?',
+            sessionId: 'session-remote-health',
+            executionProfile: 'remote-build',
+            stream: false,
+            metadata: {
+                remoteBuildAutonomyApproved: true,
+                clientSurface: 'web-chat',
+            },
+            toolContext: {
+                clientSurface: 'web-chat',
+            },
+        });
+
+        expect(toolManager.executeTool).toHaveBeenCalledTimes(1);
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'remote-command',
+            expect.objectContaining({
+                command: 'hostname && uptime && (df -h / || true) && (free -m || true)',
+            }),
+            expect.objectContaining({
+                executionProfile: 'remote-build',
+                sessionId: 'session-remote-health',
+            }),
+        );
+        expect(result.response.metadata.harness.completion.criteria.map((criterion) => criterion.text)).toEqual(['Inspection completed']);
+        expect(result.response.metadata.harness.completion.finishReason).not.toBe('no_explicit_completion_criteria');
+        expect(result.response.metadata.harness.completion.unmetCriteria).toEqual([]);
+        expect(result.output).toBe('Remote server health checked.');
+    });
+
     test('pins remote-build remote-command steps to the trusted SSH target when the planner invents a bogus host', async () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
@@ -11312,6 +11393,53 @@ describe('ConversationOrchestrator', () => {
                 tool: 'remote-command',
                 params: expect.objectContaining({
                     command: 'kubectl get nodes -o wide && kubectl get pods -A',
+                }),
+            }),
+        ]);
+    });
+
+    test('uses deterministic remote fallback when planner returns empty for remote status questions', async () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-command', 'web-search'].includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective: 'hows the remote server?',
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+
+        const plan = await orchestrator.planToolUse({
+            objective: 'hows the remote server?',
+            executionProfile: 'remote-build',
+            toolPolicy,
+        });
+
+        expect(plan).toEqual([
+            expect.objectContaining({
+                tool: 'remote-command',
+                params: expect.objectContaining({
+                    command: 'hostname && uptime && (df -h / || true) && (free -m || true)',
                 }),
             }),
         ]);

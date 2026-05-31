@@ -4148,11 +4148,8 @@ function inferFallbackSshCommand(text = '', executionProfile = DEFAULT_EXECUTION
         return buildPublicHostK3sInspectionCommand(publicHost);
     }
 
-    if (/\b(health|status|healthy|uptime)\b/.test(normalized)) {
-        return 'hostname && uptime && (df -h / || true) && (free -m || true)';
-    }
-
-    if (hasInspectionIntent && /\b(k3s|k8s|kubernetes|cluster|kubectl|nodes?)\b/.test(normalized)) {
+    if ((hasInspectionIntent || hasRemoteStatusInspectionIntent(normalized))
+        && /\b(k3s|k8s|kubernetes|cluster|kubectl|nodes?)\b/.test(normalized)) {
         return 'kubectl get nodes -o wide && kubectl get pods -A';
     }
 
@@ -4164,6 +4161,11 @@ function inferFallbackSshCommand(text = '', executionProfile = DEFAULT_EXECUTION
         return 'kubectl get namespaces';
     }
 
+    if (/\b(health|status|healthy|uptime)\b/.test(normalized)
+        || hasRemoteStatusInspectionIntent(normalized)) {
+        return 'hostname && uptime && (df -h / || true) && (free -m || true)';
+    }
+
     if (/\b(docker|containers?)\b/.test(normalized)) {
         return 'docker ps';
     }
@@ -4173,6 +4175,46 @@ function inferFallbackSshCommand(text = '', executionProfile = DEFAULT_EXECUTION
     }
 
     return null;
+}
+
+function hasRemoteStatusInspectionIntent(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const remoteTarget = '\\b(remote server|remote host|remote machine|server|host|cluster|k3s|k8s|kubernetes)\\b';
+    const statusWords = '\\b(status|state|health|healthy|uptime|running|reachable|alive|ok|okay|doing)\\b';
+    const questionWords = "\\b(how'?s|hows|how is|how are|what'?s|what is)\\b";
+
+    return new RegExp(`${questionWords}[\\s\\S]{0,60}${remoteTarget}`).test(normalized)
+        || new RegExp(`${remoteTarget}[\\s\\S]{0,50}${statusWords}`).test(normalized)
+        || new RegExp(`${statusWords}[\\s\\S]{0,50}${remoteTarget}`).test(normalized);
+}
+
+function shouldRunDeterministicRemoteFallbackAfterEmptyPlanner({
+    objective = '',
+    executionProfile = DEFAULT_EXECUTION_PROFILE,
+    toolPolicy = {},
+    toolEvents = [],
+} = {}) {
+    if (executionProfile !== REMOTE_BUILD_EXECUTION_PROFILE || !getPreferredRemoteToolId(toolPolicy)) {
+        return false;
+    }
+    if (Array.isArray(toolEvents) && toolEvents.length > 0) {
+        return false;
+    }
+
+    const normalized = String(objective || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return hasRemoteStatusInspectionIntent(normalized)
+        || (
+            /\b(check|inspect|verify|diagnose|debug|troubleshoot|status|state|health|healthy|show|list|see what'?s wrong)\b/.test(normalized)
+            && /\b(cluster|k3s|k8s|kubernetes|kubectl|nodes?)\b/.test(normalized)
+        );
 }
 
 function hasExplicitLocalArtifactReference(text = '') {
@@ -6688,6 +6730,9 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
         if (/\bkubectl\b/i.test(command) || /\b(pod|deployment|service|ingress|namespace)\b/i.test(output)) {
             push('k8s-inspection', 'Kubernetes or remote cluster inspection returned a successful result.');
         }
+        if (/\b(hostname|uptime|uname|df\s+-h|free\s+-m|date)\b/i.test(command) && evidence.length === 0) {
+            push('remote-inspection', 'Remote server baseline or health inspection returned a successful result.');
+        }
         if (/\b(successfully rolled out|rollout status|deployment\s+.+\s+successfully)\b/i.test(output)) {
             push('rollout', 'Rollout status confirmed a successful deployment.', { confidence: 'high' });
             push('deployment-verified', 'Deployment verification evidence was captured from rollout status.', { confidence: 'high' });
@@ -7280,7 +7325,8 @@ function buildInitialHarnessCriteria({
         if (/\b(deploy|redeploy|publish|launch|ship|live|online|rollout|apply)\b/.test(normalizedObjective)) {
             pushCriterion('Deployment applied', 'objective');
             pushCriterion('Deployment verified', 'objective');
-        } else if (/\b(inspect|check|status|health|diagnose|debug|logs?|verify)\b/.test(normalizedObjective)) {
+        } else if (/\b(inspect|check|status|health|diagnose|debug|logs?|verify)\b/.test(normalizedObjective)
+            || hasRemoteStatusInspectionIntent(normalizedObjective)) {
             pushCriterion('Inspection completed', 'objective');
         }
     }
@@ -12943,24 +12989,36 @@ class ConversationOrchestrator extends EventEmitter {
             }
         }
 
+        const buildValidatedFallbackPlan = () => {
+            const fallbackPlan = this.buildFallbackPlan({
+                objective,
+                session,
+                recentMessages,
+                toolContext,
+                executionProfile,
+                toolPolicy,
+                toolEvents,
+            }).slice(0, MAX_PLAN_STEPS);
+            return validatePlan(fallbackPlan, {
+                candidateToolIds: toolPolicy.candidateToolIds,
+                contracts: toolPolicy.toolContracts || {},
+                allowUnsupportedManagedApp: shouldAllowManagedAppPlan({ objective, executionProfile, toolPolicy }),
+            }).steps;
+        };
+
         if (plannerReturnedSteps && Array.isArray(parsed?.steps) && parsed.steps.length === 0) {
+            if (shouldRunDeterministicRemoteFallbackAfterEmptyPlanner({
+                objective,
+                executionProfile,
+                toolPolicy,
+                toolEvents,
+            })) {
+                return buildValidatedFallbackPlan();
+            }
             return [];
         }
 
-        const fallbackPlan = this.buildFallbackPlan({
-            objective,
-            session,
-            recentMessages,
-            toolContext,
-            executionProfile,
-            toolPolicy,
-            toolEvents,
-        }).slice(0, MAX_PLAN_STEPS);
-        return validatePlan(fallbackPlan, {
-            candidateToolIds: toolPolicy.candidateToolIds,
-            contracts: toolPolicy.toolContracts || {},
-            allowUnsupportedManagedApp: shouldAllowManagedAppPlan({ objective, executionProfile, toolPolicy }),
-        }).steps;
+        return buildValidatedFallbackPlan();
     }
 
     async executePlan({

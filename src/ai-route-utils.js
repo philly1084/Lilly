@@ -1376,6 +1376,13 @@ function extractRequestedSshCommand(text = '') {
     const normalized = prompt.toLowerCase();
     const hasInspectionIntent = /\b(check|inspect|verify|diagnose|debug|troubleshoot|status|state|health|healthy|look at|show|list|see what'?s wrong)\b/.test(normalized);
     const hasReportIntent = /\b(report|summary|overview)\b/.test(normalized);
+    const hasRemoteTarget = /\b(remote server|remote host|remote machine|server|host|cluster|k3s|k8s|kubernetes)\b/.test(normalized);
+    const hasClusterTarget = /\b(cluster|k3s|k8s|kubernetes|kubectl|nodes?|pods?|namespaces?)\b/.test(normalized);
+    const hasRemoteStatusQuestion = hasRemoteTarget && (
+        /\b(how'?s|hows|how is|how are|what'?s|what is)\b[\s\S]{0,60}\b(remote server|remote host|remote machine|server|host|cluster|k3s|k8s|kubernetes)\b/.test(normalized)
+        || /\b(remote server|remote host|remote machine|server|host|cluster|k3s|k8s|kubernetes)\b[\s\S]{0,50}\b(doing|status|state|health|healthy|uptime|running|reachable|alive|ok|okay)\b/.test(normalized)
+        || /\b(status|state|health|healthy|uptime|running|reachable|alive|ok|okay)\b[\s\S]{0,50}\b(remote server|remote host|remote machine|server|host|cluster|k3s|k8s|kubernetes)\b/.test(normalized)
+    );
 
     const quotedPatterns = [
         /\b(?:run|execute)\s+`([^`]+)`/i,
@@ -1395,16 +1402,11 @@ function extractRequestedSshCommand(text = '') {
         return 'date';
     }
 
-    if (/\b(?:check|inspect|verify|look at)\b[\s\S]{0,40}\b(?:health|status)\b/i.test(prompt)
-        || /\bhealth check\b/i.test(prompt)) {
-        return 'hostname && uptime && (df -h / || true) && (free -m || true)';
-    }
-
-    if ((hasInspectionIntent && hasReportIntent)
+    if (!hasClusterTarget && ((hasInspectionIntent && hasReportIntent)
         || /\bhealth report\b/i.test(prompt)
         || /\bserver state\b/i.test(prompt)
         || /\bstate report\b/i.test(prompt)
-        || /\bhealth summary\b/i.test(prompt)) {
+        || /\bhealth summary\b/i.test(prompt))) {
         return 'hostname && uptime && (df -h / || true) && (free -m || true)';
     }
 
@@ -1414,6 +1416,12 @@ function extractRequestedSshCommand(text = '') {
 
     if (hasInspectionIntent && /\b(?:pod|pods)\b/i.test(prompt) && /\b(kubernetes|k8s|cluster|kubectl)\b/i.test(prompt)) {
         return 'kubectl get pods -A';
+    }
+
+    if (!hasClusterTarget && (/\b(?:check|inspect|verify|look at)\b[\s\S]{0,40}\b(?:health|status)\b/i.test(prompt)
+        || /\bhealth check\b/i.test(prompt)
+        || hasRemoteStatusQuestion)) {
+        return 'hostname && uptime && (df -h / || true) && (free -m || true)';
     }
 
     return null;
