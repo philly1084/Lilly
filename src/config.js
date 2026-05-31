@@ -818,7 +818,7 @@ const config = {
         username: process.env.LILLYBUILT_AUTH_USERNAME || process.env.KIMIBUILT_AUTH_USERNAME || '',
         password: process.env.LILLYBUILT_AUTH_PASSWORD || process.env.KIMIBUILT_AUTH_PASSWORD || '',
         jwtSecret: process.env.LILLYBUILT_JWT_SECRET || process.env.KIMIBUILT_JWT_SECRET || '',
-        cookieName: process.env.LILLYBUILT_AUTH_COOKIE || 'lillybuilt_auth',
+        cookieName: process.env.LILLYBUILT_AUTH_COOKIE || process.env.KIMIBUILT_AUTH_COOKIE || 'lillybuilt_auth',
         tokenTtlSeconds: parseInt(process.env.LILLYBUILT_AUTH_TTL_SECONDS || process.env.KIMIBUILT_AUTH_TTL_SECONDS, 10) || (12 * 60 * 60),
     },
 

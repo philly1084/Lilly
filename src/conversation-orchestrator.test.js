@@ -9713,6 +9713,68 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('routes frontend-approved explicit remote-cli-agent builds away from managed-app', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['managed-app', 'remote-command', 'remote-cli-agent', 'k3s-deploy', 'git-safe', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Use remote-cli-agent only, no managed-app/postgres. target k3s-prod cwd /opt/agent-apps admin. update namespace app-remote-codex-proof configmap remote-codex-proof-index for deployment remote-codex-proof so https://remote-codex-proof.demoserver2.buzz/ contains WEB_CHAT_UI_PROOF=2026-05-31. verify rollout cert curl. return markers.';
+        const toolContext = {
+            metadata: {
+                remoteBuildIntent: true,
+                frontendRemoteBuildAutonomyApproved: true,
+                preferredTool: 'remote-cli-agent',
+                plannedTools: ['remote-cli-agent'],
+            },
+            workspacePath: '/workspace/test-site',
+            repositoryPath: '/workspace/test-site',
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            toolContext,
+            metadata: toolContext.metadata,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session: {
+                metadata: {},
+            },
+            toolPolicy,
+            toolContext,
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('managed-app');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                adminMode: true,
+            }),
+        }));
+    });
+
     test('keeps discovery-first server build prompts out of the repo implementation lane', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

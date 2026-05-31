@@ -5748,7 +5748,7 @@ function hasExplicitDirectRemoteCliIntent(text = '') {
         /\bdirect\s+(?:remote\s+)?(?:ssh|cli|ssh\/cli|command|runner)\b/,
         /\b(?:ssh\/cli|remote ssh\/cli)\s+path\b/,
         /\b(?:ad hoc|manual)\s+(?:ssh|kubectl|k3s|remote command)\b/,
-        /\b(?:without|bypass|skip|do not use|don't use)\s+(?:gitlab|managed[- ]app|managed app)\b/,
+        /\b(?:without|bypass|skip|do not use|don't use|no|never)\s+(?:the\s+)?(?:gitlab|managed[- ]app|managed app)\b/,
         /\buse\s+(?:only\s+)?(?:ssh|kubectl|remote-command|remote command)\b/,
     ].some((pattern) => pattern.test(normalized));
 }
@@ -5758,11 +5758,7 @@ function getRemoteBuildMetadataPreference(metadata = {}, toolContext = {}) {
         ? toolContext.metadata
         : {};
     return metadata?.preferManagedApp === true
-        || metadata?.remoteBuildIntent === true
-        || metadata?.frontendRemoteBuildAutonomyApproved === true
-        || toolMetadata.preferManagedApp === true
-        || toolMetadata.remoteBuildIntent === true
-        || toolMetadata.frontendRemoteBuildAutonomyApproved === true;
+        || toolMetadata.preferManagedApp === true;
 }
 
 function hasRemoteCliAgentContinuationIntent(text = '') {
@@ -5847,6 +5843,10 @@ function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {}
 function hasManagedAppIntentText(text = '') {
     const normalized = String(text || '').trim();
     if (!normalized) {
+        return false;
+    }
+
+    if (hasExplicitDirectRemoteCliIntent(normalized)) {
         return false;
     }
 
@@ -11207,13 +11207,37 @@ class ConversationOrchestrator extends EventEmitter {
         const hasManagedAppIntent = hasManagedAppIntentText(prompt);
         const hasManagedAppAuthoringRequest = hasManagedAppAuthoringIntent(prompt, { executionProfile });
         const hasRemoteCliAgentAuthoringRequest = hasRemoteCliAgentAuthoringIntent(objectiveText);
-        const hasExplicitRemoteCliAgentRequest = hasExplicitRemoteCliAgentIntentText(objectiveText)
-            && !hasExplicitDirectRemoteCliIntent(objectiveText);
+        const toolMetadata = toolContext?.metadata && typeof toolContext.metadata === 'object'
+            ? toolContext.metadata
+            : {};
+        const plannedToolIds = [
+            ...(Array.isArray(metadata?.plannedTools) ? metadata.plannedTools : []),
+            ...(Array.isArray(toolMetadata.plannedTools) ? toolMetadata.plannedTools : []),
+        ].map((toolId) => String(toolId || '').trim()).filter(Boolean);
+        const hasRemoteCliAgentMetadataPreference = String(
+            metadata?.preferredTool
+            || toolMetadata.preferredTool
+            || '',
+        ).trim() === 'remote-cli-agent'
+            || plannedToolIds.includes('remote-cli-agent');
+        const hasExplicitRemoteCliAgentRequest = hasExplicitRemoteCliAgentIntentText(objectiveText);
+        const metadataPrefersManagedApp = getRemoteBuildMetadataPreference(metadata, toolContext);
         const shouldForceRemoteCliAgent = allowedToolIds.includes('remote-cli-agent')
-            && (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest);
+            && !metadataPrefersManagedApp
+            && (
+                hasRemoteCliAgentMetadataPreference
+                || (
+                    (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest)
+                    && !hasManagedAppIntent
+                )
+                || (
+                    hasExplicitDirectRemoteCliIntent(objectiveText)
+                    && hasExplicitRemoteCliAgentRequest
+                )
+            );
         const preferredRemoteToolId = shouldForceRemoteCliAgent ? 'remote-cli-agent' : remoteToolId;
         const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
-            && getRemoteBuildMetadataPreference(metadata, toolContext)
+            && metadataPrefersManagedApp
             && hasRemoteCliAgentAuthoringRequest
             && !hasExplicitDirectRemoteCliIntent(objectiveText);
         const hasManagedAppContinuationRecovery = (
@@ -11732,6 +11756,7 @@ class ConversationOrchestrator extends EventEmitter {
                 'remote-cli-agent',
                 ...candidateToolIds.filter((toolId) => (
                     toolId !== 'remote-cli-agent'
+                    && toolId !== 'managed-app'
                     && toolId !== 'remote-command'
                     && toolId !== 'remote-workbench'
                     && toolId !== 'ssh-execute'
@@ -11739,11 +11764,15 @@ class ConversationOrchestrator extends EventEmitter {
             ];
         }
 
-        const needsGitLabManagedAppObservability = hasManagedAppIntent
-            || hasManagedAppAuthoringRequest
-            || hasManagedAppContinuationRecovery
-            || prefersManagedAppForRemoteBuild
-            || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(prompt);
+        const needsGitLabManagedAppObservability = !shouldForceRemoteCliAgent && (
+            hasManagedAppIntent
+            || (!hasExplicitDirectRemoteCliIntent(objectiveText) && (
+                hasManagedAppAuthoringRequest
+                || hasManagedAppContinuationRecovery
+                || prefersManagedAppForRemoteBuild
+                || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(prompt)
+            ))
+        );
 
         if (needsGitLabManagedAppObservability
             && allowedToolIds.includes('managed-app')
@@ -11991,6 +12020,7 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         if (toolPolicy.candidateToolIds.includes('managed-app')
+            && !hasExplicitDirectRemoteCliIntent(objective)
             && (hasManagedAppIntentText(objective)
                 || hasManagedAppAuthoringIntent(objective, { executionProfile: toolPolicy.executionProfile })
                 || (
@@ -12009,10 +12039,17 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         if (toolPolicy.candidateToolIds.includes('remote-cli-agent')
-            && (hasRemoteCliAgentAuthoringIntent(objective) || (
-                hasExplicitRemoteCliAgentIntentText(objective)
-                && !hasExplicitDirectRemoteCliIntent(objective)
-            ))) {
+            && (
+                (
+                    (hasRemoteCliAgentAuthoringIntent(objective) || hasExplicitRemoteCliAgentIntentText(objective))
+                    && !hasManagedAppIntentText(objective)
+                )
+                || (
+                    hasExplicitDirectRemoteCliIntent(objective)
+                    && hasExplicitRemoteCliAgentIntentText(objective)
+                )
+                || toolPolicy.preferredRemoteToolId === 'remote-cli-agent'
+            )) {
             const authoringIntent = hasRemoteCliAgentAuthoringIntent(objective);
             const priorAgentState = getSessionControlState(session).remoteCliAgent || {};
             const cwd = String(priorAgentState.cwd || '').trim()

@@ -13,6 +13,7 @@ local/remote-tunnels/*.pid
 coverage/
 dist/
 output/sandboxes/
+suite/npm/*/bundle/
 data/
 !data/
 !data/piper/

@@ -205,6 +205,47 @@ function hasRemoteBuildIntentText(text = '') {
     return action && remoteTarget && (softwareTarget || explicitManagedApp);
 }
 
+function hasExplicitRemoteCliAgentIntentText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return /\b(remote[-_\s]+cli[-_\s]+agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|assisted cli|cli tool)\b/.test(normalized);
+}
+
+function hasManagedAppPreferenceText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    const managedAppCue = /\b(managed[- ]app|managed app|managed app catalog|managed-app catalog|managed control plane)\b/.test(normalized)
+        || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/.test(normalized);
+    const negativeManagedAppCue = /\b(?:without|bypass|skip|do not use|don't use|not)\s+(?:the\s+)?(?:managed[- ]app|managed app|gitlab)\b/.test(normalized);
+
+    return managedAppCue && !negativeManagedAppCue && !hasExplicitRemoteCliAgentIntentText(normalized);
+}
+
+function applyRemoteBuildMetadata(params, messages = []) {
+    const lastUserText = getLastUserMessageText(messages);
+    if (!hasRemoteBuildIntentText(lastUserText)) {
+        return;
+    }
+
+    params.executionProfile = 'remote-build';
+    params.metadata.remoteBuildAutonomyApproved = true;
+    params.metadata.frontendRemoteBuildAutonomyApproved = true;
+    params.metadata.remoteBuildIntent = true;
+
+    if (hasManagedAppPreferenceText(lastUserText)) {
+        params.metadata.preferManagedApp = true;
+    } else if (hasExplicitRemoteCliAgentIntentText(lastUserText)) {
+        params.metadata.preferredTool = 'remote-cli-agent';
+        params.metadata.plannedTools = ['remote-cli-agent'];
+    }
+}
+
 // Retry configuration
 const RETRY_CONFIG = {
     maxRetries: 3,
@@ -1126,13 +1167,7 @@ class OpenAIAPIClient extends EventTarget {
             params.metadata.remoteBuildAutonomyApproved = true;
         }
 
-        if (hasRemoteBuildIntentText(getLastUserMessageText(messages))) {
-            params.executionProfile = 'remote-build';
-            params.metadata.remoteBuildAutonomyApproved = true;
-            params.metadata.frontendRemoteBuildAutonomyApproved = true;
-            params.metadata.remoteBuildIntent = true;
-            params.metadata.preferManagedApp = true;
-        }
+        applyRemoteBuildMetadata(params, messages);
 
         if (reasoningEffort) {
             params.reasoning_effort = reasoningEffort;
@@ -1617,13 +1652,7 @@ class OpenAIAPIClient extends EventTarget {
             params.metadata.remoteBuildAutonomyApproved = true;
         }
 
-        if (hasRemoteBuildIntentText(getLastUserMessageText(messages))) {
-            params.executionProfile = 'remote-build';
-            params.metadata.remoteBuildAutonomyApproved = true;
-            params.metadata.frontendRemoteBuildAutonomyApproved = true;
-            params.metadata.remoteBuildIntent = true;
-            params.metadata.preferManagedApp = true;
-        }
+        applyRemoteBuildMetadata(params, messages);
 
         if (reasoningEffort) {
             params.reasoning_effort = reasoningEffort;

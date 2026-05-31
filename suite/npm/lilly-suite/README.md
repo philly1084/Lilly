@@ -1,8 +1,11 @@
 # Lilly Suite npm Package
 
-This package installs the `lilly-suite` command for the Lilly Suite no-source compose bundle.
+This package installs the `lilly-suite` command as a compatibility wrapper for
+the KimiBuilt Suite no-source compose bundle.
 
-The npm package is only a CLI wrapper plus the release bundle copied into `bundle/` before packing. It does not start containers during `npm install`, and it does not include the backend application source tree.
+The npm package is only a CLI wrapper plus the release bundle copied into
+`bundle/` before packing. It does not start containers during `npm install`,
+and it does not include the backend application source tree.
 
 ## Commands
 

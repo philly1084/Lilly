@@ -29,6 +29,29 @@ Docker-backed agent tools:
 - If you run the backend with `docker compose up`, the stack now includes a `docker-proxy` service so the backend container can reach Docker through `DOCKER_HOST=tcp://docker-proxy:2375`.
 - Public language images work without Docker Hub login. If you hit pull limits or need private images, sign in locally with `docker login`.
 
+## Packaged Delivery
+
+KimiBuilt can be shipped as an online compose bundle plus thin package wrappers:
+
+```bash
+npm run release:bundle
+npm run release:gate
+```
+
+Release outputs are written under `dist/release/`. The generated compose bundle
+is also copied into the npm wrappers so release machines can pack:
+
+```bash
+cd suite/npm/kimibuilt-suite
+npm pack --dry-run
+```
+
+The primary package is `kimibuilt-suite`; `lilly-suite` remains as a
+compatibility wrapper. Both packages keep secrets out of the artifact and
+generate runtime passwords into `release.env` on the install host. See
+[suite/docs/online-setup.md](suite/docs/online-setup.md) and
+[suite/docs/package-matrix.md](suite/docs/package-matrix.md).
+
 ## Deploy to k3s
 
 ```bash

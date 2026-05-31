@@ -45,8 +45,9 @@ REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH=/srv/apps/my-app
 REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY=never
 REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX=workspace-write
 
-# Optional; leave unset to use the gateway target default.
-REMOTE_CLI_REMOTE_CODE_MODEL=
+# Pin this in production so older gateway images do not default to codex-latest,
+# which ChatGPT-account Codex CLI runtimes can reject.
+REMOTE_CLI_REMOTE_CODE_MODEL=gpt-5.4
 REMOTE_CLI_AGENT_MAX_STATUS_POLLS=90
 REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS=2000
 ```
@@ -70,7 +71,7 @@ Codex-agent gateway contract:
 Legacy MCP gateway contract:
 
 - The backend connects to `POST /mcp` with bearer auth. This is JSON-RPC request/response plus polling, not SSE.
-- Coding work must call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })`; omit `model` unless the configured gateway target supports the override.
+- Coding work must call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })`; include the configured `REMOTE_CLI_REMOTE_CODE_MODEL` when set.
 - Long-running work must then call `remote_code_status({ jobId })`.
 - Do not send raw command execution fields such as `command`, `args`, `executable`, or `shell`; the gateway rejects them.
 - Do not include `targetId`, `cwd`, `sessionId`, or `waitMs` in `remote_code_status`; it accepts the job id only.
@@ -93,7 +94,7 @@ remoteCliTargets:
     allowedCwds:
       - /srv/apps
     defaultCwd: /srv/apps/my-app
-    defaultModel: openai/gpt-5.4
+    defaultModel: gpt-5.4
     opencodeExecutable: opencode
 ```
 

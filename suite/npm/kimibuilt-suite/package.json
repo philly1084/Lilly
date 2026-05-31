@@ -1,0 +1,24 @@
+{
+  "name": "kimibuilt-suite",
+  "version": "1.0.0",
+  "description": "KimiBuilt Suite online compose bundle CLI wrapper",
+  "license": "MIT",
+  "homepage": "https://github.com/philly1084/KimiBuilt",
+  "type": "commonjs",
+  "bin": {
+    "kimibuilt-suite": "bin/kimibuilt-suite.js"
+  },
+  "files": [
+    "README.md",
+    "bin/",
+    "lib/",
+    "bundle/"
+  ],
+  "scripts": {
+    "test": "node bin/kimibuilt-suite.js help && node bin/kimibuilt-suite.js setup-guide && node bin/kimibuilt-suite.js install --dry-run && node bin/kimibuilt-suite.js uninstall --install-root ./tmp/install --state-root ./tmp/state --dry-run",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

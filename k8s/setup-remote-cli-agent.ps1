@@ -166,6 +166,10 @@ if (!$RemoteCliMcpUrl) {
   $RemoteCliMcpUrl = "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local/mcp"
 }
 
+if (!$RemoteCliRemoteCodeModel) {
+  $RemoteCliRemoteCodeModel = "gpt-5.4"
+}
+
 $resolvedNamespace = Resolve-Namespace
 
 if (!(Test-Kubectl get configmap $ConfigMapName -n $resolvedNamespace)) {

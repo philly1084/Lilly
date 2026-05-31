@@ -4,7 +4,7 @@ const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
 
-const DEFAULT_REMOTE_CODE_MODEL = '';
+const DEFAULT_REMOTE_CODE_MODEL = 'gpt-5.4';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
 const DEFAULT_MAX_STATUS_POLLS = 20;
 const DEFAULT_STATUS_POLL_INTERVAL_MS = 2000;
@@ -360,6 +360,115 @@ function normalizeOptionalProofValue(value = '') {
   return normalized;
 }
 
+function normalizeFailureMessage(value = '') {
+  return normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .slice(0, 800);
+}
+
+function extractFailureMessageFromValue(value, depth = 0) {
+  if (value === undefined || value === null || depth > 6) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    const text = normalizeText(value);
+    if (!text) {
+      return '';
+    }
+    const parsed = parseLenientJson(text);
+    if (parsed && typeof parsed === 'object') {
+      return extractFailureMessageFromValue(parsed, depth + 1) || normalizeFailureMessage(text);
+    }
+    return normalizeFailureMessage(text);
+  }
+
+  if (typeof value !== 'object') {
+    return normalizeFailureMessage(value);
+  }
+
+  const error = value.error && typeof value.error === 'object' ? value.error : null;
+  const direct = [
+    error?.message,
+    value.message,
+    value.errorMessage,
+    value.error_message,
+    typeof value.error === 'string' ? value.error : '',
+  ].map((candidate) => extractFailureMessageFromValue(candidate, depth + 1)).find(Boolean);
+  if (direct) {
+    return direct;
+  }
+
+  return '';
+}
+
+function collectRemoteCliFailureMessages(value, messages = [], depth = 0) {
+  if (value === undefined || value === null || depth > 6) {
+    return messages;
+  }
+
+  if (typeof value === 'string') {
+    const text = normalizeText(value);
+    if (!text) {
+      return messages;
+    }
+    const jsonlLines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('{'));
+    if (jsonlLines.length > 1) {
+      jsonlLines.forEach((line) => collectRemoteCliFailureMessages(line, messages, depth + 1));
+      return messages;
+    }
+    const parsed = parseLenientJson(text);
+    if (parsed && typeof parsed === 'object') {
+      collectRemoteCliFailureMessages(parsed, messages, depth + 1);
+      return messages;
+    }
+    if (/\b(?:invalid_request_error|turn[._-]?failed|error|failed|unsupported)\b/i.test(text)) {
+      messages.push(normalizeFailureMessage(text));
+    }
+    return messages;
+  }
+
+  if (typeof value !== 'object') {
+    return messages;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectRemoteCliFailureMessages(entry, messages, depth + 1));
+    return messages;
+  }
+
+  const type = normalizeText(value.type || value.event || value.status || value.phase);
+  const numericStatus = Number(value.status);
+  const looksFailed = /\b(?:error|failed|failure|cancelled|input_required)\b/i.test(type)
+    || (Number.isFinite(numericStatus) && numericStatus >= 400);
+  if (looksFailed) {
+    const message = extractFailureMessageFromValue(value, depth + 1);
+    if (message) {
+      messages.push(message);
+    }
+  }
+
+  for (const child of Object.values(value)) {
+    if (child && (typeof child === 'object' || typeof child === 'string')) {
+      collectRemoteCliFailureMessages(child, messages, depth + 1);
+    }
+  }
+  return messages;
+}
+
+function detectRemoteCliExecutionBlocker(source = '') {
+  const text = expandRemoteCliProofText(source);
+  const messages = collectRemoteCliFailureMessages(text)
+    .map((message) => normalizeFailureMessage(message))
+    .filter(Boolean)
+    .filter((message) => !/^(?:error|failed|turn[._-]?failed)$/i.test(message));
+
+  return Array.from(new Set(messages)).find(Boolean) || '';
+}
+
 function resolveCompletionStatus({ blocker = '', blockerMarker = '', whatChanged = '', verifyResults = [], publicUrl = '', publicHost = '', uiCheckReport = '', gitCommit = '' } = {}) {
   if (normalizeOptionalProofValue(blocker)) {
     return 'blocked';
@@ -417,7 +526,8 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     .map((value) => normalizeOptionalProofValue(value))
     .filter(Boolean);
   const blockerMarker = readMarkerLine(text, ['BLOCKER', 'BLOCKED_BY'])
-    || readMarkerLine(text, ['USER_INPUT_REQUIRED']);
+    || readMarkerLine(text, ['USER_INPUT_REQUIRED'])
+    || detectRemoteCliExecutionBlocker(text);
   const blocker = normalizeOptionalProofValue(blockerMarker);
   const completionStatus = resolveCompletionStatus({
     blocker,
@@ -1230,6 +1340,7 @@ function buildRemoteCliInstructions({
   sessionId = '',
   waitMs = 30000,
   adminMode = false,
+  remoteCodeModel = DEFAULT_REMOTE_CODE_MODEL,
   extraInstructions = '',
   gitea = resolveConfiguredGitProviderContext(),
 } = {}) {
@@ -1241,11 +1352,12 @@ function buildRemoteCliInstructions({
     'Your remote execution boundary is the MCP gateway: use `remote_code_run` to start coding/build/deploy work and `remote_code_status` to poll any returned job id.',
     '',
     'Use remote_code_run for coding tasks.',
-    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","model":"<optional supported model>","sessionId":"<optional prior sessionId>","waitMs":30000}. Omit model unless a supported gateway model was explicitly configured.',
+    'Tool shape: call remote_code_run with {"targetId":"<gateway target id>","cwd":"<workspace path>","task":"<clear task>","model":"<supported model>","sessionId":"<optional prior sessionId>","waitMs":30000}. Include the configured model when provided.',
     'Then poll with remote_code_status using only {"jobId":"<job id from remote_code_run>"}. Do not send command, args, executable, shell, targetId, cwd, sessionId, or waitMs to remote_code_status.',
     'Do not send raw command execution fields to remote_code_run. The allowed execution fields are targetId, cwd, task, model, sessionId, and waitMs.',
     `Default targetId: ${targetId}`,
     cwd ? `Default cwd: ${cwd}` : 'Default cwd: use the gateway target default.',
+    remoteCodeModel ? `Configured remote_code_run model: ${remoteCodeModel}. Use this exact model for remote_code_run calls.` : '',
     '',
     'The targetId is the remote-cli gateway target identifier, not a Git remote, URL, or raw user@host SSH string. Use the configured default targetId unless the user explicitly names another configured gateway target.',
     'Public Git hosts such as github.com, gitlab.com, and bitbucket.org are repository endpoints, never deployment SSH targets. If a transcript mentions a root@github.com permission failure, treat that as the previous mistake and retarget to the real server/gateway target described by the user.',
@@ -2044,6 +2156,7 @@ class RemoteCliAgentsSdkRunner {
         sessionId,
         waitMs,
         adminMode,
+        remoteCodeModel,
         extraInstructions: input.instructions || input.extraInstructions || '',
       });
     const agent = directRun

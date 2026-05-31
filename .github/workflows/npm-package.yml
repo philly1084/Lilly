@@ -1,21 +1,33 @@
-name: Lilly Suite npm Package
+name: Suite npm Packages
 
 on:
   push:
     branches: [ "master", "main" ]
     paths:
       - ".github/workflows/npm-package.yml"
+      - "package.json"
+      - "suite/templates/**"
+      - "suite/docs/**"
+      - "suite/npm/kimibuilt-suite/**"
       - "suite/npm/lilly-suite/**"
       - "suite/scripts/build-release-bundle.mjs"
+      - "suite/scripts/release-gate.mjs"
       - "suite/install-compose.sh"
+      - "suite/install-compose.cmd"
       - "suite/scripts/uninstall-compose.mjs"
   pull_request:
     branches: [ "master", "main" ]
     paths:
       - ".github/workflows/npm-package.yml"
+      - "package.json"
+      - "suite/templates/**"
+      - "suite/docs/**"
+      - "suite/npm/kimibuilt-suite/**"
       - "suite/npm/lilly-suite/**"
       - "suite/scripts/build-release-bundle.mjs"
+      - "suite/scripts/release-gate.mjs"
       - "suite/install-compose.sh"
+      - "suite/install-compose.cmd"
       - "suite/scripts/uninstall-compose.mjs"
   workflow_dispatch:
     inputs:
@@ -29,14 +41,21 @@ permissions:
 
 env:
   NODE_VERSION: "24"
-  PACKAGE_DIR: suite/npm/lilly-suite
-  PACKAGE_NAME: lilly-suite
-  CLI_NAME: lilly-suite
 
 jobs:
   validate-package:
     name: Validate and pack
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package_dir: suite/npm/kimibuilt-suite
+            package_name: kimibuilt-suite
+            cli_name: kimibuilt-suite
+          - package_dir: suite/npm/lilly-suite
+            package_name: lilly-suite
+            cli_name: lilly-suite
 
     steps:
       - name: Checkout repository
@@ -45,8 +64,8 @@ jobs:
       - name: Verify package path
         run: |
           set -euo pipefail
-          test -f "${PACKAGE_DIR}/package.json" || {
-            echo "::error::Missing ${PACKAGE_DIR}/package.json. Add the Lilly Suite npm package before this workflow can validate it."
+          test -f "${{ matrix.package_dir }}/package.json" || {
+            echo "::error::Missing ${{ matrix.package_dir }}/package.json."
             exit 1
           }
 
@@ -55,23 +74,29 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Build release bundle payloads
+        run: node suite/scripts/build-release-bundle.mjs --skip-tar
+
+      - name: Run release gate
+        run: node suite/scripts/release-gate.mjs
+
       - name: Verify package identity
         run: |
           set -euo pipefail
-          cd "${PACKAGE_DIR}"
+          cd "${{ matrix.package_dir }}"
 
           actual_name="$(node -p "require('./package.json').name")"
-          if [ "${actual_name}" != "${PACKAGE_NAME}" ]; then
-            echo "::error::Expected package name ${PACKAGE_NAME}, found ${actual_name}."
+          if [ "${actual_name}" != "${{ matrix.package_name }}" ]; then
+            echo "::error::Expected package name ${{ matrix.package_name }}, found ${actual_name}."
             exit 1
           fi
 
-          node -e "const pkg=require('./package.json'); const bin=pkg.bin && (typeof pkg.bin === 'string' ? pkg.bin : pkg.bin['${CLI_NAME}']); if (!bin) { throw new Error('package.json must expose the ${CLI_NAME} CLI in bin'); } console.log('cli-bin=' + bin);"
+          node -e "const pkg=require('./package.json'); const bin=pkg.bin && (typeof pkg.bin === 'string' ? pkg.bin : pkg.bin['${{ matrix.cli_name }}']); if (!bin) { throw new Error('package.json must expose the ${{ matrix.cli_name }} CLI in bin'); } console.log('cli-bin=' + bin);"
 
       - name: Install dependencies
         run: |
           set -euo pipefail
-          cd "${PACKAGE_DIR}"
+          cd "${{ matrix.package_dir }}"
           if [ -f package-lock.json ]; then
             npm ci
           else
@@ -81,7 +106,7 @@ jobs:
       - name: Run package checks
         run: |
           set -euo pipefail
-          cd "${PACKAGE_DIR}"
+          cd "${{ matrix.package_dir }}"
           npm run lint --if-present
           npm run check --if-present
           npm test --if-present
@@ -90,7 +115,7 @@ jobs:
       - name: Pack dry run
         run: |
           set -euo pipefail
-          cd "${PACKAGE_DIR}"
+          cd "${{ matrix.package_dir }}"
           npm pack --dry-run
 
       - name: Pack tarball
@@ -98,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/npm-pack"
-          cd "${PACKAGE_DIR}"
+          cd "${{ matrix.package_dir }}"
 
           tarball="$(npm pack --pack-destination "${RUNNER_TEMP}/npm-pack")"
           tarball_path="${RUNNER_TEMP}/npm-pack/${tarball}"
@@ -110,11 +135,11 @@ jobs:
       - name: Install packed CLI into temp prefix
         run: |
           set -euo pipefail
-          prefix="${RUNNER_TEMP}/lilly-suite-prefix"
+          prefix="${RUNNER_TEMP}/${{ matrix.package_name }}-prefix"
           npm install --global --prefix "${prefix}" "${{ steps.pack.outputs.tarball }}"
 
           bin_dir="${prefix}/bin"
-          cli="${bin_dir}/${CLI_NAME}"
+          cli="${bin_dir}/${{ matrix.cli_name }}"
           test -x "${cli}" || {
             echo "::error::Installed CLI is missing or not executable: ${cli}"
             ls -la "${bin_dir}" || true
@@ -126,16 +151,16 @@ jobs:
       - name: Run CLI dry-run checks
         run: |
           set -euo pipefail
-          lilly-suite --help
-          lilly-suite help
-          lilly-suite install --dry-run \
-            --install-root "${RUNNER_TEMP}/lilly-suite-install" \
-            --state-root "${RUNNER_TEMP}/lilly-suite-state"
+          "${{ matrix.cli_name }}" --help
+          "${{ matrix.cli_name }}" help
+          "${{ matrix.cli_name }}" install --dry-run \
+            --install-root "${RUNNER_TEMP}/${{ matrix.package_name }}-install" \
+            --state-root "${RUNNER_TEMP}/${{ matrix.package_name }}-state"
 
       - name: Upload npm package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lilly-suite-npm-package-${{ github.sha }}
+          name: ${{ matrix.package_name }}-npm-package-${{ github.sha }}
           path: ${{ steps.pack.outputs.tarball }}
           if-no-files-found: error
           retention-days: 30
