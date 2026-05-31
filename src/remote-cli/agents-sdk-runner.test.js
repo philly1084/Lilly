@@ -189,6 +189,113 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('classifies Codex JSONL turn failures as blockers', () => {
+    const output = [
+      JSON.stringify({ type: 'thread.started', thread_id: 'thread_failed' }),
+      JSON.stringify({ type: 'turn.started' }),
+      JSON.stringify({
+        type: 'error',
+        message: JSON.stringify({
+          type: 'error',
+          status: 400,
+          error: {
+            type: 'invalid_request_error',
+            message: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
+          },
+        }),
+      }),
+      JSON.stringify({
+        type: 'turn.failed',
+        error: {
+          message: JSON.stringify({
+            type: 'error',
+            status: 400,
+            error: {
+              type: 'invalid_request_error',
+              message: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
+            },
+          }),
+        },
+      }),
+    ].join('\n');
+
+    expect(extractRemoteCliRunMetadata(output)).toEqual({
+      blocker: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
+      completionStatus: 'blocked',
+    });
+  });
+
+  test('direct remote_code_run surfaces Codex JSONL failures instead of no-proof fallback', async () => {
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {},
+      fetchImpl: jest.fn(),
+    });
+    const failedRun = {
+      id: 'rcli_failed',
+      targetId: 'k3s-prod',
+      cwd: '/opt/kimibuilt',
+      status: 'completed',
+      stdout: [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread_failed' }),
+        JSON.stringify({
+          type: 'error',
+          message: JSON.stringify({
+            type: 'error',
+            status: 400,
+            error: {
+              type: 'invalid_request_error',
+              message: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
+            },
+          }),
+        }),
+        JSON.stringify({
+          type: 'turn.failed',
+          error: {
+            message: JSON.stringify({
+              type: 'error',
+              status: 400,
+              error: {
+                type: 'invalid_request_error',
+                message: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
+              },
+            }),
+          },
+        }),
+      ].join('\n'),
+      finalOutput: JSON.stringify({
+        type: 'error',
+        status: 400,
+        error: {
+          type: 'invalid_request_error',
+          message: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
+        },
+      }),
+      completionStatus: 'unknown',
+    };
+    const remoteCli = {
+      callTool: jest.fn().mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify(failedRun) }],
+        structuredContent: failedRun,
+      }),
+    };
+
+    const finalOutput = await runner.executeRemoteCodeRun(remoteCli, {
+      targetId: 'k3s-prod',
+      cwd: '/opt/kimibuilt',
+      task: 'No-change proof.',
+      model: 'codex-latest',
+      waitMs: 30000,
+      maxStatusPolls: 1,
+    });
+
+    expect(finalOutput).toContain("BLOCKER=The 'codex-latest' model is not supported when using Codex with a ChatGPT account.");
+    expect(finalOutput).not.toContain('completed without task proof markers');
+    expect(extractRemoteCliRunMetadata(finalOutput)).toMatchObject({
+      blocker: "The 'codex-latest' model is not supported when using Codex with a ChatGPT account.",
+      completionStatus: 'blocked',
+    });
+  });
+
   test('classifies proof markers embedded in Codex JSONL agent messages', () => {
     const output = JSON.stringify({
       id: 'rcli_jsonl',

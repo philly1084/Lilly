@@ -93,7 +93,7 @@ remoteCliTargets:
     allowedCwds:
       - /srv/apps
     defaultCwd: /srv/apps/my-app
-    defaultModel: openai/gpt-5.4
+    defaultModel: gpt-5.4
     opencodeExecutable: opencode
 ```
 

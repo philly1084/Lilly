@@ -99,3 +99,50 @@ describe('web-chat image API client', () => {
         }));
     });
 });
+
+describe('web-chat remote build metadata', () => {
+    test('does not prefer managed-app for explicit remote-cli-agent chat requests', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'ok' } }],
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await apiClient.chat([{
+            role: 'user',
+            content: 'Use remote-cli-agent with adminMode true to update the website on the remote k3s server.',
+        }]);
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.executionProfile).toBe('remote-build');
+        expect(body.metadata).toEqual(expect.objectContaining({
+            remoteBuildAutonomyApproved: true,
+            frontendRemoteBuildAutonomyApproved: true,
+            remoteBuildIntent: true,
+            preferredTool: 'remote-cli-agent',
+            plannedTools: ['remote-cli-agent'],
+        }));
+        expect(body.metadata.preferManagedApp).toBeUndefined();
+    });
+
+    test('prefers managed-app only for explicit managed or GitLab chat requests', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'ok' } }],
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await apiClient.chat([{
+            role: 'user',
+            content: 'Use the managed-app GitLab path to build and deploy a public website.',
+        }]);
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.executionProfile).toBe('remote-build');
+        expect(body.metadata.preferManagedApp).toBe(true);
+    });
+});

@@ -9713,6 +9713,68 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('routes frontend-approved explicit remote-cli-agent builds away from managed-app', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['managed-app', 'remote-command', 'remote-cli-agent', 'k3s-deploy', 'git-safe', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Do not use managed-app or GitLab. Use remote-cli-agent with adminMode true to update the existing public website on the remote k3s cluster and verify it.';
+        const toolContext = {
+            metadata: {
+                remoteBuildIntent: true,
+                frontendRemoteBuildAutonomyApproved: true,
+                preferredTool: 'remote-cli-agent',
+                plannedTools: ['remote-cli-agent'],
+            },
+            workspacePath: '/workspace/test-site',
+            repositoryPath: '/workspace/test-site',
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            toolContext,
+            metadata: toolContext.metadata,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session: {
+                metadata: {},
+            },
+            toolPolicy,
+            toolContext,
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('managed-app');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                adminMode: true,
+            }),
+        }));
+    });
+
     test('keeps discovery-first server build prompts out of the repo implementation lane', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

@@ -5758,11 +5758,7 @@ function getRemoteBuildMetadataPreference(metadata = {}, toolContext = {}) {
         ? toolContext.metadata
         : {};
     return metadata?.preferManagedApp === true
-        || metadata?.remoteBuildIntent === true
-        || metadata?.frontendRemoteBuildAutonomyApproved === true
-        || toolMetadata.preferManagedApp === true
-        || toolMetadata.remoteBuildIntent === true
-        || toolMetadata.frontendRemoteBuildAutonomyApproved === true;
+        || toolMetadata.preferManagedApp === true;
 }
 
 function hasRemoteCliAgentContinuationIntent(text = '') {
@@ -5847,6 +5843,10 @@ function buildRemoteCliAgentTaskForPrompt({ objective = '', priorAgentState = {}
 function hasManagedAppIntentText(text = '') {
     const normalized = String(text || '').trim();
     if (!normalized) {
+        return false;
+    }
+
+    if (hasExplicitDirectRemoteCliIntent(normalized)) {
         return false;
     }
 
@@ -11740,10 +11740,12 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         const needsGitLabManagedAppObservability = hasManagedAppIntent
-            || hasManagedAppAuthoringRequest
-            || hasManagedAppContinuationRecovery
-            || prefersManagedAppForRemoteBuild
-            || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(prompt);
+            || (!hasExplicitDirectRemoteCliIntent(objectiveText) && (
+                hasManagedAppAuthoringRequest
+                || hasManagedAppContinuationRecovery
+                || prefersManagedAppForRemoteBuild
+                || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(prompt)
+            ));
 
         if (needsGitLabManagedAppObservability
             && allowedToolIds.includes('managed-app')
@@ -11991,6 +11993,7 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         if (toolPolicy.candidateToolIds.includes('managed-app')
+            && !hasExplicitDirectRemoteCliIntent(objective)
             && (hasManagedAppIntentText(objective)
                 || hasManagedAppAuthoringIntent(objective, { executionProfile: toolPolicy.executionProfile })
                 || (

@@ -360,6 +360,115 @@ function normalizeOptionalProofValue(value = '') {
   return normalized;
 }
 
+function normalizeFailureMessage(value = '') {
+  return normalizeText(value)
+    .replace(/\s+/g, ' ')
+    .slice(0, 800);
+}
+
+function extractFailureMessageFromValue(value, depth = 0) {
+  if (value === undefined || value === null || depth > 6) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    const text = normalizeText(value);
+    if (!text) {
+      return '';
+    }
+    const parsed = parseLenientJson(text);
+    if (parsed && typeof parsed === 'object') {
+      return extractFailureMessageFromValue(parsed, depth + 1) || normalizeFailureMessage(text);
+    }
+    return normalizeFailureMessage(text);
+  }
+
+  if (typeof value !== 'object') {
+    return normalizeFailureMessage(value);
+  }
+
+  const error = value.error && typeof value.error === 'object' ? value.error : null;
+  const direct = [
+    error?.message,
+    value.message,
+    value.errorMessage,
+    value.error_message,
+    typeof value.error === 'string' ? value.error : '',
+  ].map((candidate) => extractFailureMessageFromValue(candidate, depth + 1)).find(Boolean);
+  if (direct) {
+    return direct;
+  }
+
+  return '';
+}
+
+function collectRemoteCliFailureMessages(value, messages = [], depth = 0) {
+  if (value === undefined || value === null || depth > 6) {
+    return messages;
+  }
+
+  if (typeof value === 'string') {
+    const text = normalizeText(value);
+    if (!text) {
+      return messages;
+    }
+    const jsonlLines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('{'));
+    if (jsonlLines.length > 1) {
+      jsonlLines.forEach((line) => collectRemoteCliFailureMessages(line, messages, depth + 1));
+      return messages;
+    }
+    const parsed = parseLenientJson(text);
+    if (parsed && typeof parsed === 'object') {
+      collectRemoteCliFailureMessages(parsed, messages, depth + 1);
+      return messages;
+    }
+    if (/\b(?:invalid_request_error|turn[._-]?failed|error|failed|unsupported)\b/i.test(text)) {
+      messages.push(normalizeFailureMessage(text));
+    }
+    return messages;
+  }
+
+  if (typeof value !== 'object') {
+    return messages;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectRemoteCliFailureMessages(entry, messages, depth + 1));
+    return messages;
+  }
+
+  const type = normalizeText(value.type || value.event || value.status || value.phase);
+  const numericStatus = Number(value.status);
+  const looksFailed = /\b(?:error|failed|failure|cancelled|input_required)\b/i.test(type)
+    || (Number.isFinite(numericStatus) && numericStatus >= 400);
+  if (looksFailed) {
+    const message = extractFailureMessageFromValue(value, depth + 1);
+    if (message) {
+      messages.push(message);
+    }
+  }
+
+  for (const child of Object.values(value)) {
+    if (child && (typeof child === 'object' || typeof child === 'string')) {
+      collectRemoteCliFailureMessages(child, messages, depth + 1);
+    }
+  }
+  return messages;
+}
+
+function detectRemoteCliExecutionBlocker(source = '') {
+  const text = expandRemoteCliProofText(source);
+  const messages = collectRemoteCliFailureMessages(text)
+    .map((message) => normalizeFailureMessage(message))
+    .filter(Boolean)
+    .filter((message) => !/^(?:error|failed|turn[._-]?failed)$/i.test(message));
+
+  return Array.from(new Set(messages)).find(Boolean) || '';
+}
+
 function resolveCompletionStatus({ blocker = '', blockerMarker = '', whatChanged = '', verifyResults = [], publicUrl = '', publicHost = '', uiCheckReport = '', gitCommit = '' } = {}) {
   if (normalizeOptionalProofValue(blocker)) {
     return 'blocked';
@@ -417,7 +526,8 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     .map((value) => normalizeOptionalProofValue(value))
     .filter(Boolean);
   const blockerMarker = readMarkerLine(text, ['BLOCKER', 'BLOCKED_BY'])
-    || readMarkerLine(text, ['USER_INPUT_REQUIRED']);
+    || readMarkerLine(text, ['USER_INPUT_REQUIRED'])
+    || detectRemoteCliExecutionBlocker(text);
   const blocker = normalizeOptionalProofValue(blockerMarker);
   const completionStatus = resolveCompletionStatus({
     blocker,

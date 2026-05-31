@@ -2330,9 +2330,7 @@ function shouldPreferManagedAppForRemoteBuild(prompt = '', options = {}) {
     }
 
     const metadata = getToolContextMetadata(options);
-    const frontendPreference = metadata.preferManagedApp === true
-        || metadata.remoteBuildIntent === true
-        || metadata.frontendRemoteBuildAutonomyApproved === true;
+    const frontendPreference = metadata.preferManagedApp === true;
 
     return hasManagedAppIntent(prompt)
         || (frontendPreference && (
