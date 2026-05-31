@@ -1,0 +1,248 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3018/notation/index.html",
+  "originalUrl": "http://127.0.0.1:3018/notation/index.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-31T18:49:05.095Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-notation\\notation-helper-lillybuilt-ai-desktop.png",
+      "metrics": {
+        "title": "Notation Helper | LillyBuilt AI",
+        "url": "http://127.0.0.1:3018/notation/index.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 585,
+        "bodyTextPreview": "Notation Helper Expand Explain Validate Reasoning: Default Reasoning: Low Reasoning: Medium Reasoning: High Reasoning: XHigh Connected Templates History Notation Templates All System Flow Data API Add Context (Optional) Add context (optional) to help the AI understand your notation better... Upload File No file output HTML PDF XML Mermaid XLSX Power Query Notation Input 0 chars 1 line Process Ctrl+Enter With Context Ctrl+Shift+Enter Result EXPAND 0 Ready to Process Enter notation in the left pan",
+        "headings": [
+          "Notation Templates",
+          "Recent Sessions",
+          "Ready to Process",
+          "Keyboard Shortcuts"
+        ],
+        "interactiveControls": 32,
+        "textContrast": {
+          "checked": 51,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "WebSocket connection to 'ws://localhost:3000/ws' failed: Invalid frame header"
+        },
+        {
+          "type": "error",
+          "text": "WebSocket error: Event"
+        },
+        {
+          "type": "error",
+          "text": "Processing error: Event"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-notation\\notation-helper-lillybuilt-ai-mobile.png",
+      "metrics": {
+        "title": "Notation Helper | LillyBuilt AI",
+        "url": "http://127.0.0.1:3018/notation/index.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "aside",
+            "id": "sidebar",
+            "className": "sidebar",
+            "text": "Templates History Notation Templates All System Flow Data API",
+            "left": -280,
+            "right": 0,
+            "width": 280
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "sidebar-tabs",
+            "text": "Templates History",
+            "left": -280,
+            "right": -1,
+            "width": 279
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "sidebar-tab active",
+            "text": "Templates",
+            "left": -280,
+            "right": -140,
+            "width": 140
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "fas fa-th-large",
+            "text": "",
+            "left": -250,
+            "right": -238,
+            "width": 12
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "",
+            "text": "Templates",
+            "left": -231,
+            "right": -170,
+            "width": 61
+          },
+          {
+            "tag": "button",
+            "id": "",
+            "className": "sidebar-tab",
+            "text": "History",
+            "left": -140,
+            "right": -1,
+            "width": 140
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "fas fa-history",
+            "text": "",
+            "left": -101,
+            "right": -89,
+            "width": 12
+          },
+          {
+            "tag": "span",
+            "id": "",
+            "className": "",
+            "text": "History",
+            "left": -82,
+            "right": -40,
+            "width": 42
+          },
+          {
+            "tag": "div",
+            "id": "templatesPanel",
+            "className": "sidebar-panel active",
+            "text": "Notation Templates All System Flow Data API",
+            "left": -280,
+            "right": -1,
+            "width": 279
+          },
+          {
+            "tag": "div",
+            "id": "",
+            "className": "panel-header",
+            "text": "Notation Templates All System Flow Data API",
+            "left": -280,
+            "right": -1,
+            "width": 279
+          },
+          {
+            "tag": "h3",
+            "id": "",
+            "className": "",
+            "text": "Notation Templates",
+            "left": -266,
+            "right": -15,
+            "width": 251
+          },
+          {
+            "tag": "div",
+            "id": "templateCategories",
+            "className": "template-categories",
+            "text": "All System Flow Data API",
+            "left": -266,
+            "right": -15,
+            "width": 251
+          }
+        ],
+        "bodyTextLength": 359,
+        "bodyTextPreview": "Connected Templates History Notation Templates All System Flow Data API Add Context (Optional) Upload File No file output HTML PDF XML Mermaid XLSX Power Query Notation Input 0 chars 1 line Process With Context Result EXPAND 0 Ready to Process Enter notation in the left panel and click 'Process' to see results Start by typing in the editor An error occurred",
+        "headings": [
+          "Notation Templates",
+          "Recent Sessions",
+          "Ready to Process",
+          "Keyboard Shortcuts"
+        ],
+        "interactiveControls": 32,
+        "textContrast": {
+          "checked": 43,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "WebSocket connection to 'ws://localhost:3000/ws' failed: Invalid frame header"
+        },
+        {
+          "type": "error",
+          "text": "WebSocket error: Event"
+        },
+        {
+          "type": "error",
+          "text": "Processing error: Event"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-notation\\notation-helper-lillybuilt-ai-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-notation\\notation-helper-lillybuilt-ai-mobile.png"
+    ],
+    "issues": []
+  }
+}

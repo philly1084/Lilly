@@ -1,0 +1,121 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:3018/podcast-video/index.html",
+  "originalUrl": "http://127.0.0.1:3018/podcast-video/index.html",
+  "authenticated": false,
+  "generatedAt": "2026-05-31T18:49:13.192Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-podcast\\podcast-wave-lilly-desktop.png",
+      "metrics": {
+        "title": "Podcast Wave - Lilly",
+        "url": "http://127.0.0.1:3018/podcast-video/index.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 236,
+        "bodyTextPreview": "Lilly STUDIO Podcast Wave Runtime check failed Audio Title + Choose audio WAV, MP3, M4A, MP4, or WebM Aspect 16:9 landscape 9:16 vertical 1:1 square Audio repair Transcript Render MP4 Ready Choose an audio file to render a waveform MP4.",
+        "headings": [
+          "Podcast Wave",
+          "Audio",
+          "Ready"
+        ],
+        "interactiveControls": 12,
+        "textContrast": {
+          "checked": 19,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-podcast\\podcast-wave-lilly-mobile.png",
+      "metrics": {
+        "title": "Podcast Wave - Lilly",
+        "url": "http://127.0.0.1:3018/podcast-video/index.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 1468,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 236,
+        "bodyTextPreview": "Lilly STUDIO Podcast Wave Runtime check failed Audio Title + Choose audio WAV, MP3, M4A, MP4, or WebM Aspect 16:9 landscape 9:16 vertical 1:1 square Audio repair Transcript Render MP4 Ready Choose an audio file to render a waveform MP4.",
+        "headings": [
+          "Podcast Wave",
+          "Audio",
+          "Ready"
+        ],
+        "interactiveControls": 12,
+        "textContrast": {
+          "checked": 19,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-podcast\\podcast-wave-lilly-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\mobile-shell-podcast\\podcast-wave-lilly-mobile.png"
+    ],
+    "issues": []
+  }
+}

@@ -16,6 +16,18 @@
     --kb-motion: 220ms cubic-bezier(0.2, 0, 0.2, 1);
 }
 
+[data-ui-surface] {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+}
+
+[data-ui-surface] :where(input, textarea, select, button) {
+    max-width: 100%;
+}
+
 [data-ui-surface] :where(button, .btn, .icon-btn, select, input, textarea, [role="button"]) {
     transition:
         border-color var(--kb-motion-fast),
@@ -221,6 +233,21 @@
     [data-ui-surface] {
         --kb-radius-shell: 14px;
         --kb-radius-panel: 10px;
+        width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+        overflow-x: clip;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        touch-action: manipulation;
+    }
+
+    [data-ui-surface] :where(input, textarea, select) {
+        font-size: max(16px, 1rem);
+    }
+
+    [data-ui-surface] :where(img, video, iframe, pre, code, table) {
+        max-width: 100%;
     }
 
     [data-ui-surface="notation"] .dual-pane {
@@ -232,7 +259,20 @@
     [data-ui-surface="notation"] .pane,
     [data-ui-surface="notation"] .pane:first-child,
     [data-ui-surface="notation"] .pane:last-child {
-        border-radius: var(--kb-radius-panel);
+        border-radius: 0;
+    }
+
+    [data-ui-surface="web-chat"] .main-shell,
+    [data-ui-surface="web-chat"] .sidebar-panel {
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+    }
+}
+
+@media (hover: none), (pointer: coarse) {
+    [data-ui-surface] :where(button, .btn, .icon-btn, [role="button"], .message-content, .block):where(:hover, :focus-visible) {
+        transform: none !important;
     }
 }
 
@@ -251,13 +291,32 @@
 }
 
 @media (max-width: 768px) {
+    [data-ui-surface="web-chat"] .main-shell,
+    [data-ui-surface="web-chat"] .sidebar-panel {
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+    }
+
+    [data-ui-surface="notation"] .dual-pane,
+    [data-ui-surface="notation"] .pane,
+    [data-ui-surface="notation"] .pane:first-child,
+    [data-ui-surface="notation"] .pane:last-child {
+        border-radius: 0;
+    }
+
+    [data-ui-surface="canvas"] .top-bar {
+        border-radius: 0;
+    }
+
     [data-ui-surface="canvas"] .layers-panel.active {
         right: 0;
         max-width: min(320px, 92vw);
     }
 
     [data-ui-surface="canvas"] .properties-panel.active {
-        max-width: min(340px, 92vw);
+        max-width: 100%;
+        border-radius: 0;
     }
 
     [data-ui-surface="canvas"] .toolbar.active {

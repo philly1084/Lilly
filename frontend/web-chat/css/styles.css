@@ -2170,8 +2170,10 @@
 html,
 body {
     width: 100%;
+    max-width: 100%;
     min-height: 100%;
     overflow: hidden;
+    overscroll-behavior-x: none;
 }
 
 body,
@@ -2467,6 +2469,8 @@ body {
     margin: 0;
     font-family: var(--font-sans);
     line-height: 1.6;
+    min-width: 0;
+    max-width: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
@@ -2487,7 +2491,7 @@ body {
 .app-shell {
     display: flex;
     width: 100%;
-    max-width: 100vw;
+    max-width: 100%;
     height: 100vh;
     height: 100dvh;
     min-height: 100%;
@@ -4421,7 +4425,7 @@ body.layout-minimal .sidebar {
 body.layout-minimal .app-shell {
     gap: 0;
     padding: 0;
-    width: 100vw;
+    width: 100%;
     height: 100vh;
     height: 100dvh;
 }
@@ -8657,16 +8661,21 @@ code[class*="language-"] {
 }
 
 @media (max-width: 768px) {
+    html,
+    body {
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+
     .app-shell {
         width: 100%;
-        max-width: 100vw;
+        max-width: 100%;
         height: 100dvh;
+        min-height: 100dvh;
         gap: 0;
-        padding:
-            max(0.45rem, env(safe-area-inset-top, 0px))
-            max(0.55rem, env(safe-area-inset-right, 0px))
-            max(0.45rem, env(safe-area-inset-bottom, 0px))
-            max(0.55rem, env(safe-area-inset-left, 0px));
+        padding: 0;
         overflow: hidden;
     }
 
@@ -8718,9 +8727,9 @@ code[class*="language-"] {
     .main-shell,
     .sidebar-panel,
     .project-viewport {
-        border-radius: 1rem;
-        border-left: 1px solid var(--border);
-        border-right: 1px solid var(--border);
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
         box-shadow: none;
     }
 
@@ -8782,8 +8791,11 @@ code[class*="language-"] {
     }
     
     .chat-header {
-        padding-left: 1rem;
-        padding-right: 0.9rem;
+        padding:
+            max(0.8rem, env(safe-area-inset-top, 0px))
+            max(0.9rem, env(safe-area-inset-right, 0px))
+            0.8rem
+            max(1rem, env(safe-area-inset-left, 0px));
         gap: 0.75rem;
         flex: 0 0 auto;
     }
@@ -8864,7 +8876,11 @@ code[class*="language-"] {
     
     .input-area {
         flex: 0 0 auto;
-        padding: 0.65rem 0.75rem calc(0.8rem + env(safe-area-inset-bottom, 0px));
+        padding:
+            0.65rem
+            max(0.75rem, env(safe-area-inset-right, 0px))
+            calc(0.8rem + env(safe-area-inset-bottom, 0px))
+            max(0.75rem, env(safe-area-inset-left, 0px));
     }
 
     .composer-frame {
@@ -8965,10 +8981,11 @@ code[class*="language-"] {
     
     /* Mobile keyboard handling */
     body.keyboard-open .input-area {
-        position: fixed;
+        position: sticky;
         bottom: 0;
-        left: 0;
-        right: 0;
+        left: auto;
+        right: auto;
+        width: 100%;
     }
     
     .image-lightbox-content img {
@@ -8992,7 +9009,7 @@ code[class*="language-"] {
 @media (max-width: 480px) {
     .main-shell {
         min-width: 0;
-        border-radius: 0.9rem;
+        border-radius: 0;
     }
 
     #messages-container {
@@ -9045,8 +9062,8 @@ code[class*="language-"] {
     }
     
     .chat-header {
-        padding-left: 0.65rem;
-        padding-right: 0.65rem;
+        padding-left: max(0.65rem, env(safe-area-inset-left, 0px));
+        padding-right: max(0.65rem, env(safe-area-inset-right, 0px));
         min-height: 4.55rem;
     }
 
@@ -9134,7 +9151,11 @@ code[class*="language-"] {
     }
 
     #input-area {
-        padding: 0.5rem 0.5rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+        padding:
+            0.5rem
+            max(0.5rem, env(safe-area-inset-right, 0px))
+            calc(0.6rem + env(safe-area-inset-bottom, 0px))
+            max(0.5rem, env(safe-area-inset-left, 0px));
     }
 
     #composer-shell {

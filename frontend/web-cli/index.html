@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>KimiBuilt Web CLI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -23,8 +23,8 @@
 
     <!-- PDF export for Mermaid diagrams -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <link rel="stylesheet" href="css/voxel.css?v=20260523c">
-    <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
+    <link rel="stylesheet" href="css/voxel.css?v=20260531a">
+    <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -157,9 +157,14 @@
             color: var(--text-primary);
             margin: 0;
             padding: 0;
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
             height: 100vh;
             height: 100dvh;
             overflow: hidden;
+            overflow-x: hidden;
+            overflow-x: clip;
             font-size: 14px;
             line-height: 1.5;
             overscroll-behavior: none;
@@ -172,7 +177,8 @@
             height: 100vh;
             height: 100dvh;
             min-height: 0;
-            max-width: 100vw;
+            width: 100%;
+            max-width: 100%;
             overflow: hidden;
         }
 
@@ -1227,7 +1233,11 @@
             .header {
                 flex-wrap: wrap;
                 gap: 8px;
-                padding: 6px 12px;
+                padding:
+                    max(6px, env(safe-area-inset-top, 0px))
+                    max(12px, env(safe-area-inset-right, 0px))
+                    6px
+                    max(12px, env(safe-area-inset-left, 0px));
             }
             
             .toolbar {
@@ -1253,7 +1263,11 @@
             }
 
             .input-container {
-                padding: 10px 12px;
+                padding:
+                    10px
+                    max(12px, env(safe-area-inset-right, 0px))
+                    calc(10px + env(safe-area-inset-bottom, 0px))
+                    max(12px, env(safe-area-inset-left, 0px));
             }
 
             .command-assist {
