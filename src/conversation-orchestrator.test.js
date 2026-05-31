@@ -9738,7 +9738,7 @@ describe('ConversationOrchestrator', () => {
             },
         });
 
-        const objective = 'Do not use managed-app or GitLab. Use remote-cli-agent with adminMode true to update the existing public website on the remote k3s cluster and verify it.';
+        const objective = 'Use remote-cli-agent only, no managed-app/postgres. target k3s-prod cwd /opt/agent-apps admin. update namespace app-remote-codex-proof configmap remote-codex-proof-index for deployment remote-codex-proof so https://remote-codex-proof.demoserver2.buzz/ contains WEB_CHAT_UI_PROOF=2026-05-31. verify rollout cert curl. return markers.';
         const toolContext = {
             metadata: {
                 remoteBuildIntent: true,
