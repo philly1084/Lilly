@@ -32,6 +32,9 @@ Optional overrides:
   REMOTE_CLI_MCP_BEARER_TOKEN
   OPENAI_MEDIA_API_KEY
   PERPLEXITY_API_KEY
+  KIMIBUILT_AUTH_USERNAME
+  KIMIBUILT_AUTH_PASSWORD
+  KIMIBUILT_JWT_SECRET
   LILLYBUILT_AUTH_USERNAME
   LILLYBUILT_AUTH_PASSWORD
   LILLYBUILT_JWT_SECRET
@@ -203,9 +206,27 @@ ensure_kimibuilt_secrets() {
   openai_api_key="$(choose_secret_value OPENAI_API_KEY "$KIMIBUILT_NAMESPACE" kimibuilt-secrets OPENAI_API_KEY "$n8n_api_key")"
   openai_media_api_key="$(choose_secret_value OPENAI_MEDIA_API_KEY "$KIMIBUILT_NAMESPACE" kimibuilt-secrets OPENAI_MEDIA_API_KEY)"
   perplexity_api_key="$(choose_secret_value PERPLEXITY_API_KEY "$KIMIBUILT_NAMESPACE" kimibuilt-secrets PERPLEXITY_API_KEY)"
-  auth_username="$(choose_secret_value LILLYBUILT_AUTH_USERNAME "$KIMIBUILT_NAMESPACE" kimibuilt-secrets LILLYBUILT_AUTH_USERNAME admin)"
-  auth_password="$(choose_secret_value LILLYBUILT_AUTH_PASSWORD "$KIMIBUILT_NAMESPACE" kimibuilt-secrets LILLYBUILT_AUTH_PASSWORD)"
-  jwt_secret="$(choose_secret_value LILLYBUILT_JWT_SECRET "$KIMIBUILT_NAMESPACE" kimibuilt-secrets LILLYBUILT_JWT_SECRET)"
+  auth_username="${KIMIBUILT_AUTH_USERNAME:-}"
+  if [[ -z "$auth_username" && ! is_enabled "$ROTATE_SECRETS" ]]; then
+    auth_username="$(secret_value "$KIMIBUILT_NAMESPACE" kimibuilt-secrets KIMIBUILT_AUTH_USERNAME)"
+  fi
+  if is_placeholder "$auth_username"; then
+    auth_username="$(choose_secret_value LILLYBUILT_AUTH_USERNAME "$KIMIBUILT_NAMESPACE" kimibuilt-secrets LILLYBUILT_AUTH_USERNAME admin)"
+  fi
+  auth_password="${KIMIBUILT_AUTH_PASSWORD:-}"
+  if [[ -z "$auth_password" && ! is_enabled "$ROTATE_SECRETS" ]]; then
+    auth_password="$(secret_value "$KIMIBUILT_NAMESPACE" kimibuilt-secrets KIMIBUILT_AUTH_PASSWORD)"
+  fi
+  if is_placeholder "$auth_password"; then
+    auth_password="$(choose_secret_value LILLYBUILT_AUTH_PASSWORD "$KIMIBUILT_NAMESPACE" kimibuilt-secrets LILLYBUILT_AUTH_PASSWORD)"
+  fi
+  jwt_secret="${KIMIBUILT_JWT_SECRET:-}"
+  if [[ -z "$jwt_secret" && ! is_enabled "$ROTATE_SECRETS" ]]; then
+    jwt_secret="$(secret_value "$KIMIBUILT_NAMESPACE" kimibuilt-secrets KIMIBUILT_JWT_SECRET)"
+  fi
+  if is_placeholder "$jwt_secret"; then
+    jwt_secret="$(choose_secret_value LILLYBUILT_JWT_SECRET "$KIMIBUILT_NAMESPACE" kimibuilt-secrets LILLYBUILT_JWT_SECRET)"
+  fi
   runner_token="$(choose_secret_value KIMIBUILT_REMOTE_RUNNER_TOKEN "$KIMIBUILT_NAMESPACE" kimibuilt-secrets KIMIBUILT_REMOTE_RUNNER_TOKEN)"
   postgres_password="$(choose_secret_value POSTGRES_PASSWORD "$KIMIBUILT_NAMESPACE" kimibuilt-secrets POSTGRES_PASSWORD)"
   docker_host="$(choose_secret_value DOCKER_HOST "$KIMIBUILT_NAMESPACE" kimibuilt-secrets DOCKER_HOST OPTIONAL_SET_VIA_KUBECTL_CREATE_SECRET)"
@@ -223,6 +244,9 @@ ensure_kimibuilt_secrets() {
     --from-literal=REMOTE_CLI_MCP_BEARER_TOKEN="$mcp_bearer_token" \
     --from-literal=OPENAI_MEDIA_API_KEY="$openai_media_api_key" \
     --from-literal=PERPLEXITY_API_KEY="$perplexity_api_key" \
+    --from-literal=KIMIBUILT_AUTH_USERNAME="$auth_username" \
+    --from-literal=KIMIBUILT_AUTH_PASSWORD="$auth_password" \
+    --from-literal=KIMIBUILT_JWT_SECRET="$jwt_secret" \
     --from-literal=LILLYBUILT_AUTH_USERNAME="$auth_username" \
     --from-literal=LILLYBUILT_AUTH_PASSWORD="$auth_password" \
     --from-literal=LILLYBUILT_JWT_SECRET="$jwt_secret" \
@@ -238,6 +262,7 @@ ensure_kimibuilt_secrets() {
   print_secret "$KIMIBUILT_NAMESPACE" kimibuilt-secrets \
     OPENAI_API_KEY N8N_API_KEY REMOTE_CLI_MCP_BEARER_TOKEN \
     OPENAI_MEDIA_API_KEY PERPLEXITY_API_KEY \
+    KIMIBUILT_AUTH_USERNAME KIMIBUILT_AUTH_PASSWORD KIMIBUILT_JWT_SECRET \
     LILLYBUILT_AUTH_USERNAME LILLYBUILT_AUTH_PASSWORD LILLYBUILT_JWT_SECRET \
     KIMIBUILT_REMOTE_RUNNER_TOKEN POSTGRES_PASSWORD
 }
@@ -309,7 +334,7 @@ To view decoded values in Kubernetes, rerun with:
   SHOW_SECRET_VALUES=1 $0
 
 Or inspect directly with kubectl, for example:
-  kubectl get secret kimibuilt-secrets -n ${KIMIBUILT_NAMESPACE} -o jsonpath='{.data.LILLYBUILT_AUTH_PASSWORD}' | base64 -d
+  kubectl get secret kimibuilt-secrets -n ${KIMIBUILT_NAMESPACE} -o jsonpath='{.data.KIMIBUILT_AUTH_PASSWORD}' | base64 -d
   kubectl get secret gitlab-root -n ${PLATFORM_NAMESPACE} -o jsonpath='{.data.password}' | base64 -d
 EOF
 fi

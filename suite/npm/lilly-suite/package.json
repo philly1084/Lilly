@@ -1,9 +1,9 @@
 {
   "name": "lilly-suite",
-  "version": "0.0.0",
-  "description": "Lilly Suite compose bundle CLI wrapper",
+  "version": "1.0.0",
+  "description": "Lilly Suite compatibility wrapper for the KimiBuilt Suite compose bundle",
   "license": "MIT",
-  "homepage": "https://example.com/lilly-suite",
+  "homepage": "https://github.com/philly1084/KimiBuilt",
   "type": "commonjs",
   "bin": {
     "lilly-suite": "bin/lilly-suite.js"

@@ -31,6 +31,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run release gate
+        run: npm run release:gate
+
       - name: Package application bundle
         run: |
           mkdir -p dist
@@ -78,6 +81,24 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
+
+      - name: Build release bundle payload
+        run: |
+          image_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | grep ':sha-' | head -n 1 || true)"
+          if [ -z "${image_tag}" ]; then
+            image_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          fi
+          npm run release:bundle -- --image "${image_tag}"
+
+      - name: Upload release deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: kimibuilt-suite-release-${{ github.sha }}
+          path: |
+            dist/release/*.tar.gz
+            dist/release/*.sha256
+            dist/release/*.manifest.json
+          if-no-files-found: error
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
