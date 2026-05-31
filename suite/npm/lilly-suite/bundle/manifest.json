@@ -1,0 +1,52 @@
+{
+  "name": "kimibuilt-suite",
+  "version": "1.0.0",
+  "image": "ghcr.io/philly1084/kimibuilt:1.0.0",
+  "generatedAt": "2026-05-31T14:18:34.686Z",
+  "entrypoints": {
+    "composeInstaller": "install-compose.sh",
+    "composeTemplate": "templates/release-compose.yaml",
+    "envTemplate": "templates/release.env.example",
+    "onlineSetup": "docs/online-setup.md"
+  },
+  "packageChannels": [
+    {
+      "type": "compose-bundle",
+      "name": "kimibuilt-suite-compose-1.0.0",
+      "file": "kimibuilt-suite-compose-1.0.0.tar.gz"
+    },
+    {
+      "type": "npm",
+      "name": "kimibuilt-suite",
+      "cli": "kimibuilt-suite"
+    },
+    {
+      "type": "npm",
+      "name": "lilly-suite",
+      "cli": "lilly-suite",
+      "compatibility": true
+    },
+    {
+      "type": "homebrew",
+      "name": "kimibuilt-suite",
+      "formula": "suite/homebrew/Formula/kimibuilt-suite.rb"
+    }
+  ],
+  "secrets": {
+    "generatedByInstaller": [
+      "KIMIBUILT_AUTH_PASSWORD",
+      "KIMIBUILT_JWT_SECRET",
+      "KIMIBUILT_FRONTEND_API_KEY",
+      "SESSION_SECRET",
+      "POSTGRES_PASSWORD",
+      "KIMIBUILT_REMOTE_RUNNER_TOKEN"
+    ],
+    "userProvided": [
+      "OPENAI_API_KEY",
+      "OPENAI_MEDIA_API_KEY",
+      "PERPLEXITY_API_KEY",
+      "UNSPLASH_ACCESS_KEY",
+      "REMOTE_CLI_MCP_BEARER_TOKEN"
+    ]
+  }
+}
