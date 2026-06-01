@@ -4,13 +4,16 @@ const settingsController = require('./routes/admin/settings.controller');
 const { getSessionControlState } = require('./runtime-control-state');
 const { resolvePreferredWritableFile } = require('./runtime-state-paths');
 
-const REMOTE_TOOL_IDS = new Set(['k3s-deploy', 'remote-command', 'ssh-execute', 'remote-workbench']);
+const REMOTE_TOOL_IDS = new Set(['k3s-deploy', 'remote-command', 'ssh-execute', 'remote-workbench', 'remote-cli-agent']);
 const STORAGE_PATH = resolvePreferredWritableFile(
     path.join(process.cwd(), 'data', 'cluster-state-registry.json'),
     ['cluster-state-registry.json'],
 );
 const MAX_PATHS_PER_ENTRY = 8;
 const MAX_DOMAINS_PER_ENTRY = 8;
+const MAX_CHANGED_FILES_PER_ENTRY = 20;
+const MAX_VERIFY_ITEMS_PER_ENTRY = 12;
+const MAX_UI_SCREENSHOTS_PER_ENTRY = 8;
 const MAX_RECENT_ACTIVITY = 24;
 const MAX_TARGET_CONTEXT_ITEMS = 6;
 const MAX_EDGE_ROUTES_IN_PROMPT = 5;
@@ -281,8 +284,20 @@ function normalizeState(value = {}) {
                         targetDirectory: normalizeText(entry.targetDirectory),
                         manifestsPath: normalizeText(entry.manifestsPath),
                         publicDomain: normalizeText(entry.publicDomain),
+                        publicUrl: normalizeText(entry.publicUrl),
                         ingressClassName: normalizeText(entry.ingressClassName),
                         tlsClusterIssuer: normalizeText(entry.tlsClusterIssuer),
+                        remoteCliSessionId: normalizeText(entry.remoteCliSessionId),
+                        remoteCodeJobId: normalizeText(entry.remoteCodeJobId),
+                        gitBranch: normalizeText(entry.gitBranch),
+                        gitBaseCommit: normalizeText(entry.gitBaseCommit),
+                        gitCommit: normalizeText(entry.gitCommit),
+                        changedFiles: normalizeStringList(entry.changedFiles, MAX_CHANGED_FILES_PER_ENTRY),
+                        whatChanged: summarizeText(entry.whatChanged || '', 220),
+                        verifyCommands: normalizeStringList(entry.verifyCommands, MAX_VERIFY_ITEMS_PER_ENTRY),
+                        verifyResults: normalizeStringList(entry.verifyResults, MAX_VERIFY_ITEMS_PER_ENTRY),
+                        uiCheckReport: normalizeText(entry.uiCheckReport),
+                        uiScreenshots: normalizeStringList(entry.uiScreenshots, MAX_UI_SCREENSHOTS_PER_ENTRY),
                         firstSeenAt: toIsoTimestamp(entry.firstSeenAt, null),
                         lastSeenAt: toIsoTimestamp(entry.lastSeenAt, null),
                         lastAction: normalizeLowerText(entry.lastAction),
@@ -432,6 +447,96 @@ function extractExpectedHostFromCommand(command = '') {
 
     const curlMatch = source.match(/https:\/\/([A-Za-z0-9.-]+\.[A-Za-z]{2,})/i);
     return normalizeText(curlMatch?.[1] || '');
+}
+
+function extractHostFromUrl(value = '') {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+        return '';
+    }
+
+    try {
+        return normalizeText(new URL(normalized).host);
+    } catch (_error) {
+        return '';
+    }
+}
+
+function normalizeStringList(value = [], limit = null) {
+    const source = Array.isArray(value)
+        ? value
+        : String(value || '').split(',');
+    return uniqueStrings(
+        source
+            .map((entry) => normalizeText(entry).replace(/^`+|`+$/g, ''))
+            .filter(Boolean),
+        limit,
+    );
+}
+
+function parseDeploymentReference(value = '') {
+    const normalized = normalizeText(value)
+        .replace(/^deployment\//i, '')
+        .replace(/^deploy\//i, '');
+    if (!normalized) {
+        return { namespace: '', deployment: '' };
+    }
+
+    const namespaceFirst = normalized.match(/^([a-z0-9]([-.a-z0-9]*[a-z0-9])?)\/([a-z0-9]([-.a-z0-9]*[a-z0-9])?)$/i);
+    if (namespaceFirst) {
+        return {
+            namespace: normalizeText(namespaceFirst[1]),
+            deployment: normalizeText(namespaceFirst[3]),
+        };
+    }
+
+    const kubectlStyle = normalized.match(/(?:deployment\/)?([a-z0-9]([-.a-z0-9]*[a-z0-9])?)(?:\s+|\s*,\s*)(?:-n|namespace[:=])\s*([a-z0-9]([-.a-z0-9]*[a-z0-9])?)/i);
+    if (kubectlStyle) {
+        return {
+            namespace: normalizeText(kubectlStyle[3]),
+            deployment: normalizeText(kubectlStyle[1]),
+        };
+    }
+
+    return {
+        namespace: '',
+        deployment: normalized,
+    };
+}
+
+function inferProjectName({ cwd = '', repositoryUrl = '', publicDomain = '', fallback = '' } = {}) {
+    const repo = normalizeText(repositoryUrl);
+    if (repo) {
+        const repoTail = repo.split(/[/:]/).filter(Boolean).pop() || '';
+        const repoName = repoTail.replace(/\.git(?:[#?].*)?$/i, '');
+        if (repoName) {
+            return repoName;
+        }
+    }
+
+    const workspace = normalizeText(cwd).replace(/[\\/]+$/, '');
+    if (workspace) {
+        const workspaceName = workspace.split(/[\\/]/).filter(Boolean).pop() || '';
+        if (workspaceName) {
+            return workspaceName;
+        }
+    }
+
+    const host = normalizeText(publicDomain).split('.')[0];
+    if (host) {
+        return host;
+    }
+
+    const fallbackSlug = normalizeText(fallback)
+        .toLowerCase()
+        .replace(/[^a-z0-9.-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 63);
+    return fallbackSlug || 'remote-project';
+}
+
+function mergeVerificationLists(existing = [], additions = []) {
+    return mergeUniqueStrings(existing, additions, MAX_VERIFY_ITEMS_PER_ENTRY);
 }
 
 class ClusterStateRegistry {
@@ -651,8 +756,20 @@ class ClusterStateRegistry {
                 targetDirectory: normalizeText(seed.targetDirectory),
                 manifestsPath: normalizeText(seed.manifestsPath),
                 publicDomain: normalizeText(seed.publicDomain),
+                publicUrl: normalizeText(seed.publicUrl),
                 ingressClassName: normalizeText(seed.ingressClassName),
                 tlsClusterIssuer: normalizeText(seed.tlsClusterIssuer),
+                remoteCliSessionId: normalizeText(seed.remoteCliSessionId),
+                remoteCodeJobId: normalizeText(seed.remoteCodeJobId),
+                gitBranch: normalizeText(seed.gitBranch),
+                gitBaseCommit: normalizeText(seed.gitBaseCommit),
+                gitCommit: normalizeText(seed.gitCommit),
+                changedFiles: normalizeStringList(seed.changedFiles, MAX_CHANGED_FILES_PER_ENTRY),
+                whatChanged: summarizeText(seed.whatChanged || '', 220),
+                verifyCommands: normalizeStringList(seed.verifyCommands, MAX_VERIFY_ITEMS_PER_ENTRY),
+                verifyResults: normalizeStringList(seed.verifyResults, MAX_VERIFY_ITEMS_PER_ENTRY),
+                uiCheckReport: normalizeText(seed.uiCheckReport),
+                uiScreenshots: normalizeStringList(seed.uiScreenshots, MAX_UI_SCREENSHOTS_PER_ENTRY),
                 firstSeenAt: new Date().toISOString(),
                 lastSeenAt: null,
                 lastAction: '',
@@ -683,8 +800,20 @@ class ClusterStateRegistry {
         existing.targetDirectory = normalizeText(seed.targetDirectory) || existing.targetDirectory;
         existing.manifestsPath = normalizeText(seed.manifestsPath) || existing.manifestsPath;
         existing.publicDomain = normalizeText(seed.publicDomain) || existing.publicDomain;
+        existing.publicUrl = normalizeText(seed.publicUrl) || existing.publicUrl;
         existing.ingressClassName = normalizeText(seed.ingressClassName) || existing.ingressClassName;
         existing.tlsClusterIssuer = normalizeText(seed.tlsClusterIssuer) || existing.tlsClusterIssuer;
+        existing.remoteCliSessionId = normalizeText(seed.remoteCliSessionId) || existing.remoteCliSessionId;
+        existing.remoteCodeJobId = normalizeText(seed.remoteCodeJobId) || existing.remoteCodeJobId;
+        existing.gitBranch = normalizeText(seed.gitBranch) || existing.gitBranch;
+        existing.gitBaseCommit = normalizeText(seed.gitBaseCommit) || existing.gitBaseCommit;
+        existing.gitCommit = normalizeText(seed.gitCommit) || existing.gitCommit;
+        existing.changedFiles = mergeUniqueStrings(existing.changedFiles, normalizeStringList(seed.changedFiles), MAX_CHANGED_FILES_PER_ENTRY);
+        existing.whatChanged = summarizeText(seed.whatChanged || '', 220) || existing.whatChanged;
+        existing.verifyCommands = mergeVerificationLists(existing.verifyCommands, normalizeStringList(seed.verifyCommands));
+        existing.verifyResults = mergeVerificationLists(existing.verifyResults, normalizeStringList(seed.verifyResults));
+        existing.uiCheckReport = normalizeText(seed.uiCheckReport) || existing.uiCheckReport;
+        existing.uiScreenshots = mergeUniqueStrings(existing.uiScreenshots, normalizeStringList(seed.uiScreenshots), MAX_UI_SCREENSHOTS_PER_ENTRY);
         existing.lastSeenAt = new Date().toISOString();
         existing.verification = normalizeVerification(existing.verification);
 
@@ -1040,6 +1169,150 @@ class ClusterStateRegistry {
         });
     }
 
+    recordRemoteCliAgentEvent({
+        state,
+        params = {},
+        result = {},
+        success = true,
+        objective = '',
+        reason = '',
+        target = null,
+    }) {
+        const deployDefaults = this.getEffectiveDeployDefaults();
+        const task = normalizeText(params.task || params.prompt || params.message || objective);
+        const deploymentRef = parseDeploymentReference(result.deployment || params.deployment);
+        const publicUrl = normalizeText(result.publicUrl || params.publicUrl);
+        const publicDomain = normalizeText(
+            result.publicHost
+            || params.publicHost
+            || extractHostFromUrl(publicUrl),
+        );
+        const cwd = normalizeText(result.cwd || params.cwd || params.workspacePath || params.workspace_path);
+        const repositoryUrl = normalizeText(result.gitRepo || params.repositoryUrl);
+        const projectName = inferProjectName({
+            cwd,
+            repositoryUrl,
+            publicDomain,
+            fallback: task,
+        });
+        const namespace = normalizeText(deploymentRef.namespace || params.namespace || (publicDomain ? deployDefaults.namespace : 'remote-projects'));
+        const deployment = normalizeText(deploymentRef.deployment || params.deployment || projectName);
+        const timestamp = toIsoTimestamp(result?.timestamp, new Date().toISOString());
+        const completionStatus = normalizeLowerText(result.completionStatus);
+        const blocked = completionStatus === 'blocked';
+        const failed = !success || completionStatus === 'failed';
+        const status = failed ? 'failed' : (blocked ? 'blocked' : 'succeeded');
+        const changedFiles = normalizeStringList(result.changedFiles, MAX_CHANGED_FILES_PER_ENTRY);
+        const verifyCommands = normalizeStringList(result.verifyCommands, MAX_VERIFY_ITEMS_PER_ENTRY);
+        const verifyResults = normalizeStringList(result.verifyResults, MAX_VERIFY_ITEMS_PER_ENTRY);
+        const uiScreenshots = normalizeStringList(result.uiScreenshots, MAX_UI_SCREENSHOTS_PER_ENTRY);
+
+        const targetEntry = this.ensureTargetEntry(state, target || {}, task || objective);
+        if (targetEntry) {
+            this.mergeObservedContext(targetEntry, [
+                task,
+                reason,
+                cwd,
+                repositoryUrl,
+                publicDomain,
+                result.finalOutput,
+                result.whatChanged,
+            ]);
+            targetEntry.lastStatus = status;
+            if (status === 'succeeded') {
+                targetEntry.lastInspectionAt = timestamp;
+            }
+        }
+
+        const entry = this.ensureDeploymentEntry(state, {
+            target,
+            namespace,
+            deployment,
+            container: params.container || deployDefaults.container,
+            repositoryUrl,
+            ref: result.gitBranch || params.ref || deployDefaults.ref,
+            targetDirectory: cwd,
+            manifestsPath: params.manifestsPath,
+            publicDomain,
+            publicUrl,
+            ingressClassName: params.ingressClassName || deployDefaults.ingressClassName,
+            tlsClusterIssuer: params.tlsClusterIssuer || deployDefaults.tlsClusterIssuer,
+            remoteCliSessionId: result.sessionId || result.remoteCodeSessionId || params.sessionId,
+            remoteCodeJobId: result.remoteCodeJobId || params.jobId,
+            gitBranch: result.gitBranch,
+            gitBaseCommit: result.gitBaseCommit,
+            gitCommit: result.gitCommit,
+            changedFiles,
+            whatChanged: result.whatChanged,
+            verifyCommands,
+            verifyResults,
+            uiCheckReport: result.uiCheckReport,
+            uiScreenshots,
+        });
+        if (!entry) {
+            return;
+        }
+
+        entry.lastAction = 'remote-cli-agent';
+        entry.lastTool = 'remote-cli-agent';
+        entry.lastActionAt = timestamp;
+        entry.lastObjective = summarizeText(task || objective, 220);
+        entry.lastCommand = summarizeText('remote-cli-agent', 260);
+        entry.lastStdout = summarizeText(result.whatChanged || result.finalOutput || '', 220);
+        this.mergeObservedContext(entry, [
+            task,
+            objective,
+            reason,
+            cwd,
+            repositoryUrl,
+            publicDomain,
+            publicUrl,
+            result.finalOutput,
+            result.whatChanged,
+            ...(changedFiles || []),
+            ...(verifyCommands || []),
+            ...(verifyResults || []),
+        ]);
+
+        if (status === 'succeeded') {
+            entry.lastSuccessAt = timestamp;
+            entry.lastError = '';
+            const verificationText = `${verifyCommands.join('\n')}\n${verifyResults.join('\n')}`;
+            if (verifyResults.length > 0 || publicUrl || publicDomain) {
+                entry.lastVerificationAt = timestamp;
+                entry.verification.lastVerifiedAt = timestamp;
+            }
+            if (deployment && /\b(?:rollout|deployed|deployment|kubectl|k3s|pod|service)\b/i.test(verificationText)) {
+                entry.verification.rollout = true;
+                entry.verification.lastRolloutAt = timestamp;
+            }
+            if (publicDomain && (publicUrl || /\b(?:ingress|route|public|https?|curl|tls|certificate)\b/i.test(verificationText))) {
+                entry.verification.ingress = true;
+            }
+            if (/^https:\/\//i.test(publicUrl) && !/\b(?:fail|failed|blocked|error)\b/i.test(verifyResults.join('\n'))) {
+                entry.verification.https = true;
+            }
+        } else {
+            entry.lastFailureAt = timestamp;
+            entry.lastError = summarizeText(result.blocker || result.error || result.finalOutput || 'remote-cli-agent did not complete.', 220);
+        }
+        entry.lastStatus = status;
+
+        this.recordActivity(state, {
+            toolId: 'remote-cli-agent',
+            action: 'remote-cli-agent',
+            status,
+            host: entry.host,
+            namespace: entry.namespace,
+            deployment: entry.deployment,
+            publicDomain: entry.publicDomain,
+            summary: status === 'succeeded'
+                ? `remote-cli-agent completed ${entry.namespace || 'default'}/${entry.deployment || 'remote project'}${entry.publicDomain ? ` on ${entry.publicDomain}` : ''}${entry.whatChanged ? `: ${entry.whatChanged}` : '.'}`
+                : `remote-cli-agent ${status} for ${entry.namespace || 'default'}/${entry.deployment || 'remote project'}${entry.publicDomain ? ` on ${entry.publicDomain}` : ''}.`,
+            error: entry.lastError,
+        });
+    }
+
     recordRemoteCommandEvent({
         state,
         toolId = 'remote-command',
@@ -1245,6 +1518,20 @@ class ClusterStateRegistry {
                 continue;
             }
 
+            if (toolId === 'remote-cli-agent') {
+                this.recordRemoteCliAgentEvent({
+                    state,
+                    params,
+                    result,
+                    success,
+                    objective,
+                    reason: event?.reason || '',
+                    target,
+                });
+                mutated = true;
+                continue;
+            }
+
             this.recordRemoteCommandEvent({
                 state,
                 toolId,
@@ -1374,8 +1661,24 @@ class ClusterStateRegistry {
                 : '';
             const statusDetail = entry.lastStatus === 'failed'
                 ? `last ${entry.lastAction || 'activity'} failed${entry.lastError ? `: ${summarizeText(entry.lastError, 120)}` : '.'}`
-                : `last ${entry.lastAction || 'activity'} succeeded${entry.lastSuccessAt ? ` at ${entry.lastSuccessAt}` : '.'}`;
-            lines.push(`Known workload ${scope} on ${target}${entry.publicDomain ? ` (${entry.publicDomain})` : ''}: ${statusDetail} Verification: ${verificationSummary}.${paths}`);
+                : entry.lastStatus === 'blocked'
+                    ? `last ${entry.lastAction || 'activity'} blocked${entry.lastError ? `: ${summarizeText(entry.lastError, 120)}` : '.'}`
+                    : `last ${entry.lastAction || 'activity'} succeeded${entry.lastSuccessAt ? ` at ${entry.lastSuccessAt}` : '.'}`;
+            const sourceDetail = [
+                entry.repositoryUrl ? `repo ${entry.repositoryUrl}` : '',
+                entry.gitBranch ? `branch ${entry.gitBranch}` : '',
+                entry.gitBaseCommit ? `base ${entry.gitBaseCommit}` : '',
+                entry.gitCommit ? `commit ${entry.gitCommit}` : '',
+                entry.targetDirectory ? `workspace ${entry.targetDirectory}` : '',
+                entry.remoteCliSessionId ? `remote session ${entry.remoteCliSessionId}` : '',
+            ].filter(Boolean).join(', ');
+            const changeDetail = entry.whatChanged
+                ? ` Last change: ${entry.whatChanged}.`
+                : '';
+            const changedFiles = Array.isArray(entry.changedFiles) && entry.changedFiles.length > 0
+                ? ` Changed files: ${entry.changedFiles.slice(0, 6).join(', ')}.`
+                : '';
+            lines.push(`Known workload ${scope} on ${target}${entry.publicDomain ? ` (${entry.publicDomain})` : ''}: ${statusDetail} Verification: ${verificationSummary}.${sourceDetail ? ` Source: ${sourceDetail}.` : ''}${changeDetail}${changedFiles}${paths}`);
         });
 
         activity.forEach((entry) => {
@@ -1383,6 +1686,24 @@ class ClusterStateRegistry {
         });
 
         return lines.filter(Boolean).join('\n');
+    }
+
+    buildRemoteCliAgentContext({ maxDeployments = 5, maxRecentActivity = 4, maxTargets = 3, maxEdgeRoutes = MAX_EDGE_ROUTES_IN_PROMPT } = {}) {
+        const summary = this.buildPromptSummary({
+            maxDeployments,
+            maxRecentActivity,
+            maxTargets,
+            maxEdgeRoutes,
+        });
+        if (!summary) {
+            return '';
+        }
+
+        return [
+            '[Remote project continuity registry]',
+            'Use these as candidate facts from previous verified KimiBuilt remote work. Match by explicit repo, workspace, deployment, namespace, domain, or target before editing. If the current task points at a different project, inspect first and do not reuse a prior session or workspace blindly.',
+            summary,
+        ].join('\n');
     }
 
     getRuntimeSummary() {

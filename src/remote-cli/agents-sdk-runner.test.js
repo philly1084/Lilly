@@ -52,7 +52,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(instructions).toContain('VERIFY_RESULTS');
     expect(instructions).toContain('PUBLIC_URL');
     expect(instructions).toContain('BLOCKER');
+    expect(instructions).toContain('GIT_BRANCH');
+    expect(instructions).toContain('GIT_BASE_COMMIT');
     expect(instructions).toContain('GIT_COMMIT');
+    expect(instructions).toContain('CHANGED_FILES');
     expect(instructions).toContain('remote_code_status');
     expect(instructions).toContain('persistent private workbench');
     expect(instructions).toContain('not a Git remote, URL, or raw user@host SSH string');
@@ -134,7 +137,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
       'REMOTE_CLI_SESSION_ID=rcs_123',
       'WORKSPACE=/srv/apps/weather',
       'GIT_REPO=https://gitlab.demoserver2.buzz/agent-apps/weather.git',
+      'GIT_BRANCH=agent/weather',
+      'GIT_BASE_COMMIT=def5678',
       'GIT_COMMIT=abcdef123456',
+      'CHANGED_FILES=src/app.js,k8s/deployment.yaml',
       'DEPLOYMENT=app-weather/weather',
       'PUBLIC_HOST=weather.demoserver2.buzz',
       'PUBLIC_URL=https://weather.demoserver2.buzz',
@@ -150,7 +156,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
       sessionId: 'rcs_123',
       workspace: '/srv/apps/weather',
       gitRepo: 'https://gitlab.demoserver2.buzz/agent-apps/weather.git',
+      gitBranch: 'agent/weather',
+      gitBaseCommit: 'def5678',
       gitCommit: 'abcdef123456',
+      changedFiles: ['src/app.js', 'k8s/deployment.yaml'],
       deployment: 'app-weather/weather',
       publicHost: 'weather.demoserver2.buzz',
       publicUrl: 'https://weather.demoserver2.buzz',

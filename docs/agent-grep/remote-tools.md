@@ -26,6 +26,11 @@ Remote completion proof:
 - Forward `USER_INPUT_REQUIRED=<question/options>` to the user and continue the same session after the answer.
 - Stop repeated blocked-command loops after two materially identical failures.
 
+Continuity:
+- Remote tool results are recorded in the cluster continuity registry with repo, workspace, deployment, public host, commit, changed files, and verification markers when tools return them.
+- `remote-cli-agent` receives a bounded continuity brief on each run. Treat those facts as candidates, not permission to mutate the nearest old project: match by explicit repo, workspace, deployment, namespace, domain, or target before editing.
+- Same-session `REMOTE_CLI_SESSION_ID`/workspace reuse is for continuation tasks only. If the user names a different domain, repo, or workspace, inspect that project instead of carrying over the old one.
+
 Longer docs:
 - `src/agent-sdk/tool-docs/remote-tools.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`

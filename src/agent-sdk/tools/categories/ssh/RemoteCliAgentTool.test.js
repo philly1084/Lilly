@@ -1,4 +1,8 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { RemoteCliAgentTool } = require('./RemoteCliAgentTool');
+const { clusterStateRegistry } = require('../../../../cluster-state-registry');
 
 function buildTool() {
   const runner = {
@@ -14,6 +18,20 @@ function buildTool() {
 }
 
 describe('RemoteCliAgentTool', () => {
+  let storageDir;
+  let originalStoragePath;
+
+  beforeEach(() => {
+    originalStoragePath = clusterStateRegistry.getStoragePath();
+    storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kimibuilt-remote-cli-tool-'));
+    clusterStateRegistry.setStoragePathForTests(path.join(storageDir, 'cluster-state-registry.json'));
+  });
+
+  afterEach(() => {
+    clusterStateRegistry.setStoragePathForTests(originalStoragePath);
+    fs.rmSync(storageDir, { recursive: true, force: true });
+  });
+
   test('normalizes common orchestrator aliases before required task validation', async () => {
     const { tool, runner } = buildTool();
 
@@ -94,6 +112,67 @@ describe('RemoteCliAgentTool', () => {
       task: 'Continue the remote build.',
       maxStatusPolls: 21,
       statusPollIntervalMs: 1500,
+    }));
+  });
+
+  test('reuses same-session remote context for continuation tasks and passes a continuity brief', async () => {
+    const { tool, runner } = buildTool();
+
+    const result = await tool.execute({
+      task: 'Continue that deployment and verify it.',
+    }, {
+      session: {
+        controlState: {
+          remoteCliAgent: {
+            sessionId: 'rcli_calan_session',
+            targetId: 'k3s-prod',
+            cwd: '/srv/apps/calan-calendar',
+            gitRepo: 'https://gitlab.demoserver2.buzz/agent-apps/calan-calendar.git',
+            gitBranch: 'agent/calan-calendar',
+            gitCommit: 'abc1234',
+            changedFiles: ['src/app.js'],
+            publicHost: 'calan.demoserver2.buzz',
+            whatChanged: 'Updated the calendar UI.',
+            completionStatus: 'complete',
+          },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      task: 'Continue that deployment and verify it.',
+      sessionId: 'rcli_calan_session',
+      targetId: 'k3s-prod',
+      cwd: '/srv/apps/calan-calendar',
+      continuitySummary: expect.stringContaining('Current conversation remote-cli-agent state'),
+    }));
+    expect(runner.run.mock.calls[0][0].continuitySummary).toContain('calan.demoserver2.buzz');
+    expect(runner.run.mock.calls[0][0].continuitySummary).toContain('Updated the calendar UI.');
+  });
+
+  test('does not blindly reuse prior remote context when the task names a different domain', async () => {
+    const { tool, runner } = buildTool();
+
+    const result = await tool.execute({
+      task: 'Build a new weather app at weather.demoserver2.buzz.',
+    }, {
+      session: {
+        controlState: {
+          remoteCliAgent: {
+            sessionId: 'rcli_calan_session',
+            targetId: 'k3s-prod',
+            cwd: '/srv/apps/calan-calendar',
+            publicHost: 'calan.demoserver2.buzz',
+          },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.not.objectContaining({
+      sessionId: 'rcli_calan_session',
+      cwd: '/srv/apps/calan-calendar',
     }));
   });
 

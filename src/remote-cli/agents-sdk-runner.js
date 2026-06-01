@@ -505,8 +505,18 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     || cleanMarkerValue(text.match(/workspace\s*:\s*`?([^`\n]+)/i)?.[1] || '');
   const gitRepo = readMarkerLine(text, ['GIT_REPO', 'GIT_REMOTE', 'REPOSITORY'])
     || cleanMarkerValue(text.match(/(?:git\s+repo|repository)\s*:\s*`?([^`\n]+)/i)?.[1] || '');
+  const gitBranch = readMarkerLine(text, ['GIT_BRANCH', 'BRANCH'])
+    || cleanMarkerValue(text.match(/(?:git\s+branch|branch)\s*:\s*`?([^`\n]+)/i)?.[1] || '');
+  const gitBaseCommit = readMarkerLine(text, ['GIT_BASE_COMMIT', 'BASE_COMMIT', 'BASE'])
+    || cleanMarkerValue(text.match(/(?:git\s+base\s+commit|base\s+commit|base)\s*:\s*`?([a-f0-9]{7,40})/i)?.[1] || '');
   const gitCommit = readMarkerLine(text, ['GIT_COMMIT', 'COMMIT'])
     || cleanMarkerValue(text.match(/(?:git\s+commit|commit)\s*:\s*`?([a-f0-9]{7,40})/i)?.[1] || '');
+  const changedFiles = Array.from(new Set(
+    readMarkerLines(text, ['CHANGED_FILES', 'CHANGED_FILE'])
+      .flatMap((value) => value.split(','))
+      .map((value) => normalizeOptionalProofValue(value))
+      .filter(Boolean),
+  ));
   const deployment = readMarkerLine(text, ['DEPLOYMENT', 'K8S_DEPLOYMENT']);
   const publicHost = readMarkerLine(text, ['PUBLIC_HOST', 'HOST', 'URL'])
     || cleanMarkerValue(text.match(/https?:\/\/([^/\s`]+)/i)?.[1] || '');
@@ -545,7 +555,10 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     ...(jobId ? { jobId } : {}),
     ...(workspace ? { workspace } : {}),
     ...(gitRepo ? { gitRepo } : {}),
+    ...(gitBranch ? { gitBranch } : {}),
+    ...(gitBaseCommit ? { gitBaseCommit } : {}),
     ...(gitCommit ? { gitCommit } : {}),
+    ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(deployment ? { deployment } : {}),
     ...(publicHost ? { publicHost } : {}),
     ...(publicUrl ? { publicUrl } : {}),
@@ -583,9 +596,18 @@ function buildRemoteCliProofDisplay(source = '', metadata = {}) {
   if (metadata.gitRepo) {
     pushUniqueLine(lines, `GIT_REPO=${metadata.gitRepo}`);
   }
+  if (metadata.gitBranch) {
+    pushUniqueLine(lines, `GIT_BRANCH=${metadata.gitBranch}`);
+  }
+  if (metadata.gitBaseCommit) {
+    pushUniqueLine(lines, `GIT_BASE_COMMIT=${metadata.gitBaseCommit}`);
+  }
   if (metadata.gitCommit) {
     pushUniqueLine(lines, `GIT_COMMIT=${metadata.gitCommit}`);
   }
+  (metadata.changedFiles || []).forEach((value) => {
+    pushUniqueLine(lines, `CHANGED_FILES=${value}`);
+  });
   if (metadata.deployment) {
     pushUniqueLine(lines, `DEPLOYMENT=${metadata.deployment}`);
   }
@@ -1163,6 +1185,7 @@ function buildCodexAgentPrompt({
   workspacePath = '',
   priorThreadId = '',
   adminMode = false,
+  continuitySummary = '',
 } = {}) {
   return [
     'Codex-agent execution contract:',
@@ -1173,7 +1196,9 @@ function buildCodexAgentPrompt({
     '- Work in the current workspace. Do not ask for SSH details unless the task explicitly needs a separate server not represented by this workspace.',
     '- Inspect before editing, keep changes scoped, and verify the exact requested path.',
     '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
-    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_COMMIT=<sha>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
+    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
+    continuitySummary ? 'Remote project continuity context:' : '',
+    continuitySummary,
     '',
     'User task:',
     task,
@@ -1343,6 +1368,7 @@ function buildRemoteCliInstructions({
   remoteCodeModel = DEFAULT_REMOTE_CODE_MODEL,
   extraInstructions = '',
   gitea = resolveConfiguredGitProviderContext(),
+  continuitySummary = '',
 } = {}) {
   return [
     'You can modify the remote server using the remote-cli MCP tools.',
@@ -1391,11 +1417,13 @@ function buildRemoteCliInstructions({
     'If it returns status "running", call remote_code_status with the returned jobId only.',
     'If continuing prior work, reuse the returned sessionId.',
     sessionId ? `Current prior remote CLI sessionId: ${sessionId}` : '',
+    continuitySummary ? 'Remote project continuity context from previous verified KimiBuilt work:' : '',
+    continuitySummary,
     'When the task includes an "Original task" and a "Current user follow-up", preserve the original task as the governing objective. Treat the follow-up as steering or continuation, not as a replacement status request.',
     'Do not let progress callbacks, foreground plan labels, or status-card text become the task. Finish the requested work and only stop for USER_INPUT_REQUIRED when a real user decision is needed.',
     'Do not try to pass raw shell commands; only use the exposed tool schema.',
     'Finish every run with completion proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, and BLOCKER=<none or exact blocker>. Use one VERIFY_COMMANDS or VERIFY_RESULTS line per distinct command/result when useful.',
-    'Also finish with marker lines for continuity when known: REMOTE_CLI_SESSION_ID=<remote_code_run sessionId>, WORKSPACE=<path>, GIT_REPO=<origin or local repo>, GIT_COMMIT=<sha>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
+    'Also finish with marker lines for continuity when known: REMOTE_CLI_SESSION_ID=<remote_code_run sessionId>, WORKSPACE=<path>, GIT_REPO=<origin or local repo>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
     extraInstructions,
   ].filter(Boolean).join('\n');
 }
@@ -1407,6 +1435,7 @@ function buildRemoteCliPrompt({
   sessionId = '',
   waitMs = 30000,
   adminMode = false,
+  continuitySummary = '',
 } = {}) {
   return [
     `Task: ${task}`,
@@ -1417,6 +1446,8 @@ function buildRemoteCliPrompt({
     sessionId ? `- continue remote CLI sessionId: ${sessionId}` : '',
     `- waitMs: ${waitMs}`,
     adminMode ? '- admin runner mode: enabled for real remote change/deploy work; keep privilege use scoped to the task and stop on repeated blocked commands.' : '',
+    continuitySummary ? 'Remote project continuity context:' : '',
+    continuitySummary,
   ].filter(Boolean).join('\n');
 }
 
@@ -1426,6 +1457,7 @@ function buildDirectRemoteCodeTask({
   cwd,
   sessionId = '',
   adminMode = false,
+  continuitySummary = '',
 } = {}) {
   return [
     'Direct remote execution contract:',
@@ -1438,7 +1470,9 @@ function buildDirectRemoteCodeTask({
     '- Use the local shell/tools available in this remote execution environment to inspect, edit, build, deploy, and verify as the task requires.',
     '- Keep changes scoped to the requested workspace and task. Avoid destructive operations and secret changes unless explicitly requested.',
     '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
-    '- Include REMOTE_CLI_SESSION_ID=<session id>, WORKSPACE=<path>, REMOTE_CLI_JOB_ID=<job id if known>, and any requested REMOTE_AGENT_RESULT=<value> markers when known.',
+    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<session id>, WORKSPACE=<path>, REMOTE_CLI_JOB_ID=<job id if known>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>, and any requested REMOTE_AGENT_RESULT=<value>.',
+    continuitySummary ? 'Remote project continuity context:' : '',
+    continuitySummary,
     '',
     'User task:',
     task,
@@ -1602,6 +1636,7 @@ class RemoteCliAgentsSdkRunner {
     maxStatusPolls = DEFAULT_MAX_STATUS_POLLS,
     statusPollIntervalMs = DEFAULT_STATUS_POLL_INTERVAL_MS,
     adminMode = false,
+    continuitySummary = '',
     onProgress = null,
   } = {}) {
     const baseUrl = resolveCodexAgentBaseUrl(input, this.config);
@@ -1666,6 +1701,7 @@ class RemoteCliAgentsSdkRunner {
         workspacePath,
         priorThreadId,
         adminMode,
+        continuitySummary: continuitySummary || normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context),
       }),
       continuation: Boolean(priorThreadId),
       ...(priorThreadId ? { threadId: priorThreadId } : {}),
@@ -1902,6 +1938,7 @@ class RemoteCliAgentsSdkRunner {
     maxStatusPolls = DEFAULT_MAX_STATUS_POLLS,
     statusPollIntervalMs = DEFAULT_STATUS_POLL_INTERVAL_MS,
     adminMode = false,
+    continuitySummary = '',
     onProgress = null,
   } = {}) {
     const emitProgress = (detail, extra = {}) => {
@@ -1941,6 +1978,7 @@ class RemoteCliAgentsSdkRunner {
           cwd,
           sessionId: remoteSessionId,
           adminMode,
+          continuitySummary,
         }),
         ...(model ? { model } : {}),
         ...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
@@ -2065,6 +2103,7 @@ class RemoteCliAgentsSdkRunner {
     const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
     const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs || input.status_poll_interval_ms || this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
     const adminMode = resolveAdminMode(input, task);
+    const continuitySummary = normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context);
 
     if (transport === 'codex-agent') {
       try {
@@ -2079,6 +2118,7 @@ class RemoteCliAgentsSdkRunner {
           maxStatusPolls,
           statusPollIntervalMs,
           adminMode,
+          continuitySummary,
           onProgress: input.onProgress,
         });
       } catch (error) {
@@ -2157,6 +2197,7 @@ class RemoteCliAgentsSdkRunner {
         waitMs,
         adminMode,
         remoteCodeModel,
+        continuitySummary,
         extraInstructions: input.instructions || input.extraInstructions || '',
       });
     const agent = directRun
@@ -2210,6 +2251,7 @@ class RemoteCliAgentsSdkRunner {
           maxStatusPolls,
           statusPollIntervalMs,
           adminMode,
+          continuitySummary,
           onProgress: input.onProgress,
         });
       } else {
@@ -2222,6 +2264,7 @@ class RemoteCliAgentsSdkRunner {
             sessionId,
             waitMs,
             adminMode,
+            continuitySummary,
           }), {
             maxTurns,
           }), agentRunTimeoutMs);
@@ -2269,6 +2312,7 @@ class RemoteCliAgentsSdkRunner {
             maxStatusPolls,
             statusPollIntervalMs,
             adminMode,
+            continuitySummary,
             onProgress: input.onProgress,
           });
         }
@@ -2292,6 +2336,7 @@ class RemoteCliAgentsSdkRunner {
             maxStatusPolls,
             statusPollIntervalMs,
             adminMode: normalizeBooleanFlag(leakedArgs.adminMode, adminMode),
+            continuitySummary,
             onProgress: input.onProgress,
           });
         }
@@ -2315,6 +2360,7 @@ class RemoteCliAgentsSdkRunner {
             maxStatusPolls,
             statusPollIntervalMs,
             adminMode,
+            continuitySummary,
             onProgress: input.onProgress,
           });
           runMetadata = extractRemoteCliRunMetadata(finalOutput);
@@ -2333,6 +2379,7 @@ class RemoteCliAgentsSdkRunner {
             maxStatusPolls,
             statusPollIntervalMs,
             adminMode,
+            continuitySummary,
             onProgress: input.onProgress,
           });
           runMetadata = extractRemoteCliRunMetadata(finalOutput);
@@ -2366,7 +2413,10 @@ class RemoteCliAgentsSdkRunner {
         remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
         remoteCodeJobId: metadataRemoteJobId || fallbackRemoteJobId || null,
         gitRepo: runMetadata.gitRepo || null,
+        gitBranch: runMetadata.gitBranch || null,
+        gitBaseCommit: runMetadata.gitBaseCommit || null,
         gitCommit: runMetadata.gitCommit || null,
+        changedFiles: runMetadata.changedFiles || [],
         deployment: runMetadata.deployment || null,
         publicHost: runMetadata.publicHost || null,
         publicUrl: runMetadata.publicUrl || null,

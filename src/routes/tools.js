@@ -661,6 +661,7 @@ function buildToolExecutionContext(toolManager, req, sessionId = null, session =
     : null;
   return {
     sessionId,
+    session,
     sessionIsolation: isSessionIsolationEnabled({
       sessionIsolation: body.sessionIsolation || body.session_isolation,
       metadata,
@@ -830,6 +831,33 @@ async function resolveToolSessionId(requestedSessionId = null, ownerId = null, s
 function unwrapToolResultPayload(result = {}) {
   const envelope = result && typeof result === 'object' ? result : {};
   return envelope.data || envelope.result || envelope;
+}
+
+async function recordRemoteToolRegistryEvent(sessionId, session = null, toolId = '', params = {}, result = {}) {
+  if (!REMOTE_SERVICE_TOOL_IDS.has(toolId)) {
+    return;
+  }
+
+  const objective = String(params.task || params.prompt || params.message || params.command || params.workflowAction || params.action || '').trim();
+  try {
+    clusterStateRegistry.recordToolEvents({
+      sessionId,
+      objective,
+      toolEvents: [{
+        toolCall: {
+          function: {
+            name: toolId,
+            arguments: JSON.stringify(params || {}),
+          },
+        },
+        result,
+        reason: objective,
+      }],
+      controlState: getSessionControlState(session),
+    });
+  } catch (error) {
+    console.warn('[Tools API] Failed to update remote continuity registry:', error?.message || error);
+  }
 }
 
 async function updateSessionToolMetadata(sessionId, toolId, params = {}, result = {}) {
@@ -1230,6 +1258,7 @@ router.post('/invoke', async (req, res) => {
       params,
       buildToolExecutionContext(toolManager, req, resolvedSessionId, resolvedSession),
     );
+    await recordRemoteToolRegistryEvent(resolvedSessionId, resolvedSession, toolId, params, result);
     await updateSessionToolMetadata(resolvedSessionId, toolId, params, result);
     
     res.json({ success: true, data: result, sessionId: resolvedSessionId });
@@ -1270,6 +1299,7 @@ router.post('/invoke/:id', async (req, res) => {
       params,
       buildToolExecutionContext(toolManager, req, resolvedSessionId, resolvedSession),
     );
+    await recordRemoteToolRegistryEvent(resolvedSessionId, resolvedSession, id, params, result);
     await updateSessionToolMetadata(resolvedSessionId, id, params, result);
     
     res.json({ success: true, data: result, sessionId: resolvedSessionId });

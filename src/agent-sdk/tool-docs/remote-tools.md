@@ -105,6 +105,12 @@ UI_CHECK_REPORT=...
 UI_SCREENSHOTS=...
 ```
 
+## Continuity Registry
+
+- The remote tool family records reusable project facts in the cluster continuity registry when proof markers are returned: repo, workspace, deployment, public host, commit, changed files, verification results, and UI check artifacts.
+- `remote-cli-agent` receives a bounded continuity brief before each run. Treat it as candidate context and match by explicit repo, workspace, deployment, namespace, domain, or target before editing.
+- Same-session `REMOTE_CLI_SESSION_ID` and workspace reuse is for continuation tasks only. If the user names a different domain, repo, or workspace, inspect that project instead of carrying over the old one.
+
 ## Good References
 
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`

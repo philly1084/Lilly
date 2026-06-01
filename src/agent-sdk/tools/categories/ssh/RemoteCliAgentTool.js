@@ -2,6 +2,8 @@
 
 const { ToolBase } = require('../../ToolBase');
 const { remoteCliAgentsSdkRunner } = require('../../../../remote-cli/agents-sdk-runner');
+const { clusterStateRegistry } = require('../../../../cluster-state-registry');
+const { getSessionControlState } = require('../../../../runtime-control-state');
 
 function parseObjectLike(value) {
   if (!value) {
@@ -59,6 +61,179 @@ function normalizeInteger(value) {
   return Number.isFinite(numeric) ? Math.trunc(numeric) : undefined;
 }
 
+function extractDomains(text = '') {
+  return Array.from(new Set(
+    String(text || '').match(/\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}\b/ig) || [],
+  ));
+}
+
+function extractUnixPaths(text = '') {
+  return Array.from(new Set(
+    (String(text || '').match(/(?:^|[\s"'`(])((?:\/(?:app|etc|opt|srv|var|home|root|usr|tmp)(?:\/[A-Za-z0-9._:-]+)+)\/?)/g) || [])
+      .map((entry) => entry.replace(/^[\s"'`(]+/, '').replace(/[),.;:]+$/, '')),
+  ));
+}
+
+function getHostFromUrl(value = '') {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return '';
+  }
+  try {
+    return new URL(normalized).host;
+  } catch (_error) {
+    return '';
+  }
+}
+
+function normalizeLower(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getRemoteCliAgentStateFromContext(context = {}) {
+  const sessionState = getSessionControlState(context.session || {});
+  const explicitState = getSessionControlState({
+    controlState: context.controlState || {},
+    metadata: context.metadata || {},
+  });
+  return {
+    ...(explicitState.remoteCliAgent || {}),
+    ...(sessionState.remoteCliAgent || {}),
+  };
+}
+
+function hasContinuationLanguage(task = '') {
+  return /\b(?:continue|resume|finish|keep going|retry|rerun|re-run|again|same|that|this|it|follow[-\s]?up|still|fix the deployed|check the deployed|poll|status)\b/i.test(task);
+}
+
+function hasMatchingProjectAnchor(task = '', prior = {}) {
+  const normalizedTask = normalizeLower(task);
+  const priorHost = normalizeLower(prior.publicHost || getHostFromUrl(prior.publicUrl));
+  const priorCwd = normalizeLower(prior.cwd);
+  const priorRepo = normalizeLower(prior.gitRepo);
+  const priorDeployment = normalizeLower(prior.deployment);
+
+  if (priorHost && extractDomains(task).some((domain) => normalizeLower(domain) === priorHost)) {
+    return true;
+  }
+  if (priorCwd && extractUnixPaths(task).some((path) => {
+    const normalizedPath = normalizeLower(path);
+    return normalizedPath === priorCwd
+      || normalizedPath.startsWith(`${priorCwd}/`)
+      || priorCwd.startsWith(`${normalizedPath}/`);
+  })) {
+    return true;
+  }
+  if (priorRepo && normalizedTask.includes(priorRepo)) {
+    return true;
+  }
+  if (priorDeployment && normalizedTask.includes(priorDeployment)) {
+    return true;
+  }
+
+  return false;
+}
+
+function hasDifferentExplicitProjectAnchor(task = '', prior = {}) {
+  if (hasMatchingProjectAnchor(task, prior)) {
+    return false;
+  }
+
+  const priorHost = normalizeLower(prior.publicHost || getHostFromUrl(prior.publicUrl));
+  const domains = extractDomains(task).map(normalizeLower);
+  if (domains.length > 0 && (!priorHost || !domains.includes(priorHost))) {
+    return true;
+  }
+
+  const priorCwd = normalizeLower(prior.cwd);
+  const paths = extractUnixPaths(task).map(normalizeLower);
+  if (paths.length > 0 && priorCwd && !paths.some((path) => (
+    path === priorCwd
+    || path.startsWith(`${priorCwd}/`)
+    || priorCwd.startsWith(`${path}/`)
+  ))) {
+    return true;
+  }
+
+  const repoMatches = String(task || '').match(/https?:\/\/[^\s"'`]+\.git\b/ig) || [];
+  const priorRepo = normalizeLower(prior.gitRepo);
+  if (repoMatches.length > 0 && (!priorRepo || !repoMatches.map(normalizeLower).includes(priorRepo))) {
+    return true;
+  }
+
+  return false;
+}
+
+function shouldReusePriorRemoteCliAgentState(task = '', prior = {}) {
+  if (!prior || typeof prior !== 'object') {
+    return false;
+  }
+  if (!prior.sessionId && !prior.remoteCodeSessionId && !prior.cwd && !prior.targetId) {
+    return false;
+  }
+  if (hasDifferentExplicitProjectAnchor(task, prior)) {
+    return false;
+  }
+  return hasContinuationLanguage(task) || hasMatchingProjectAnchor(task, prior);
+}
+
+function applyPriorRemoteCliAgentDefaults(params = {}, context = {}) {
+  const prior = getRemoteCliAgentStateFromContext(context);
+  const task = firstNonEmptyText(params.task, params.prompt, params.message);
+  if (!shouldReusePriorRemoteCliAgentState(task, prior)) {
+    return { state: prior, reused: false };
+  }
+
+  applyAlias(params, 'sessionId', prior.sessionId, prior.remoteCodeSessionId);
+  applyAlias(params, 'cwd', prior.cwd);
+  applyAlias(params, 'targetId', prior.targetId);
+
+  if (!params.jobId && prior.remoteCodeJobId && /(?:continue|resume|poll|status|running|same|that|again|retry)/i.test(task)) {
+    params.jobId = prior.remoteCodeJobId;
+  }
+
+  return { state: prior, reused: true };
+}
+
+function buildSessionRemoteCliContinuity(prior = {}) {
+  if (!prior || typeof prior !== 'object' || Object.keys(prior).length === 0) {
+    return '';
+  }
+  const fragments = [
+    prior.sessionId ? `remote session ${prior.sessionId}` : '',
+    prior.remoteCodeJobId ? `job ${prior.remoteCodeJobId}` : '',
+    prior.targetId ? `target ${prior.targetId}` : '',
+    prior.cwd ? `workspace ${prior.cwd}` : '',
+    prior.gitRepo ? `repo ${prior.gitRepo}` : '',
+    prior.gitBranch ? `branch ${prior.gitBranch}` : '',
+    prior.gitBaseCommit ? `base ${prior.gitBaseCommit}` : '',
+    prior.gitCommit ? `commit ${prior.gitCommit}` : '',
+    Array.isArray(prior.changedFiles) && prior.changedFiles.length > 0 ? `changed files ${prior.changedFiles.slice(0, 8).join(', ')}` : '',
+    prior.deployment ? `deployment ${prior.deployment}` : '',
+    prior.publicHost ? `public host ${prior.publicHost}` : '',
+    prior.whatChanged ? `last change ${prior.whatChanged}` : '',
+    prior.completionStatus ? `status ${prior.completionStatus}` : '',
+    prior.blocker ? `blocker ${prior.blocker}` : '',
+  ].filter(Boolean);
+  if (fragments.length === 0) {
+    return '';
+  }
+  return [
+    '[Current conversation remote-cli-agent state]',
+    'Reuse only when this task is a continuation of the same repo, workspace, deployment, or domain.',
+    `- ${fragments.join('; ')}`,
+  ].join('\n');
+}
+
+function buildRemoteCliContinuitySummary(params = {}, context = {}, prior = {}) {
+  const parts = [
+    buildSessionRemoteCliContinuity(prior),
+    clusterStateRegistry.buildRemoteCliAgentContext(),
+  ].filter(Boolean);
+
+  return parts.join('\n\n');
+}
+
 function applyAlias(params, targetKey, ...values) {
   if (params[targetKey] !== undefined && params[targetKey] !== null && String(params[targetKey]).trim() !== '') {
     return;
@@ -94,7 +269,7 @@ function sanitizeOuterRemoteCliToolReferences(task = '') {
   return text;
 }
 
-function normalizeRemoteCliAgentParams(params = {}) {
+function normalizeRemoteCliAgentParams(params = {}, context = {}) {
   const argumentObject = parseObjectLike(params.arguments);
   const inputObject = parseObjectLike(params.input);
   const nestedParams = parseObjectLike(params.params);
@@ -143,6 +318,13 @@ function normalizeRemoteCliAgentParams(params = {}) {
   applyAlias(params, 'mcpSessionId', params.mcp_session_id, argumentObject?.mcpSessionId, argumentObject?.mcp_session_id);
   applyAlias(params, 'remoteCodeModel', params.remote_code_model, argumentObject?.remoteCodeModel, argumentObject?.remote_code_model, remoteCodeRun?.model);
   applyAlias(params, 'transport', params.remoteCliTransport, params.remote_cli_transport, argumentObject?.transport, argumentObject?.remoteCliTransport, argumentObject?.remote_cli_transport);
+
+  const priorRemoteCliAgent = applyPriorRemoteCliAgentDefaults(params, context);
+  applyAlias(params, 'continuitySummary', params.remoteProjectContext, params.remote_project_context, buildRemoteCliContinuitySummary(
+    params,
+    context,
+    priorRemoteCliAgent.reused ? priorRemoteCliAgent.state : {},
+  ));
 
   const waitMs = normalizeInteger(firstDefined(params.waitMs, params.wait_ms, argumentObject?.waitMs, argumentObject?.wait_ms, remoteCodeRun?.waitMs, remoteCodeRun?.wait_ms));
   if (waitMs !== undefined) {
@@ -284,6 +466,10 @@ class RemoteCliAgentTool extends ToolBase {
           instructions: {
             type: 'string',
             description: 'Optional additional server-side instructions for the remote coding agent.',
+          },
+          continuitySummary: {
+            type: 'string',
+            description: 'Bounded project continuity context assembled by KimiBuilt from prior verified remote work. Usually populated automatically.',
           },
         },
       },

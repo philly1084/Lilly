@@ -319,4 +319,82 @@ describe('ClusterStateRegistry', () => {
       edgeRouteCount: 1,
     }));
   });
+
+  test('records remote-cli-agent continuity markers as reusable project context', () => {
+    registry.recordToolEvents({
+      objective: 'Continue the Calan app deployment and verify the public route.',
+      controlState: {
+        lastSshTarget: {
+          host: 'ubuntu-32gb-fsn1-2',
+          username: 'ubuntu',
+          port: 22,
+        },
+      },
+      toolEvents: [{
+        toolCall: {
+          function: {
+            name: 'remote-cli-agent',
+            arguments: JSON.stringify({
+              task: 'Continue the Calan app deployment and verify the public route.',
+              cwd: '/srv/apps/calan-calendar',
+            }),
+          },
+        },
+        result: {
+          success: true,
+          toolId: 'remote-cli-agent',
+          timestamp: '2026-04-21T12:00:00.000Z',
+          data: {
+            sessionId: 'rcli_calan_session',
+            remoteCodeJobId: 'rcli_calan_job',
+            cwd: '/srv/apps/calan-calendar',
+            gitRepo: 'https://gitlab.demoserver2.buzz/agent-apps/calan-calendar.git',
+            gitBranch: 'agent/calan-calendar',
+            gitBaseCommit: 'def5678',
+            gitCommit: 'abc1234',
+            changedFiles: ['src/app.js', 'k8s/deployment.yaml'],
+            deployment: 'web/calan-calendar',
+            publicHost: 'calan.demoserver2.buzz',
+            publicUrl: 'https://calan.demoserver2.buzz',
+            whatChanged: 'Updated the calendar UI and redeployed the k3s workload.',
+            verifyCommands: ['npm test', 'kubectl rollout status deployment/calan-calendar -n web'],
+            verifyResults: ['tests passed', 'rollout succeeded and HTTPS returned 200'],
+            completionStatus: 'complete',
+          },
+        },
+      }],
+    });
+
+    const deployments = registry.listDeployments();
+    expect(deployments).toHaveLength(1);
+    expect(deployments[0]).toEqual(expect.objectContaining({
+      host: 'ubuntu-32gb-fsn1-2',
+      namespace: 'web',
+      deployment: 'calan-calendar',
+      publicDomain: 'calan.demoserver2.buzz',
+      targetDirectory: '/srv/apps/calan-calendar',
+      repositoryUrl: 'https://gitlab.demoserver2.buzz/agent-apps/calan-calendar.git',
+      remoteCliSessionId: 'rcli_calan_session',
+      remoteCodeJobId: 'rcli_calan_job',
+      gitBranch: 'agent/calan-calendar',
+      gitBaseCommit: 'def5678',
+      gitCommit: 'abc1234',
+      whatChanged: 'Updated the calendar UI and redeployed the k3s workload.',
+    }));
+    expect(deployments[0].changedFiles).toEqual(expect.arrayContaining([
+      'src/app.js',
+      'k8s/deployment.yaml',
+    ]));
+    expect(deployments[0].verification).toEqual(expect.objectContaining({
+      rollout: true,
+      ingress: true,
+      https: true,
+    }));
+
+    const summary = registry.buildRemoteCliAgentContext();
+    expect(summary).toContain('Remote project continuity registry');
+    expect(summary).toContain('calan.demoserver2.buzz');
+    expect(summary).toContain('remote session rcli_calan_session');
+    expect(summary).toContain('Changed files: src/app.js, k8s/deployment.yaml');
+  });
 });

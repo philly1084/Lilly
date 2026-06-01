@@ -101,7 +101,9 @@ remoteCliTargets:
 Behavior:
 - The bearer key is used only by backend Node.js code. Do not expose it to browser JavaScript.
 - The Codex agent receives instructions to work inside `workspacePath`, emit proof markers, and avoid waiting forever on approval or user input.
-- The backend stores returned session/thread metadata in the conversation control state, so follow-up requests can continue the same remote workbench session when possible.
+- The backend stores returned session/thread metadata in the conversation control state and records project facts in the cluster continuity registry, so follow-up requests can continue the same remote workbench session when the task matches the same repo/workspace/deployment/domain.
+- The continuity registry is shared across the remote tool family and captures repo, workspace, deployment, ingress/public host, commit, changed files, verification markers, UI check artifacts, and recent activity when tools return those markers.
+- Treat registry facts as candidate context. Match by explicit repo, workspace, deployment, namespace, domain, or target before editing, and inspect first when the user names a different project.
 - For k3s website/app creation or edits, the remote CLI agent must use a git-backed workspace as the editable source of truth. Prefer an existing configured GitLab origin; if none exists, check configured GitLab context and non-interactive credentials before asking the user to do manual programming or repo setup.
 - For retry requests like "the deployed address did not work, try again", do not patch the live cluster first. Re-open the owning git workspace or managed-app repo, inspect the current tree and manifests, make the durable change there, then rebuild/deploy through GitLab or the documented fallback path.
 - GitLab source-control skill:
