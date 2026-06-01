@@ -57,6 +57,19 @@ describe('RemoteRunnerService', () => {
     warn.mockRestore();
   });
 
+  test('rejects placeholder runner tokens as unset configuration', () => {
+    const service = new RemoteRunnerService({
+      config: {
+        enabled: true,
+        token: 'REPLACE_WITH_THE_BACKEND_RUNNER_TOKEN',
+      },
+    });
+
+    expect(service.hasToken()).toBe(false);
+    expect(() => service.authenticateToken('REPLACE_WITH_THE_BACKEND_RUNNER_TOKEN'))
+      .toThrow('KIMIBUILT_REMOTE_RUNNER_TOKEN is required');
+  });
+
   test('registers a websocket runner and dispatches command jobs', async () => {
     const service = new RemoteRunnerService({
       config: {

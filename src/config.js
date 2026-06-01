@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { sanitizeConfigValue } = require('./config-placeholders');
 const { getStateDirectory } = require('./runtime-state-paths');
 const { resolveDefaultRepositoryPath } = require('./repository-paths');
 
@@ -1010,7 +1011,7 @@ const config = {
 
     remoteRunner: {
         enabled: process.env.KIMIBUILT_REMOTE_RUNNER_ENABLED !== 'false',
-        token: process.env.KIMIBUILT_REMOTE_RUNNER_TOKEN || '',
+        token: sanitizeConfigValue(process.env.KIMIBUILT_REMOTE_RUNNER_TOKEN || ''),
         preferred: process.env.KIMIBUILT_REMOTE_RUNNER_PREFERRED !== 'false',
         staleAfterMs: Math.max(
             5000,

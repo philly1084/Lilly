@@ -869,6 +869,46 @@ describe('settings.controller personality support', () => {
     expect(effective.deployTarget).toBe('ssh');
   });
 
+  test('effective ssh config ignores Kubernetes placeholder defaults', () => {
+    const previous = {
+      KIMIBUILT_SSH_HOST: process.env.KIMIBUILT_SSH_HOST,
+      KIMIBUILT_SSH_USERNAME: process.env.KIMIBUILT_SSH_USERNAME,
+      KIMIBUILT_SSH_PASSWORD: process.env.KIMIBUILT_SSH_PASSWORD,
+      KIMIBUILT_SSH_KEY_PATH: process.env.KIMIBUILT_SSH_KEY_PATH,
+      SSH_HOST: process.env.SSH_HOST,
+      SSH_USERNAME: process.env.SSH_USERNAME,
+      SSH_PASSWORD: process.env.SSH_PASSWORD,
+      SSH_KEY_PATH: process.env.SSH_KEY_PATH,
+    };
+
+    try {
+      process.env.KIMIBUILT_SSH_HOST = 'OPTIONAL_SET_VIA_KUBECTL_CREATE_SECRET';
+      process.env.KIMIBUILT_SSH_USERNAME = 'OPTIONAL_SET_VIA_KUBECTL_CREATE_SECRET';
+      process.env.KIMIBUILT_SSH_PASSWORD = 'OPTIONAL_SET_VIA_KUBECTL_CREATE_SECRET';
+      process.env.KIMIBUILT_SSH_KEY_PATH = 'OPTIONAL_SET_VIA_KUBECTL_CREATE_SECRET';
+      delete process.env.SSH_HOST;
+      delete process.env.SSH_USERNAME;
+      delete process.env.SSH_PASSWORD;
+      delete process.env.SSH_KEY_PATH;
+
+      const effective = controller.getEffectiveSshConfig();
+
+      expect(effective.enabled).toBe(false);
+      expect(effective.host).toBe('');
+      expect(effective.username).toBe('');
+      expect(effective.password).toBe('');
+      expect(effective.privateKeyPath).toBe('');
+    } finally {
+      Object.entries(previous).forEach(([key, value]) => {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      });
+    }
+  });
+
   test('resetting the personality restores default settings and soul file content', async () => {
     controller.settings.personality = {
       enabled: false,

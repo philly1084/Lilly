@@ -3,6 +3,7 @@
 const { EventEmitter } = require('events');
 const { WebSocket } = require('ws');
 const { config } = require('../config');
+const { sanitizeConfigValue } = require('../config-placeholders');
 const {
   createId,
   normalizeCommandJob,
@@ -57,7 +58,7 @@ class RemoteRunnerService extends EventEmitter {
   }
 
   hasToken() {
-    return Boolean(normalizeText(this.config.token));
+    return Boolean(sanitizeConfigValue(this.config.token));
   }
 
   authenticateToken(token = '') {
@@ -67,7 +68,7 @@ class RemoteRunnerService extends EventEmitter {
     if (!this.hasToken()) {
       throw new Error('KIMIBUILT_REMOTE_RUNNER_TOKEN is required before runners can connect');
     }
-    if (normalizeText(token) !== normalizeText(this.config.token)) {
+    if (sanitizeConfigValue(token) !== sanitizeConfigValue(this.config.token)) {
       throw new Error('Invalid remote runner token');
     }
   }

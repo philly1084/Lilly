@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { WebSocket } = require('ws');
+const { sanitizeConfigValue } = require('../src/config-placeholders');
 
 const {
   isApproved,
@@ -17,7 +18,7 @@ const {
 } = require('../src/remote-runner/protocol');
 
 const backendUrl = normalizeText(process.env.KIMIBUILT_BACKEND_URL || process.env.API_BASE_URL || 'http://localhost:3000');
-const token = normalizeText(process.env.KIMIBUILT_REMOTE_RUNNER_TOKEN || '');
+const token = sanitizeConfigValue(process.env.KIMIBUILT_REMOTE_RUNNER_TOKEN || '');
 const tlsInsecure = /^(?:1|true|yes)$/i.test(normalizeText(process.env.KIMIBUILT_RUNNER_TLS_INSECURE || ''));
 const runnerId = normalizeText(process.env.KIMIBUILT_RUNNER_ID || `${os.hostname()}-${process.platform}-${process.arch}`);
 const displayName = normalizeText(process.env.KIMIBUILT_RUNNER_NAME || `KimiBuilt Runner ${os.hostname()}`);
@@ -84,7 +85,6 @@ if (!token) {
 function buildRunnerWsUrl() {
   const base = new URL(backendUrl.replace(/^http/i, 'ws').replace(/\/+$/, ''));
   base.pathname = '/ws/runners';
-  base.searchParams.set('token', token);
   return base.toString();
 }
 
@@ -497,7 +497,12 @@ function runCommand(job = {}) {
 }
 
 function connect() {
-  const ws = new WebSocket(buildRunnerWsUrl(), tlsInsecure ? { rejectUnauthorized: false } : undefined);
+  const ws = new WebSocket(buildRunnerWsUrl(), {
+    ...(tlsInsecure ? { rejectUnauthorized: false } : {}),
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
   let heartbeatTimer = null;
 
   ws.on('open', () => {

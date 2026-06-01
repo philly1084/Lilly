@@ -6,6 +6,10 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { config } = require('../../config');
+const {
+  firstConfiguredValue,
+  sanitizeConfigValue,
+} = require('../../config-placeholders');
 const { postgres } = require('../../postgres');
 const {
   getEffectiveSoulConfig,
@@ -371,9 +375,9 @@ function normalizeManagedAppDeployTarget(value = '') {
 function hasUsableSshDefaults(ssh = {}) {
   return Boolean(
     ssh?.enabled !== false
-    && ssh?.host
-    && ssh?.username
-    && (ssh?.password || ssh?.privateKeyPath),
+    && sanitizeConfigValue(ssh?.host)
+    && sanitizeConfigValue(ssh?.username)
+    && (sanitizeConfigValue(ssh?.password) || sanitizeConfigValue(ssh?.privateKeyPath)),
   );
 }
 
@@ -1350,17 +1354,18 @@ class SettingsController {
 
   getEffectiveSshConfig() {
     const stored = this.settings?.integrations?.ssh || {};
-    const envHost = process.env.KIMIBUILT_SSH_HOST || process.env.SSH_HOST || '';
-    const envPort = parseInt(process.env.KIMIBUILT_SSH_PORT || process.env.SSH_PORT || '', 10);
-    const envUsername = process.env.KIMIBUILT_SSH_USERNAME || process.env.SSH_USERNAME || '';
-    const envPassword = process.env.KIMIBUILT_SSH_PASSWORD || process.env.SSH_PASSWORD || '';
-    const envPrivateKeyPath = process.env.KIMIBUILT_SSH_KEY_PATH || process.env.SSH_KEY_PATH || '';
+    const envHost = firstConfiguredValue(process.env.KIMIBUILT_SSH_HOST, process.env.SSH_HOST);
+    const envPortValue = firstConfiguredValue(process.env.KIMIBUILT_SSH_PORT, process.env.SSH_PORT);
+    const envPort = parseInt(envPortValue, 10);
+    const envUsername = firstConfiguredValue(process.env.KIMIBUILT_SSH_USERNAME, process.env.SSH_USERNAME);
+    const envPassword = firstConfiguredValue(process.env.KIMIBUILT_SSH_PASSWORD, process.env.SSH_PASSWORD);
+    const envPrivateKeyPath = firstConfiguredValue(process.env.KIMIBUILT_SSH_KEY_PATH, process.env.SSH_KEY_PATH);
 
-    const host = envHost || stored.host || '';
-    const username = envUsername || stored.username || '';
+    const host = envHost || sanitizeConfigValue(stored.host) || '';
+    const username = envUsername || sanitizeConfigValue(stored.username) || '';
     const port = Number.isFinite(envPort) && envPort > 0 ? envPort : (stored.port || 22);
-    const password = envPassword || stored.password || '';
-    const privateKeyPath = envPrivateKeyPath || stored.privateKeyPath || '';
+    const password = envPassword || sanitizeConfigValue(stored.password) || '';
+    const privateKeyPath = envPrivateKeyPath || sanitizeConfigValue(stored.privateKeyPath) || '';
     const enabled = Boolean(stored.enabled || envHost || envUsername || envPassword || envPrivateKeyPath);
     const source = envHost || envUsername || envPassword || envPrivateKeyPath ? 'cluster-secret' : 'dashboard';
 

@@ -87,6 +87,7 @@ RUN set -eux; \
     ca-certificates \
     chromium \
     curl \
+    openssh-client \
     ffmpeg \
     fonts-liberation \
     python3 \
