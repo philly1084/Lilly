@@ -10706,6 +10706,45 @@ describe('ConversationOrchestrator', () => {
         expect(normalizedStep.params.task).toContain('Repair the live Tetris game.');
     });
 
+    test('adds a prior running remote_code_run job id when normalizing planned remote-cli-agent continuations', () => {
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn(() => null),
+            },
+        });
+
+        const normalizedStep = orchestrator.normalizePlannedStep({
+            tool: 'remote-cli-agent',
+            params: {
+                task: 'continue the same remote job',
+            },
+        }, {
+            objective: 'continue the same remote job',
+            executionProfile: 'remote-build',
+            session: {
+                metadata: {},
+                controlState: {
+                    remoteCliAgent: {
+                        lastTask: 'Repair the live Tetris game.',
+                        remoteCodeJobId: 'rcli_tetris_running',
+                        cwd: '/srv/apps/my-app',
+                        completionStatus: 'running',
+                        verifyResults: ['remote_code_status remained running after 90 poll attempt(s).'],
+                    },
+                },
+            },
+        });
+
+        expect(normalizedStep.params).toEqual(expect.objectContaining({
+            jobId: 'rcli_tetris_running',
+            cwd: '/srv/apps/my-app',
+        }));
+    });
+
     test('keeps deploy-only workflow verification pinned to the configured ssh target when the prompt includes a registration email', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

@@ -1113,12 +1113,15 @@ describe('RemoteCliAgentsSdkRunner', () => {
       'remote_code_status',
     ]);
     expect(result.finalOutput).toContain('REMOTE_CLI_JOB_ID=rcli_running');
+    expect(result.finalOutput).toContain('REMOTE_AGENT_RESULT=running');
     expect(result.finalOutput).toContain('VERIFY_RESULTS=remote_code_status remained running after 2 poll attempt(s).');
+    expect(result.finalOutput).toContain('BLOCKER=none');
+    expect(result.finalOutput).not.toContain('BLOCKER=remote_code_run still running');
     expect(result.finalOutput).not.toContain('{"id":"rcli_running"');
     expect(result).toMatchObject({
       remoteCodeJobId: 'rcli_running',
-      completionStatus: 'blocked',
-      blocker: 'remote_code_run still running; continue with the returned remote job id',
+      completionStatus: 'running',
+      blocker: null,
     });
   });
 

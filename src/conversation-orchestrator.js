@@ -5835,12 +5835,15 @@ function shouldReuseRemoteCliAgentJobId(priorAgentState = {}, objective = '') {
         || /\b(?:try again|retry|rerun|again|still|same|that|it|repair|fix|button|buttons|game|snag|snags)\b/.test(normalizedObjective);
     const newDistinctTaskIntent = /\b(?:new|another|different|fresh)\b[\s\S]{0,60}\b(?:app|site|game|project|deploy|deployment)\b/.test(normalizedObjective)
         || /\b(?:build|create|launch|deploy|publish)\b[\s\S]{0,40}\b(?:new|another|different|fresh)\b/.test(normalizedObjective);
-    const runningJobBlocker = status === 'blocked'
-        && (
-            /\b(?:remote_code_run|remote_code_status|running|poll|polling)\b/.test(statusText)
-            || (
-                /\b(?:job|jobid)\b/.test(statusText)
-                && /\b(?:running|poll|polling|status)\b/.test(statusText)
+    const runningJobBlocker = status === 'running'
+        || (
+            status === 'blocked'
+            && (
+                /\b(?:remote_code_run|remote_code_status|running|poll|polling)\b/.test(statusText)
+                || (
+                    /\b(?:job|jobid)\b/.test(statusText)
+                    && /\b(?:running|poll|polling|status)\b/.test(statusText)
+                )
             )
         );
 
@@ -7976,6 +7979,8 @@ function summarizeRemoteCliAgentDataForUser(data = {}) {
 
     if (completionStatus === 'complete') {
         lines.push('Remote CLI task completed.');
+    } else if (completionStatus === 'running') {
+        lines.push('Remote CLI task is still running.');
     } else if (completionStatus === 'blocked') {
         lines.push('Remote CLI task is blocked.');
     } else if (completionStatus) {

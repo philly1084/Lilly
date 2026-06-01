@@ -469,7 +469,16 @@ function detectRemoteCliExecutionBlocker(source = '') {
   return Array.from(new Set(messages)).find(Boolean) || '';
 }
 
-function resolveCompletionStatus({ blocker = '', blockerMarker = '', whatChanged = '', verifyResults = [], publicUrl = '', publicHost = '', uiCheckReport = '', gitCommit = '' } = {}) {
+function resolveCompletionStatus({ remoteAgentResult = '', blocker = '', blockerMarker = '', whatChanged = '', verifyResults = [], publicUrl = '', publicHost = '', uiCheckReport = '', gitCommit = '' } = {}) {
+  const normalizedResult = normalizeOptionalProofValue(remoteAgentResult).toLowerCase().replace(/\s+/g, '_');
+  const combinedVerification = (Array.isArray(verifyResults) ? verifyResults : [])
+    .map((value) => normalizeText(value).toLowerCase())
+    .join('\n');
+  if (isRunningRemoteCodeStatus(normalizedResult)
+    || /\bremote_code_status\s+remained\s+(?:running|queued|pending|active|started|in[_ -]?progress|processing|working)\b/.test(combinedVerification)) {
+    return 'running';
+  }
+
   if (normalizeOptionalProofValue(blocker)) {
     return 'blocked';
   }
@@ -497,6 +506,7 @@ function hasTerminalRemoteCliProof(metadata = {}) {
 
 function extractRemoteCliRunMetadata(finalOutput = '') {
   const text = expandRemoteCliProofText(finalOutput);
+  const remoteAgentResult = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_AGENT_RESULT', 'REMOTE_CLI_STATUS', 'RUN_STATUS']));
   const sessionId = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_CLI_SESSION_ID', 'REMOTE_CODE_SESSION_ID']))
     || normalizeOptionalProofValue(text.match(/remote\s+session\s*:\s*`?([^`\s]+)/i)?.[1] || '');
   const jobId = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_CLI_JOB_ID', 'REMOTE_CODE_JOB_ID', 'JOB_ID']))
@@ -540,6 +550,7 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     || detectRemoteCliExecutionBlocker(text);
   const blocker = normalizeOptionalProofValue(blockerMarker);
   const completionStatus = resolveCompletionStatus({
+    remoteAgentResult,
     blocker,
     blockerMarker,
     whatChanged,
@@ -551,6 +562,7 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
   });
 
   return {
+    ...(remoteAgentResult ? { remoteAgentResult } : {}),
     ...(sessionId ? { sessionId } : {}),
     ...(jobId ? { jobId } : {}),
     ...(workspace ? { workspace } : {}),
@@ -579,7 +591,7 @@ function buildRemoteCliProofDisplay(source = '', metadata = {}) {
   readMarkerLines(text, ['STALE_REMOTE_CLI_JOB_ID'])
     .forEach((value) => pushUniqueLine(lines, `STALE_REMOTE_CLI_JOB_ID=${value}`));
 
-  const remoteAgentResult = normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_AGENT_RESULT']));
+  const remoteAgentResult = metadata.remoteAgentResult || normalizeOptionalProofValue(readMarkerLine(text, ['REMOTE_AGENT_RESULT']));
   if (remoteAgentResult) {
     pushUniqueLine(lines, `REMOTE_AGENT_RESULT=${remoteAgentResult}`);
   }
@@ -977,16 +989,24 @@ function buildRemoteCodeFinalText({
   const metadata = extractRemoteCliRunMetadata(source);
   const hasTerminalProof = hasTerminalRemoteCliProof(metadata);
   const isStillRunning = isRunningRemoteCodeStatus(status);
-  const explicitBlocker = normalizeOptionalProofValue(blocker || metadata.blocker);
+  const runningWithoutTerminalProof = isStillRunning && !hasTerminalProof;
+  const explicitBlocker = runningWithoutTerminalProof
+    ? normalizeOptionalProofValue(metadata.blocker)
+    : normalizeOptionalProofValue(blocker || metadata.blocker);
   const missingProofBlocker = hasTerminalProof
     ? ''
     : `${transportLabel} completed without task proof markers; inspect the agent output and continue with the returned continuity id`;
-  const resolvedBlocker = explicitBlocker
+  const resolvedBlocker = runningWithoutTerminalProof
+    ? ''
+    : explicitBlocker
     || (isFailedRemoteCodeStatus(status) ? `remote_code_run ${status}` : '')
     || missingProofBlocker;
-  const displaySource = isStillRunning && !hasTerminalProof ? '' : buildRemoteCliProofDisplay(source, metadata);
+  const displaySource = runningWithoutTerminalProof ? '' : buildRemoteCliProofDisplay(source, metadata);
   const lines = [displaySource || fallbackVerifyResult || 'remote_code_run completed without text output.'];
 
+  if (runningWithoutTerminalProof && !metadata.remoteAgentResult) {
+    lines.push('REMOTE_AGENT_RESULT=running');
+  }
   if (!metadata.sessionId && sessionId) {
     lines.push(`REMOTE_CLI_SESSION_ID=${sessionId}`);
   }
@@ -997,7 +1017,9 @@ function buildRemoteCodeFinalText({
     lines.push(`WORKSPACE=${cwd}`);
   }
   if (!metadata.whatChanged) {
-    lines.push(`WHAT_CHANGED=${hasTerminalProof
+    lines.push(`WHAT_CHANGED=${runningWithoutTerminalProof
+      ? `${transportLabel} is still running; task-level changes have not been proven yet.`
+      : hasTerminalProof
       ? (fallbackWhatChanged || `Executed ${transportDescription}.`)
       : `${transportLabel} transport finished, but task-level changes were not proven.`}`);
   }
@@ -1512,7 +1534,7 @@ class RemoteCliAgentsSdkRunner {
       timeoutMs: normalizePositiveInteger(this.config.timeoutMs, 60000, { min: 1000 }),
       maxTurns: normalizePositiveInteger(this.config.maxTurns, 20, { min: 1, max: 80 }),
       agentRunTimeoutMs: normalizePositiveInteger(this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 }),
-      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 }),
+      maxStatusPolls: normalizePositiveInteger(this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 240 }),
       statusPollIntervalMs: normalizePositiveInteger(this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 }),
     };
   }
@@ -2013,7 +2035,7 @@ class RemoteCliAgentsSdkRunner {
       });
     }
 
-    const pollLimit = normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
+    const pollLimit = normalizePositiveInteger(maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 240 });
     const pollDelay = normalizePositiveInteger(statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
 
     while (remoteJobId && (isRunningRemoteCodeStatus(latestStatus) || !latestStatus) && statusPolls < pollLimit) {
@@ -2093,15 +2115,15 @@ class RemoteCliAgentsSdkRunner {
     const cwd = normalizeText(input.cwd || input.workingDirectory || input.working_directory || this.config.defaultCwd);
     const sessionId = normalizeText(input.sessionId || input.session_id || input.remoteSessionId || input.remote_session_id);
     const jobId = normalizeText(input.jobId || input.job_id || input.remoteCodeJobId || input.remote_code_job_id);
-    const waitMs = normalizePositiveInteger(input.waitMs || input.wait_ms, 30000, { min: 1000, max: 300000 });
-    const maxTurns = normalizePositiveInteger(input.maxTurns || input.max_turns || this.config.maxTurns, 20, { min: 1, max: 80 });
-    const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs || input.agent_run_timeout_ms || this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
+    const waitMs = normalizePositiveInteger(input.waitMs ?? input.wait_ms, 30000, { min: 1000, max: 300000 });
+    const maxTurns = normalizePositiveInteger(input.maxTurns ?? input.max_turns ?? this.config.maxTurns, 20, { min: 1, max: 80 });
+    const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs ?? input.agent_run_timeout_ms ?? this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
     const model = transport === 'codex-agent'
       ? normalizeText(input.codexAgentModel || input.codex_agent_model || input.model || this.config.codexAgentModel)
       : (normalizeText(input.model || this.config.agentModel) || 'gpt-4o');
     const remoteCodeModel = normalizeText(input.remoteCodeModel || input.remote_code_model || this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL;
-    const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls || input.max_status_polls || this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 80 });
-    const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs || input.status_poll_interval_ms || this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
+    const maxStatusPolls = normalizePositiveInteger(input.maxStatusPolls ?? input.max_status_polls ?? this.config.maxStatusPolls, DEFAULT_MAX_STATUS_POLLS, { min: 1, max: 240 });
+    const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs ?? input.status_poll_interval_ms ?? this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
     const adminMode = resolveAdminMode(input, task);
     const continuitySummary = normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context);
 
@@ -2239,7 +2261,8 @@ class RemoteCliAgentsSdkRunner {
       }
 
       let finalOutput = '';
-      if (directRun || jobId) {
+      let usedDirectRemoteCodeRun = directRun || Boolean(jobId);
+      if (usedDirectRemoteCodeRun) {
         finalOutput = await this.executeRemoteCodeRun(remoteCli, {
           targetId,
           cwd,
@@ -2315,6 +2338,7 @@ class RemoteCliAgentsSdkRunner {
             continuitySummary,
             onProgress: input.onProgress,
           });
+          usedDirectRemoteCodeRun = true;
         }
 
         if (!finalOutput) {
@@ -2339,11 +2363,12 @@ class RemoteCliAgentsSdkRunner {
             continuitySummary,
             onProgress: input.onProgress,
           });
+          usedDirectRemoteCodeRun = true;
         }
       }
       let runMetadata = extractRemoteCliRunMetadata(finalOutput);
       const hasTerminalRemoteProof = hasTerminalRemoteCliProof(runMetadata);
-      if (!hasTerminalRemoteProof) {
+      if (!hasTerminalRemoteProof && !usedDirectRemoteCodeRun) {
         if (remoteCodeCallState.jobId) {
           emitContractProgress(
             `Remote CLI agent returned without proof markers; polling remote_code_status for job ${remoteCodeCallState.jobId}.`,

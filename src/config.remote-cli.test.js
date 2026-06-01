@@ -111,6 +111,14 @@ describe('remote CLI MCP configuration', () => {
     expect(config.remoteCliMcp.statusPollIntervalMs).toBe(25);
   });
 
+  test('allows long remote_code_status polling windows used by live deploy config', () => {
+    process.env.REMOTE_CLI_AGENT_MAX_STATUS_POLLS = '90';
+
+    const { config } = require('./config');
+
+    expect(config.remoteCliMcp.maxStatusPolls).toBe(90);
+  });
+
   test('allows the legacy inner-agent remote CLI mode to be explicitly restored', () => {
     process.env.REMOTE_CLI_AGENT_DIRECT_RUN = 'false';
 
