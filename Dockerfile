@@ -75,6 +75,7 @@ RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
   KOKORO_TTS_ALLOW_REMOTE_MODELS=true \
   KOKORO_G2P_COMMAND=/opt/kimibuilt-g2p/bin/python \
   KOKORO_G2P_SCRIPT_PATH=/app/scripts/kokoro_g2p_bridge.py \
+  KOKORO_G2P_TIMEOUT_MS=30000 \
   KOKORO_G2P_REQUIRED=true \
   node bin/kimibuilt-verify-tts-build.js
 
@@ -164,6 +165,7 @@ RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
   KOKORO_TTS_DEFAULT_VOICE_ID="${KOKORO_TTS_DEFAULT_VOICE_ID}" \
   KOKORO_TTS_CACHE_DIR="${KOKORO_TTS_CACHE_DIR}" \
   KOKORO_TTS_ALLOW_REMOTE_MODELS=false \
+  KOKORO_G2P_TIMEOUT_MS=30000 \
   KOKORO_G2P_REQUIRED=true \
   node bin/kimibuilt-verify-tts-build.js && \
   chown -R kimibuilt:kimibuilt /app/data
