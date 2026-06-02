@@ -7,6 +7,7 @@ param(
   [string]$RemoteCliCodexAgentBaseUrl = $env:REMOTE_CLI_CODEX_AGENT_BASE_URL,
   [string]$RemoteCliCodexAgentBearerToken = $env:REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN,
   [string]$RemoteCliCodexAgentWorkspacePath = $env:REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH,
+  [string]$RemoteCliCodexAgentModel = $env:REMOTE_CLI_CODEX_AGENT_MODEL,
   [string]$RemoteCliCodexAgentApprovalPolicy = $env:REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY,
   [string]$RemoteCliCodexAgentThreadSandbox = $env:REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX,
   [string]$RemoteCliMcpUrl = $env:REMOTE_CLI_MCP_URL,
@@ -110,6 +111,7 @@ if (!$RemoteCliAgentTransport -and $env:REMOTE_CLI_AGENT_TRANSPORT) { $RemoteCli
 if (!$RemoteCliCodexAgentBaseUrl -and $env:REMOTE_CLI_CODEX_AGENT_BASE_URL) { $RemoteCliCodexAgentBaseUrl = $env:REMOTE_CLI_CODEX_AGENT_BASE_URL }
 if (!$RemoteCliCodexAgentBearerToken -and $env:REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN) { $RemoteCliCodexAgentBearerToken = $env:REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN }
 if (!$RemoteCliCodexAgentWorkspacePath -and $env:REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH) { $RemoteCliCodexAgentWorkspacePath = $env:REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH }
+if (!$RemoteCliCodexAgentModel -and $env:REMOTE_CLI_CODEX_AGENT_MODEL) { $RemoteCliCodexAgentModel = $env:REMOTE_CLI_CODEX_AGENT_MODEL }
 if (!$RemoteCliCodexAgentApprovalPolicy -and $env:REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY) { $RemoteCliCodexAgentApprovalPolicy = $env:REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY }
 if (!$RemoteCliCodexAgentThreadSandbox -and $env:REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX) { $RemoteCliCodexAgentThreadSandbox = $env:REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX }
 if (!$RemoteCliMcpUrl -and $env:REMOTE_CLI_MCP_URL) { $RemoteCliMcpUrl = $env:REMOTE_CLI_MCP_URL }
@@ -139,7 +141,7 @@ if (!$gatewayBaseUrl) {
 }
 
 if (!$RemoteCliAgentTransport) {
-  $RemoteCliAgentTransport = "mcp"
+  $RemoteCliAgentTransport = "codex-agent"
 }
 
 if (!$RemoteCliCodexAgentBaseUrl) {
@@ -148,6 +150,10 @@ if (!$RemoteCliCodexAgentBaseUrl) {
 
 if (!$RemoteCliCodexAgentWorkspacePath) {
   $RemoteCliCodexAgentWorkspacePath = "/opt/kimibuilt"
+}
+
+if (!$RemoteCliCodexAgentModel) {
+  $RemoteCliCodexAgentModel = "gpt-5.5"
 }
 
 if (!$RemoteCliCodexAgentApprovalPolicy) {
@@ -181,6 +187,7 @@ Invoke-Kubectl patch configmap $ConfigMapName -n $resolvedNamespace --type merge
     REMOTE_CLI_AGENT_TRANSPORT = $RemoteCliAgentTransport
     REMOTE_CLI_CODEX_AGENT_BASE_URL = $RemoteCliCodexAgentBaseUrl
     REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH = $RemoteCliCodexAgentWorkspacePath
+    REMOTE_CLI_CODEX_AGENT_MODEL = $RemoteCliCodexAgentModel
     REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY = $RemoteCliCodexAgentApprovalPolicy
     REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX = $RemoteCliCodexAgentThreadSandbox
     REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX = $RemoteCliCodexAgentThreadSandbox
@@ -261,6 +268,7 @@ Write-Host "Secret: $SecretName"
 Write-Host "REMOTE_CLI_AGENT_TRANSPORT: $RemoteCliAgentTransport"
 Write-Host "REMOTE_CLI_CODEX_AGENT_BASE_URL: $RemoteCliCodexAgentBaseUrl"
 Write-Host "REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: $RemoteCliCodexAgentWorkspacePath"
+Write-Host "REMOTE_CLI_CODEX_AGENT_MODEL: $RemoteCliCodexAgentModel"
 Write-Host "REMOTE_CLI_MCP_URL: $RemoteCliMcpUrl"
 Write-Host "REMOTE_CLI_REMOTE_CODE_MODEL: $(if ($RemoteCliRemoteCodeModel) { $RemoteCliRemoteCodeModel } else { '(gateway target default)' })"
 Write-Host "Remote CLI token present: $hasRemoteToken"

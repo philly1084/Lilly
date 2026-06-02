@@ -20,10 +20,11 @@ data:
   OPENAI_REQUEST_TIMEOUT_MS: "900000"
   OPENAI_TOOL_REQUEST_TIMEOUT_MS: "900000"
   OPENAI_IMAGE_MODEL: "gpt-image-2"
-  # Default remote CLI transport is the legacy MCP remote_code_run/status lane; codex-agent SSE remains configured for explicit opt-in.
-  REMOTE_CLI_AGENT_TRANSPORT: "mcp"
+  # Default remote CLI transport uses the Codex-agent run/events SSE lane; MCP remains configured for compatibility fallback.
+  REMOTE_CLI_AGENT_TRANSPORT: "codex-agent"
   REMOTE_CLI_CODEX_AGENT_BASE_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local"
   REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: "/opt/kimibuilt"
+  REMOTE_CLI_CODEX_AGENT_MODEL: "gpt-5.5"
   REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY: "never"
   REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX: "workspace-write"
   REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX: "workspace-write"

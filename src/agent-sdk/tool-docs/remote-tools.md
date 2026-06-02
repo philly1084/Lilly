@@ -64,8 +64,8 @@ remote_code_status({ "jobId": "returned job id only" })
 
 Important boundary:
 - The planner calls `remote-cli-agent`; it does not call transport internals directly.
-- The default runner transport calls `remote_code_run` through MCP and then `remote_code_status`.
-- The codex-agent opt-in transport calls `/api/codex-agent/run` and streams `/events` SSE.
+- The default runner transport calls `/api/codex-agent/run` and streams `/events` SSE.
+- The MCP compatibility transport calls `remote_code_run` through MCP and then `remote_code_status`.
 - Never put `command`, `args`, `executable`, or `shell` in `remote-cli-agent` params.
 - Never put `targetId`, `cwd`, `sessionId`, or `waitMs` in `remote_code_status`; it accepts `jobId` only.
 

@@ -1,6 +1,6 @@
 # remote-cli-agent
 
-Purpose: run a server-side remote coding agent through the default MCP `remote_code_run/status` contract, with the gateway's `/api/codex-agent/run` plus `/events` SSE contract available as explicit opt-in.
+Purpose: run a server-side remote coding agent through the default gateway `/api/codex-agent/run` plus `/events` SSE contract, with MCP `remote_code_run/status` retained as compatibility fallback.
 
 Use this tool when the user asks for backend CLI agents behind the router to work on a remote/server workspace, especially coding/build/deploy tasks where KimiBuilt should stream progress while the remote agent owns the implementation loop.
 
@@ -8,8 +8,8 @@ For most remote software deployments, prefer `remote-cli-agent` over one-shot `r
 
 Layer boundary:
 - `remote-cli-agent` is the outer KimiBuilt tool. Call it with `task`, optional `cwd` or `workspacePath`, `threadId`, `sessionId`, `waitMs`, `transport`, and `adminMode`.
-- The default transport is `mcp`: KimiBuilt calls `remote_code_run`, then polls `remote_code_status`.
-- The `codex-agent` transport is available as opt-in: KimiBuilt calls `POST /api/codex-agent/run`, then consumes `GET /api/codex-agent/runs/:runId/events` as SSE.
+- The default transport is `codex-agent`: KimiBuilt calls `POST /api/codex-agent/run`, then consumes `GET /api/codex-agent/runs/:runId/events` as SSE.
+- The `mcp` transport remains available for compatibility: KimiBuilt calls `remote_code_run`, then polls `remote_code_status`.
 - Do not send raw shell fields such as `command`, `args`, `executable`, or `shell` to `remote-cli-agent`. Use `remote-command` for one direct command.
 - Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
 
@@ -20,7 +20,7 @@ Outer tool call shape:
   "task": "Build/fix/deploy the app and verify the public URL.",
   "adminMode": true,
   "cwd": "/srv/apps/my-app",
-  "transport": "mcp",
+  "transport": "codex-agent",
   "waitMs": 30000,
   "threadId": "optional prior Codex thread id for codex-agent transport"
 }
@@ -31,22 +31,19 @@ For the short lane picker, read `src/agent-sdk/tool-docs/remote-tools.md`.
 Server-side configuration:
 
 ```bash
-REMOTE_CLI_AGENT_TRANSPORT=mcp
-REMOTE_CLI_MCP_URL=https://gateway.example.com/mcp
-# Or set GATEWAY_URL=https://gateway.example.com and the backend will append /mcp.
-N8N_API_KEY=server-side-admin-or-n8n-key
-REMOTE_CLI_DEFAULT_TARGET_ID=prod
-REMOTE_CLI_DEFAULT_CWD=/srv/apps/my-app
-
-# Codex-agent SSE opt-in:
+REMOTE_CLI_AGENT_TRANSPORT=codex-agent
 REMOTE_CLI_CODEX_AGENT_BASE_URL=https://gateway.example.com
 REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN=server-side-frontend-or-admin-key
 REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH=/srv/apps/my-app
+REMOTE_CLI_CODEX_AGENT_MODEL=gpt-5.5
 REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY=never
 REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX=workspace-write
+REMOTE_CLI_DEFAULT_TARGET_ID=prod
+REMOTE_CLI_DEFAULT_CWD=/srv/apps/my-app
 
-# Pin this in production so older gateway images do not default to codex-latest,
-# which ChatGPT-account Codex CLI runtimes can reject.
+# MCP compatibility lane:
+REMOTE_CLI_MCP_URL=https://gateway.example.com/mcp
+N8N_API_KEY=server-side-admin-or-n8n-key
 REMOTE_CLI_REMOTE_CODE_MODEL=gpt-5.4
 REMOTE_CLI_AGENT_MAX_STATUS_POLLS=90
 REMOTE_CLI_AGENT_STATUS_POLL_INTERVAL_MS=2000
@@ -58,6 +55,7 @@ Gateway-side requirements:
 CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS=/srv/apps
 FRONTEND_API_KEY=<server-side key accepted by /api/codex-agent/*>
 REMOTE_CLI_TOOL_AUTH_SCOPES=n8n,frontend,admin
+# Public gateway ingresses must route /api/codex-agent as well as /v1 and /mcp.
 ```
 
 Codex-agent gateway contract:

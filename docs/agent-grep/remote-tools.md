@@ -15,8 +15,8 @@ Small decision map:
 
 Boundary:
 - The KimiBuilt planner calls `remote-cli-agent`; it does not call transport internals directly.
-- Default transport: the runner calls `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })` through MCP and polls `remote_code_status({ jobId })` with the job id only.
-- Codex-agent SSE opt-in: KimiBuilt calls `POST /api/codex-agent/run` and streams `GET /api/codex-agent/runs/:runId/events` from the `nuts` gateway when `REMOTE_CLI_AGENT_TRANSPORT=codex-agent`.
+- Default transport: KimiBuilt calls `POST /api/codex-agent/run` and streams `GET /api/codex-agent/runs/:runId/events` from the `nuts` gateway when `REMOTE_CLI_AGENT_TRANSPORT=codex-agent`.
+- MCP compatibility transport: the runner can still call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })` through MCP and poll `remote_code_status({ jobId })` with the job id only.
 - Do not put raw shell fields like `command`, `args`, `shell`, or `executable` in `remote-cli-agent`.
 - Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
 

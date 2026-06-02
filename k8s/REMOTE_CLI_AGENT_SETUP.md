@@ -6,18 +6,23 @@ The backend reads Remote CLI Agent settings from:
 - Secret: `kimibuilt-secrets`
 - Namespace: normally `kimibuilt`
 
-The default transport is the legacy MCP `remote_code_run/status` lane:
-
-- ConfigMap: `REMOTE_CLI_AGENT_TRANSPORT=mcp`
-- ConfigMap: `REMOTE_CLI_MCP_URL` with the gateway MCP URL ending in `/mcp`
-- Secret: `REMOTE_CLI_MCP_BEARER_TOKEN` or `N8N_API_KEY`
-
-The `nuts` Codex-agent SSE API remains available for explicit opt-in:
+The default transport is the Codex-agent SSE lane:
 
 - ConfigMap: `REMOTE_CLI_AGENT_TRANSPORT=codex-agent`
 - ConfigMap: `REMOTE_CLI_CODEX_AGENT_BASE_URL` with the gateway base URL, without `/mcp`
 - ConfigMap: `REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH` with the allowed workspace path
+- ConfigMap: `REMOTE_CLI_CODEX_AGENT_MODEL=gpt-5.5`
 - Secret: `REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN`, `FRONTEND_API_KEY`, or a compatible gateway key
+
+The legacy MCP `remote_code_run/status` lane remains available for compatibility:
+
+- ConfigMap: `REMOTE_CLI_MCP_URL` with the gateway MCP URL ending in `/mcp`
+- Secret: `REMOTE_CLI_MCP_BEARER_TOKEN` or `N8N_API_KEY`
+
+If `REMOTE_CLI_CODEX_AGENT_BASE_URL` points at the public router, the gateway ingress must expose:
+
+- `POST /api/codex-agent/run`
+- `GET /api/codex-agent/runs/:runId/events`
 
 ## One-command setup
 
@@ -42,9 +47,10 @@ Useful overrides:
 ```powershell
 powershell -ExecutionPolicy Bypass -File k8s/setup-remote-cli-agent.ps1 `
   -Namespace kimibuilt `
-  -RemoteCliAgentTransport "mcp" `
+  -RemoteCliAgentTransport "codex-agent" `
   -RemoteCliCodexAgentBaseUrl "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local" `
   -RemoteCliCodexAgentWorkspacePath "/opt/kimibuilt" `
+  -RemoteCliCodexAgentModel "gpt-5.5" `
   -RemoteCliCodexAgentBearerToken $env:FRONTEND_API_KEY
 ```
 

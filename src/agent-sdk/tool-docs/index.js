@@ -267,14 +267,14 @@ const TOOL_SUPPORT = {
     ],
   },
   'ssh-execute': { status: 'requires_setup', notes: ['Requires SSH target credentials or cluster secret configuration.'] },
-  'remote-tools': { status: 'stable', notes: ['Compact lane picker for remote-cli-agent, remote-command, remote-workbench, k3s-deploy, the default remote_code_run/status MCP contract, and the opt-in /api/codex-agent run/events contract.'] },
+  'remote-tools': { status: 'stable', notes: ['Compact lane picker for remote-cli-agent, remote-command, remote-workbench, k3s-deploy, the default /api/codex-agent run/events contract, and the MCP remote_code_run/status compatibility contract.'] },
   'remote-command': { status: 'requires_setup', notes: ['Requires SSH target credentials or cluster secret configuration.', 'Optimized for Ubuntu/Linux host and k3s cluster operations in this project.', 'Includes a Playwright/Chromium UI visual-check catalog entry when the runner image exposes the helper.', 'Runner profile admin is available only for explicitly approved privileged operations.'] },
   'remote-workbench': { status: 'requires_setup', notes: ['Structured remote runner actions for repo inspection, guarded file reads/writes, patch application, build/test, logs, rollout, deployment verification, and UI visual checks.', 'Uses inspect/build/deploy runner profiles instead of sending every operation through the deploy lane.'] },
   'remote-cli-agent': {
     status: 'requires_setup',
     notes: [
-      'Server-side remote coding agent integration using the default remote_code_run/status MCP contract, with opt-in gateway /api/codex-agent/run plus /events SSE compatibility.',
-      'Default setup uses REMOTE_CLI_AGENT_TRANSPORT=mcp plus REMOTE_CLI_MCP_URL and REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY; codex-agent opt-in uses REMOTE_CLI_AGENT_TRANSPORT=codex-agent plus REMOTE_CLI_CODEX_AGENT_BASE_URL or GATEWAY_URL and a trusted bearer key.',
+      'Server-side remote coding agent integration using the default gateway /api/codex-agent/run plus /events SSE contract, with MCP remote_code_run/status retained as compatibility fallback.',
+      'Default setup uses REMOTE_CLI_AGENT_TRANSPORT=codex-agent plus REMOTE_CLI_CODEX_AGENT_BASE_URL or GATEWAY_URL, REMOTE_CLI_CODEX_AGENT_MODEL, and a trusted bearer key; the legacy MCP lane uses REMOTE_CLI_MCP_URL plus REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY.',
       'Prefer for remote software author/build/deploy/verify loops; pass adminMode:true for scoped real deployment changes on the configured admin-capable runner lane.',
       'Git visibility is required for remote deployments: inspect git status/remotes first, create or reuse a git-backed workspace, commit before deploy, report GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, and CHANGED_FILES, and use git revert plus redeploy for rollback.',
       'Completion proof should include WHAT_CHANGED, VERIFY_COMMANDS, VERIFY_RESULTS, PUBLIC_URL, BLOCKER, deployment/public-host markers, and Playwright/Chromium UI screenshot checks for website or dashboard work.',
