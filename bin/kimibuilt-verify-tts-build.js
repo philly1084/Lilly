@@ -35,6 +35,7 @@ async function main() {
     const dtype = process.env.KOKORO_TTS_DTYPE || 'q8';
     const voice = process.env.KOKORO_TTS_DEFAULT_VOICE_ID || 'af_heart';
     const voiceIds = loadBuildVoiceIds(voice);
+    const synthesisMode = getSynthesisMode();
     const cacheDir = process.env.KOKORO_TTS_CACHE_DIR || '/app/data/kokoro/cache';
     const localModelPath = process.env.KOKORO_TTS_LOCAL_MODEL_PATH || '';
     const allowRemoteModels = parseOptionalBoolean(process.env.KOKORO_TTS_ALLOW_REMOTE_MODELS);
@@ -65,22 +66,21 @@ async function main() {
         },
     }));
     try {
-        for (const voiceId of voiceIds) {
-            const audio = await withRemoteRetry(`Kokoro voice ${voiceId}`, () => tts.generate(`KimiBuilt Kokoro build check for ${voiceId}.`, {
-                voice: voiceId,
-                speed: 1,
-            }));
-            const wav = typeof audio?.toWav === 'function' ? Buffer.from(audio.toWav()) : Buffer.alloc(0);
-            if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') {
-                throw new Error(`Kokoro generated invalid WAV audio during build verification for voice ${voiceId}.`);
-            }
-            console.log(`[TTS Build] Kokoro voice cached: ${voiceId} bytes=${wav.length}`);
+        for (const voiceId of getVoiceIdsForSynthesis(voiceIds, synthesisMode)) {
+            await verifyGeneratedAudio(tts, voiceId);
+        }
+
+        const cacheOnlyVoiceIds = voiceIds.filter((voiceId) => (
+            !getVoiceIdsForSynthesis(voiceIds, synthesisMode).includes(voiceId)
+        ));
+        for (const voiceId of cacheOnlyVoiceIds) {
+            await verifyCachedVoice(tts, voiceId);
         }
     } finally {
         tts.close?.();
     }
 
-    console.log(`[TTS Build] Kokoro ready: model=${modelId} dtype=${dtype} device=${device} voices=${voiceIds.join(',')}`);
+    console.log(`[TTS Build] Kokoro ready: model=${modelId} dtype=${dtype} device=${device} synthesis=${synthesisMode} voices=${voiceIds.join(',')}`);
 }
 
 function readJsonFile(filePath) {
@@ -97,6 +97,47 @@ function getRetryConfig() {
         attempts: parsePositiveInteger(process.env.KOKORO_TTS_BUILD_RETRY_ATTEMPTS, DEFAULT_REMOTE_RETRY_ATTEMPTS),
         delayMs: parsePositiveInteger(process.env.KOKORO_TTS_BUILD_RETRY_DELAY_MS, DEFAULT_REMOTE_RETRY_DELAY_MS),
     };
+}
+
+function getSynthesisMode() {
+    const normalized = String(process.env.KOKORO_TTS_BUILD_SYNTHESIS_MODE || 'all').trim().toLowerCase();
+    if (['none', 'cache', 'cache-only', 'false', '0', 'off'].includes(normalized)) {
+        return 'none';
+    }
+    if (['default', 'default-only', 'one', 'single'].includes(normalized)) {
+        return 'default';
+    }
+    return 'all';
+}
+
+function getVoiceIdsForSynthesis(voiceIds, synthesisMode) {
+    if (synthesisMode === 'none') {
+        return [];
+    }
+    if (synthesisMode === 'default') {
+        return voiceIds.slice(0, 1);
+    }
+    return voiceIds;
+}
+
+async function verifyGeneratedAudio(tts, voiceId) {
+    const audio = await withRemoteRetry(`Kokoro voice ${voiceId}`, () => tts.generate(`KimiBuilt Kokoro build check for ${voiceId}.`, {
+        voice: voiceId,
+        speed: 1,
+    }));
+    const wav = typeof audio?.toWav === 'function' ? Buffer.from(audio.toWav()) : Buffer.alloc(0);
+    if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') {
+        throw new Error(`Kokoro generated invalid WAV audio during build verification for voice ${voiceId}.`);
+    }
+    console.log(`[TTS Build] Kokoro voice synthesized: ${voiceId} bytes=${wav.length}`);
+}
+
+async function verifyCachedVoice(tts, voiceId) {
+    const voiceData = await withRemoteRetry(`Kokoro voice cache ${voiceId}`, () => tts.loadVoice(voiceId));
+    if (!(voiceData instanceof Float32Array) || voiceData.length < 256) {
+        throw new Error(`Kokoro voice "${voiceId}" cache verification failed: invalid voice tensor.`);
+    }
+    console.log(`[TTS Build] Kokoro voice cached: ${voiceId} samples=${voiceData.length}`);
 }
 
 function wait(ms) {
