@@ -112,6 +112,19 @@ describe('web-chat project viewport helpers', () => {
         })).toBe('https://demo-app.demoserver2.buzz/live');
     });
 
+    test('promotes managed app viewport from stale preview fields to the live public host', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        expect(app.buildProjectViewportUrl({
+            type: 'managed-app',
+            url: '/api/artifacts/minascraft-hook/preview',
+            previewUrl: '/api/sandbox-workspaces/minascraft-hook/preview',
+            sandboxUrl: '/api/artifacts/minascraft-hook/sandbox',
+            artifactPreviewUrl: '/api/artifacts/minascraft-hook',
+            publicHost: 'minascraft.demoserver2.buzz',
+        })).toBe('https://minascraft.demoserver2.buzz');
+    });
+
     test('uses preview URLs before sandbox wrappers as viewport project targets', () => {
         const app = Object.create(loadChatAppPrototype());
 

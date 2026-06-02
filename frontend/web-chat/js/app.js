@@ -3001,6 +3001,19 @@ class ChatApp {
     }
 
     buildProjectViewportUrl(project = {}) {
+        const projectType = String(project?.type || '').trim().toLowerCase();
+        if (projectType === 'managed-app') {
+            const publicUrl = String(project?.publicUrl || '').trim();
+            if (/^https?:\/\//i.test(publicUrl)) {
+                return publicUrl;
+            }
+
+            const publicHost = String(project?.publicHost || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+            if (publicHost) {
+                return `https://${publicHost}`;
+            }
+        }
+
         const explicitUrl = String(
             project?.publicUrl
             || project?.url
@@ -4068,6 +4081,12 @@ class ChatApp {
             }
         }
 
+        const existingProject = this.getSessionActiveProject(normalizedSessionId);
+        const projectPublicHost = String(event?.app?.publicHost || existingProject?.publicHost || '').trim();
+        const eventPublicUrl = String(event?.app?.publicUrl || existingProject?.publicUrl || '').trim();
+        const projectPublicUrl = /^https?:\/\//i.test(eventPublicUrl)
+            ? eventPublicUrl
+            : (projectPublicHost ? `https://${projectPublicHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}` : '');
         const projectState = {
             type: 'managed-app',
             key: progressKey,
@@ -4077,13 +4096,13 @@ class ChatApp {
             status: phase,
             appId: nextState.appId,
             appSlug: nextState.appSlug,
-            publicHost: String(event?.app?.publicHost || '').trim(),
+            publicHost: projectPublicHost,
+            publicUrl: projectPublicUrl,
             nextStep: String(nextState.progressState?.nextStep || '').trim(),
             openItems: Array.isArray(nextState.progressState?.openItems) ? nextState.progressState.openItems : [],
             updatedAt: event?.timestamp || new Date().toISOString(),
             progress: nextState.progressState,
         };
-        const existingProject = this.getSessionActiveProject(normalizedSessionId);
         sessionManager.mergeSessionMetadataLocally(normalizedSessionId, {
             activeProject: {
                 ...(existingProject || {}),
