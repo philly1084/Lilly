@@ -3,6 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 
+const DEFAULT_REMOTE_RETRY_ATTEMPTS = 4;
+const DEFAULT_REMOTE_RETRY_DELAY_MS = 3000;
+const MAX_REMOTE_RETRY_DELAY_MS = 30000;
+
 const BLOCKED_TTS_PACKAGES = new Map([
     ['kokoro-js', 'imports the eSpeak NG-backed phonemizer package at module load time'],
     ['phonemizer', 'bundles an eSpeak NG-based G2P runtime'],
@@ -50,7 +54,7 @@ async function main() {
     await verifySharpRuntime();
 
     const { KokoroTTS } = require('../src/tts/kokoro-transformers-runtime');
-    const tts = await KokoroTTS.from_pretrained(modelId, {
+    const tts = await withRemoteRetry('Kokoro model load', () => KokoroTTS.from_pretrained(modelId, {
         dtype,
         device,
         transformers: { env, ...require('@huggingface/transformers') },
@@ -59,13 +63,13 @@ async function main() {
         g2p: {
             required: process.env.KOKORO_G2P_REQUIRED === 'true',
         },
-    });
+    }));
     try {
         for (const voiceId of voiceIds) {
-            const audio = await tts.generate(`KimiBuilt Kokoro build check for ${voiceId}.`, {
+            const audio = await withRemoteRetry(`Kokoro voice ${voiceId}`, () => tts.generate(`KimiBuilt Kokoro build check for ${voiceId}.`, {
                 voice: voiceId,
                 speed: 1,
-            });
+            }));
             const wav = typeof audio?.toWav === 'function' ? Buffer.from(audio.toWav()) : Buffer.alloc(0);
             if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') {
                 throw new Error(`Kokoro generated invalid WAV audio during build verification for voice ${voiceId}.`);
@@ -81,6 +85,54 @@ async function main() {
 
 function readJsonFile(filePath) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function parsePositiveInteger(value, fallback) {
+    const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getRetryConfig() {
+    return {
+        attempts: parsePositiveInteger(process.env.KOKORO_TTS_BUILD_RETRY_ATTEMPTS, DEFAULT_REMOTE_RETRY_ATTEMPTS),
+        delayMs: parsePositiveInteger(process.env.KOKORO_TTS_BUILD_RETRY_DELAY_MS, DEFAULT_REMOTE_RETRY_DELAY_MS),
+    };
+}
+
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(error) {
+    return String(error?.message || error || '').trim();
+}
+
+function isRemoteRetryableError(error) {
+    const message = getErrorMessage(error);
+    return /\b(?:408|425|429|500|502|503|504)\b/.test(message)
+        || /(?:ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|fetch failed|network|rate limit|throttl)/i.test(message);
+}
+
+async function withRemoteRetry(label, operation) {
+    const { attempts, delayMs } = getRetryConfig();
+    let lastError;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+            return await operation();
+        } catch (error) {
+            lastError = error;
+            if (attempt >= attempts || !isRemoteRetryableError(error)) {
+                throw error;
+            }
+
+            const backoffMs = Math.min(delayMs * (2 ** (attempt - 1)), MAX_REMOTE_RETRY_DELAY_MS);
+            console.warn(`[TTS Build] ${label} failed on attempt ${attempt}/${attempts}: ${getErrorMessage(error)}; retrying in ${backoffMs}ms.`);
+            await wait(backoffMs);
+        }
+    }
+
+    throw lastError;
 }
 
 function loadBuildVoiceIds(defaultVoiceId = '') {

@@ -22,7 +22,64 @@ RUN set -eux; \
 FROM docker.io/moby/buildkit:v0.17.2 AS buildkit
 
 # ================================
-# Stage 3: Shared app filesystem
+# Stage 3: Kokoro G2P runtime
+# ================================
+FROM node:24-bookworm-slim AS kokoro-g2p
+
+WORKDIR /app
+
+ARG KOKORO_TTS_MODEL_ID=onnx-community/Kokoro-82M-v1.0-ONNX
+ARG KOKORO_TTS_DEVICE=cpu
+ARG KOKORO_TTS_DTYPE=q8
+ARG KOKORO_TTS_DEFAULT_VOICE_ID=af_heart
+ARG KOKORO_TTS_CACHE_DIR=/app/data/kokoro/cache
+ARG KOKORO_TTS_PORT=3001
+
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    ca-certificates \
+    python3 \
+    python3-venv; \
+  rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+  python3 -m venv /opt/kimibuilt-g2p; \
+  /opt/kimibuilt-g2p/bin/pip install --no-cache-dir kokorog2p==0.6.7
+
+# ================================
+# Stage 4: Kokoro model and voice cache
+# ================================
+FROM kokoro-g2p AS kokoro-cache
+
+ARG KOKORO_TTS_MODEL_ID=onnx-community/Kokoro-82M-v1.0-ONNX
+ARG KOKORO_TTS_DEVICE=cpu
+ARG KOKORO_TTS_DTYPE=q8
+ARG KOKORO_TTS_DEFAULT_VOICE_ID=af_heart
+ARG KOKORO_TTS_CACHE_DIR=/app/data/kokoro/cache
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY bin/kimibuilt-verify-tts-build.js ./bin/kimibuilt-verify-tts-build.js
+COPY scripts/kokoro_g2p_bridge.py ./scripts/kokoro_g2p_bridge.py
+COPY src/tts/kokoro-g2p-bridge.js ./src/tts/kokoro-g2p-bridge.js
+COPY src/tts/kokoro-transformers-runtime.js ./src/tts/kokoro-transformers-runtime.js
+COPY data/kokoro/voices/manifest.json ./data/kokoro/voices/manifest.json
+COPY package-lock.json* ./
+
+RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
+  KOKORO_TTS_MODEL_ID="${KOKORO_TTS_MODEL_ID}" \
+  KOKORO_TTS_DEVICE="${KOKORO_TTS_DEVICE}" \
+  KOKORO_TTS_DTYPE="${KOKORO_TTS_DTYPE}" \
+  KOKORO_TTS_DEFAULT_VOICE_ID="${KOKORO_TTS_DEFAULT_VOICE_ID}" \
+  KOKORO_TTS_CACHE_DIR="${KOKORO_TTS_CACHE_DIR}" \
+  KOKORO_TTS_ALLOW_REMOTE_MODELS=true \
+  KOKORO_G2P_COMMAND=/opt/kimibuilt-g2p/bin/python \
+  KOKORO_G2P_SCRIPT_PATH=/app/scripts/kokoro_g2p_bridge.py \
+  KOKORO_G2P_REQUIRED=true \
+  node bin/kimibuilt-verify-tts-build.js
+
+# ================================
+# Stage 5: Shared app filesystem
 # ================================
 FROM node:24-bookworm-slim AS app-base
 
@@ -76,7 +133,7 @@ ENV PIPER_TTS_VOICES_PATH=/app/data/piper/voices/manifest.json
 ENV OPENCODE_ENABLED=false
 
 # ================================
-# Stage 4: Opt-in media image
+# Stage 6: Opt-in media image
 # ================================
 FROM app-base AS media
 
@@ -94,9 +151,10 @@ RUN set -eux; \
     python3-venv; \
   rm -rf /var/lib/apt/lists/*
 
+COPY --from=kokoro-g2p /opt/kimibuilt-g2p /opt/kimibuilt-g2p
+COPY --from=kokoro-cache /app/data/kokoro/cache ./data/kokoro/cache
+
 RUN set -eux; \
-  python3 -m venv /opt/kimibuilt-g2p; \
-  /opt/kimibuilt-g2p/bin/pip install --no-cache-dir kokorog2p==0.6.7; \
   chown -R kimibuilt:kimibuilt /opt/kimibuilt-g2p
 
 RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
@@ -105,7 +163,7 @@ RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
   KOKORO_TTS_DTYPE="${KOKORO_TTS_DTYPE}" \
   KOKORO_TTS_DEFAULT_VOICE_ID="${KOKORO_TTS_DEFAULT_VOICE_ID}" \
   KOKORO_TTS_CACHE_DIR="${KOKORO_TTS_CACHE_DIR}" \
-  KOKORO_TTS_ALLOW_REMOTE_MODELS=true \
+  KOKORO_TTS_ALLOW_REMOTE_MODELS=false \
   KOKORO_G2P_REQUIRED=true \
   node bin/kimibuilt-verify-tts-build.js && \
   chown -R kimibuilt:kimibuilt /app/data

@@ -54,8 +54,8 @@ kubectl get nodes
 Build and push the KimiBuilt image to your registry:
 
 ```bash
-# Build for ARM64 (typical for k3s on Raspberry Pi)
-docker buildx build --platform linux/arm64 -t your-registry/kimibuilt:latest --push .
+# Build the media image for ARM64 (typical for k3s on Raspberry Pi)
+docker buildx build --platform linux/arm64 --target media --build-arg INSTALL_NPM_OPTIONAL=true -t your-registry/kimibuilt:latest --push .
 
 # Or load locally if using local registry
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
