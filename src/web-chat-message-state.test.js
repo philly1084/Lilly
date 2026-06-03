@@ -256,6 +256,24 @@ describe('buildWebChatSessionMessages', () => {
         expect(metadata.displayContent).toContain('"checkpoint-mnnicelx"');
     });
 
+    test('does not wrap answer-like JSON with bullet response fields as a survey', () => {
+        const answerPayload = JSON.stringify({
+            question: 'Which pieces changed',
+            choices: [
+                'Backend display-content normalization',
+                'Frontend plain-text survey inference',
+                'Regression tests',
+            ],
+            summary: 'These are completed-work bullets, not user choices.',
+        });
+        const metadata = buildFrontendAssistantMetadata({
+            displayContent: answerPayload,
+        });
+
+        expect(metadata.displayContent).toBe(answerPayload);
+        expect(metadata.displayContent).not.toContain('```survey');
+    });
+
     test('keeps assistant artifact metadata when HTML output is created', () => {
         const metadata = buildFrontendAssistantMetadata({
             taskType: 'chat',

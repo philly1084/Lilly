@@ -397,6 +397,26 @@ Next recovery path is straightforward: patch site/index.html, refresh the Config
         });
     });
 
+    test('does not infer a survey card from answer headings followed by bullets', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const content = `Which pieces changed:
+
+- Backend display-content normalization now avoids wrapping answer payloads as surveys.
+- Frontend plain-text survey inference only reacts to real choice prompts.
+- Regression tests cover the cleanup path.
+
+Options I ruled out:
+
+- Rendering every short bullet list as a checkpoint.
+- Asking the user to choose when the answer is only a status summary.`;
+
+        expect(helper.extractSurveyDefinitionFromContent(content, 'answer-bullets')).toBeNull();
+        expect(helper.buildSurveyRenderPlan(content, { id: 'answer-bullets' })).toEqual({
+            markdown: content,
+            surveys: [],
+        });
+    });
+
     test('renders survey choices as keyboard-selectable list options without inline click handlers', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         helper.expandedReasoningMessageIds = new Set();

@@ -1965,8 +1965,15 @@ class UIHelpers {
             ...lines.slice(-3),
             question,
         ].join(' ');
+        const normalizedQuestion = this.cleanPlainSurveyText(question)
+            .replace(/\s+/g, ' ')
+            .trim();
 
-        return /\b(choose|select|pick|prefer|decision|direction|option|path|approach|which|what should|where should|how should|should i|do you want|would you like)\b/i.test(focus);
+        return /\b(choose|select|pick|prefer|what should|where should|how should|should i|do you want|would you like)\b/i.test(focus)
+            || (
+                /\?$/.test(normalizedQuestion)
+                && /\b(which|decision|direction|option|path|approach)\b/i.test(normalizedQuestion)
+            );
     }
 
     isPlainSurveyCompletionReport(source = '', question = '') {

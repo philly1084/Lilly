@@ -484,14 +484,21 @@ function normalizeAssistantMetadata(value) {
 
         try {
             const parsed = JSON.parse(normalized);
+            const optionItems = Array.isArray(parsed?.options)
+                ? parsed.options
+                : (Array.isArray(parsed?.choices) ? parsed.choices : []);
+            const hasChoicePrompt = typeof parsed?.question === 'string'
+                && parsed.question.trim()
+                && optionItems.length >= 2;
+            const hasStructuredSteps = Array.isArray(parsed?.steps) || Array.isArray(parsed?.questions);
+            const hasCheckpointIdentity = typeof parsed?.id === 'string'
+                || typeof parsed?.title === 'string'
+                || typeof parsed?.preamble === 'string';
             const looksLikeSurvey = parsed
                 && typeof parsed === 'object'
                 && (
-                    Array.isArray(parsed.steps)
-                    || Array.isArray(parsed.questions)
-                    || typeof parsed.question === 'string'
-                    || Array.isArray(parsed.options)
-                    || Array.isArray(parsed.choices)
+                    hasStructuredSteps
+                    || (hasChoicePrompt && hasCheckpointIdentity)
                 );
 
             if (looksLikeSurvey) {
