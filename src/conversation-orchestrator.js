@@ -5913,8 +5913,14 @@ function hasManagedAppAuthoringIntent(text = '', options = {}) {
 
     const executionProfile = String(options.executionProfile || '').trim();
     const explicitManagedAppContext = hasManagedAppIntentText(normalized);
+    const continuationContext = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+        && (
+            isLikelyTranscriptDependentTurn(normalized)
+            || /\b(it|that|this|same|current|project|work|task)\b/.test(normalized)
+        );
     const appContext = explicitManagedAppContext
-        || /\b(app|website|site|frontend|service|game|landing page|web app|web site)\b/.test(normalized);
+        || /\b(app|website|site|frontend|service|game|landing page|web app|web site)\b/.test(normalized)
+        || continuationContext;
     const changeIntent = /\b(create|build|deploy|publish|launch|ship|update|fix|edit|modify|rewrite|refactor|patch|develop|make)\b/.test(normalized);
     const remoteContext = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
         || hasRemoteManagedAppTargetIntent(normalized)
@@ -6159,13 +6165,24 @@ function shouldUseRemoteCliForManagedAppIteration(text = '', options = {}) {
     const hasGitLabSourceCue = /\b(gitlab|gitlab ci|gitlab[-_ ]runner|build events webhook|registry\.gitlab|source[- ]?to[- ]?public|pipeline|pipelines)\b/i.test(normalized);
     const hasRemoteCliCue = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|backend cli|cli worker|agents sdk remote cli)\b/i.test(normalized);
     const hasClusterDeployCue = /\b(k3s|k8s|kubernetes|cluster|kubectl|ingress|traefik|tls|dns|rollout|route|public host|public url)\b/i.test(normalized);
-    const hasComplexBuildCue = /\b(build|create|update|edit|fix|patch|deploy|redeploy|publish|launch|ship|verify)\b/i.test(normalized)
-        && /\b(app|website|site|frontend|service|game|dashboard|workspace|repo|repository)\b/i.test(normalized);
+    const hasPublicDeployCue = hasClusterDeployCue
+        || /\b(online|live|public|hosted|production)\b/i.test(normalized)
+        || /\b[a-z0-9-]+(?:\.[a-z0-9-]+){1,}\b/i.test(normalized);
+    const hasContinuationCue = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+        && (
+            isLikelyTranscriptDependentTurn(normalized)
+            || /\b(it|that|this|same|current|project|work|task)\b/i.test(normalized)
+        );
+    const hasComplexBuildCue = /\b(build|create|make|develop|implement|finish|complete|update|edit|fix|patch|deploy|redeploy|publish|launch|ship|verify|put)\b/i.test(normalized)
+        && (
+            /\b(app|website|site|frontend|service|game|dashboard|workspace|repo|repository)\b/i.test(normalized)
+            || hasContinuationCue
+        );
 
     return hasRemoteCliCue
         || hasGitLabSourceCue
-        || (executionProfile === REMOTE_BUILD_EXECUTION_PROFILE && hasClusterDeployCue && hasComplexBuildCue)
-        || (workflowLane === 'repo-then-deploy' && hasClusterDeployCue);
+        || (executionProfile === REMOTE_BUILD_EXECUTION_PROFILE && hasPublicDeployCue && hasComplexBuildCue)
+        || (workflowLane === 'repo-then-deploy' && hasPublicDeployCue);
 }
 
 function applyManagedAppRemoteCliIterationDefaults(params = {}, { objective = '', executionProfile = DEFAULT_EXECUTION_PROFILE, workflow = null } = {}) {
@@ -11293,7 +11310,10 @@ class ConversationOrchestrator extends EventEmitter {
             && !metadataDisablesManagedApp
             && !hasExplicitDirectRemoteCliRequest
             && !explicitRemoteCliAgentWithoutManagedApp
-            && !(hasRemoteCliAgentContinuationPreference && !hasManagedAppIntent)
+            && !(hasRemoteCliAgentContinuationPreference
+                && !hasManagedAppIntent
+                && !hasManagedAppAuthoringRequest
+                && !metadataPrefersManagedApp)
             && (
                 metadataPrefersManagedApp
                 || hasManagedAppIntent

@@ -9793,6 +9793,87 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('keeps managed-app owner for sticky remote-cli software deployment follow-ups', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['managed-app', 'remote-command', 'remote-cli-agent', 'k3s-deploy', 'git-safe', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const priorObjective = 'Build a daily news website and deploy it to dailynews.demoserver2.buzz.';
+        const objective = 'Make it more detailed and put it online at dailynews.demoserver2.buzz.';
+        const session = {
+            controlState: {
+                lastToolIntent: 'remote-cli-agent',
+                lastRemoteObjective: priorObjective,
+                remoteCliAgent: {
+                    sessionId: 'remote-session-1',
+                    mcpSessionId: 'mcp-session-1',
+                    cwd: '/opt/kimibuilt',
+                },
+            },
+            metadata: {},
+        };
+        const metadata = {
+            remoteBuildIntent: true,
+            frontendRemoteBuildAutonomyApproved: true,
+            stickyRemoteContext: true,
+            lastRemoteToolIntent: 'remote-cli-agent',
+            lastRemoteObjective: priorObjective,
+        };
+        const toolContext = {
+            metadata,
+            workspacePath: '/workspace/test-site',
+            repositoryPath: '/workspace/test-site',
+        };
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            session,
+            toolManager: orchestrator.toolManager,
+            toolContext,
+            metadata,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session,
+            toolPolicy,
+            toolContext,
+        });
+
+        expect(toolPolicy.prefersManagedAppForRemoteBuild).toBe(true);
+        expect(toolPolicy.candidateToolIds).toContain('managed-app');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'managed-app',
+            params: expect.objectContaining({
+                action: 'create',
+                requestedAction: 'deploy',
+                deployTarget: 'runner',
+                executor: 'remote-cli-agent',
+                useRemoteCliAgent: true,
+            }),
+        }));
+    });
+
     test('routes frontend-approved explicit remote-cli-agent builds away from managed-app', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
