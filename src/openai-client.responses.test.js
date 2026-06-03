@@ -444,4 +444,70 @@ describe('openai-client response threading', () => {
         });
         expect(response._kimibuilt.tokenUsage).toEqual(response._kimibuilt.usage);
     });
+
+    test('uses function_call id as Responses tool output call_id when call_id is absent', async () => {
+        const { __testUtils } = require('./openai-client');
+        const openai = {
+            responses: {
+                create: jest.fn()
+                    .mockResolvedValueOnce({
+                        id: 'resp-loop-id-only-1',
+                        model: 'gpt-4o',
+                        output: [{
+                            type: 'function_call',
+                            id: 'call_provider_id_only',
+                            name: 'web-search',
+                            arguments: JSON.stringify({ query: 'KimiBuilt tool loop' }),
+                        }],
+                    })
+                    .mockResolvedValueOnce({
+                        id: 'resp-loop-id-only-2',
+                        model: 'gpt-4o',
+                        output: [{
+                            type: 'message',
+                            role: 'assistant',
+                            content: [{ type: 'output_text', text: 'Search complete.' }],
+                        }],
+                    }),
+            },
+        };
+        const toolManager = {
+            executeTool: jest.fn(async () => ({
+                success: true,
+                toolId: 'web-search',
+                data: {
+                    results: [{ title: 'Result', url: 'https://example.com' }],
+                },
+            })),
+        };
+
+        await __testUtils.runAutomaticToolLoopWithResponses(openai, {
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'Search with a tool.' }],
+            selectedTools: [{
+                id: 'web-search',
+                responseDefinition: {
+                    type: 'function',
+                    name: 'web-search',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            query: { type: 'string' },
+                        },
+                    },
+                },
+            }],
+            toolContext: {
+                toolManager,
+            },
+        });
+
+        expect(openai.responses.create).toHaveBeenCalledTimes(2);
+        expect(openai.responses.create.mock.calls[1][0].input).toEqual([
+            expect.objectContaining({
+                type: 'function_call_output',
+                call_id: 'call_provider_id_only',
+            }),
+        ]);
+    });
 });

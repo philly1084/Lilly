@@ -6712,7 +6712,8 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
         return [];
     }
 
-    const toolId = canonicalizeRemoteToolId(event?.toolCall?.function?.name || event?.result?.toolId || '');
+    const rawToolId = String(event?.toolCall?.function?.name || event?.result?.toolId || '').trim();
+    const toolId = canonicalizeRemoteToolId(rawToolId);
     const args = parseToolCallArguments(event?.toolCall?.function?.arguments || '{}');
     const command = String(args.command || '').trim();
     const action = String(args.action || '').trim().toLowerCase();
@@ -6734,7 +6735,7 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
     }
     const stateChanged = doesToolEventChangeState(event);
     const base = {
-        tool: toolId,
+        tool: rawToolId === 'remote-cli-agent' ? rawToolId : toolId,
         round,
         stateChanged,
         confidence: 'medium',
@@ -6748,6 +6749,70 @@ function inferCompletionEvidenceFromToolEvent(event = {}, { round = null } = {})
             ...extra,
         });
     };
+
+    if (rawToolId === 'remote-cli-agent') {
+        const remoteSummaryText = [
+            data.whatChanged || '',
+            data.finalOutput || '',
+            Array.isArray(data.verifyResults) ? data.verifyResults.join('\n') : '',
+            Array.isArray(data.verifyCommands) ? data.verifyCommands.join('\n') : '',
+            data.publicUrl || '',
+            data.publicHost || '',
+            data.deployment || '',
+            data.uiCheckReport || '',
+            Array.isArray(data.uiScreenshots) ? data.uiScreenshots.join('\n') : '',
+        ].join('\n');
+        const hasVerification = Array.isArray(data.verifyResults) && data.verifyResults.length > 0;
+        const hasVerificationCommand = Array.isArray(data.verifyCommands) && data.verifyCommands.length > 0;
+        const hasPublicUrl = Boolean(String(data.publicUrl || data.publicHost || '').trim())
+            && !/\b(?:not[_ -]?available|none|null|n\/a)\b/i.test(String(data.publicUrl || data.publicHost || ''));
+        const hasUiCheck = Boolean(String(data.uiCheckReport || '').trim())
+            || (Array.isArray(data.uiScreenshots) && data.uiScreenshots.length > 0);
+        const completed = String(data.completionStatus || '').trim().toLowerCase() === 'complete'
+            || /\bBLOCKER\s*[:=]\s*none\b/i.test(remoteSummaryText);
+        const changed = Boolean(String(data.whatChanged || '').trim())
+            && !/\b(?:^|\s)(?:none|no files? changed|read-only|diagnostic only|inspection only)\b/i.test(String(data.whatChanged || '').trim());
+
+        if (String(data.cwd || '').trim()
+            || /\b(pwd|hostname|uptime|workspace|workdir|working directory)\b/i.test(remoteSummaryText)) {
+            push('remote-inspection', 'Remote CLI agent returned workspace or remote inspection proof.', {
+                confidence: completed ? 'high' : 'medium',
+            });
+        }
+        if (changed || (Array.isArray(data.changedFiles) && data.changedFiles.length > 0)) {
+            push('code-change', 'Remote CLI agent reported source changes or changed files.', {
+                confidence: 'high',
+                stateChanged: true,
+            });
+        }
+        if (/\b(build|npm run build|docker build|buildctl|compiled|bundle)\b/i.test(remoteSummaryText)) {
+            push('build-complete', 'Remote CLI agent reported build proof.', {
+                confidence: hasVerification ? 'high' : 'medium',
+            });
+        }
+        if (data.deployment || /\b(deploy|deployed|deployment|kubectl apply|rollout)\b/i.test(remoteSummaryText)) {
+            push('deployment-applied', 'Remote CLI agent reported deployment work.', {
+                confidence: 'high',
+                stateChanged: true,
+            });
+        }
+        if (hasVerification || (completed && hasVerificationCommand)) {
+            push('deployment-verified', 'Remote CLI agent returned verification results.', {
+                confidence: 'high',
+            });
+        }
+        if (hasPublicUrl || /\b(https?:\/\/|http\s*200|tls|certificate|curl)\b/i.test(remoteSummaryText)) {
+            push('public-verification', 'Remote CLI agent returned public URL or HTTP/TLS proof.', {
+                confidence: hasVerification || completed ? 'high' : 'medium',
+            });
+        }
+        if (hasUiCheck) {
+            push('visual-verification', 'Remote CLI agent returned UI check or screenshot proof.', {
+                confidence: 'high',
+            });
+        }
+        return evidence;
+    }
 
     if (isRemoteCommandToolId(toolId)) {
         if (/\bkubectl\b/i.test(command) || /\b(pod|deployment|service|ingress|namespace)\b/i.test(output)) {
@@ -14528,6 +14593,7 @@ module.exports = {
     classifyToolExecutionResult,
     filterRepeatedPlanStepsWithReport,
     inferAgencyProfile,
+    inferCompletionEvidenceFromToolEvent,
     normalizeExecutionProfile,
     DEFAULT_EXECUTION_PROFILE,
     REMOTE_BUILD_EXECUTION_PROFILE,

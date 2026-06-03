@@ -15,6 +15,7 @@ const {
     classifyToolExecutionResult,
     filterRepeatedPlanStepsWithReport,
     inferAgencyProfile,
+    inferCompletionEvidenceFromToolEvent,
 } = require('./conversation-orchestrator');
 
 function buildResponse(text, id = 'resp_test') {
@@ -316,6 +317,48 @@ describe('HarnessRunState', () => {
             finishReason: 'all_required_criteria_satisfied',
         }));
         expect(harness.getUnmetCriteria()).toHaveLength(0);
+    });
+
+    test('maps structured remote-cli-agent proof to harness completion evidence', () => {
+        const event = {
+            toolCall: {
+                function: {
+                    name: 'remote-cli-agent',
+                    arguments: JSON.stringify({
+                        task: 'Build and deploy the weather app.',
+                    }),
+                },
+            },
+            result: {
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: {
+                    cwd: '/srv/apps/weather',
+                    whatChanged: 'Updated src/app.js and deployed the weather service.',
+                    changedFiles: ['src/app.js', 'k8s/deployment.yaml'],
+                    deployment: 'weather/weather-app',
+                    publicUrl: 'https://weather.demoserver2.buzz/',
+                    verifyCommands: ['npm run build', 'kubectl rollout status deploy/weather-app', 'curl -I https://weather.demoserver2.buzz/'],
+                    verifyResults: ['build passed', 'rollout successful', 'HTTP/2 200'],
+                    uiCheckReport: 'ui-checks/weather/report.json',
+                    uiScreenshots: ['ui-checks/weather/desktop.png'],
+                    completionStatus: 'complete',
+                },
+            },
+        };
+        const evidence = inferCompletionEvidenceFromToolEvent(event, { round: 1 });
+        const evidenceTypes = evidence.map((entry) => entry.type);
+
+        expect(evidence).toEqual(expect.arrayContaining([
+            expect.objectContaining({ tool: 'remote-cli-agent', type: 'remote-inspection', confidence: 'high' }),
+            expect.objectContaining({ tool: 'remote-cli-agent', type: 'code-change', stateChanged: true }),
+            expect.objectContaining({ tool: 'remote-cli-agent', type: 'build-complete' }),
+            expect.objectContaining({ tool: 'remote-cli-agent', type: 'deployment-applied', stateChanged: true }),
+            expect.objectContaining({ tool: 'remote-cli-agent', type: 'deployment-verified', confidence: 'high' }),
+            expect.objectContaining({ tool: 'remote-cli-agent', type: 'public-verification', confidence: 'high' }),
+            expect.objectContaining({ tool: 'remote-cli-agent', type: 'visual-verification', confidence: 'high' }),
+        ]));
+        expect(evidenceTypes).not.toContain('k8s-inspection');
     });
 
     test('maps generic project-plan milestones to concrete research and artifact evidence', () => {

@@ -5693,7 +5693,7 @@ function buildResponsesInput(messages = []) {
 function buildResponsesToolOutputItems(toolCalls = [], toolResults = []) {
     return toolCalls.map((toolCall, index) => ({
         type: 'function_call_output',
-        call_id: toolCall.call_id,
+        call_id: toolCall.call_id || toolCall.id,
         output: JSON.stringify(toolResults[index] || {
             success: false,
             toolId: toolCall.name || 'unknown',
