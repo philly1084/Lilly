@@ -537,6 +537,38 @@ Options I ruled out:
         expect(html).not.toContain('Snapshot');
     });
 
+    test('softens canonical planning operation labels in the live reasoning list', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAssistantRenderPlan({
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            reasoningDisplaySource: 'generated',
+            reasoningDisplayText: { text: 'Checking the next useful step.' },
+            reasoningDisplayFullText: { text: 'Checking the next useful step.' },
+            reasoningDisplayTitle: 'Live reasoning',
+            reasoningDisplayIcon: 'sparkles',
+            progressState: {
+                phase: 'planning',
+                detail: 'Planning the task list.',
+                completedSteps: 1,
+                activeStepIndex: 1,
+                steps: [
+                    { title: 'Gather context and constraints', status: 'completed' },
+                    { title: 'Propose the working plan', status: 'in_progress' },
+                    { title: 'Confirm decisions and blockers', status: 'pending' },
+                ],
+            },
+        }, true).html;
+
+        expect(html).toContain('Getting oriented around your request');
+        expect(html).toContain('Shaping the next plan');
+        expect(html).toContain('Checking decisions and blockers');
+        expect(html).not.toContain('Gather context and constraints');
+        expect(html).not.toContain('Propose the working plan');
+        expect(html).not.toContain('Confirm decisions and blockers');
+    });
+
     test('renders progress step titles without visible truncation markers', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAssistantRenderPlan({
@@ -600,8 +632,8 @@ Options I ruled out:
             summary: 'Remote CLI agent is still working (390s elapsed).',
         }));
         expect(html).toContain('Remote CLI agent is still working (390s elapsed).');
-        expect(html).toContain('Connect remote CLI runner');
-        expect(html).toContain('Return verification result');
+        expect(html).toContain('Connecting to the remote runner');
+        expect(html).toContain('Bringing back verification');
         expect(html).not.toContain('Working through the next step.');
     });
 

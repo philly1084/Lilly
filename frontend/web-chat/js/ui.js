@@ -21,12 +21,32 @@ const WEB_CHAT_THEME_MODE_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.mode
 const WEB_CHAT_LONG_AGENT_DEFAULT_KEY = 'kimibuilt_long_agent_default_enabled';
 const WEB_CHAT_SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
 const WEB_CHAT_ESTIMATED_REASONING_STEPS = Object.freeze([
-    'Tune into the ask',
-    'Find the clean route',
-    'Fit the useful pieces',
-    'Check the edges',
-    'Bring the answer home',
+    'Getting oriented',
+    'Choosing the next move',
+    'Putting the pieces together',
+    'Checking the result',
+    'Preparing the reply',
 ]);
+const WEB_CHAT_PROGRESS_STEP_TITLE_REWRITES = Object.freeze({
+    'advance the requested work': 'Moving the work forward',
+    'build and review a local sandbox prototype': 'Building and reviewing a local prototype',
+    'confirm decisions and blockers': 'Checking decisions and blockers',
+    'connect remote cli runner': 'Connecting to the remote runner',
+    'deliver the requested work': 'Doing the requested work',
+    'deploy live and verify the remote result': 'Deploying live and checking the result',
+    'gather context and constraints': 'Getting oriented around your request',
+    'implement the requested changes': 'Making the requested changes',
+    'inspect the current state': 'Reviewing what is already here',
+    'produce the requested deliverable': 'Creating the requested deliverable',
+    'promote the local prototype to a remote build candidate': 'Moving the prototype toward a remote build',
+    'propose the working plan': 'Shaping the next plan',
+    'return verification result': 'Bringing back verification',
+    'run remote cli task': 'Running the remote task',
+    'save git state and continue repo work': 'Saving Git state and continuing repo work',
+    'shape the idea or goal into a compact build brief': 'Shaping the idea into a compact build brief',
+    'validate and review the result': 'Checking the result',
+    'validate the result': 'Checking the result',
+});
 const WEB_CHAT_MAX_PROGRESS_DISPLAY_STEPS = 12;
 const WEB_CHAT_THEME_DEFAULTS = WEB_CHAT_SHARED_THEMES.defaults || Object.freeze({
     dark: 'obsidian',
@@ -3328,6 +3348,21 @@ class UIHelpers {
         });
     }
 
+    humanizeAssistantProgressStepTitle(value = '') {
+        const title = this.extractDisplayText(value).trim();
+        if (!title) {
+            return '';
+        }
+
+        const rewriteKey = title
+            .replace(/[.!?]+$/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+
+        return WEB_CHAT_PROGRESS_STEP_TITLE_REWRITES[rewriteKey] || title;
+    }
+
     isGenericAssistantProgressStepTitle(value = '') {
         const title = this.extractDisplayText(value).trim();
         return /^(?:milestone|step|task)\s+\d+$/i.test(title)
@@ -3392,17 +3427,17 @@ class UIHelpers {
         return [
             {
                 id: 'remote-cli-start',
-                title: 'Connect remote CLI runner',
+                title: 'Connecting to the remote runner',
                 status: 'completed',
             },
             {
                 id: 'remote-cli-run',
-                title: runningTitle,
+                title: this.humanizeAssistantProgressStepTitle(runningTitle),
                 status: terminal ? (blocked ? 'failed' : 'completed') : 'in_progress',
             },
             {
                 id: 'remote-cli-proof',
-                title: 'Return verification result',
+                title: 'Bringing back verification',
                 status: terminal ? (blocked ? 'skipped' : 'completed') : 'pending',
             },
         ];
@@ -3435,7 +3470,9 @@ class UIHelpers {
 
                 return {
                     id: this.extractDisplayText(step?.id, { maxLength: 80 }) || `progress-step-${index + 1}`,
-                    title: shouldUseEstimatedTitle ? this.getEstimatedReasoningStepTitle(index) : title,
+                    title: shouldUseEstimatedTitle
+                        ? this.getEstimatedReasoningStepTitle(index)
+                        : this.humanizeAssistantProgressStepTitle(title),
                     status: this.normalizeAssistantProgressStepStatus(step?.status),
                 };
             })
