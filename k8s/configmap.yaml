@@ -27,7 +27,7 @@ data:
   REMOTE_CLI_CODEX_AGENT_MODEL: "gpt-5.5"
   REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY: "never"
   REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX: "workspace-write"
-  REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX: "workspace-write"
+  REMOTE_CLI_CODEX_AGENT_ADMIN_THREAD_SANDBOX: "danger-full-access"
   # Server-side Agents SDK MCP connection for legacy remote_code_run/status compatibility.
   REMOTE_CLI_MCP_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local/mcp"
   REMOTE_CLI_MCP_NAME: "remote-cli"

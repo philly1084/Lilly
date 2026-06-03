@@ -8,12 +8,14 @@ Use when:
 - An orchestrated agent leaked a transport-specific runner call, stalled polling, or turned a remote blocker into a questionnaire.
 
 Small decision map:
+- `managed-app`: GitLab-observable app/source/build/deploy loop. Use `managed-app create` for new managed apps and `managed-app iterate` for existing app changes; when deeper CLI work is needed, pass `executor:"remote-cli-agent"` so remote-cli-agent is a worker inside the managed-app evidence loop.
 - `remote-cli-agent`: remote software author/build/deploy/verify loop. Use for app, website, service, dashboard, frontend, or game changes that must go live. Params use `task`, usually `adminMode:true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `mcpSessionId`, `waitMs`, and `transport`.
 - `remote-command`: one direct remote command for inspect, logs, kubectl, network, DNS/TLS, one-off repair, or post-deploy verification. Params use `command`.
 - `remote-workbench`: structured remote repo/file/build/test/log/rollout actions when a matching action exists.
 - `k3s-deploy`: standard deploy-only lane for repo sync, manifest apply, image update, and rollout status after source/image/manifests already exist.
 
 Boundary:
+- Managed-app owns GitLab-backed app/product changes. Do not use standalone `remote-cli-agent`, `remote-command`, or direct k3s edits as the normal product loop when a managed app exists.
 - The KimiBuilt planner calls `remote-cli-agent`; it does not call transport internals directly.
 - Default transport: KimiBuilt calls `POST /api/codex-agent/run` and streams `GET /api/codex-agent/runs/:runId/events` from the `nuts` gateway when `REMOTE_CLI_AGENT_TRANSPORT=codex-agent`.
 - MCP compatibility transport: the runner can still call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })` through MCP and poll `remote_code_status({ jobId })` with the job id only.

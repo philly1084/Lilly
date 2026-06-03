@@ -248,6 +248,47 @@ jobs:
               --ignore-not-found=true
           }
 
+          cleanup_stale_backend_config_hotfix_mount() {
+            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # Earlier live repairs mounted a ConfigMap copy over src/config.js.
+            # Remove that override so remote-cli transport config comes from the
+            # verified image and kimibuilt-config instead of stale source.
+            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
+              --type=strategic \
+              -p='{
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "name": "backend",
+                          "volumeMounts": [
+                            {
+                              "name": "backend-config-hotfix",
+                              "mountPath": "/app/src/config.js",
+                              "$patch": "delete"
+                            }
+                          ]
+                        }
+                      ],
+                      "volumes": [
+                        {
+                          "name": "backend-config-hotfix",
+                          "$patch": "delete"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }' >/dev/null 2>&1 || true
+            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
+              backend-config-hotfix \
+              --ignore-not-found=true
+          }
+
           # Apply namespace first
           kubectl apply -f k8s/namespace.yaml
           
@@ -255,6 +296,7 @@ jobs:
           kubectl apply -f k8s/configmap.yaml
           cleanup_stale_backend_env
           cleanup_stale_kokoro_hotfix_mounts
+          cleanup_stale_backend_config_hotfix_mount
 
           # Create or patch runtime secrets from GitHub Actions secrets when they
           # are configured. Existing non-placeholder live values are preserved.

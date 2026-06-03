@@ -8,6 +8,7 @@ Use this first when a task mentions remote servers, remote CLI, remote agents, k
 
 | User intent | Use | Do not use |
 |-------------|-----|------------|
+| Create, edit, build, deploy, or verify a GitLab-backed managed app or public app/site on `demoserver2.buzz` | `managed-app create` or `managed-app iterate`; use `executor: "remote-cli-agent"` only as the worker for complex repo/CLI work | standalone `remote-cli-agent`, `remote-command`, or direct k3s edits as the product loop |
 | "Use the remote cli agent", "remote coding agent", "assisted cli", `remote_code_run`, or a remote app/site/service needs source changes plus build/deploy/verify | `remote-cli-agent` | `remote-command` as the main authoring loop |
 | Quick host or cluster inspection: baseline, `kubectl get/describe/logs`, service status, DNS/TLS check, one-off repair, post-deploy verification | `remote-command` | local shell, code sandbox, raw legacy SSH first |
 | Structured remote repo/file/build/test/log/rollout action exists | `remote-workbench` | hand-written shell that duplicates the structured action |
@@ -27,7 +28,7 @@ Outer KimiBuilt tool call for the remote coding agent:
     "targetId": "prod",
     "cwd": "/srv/apps/my-app",
     "workspacePath": "/srv/apps/my-app",
-    "transport": "mcp",
+    "transport": "codex-agent",
     "waitMs": 30000,
     "sessionId": "optional prior remote coding session",
     "threadId": "optional prior Codex thread",
@@ -63,6 +64,7 @@ remote_code_status({ "jobId": "returned job id only" })
 ```
 
 Important boundary:
+- Managed-app is the owner for GitLab-backed app source/build/deploy loops. When it needs deeper CLI help, call `managed-app iterate` with `executor: "remote-cli-agent"` so GitLab commits, pipeline/image evidence, rollout evidence, and public verification stay attached to the managed-app run.
 - The planner calls `remote-cli-agent`; it does not call transport internals directly.
 - The default runner transport calls `/api/codex-agent/run` and streams `/events` SSE.
 - The MCP compatibility transport calls `remote_code_run` through MCP and then `remote_code_status`.
