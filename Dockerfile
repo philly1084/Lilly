@@ -66,19 +66,29 @@ COPY src/tts/kokoro-transformers-runtime.js ./src/tts/kokoro-transformers-runtim
 COPY data/kokoro/voices/manifest.json ./data/kokoro/voices/manifest.json
 COPY package-lock.json* ./
 
-RUN mkdir -p "${KOKORO_TTS_CACHE_DIR}" && \
+RUN --mount=type=cache,id=kimibuilt-kokoro-cache,target=/var/cache/kimibuilt-kokoro,sharing=locked \
+  --mount=type=secret,id=hf_token,required=false \
+  set -eu; \
+  if [ -s /run/secrets/hf_token ]; then \
+    HF_TOKEN="$(cat /run/secrets/hf_token)"; \
+    export HF_TOKEN; \
+  fi; \
+  mkdir -p "${KOKORO_TTS_CACHE_DIR}" /var/cache/kimibuilt-kokoro; \
   KOKORO_TTS_MODEL_ID="${KOKORO_TTS_MODEL_ID}" \
   KOKORO_TTS_DEVICE="${KOKORO_TTS_DEVICE}" \
   KOKORO_TTS_DTYPE="${KOKORO_TTS_DTYPE}" \
   KOKORO_TTS_DEFAULT_VOICE_ID="${KOKORO_TTS_DEFAULT_VOICE_ID}" \
-  KOKORO_TTS_CACHE_DIR="${KOKORO_TTS_CACHE_DIR}" \
+  KOKORO_TTS_CACHE_DIR=/var/cache/kimibuilt-kokoro \
   KOKORO_TTS_ALLOW_REMOTE_MODELS=true \
   KOKORO_TTS_BUILD_SYNTHESIS_MODE=none \
+  KOKORO_TTS_BUILD_RETRY_ATTEMPTS=8 \
+  KOKORO_TTS_BUILD_RETRY_DELAY_MS=10000 \
   KOKORO_G2P_COMMAND=/opt/kimibuilt-g2p/bin/python \
   KOKORO_G2P_SCRIPT_PATH=/app/scripts/kokoro_g2p_bridge.py \
   KOKORO_G2P_TIMEOUT_MS=30000 \
   KOKORO_G2P_REQUIRED=true \
-  node bin/kimibuilt-verify-tts-build.js
+  node bin/kimibuilt-verify-tts-build.js; \
+  cp -a /var/cache/kimibuilt-kokoro/. "${KOKORO_TTS_CACHE_DIR}/"
 
 # ================================
 # Stage 5: Shared app filesystem
