@@ -2330,13 +2330,25 @@ function shouldPreferManagedAppForRemoteBuild(prompt = '', options = {}) {
     }
 
     const metadata = getToolContextMetadata(options);
-    const frontendPreference = metadata.preferManagedApp === true;
+    const promptManagedAppIntent = hasManagedAppIntent(prompt);
+    const explicitRemoteCliAgentIntent = hasExplicitRemoteCliAgentIntent(prompt);
+    const remoteCliContinuation = (
+        metadata.stickyRemoteContext === true
+        || metadata.remoteBuildContinuation === true
+        || Boolean(metadata.lastRemoteObjective)
+    ) && metadata.lastRemoteToolIntent === 'remote-cli-agent';
 
-    return hasManagedAppIntent(prompt)
-        || (frontendPreference && (
-            hasRemoteSoftwareCreationIntent(prompt)
-            || hasRemoteSoftwareDeploymentIntent(prompt)
-        ));
+    if (metadata.preferManagedApp === false
+        || (explicitRemoteCliAgentIntent && !promptManagedAppIntent)
+        || (remoteCliContinuation && !promptManagedAppIntent)) {
+        return false;
+    }
+
+    const remoteSoftwareChangeIntent = hasRemoteSoftwareCreationIntent(prompt)
+        || hasRemoteSoftwareDeploymentIntent(prompt)
+        || hasRemoteSoftwareAuthoringIntent(prompt);
+
+    return promptManagedAppIntent || remoteSoftwareChangeIntent;
 }
 
 function hasExplicitWebResearchIntent(prompt = '') {
@@ -3931,6 +3943,10 @@ function inferRequiredAutomaticToolId(prompt = '', availableToolIdsInput = [], o
             || canonicalWorkload?.trigger?.type === 'once'
         )) {
         return 'agent-workload';
+    }
+
+    if (availableToolIds.has('managed-app') && shouldPreferManagedAppForRemoteBuild(prompt, options)) {
+        return 'managed-app';
     }
 
     if (remoteCliAgentToolId

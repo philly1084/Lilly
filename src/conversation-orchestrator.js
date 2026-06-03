@@ -5920,7 +5920,10 @@ function hasManagedAppAuthoringIntent(text = '', options = {}) {
         || hasRemoteManagedAppTargetIntent(normalized)
         || /\b(gitlab|gitea|k3s|k8s|kubernetes|cluster|dns|domain|tls|traefik|cert-manager)\b/.test(normalized);
 
-    return explicitManagedAppContext && appContext && changeIntent && remoteContext;
+    return appContext
+        && changeIntent
+        && remoteContext
+        && (explicitManagedAppContext || executionProfile === REMOTE_BUILD_EXECUTION_PROFILE);
 }
 
 function normalizeManagedAppDeployTarget(value = '') {
@@ -11273,8 +11276,32 @@ class ConversationOrchestrator extends EventEmitter {
         ).trim() === 'remote-cli-agent'
             || plannedToolIds.includes('remote-cli-agent');
         const hasExplicitRemoteCliAgentRequest = hasExplicitRemoteCliAgentIntentText(objectiveText);
+        const hasExplicitDirectRemoteCliRequest = hasExplicitDirectRemoteCliIntent(objectiveText);
         const metadataPrefersManagedApp = getRemoteBuildMetadataPreference(metadata, toolContext);
+        const metadataDisablesManagedApp = metadata?.preferManagedApp === false
+            || toolMetadata.preferManagedApp === false;
+        const hasRemoteCliAgentContinuationPreference = (
+            metadata?.stickyRemoteContext === true
+            || toolMetadata.stickyRemoteContext === true
+            || metadata?.remoteBuildContinuation === true
+            || toolMetadata.remoteBuildContinuation === true
+            || Boolean(metadata?.lastRemoteObjective || toolMetadata.lastRemoteObjective)
+        ) && String(metadata?.lastRemoteToolIntent || toolMetadata.lastRemoteToolIntent || '').trim() === 'remote-cli-agent';
+        const explicitRemoteCliAgentWithoutManagedApp = hasExplicitRemoteCliAgentRequest && !hasManagedAppIntent;
+        const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+            && allowedToolIds.includes('managed-app')
+            && !metadataDisablesManagedApp
+            && !hasExplicitDirectRemoteCliRequest
+            && !explicitRemoteCliAgentWithoutManagedApp
+            && !(hasRemoteCliAgentContinuationPreference && !hasManagedAppIntent)
+            && (
+                metadataPrefersManagedApp
+                || hasManagedAppIntent
+                || hasManagedAppAuthoringRequest
+                || hasRemoteCliAgentAuthoringRequest
+            );
         const shouldForceRemoteCliAgent = allowedToolIds.includes('remote-cli-agent')
+            && !prefersManagedAppForRemoteBuild
             && !metadataPrefersManagedApp
             && (
                 hasRemoteCliAgentMetadataPreference
@@ -11283,15 +11310,11 @@ class ConversationOrchestrator extends EventEmitter {
                     && !hasManagedAppIntent
                 )
                 || (
-                    hasExplicitDirectRemoteCliIntent(objectiveText)
+                    hasExplicitDirectRemoteCliRequest
                     && hasExplicitRemoteCliAgentRequest
                 )
             );
         const preferredRemoteToolId = shouldForceRemoteCliAgent ? 'remote-cli-agent' : remoteToolId;
-        const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
-            && metadataPrefersManagedApp
-            && hasRemoteCliAgentAuthoringRequest
-            && !hasExplicitDirectRemoteCliIntent(objectiveText);
         const hasManagedAppContinuationRecovery = (
             isLikelyTranscriptDependentTurn(objective)
             || /\b(?:go ahead|continue|proceed|from there|those steps|next step|next steps|get it online|get it live|get it deployed)\b/i.test(objective)
@@ -11439,7 +11462,7 @@ class ConversationOrchestrator extends EventEmitter {
                 hasPiiFormulaPlanIntent,
                 hasPiiWorkbookRelationshipRequest,
                 hasSubAgentIntent,
-                hasManagedAppIntent: hasManagedAppIntent || hasManagedAppAuthoringRequest,
+                hasManagedAppIntent: hasManagedAppIntent || (!hasExplicitDirectRemoteCliRequest && hasManagedAppAuthoringRequest),
                 hasRemoteCliAgentAuthoringRequest,
                 hasExplicitRemoteCliAgentRequest,
                 explicitGitIntent,
@@ -11510,7 +11533,7 @@ class ConversationOrchestrator extends EventEmitter {
             if ((hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest) && allowedToolIds.includes('remote-cli-agent')) {
                 candidates.add('remote-cli-agent');
             }
-            if ((hasManagedAppIntent || hasManagedAppAuthoringRequest || hasManagedAppContinuationRecovery || prefersManagedAppForRemoteBuild)
+            if ((hasManagedAppIntent || (!hasExplicitDirectRemoteCliRequest && hasManagedAppAuthoringRequest) || hasManagedAppContinuationRecovery || prefersManagedAppForRemoteBuild)
                 && allowedToolIds.includes('managed-app')) {
                 candidates.add('managed-app');
             }
@@ -11818,7 +11841,7 @@ class ConversationOrchestrator extends EventEmitter {
 
         const needsGitLabManagedAppObservability = !shouldForceRemoteCliAgent && (
             hasManagedAppIntent
-            || (!hasExplicitDirectRemoteCliIntent(objectiveText) && (
+            || (!hasExplicitDirectRemoteCliRequest && (
                 hasManagedAppAuthoringRequest
                 || hasManagedAppContinuationRecovery
                 || prefersManagedAppForRemoteBuild
@@ -11855,6 +11878,7 @@ class ConversationOrchestrator extends EventEmitter {
                 surveyResponseTurn: isSurveyResponseTurn,
             },
             preferredRemoteToolId,
+            prefersManagedAppForRemoteBuild,
             sessionIsolation,
             projectKey,
             activeTaskFrame,
@@ -12075,6 +12099,7 @@ class ConversationOrchestrator extends EventEmitter {
             && !hasExplicitDirectRemoteCliIntent(objective)
             && (hasManagedAppIntentText(objective)
                 || hasManagedAppAuthoringIntent(objective, { executionProfile: toolPolicy.executionProfile })
+                || toolPolicy.prefersManagedAppForRemoteBuild === true
                 || (
                     toolPolicy.executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
                     && getRemoteBuildMetadataPreference({}, toolContext)
@@ -12091,6 +12116,7 @@ class ConversationOrchestrator extends EventEmitter {
         }
 
         if (toolPolicy.candidateToolIds.includes('remote-cli-agent')
+            && toolPolicy.prefersManagedAppForRemoteBuild !== true
             && (
                 (
                     (hasRemoteCliAgentAuthoringIntent(objective) || hasExplicitRemoteCliAgentIntentText(objective))

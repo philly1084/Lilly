@@ -9733,7 +9733,7 @@ describe('ConversationOrchestrator', () => {
         expect(directAction?.tool || null).not.toBe('managed-app');
     });
 
-    test('routes frontend-approved live website builds through managed-app while preserving remote CLI execution', () => {
+    test('routes remote-build live website builds through managed-app while preserving remote CLI execution', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
             host: '162.55.163.199',
@@ -9761,7 +9761,6 @@ describe('ConversationOrchestrator', () => {
         const objective = 'Build a small playable web app, deploy it to the remote k3s cluster, and verify the public HTTPS site.';
         const toolContext = {
             metadata: {
-                preferManagedApp: true,
                 remoteBuildIntent: true,
                 frontendRemoteBuildAutonomyApproved: true,
             },

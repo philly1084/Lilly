@@ -3381,7 +3381,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(selectedIds).not.toContain('document-workflow');
     });
 
-    test('uses managed-app for frontend-approved live website builds without explicit GitLab wording', () => {
+    test('uses managed-app for remote-build live website builds without explicit GitLab wording', () => {
         jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
             enabled: true,
             host: '162.55.163.199',
@@ -3396,7 +3396,6 @@ describe('openai-client automatic tool orchestration helpers', () => {
         const toolContext = {
             executionProfile: 'remote-build',
             metadata: {
-                preferManagedApp: true,
                 remoteBuildIntent: true,
                 frontendRemoteBuildAutonomyApproved: true,
             },
@@ -3410,7 +3409,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
             prompt,
             automaticTools.map((tool) => tool.id),
             { toolContext },
-        )).not.toBe('remote-cli-agent');
+        )).toBe('managed-app');
     });
 
     test('keeps frontend remote-cli-agent requests off managed-app when preferManagedApp is absent', () => {
@@ -3563,7 +3562,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
-    test('routes remote server app repair prompts to remote-cli-agent instead of local sandbox', () => {
+    test('routes remote server app repair prompts to managed-app instead of local sandbox', () => {
         jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
             enabled: true,
             host: '162.55.163.199',
@@ -3582,17 +3581,17 @@ describe('openai-client automatic tool orchestration helpers', () => {
         const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
         const selectedIds = selectedTools.map((tool) => tool.id);
 
-        expect(selectedIds).toContain('remote-cli-agent');
+        expect(selectedIds).toContain('managed-app');
         expect(selectedIds).not.toContain('code-sandbox');
         expect(__testUtils.inferRequiredAutomaticToolId(
             prompt,
             automaticTools.map((tool) => tool.id),
             { toolContext },
-        )).toBe('remote-cli-agent');
+        )).toBe('managed-app');
         expect(__testUtils.buildAutomaticToolChoice(selectedTools, 'chat', { prompt, toolContext })).toEqual({
             type: 'function',
             function: {
-                name: 'remote-cli-agent',
+                name: 'managed-app',
             },
         });
     });
