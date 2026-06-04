@@ -182,7 +182,7 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: backend
-          image: ghcr.io/philly1084/kimibuilt:async-lab
+          image: ghcr.io/philly1084/lilly:async-lab
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true

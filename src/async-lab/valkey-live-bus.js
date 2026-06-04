@@ -191,8 +191,14 @@ class ValkeyLiveBus {
 
         let closed = false;
         let subscriber = null;
+        let messageHandler = null;
+        let resolveReady;
+        const ready = new Promise((resolve) => {
+            resolveReady = resolve;
+        });
         const attachSubscriber = async () => {
             if (!this.isValkeyConfigured()) {
+                resolveReady({ backend: 'memory' });
                 return;
             }
             try {
@@ -200,8 +206,11 @@ class ValkeyLiveBus {
                 if (subscriber.status === 'wait') {
                     await subscriber.connect();
                 }
-                await subscriber.subscribe(channel);
-                subscriber.on('message', (messageChannel, raw) => {
+                if (closed) {
+                    resolveReady({ backend: 'closed' });
+                    return;
+                }
+                messageHandler = (messageChannel, raw) => {
                     if (closed || messageChannel !== channel) {
                         return;
                     }
@@ -210,21 +219,41 @@ class ValkeyLiveBus {
                     } catch (_error) {
                         // Ignore malformed live fanout payloads; durable replay remains available.
                     }
-                });
+                };
+                subscriber.on('message', messageHandler);
+                await subscriber.subscribe(channel);
+                if (closed) {
+                    subscriber.off?.('message', messageHandler);
+                    await subscriber.unsubscribe(channel).catch(() => {});
+                    if (subscriber !== this.subscriber) {
+                        await subscriber.quit().catch(() => {});
+                    }
+                    resolveReady({ backend: 'closed' });
+                    return;
+                }
+                resolveReady({ backend: 'valkey' });
             } catch (error) {
                 this.lastError = error.message;
+                resolveReady({ backend: 'memory', error: error.message });
             }
         };
         void attachSubscriber();
 
-        return () => {
+        const unsubscribe = () => {
             closed = true;
             this.memoryEmitter.off(channel, memoryHandler);
-            if (subscriber && subscriber !== this.subscriber) {
+            if (subscriber && messageHandler) {
+                subscriber.off?.('message', messageHandler);
+            }
+            if (subscriber) {
                 subscriber.unsubscribe(channel).catch(() => {});
+            }
+            if (subscriber && subscriber !== this.subscriber) {
                 subscriber.quit().catch(() => {});
             }
         };
+        unsubscribe.ready = ready;
+        return unsubscribe;
     }
 
     async claimIdempotency(idempotencyKey = '', runId = '') {

@@ -39,6 +39,7 @@ describeIfValkey('ValkeyLiveBus integration', () => {
         const unsubscribe = busB.subscribe('run-1', (event) => {
             liveEvents.push(event);
         });
+        await unsubscribe.ready;
 
         await busA.appendEvent('run-1', {
             eventId: 'event-1',

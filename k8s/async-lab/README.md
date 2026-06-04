@@ -10,6 +10,12 @@ docker compose -f docker-compose.yml -f docker-compose.async.yml up -d valkey-as
 ```
 
 The lab backend is exposed on `http://localhost:3001/async-lab/` by default.
+
+The GitHub Actions workflow `Async Lab Adjacent Build` validates this path with
+focused unit tests, a live Valkey integration test, compose overlay validation,
+and a multi-arch `lite` Docker build. Branch pushes publish only the adjacent
+`ghcr.io/philly1084/lilly:async-lab` image tag; production image tags and
+deployments stay untouched.
 Remote adapters stay dry-run unless `ASYNC_LAB_ALLOW_LIVE_REMOTE=true`.
 
 ## k3s Lab

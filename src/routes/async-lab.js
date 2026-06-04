@@ -139,9 +139,6 @@ router.get('/runs/:runId/events', async (req, res, next) => {
             res.write(formatSseEvent(event));
         };
 
-        const existingEvents = await service.listEvents(run.id, after);
-        existingEvents.forEach(writeEvent);
-
         const unsubscribe = service.subscribeToRun(run.id, writeEvent);
         const keepAlive = setInterval(() => {
             res.write(': keepalive\n\n');
@@ -152,6 +149,14 @@ router.get('/runs/:runId/events', async (req, res, next) => {
             unsubscribe?.();
             res.end();
         });
+
+        await unsubscribe.ready?.catch(() => {});
+        if (res.writableEnded) {
+            return;
+        }
+
+        const existingEvents = await service.listEvents(run.id, after);
+        existingEvents.forEach(writeEvent);
     } catch (error) {
         next(error);
     }
