@@ -1166,6 +1166,50 @@ const config = {
         remoteAutoInstall: process.env.OPENCODE_REMOTE_AUTO_INSTALL === 'true',
     },
 
+    asyncRuntime: {
+        enabled: process.env.ASYNC_RUNTIME_ENABLED === 'true',
+        mode: process.env.ASYNC_RUNTIME_MODE || 'lab',
+        namespace: process.env.ASYNC_RUNTIME_NAMESPACE || 'kimibuilt-async-lab',
+        surface: process.env.ASYNC_RUNTIME_SURFACE || 'async-lab',
+        valkeyUrl: process.env.ASYNC_VALKEY_URL
+            || process.env.VALKEY_URL
+            || process.env.REDIS_URL
+            || '',
+        valkeyKeyPrefix: process.env.ASYNC_VALKEY_KEY_PREFIX || 'kimibuilt:async-lab',
+        eventTtlSeconds: Math.max(
+            60,
+            parseInt(process.env.ASYNC_RUNTIME_EVENT_TTL_SECONDS, 10) || 3600,
+        ),
+        idempotencyTtlSeconds: Math.max(
+            60,
+            parseInt(process.env.ASYNC_RUNTIME_IDEMPOTENCY_TTL_SECONDS, 10) || 86400,
+        ),
+        leaseTtlMs: Math.max(
+            1000,
+            parseInt(process.env.ASYNC_RUNTIME_LEASE_TTL_MS, 10) || 120000,
+        ),
+        workerEnabled: process.env.ASYNC_RUNTIME_WORKER_ENABLED !== 'false',
+        workerPollIntervalMs: Math.max(
+            100,
+            parseInt(process.env.ASYNC_RUNTIME_WORKER_POLL_INTERVAL_MS, 10) || 500,
+        ),
+        simulationDelayMs: Math.max(
+            0,
+            parseInt(process.env.ASYNC_RUNTIME_SIMULATION_DELAY_MS, 10) || 180,
+        ),
+        lockRetryMs: Math.max(
+            25,
+            parseInt(process.env.ASYNC_RUNTIME_LOCK_RETRY_MS, 10) || 250,
+        ),
+        maxLockWaitMs: Math.max(
+            250,
+            parseInt(process.env.ASYNC_RUNTIME_MAX_LOCK_WAIT_MS, 10) || 15000,
+        ),
+        allowLiveRemote: process.env.ASYNC_LAB_ALLOW_LIVE_REMOTE === 'true',
+        webhookSecret: process.env.ASYNC_LAB_WEBHOOK_SECRET || '',
+        persistToPostgres: process.env.ASYNC_RUNTIME_POSTGRES_ENABLED !== 'false',
+    },
+
     runtime: {
         judgmentV2Enabled: process.env.RUNTIME_JUDGMENT_V2_ENABLED === 'true',
         plannerModel: process.env.OPENAI_PLANNER_MODEL || '',

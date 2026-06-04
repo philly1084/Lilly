@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Async Lab</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Async Lab</h1>
+        <p id="runtimeLine">Checking runtime...</p>
+      </div>
+      <div class="status-wrap">
+        <span id="connectionDot" class="dot dot-idle" aria-hidden="true"></span>
+        <span id="connectionLabel">Idle</span>
+      </div>
+    </header>
+
+    <section class="workspace" aria-label="Async lab workspace">
+      <form id="runForm" class="panel control-panel">
+        <div class="panel-head">
+          <h2>New Run</h2>
+          <button class="ghost" type="button" id="refreshStatus">Status</button>
+        </div>
+
+        <label>
+          Task
+          <textarea id="taskInput" name="task" rows="5" required spellcheck="true">Simulate a high-volume remote command burst without touching production.</textarea>
+        </label>
+
+        <div class="field-grid">
+          <label>
+            Adapter
+            <select id="adapterInput" name="adapter">
+              <option value="dry-run">dry-run</option>
+              <option value="remote-cli-agent">remote-cli-agent</option>
+              <option value="remote-command">remote-command</option>
+              <option value="ssh">ssh</option>
+              <option value="managed-app">managed-app</option>
+              <option value="build-webhook-copy">build-webhook-copy</option>
+            </select>
+          </label>
+
+          <label>
+            Target
+            <input id="targetInput" name="targetKey" value="lab/default" autocomplete="off">
+          </label>
+        </div>
+
+        <label>
+          Idempotency Key
+          <input id="idempotencyInput" name="idempotencyKey" placeholder="optional stable command key" autocomplete="off">
+        </label>
+
+        <label class="check-row">
+          <input id="liveRemoteInput" type="checkbox" name="liveRemote">
+          <span>Request live remote execution</span>
+        </label>
+
+        <div class="button-row">
+          <button id="startButton" type="submit">Start Run</button>
+          <button id="cancelButton" type="button" class="danger" disabled>Cancel</button>
+        </div>
+      </form>
+
+      <section class="panel event-panel" aria-label="Run events">
+        <div class="panel-head">
+          <div>
+            <h2>Events</h2>
+            <p id="eventMeta">No run selected</p>
+          </div>
+          <button id="reconnectButton" class="ghost" type="button" disabled>Reconnect</button>
+        </div>
+        <ol id="eventList" class="event-list" aria-live="polite"></ol>
+      </section>
+
+      <aside class="panel detail-panel" aria-label="Run details">
+        <div class="panel-head">
+          <h2>Run</h2>
+          <span id="runStatus" class="status-pill">none</span>
+        </div>
+        <div class="run-switcher">
+          <label>
+            Recent Runs
+            <select id="runSelect" name="runSelect">
+              <option value="">No runs loaded</option>
+            </select>
+          </label>
+          <button id="loadRunButton" class="ghost" type="button" disabled>Open</button>
+        </div>
+        <dl>
+          <dt>Run ID</dt>
+          <dd id="runIdValue">none</dd>
+          <dt>Adapter</dt>
+          <dd id="adapterValue">none</dd>
+          <dt>Target</dt>
+          <dd id="targetValue">none</dd>
+          <dt>Bus</dt>
+          <dd id="busValue">unknown</dd>
+          <dt>Live Remote</dt>
+          <dd id="remoteValue">not requested</dd>
+        </dl>
+      </aside>
+    </section>
+  </main>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>

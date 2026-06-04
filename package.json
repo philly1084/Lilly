@@ -58,6 +58,7 @@
         "force-graph": "^1.51.4",
         "glob": "^13.0.6",
         "helmet": "^8.0.0",
+        "ioredis": "^5.11.0",
         "matter-js": "^0.20.0",
         "openai": "^4.82.0",
         "pdfmake": "^0.2.9",

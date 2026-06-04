@@ -1,0 +1,276 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: async-lab
+    kimibuilt.secdevsolutions.help/runtime-surface: async-lab
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-async-lab-config
+  namespace: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: backend-async-lab
+data:
+  NODE_ENV: production
+  PORT: "3000"
+  ASYNC_RUNTIME_ENABLED: "true"
+  ASYNC_RUNTIME_MODE: lab
+  ASYNC_RUNTIME_NAMESPACE: kimibuilt-async-lab
+  ASYNC_RUNTIME_SURFACE: async-lab
+  ASYNC_VALKEY_URL: redis://valkey-async-lab.kimibuilt-async-lab.svc.cluster.local:6379/0
+  ASYNC_VALKEY_KEY_PREFIX: kimibuilt:async-lab
+  ASYNC_LAB_ALLOW_LIVE_REMOTE: "false"
+  ASYNC_RUNTIME_WORKER_ENABLED: "true"
+  ASYNC_RUNTIME_EVENT_TTL_SECONDS: "3600"
+  ASYNC_RUNTIME_IDEMPOTENCY_TTL_SECONDS: "86400"
+  ASYNC_RUNTIME_LEASE_TTL_MS: "120000"
+  ASYNC_RUNTIME_LOCK_RETRY_MS: "250"
+  ASYNC_RUNTIME_MAX_LOCK_WAIT_MS: "15000"
+  KIMIBUILT_DATA_DIR: /home/kimibuilt/.kimibuilt-async-lab
+  KIMIBUILT_STATE_DIR: /home/kimibuilt/.kimibuilt-async-lab
+  POSTGRES_HOST: postgres.kimibuilt.svc.cluster.local
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: kimibuilt
+  POSTGRES_USER: kimibuilt
+  QDRANT_URL: http://qdrant.kimibuilt.svc.cluster.local:6333
+  OLLAMA_BASE_URL: http://ollama.kimibuilt.svc.cluster.local:11434
+  NODE_OPTIONS: --max-old-space-size=2048
+  UV_THREADPOOL_SIZE: "8"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: valkey-async-lab-data
+  namespace: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: valkey-async-lab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valkey-async-lab
+  namespace: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: valkey-async-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kimibuilt
+      app.kubernetes.io/component: valkey-async-lab
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kimibuilt
+        app.kubernetes.io/component: valkey-async-lab
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1-alpine
+          imagePullPolicy: IfNotPresent
+          args:
+            - valkey-server
+            - --appendonly
+            - "yes"
+            - --save
+            - "60"
+            - "1000"
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: valkey-data
+              mountPath: /data
+      volumes:
+        - name: valkey-data
+          persistentVolumeClaim:
+            claimName: valkey-async-lab-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-async-lab
+  namespace: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: valkey-async-lab
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: valkey-async-lab
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-async-lab
+  namespace: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: backend-async-lab
+    kimibuilt.secdevsolutions.help/runtime-surface: async-lab
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kimibuilt
+      app.kubernetes.io/component: backend-async-lab
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kimibuilt
+        app.kubernetes.io/component: backend-async-lab
+        kimibuilt.secdevsolutions.help/runtime-surface: async-lab
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: backend
+          image: ghcr.io/philly1084/kimibuilt:async-lab
+          imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: backend-async-lab-config
+            - secretRef:
+                name: backend-async-lab-secrets
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+          volumeMounts:
+            - name: backend-state
+              mountPath: /home/kimibuilt/.kimibuilt-async-lab
+      volumes:
+        - name: backend-state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-async-lab
+  namespace: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: backend-async-lab
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: backend-async-lab
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-async-lab
+  namespace: kimibuilt-async-lab
+  labels:
+    app.kubernetes.io/name: kimibuilt
+    app.kubernetes.io/component: backend-async-lab
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - async-lab.demoserver2.buzz
+      secretName: async-lab-demoserver2-buzz-tls
+  rules:
+    - host: async-lab.demoserver2.buzz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-async-lab
+                port:
+                  name: http

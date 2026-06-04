@@ -1,0 +1,65 @@
+services:
+  valkey-async-lab:
+    image: valkey/valkey:8.1-alpine
+    container_name: kimibuilt-valkey-async-lab
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes", "--save", "60", "1000"]
+    ports:
+      - "${ASYNC_LAB_VALKEY_PORT:-6380}:6379"
+    volumes:
+      - valkey_async_lab_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend-async-lab:
+    build: .
+    container_name: kimibuilt-backend-async-lab
+    restart: unless-stopped
+    ports:
+      - "${ASYNC_LAB_PORT:-3001}:3000"
+    env_file: .env
+    environment:
+      - PORT=3000
+      - ASYNC_RUNTIME_ENABLED=true
+      - ASYNC_RUNTIME_MODE=lab
+      - ASYNC_RUNTIME_NAMESPACE=kimibuilt-async-lab
+      - ASYNC_RUNTIME_SURFACE=async-lab
+      - ASYNC_VALKEY_URL=redis://valkey-async-lab:6379/0
+      - ASYNC_VALKEY_KEY_PREFIX=kimibuilt:async-lab
+      - ASYNC_LAB_ALLOW_LIVE_REMOTE=false
+      - ASYNC_RUNTIME_WORKER_ENABLED=true
+      - ASYNC_LAB_WEBHOOK_SECRET=${ASYNC_LAB_WEBHOOK_SECRET:-dev-async-lab-secret}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-kimibuilt}
+      - POSTGRES_USER=${POSTGRES_USER:-kimibuilt}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-kimibuilt}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - QDRANT_URL=http://qdrant:6333
+      - KIMIBUILT_DATA_DIR=/home/kimibuilt/.kimibuilt-async-lab
+      - KIMIBUILT_STATE_DIR=/home/kimibuilt/.kimibuilt-async-lab
+      - NODE_OPTIONS=--max-old-space-size=2048
+      - UV_THREADPOOL_SIZE=8
+    volumes:
+      - async_backend_state:/home/kimibuilt/.kimibuilt-async-lab
+    depends_on:
+      valkey-async-lab:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  valkey_async_lab_data:
+  async_backend_state:

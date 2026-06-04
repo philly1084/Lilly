@@ -44,6 +44,8 @@ const skillsRouter = require('./routes/skills');
 const workloadsRouter = require('./routes/workloads');
 const managedAppsRouter = require('./routes/managed-apps');
 const runnersRouter = require('./routes/runners');
+const asyncLabRouter = require('./routes/async-lab');
+const asyncLabWebhooksRouter = require('./routes/async-lab-webhooks');
 const giteaIntegrationsRouter = require('./routes/integrations-gitea');
 const gitlabIntegrationsRouter = require('./routes/integrations-gitlab');
 const providerSessionsRouter = require('./routes/provider-sessions');
@@ -63,6 +65,7 @@ const { TemplateStore } = require('./template-store');
 const { podcastService } = require('./podcast/podcast-service');
 const { podcastVideoService } = require('./video/podcast-video-service');
 const { remoteRunnerService } = require('./remote-runner/service');
+const { asyncLabService } = require('./async-lab/service');
 const {
     buildSystemHealthReport,
     createStartupState,
@@ -80,6 +83,7 @@ validate();
 const app = express();
 app.set('trust proxy', 1);
 app.locals.dashboardController = new DashboardController(null);
+app.locals.asyncLabService = asyncLabService;
 setDashboardController(app.locals.dashboardController);
 
 let startupState = {
@@ -163,6 +167,7 @@ app.use('/api/auth/login', loginRateLimit);
 app.use('/api/auth', authRouter);
 app.use('/api/integrations/gitlab', gitlabIntegrationsRouter);
 app.use('/api/integrations/gitea', giteaIntegrationsRouter);
+app.use('/api/async-lab/webhooks', asyncLabWebhooksRouter);
 app.use('/api/sandbox-libraries', sandboxLibrariesRouter);
 app.post('/api/runners/register', (req, res, next) => {
     try {
@@ -187,6 +192,7 @@ app.use('/notes', express.static(path.join(frontendPath, 'notes-notion'), buildF
 app.use('/canvas', express.static(path.join(frontendPath, 'canvas-excalidraw'), buildFrontendStaticOptions()));
 app.use('/podcast-video', express.static(path.join(frontendPath, 'podcast-video'), buildFrontendStaticOptions()));
 app.use('/admin', express.static(path.join(frontendPath, 'agent-dashboard'), buildFrontendStaticOptions()));
+app.use('/async-lab', express.static(path.join(frontendPath, 'async-lab'), buildFrontendStaticOptions()));
 
 app.get('/', (_req, res) => {
     res.send(`
@@ -266,6 +272,7 @@ app.get('/', (_req, res) => {
 });
 
 app.use('/api/chat', chatRouter);
+app.use('/api/async-lab', asyncLabRouter);
 app.use('/api/canvas', canvasRouter);
 app.use('/api/notation', notationRouter);
 app.use('/api/notes', notesRouter);
@@ -460,6 +467,17 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
             workloadService: app.locals.agentWorkloadService,
         });
         app.locals.agentWorkloadRunner.start();
+        app.locals.asyncLabService = asyncLabService;
+        if (config.asyncRuntime.enabled) {
+            console.log('[Boot] Initializing async runtime lab...');
+            try {
+                await asyncLabService.initialize();
+                asyncLabService.startWorker();
+                console.log(`[Boot] Async runtime lab ready (${asyncLabService.getStatus().bus.backend} bus)`);
+            } catch (error) {
+                console.warn(`[Boot] Async runtime lab unavailable, production runtime continues unchanged: ${error.message}`);
+            }
+        }
         const ttsConfig = ttsService.getPublicConfig();
         console.log(`[Boot] TTS ${ttsConfig.provider || 'unknown'} ${ttsConfig.diagnostics?.status || 'unknown'}: ${ttsConfig.diagnostics?.message || 'No details available.'}`);
         const audioProcessingConfig = audioProcessingService.getPublicConfig();
