@@ -294,6 +294,7 @@ jobs:
           
           # Apply configmap
           kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/primary-async-runtime.yaml
           cleanup_stale_backend_env
           cleanup_stale_kokoro_hotfix_mounts
           cleanup_stale_backend_config_hotfix_mount
@@ -356,6 +357,7 @@ jobs:
 
       - name: Wait for rollout
         run: |
+          kubectl rollout status deployment/valkey-async-runtime -n ${{ env.KUBE_NAMESPACE }} --timeout=180s
           kubectl rollout status deployment/kokoro-tts -n ${{ env.KUBE_NAMESPACE }} --timeout=600s
           kubectl rollout status deployment/backend -n ${{ env.KUBE_NAMESPACE }} --timeout=180s
 

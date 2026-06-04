@@ -68,11 +68,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
           volumeMounts:
             - name: valkey-data
               mountPath: /data
