@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "url": "https://async-lab.demoserver2.buzz/async-lab/",
+  "runtimeLine": "kimibuilt-async-lab | valkey bus | live remote dry-run",
+  "first": {
+    "runId": "async-run-4cfe2b97-a01a-462d-955e-838db823104e",
+    "eventCount": 12,
+    "status": "completed"
+  },
+  "second": {
+    "runId": "async-run-cb402062-ce59-4464-afbf-89564908c72c",
+    "eventCount": 12,
+    "status": "completed"
+  },
+  "burstCount": 8,
+  "reconnectLabel": "Streaming",
+  "metrics": {
+    "scrollWidth": 1440,
+    "innerWidth": 1440,
+    "eventCount": 12,
+    "runStatus": "completed",
+    "connection": "Streaming",
+    "maxRafGapMs": 119.70000000000005,
+    "bodyTextLength": 4811
+  },
+  "consoleMessages": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\async-lab-public-live\\async-lab-public-live-desktop.png"
+}

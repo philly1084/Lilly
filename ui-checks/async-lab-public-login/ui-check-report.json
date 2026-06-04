@@ -1,0 +1,61 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "https://async-lab.demoserver2.buzz/login",
+  "originalUrl": "https://async-lab.demoserver2.buzz/login",
+  "authenticated": false,
+  "generatedAt": "2026-06-04T11:47:18.223Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960,
+        "isMobile": false
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\async-lab-public-login\\lillybuilt-login-desktop.png",
+      "metrics": {
+        "title": "LillyBuilt Login",
+        "url": "https://async-lab.demoserver2.buzz/login",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 162,
+        "bodyTextPreview": "SECURE ACCESS LillyBuilt Sign in to access the chat, notes, canvas, and admin frontends. Username Password Sign In Authentication uses an HTTP-only session token.",
+        "headings": [
+          "LillyBuilt"
+        ],
+        "interactiveControls": 3,
+        "textContrast": {
+          "checked": 9,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 1,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\async-lab-public-login\\lillybuilt-login-desktop.png"
+    ],
+    "issues": []
+  }
+}
