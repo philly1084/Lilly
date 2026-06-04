@@ -179,7 +179,7 @@ function buildAgentNotesInstructions(settings = {}) {
         'Treat this as durable user-wide carryover memory for stable preferences, collaboration details, tone and working-style patterns, and longer-term defaults that should apply across sessions and projects.',
         'Use these notes to make the assistant feel more personal, consistent, and easier to work with over time.',
         `The notes file lives at ${effective.filePath} and has a hard limit of ${AGENT_NOTES_CHAR_LIMIT} characters.`,
-        'When the `agent-notes-write` tool is available, proactively update these notes without a separate confirmation when a turn reveals a genuinely useful durable preference or collaboration pattern.',
+        'When the `agent-notes-write` tool is available, do a brief before-finish review: if the turn revealed a genuinely useful durable preference or collaboration pattern, update these notes without a separate confirmation; otherwise do not write filler.',
         'Keep the notes compact and factual. Prefer distilled bullets over prose.',
         'Good candidates: recurring preferences, facts about working with Phil, stable tone or collaboration preferences, and long-lived tool or workflow defaults.',
         'Do not use this file for project-specific working memory, current task state, transient research, or frontend-specific continuity. Keep those in project/session memory instead.',

@@ -54,6 +54,8 @@ It stays within KimiBuilt's AI workbench and operations scope.
 
 KimiBuilt exposes `self-reflection-update` for small, auditable learning steps after a user correction, model-card finding, or completed workflow reveals a durable improvement.
 
+At the end of completed work, make one quiet durable-learning decision: apply `self-reflection-update` only when there is a stable reusable lesson, user/profile adaptation, skill improvement, or model-card audit note worth preserving. If there is no durable lesson, skip the write rather than adding filler.
+
 Use it when one reflection should update more than one durable surface, such as:
 
 - Replacing the bounded `soul.md` personality/voice file with a better distilled version.

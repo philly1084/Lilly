@@ -6173,6 +6173,7 @@ describe('ConversationOrchestrator', () => {
         expect(isolatedToolPolicy.candidateToolIds).not.toContain('agent-notes-write');
         expect(runtimeInstructions).toContain('soul cards and user cards');
         expect(runtimeInstructions).toContain('stable durable lessons');
+        expect(runtimeInstructions).toContain('At the end of completed work, make one quiet durable-learning decision');
         expect(runtimeInstructions).toContain('Prefer `soul_append`');
         expect(runtimeInstructions).toContain('compactedContent');
     });

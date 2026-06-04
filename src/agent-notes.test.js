@@ -62,7 +62,8 @@ describe('agent notes helpers', () => {
     expect(instructions).toContain(`The notes file lives at ${notesPath}`);
     expect(instructions).toContain('facts about working with Phil');
     expect(instructions).toContain('more personal, consistent, and easier to work with over time');
-    expect(instructions).toContain('proactively update these notes');
+    expect(instructions).toContain('before-finish review');
+    expect(instructions).toContain('do not write filler');
     expect(instructions).toContain('- Remember the roadmap naming.');
   });
 });

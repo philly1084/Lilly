@@ -4200,7 +4200,7 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
 
     if (!sessionIsolation && automaticTools.some((entry) => entry.id === 'agent-notes-write')) {
         guidance.push(`- Use \`agent-notes-write\` to maintain the durable user-wide carryover notes file for Phil-specific collaboration facts, stable tone preferences, and long-lived workflow defaults. Keep it under ${AGENT_NOTES_CHAR_LIMIT} characters.`);
-        guidance.push('- When a turn reveals a stable tone preference, collaboration pattern, or personal-agent expectation, consider an `agent-notes-write` update before finishing the turn.');
+        guidance.push('- Before finishing, review whether the completed turn revealed a stable tone preference, collaboration pattern, or personal-agent expectation. If yes, update `agent-notes-write`; if no durable lesson exists, do not write filler.');
         guidance.push('- Rewrite the full notes file in each `agent-notes-write` call, keeping only concise, durable notes rather than project-specific task state or long prose.');
         guidance.push('- Keep project-scoped continuity, artifacts, and working context out of the global carryover notes file.');
         guidance.push('- Do not store secrets, credentials, logs, or code snippets in the carryover notes.');
@@ -4208,6 +4208,7 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
 
     if (automaticTools.some((entry) => entry.id === SELF_REFLECTION_UPDATE_TOOL_ID)) {
         guidance.push('- Use `self-reflection-update` when a user correction, model-card finding, or completed multi-step workflow should update Hermes-style `soul.md`/`user.md`, durable carryover notes, or the registered skill/procedure that governs future work.');
+        guidance.push('- At the end of completed work, make one quiet durable-learning decision: apply `self-reflection-update` only when there is a stable reusable lesson, user/profile adaptation, skill improvement, or model-card audit note worth preserving.');
         guidance.push('- If the user says the soul card or user card is not growing, map those cards to bounded `soul.md` and `user.md` updates through `self-reflection-update`.');
         guidance.push('- When the user explicitly asks the agent to grow, learn, evolve, or adapt from your interactions, capture only stable durable lessons; prefer `user_profile_append` for user/relationship facts and `soul_append` only for lasting assistant voice or behavior changes.');
         guidance.push('- Prefer append actions such as `user_profile_append`, `soul_append`, or `agent_notes_append` for ordinary growth so existing durable content is preserved; use exact patch actions for one sentence or bullet.');
@@ -6677,7 +6678,7 @@ async function createResponse({
         : '';
     const messages = buildMessages({
         input,
-        instructions: promptState.canReuseThreadedPrompt ? null : effectiveInstructions,
+        instructions: effectiveInstructions,
         contextMessages,
         recentMessages: promptState.canReuseThreadedPrompt ? [] : recentMessages,
         recentTranscriptAnchor,

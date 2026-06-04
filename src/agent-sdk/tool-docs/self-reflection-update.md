@@ -4,6 +4,7 @@ Purpose: apply a small, auditable self-reflection update to durable KimiBuilt gu
 
 Use when:
 - a durable lesson should update Hermes-style `soul.md`/`user.md`, carryover notes, a registered skill, or a combination
+- the end of completed work reveals a stable reusable lesson, user/profile adaptation, skill improvement, or model-card audit note worth preserving
 - the user says the soul card or user card is not growing; map those card names to bounded `soul.md` and `user.md` replacements
 - the user explicitly asks the agent to grow, learn, evolve, or adapt from interactions, and the lesson is stable enough for future sessions
 - a model-card finding needs a short audit note
@@ -101,6 +102,7 @@ Result shape:
 
 Guardrails:
 - Use at most one self-reflection pass per user turn, eval, or model-card review.
+- Before finishing completed work, make one quiet durable-learning decision: apply this tool only when there is a stable reusable lesson; otherwise skip it rather than writing filler.
 - Keep `actions` sparse; the hard limit is four actions per call.
 - Prefer `dryRun: true` before applying skill changes unless the exact target text is certain.
 - Prefer append actions for ordinary growth because they preserve current `soul.md`, `user.md`, and `agent-notes.md` content.

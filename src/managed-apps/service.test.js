@@ -1366,6 +1366,86 @@ describe('ManagedAppService', () => {
                     appId: 'app-1',
                     appSlug: 'demo-app',
                     publicHost: 'demo-app.demoserver2.buzz',
+                    targetPublicHost: 'demo-app.demoserver2.buzz',
+                    targetPublicUrl: 'https://demo-app.demoserver2.buzz',
+                    livePublicHost: 'demo-app.demoserver2.buzz',
+                    livePublicUrl: 'https://demo-app.demoserver2.buzz',
+                    publicUrl: 'https://demo-app.demoserver2.buzz',
+                    publicVerificationObserved: true,
+                }),
+            }),
+        }));
+    });
+
+    test('broadcastLifecycleEvent withholds managed app publicUrl until the public endpoint is verified', async () => {
+        const app = {
+            id: 'app-1',
+            ownerId: 'user-1',
+            sessionId: 'session-1',
+            slug: 'generated-slug',
+            appName: 'Generated Slug',
+            repoOwner: 'agent-apps',
+            repoName: 'generated-slug',
+            repoUrl: 'https://gitea.demoserver2.buzz/agent-apps/generated-slug.git',
+            repoCloneUrl: 'https://gitea.demoserver2.buzz/agent-apps/generated-slug.git',
+            defaultBranch: 'main',
+            namespace: 'app-generated-slug',
+            publicHost: 'generated-slug.demoserver2.buzz',
+            status: 'building',
+            metadata: {
+                desiredDeploy: {
+                    deploymentTarget: 'ssh',
+                    namespace: 'app-generated-slug',
+                    publicHost: 'generated-slug.demoserver2.buzz',
+                    defaultBranch: 'main',
+                },
+            },
+        };
+        const buildRun = {
+            id: 'build-1',
+            buildStatus: 'queued',
+            deployStatus: 'pending',
+            verificationStatus: 'pending',
+        };
+        const sessionStore = {
+            upsertMessage: jest.fn(async () => null),
+            getOwned: jest.fn(async () => ({
+                id: 'session-1',
+                metadata: {
+                    title: 'New Chat',
+                },
+            })),
+            update: jest.fn(async () => null),
+        };
+        const service = new ManagedAppService({
+            sessionStore,
+        });
+
+        await service.broadcastLifecycleEvent(app, buildRun, 'created');
+
+        expect(sessionStore.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                title: 'Generated Slug',
+                activeProject: expect.objectContaining({
+                    type: 'managed-app',
+                    phase: 'created',
+                    publicHost: 'generated-slug.demoserver2.buzz',
+                    targetPublicHost: 'generated-slug.demoserver2.buzz',
+                    targetPublicUrl: 'https://generated-slug.demoserver2.buzz',
+                    publicUrl: '',
+                    livePublicHost: '',
+                    livePublicUrl: '',
+                    publicVerificationObserved: false,
+                    progress: expect.objectContaining({
+                        evidence: expect.objectContaining({
+                            publicUrl: '',
+                            targetPublicUrl: 'https://generated-slug.demoserver2.buzz',
+                            livePublicUrl: '',
+                            requiredProof: expect.objectContaining({
+                                publicVerificationObserved: false,
+                            }),
+                        }),
+                    }),
                 }),
             }),
         }));

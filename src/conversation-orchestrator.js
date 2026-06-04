@@ -13023,12 +13023,13 @@ class ConversationOrchestrator extends EventEmitter {
                 ]
                 : [
                     'Use `agent-notes-write` only for concise, durable carryover notes that should help future sessions.',
-                    'When a turn reveals a stable tone preference, collaboration style, or long-lived way Phil likes to work, proactively update `agent-notes-write` before finishing.',
+                    'Before finishing, review whether the completed turn revealed a stable tone preference, collaboration style, or long-lived way Phil likes to work. If yes, update `agent-notes-write`; if no durable lesson exists, do not write filler.',
                     'Good `agent-notes-write` candidates include Phil-specific collaboration preferences, stable tone or partner-style expectations, long-lived defaults, and durable user-wide workflow preferences.',
                     'Every `agent-notes-write` step must include the full replacement notes file as `params.content`.',
                     'Keep project-specific facts, current task state, and frontend-specific continuity in project/session memory instead of `agent-notes-write`.',
                     'Do not store secrets, code dumps, verbose logs, or temporary scratch notes in `agent-notes-write`.',
                     'Use `self-reflection-update` when the current learning should update Hermes-style `soul.md`/`user.md`, durable carryover notes, or the registered skill/procedure that should govern future work.',
+                    'At the end of completed work, make one quiet durable-learning decision: apply `self-reflection-update` only when there is a stable reusable lesson, user/profile adaptation, skill improvement, or model-card audit note worth preserving.',
                     '`self-reflection-update` may record a `model_card_note`, append or exact-patch bounded soul/user/carryover files, compact appends through `compactedContent`, replace compacted files when cleanup is truly needed, patch one existing skill, or create/update one compact skill. Keep actions sparse and evidence-backed.',
                     'Do not use `self-reflection-update` for current task state, prompt-surface rewrites outside the Hermes files, logs, secrets, or recursive updates to its own result.',
                 ]),
@@ -13982,6 +13983,7 @@ class ConversationOrchestrator extends EventEmitter {
         if (allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID)) {
             parts.push('Use `self-reflection-update` when a user correction, model-card finding, or completed workflow reveals a durable improvement that should update Hermes-style soul/user files, carryover notes, or registered skill guidance.');
             parts.push('Treat user-facing soul cards and user cards as the bounded `soul.md` and `user.md` surfaces; growth requests should update these only with stable durable lessons.');
+            parts.push('At the end of completed work, make one quiet durable-learning decision: apply `self-reflection-update` only when there is a stable reusable lesson, user/profile adaptation, skill improvement, or model-card audit note worth preserving.');
             parts.push('Keep `self-reflection-update` sparse: one reflection, at most a few actions, no secrets or logs, and no recursive calls from its own result.');
             parts.push('Prefer `soul_append`, `user_profile_append`, and `agent_notes_append` for ordinary growth so existing durable files are preserved; use exact patch actions for one sentence or bullet.');
             parts.push('If an append would exceed a durable-file limit, provide `compactedContent` with the complete compacted file body preserving the essentials and the new lesson.');

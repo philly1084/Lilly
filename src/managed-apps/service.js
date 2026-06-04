@@ -1090,6 +1090,10 @@ function buildManagedAppIterationEvidence(app = null, buildRun = null, details =
     const remoteCli = details.remoteCli && typeof details.remoteCli === 'object'
         ? details.remoteCli
         : (iteration.remoteCli && typeof iteration.remoteCli === 'object' ? iteration.remoteCli : {});
+    const phase = normalizeText(details.phase || iteration.phase || normalizedApp.status).toLowerCase();
+    const publicVerificationObserved = hasManagedAppPublicVerification(normalizedApp, run, phase, details);
+    const targetPublicUrl = buildHttpsUrlFromHost(publicHost);
+    const livePublicUrl = publicVerificationObserved ? targetPublicUrl : '';
 
     return {
         repository: normalizeText(normalizedApp.repoOwner) && normalizeText(normalizedApp.repoName)
@@ -1104,7 +1108,11 @@ function buildManagedAppIterationEvidence(app = null, buildRun = null, details =
         imageDigest,
         deployStatus: normalizeText(run.deployStatus || liveDeploy.lastStatus),
         verificationStatus: normalizeText(run.verificationStatus || liveDeploy.lastVerificationStatus),
-        publicUrl: publicHost ? `https://${publicHost}` : '',
+        publicUrl: livePublicUrl,
+        targetPublicHost: publicHost,
+        targetPublicUrl,
+        livePublicHost: livePublicUrl ? publicHost : '',
+        livePublicUrl,
         verifiedAt: normalizeText(liveDeploy.lastVerifiedAt || liveDeploy.lastDeployAt),
         remoteCli: {
             sessionId: normalizeText(remoteCli.sessionId || remoteCli.remoteCodeSessionId),
@@ -1122,17 +1130,16 @@ function buildManagedAppIterationEvidence(app = null, buildRun = null, details =
             gitlabPipelineObserved: Boolean(pipelineUrl || run.externalRunId || metadata.gitlabPipeline),
             imageAvailable: Boolean(imageTag || imageDigest),
             deploymentObserved: Boolean(run.deployStatus && run.deployStatus !== 'not_requested'),
-            publicVerificationObserved: Boolean(
-                normalizeText(run.verificationStatus).toLowerCase() === 'success'
-                || normalizeText(normalizedApp.status).toLowerCase() === 'live'
-                || liveDeploy.lastStatus === 'succeeded'
-            ),
+            publicVerificationObserved,
         },
     };
 }
 
 function buildManagedAppIterationStages({ action = 'edit', app = null, buildRun = null, phase = '', details = {} } = {}) {
-    const evidence = buildManagedAppIterationEvidence(app, buildRun, details);
+    const evidence = buildManagedAppIterationEvidence(app, buildRun, {
+        ...details,
+        phase,
+    });
     const normalizedAction = normalizeIterationAction(action) || 'edit';
     const buildStatus = normalizeBuildStatus(buildRun?.buildStatus);
     const deployStatus = normalizeText(buildRun?.deployStatus).toLowerCase();
@@ -1365,7 +1372,10 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
         tlsStatus: normalizeText(deployDiagnostics.tlsStatus),
         httpsStatus: normalizeText(deployDiagnostics.httpsStatus),
         appProbeStatus: normalizeText(deployDiagnostics.appProbeStatus),
-        evidence: buildManagedAppIterationEvidence(app, buildRun, details),
+        evidence: buildManagedAppIterationEvidence(app, buildRun, {
+            ...details,
+            phase: normalizedPhase,
+        }),
         nextActions: buildManagedAppIterationNextActions({
             action: iterationMetadata?.action || details.action || '',
             app,
@@ -1383,6 +1393,29 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
 function buildManagedProjectKey(app = null) {
     const appId = normalizeText(app?.id || app?.slug || 'managed-app');
     return `managed-app:${appId}`;
+}
+
+function buildHttpsUrlFromHost(host = '') {
+    const normalizedHost = normalizeText(host).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    return normalizedHost ? `https://${normalizedHost}` : '';
+}
+
+function hasManagedAppPublicVerification(app = null, buildRun = null, phase = '', details = {}) {
+    const normalizedPhase = normalizeText(phase).toLowerCase();
+    const appStatus = normalizeText(app?.status).toLowerCase();
+    const verificationStatus = normalizeText(buildRun?.verificationStatus).toLowerCase();
+    const liveDeploy = app?.metadata?.liveDeploy && typeof app.metadata.liveDeploy === 'object'
+        ? app.metadata.liveDeploy
+        : {};
+    const deployment = details?.deployment && typeof details.deployment === 'object'
+        ? details.deployment
+        : {};
+
+    return normalizedPhase === 'live'
+        || appStatus === 'live'
+        || ['live', 'success', 'succeeded'].includes(verificationStatus)
+        || liveDeploy.https === true
+        || deployment?.verification?.https === true;
 }
 
 function shouldPromoteManagedProjectTitle(currentTitle = '', previousProjectTitle = '') {
@@ -1411,7 +1444,11 @@ function buildManagedProjectState(app = null, buildRun = null, phase = '', detai
     const liveDeploy = metadata.liveDeploy && typeof metadata.liveDeploy === 'object'
         ? metadata.liveDeploy
         : {};
-    const publicHost = normalizeText(normalizedApp.publicHost || desiredDeploy.publicHost);
+    const targetPublicHost = normalizeText(normalizedApp.publicHost || desiredDeploy.publicHost);
+    const publicVerificationObserved = hasManagedAppPublicVerification(normalizedApp, buildRun, normalizedPhase, details);
+    const livePublicHost = publicVerificationObserved ? targetPublicHost : '';
+    const targetPublicUrl = buildHttpsUrlFromHost(targetPublicHost);
+    const livePublicUrl = buildHttpsUrlFromHost(livePublicHost);
     const title = normalizeText(
         normalizedApp.appName
         || titleizeSlug(normalizedApp.slug)
@@ -1442,8 +1479,13 @@ function buildManagedProjectState(app = null, buildRun = null, phase = '', detai
         repoSshUrl: normalizeText(normalizedApp.repoSshUrl),
         defaultBranch: normalizeText(normalizedApp.defaultBranch || desiredDeploy.defaultBranch || 'main'),
         namespace: normalizeText(normalizedApp.namespace || desiredDeploy.namespace),
-        publicHost,
-        publicUrl: publicHost ? `https://${publicHost}` : '',
+        publicHost: targetPublicHost,
+        publicUrl: livePublicUrl,
+        targetPublicHost,
+        targetPublicUrl,
+        livePublicHost,
+        livePublicUrl,
+        publicVerificationObserved,
         deploymentTarget: normalizeText(metadata.deploymentTarget || desiredDeploy.deploymentTarget || 'ssh') || 'ssh',
         buildRunId: normalizeText(buildRun?.id),
         buildStatus: normalizeText(buildRun?.buildStatus).toLowerCase(),
@@ -2483,6 +2525,7 @@ class ManagedAppService {
             committedPaths,
             pipelineUrl: pipelineUrl || buildRun.externalRunUrl,
             remoteCli,
+            phase,
         });
         const stages = buildManagedAppIterationStages({
             action,
@@ -2548,6 +2591,7 @@ class ManagedAppService {
             committedPaths,
             pipelineUrl: pipelineUrl || buildRun?.externalRunUrl,
             remoteCli,
+            phase,
         });
         const stages = buildManagedAppIterationStages({
             action,

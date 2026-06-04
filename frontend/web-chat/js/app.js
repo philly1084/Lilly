@@ -11,6 +11,7 @@ const REAL_REASONING_DISPLAY_HOLD_MS = 40000;
 const SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
+const MANAGED_APP_PROGRESS_RENDER_BUFFER_MS = 1200;
 const WEB_CHAT_TOOL_MENU_STORAGE_KEY = 'kimibuilt_web_chat_plugin_lanes';
 const WEB_CHAT_TOOL_INTENT_DEFINITIONS = Object.freeze([
     {
@@ -600,6 +601,7 @@ class ChatApp {
         this.connectionStatus = 'checking';
         this.managedAppProgressByKey = new Map();
         this.managedAppHostMessageByKey = new Map();
+        this.pendingManagedAppProgressRenders = new Map();
         this.projectPreviewTokenCache = null;
         this.projectViewportRequestId = 0;
         
@@ -3446,18 +3448,82 @@ class ChatApp {
         return ['collapsed', 'compact', 'wide', 'full'].includes(normalized) ? normalized : 'wide';
     }
 
+    normalizeProjectHost(value = '') {
+        const normalized = String(value || '').trim();
+        if (!normalized) {
+            return '';
+        }
+        if (/^https?:\/\//i.test(normalized)) {
+            try {
+                return new URL(normalized).host;
+            } catch (_error) {
+                return normalized.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/\/+$/, '');
+            }
+        }
+        return normalized.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/\/+$/, '');
+    }
+
+    isManagedAppPublicEndpointReady(project = {}) {
+        const progress = project?.progress && typeof project.progress === 'object'
+            ? project.progress
+            : {};
+        const projectEvidence = project?.evidence && typeof project.evidence === 'object'
+            ? project.evidence
+            : {};
+        const evidence = progress.evidence && typeof progress.evidence === 'object'
+            ? progress.evidence
+            : projectEvidence;
+        const requiredProof = evidence.requiredProof && typeof evidence.requiredProof === 'object'
+            ? evidence.requiredProof
+            : {};
+        const phase = this.normalizeManagedAppPhase(project?.phase || progress?.phase || '');
+        const status = this.normalizeManagedAppPhase(project?.status || '');
+        const verificationStatus = String(
+            project?.verificationStatus
+            || progress?.verificationStatus
+            || evidence?.verificationStatus
+            || '',
+        ).trim().toLowerCase();
+        const liveDeploy = project?.liveDeploy && typeof project.liveDeploy === 'object'
+            ? project.liveDeploy
+            : {};
+
+        return requiredProof.publicVerificationObserved === true
+            || project.publicVerificationObserved === true
+            || liveDeploy.https === true
+            || phase === 'live'
+            || status === 'live'
+            || ['live', 'success', 'succeeded'].includes(verificationStatus);
+    }
+
+    buildManagedAppLiveProjectUrl(project = {}) {
+        const explicitLiveUrl = String(project?.livePublicUrl || project?.deployedUrl || '').trim();
+        if (/^https?:\/\//i.test(explicitLiveUrl)) {
+            return explicitLiveUrl;
+        }
+
+        const liveHost = this.normalizeProjectHost(project?.livePublicHost || project?.deployedHost || '');
+        if (liveHost) {
+            return `https://${liveHost}`;
+        }
+
+        if (!this.isManagedAppPublicEndpointReady(project)) {
+            return '';
+        }
+
+        const publicUrl = String(project?.publicUrl || '').trim();
+        if (/^https?:\/\//i.test(publicUrl)) {
+            return publicUrl;
+        }
+
+        const publicHost = this.normalizeProjectHost(project?.publicHost || project?.targetPublicHost || '');
+        return publicHost ? `https://${publicHost}` : '';
+    }
+
     buildProjectViewportUrl(project = {}) {
         const projectType = String(project?.type || '').trim().toLowerCase();
         if (projectType === 'managed-app') {
-            const publicUrl = String(project?.publicUrl || '').trim();
-            if (/^https?:\/\//i.test(publicUrl)) {
-                return publicUrl;
-            }
-
-            const publicHost = String(project?.publicHost || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-            if (publicHost) {
-                return `https://${publicHost}`;
-            }
+            return this.buildManagedAppLiveProjectUrl(project);
         }
 
         const explicitUrl = String(
@@ -3475,7 +3541,7 @@ class ChatApp {
             return explicitUrl;
         }
 
-        const publicHost = String(project?.publicHost || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+        const publicHost = this.normalizeProjectHost(project?.publicHost || '');
         return publicHost ? `https://${publicHost}` : '';
     }
 
@@ -3652,13 +3718,16 @@ class ChatApp {
             return;
         }
 
+        const isManagedAppProject = String(project?.type || '').trim().toLowerCase() === 'managed-app';
         const title = String(project?.title || project?.appName || project?.appSlug || 'Live project').trim();
-        const hostLabel = String(project?.publicHost || rawUrl || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+        const hostLabel = this.normalizeProjectHost(hasUrl
+            ? (project?.livePublicHost || rawUrl || project?.publicHost || '')
+            : (isManagedAppProject ? '' : (project?.publicHost || rawUrl || '')));
         if (this.projectViewportLabel) {
             this.projectViewportLabel.textContent = title;
         }
         if (this.projectViewportLink) {
-            this.projectViewportLink.textContent = hostLabel || 'Waiting for public route';
+            this.projectViewportLink.textContent = hostLabel || (isManagedAppProject ? 'Waiting for deployed site' : 'Waiting for public route');
             if (hasUrl) {
                 this.projectViewportLink.href = this.resolveProjectApiUrl(rawUrl);
                 this.projectViewportLink.removeAttribute('aria-disabled');
@@ -3672,7 +3741,13 @@ class ChatApp {
             this.projectViewportFrame.dataset.suspendedProjectUrl = hasUrl ? rawUrl : '';
             this.projectViewportFrame.dataset.projectUrl = '';
             this.projectViewportFrame.removeAttribute('src');
-            this.setProjectViewportFrameState(hasUrl ? 'suspended' : 'empty');
+            this.setProjectViewportFrameState(
+                hasUrl ? 'suspended' : 'empty',
+                !hasUrl && isManagedAppProject ? 'Waiting for deployment' : '',
+                !hasUrl && isManagedAppProject
+                    ? 'GitLab and k3s progress stay in the status card; the website preview appears after public verification.'
+                    : '',
+            );
         } else if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.rawProjectUrl !== rawUrl) {
             this.projectViewportFrame.dataset.rawProjectUrl = rawUrl;
             this.projectViewportFrame.dataset.projectUrl = '';
@@ -4290,6 +4365,46 @@ class ChatApp {
         )) || null;
     }
 
+    findManagedAppProjectSummaryMessage(sessionId, progressKey = '') {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const normalizedKey = String(progressKey || '').trim();
+        if (!normalizedSessionId || !normalizedKey) {
+            return null;
+        }
+
+        const messages = sessionManager.getMessages(normalizedSessionId);
+        return messages.find((message) => (
+            message?.role === 'assistant'
+            && message?.metadata?.managedAppProjectSummary === true
+            && this.getManagedAppMessageMeta(message).key === normalizedKey
+        )) || null;
+    }
+
+    hasManagedAppProgressSurface(sessionId, progressKey = '') {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const normalizedKey = String(progressKey || '').trim();
+        if (!normalizedSessionId || !normalizedKey) {
+            return false;
+        }
+
+        if (this.findManagedAppHostMessage(normalizedSessionId, normalizedKey)
+            || this.findManagedAppProjectSummaryMessage(normalizedSessionId, normalizedKey)) {
+            return true;
+        }
+
+        const activeProject = this.getSessionActiveProject(normalizedSessionId);
+        if (!activeProject) {
+            return false;
+        }
+
+        const activeProjectKey = String(activeProject.key || '').trim()
+            || this.buildManagedAppProgressKey({
+                managedAppId: activeProject.appId,
+                managedAppSlug: activeProject.appSlug,
+            });
+        return activeProjectKey === normalizedKey;
+    }
+
     resolveManagedAppHostMessageId(sessionId, event = {}) {
         const normalizedSessionId = String(sessionId || '').trim();
         const progressKey = this.buildManagedAppProgressKey(event);
@@ -4459,7 +4574,6 @@ class ChatApp {
 
         const progressKey = this.buildManagedAppProgressKey(event);
         const hostMessageId = this.resolveManagedAppHostMessageId(normalizedSessionId, event);
-        const messageId = hostMessageId || this.buildManagedAppEventMessageId(event);
         const phase = this.normalizeManagedAppPhase(event?.phase);
         const stateKey = progressKey;
         const existingState = this.managedAppProgressByKey.get(stateKey) || {
@@ -4492,47 +4606,68 @@ class ChatApp {
         };
         this.managedAppProgressByKey.set(stateKey, nextState);
 
-        const existingMessage = this.getSessionMessage(normalizedSessionId, messageId) || {};
-        const nextMessage = this.upsertSessionMessage(normalizedSessionId, {
-            ...existingMessage,
-            ...this.clearLegacyManagedAppReasoningDisplay(existingMessage),
-            id: messageId,
-            role: 'assistant',
-            content: hostMessageId ? extractChatStreamText(existingMessage.content || '') : '',
-            displayContent: hostMessageId ? existingMessage.displayContent : '',
-            isStreaming: nextState.terminal !== true,
-            managedAppProgressState: nextState.progressState,
-            timestamp: event?.timestamp || existingMessage.timestamp || new Date().toISOString(),
-            metadata: {
-                ...(existingMessage.metadata || {}),
-                managedAppHost: Boolean(hostMessageId),
-                managedAppLifecycle: true,
-                managedAppProgressActive: nextState.terminal !== true,
-                managedAppPhase: phase,
-                managedAppId: nextState.appId,
-                managedAppSlug: nextState.appSlug,
-                buildRunId: nextState.buildRunId,
-                publicHost: String(event?.app?.publicHost || existingMessage.metadata?.publicHost || '').trim(),
+        let nextMessage = null;
+        if (hostMessageId) {
+            const existingMessage = this.getSessionMessage(normalizedSessionId, hostMessageId) || {};
+            nextMessage = this.upsertSessionMessage(normalizedSessionId, {
+                ...existingMessage,
+                ...this.clearLegacyManagedAppReasoningDisplay(existingMessage),
+                id: hostMessageId,
+                role: 'assistant',
+                content: extractChatStreamText(existingMessage.content || ''),
+                displayContent: existingMessage.displayContent,
+                isStreaming: nextState.terminal !== true,
                 managedAppProgressState: nextState.progressState,
-                nextStep: String(nextState.progressState?.nextStep || '').trim(),
-                openItems: Array.isArray(nextState.progressState?.openItems) ? nextState.progressState.openItems : [],
-            },
-        });
+                timestamp: event?.timestamp || existingMessage.timestamp || new Date().toISOString(),
+                metadata: {
+                    ...(existingMessage.metadata || {}),
+                    managedAppHost: true,
+                    managedAppLifecycle: true,
+                    managedAppProgressActive: nextState.terminal !== true,
+                    managedAppPhase: phase,
+                    managedAppId: nextState.appId,
+                    managedAppSlug: nextState.appSlug,
+                    buildRunId: nextState.buildRunId,
+                    publicHost: String(event?.app?.publicHost || existingMessage.metadata?.publicHost || '').trim(),
+                    managedAppProgressState: nextState.progressState,
+                    nextStep: String(nextState.progressState?.nextStep || '').trim(),
+                    openItems: Array.isArray(nextState.progressState?.openItems) ? nextState.progressState.openItems : [],
+                },
+            });
 
-        if (nextMessage) {
-            this.persistSessionMessageIfNeeded(normalizedSessionId, nextMessage);
-            this.renderOrReplaceMessage(nextMessage);
-            if (nextState.terminal) {
-                uiHelpers.markMessageSettled(nextMessage.id);
+            if (nextMessage) {
+                this.persistSessionMessageIfNeeded(normalizedSessionId, nextMessage);
+                if (nextState.terminal) {
+                    uiHelpers.markMessageSettled(nextMessage.id);
+                }
             }
         }
 
         const existingProject = this.getSessionActiveProject(normalizedSessionId);
-        const projectPublicHost = String(event?.app?.publicHost || existingProject?.publicHost || '').trim();
-        const eventPublicUrl = String(event?.app?.publicUrl || existingProject?.publicUrl || '').trim();
-        const projectPublicUrl = /^https?:\/\//i.test(eventPublicUrl)
-            ? eventPublicUrl
-            : (projectPublicHost ? `https://${projectPublicHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '')}` : '');
+        const projectPublicHost = String(event?.app?.publicHost || existingProject?.targetPublicHost || existingProject?.publicHost || '').trim();
+        const targetPublicHost = this.normalizeProjectHost(projectPublicHost);
+        const targetPublicUrl = targetPublicHost ? `https://${targetPublicHost}` : '';
+        const eventEvidence = event?.progressState?.evidence && typeof event.progressState.evidence === 'object'
+            ? event.progressState.evidence
+            : {};
+        const eventRequiredProof = eventEvidence.requiredProof && typeof eventEvidence.requiredProof === 'object'
+            ? eventEvidence.requiredProof
+            : {};
+        const verifiedEventPublicUrl = eventRequiredProof.publicVerificationObserved === true
+            ? String(eventEvidence.publicUrl || '').trim()
+            : '';
+        const livePublicUrl = this.buildManagedAppLiveProjectUrl({
+            ...(existingProject || {}),
+            type: 'managed-app',
+            phase,
+            status: phase,
+            publicHost: targetPublicHost,
+            publicUrl: String(event?.app?.publicUrl || existingProject?.publicUrl || '').trim(),
+            livePublicHost: String(event?.app?.livePublicHost || existingProject?.livePublicHost || '').trim(),
+            livePublicUrl: String(event?.app?.livePublicUrl || verifiedEventPublicUrl || existingProject?.livePublicUrl || '').trim(),
+            progress: nextState.progressState,
+        });
+        const livePublicHost = livePublicUrl ? this.normalizeProjectHost(livePublicUrl) : '';
         const projectState = {
             type: 'managed-app',
             key: progressKey,
@@ -4542,8 +4677,12 @@ class ChatApp {
             status: phase,
             appId: nextState.appId,
             appSlug: nextState.appSlug,
-            publicHost: projectPublicHost,
-            publicUrl: projectPublicUrl,
+            publicHost: targetPublicHost,
+            publicUrl: livePublicUrl,
+            targetPublicHost,
+            targetPublicUrl,
+            livePublicHost,
+            livePublicUrl,
             nextStep: String(nextState.progressState?.nextStep || '').trim(),
             openItems: Array.isArray(nextState.progressState?.openItems) ? nextState.progressState.openItems : [],
             updatedAt: event?.timestamp || new Date().toISOString(),
@@ -4562,12 +4701,24 @@ class ChatApp {
         }
 
         const projectSummaryMessage = this.buildManagedProjectSummaryMessage(normalizedSessionId, projectState);
+        let renderedMessage = null;
         if (projectSummaryMessage) {
-            this.upsertSessionMessage(normalizedSessionId, projectSummaryMessage);
-            this.renderOrReplaceMessage(projectSummaryMessage);
+            const savedProjectSummary = this.upsertSessionMessage(normalizedSessionId, projectSummaryMessage);
+            const canonicalMessage = nextMessage || savedProjectSummary || projectSummaryMessage;
+            if (canonicalMessage) {
+                const immediate = nextState.terminal === true
+                    || !document.getElementById(String(canonicalMessage.id || '').trim());
+                this.scheduleManagedAppProgressRender(normalizedSessionId, canonicalMessage, { immediate });
+                renderedMessage = canonicalMessage;
+            }
+        } else if (nextMessage) {
+            const immediate = nextState.terminal === true
+                || !document.getElementById(String(nextMessage.id || '').trim());
+            this.scheduleManagedAppProgressRender(normalizedSessionId, nextMessage, { immediate });
+            renderedMessage = nextMessage;
         }
 
-        return nextMessage;
+        return renderedMessage;
     }
 
     async handleManagedAppEvent(event) {
@@ -4582,8 +4733,9 @@ class ChatApp {
 
         if (isCurrentSession) {
             const progressKey = this.buildManagedAppProgressKey(event);
-            const hasExistingHost = Boolean(this.findManagedAppHostMessage(sessionId, progressKey));
-            if (!this.currentStreamingMessageId && !hasExistingHost) {
+            const hasExistingSurface = this.hasManagedAppProgressSurface(sessionId, progressKey);
+            const hasLoadedMessages = sessionManager.getMessages(sessionId).length > 0;
+            if (!this.currentStreamingMessageId && !hasExistingSurface && !hasLoadedMessages) {
                 const previousMessages = [...sessionManager.getMessages(sessionId)];
                 await this.loadSessionMessages(sessionId, {
                     notifyNewAssistant: true,
@@ -7085,6 +7237,133 @@ curl -fsSIL --max-time 20 "https://$host"`;
         return nextEl;
     }
 
+    removeManagedAppProgressDuplicateElements(sessionId = '', progressKey = '', keepMessageId = '') {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const normalizedKey = String(progressKey || '').trim();
+        const keepId = String(keepMessageId || '').trim();
+        if (!normalizedSessionId || !normalizedKey || !keepId) {
+            return;
+        }
+
+        const messages = sessionManager.getMessages(normalizedSessionId);
+        messages.forEach((message) => {
+            const messageId = String(message?.id || '').trim();
+            if (!messageId || messageId === keepId || message?.role !== 'assistant') {
+                return;
+            }
+
+            const isManagedAppProgressCard = message?.metadata?.managedAppLifecycle === true
+                || message?.metadata?.managedAppProjectSummary === true;
+            if (!isManagedAppProgressCard || this.getManagedAppMessageMeta(message).key !== normalizedKey) {
+                return;
+            }
+
+            const element = document.getElementById(messageId);
+            if (typeof element?.remove === 'function') {
+                element.remove();
+            }
+        });
+    }
+
+    renderManagedAppProgressMessage(sessionId = '', message = null) {
+        const messageId = String(message?.id || '').trim();
+        if (!messageId || !this.isVisibleSession(sessionId)) {
+            return null;
+        }
+
+        const meta = this.getManagedAppMessageMeta(message);
+        this.removeManagedAppProgressDuplicateElements(sessionId, meta.key, messageId);
+
+        const existingEl = document.getElementById(messageId);
+        if (existingEl && typeof uiHelpers.updateMessageContent === 'function') {
+            uiHelpers.updateMessageContent(messageId, message, message.isStreaming === true);
+            uiHelpers.reinitializeIcons(existingEl);
+            this.updateAudioControls();
+            return existingEl;
+        }
+
+        return this.renderOrReplaceMessage(message);
+    }
+
+    flushManagedAppProgressRender(messageId = '') {
+        const normalizedMessageId = String(messageId || '').trim();
+        if (!normalizedMessageId) {
+            return false;
+        }
+
+        const entry = this.pendingManagedAppProgressRenders.get(normalizedMessageId);
+        if (!entry) {
+            return false;
+        }
+
+        if (entry.timer) {
+            const clearTimer = typeof window?.clearTimeout === 'function'
+                ? window.clearTimeout.bind(window)
+                : (typeof clearTimeout === 'function' ? clearTimeout : null);
+            clearTimer?.(entry.timer);
+        }
+        this.pendingManagedAppProgressRenders.delete(normalizedMessageId);
+        return Boolean(this.renderManagedAppProgressMessage(entry.sessionId, entry.message));
+    }
+
+    scheduleManagedAppProgressRender(sessionId = '', message = null, options = {}) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const messageId = String(message?.id || '').trim();
+        if (!normalizedSessionId || !messageId || !message || !this.isVisibleSession(normalizedSessionId)) {
+            return false;
+        }
+
+        const existing = this.pendingManagedAppProgressRenders.get(messageId);
+        const shouldRenderImmediately = options.immediate === true
+            || message?.managedAppProgressState?.terminal === true
+            || message?.metadata?.managedAppProgressState?.terminal === true
+            || !document.getElementById(messageId);
+
+        if (shouldRenderImmediately) {
+            if (existing?.timer) {
+                const clearTimer = typeof window?.clearTimeout === 'function'
+                    ? window.clearTimeout.bind(window)
+                    : (typeof clearTimeout === 'function' ? clearTimeout : null);
+                clearTimer?.(existing.timer);
+            }
+            this.pendingManagedAppProgressRenders.delete(messageId);
+            return Boolean(this.renderManagedAppProgressMessage(normalizedSessionId, message));
+        }
+
+        const scheduleTimer = typeof window?.setTimeout === 'function'
+            ? window.setTimeout.bind(window)
+            : (typeof setTimeout === 'function' ? setTimeout : null);
+        if (!scheduleTimer) {
+            return Boolean(this.renderManagedAppProgressMessage(normalizedSessionId, message));
+        }
+
+        const nextEntry = {
+            sessionId: normalizedSessionId,
+            message,
+            timer: existing?.timer || null,
+        };
+        if (!nextEntry.timer) {
+            nextEntry.timer = scheduleTimer(() => {
+                this.flushManagedAppProgressRender(messageId);
+            }, MANAGED_APP_PROGRESS_RENDER_BUFFER_MS);
+        }
+
+        this.pendingManagedAppProgressRenders.set(messageId, nextEntry);
+        return true;
+    }
+
+    clearManagedAppProgressRenders() {
+        const clearTimer = typeof window?.clearTimeout === 'function'
+            ? window.clearTimeout.bind(window)
+            : (typeof clearTimeout === 'function' ? clearTimeout : null);
+        for (const entry of this.pendingManagedAppProgressRenders.values()) {
+            if (entry?.timer) {
+                clearTimer?.(entry.timer);
+            }
+        }
+        this.pendingManagedAppProgressRenders.clear();
+    }
+
     clearBufferedStreamingRenders() {
         for (const entry of this.pendingStreamingRenders.values()) {
             if (entry?.timer) {
@@ -7092,6 +7371,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             }
         }
         this.pendingStreamingRenders.clear();
+        this.clearManagedAppProgressRenders();
     }
 
     flushBufferedStreamingRender(messageId = '') {

@@ -1208,6 +1208,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(guidance).toContain('Hermes-style `soul.md`/`user.md`');
         expect(guidance).toContain('soul card or user card');
         expect(guidance).toContain('grow, learn, evolve, or adapt');
+        expect(guidance).toContain('At the end of completed work, make one quiet durable-learning decision');
         expect(guidance).toContain('`user_profile_append`');
         expect(guidance).toContain('compactedContent');
         expect(guidance).toContain('self-reflection history directory');
@@ -3746,6 +3747,40 @@ describe('openai-client automatic tool orchestration helpers', () => {
 
         expect(reusedPromptState.instructionsFingerprint).toBe(initialPromptState.instructionsFingerprint);
         expect(reusedPromptState.canReuseThreadedPrompt).toBe(true);
+    });
+
+    test('keeps active instructions in request messages during Responses thread continuation', () => {
+        const instructions = 'Base continuity\nUse tools only when relevant.';
+        const promptState = __testUtils.buildPromptState({
+            instructions,
+            input: 'Continue the deployment proof.',
+            previousPromptState: {
+                instructionsFingerprint: __testUtils.hashPromptText(instructions),
+            },
+            previousResponseId: 'resp_1',
+            apiMode: 'responses',
+        });
+
+        const messages = __testUtils.buildMessages({
+            input: 'Continue the deployment proof.',
+            instructions,
+            recentMessages: promptState.canReuseThreadedPrompt ? [] : [
+                { role: 'user', content: 'Earlier turn' },
+            ],
+            recentTranscriptAnchor: promptState.canReuseThreadedPrompt
+                ? '[Recent transcript anchor]\nassistant: Verified the prior rollout.'
+                : '',
+        });
+
+        expect(promptState.canReuseThreadedPrompt).toBe(true);
+        expect(messages[0]).toEqual({
+            role: 'system',
+            content: instructions,
+        });
+        expect(messages[1]).toEqual({
+            role: 'system',
+            content: '[Recent transcript anchor]\nassistant: Verified the prior rollout.',
+        });
     });
 
     test('does not duplicate the active user prompt when it is already in recent transcript', () => {
