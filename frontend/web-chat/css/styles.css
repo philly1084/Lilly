@@ -7309,6 +7309,210 @@ code[class*="language-"] {
     white-space: nowrap;
 }
 
+/* Plugin Picker */
+.tool-menu-wrap {
+    position: relative;
+    flex-shrink: 0;
+    margin-left: 0.35rem;
+    margin-bottom: 0.95rem;
+}
+
+.tool-menu-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text-secondary);
+    transition:
+        transform var(--transition-fast),
+        color var(--transition-fast),
+        border-color var(--transition-fast),
+        background var(--transition-fast),
+        box-shadow var(--transition-fast);
+}
+
+.tool-menu-btn:hover,
+.tool-menu-btn.is-active {
+    color: var(--text-primary);
+    border-color: rgba(88, 166, 255, 0.28);
+    background: rgba(88, 166, 255, 0.1);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 20px rgba(5, 10, 18, 0.18);
+}
+
+.tool-menu-count {
+    position: absolute;
+    top: -0.35rem;
+    right: -0.35rem;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1rem;
+    text-align: center;
+    box-shadow: 0 0 0 2px rgba(21, 33, 49, 0.98);
+}
+
+.tool-menu-panel {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 0.65rem);
+    width: min(24rem, calc(100vw - 1.5rem));
+    padding: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 0.5rem;
+    background: rgba(17, 25, 38, 0.98);
+    box-shadow: 0 24px 60px rgba(4, 8, 14, 0.42);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    z-index: 80;
+}
+
+.tool-menu-panel__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.1rem 0.1rem 0.65rem;
+}
+
+.tool-menu-panel__title {
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.tool-menu-panel__summary {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-tertiary);
+    font-size: 0.72rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+
+.tool-menu-choice {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.8rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 3rem;
+    padding: 0.55rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.025);
+    cursor: pointer;
+    transition:
+        border-color var(--transition-fast),
+        background var(--transition-fast),
+        transform var(--transition-fast);
+}
+
+.tool-menu-choice:hover,
+.tool-menu-choice.is-selected {
+    border-color: rgba(88, 166, 255, 0.3);
+    background: rgba(88, 166, 255, 0.09);
+}
+
+.tool-menu-choice:hover {
+    transform: translateY(-1px);
+}
+
+.tool-menu-choice input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.tool-menu-choice__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+}
+
+.tool-menu-choice.is-selected .tool-menu-choice__icon {
+    color: var(--accent);
+    background: rgba(88, 166, 255, 0.13);
+}
+
+.tool-menu-choice__copy {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.tool-menu-choice__label,
+.tool-menu-choice__hint {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-menu-choice__label {
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+
+.tool-menu-choice__hint {
+    color: var(--text-tertiary);
+    font-size: 0.68rem;
+}
+
+.tool-menu-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin-top: 0.65rem;
+}
+
+.tool-menu-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 2.1rem;
+    padding: 0 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 650;
+    transition:
+        color var(--transition-fast),
+        border-color var(--transition-fast),
+        background var(--transition-fast);
+}
+
+.tool-menu-actions button:hover {
+    color: var(--text-primary);
+    border-color: rgba(88, 166, 255, 0.24);
+    background: rgba(88, 166, 255, 0.08);
+}
+
 /* Image Button */
 .image-btn {
     flex-shrink: 0;
@@ -8925,6 +9129,10 @@ code[class*="language-"] {
         border-radius: 0.72rem;
     }
 
+    .tool-menu-panel {
+        width: min(23rem, calc(100vw - 1.5rem));
+    }
+
     .composer-send-btn {
         min-width: 2.45rem;
         min-height: 2.45rem;
@@ -9176,13 +9384,47 @@ code[class*="language-"] {
         padding-bottom: 0.1rem !important;
     }
 
+    .tool-menu-wrap {
+        margin-left: 0 !important;
+        margin-bottom: 0.58rem !important;
+    }
+
+    .tool-menu-btn,
     .image-btn {
         width: 2.15rem !important;
         height: 2.15rem !important;
         min-width: 2.15rem !important;
+        border-radius: 0.72rem !important;
+    }
+
+    .image-btn {
         margin-left: 0 !important;
         margin-bottom: 0.58rem !important;
-        border-radius: 0.72rem !important;
+    }
+
+    .tool-menu-panel {
+        width: min(21.5rem, calc(100vw - 1rem));
+        padding: 0.6rem;
+    }
+
+    .tool-menu-grid {
+        gap: 0.35rem;
+    }
+
+    .tool-menu-choice {
+        grid-template-columns: 1.65rem minmax(0, 1fr);
+        gap: 0.45rem;
+        min-height: 2.8rem;
+        padding: 0.45rem 0.5rem;
+    }
+
+    .tool-menu-choice__icon {
+        width: 1.65rem;
+        height: 1.65rem;
+    }
+
+    .tool-menu-actions {
+        gap: 0.35rem;
     }
 
     .composer-audio-btn {
@@ -9845,6 +10087,7 @@ code[class*="language-"] {
     .message-actions,
     .reasoning-selector-wrapper,
     .model-selector-wrapper,
+    .tool-menu-wrap,
     .image-btn,
     .image-lightbox,
     .model-selector-dropdown,

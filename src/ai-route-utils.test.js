@@ -536,6 +536,28 @@ describe('ai-route-utils', () => {
             text: 'Use remote-cli-agent once for a streamed live reasoning proof on k3s-prod in /opt/kimibuilt.',
             outputFormat: 'html',
             outputFormatProvided: true,
+        })).toBe(true);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'Update this document (light-it-up-event-holiday-architectural-405gr2.html): lets deploy this to the web, lightitup.demoserver2.buzz on our remote server using the managed app',
+            outputFormat: 'html',
+            outputFormatProvided: true,
+        })).toBe(true);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'Create a standalone HTML artifact for Light It Up.',
+            outputFormat: 'html',
+            outputFormatProvided: true,
+        })).toBe(false);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'the preview html is missing to push',
+            outputFormat: 'html',
+            outputFormatProvided: true,
+            remoteContext: true,
+        })).toBe(true);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'the preview html is missing to push',
+            outputFormat: 'html',
+            outputFormatProvided: true,
+            remoteContext: false,
         })).toBe(false);
     });
 

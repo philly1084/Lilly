@@ -1,0 +1,315 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://localhost:3100/web-chat/app.html",
+  "originalUrl": "http://localhost:3100/web-chat/app.html",
+  "authenticated": false,
+  "generatedAt": "2026-06-04T00:54:31.955Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-plugin-menu\\lilly-workspace-desktop.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://localhost:3100/web-chat/app.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 932,
+        "bodyTextPreview": "Skip to main content AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent workloads close at hand. New Chat No conversations yet Start a new chat to begin WORKSPACE Import Export Search Files Focus Mode APPEARANCE Paper Theme Lilly LIVE CHAT No active session Offline Auto STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them. Live streaming Sear",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 192,
+        "textContrast": {
+          "checked": 80,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://localhost:3100/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load synced web-chat preferences: TypeError: Failed to fetch\n    at SessionManager.loadUserPreferences (http://localhost:3100/web-chat/js/session.js?v=20260510b:585:36)\n    at new SessionManager (http://localhost:3100/web-chat/js/session.js?v=20260510b:321:44)\n    at http://localhost:3100/web-chat/js/session.js?v=20260510b:2547:24"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to save synced web-chat preferences: TypeError: Failed to fetch\n    at SessionManager.flushUserPreferencePatch (http://localhost:3100/web-chat/js/session.js?v=20260510b:681:36)\n    at http://localhost:3100/web-chat/js/session.js?v=20260510b:668:23"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Fetch fallback failed: TypeError: Failed to fetch\n    at OpenAIAPIClient.getModels (http://localhost:3100/web-chat/js/api.js?v=20260531a:1824:40)\n    at UIHelpers.loadModels (http://localhost:3100/web-chat/js/ui.js?v=20260523a:5811:46)\n    at ChatApp.init (http://localhost:3100/web-chat/js/app.js?v=20260531a:644:19)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load backend sessions, using local cache: TypeError: Failed to fetch\n    at SessionManager.loadSessions (http://localhost:3100/web-chat/js/session.js?v=20260510b:1020:36)\n    at ChatApp.loadSessions (http://localhost:3100/web-chat/js/app.js?v=20260531a:1804:34)\n    at ChatApp.init (http://localhost:3100/web-chat/js/app.js?v=20260531a:650:20)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/api/preferences/web-chat",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/api/tts/voices",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/api/preferences/web-chat",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/v1/models",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/api/sessions?taskType=chat&clientSurface=web-chat&workspaceKey=web-chat",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        }
+      ],
+      "issues": [
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-plugin-menu\\lilly-workspace-mobile.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://localhost:3100/web-chat/app.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 206,
+        "bodyTextPreview": "Skip to main content Lilly STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them.",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 192,
+        "textContrast": {
+          "checked": 13,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://localhost:3100/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load synced web-chat preferences: TypeError: Failed to fetch\n    at SessionManager.loadUserPreferences (http://localhost:3100/web-chat/js/session.js?v=20260510b:585:36)\n    at new SessionManager (http://localhost:3100/web-chat/js/session.js?v=20260510b:321:44)\n    at http://localhost:3100/web-chat/js/session.js?v=20260510b:2547:24"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Fetch fallback failed: TypeError: Failed to fetch\n    at OpenAIAPIClient.getModels (http://localhost:3100/web-chat/js/api.js?v=20260531a:1824:40)\n    at UIHelpers.loadModels (http://localhost:3100/web-chat/js/ui.js?v=20260523a:5811:46)\n    at ChatApp.init (http://localhost:3100/web-chat/js/app.js?v=20260531a:644:19)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load backend sessions, using local cache: TypeError: Failed to fetch\n    at SessionManager.loadSessions (http://localhost:3100/web-chat/js/session.js?v=20260510b:1020:36)\n    at ChatApp.loadSessions (http://localhost:3100/web-chat/js/app.js?v=20260531a:1804:34)\n    at ChatApp.init (http://localhost:3100/web-chat/js/app.js?v=20260531a:650:20)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to save synced web-chat preferences: TypeError: Failed to fetch\n    at SessionManager.flushUserPreferencePatch (http://localhost:3100/web-chat/js/session.js?v=20260510b:681:36)\n    at http://localhost:3100/web-chat/js/session.js?v=20260510b:668:23"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/api/preferences/web-chat",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/api/tts/voices",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/v1/models",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/api/sessions?taskType=chat&clientSurface=web-chat&workspaceKey=web-chat",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/api/preferences/web-chat",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_CONNECTION_REFUSED"
+        }
+      ],
+      "issues": [
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-plugin-menu\\lilly-workspace-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-plugin-menu\\lilly-workspace-mobile.png"
+    ],
+    "issues": [
+      "failed-requests"
+    ]
+  }
+}

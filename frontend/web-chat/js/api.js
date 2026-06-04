@@ -227,6 +227,24 @@ function hasManagedAppPreferenceText(text = '') {
     return managedAppCue && !negativeManagedAppCue && !hasExplicitRemoteCliAgentIntentText(normalized);
 }
 
+function mergeUniqueStringList(existing = [], additions = []) {
+    return Array.from(new Set([
+        ...(Array.isArray(existing) ? existing : []),
+        ...(Array.isArray(additions) ? additions : []),
+    ].map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function applyRequestExecutionProfile(params, requestOptions = {}) {
+    const executionProfile = String(
+        requestOptions?.executionProfile
+        || requestOptions?.metadata?.executionProfile
+        || '',
+    ).trim();
+    if (executionProfile) {
+        params.executionProfile = executionProfile;
+    }
+}
+
 function applyRemoteBuildMetadata(params, messages = []) {
     const lastUserText = getLastUserMessageText(messages);
     if (!hasRemoteBuildIntentText(lastUserText)) {
@@ -242,7 +260,7 @@ function applyRemoteBuildMetadata(params, messages = []) {
         params.metadata.preferManagedApp = true;
     } else if (hasExplicitRemoteCliAgentIntentText(lastUserText)) {
         params.metadata.preferredTool = 'remote-cli-agent';
-        params.metadata.plannedTools = ['remote-cli-agent'];
+        params.metadata.plannedTools = mergeUniqueStringList(params.metadata.plannedTools, ['remote-cli-agent']);
     }
 }
 
@@ -1174,6 +1192,7 @@ class OpenAIAPIClient extends EventTarget {
             params.metadata.remoteBuildAutonomyApproved = true;
         }
 
+        applyRequestExecutionProfile(params, requestOptions);
         applyRemoteBuildMetadata(params, messages);
 
         if (reasoningEffort) {
@@ -1659,6 +1678,7 @@ class OpenAIAPIClient extends EventTarget {
             params.metadata.remoteBuildAutonomyApproved = true;
         }
 
+        applyRequestExecutionProfile(params, requestOptions);
         applyRemoteBuildMetadata(params, messages);
 
         if (reasoningEffort) {

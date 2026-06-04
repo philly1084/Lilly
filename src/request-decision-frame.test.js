@@ -62,6 +62,58 @@ describe('request-decision-frame', () => {
         expect(frame.orchestrationHints.mustNotDo).toContain('answer_without_remote_verification');
     });
 
+    test('routes managed-app artifact deployments away from preview regeneration', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Update this document (light-it-up-event-holiday-architectural-405gr2.html): lets deploy this to the web, lightitup.demoserver2.buzz on our remote server using the managed app',
+            candidateOutputFormat: 'html',
+            outputFormat: null,
+            effectiveArtifactIds: ['artifact-html-light-it-up'],
+            executionProfile: 'remote-build',
+            clientSurface: 'web-chat',
+            route: '/v1/chat/completions',
+        });
+        const prompt = formatRequestDecisionFrameForPrompt(frame);
+
+        expect(frame.intent).toBe('remote_deploy_existing_artifact');
+        expect(frame.preferredTool).toBe('managed-app');
+        expect(frame.sourceArtifacts.ids).toEqual(['artifact-html-light-it-up']);
+        expect(frame.sourceArtifacts.filenames).toContain('light-it-up-event-holiday-architectural-405gr2.html');
+        expect(frame.blockedActions).toEqual(expect.arrayContaining([
+            'generate_new_html',
+            'generate_new_artifact',
+            'create_replacement_preview',
+        ]));
+        expect(frame.proofExpectations).toContain('managed-app/GitLab source and build evidence captured when requested');
+        expect(prompt).toContain('Preferred tool lane: managed-app');
+        expect(prompt).toContain('remote-cli-agent as a worker inside that workflow');
+    });
+
+    test('keeps terse deploy follow-ups in the sticky managed-app lane', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'the preview html is missing to push',
+            candidateOutputFormat: 'html',
+            outputFormatProvided: true,
+            session: {
+                metadata: {
+                    controlState: {
+                        lastToolIntent: 'managed-app',
+                        lastRemoteObjective: 'Deploy Light It Up to lightitup.demoserver2.buzz through managed-app.',
+                    },
+                },
+            },
+            executionProfile: 'remote-build',
+            clientSurface: 'web-chat',
+        });
+
+        expect(frame.intent).toBe('remote_deploy_or_update');
+        expect(frame.preferredTool).toBe('managed-app');
+        expect(frame.blockedActions).toEqual(expect.arrayContaining([
+            'generate_standalone_artifact_only',
+            'create_replacement_preview',
+        ]));
+        expect(frame.previousWork.lastToolIntent).toBe('managed-app');
+    });
+
     test('metadata preserves cards and routing decision for the frontend', () => {
         const frame = buildRequestDecisionFrame({
             text: 'Create a PDF document for the Halifax dinner guide.',

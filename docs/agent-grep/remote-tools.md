@@ -16,6 +16,7 @@ Small decision map:
 
 Boundary:
 - Managed-app owns GitLab-backed app/product changes. Do not use standalone `remote-cli-agent`, `remote-command`, or direct k3s edits as the normal product loop when a managed app exists.
+- Before creating a new remote website/app/dashboard/service, GitLab project, namespace, or public host, inventory managed apps, GitLab projects, continuity/project registry facts, and live k3s namespaces/services/ingresses. Reuse/iterate a match, ask on ambiguity, and create only after no match is found or the user explicitly wants a separate new project.
 - The KimiBuilt planner calls `remote-cli-agent`; it does not call transport internals directly.
 - Default transport: KimiBuilt calls `POST /api/codex-agent/run` and streams `GET /api/codex-agent/runs/:runId/events` from the `nuts` gateway when `REMOTE_CLI_AGENT_TRANSPORT=codex-agent`.
 - MCP compatibility transport: the runner can still call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })` through MCP and poll `remote_code_status({ jobId })` with the job id only.

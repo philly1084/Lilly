@@ -276,6 +276,7 @@ const TOOL_SUPPORT = {
       'Server-side remote coding agent integration using the default gateway /api/codex-agent/run plus /events SSE contract, with MCP remote_code_run/status retained as compatibility fallback.',
       'Default setup uses REMOTE_CLI_AGENT_TRANSPORT=codex-agent plus REMOTE_CLI_CODEX_AGENT_BASE_URL or GATEWAY_URL, REMOTE_CLI_CODEX_AGENT_MODEL, and a trusted bearer key; the legacy MCP lane uses REMOTE_CLI_MCP_URL plus REMOTE_CLI_MCP_BEARER_TOKEN or N8N_API_KEY.',
       'Prefer for remote software author/build/deploy/verify loops; pass adminMode:true for scoped real deployment changes on the configured admin-capable runner lane.',
+      'Before creating a new website/app/dashboard/service, GitLab project, namespace, or public host, inventory managed apps, GitLab projects, continuity/project registry facts, and live k3s resources; reuse matches and ask on ambiguity.',
       'Git visibility is required for remote deployments: inspect git status/remotes first, create or reuse a git-backed workspace, commit before deploy, report GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, and CHANGED_FILES, and use git revert plus redeploy for rollback.',
       'Completion proof should include WHAT_CHANGED, VERIFY_COMMANDS, VERIFY_RESULTS, PUBLIC_URL, BLOCKER, deployment/public-host markers, and Playwright/Chromium UI screenshot checks for website or dashboard work.',
     ],

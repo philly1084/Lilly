@@ -411,6 +411,7 @@ async function getRuntimeSupport(toolId) {
                 ? [
                     `External Git provider (${gitProviderConfig.provider || 'gitlab'}) configured at ${gitProviderConfig.baseURL}.`,
                     `Managed app base domain is ${managedAppsConfig.appBaseDomain || 'demoserver2.buzz'}.`,
+                    'Before creating a new app/site/project, inventory managed apps, Git projects, continuity facts, and live k3s resources for an existing match.',
                 ]
                 : [
                     'Managed app control plane needs integrations.gitlab baseURL and token.',

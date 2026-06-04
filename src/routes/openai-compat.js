@@ -1429,6 +1429,13 @@ router.post('/chat/completions', async (req, res, next) => {
         const sshContext = resolveSshRequestContext(lastUserText, session);
         let effectiveInput = sshContext.effectivePrompt || lastUserText;
         const artifactIntentText = stripInjectedNotesPageEditDirective(lastUserText);
+        const artifactControlState = getSessionControlState(session);
+        const stickyRemoteArtifactContext = Boolean(
+            artifactControlState?.lastToolIntent
+            || artifactControlState?.lastSshTarget?.host
+            || artifactControlState?.remoteWorkingState?.target?.host
+            || artifactControlState?.lastRemoteObjective
+        );
         const routePii = await sanitizeText(lastUserText, {
             sessionId,
             ownerId,
@@ -1551,6 +1558,7 @@ router.post('/chat/completions', async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
+            remoteContext: stickyRemoteArtifactContext,
         })) {
             effectiveOutputFormat = null;
         }
@@ -2711,6 +2719,13 @@ router.post('/responses', async (req, res, next) => {
         const sshContext = resolveSshRequestContext(userInput, session);
         let effectiveUserInput = sshContext.effectivePrompt || userInput;
         const artifactIntentText = stripInjectedNotesPageEditDirective(userInput);
+        const artifactControlState = getSessionControlState(session);
+        const stickyRemoteArtifactContext = Boolean(
+            artifactControlState?.lastToolIntent
+            || artifactControlState?.lastSshTarget?.host
+            || artifactControlState?.remoteWorkingState?.target?.host
+            || artifactControlState?.lastRemoteObjective
+        );
         const taskType = resolveConversationTaskType(req.body, session);
         const clientSurface = resolveClientSurface(req.body, session);
         const memoryScope = resolveSessionScope({
@@ -2822,6 +2837,7 @@ router.post('/responses', async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
+            remoteContext: stickyRemoteArtifactContext,
         })) {
             effectiveOutputFormat = null;
         }

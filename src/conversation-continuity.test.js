@@ -1,4 +1,5 @@
 const {
+    buildRecentTranscriptAnchor,
     isLikelyTranscriptDependentTurn,
     resolveTranscriptObjectiveFromSession,
 } = require('./conversation-continuity');
@@ -65,5 +66,36 @@ describe('conversation continuity', () => {
             usedTranscriptContext: true,
             priorUserObjective: 'I uploaded a screenshot of the dashboard.',
         });
+    });
+
+    test('treats next-step commands as transcript-dependent continuations', () => {
+        const recentMessages = [
+            { role: 'user', content: 'Inspect the managed app build status and fix the next deployment blocker.' },
+            { role: 'assistant', content: 'I found the build is missing a repo clone URL.' },
+        ];
+
+        expect(isLikelyTranscriptDependentTurn('next')).toBe(true);
+        expect(isLikelyTranscriptDependentTurn('go ahead')).toBe(true);
+        expect(isLikelyTranscriptDependentTurn('do the next step')).toBe(true);
+        expect(resolveTranscriptObjectiveFromSession('do the next step', recentMessages)).toEqual({
+            objective: 'Inspect the managed app build status and fix the next deployment blocker. do the next step',
+            usedTranscriptContext: true,
+            priorUserObjective: 'Inspect the managed app build status and fix the next deployment blocker.',
+        });
+    });
+
+    test('recent transcript anchor requires a continuity review before proceeding', () => {
+        const anchor = buildRecentTranscriptAnchor({
+            currentInput: 'continue',
+            recentMessages: [
+                { role: 'user', content: 'Build the product dashboard and verify it in the browser.' },
+                { role: 'assistant', content: 'The first sandbox render failed due to a missing import.' },
+            ],
+        });
+
+        expect(anchor).toContain('Before continuing, review the recent user/assistant turns');
+        expect(anchor).toContain('last completed action, unresolved blocker, and next incomplete step');
+        expect(anchor).toContain('user: Build the product dashboard and verify it in the browser.');
+        expect(anchor).toContain('assistant: The first sandbox render failed due to a missing import.');
     });
 });

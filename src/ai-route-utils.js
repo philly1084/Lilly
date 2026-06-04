@@ -632,11 +632,9 @@ function shouldSuppressArtifactGenerationForRemoteAction({
     text = '',
     outputFormat = null,
     outputFormatProvided = false,
+    remoteContext = false,
 } = {}) {
     if (!normalizeFormat(outputFormat)) {
-        return false;
-    }
-    if (outputFormatProvided) {
         return false;
     }
 
@@ -646,11 +644,23 @@ function shouldSuppressArtifactGenerationForRemoteAction({
     }
 
     const explicitRemoteAgent = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
-    const remoteTarget = explicitRemoteAgent
+    const managedAppTarget = /\b(managed[-_\s]+app|managed app catalog|managed[-_\s]+app catalog|managed control plane|gitlab|gitlab ci|gitlab runner|build events webhook)\b/.test(normalized)
+        && !/\b(?:without|bypass|skip|do not use|don't use|not)\s+(?:the\s+)?(?:managed[-_\s]+app|managed app|gitlab)\b/.test(normalized);
+    const remoteTarget = Boolean(remoteContext)
+        || explicitRemoteAgent
+        || managedAppTarget
         || /\b(remote server|remote site|remote host|remote machine|on the server|cluster|k3s|k8s|kubernetes|kubectl|nginx|ingress|traefik|tls|ssh)\b/.test(normalized)
         || /\b[a-z0-9-]+\.demoserver2\.buzz\b/.test(normalized);
-    const deploymentAction = /\b(deploy|redeploy|publish|launch|ship|go live|put|place|upload|copy|install|replace|update|serve)\b/.test(normalized);
-    const websiteTarget = /\b(site|website|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|pdf|artifact|file)\b/.test(normalized);
+    const deploymentAction = /\b(deploy|redeploy|publish|launch|ship|go live|push|put|place|upload|copy|install|replace|update|serve)\b/.test(normalized);
+    const websiteTarget = /\b(site|website|web|html|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|pdf|artifact|file|preview)\b|\.html\b/.test(normalized);
+    const explicitLocalArtifactOnly = outputFormatProvided && !explicitRemoteAgent && !managedAppTarget && [
+        /\b(create|generate|make|draft|write|export|download|save)\b[\s\S]{0,80}\b(local|standalone|preview|artifact|file|document)\b/,
+        /\b(local|standalone|preview)\b[\s\S]{0,50}\b(artifact|file|document)\b/,
+    ].some((pattern) => pattern.test(normalized));
+
+    if (explicitLocalArtifactOnly && !(remoteTarget && deploymentAction)) {
+        return false;
+    }
 
     return explicitRemoteAgent || (remoteTarget && deploymentAction && websiteTarget);
 }

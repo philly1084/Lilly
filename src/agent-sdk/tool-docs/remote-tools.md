@@ -15,6 +15,12 @@ Use this first when a task mentions remote servers, remote CLI, remote agents, k
 | Standard deploy from an existing repo/manifests/image: sync repo, apply manifests, set image, rollout status | `k3s-deploy` | `k3s-deploy` for image builds, authoring new manifests, logs, or HTTPS checks |
 | Local preview or generated artifact before it is deployed | `code-sandbox` or `document-workflow` sandbox mode | remote tools unless the user asks to publish/promote/live-deploy |
 
+## Pre-Create Inventory Gate
+
+Before creating a remote website, app, dashboard, service, GitLab project, namespace, or public host, check whether it already exists. Inspect managed-app records, configured GitLab projects, continuity/project registry facts, and live k3s namespaces/services/ingresses for matching name, slug, repo, namespace, domain, or purpose.
+
+Reuse or iterate an existing match. Ask the user when the match is ambiguous. Create a new project only after the inventory shows no match or the user explicitly asks for a separate new project.
+
 ## Call Shape Cheat Sheet
 
 Outer KimiBuilt tool call for the remote coding agent:

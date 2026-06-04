@@ -51,6 +51,7 @@ const { buildHumanCentricResponseInstructions } = require('../session-instructio
 const { buildFrontendAssistantMetadata, buildWebChatSessionMessages } = require('../web-chat-message-state');
 const { normalizeMemoryKeywords } = require('../memory/memory-keywords');
 const { extractArtifactsFromToolEvents, mergeRuntimeArtifacts } = require('../runtime-artifacts');
+const { getSessionControlState } = require('../runtime-control-state');
 const {
     buildUserCheckpointInstructions,
     buildUserCheckpointPolicy,
@@ -1311,6 +1312,13 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         const sshContext = resolveSshRequestContext(message, effectiveSession);
         let effectiveMessage = sshContext.effectivePrompt || message;
         const artifactIntentText = stripInjectedNotesPageEditDirective(message);
+        const artifactControlState = getSessionControlState(effectiveSession);
+        const stickyRemoteArtifactContext = Boolean(
+            artifactControlState?.lastToolIntent
+            || artifactControlState?.lastSshTarget?.host
+            || artifactControlState?.remoteWorkingState?.target?.host
+            || artifactControlState?.lastRemoteObjective
+        );
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
             clientSurface,
@@ -1421,6 +1429,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             text: artifactIntentText,
             outputFormat: effectiveOutputFormat,
             outputFormatProvided,
+            remoteContext: stickyRemoteArtifactContext,
         })) {
             effectiveOutputFormat = null;
         }

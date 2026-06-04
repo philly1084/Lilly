@@ -11992,6 +11992,7 @@ describe('ConversationOrchestrator', () => {
         expect(plannerPrompt).toContain('Registered skills available for this request:');
         expect(plannerPrompt).toContain('image-website-k3s');
         expect(plannerPrompt).toContain('Use registered skills to understand reusable workflow shape');
+        expect(plannerPrompt).toContain('Treat matched skill ids as active workflow contracts');
     });
 
     test('treats image generation, unsplash, and direct image URLs as first-class tool intents', () => {
@@ -12028,6 +12029,44 @@ describe('ConversationOrchestrator', () => {
         expect(generatePolicy.candidateToolIds).toContain('image-generate');
         expect(unsplashPolicy.candidateToolIds).toContain('image-search-unsplash');
         expect(urlPolicy.candidateToolIds).toContain('image-from-url');
+    });
+
+    test('honors web-chat plugin menu planned tools as explicit user selections', () => {
+        const selectedTools = ['web-search', 'web-fetch', 'document-workflow', 'remote-cli-agent'];
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    selectedTools.includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const policy = orchestrator.buildToolPolicy({
+            objective: 'Help me think through this launch idea.',
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            metadata: {
+                clientSurface: 'web-chat',
+                toolSelectionSource: 'web-chat-plugin-menu',
+                selectedPluginLanes: ['research', 'documents', 'remote'],
+                plannedTools: selectedTools,
+                preferredTool: 'remote-cli-agent',
+            },
+        });
+
+        expect(policy.candidateToolIds).toEqual(expect.arrayContaining(selectedTools));
+        expect(policy.userSelectedToolIds).toEqual(expect.arrayContaining(selectedTools));
+        if (policy.candidateToolScores?.['web-search']) {
+            expect(policy.candidateToolScores['web-search'].reasons).toEqual(expect.arrayContaining([
+                'The user explicitly selected this tool lane from web chat plugin choices.',
+            ]));
+        }
     });
 
     test('promotes security, design, and database tools into the default execution profile', () => {

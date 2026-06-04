@@ -8,6 +8,8 @@ Use this tool as the control-plane entry point when the remote GitLab instance, 
 
 Lane boundary: `managed-app` is the GitLab-observable control plane. Use `managed-app create` for new GitLab-backed app repos, `managed-app iterate` for existing app edits/builds/deploys, and `managed-app doctor` / `managed-app reconcile` for platform health. When an existing managed app needs complex CLI work, call `managed-app iterate` with `executor: "remote-cli-agent"` so the remote CLI agent is a worker inside the managed loop instead of an opaque parallel deployment path.
 
+Pre-create inventory gate: before `create`, list/inspect managed apps and check the configured GitLab group, continuity/project registry facts, and live k3s namespaces/services/ingresses for matching name, slug, repo, namespace, domain, or purpose. Reuse `iterate` for a match, ask on ambiguous matches, and create only after the inventory shows no matching project or the user explicitly asked for a separate new app.
+
 ## Actions
 
 - `create`: registers or provisions a managed app, creates the external GitLab repository when configured, generates the initial app source, seeds the repo, and records a build run when a commit is created.

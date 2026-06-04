@@ -9352,7 +9352,7 @@ class ConversationOrchestrator extends EventEmitter {
                 ...(taskFrameObjective.usedTaskFrameContext
                     ? ['An active task frame already exists for this session. Prefer continuing that same project-local objective before asking the user to restate context.']
                     : []),
-                'The current user turn may be abbreviated or cut off. Use the recent transcript to resolve the intended task and continue without asking the user to restate prior context unless the transcript is genuinely insufficient.',
+                'The current user turn may be abbreviated or cut off. Before continuing, review the recent transcript plus active task/plan/tool/artifact context in the prompt, identify the last completed action, unresolved blocker, and next incomplete step, then continue without asking the user to restate prior context unless the transcript is genuinely insufficient or conflicting.',
             ].filter(Boolean).join('\n\n')
             : effectiveInstructionsBase;
         const requestClassification = isJudgmentV2Enabled()
@@ -11351,11 +11351,17 @@ class ConversationOrchestrator extends EventEmitter {
             ...(Array.isArray(metadata?.plannedTools) ? metadata.plannedTools : []),
             ...(Array.isArray(toolMetadata.plannedTools) ? toolMetadata.plannedTools : []),
         ].map((toolId) => String(toolId || '').trim()).filter(Boolean);
-        const hasRemoteCliAgentMetadataPreference = String(
+        const preferredMetadataToolId = String(
             metadata?.preferredTool
             || toolMetadata.preferredTool
             || '',
-        ).trim() === 'remote-cli-agent'
+        ).trim();
+        const userSelectedToolIds = Array.from(new Set([
+            ...plannedToolIds,
+            preferredMetadataToolId,
+        ].map((toolId) => String(toolId || '').trim()).filter(Boolean)))
+            .filter((toolId) => allowedToolIds.includes(toolId));
+        const hasRemoteCliAgentMetadataPreference = preferredMetadataToolId === 'remote-cli-agent'
             || plannedToolIds.includes('remote-cli-agent');
         const hasExplicitRemoteCliAgentRequest = hasExplicitRemoteCliAgentIntentText(objectiveText);
         const hasExplicitDirectRemoteCliRequest = hasExplicitDirectRemoteCliIntent(objectiveText);
@@ -11897,6 +11903,18 @@ class ConversationOrchestrator extends EventEmitter {
             candidates.add(USER_CHECKPOINT_TOOL_ID);
         }
 
+        userSelectedToolIds.forEach((toolId) => {
+            candidates.add(toolId);
+            if (scoreMap && typeof scoreMap === 'object') {
+                adjustCandidateToolScore(
+                    scoreMap,
+                    toolId,
+                    2.25,
+                    'The user explicitly selected this tool lane from web chat plugin choices.',
+                );
+            }
+        });
+
         let candidateToolIds = isJudgmentV2Enabled()
             ? selectCandidateToolIdsFromScores(allowedToolIds, scoreMap)
             : allowedToolIds.filter((toolId) => candidates.has(toolId));
@@ -11953,6 +11971,7 @@ class ConversationOrchestrator extends EventEmitter {
             allowedToolIds,
             candidateToolIds,
             candidateToolScores: scoreMap,
+            userSelectedToolIds,
             hasSshDefaults,
             hasReachableSshTarget,
             sshRuntimeTarget: formatSshRuntimeTarget(sshContext.target),
@@ -12808,6 +12827,7 @@ class ConversationOrchestrator extends EventEmitter {
                     'Registered skills available for this request:',
                     registeredSkillsInstructions,
                     'Use registered skills to understand reusable workflow shape. Still return only concrete tool steps from the candidate tool list.',
+                    'Treat matched skill ids as active workflow contracts: preserve their chain order, proof loops, and fallback rules when their tools are available. Do not silently ignore a relevant matched skill; if a required tool is unavailable, choose the closest available concrete tool and keep the skill objective visible in step rationale.',
                 ]
                 : []),
             ...(toolPolicy?.classification
@@ -12927,6 +12947,9 @@ class ConversationOrchestrator extends EventEmitter {
             'For `agent-delegate`, spawn immediate helper tasks only. Each task prompt must be a bounded subtask that helps the current foreground work; do not pass the identical full user request as a child task.',
             'Do not plan more than 3 sub-agent tasks in one `agent-delegate` step, and do not use `agent-delegate` from inside a sub-agent task.',
             'When delegated tasks may write files, set distinct `writeTargets` or `lockKey` values so overlapping document edits are rejected.',
+            toolPolicy.candidateToolIds.includes('self-reflection-update')
+                ? 'When the user asks to improve agent behavior or create reusable procedure, plan a bounded `self-reflection-update` skill create/update after you gather enough evidence; do not answer only with generic advice.'
+                : '',
             ...(toolPolicy?.projectPlan?.status === 'active'
                 ? [
                     'A foreground session project plan is already active. Advance the active milestone before creating new scope or treating the conversation like a fresh task.',
@@ -14172,6 +14195,9 @@ class ConversationOrchestrator extends EventEmitter {
                 ? { projectKey: toolPolicy.projectKey, sourceSurface: clientSurface || null }
                 : { sessionId },
         };
+        const selectedSkillIds = (Array.isArray(toolPolicy?.selectedSkills) ? toolPolicy.selectedSkills : [])
+            .map((skill) => String(skill?.id || '').trim())
+            .filter(Boolean);
         let tracedResponse = this.withResponseMetadata(finalResponse, {
             ...(responseArtifacts.length > 0 ? { artifacts: responseArtifacts } : {}),
             projectKey: toolPolicy?.projectKey || null,
@@ -14185,6 +14211,7 @@ class ConversationOrchestrator extends EventEmitter {
             agencyProfile: toolPolicy?.agencyProfile || null,
             rolePipeline: toolPolicy?.rolePipeline || null,
             selectedSkills: toolPolicy?.selectedSkills || [],
+            skillsUsed: selectedSkillIds,
             toolReadiness: toolReadinessSummary,
             decisionTrace,
             verification: verificationSummary,
@@ -14243,6 +14270,7 @@ class ConversationOrchestrator extends EventEmitter {
             projectKey: toolPolicy?.projectKey || null,
             candidateToolScores: toolPolicy?.candidateToolScores || null,
             selectedSkills: toolPolicy?.selectedSkills || [],
+            skillsUsed: selectedSkillIds,
             toolReadiness: toolReadinessSummary,
             decisionTrace,
             verification: verificationSummary,

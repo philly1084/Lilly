@@ -11,6 +11,108 @@ const REAL_REASONING_DISPLAY_HOLD_MS = 40000;
 const SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
+const WEB_CHAT_TOOL_MENU_STORAGE_KEY = 'kimibuilt_web_chat_plugin_lanes';
+const WEB_CHAT_TOOL_INTENT_DEFINITIONS = Object.freeze([
+    {
+        id: 'research',
+        label: 'Web',
+        summary: 'Search and fetch current source pages before answering.',
+        tools: ['web-search', 'web-fetch'],
+        instructions: 'Use public web research when the answer depends on current, external, or source-backed information.',
+        decisionTree: [
+            'Start with web-search for broad discovery.',
+            'Use web-fetch for selected source pages before relying on them.',
+            'Summarize from verified source context rather than snippets when possible.',
+        ],
+    },
+    {
+        id: 'extract',
+        label: 'Extract',
+        summary: 'Use richer scraping and article extraction when snippets are not enough.',
+        tools: ['web-search', 'web-fetch', 'web-scrape', 'news-scraper'],
+        instructions: 'Use extraction tools when the user asks for articles, roundups, structured fields, or rendered page content.',
+        decisionTree: [
+            'Search for candidate pages first unless the user provides URLs.',
+            'Fetch simple pages before scraping.',
+            'Use web-scrape or news-scraper when rendered, structured, or full-article extraction is needed.',
+        ],
+    },
+    {
+        id: 'images',
+        label: 'Images',
+        summary: 'Create image artifacts from the user prompt.',
+        tools: ['image-generate'],
+        instructions: 'Use image generation when the user asks for a new visual asset, mock, illustration, hero image, or generated media.',
+        decisionTree: [
+            'Clarify only if the missing visual constraint would materially change the result.',
+            'Prefer generating a concrete artifact over describing one.',
+        ],
+    },
+    {
+        id: 'references',
+        label: 'Refs',
+        summary: 'Find or reuse visual references and image URLs.',
+        tools: ['image-search-unsplash', 'image-from-url', 'asset-search'],
+        instructions: 'Use reference and asset tools when the request needs visual source material before synthesis.',
+        decisionTree: [
+            'Use image-from-url when the user gives a direct image link.',
+            'Use image-search-unsplash or asset-search when the user needs reference material.',
+        ],
+    },
+    {
+        id: 'documents',
+        label: 'Docs',
+        summary: 'Route deliverables through document workflow tools.',
+        tools: ['document-workflow'],
+        instructions: 'Use document-workflow for structured documents, reports, PDFs, PPTX decks, XLSX workbooks, Markdown, and export-ready artifacts.',
+        decisionTree: [
+            'Plan the document structure before generation.',
+            'Use document-workflow generate or generate-suite for final deliverables.',
+        ],
+    },
+    {
+        id: 'sandbox',
+        label: 'Sandbox',
+        summary: 'Build and verify previewable frontend artifacts.',
+        tools: ['design-resource-search', 'code-sandbox', 'web-scrape'],
+        instructions: 'Use design resources, sandbox build tools, and browser verification for frontend or website work.',
+        decisionTree: [
+            'Gather design context when the user asks for a visual build.',
+            'Build in a previewable sandbox when the user wants an app, site, dashboard, or prototype.',
+            'Verify the preview with browser scraping or screenshots before calling it done.',
+        ],
+    },
+    {
+        id: 'remote',
+        label: 'Remote',
+        summary: 'Use the remote build lane for live server work.',
+        tools: ['remote-cli-agent'],
+        executionProfile: 'remote-build',
+        metadata: {
+            remoteBuildAutonomyApproved: true,
+            frontendRemoteBuildAutonomyApproved: true,
+            remoteBuildIntent: true,
+            preferredTool: 'remote-cli-agent',
+        },
+        instructions: 'Use remote-cli-agent for scoped remote software creation, updates, builds, deployments, and live verification.',
+        decisionTree: [
+            'Use remote-cli-agent as the primary lane for remote build or deploy work.',
+            'Keep the inner remote agent responsible for remote code execution and status checks.',
+            'Report blockers rather than replacing failed remote work with local-only output.',
+        ],
+    },
+    {
+        id: 'workload',
+        label: 'Workload',
+        summary: 'Create or run background agent workloads.',
+        tools: ['agent-workload'],
+        instructions: 'Use agent-workload when the user asks for scheduled, recurring, monitor, or background agent work.',
+        decisionTree: [
+            'Infer a compact workload definition from the user request.',
+            'Ask one checkpoint only when schedule or scope is genuinely ambiguous.',
+        ],
+    },
+]);
 const webChatWorkspaceHelpers = window.KimiBuiltWebChatWorkspace || null;
 const webChatWorkspaceEmbedHelpers = window.KimiBuiltWebChatWorkspaceEmbed || null;
 const WEB_CHAT_APP_WORKSPACE_CONTEXT = typeof webChatWorkspaceHelpers?.getWorkspaceContext === 'function'
@@ -324,6 +426,35 @@ function extractChatStreamText(value = null) {
     return extractChatDisplayText(value);
 }
 
+function normalizeToolIntentId(value = '') {
+    return String(value || '').trim().toLowerCase();
+}
+
+function getToolIntentDefinitionById(value = '') {
+    const intentId = normalizeToolIntentId(value);
+    return WEB_CHAT_TOOL_INTENT_DEFINITIONS.find((definition) => definition.id === intentId) || null;
+}
+
+function getUniqueToolIdsFromIntentDefinitions(definitions = []) {
+    return Array.from(new Set((Array.isArray(definitions) ? definitions : [])
+        .flatMap((definition) => Array.isArray(definition?.tools) ? definition.tools : [])
+        .map((toolId) => String(toolId || '').trim())
+        .filter(Boolean)));
+}
+
+function buildToolIntentSelectionSummary(definitions = []) {
+    const labels = (Array.isArray(definitions) ? definitions : [])
+        .map((definition) => String(definition?.label || definition?.id || '').trim())
+        .filter(Boolean);
+    if (labels.length === 0) {
+        return 'None selected';
+    }
+    if (labels.length <= 3) {
+        return labels.join(', ');
+    }
+    return `${labels.slice(0, 3).join(', ')} +${labels.length - 3}`;
+}
+
 class ChatApp {
     constructor() {
         this.messageInput = document.getElementById('message-input');
@@ -331,6 +462,13 @@ class ChatApp {
         this.voiceInputBtn = document.getElementById('voice-input-btn');
         this.voiceOutputBtn = document.getElementById('voice-output-btn');
         this.voiceInputIndicator = document.getElementById('voice-input-indicator');
+        this.toolMenuBtn = document.getElementById('tool-menu-btn');
+        this.toolMenuPanel = document.getElementById('tool-menu-panel');
+        this.toolMenuCount = document.getElementById('tool-menu-count');
+        this.toolMenuSummary = document.getElementById('tool-menu-summary');
+        this.toolMenuSkillBtn = typeof document.querySelector === 'function' ? document.querySelector('[data-tool-menu-action="skill"]') : null;
+        this.toolMenuCommandBtn = typeof document.querySelector === 'function' ? document.querySelector('[data-tool-menu-action="command"]') : null;
+        this.toolMenuClearBtn = typeof document.querySelector === 'function' ? document.querySelector('[data-tool-menu-action="clear"]') : null;
         this.messagesContainer = document.getElementById('messages-container');
         this.charCounter = document.getElementById('char-counter');
         this.currentSessionInfo = document.getElementById('current-session-info');
@@ -408,6 +546,7 @@ class ChatApp {
         this.messageQueue = [];
         this.isProcessingQueue = false;
         this.skillWizardState = null;
+        this.selectedToolIntentIds = new Set(this.loadStoredToolIntentIds());
         
         // Track retry state
         this.retryAttempt = 0;
@@ -512,6 +651,7 @@ class ChatApp {
         
         // Initialize Lucide icons
         uiHelpers.reinitializeIcons();
+        this.syncToolMenuState();
         
         // Restore input area state (hidden/shown)
         uiHelpers.restoreInputAreaState();
@@ -545,6 +685,47 @@ class ChatApp {
         });
         this.voiceInputBtn?.addEventListener('click', () => this.toggleVoiceInput());
         this.voiceOutputBtn?.addEventListener('click', () => this.toggleLatestAssistantSpeech());
+        this.toolMenuBtn?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleToolMenu();
+        });
+        this.toolMenuPanel?.addEventListener('click', (event) => {
+            const checkbox = event.target?.closest?.('[data-tool-intent-checkbox]');
+            if (checkbox) {
+                this.handleToolIntentCheckboxChange(checkbox);
+                return;
+            }
+
+            const actionButton = event.target?.closest?.('[data-tool-menu-action]');
+            const action = String(actionButton?.dataset?.toolMenuAction || '').trim();
+            if (!action) {
+                return;
+            }
+
+            event.preventDefault();
+            if (action === 'skill') {
+                this.startSkillWizardFromToolMenu();
+            } else if (action === 'command') {
+                this.insertToolCommandTemplateFromToolMenu();
+            } else if (action === 'clear') {
+                this.clearToolIntentSelections();
+            }
+        });
+        document.addEventListener('click', (event) => {
+            if (!this.toolMenuPanel || this.toolMenuPanel.classList.contains('hidden')) {
+                return;
+            }
+            if (this.toolMenuPanel.contains(event.target) || this.toolMenuBtn?.contains?.(event.target)) {
+                return;
+            }
+            this.closeToolMenu();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                this.closeToolMenu();
+            }
+        });
         
         // Input handling
         this.messageInput?.addEventListener('keydown', (e) => {
@@ -838,6 +1019,271 @@ class ChatApp {
                 detail: this.getBackgroundStreamDetail(),
             });
         }
+    }
+
+    loadStoredToolIntentIds() {
+        let rawValue = '';
+        try {
+            if (typeof sessionManager !== 'undefined'
+                && sessionManager
+                && typeof sessionManager.safeStorageGet === 'function') {
+                rawValue = sessionManager.safeStorageGet(WEB_CHAT_TOOL_MENU_STORAGE_KEY) || '';
+            } else if (typeof localStorage !== 'undefined') {
+                rawValue = localStorage.getItem(WEB_CHAT_TOOL_MENU_STORAGE_KEY) || '';
+            }
+        } catch (_error) {
+            rawValue = '';
+        }
+
+        const parsed = (() => {
+            try {
+                return JSON.parse(rawValue || '[]');
+            } catch (_error) {
+                return [];
+            }
+        })();
+
+        return (Array.isArray(parsed) ? parsed : [])
+            .map((id) => normalizeToolIntentId(id))
+            .filter((id) => getToolIntentDefinitionById(id));
+    }
+
+    saveStoredToolIntentIds() {
+        const payload = JSON.stringify(Array.from(this.selectedToolIntentIds || []));
+        try {
+            if (typeof sessionManager !== 'undefined'
+                && sessionManager
+                && typeof sessionManager.safeStorageSet === 'function') {
+                sessionManager.safeStorageSet(WEB_CHAT_TOOL_MENU_STORAGE_KEY, payload);
+            } else if (typeof localStorage !== 'undefined') {
+                localStorage.setItem(WEB_CHAT_TOOL_MENU_STORAGE_KEY, payload);
+            }
+        } catch (_error) {
+            // Storage may be blocked; the in-memory selection still works.
+        }
+    }
+
+    getSelectedToolIntentDefinitions(ids = null) {
+        const sourceIds = ids
+            ? Array.from(ids)
+            : Array.from(this.selectedToolIntentIds || []);
+        return sourceIds
+            .map((id) => getToolIntentDefinitionById(id))
+            .filter(Boolean);
+    }
+
+    syncToolMenuState() {
+        const selectedDefinitions = this.getSelectedToolIntentDefinitions();
+        const selectedIds = new Set(selectedDefinitions.map((definition) => definition.id));
+        const selectedCount = selectedDefinitions.length;
+        const isOpen = this.toolMenuPanel && !this.toolMenuPanel.classList.contains('hidden');
+
+        if (this.toolMenuCount) {
+            this.toolMenuCount.textContent = String(selectedCount);
+            this.toolMenuCount.classList.toggle('hidden', selectedCount === 0);
+        }
+        if (this.toolMenuSummary) {
+            this.toolMenuSummary.textContent = buildToolIntentSelectionSummary(selectedDefinitions);
+            this.toolMenuSummary.title = selectedDefinitions
+                .map((definition) => definition.summary || definition.label || definition.id)
+                .filter(Boolean)
+                .join('\n');
+        }
+        if (this.toolMenuBtn) {
+            this.toolMenuBtn.classList.toggle('is-active', selectedCount > 0 || isOpen);
+            this.toolMenuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            this.toolMenuBtn.title = selectedCount > 0
+                ? `Plugins: ${buildToolIntentSelectionSummary(selectedDefinitions)}`
+                : 'Choose plugins';
+        }
+
+        this.toolMenuPanel?.querySelectorAll?.('[data-tool-intent-checkbox]').forEach((checkbox) => {
+            const intentId = normalizeToolIntentId(checkbox.value);
+            const isSelected = selectedIds.has(intentId);
+            checkbox.checked = isSelected;
+            const choice = checkbox.closest('.tool-menu-choice');
+            choice?.classList.toggle('is-selected', isSelected);
+            choice?.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+        });
+    }
+
+    toggleToolMenu() {
+        if (!this.toolMenuPanel) {
+            return;
+        }
+        if (this.toolMenuPanel.classList.contains('hidden')) {
+            this.openToolMenu();
+        } else {
+            this.closeToolMenu();
+        }
+    }
+
+    openToolMenu() {
+        if (!this.toolMenuPanel) {
+            return;
+        }
+        this.toolMenuPanel.classList.remove('hidden');
+        this.syncToolMenuState();
+        uiHelpers.reinitializeIcons?.(this.toolMenuPanel);
+    }
+
+    closeToolMenu() {
+        if (!this.toolMenuPanel) {
+            return;
+        }
+        this.toolMenuPanel.classList.add('hidden');
+        this.syncToolMenuState();
+    }
+
+    handleToolIntentCheckboxChange(checkbox) {
+        const intentId = normalizeToolIntentId(checkbox?.value);
+        if (!getToolIntentDefinitionById(intentId)) {
+            return;
+        }
+        if (checkbox.checked) {
+            this.selectedToolIntentIds.add(intentId);
+        } else {
+            this.selectedToolIntentIds.delete(intentId);
+        }
+        this.saveStoredToolIntentIds();
+        this.syncToolMenuState();
+    }
+
+    clearToolIntentSelections() {
+        this.selectedToolIntentIds.clear();
+        this.saveStoredToolIntentIds();
+        this.syncToolMenuState();
+        uiHelpers.showToast?.('Plugin choices cleared.', 'info');
+    }
+
+    buildToolIntentRequestOptions() {
+        const definitions = this.getSelectedToolIntentDefinitions();
+        if (definitions.length === 0) {
+            return {};
+        }
+
+        const plannedTools = getUniqueToolIdsFromIntentDefinitions(definitions);
+        const mergedMetadata = definitions.reduce((metadata, definition) => ({
+            ...metadata,
+            ...((definition.metadata && typeof definition.metadata === 'object') ? definition.metadata : {}),
+        }), {});
+        const selectedPluginLanes = definitions.map((definition) => definition.id);
+        const userToolIntents = definitions.map((definition) => ({
+            id: definition.id,
+            label: definition.label,
+            summary: definition.summary,
+            tools: Array.isArray(definition.tools) ? definition.tools : [],
+            decisionTree: Array.isArray(definition.decisionTree) ? definition.decisionTree : [],
+        }));
+        const decisionTree = definitions.map((definition) => ({
+            id: definition.id,
+            label: definition.label,
+            steps: Array.isArray(definition.decisionTree) ? definition.decisionTree : [],
+        }));
+        const instructionLines = definitions
+            .map((definition) => `- ${definition.label}: ${definition.instructions || definition.summary || ''}`.trim())
+            .filter(Boolean);
+        const executionProfile = definitions.some((definition) => definition.executionProfile === 'remote-build')
+            ? 'remote-build'
+            : '';
+
+        const metadata = {
+            ...mergedMetadata,
+            toolSelectionSource: 'web-chat-plugin-menu',
+            selectedPluginLanes,
+            plannedTools,
+            userToolIntents,
+            userToolDecisionTree: decisionTree,
+            toolSelectionInstructions: instructionLines.join('\n'),
+        };
+        if (!metadata.preferredTool && plannedTools.length === 1) {
+            metadata.preferredTool = plannedTools[0];
+        }
+
+        return {
+            metadata,
+            ...(executionProfile ? { executionProfile } : {}),
+        };
+    }
+
+    insertTextAtCursor(text = '') {
+        const input = this.messageInput;
+        const value = String(text || '');
+        if (!input || !value) {
+            return false;
+        }
+
+        const currentValue = String(input.value || '');
+        const start = typeof input.selectionStart === 'number' ? input.selectionStart : currentValue.length;
+        const end = typeof input.selectionEnd === 'number' ? input.selectionEnd : start;
+        const before = currentValue.slice(0, start);
+        const after = currentValue.slice(end);
+        const separator = before && !/\s$/.test(before) && !/^\s/.test(value) ? ' ' : '';
+        input.value = `${before}${separator}${value}${after}`;
+        const cursor = before.length + separator.length + value.length;
+        if (typeof input.setSelectionRange === 'function') {
+            input.setSelectionRange(cursor, cursor);
+        }
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+        return true;
+    }
+
+    buildSkillWizardPromptFromToolMenu() {
+        const definitions = this.getSelectedToolIntentDefinitions();
+        const plannedTools = getUniqueToolIdsFromIntentDefinitions(definitions);
+        const labels = definitions.map((definition) => definition.label).filter(Boolean);
+        const decisionLines = definitions.flatMap((definition) => (
+            Array.isArray(definition.decisionTree)
+                ? definition.decisionTree.map((step) => `${definition.label}: ${step}`)
+                : []
+        ));
+        return [
+            `Create a reusable skill that combines these plugin lanes: ${labels.join(', ')}.`,
+            plannedTools.length ? `Tool chain: ${plannedTools.join(', ')}.` : '',
+            decisionLines.length ? `Decision tree: ${decisionLines.join(' ')}` : '',
+            'Make it usable from chat when a user explicitly selects or asks for this combined workflow.',
+        ].filter(Boolean).join(' ');
+    }
+
+    startSkillWizardFromToolMenu() {
+        const prompt = this.buildSkillWizardPromptFromToolMenu();
+        if (!prompt) {
+            uiHelpers.showToast?.('Choose one or more plugins first.', 'warning');
+            return;
+        }
+        this.closeToolMenu();
+        void this.startSkillWizard(prompt);
+    }
+
+    insertToolCommandTemplateFromToolMenu() {
+        const definitions = this.getSelectedToolIntentDefinitions();
+        const plannedTools = getUniqueToolIdsFromIntentDefinitions(definitions);
+        if (plannedTools.length === 0) {
+            this.insertTextAtCursor('/tools');
+            this.closeToolMenu();
+            return;
+        }
+
+        const primaryTool = plannedTools[0];
+        const starterParamsByTool = {
+            'web-search': { query: '' },
+            'web-fetch': { url: '' },
+            'web-scrape': { url: '', browser: true },
+            'news-scraper': { query: '' },
+            'image-generate': { prompt: '' },
+            'image-search-unsplash': { query: '' },
+            'image-from-url': { url: '' },
+            'asset-search': { query: '' },
+            'document-workflow': { action: 'recommend', request: '' },
+            'design-resource-search': { query: '' },
+            'code-sandbox': { prompt: '' },
+            'remote-cli-agent': { task: '', adminMode: true },
+            'agent-workload': { action: 'recommend', prompt: '' },
+        };
+        const payload = JSON.stringify(starterParamsByTool[primaryTool] || {});
+        this.insertTextAtCursor(`/tool ${primaryTool} ${payload}`);
+        this.closeToolMenu();
     }
 
     getTrackedStreamRequest() {
@@ -4524,17 +4970,18 @@ class ChatApp {
             return;
         }
 
+        const toolIntentOptions = this.buildToolIntentRequestOptions();
         this.messageInput.value = '';
         this.autoResize?.reset?.();
         this.updateSendButton();
         uiHelpers.updateCharCounter(this.messageInput, this.charCounter);
 
         if (this.isCurrentSessionProcessing() || this.getQueuedMessageCount() >= WEB_CHAT_QUEUE_MAX_SIZE) {
-            this.enqueueMessage(content);
+            this.enqueueMessage(content, toolIntentOptions);
             return;
         }
 
-        await this.sendPreparedMessage(content);
+        await this.sendPreparedMessage(content, toolIntentOptions);
     }
 
     async sendPreparedMessage(content, options = {}) {
@@ -4558,7 +5005,7 @@ class ChatApp {
 
         const sessionId = sessionManager.currentSessionId;
         if (this.isSessionProcessing(sessionId)) {
-            this.enqueueMessage(normalizedContent);
+            this.enqueueMessage(normalizedContent, options);
             return false;
         }
         const previousMessages = sessionManager.getMessages(sessionId).slice();
@@ -4746,6 +5193,7 @@ class ChatApp {
                     },
                     artifactIds: selectedArtifactIds,
                     ...(options.outputFormat ? { outputFormat: options.outputFormat } : {}),
+                    ...(options.executionProfile ? { executionProfile: options.executionProfile } : {}),
                     shouldResyncAfterDisconnect: (error, context) => this.shouldResyncAfterDisconnect(error, context),
                 },
             )) {
@@ -4863,7 +5311,7 @@ class ChatApp {
         return removedMessage;
     }
 
-    enqueueMessage(content) {
+    enqueueMessage(content, options = {}) {
         const normalizedContent = String(content || '').trim();
         if (!normalizedContent) {
             return false;
@@ -4884,6 +5332,7 @@ class ChatApp {
             sessionId,
             workspaceKey: this.workspaceContext?.key || 'workspace-1',
             queuedAt: Date.now(),
+            options: options && typeof options === 'object' ? options : {},
         });
         this.updateSendButton();
         uiHelpers.showToast(`Message queued (${this.getQueuedMessageCount(sessionId)}/${WEB_CHAT_QUEUE_MAX_SIZE})`, 'info');
@@ -4914,7 +5363,7 @@ class ChatApp {
                     continue;
                 }
                 uiHelpers.showToast('Processing queued message.', 'info');
-                await this.sendPreparedMessage(next.content);
+                await this.sendPreparedMessage(next.content, next.options || {});
             }
         } finally {
             this.isProcessingQueue = false;

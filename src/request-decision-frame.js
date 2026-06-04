@@ -66,18 +66,25 @@ function detectRequestSignals(text = '', {
     ]);
 
     const explicitRemoteAgent = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
+    const managedAppTarget = hasAny(normalized, [
+        /\b(managed[-_\s]+app|managed app catalog|managed[-_\s]+app catalog|managed control plane|managed platform)\b/,
+        /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/,
+    ]) && !hasAny(normalized, [
+        /\b(?:without|bypass|skip|do not use|don't use|not)\s+(?:the\s+)?(?:managed[-_\s]+app|managed app|gitlab)\b/,
+    ]);
     const remoteTarget = explicitRemoteAgent
+        || managedAppTarget
         || hasAny(normalized, [
             /\b(remote server|remote site|remote host|remote machine|on the server)\b/,
             /\b(cluster|k3s|k8s|kubernetes|kubectl|nginx|ingress|traefik|tls|ssh)\b/,
         ])
         || domains.some((domain) => /demoserver2\.buzz$/i.test(domain));
     const deploymentAction = hasAny(normalized, [
-        /\b(deploy|redeploy|publish|launch|ship|go live|put|place|upload|copy|install|replace|update|serve)\b/,
+        /\b(deploy|redeploy|publish|launch|ship|go live|push|put|place|upload|copy|install|replace|update|serve)\b/,
         /\b(use|turn|convert)\b[\s\S]{0,40}\b(as|into|to)\b[\s\S]{0,30}\b(site|website|html page|page)\b/,
     ]);
     const websiteTarget = hasAny(normalized, [
-        /\b(site|website|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|dashboard|frontend|front end|webapp|web app|ui mockup|html prototype|microsite)\b/,
+        /\b(site|website|web|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|dashboard|frontend|front end|webapp|web app|ui mockup|html prototype|microsite)\b|\.html\b/,
     ]);
     const frontendBuildTarget = websiteTarget || hasAny(normalized, [
         /\b(app workspace|interactive sandbox|vite preview|vite sandbox|browser game|web game|video game|playable game|sandboxed game|game prototype|simulation|canvas game|webgl game)\b/,
@@ -115,6 +122,7 @@ function detectRequestSignals(text = '', {
         domains,
         selectedArtifactIds,
         explicitRemoteAgent,
+        managedAppTarget,
         remoteTarget,
         deploymentAction,
         websiteTarget,
@@ -129,13 +137,27 @@ function detectRequestSignals(text = '', {
     };
 }
 
-function classifyIntent(signals = {}, outputFormat = null) {
+function classifyIntent(signals = {}, outputFormat = null, previousWork = {}) {
+    const stickyRemoteContext = Boolean(
+        previousWork.lastToolIntent
+        || previousWork.lastRemoteTarget
+        || previousWork.lastRemoteObjective
+        || previousWork.lastRemoteTask
+        || previousWork.lastRemoteWorkspace
+    );
+
     if (signals.remoteTarget && signals.deploymentAction && signals.artifactReference) {
         return 'remote_deploy_existing_artifact';
     }
 
     if (signals.remoteTarget && signals.deploymentAction) {
         return 'remote_deploy_or_update';
+    }
+
+    if (stickyRemoteContext && signals.deploymentAction && (signals.websiteTarget || signals.artifactGeneration || signals.artifactReference)) {
+        return signals.artifactReference
+            ? 'remote_deploy_existing_artifact'
+            : 'remote_deploy_or_update';
     }
 
     if (signals.remoteTarget) {
@@ -171,12 +193,15 @@ function classifyIntent(signals = {}, outputFormat = null) {
     return 'chat_answer';
 }
 
-function choosePreferredTool(intent = '', signals = {}, executionProfile = '') {
+function choosePreferredTool(intent = '', signals = {}, executionProfile = '', previousWork = {}) {
     if (signals.explicitRemoteAgent) {
         return 'remote-cli-agent';
     }
 
     if (intent === 'remote_deploy_existing_artifact' || intent === 'remote_deploy_or_update') {
+        if (signals.managedAppTarget || previousWork.lastToolIntent === 'managed-app') {
+            return 'managed-app';
+        }
         return 'remote-cli-agent';
     }
 
@@ -205,7 +230,10 @@ function buildBlockedActions(intent = '') {
     if (intent === 'remote_deploy_existing_artifact') {
         return [
             'generate_new_pdf',
+            'generate_new_html',
+            'generate_new_artifact',
             'generate_standalone_artifact_only',
+            'create_replacement_preview',
             'answer_without_remote_verification',
             'guess_remote_website_path',
         ];
@@ -213,6 +241,8 @@ function buildBlockedActions(intent = '') {
 
     if (intent === 'remote_deploy_or_update') {
         return [
+            'generate_standalone_artifact_only',
+            'create_replacement_preview',
             'answer_without_remote_verification',
             'claim_live_without_public_check',
         ];
@@ -234,6 +264,7 @@ function buildProofExpectations(intent = '') {
     if (intent === 'remote_deploy_existing_artifact') {
         return [
             'source artifact identified or downloaded',
+            'managed-app/GitLab source and build evidence captured when requested',
             'remote website source/path inspected',
             'content converted or embedded into deployable HTML',
             'public URL verified by body/content check',
@@ -242,6 +273,7 @@ function buildProofExpectations(intent = '') {
 
     if (intent === 'remote_deploy_or_update') {
         return [
+            'managed-app/GitLab source and build evidence captured when requested',
             'remote source/workload inspected',
             'deployment or file update applied',
             'public URL or rollout verified',
@@ -343,8 +375,9 @@ function buildRequestDecisionFrame({
         effectiveArtifactIds,
     });
     const effectiveFormat = outputFormat || candidateOutputFormat || null;
-    const intent = classifyIntent(signals, effectiveFormat);
-    const preferredTool = choosePreferredTool(intent, signals, executionProfile);
+    const previousWork = buildPreviousWorkSummary(session);
+    const intent = classifyIntent(signals, effectiveFormat, previousWork);
+    const preferredTool = choosePreferredTool(intent, signals, executionProfile, previousWork);
     const targetDomain = signals.domains.find((domain) => /demoserver2\.buzz$/i.test(domain))
         || signals.domains[0]
         || '';
@@ -354,7 +387,6 @@ function buildRequestDecisionFrame({
     };
     const blockedActions = buildBlockedActions(intent);
     const proofExpectations = buildProofExpectations(intent);
-    const previousWork = buildPreviousWorkSummary(session);
     const cards = buildRequestDecisionCards({
         intent,
         signals,
@@ -478,7 +510,7 @@ function formatRequestDecisionFrameForPrompt(frame = null) {
             : '',
         frame.blockedActions?.length ? `- Do not: ${frame.blockedActions.join(', ')}` : '',
         frame.proofExpectations?.length ? `- Proof expected: ${frame.proofExpectations.join('; ')}` : '',
-        'Use this frame to route the next action. If it says an existing artifact should be deployed remotely, do not replace that with a new local artifact generation step.',
+        'Use this frame to route the next action. If it says an existing artifact should be deployed remotely, do not replace that with a new local artifact generation step. If the preferred lane is managed-app, use managed-app as the control plane and treat remote-cli-agent as a worker inside that workflow rather than a competing top-level deploy lane.',
     ];
 
     return lines.filter(Boolean).join('\n');

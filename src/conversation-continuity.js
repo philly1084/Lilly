@@ -67,6 +67,8 @@ function isLikelyTranscriptDependentTurn(text = '') {
         /^(?:what about|how about|and|also)\b[\s\S]*\b(?:it|that|this|them|those|same)\b/,
         /\b(the commands|what you listed|the one you listed|the ones you listed|what i asked|same task|same thing|that one)\b/,
         /^(?:did you|can you|could you|would you|please)?\s*(?:see|use|reuse|fix|update|change|make|do|run|check|open|get|fetch|show|try|retry|continue)\s+(?:it|that|this|them|those|same|same thing)\b/,
+        /^(?:go ahead|proceed|keep going|continue|resume|move on|next)\s*(?:with|on|to)?\s*(?:it|that|this|them|those|same|the same|the task|the work)?\b/,
+        /^(?:do|run|take|start|execute|handle|move to)\s+(?:the\s+)?(?:next|following)\s+(?:step|thing|task|item|action|move)\b/,
         /^(?:do|run|schedule|set up|queue|create|make|get|fetch|check)\s+(?:it|that|this|them|those)\b/,
         /^(?:in|after|at|tomorrow|later|once|one[- ]time|daily|hourly|every)\b/,
         /^(?:yes|yeah|yep|ok|okay|sure)\b/,
@@ -75,7 +77,7 @@ function isLikelyTranscriptDependentTurn(text = '') {
     const openEndedCue = /\b(?:in|at|for|to|on|from|with|about|into|around|using|and|then)\s*$/.test(normalized);
     const weakStandaloneCue = shortTurn
         && (
-            /^(?:continue|retry|try again|again|later|tomorrow|same)\b/.test(normalized)
+            /^(?:continue|retry|try again|again|later|tomorrow|same|next|then|proceed|resume|go ahead|keep going)\b/.test(normalized)
             || /^(?:do|run|make|schedule|set up|queue|create|get|fetch|check|use)\s*$/.test(normalized)
         );
 
@@ -150,7 +152,9 @@ function buildRecentTranscriptAnchor({
     return [
         '[Recent transcript anchor]',
         'The current user turn is referential or abbreviated.',
-        'Resolve "that", "it", "yes", "same", or similar references against this recent transcript before using older recalled memory.',
+        'Before continuing, review the recent user/assistant turns, any active task or plan state shown elsewhere in the prompt, and any verified tool/artifact context.',
+        'Identify the last completed action, unresolved blocker, and next incomplete step; then continue from that point instead of restarting or asking the user to restate context unless the transcript is genuinely insufficient or conflicting.',
+        'Resolve "that", "it", "yes", "same", "continue", "next", "do that", or similar references against this recent transcript before using older recalled memory.',
         ...transcript,
     ].join('\n');
 }

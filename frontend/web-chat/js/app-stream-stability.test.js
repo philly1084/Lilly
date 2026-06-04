@@ -129,4 +129,32 @@ describe('web-chat stream stability', () => {
 
         expect(app.hasSurveyToolEvent([{ toolName: 'user_checkpoint', stage: 'started' }])).toBe(true);
     });
+
+    test('builds plugin menu selections into chat request tool metadata', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set(['research', 'documents', 'remote']);
+
+        const options = app.buildToolIntentRequestOptions();
+
+        expect(options.executionProfile).toBe('remote-build');
+        expect(options.metadata).toEqual(expect.objectContaining({
+            toolSelectionSource: 'web-chat-plugin-menu',
+            selectedPluginLanes: ['research', 'documents', 'remote'],
+            remoteBuildAutonomyApproved: true,
+            frontendRemoteBuildAutonomyApproved: true,
+            remoteBuildIntent: true,
+            preferredTool: 'remote-cli-agent',
+        }));
+        expect(options.metadata.plannedTools).toEqual(expect.arrayContaining([
+            'web-search',
+            'web-fetch',
+            'document-workflow',
+            'remote-cli-agent',
+        ]));
+        expect(options.metadata.userToolIntents).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: 'research' }),
+            expect.objectContaining({ id: 'documents' }),
+            expect.objectContaining({ id: 'remote' }),
+        ]));
+    });
 });

@@ -2,6 +2,7 @@ const UNIVERSAL_CONTINUITY_RULES = [
     'You are a helpful AI assistant.',
     'Use the recent session transcript as the primary context for follow-up references like "that", "again", "same as before", or "the number from earlier".',
     'If the current user turn looks abbreviated, referential, or cut off but the recent transcript contains enough context, continue the task instead of asking the user to restate the missing part.',
+    'For short continuation commands such as "continue", "next", "do that", "go ahead", or "same", first review the recent transcript, active task/frame/plan, and verified tool or artifact context in the prompt; identify the last completed action, blocker, and next incomplete step before continuing.',
     'Keep continuity local to the current project and current frontend surface unless the user explicitly asks to reuse material from another project or chat lane.',
     'Use recalled memory only as supplemental context.',
     'Do not import facts, artifacts, or workflow context from a different project or unrelated frontend surface.',
