@@ -4,6 +4,8 @@ const { randomUUID } = require('crypto');
 const { postgres } = require('../postgres');
 const { normalizeCursor, normalizeText } = require('./valkey-live-bus');
 
+const SCHEMA_LOCK_ID = 70420261;
+
 function cloneJson(value) {
     return JSON.parse(JSON.stringify(value || {}));
 }
@@ -64,14 +66,15 @@ class AsyncLabStore {
         if (this.initialized) {
             return this.usePostgres;
         }
-        this.initialized = true;
         this.usePostgres = Boolean(this.persistToPostgres && this.postgres?.enabled);
         if (!this.usePostgres) {
+            this.initialized = true;
             return false;
         }
 
         try {
-            await this.postgres.query(`
+            await this.withSchemaLock(async (query) => {
+                await query(`
                 CREATE TABLE IF NOT EXISTS async_runtime_runs (
                     id TEXT PRIMARY KEY,
                     owner_id TEXT,
@@ -98,36 +101,36 @@ class AsyncLabStore {
                     cancelled_at TIMESTAMPTZ
                 )
             `);
-            await this.postgres.query(`
+                await query(`
                 ALTER TABLE async_runtime_runs
                 ADD COLUMN IF NOT EXISTS event_cursor INTEGER NOT NULL DEFAULT 0
             `);
-            await this.postgres.query(`
+                await query(`
                 ALTER TABLE async_runtime_runs
                 ADD COLUMN IF NOT EXISTS claim_owner TEXT
             `);
-            await this.postgres.query(`
+                await query(`
                 ALTER TABLE async_runtime_runs
                 ADD COLUMN IF NOT EXISTS claim_expires_at TIMESTAMPTZ
             `);
-            await this.postgres.query(`
+                await query(`
                 ALTER TABLE async_runtime_runs
                 ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 0
             `);
-            await this.postgres.query(`
+                await query(`
                 CREATE INDEX IF NOT EXISTS async_runtime_runs_surface_status_idx
                 ON async_runtime_runs(runtime_surface, status, updated_at DESC)
             `);
-            await this.postgres.query(`
+                await query(`
                 CREATE INDEX IF NOT EXISTS async_runtime_runs_claim_idx
                 ON async_runtime_runs(runtime_surface, status, claim_expires_at, updated_at ASC)
             `);
-            await this.postgres.query(`
+                await query(`
                 CREATE UNIQUE INDEX IF NOT EXISTS async_runtime_runs_idempotency_idx
                 ON async_runtime_runs(runtime_surface, idempotency_key)
                 WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''
             `);
-            await this.postgres.query(`
+                await query(`
                 CREATE TABLE IF NOT EXISTS async_runtime_events (
                     event_id TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL REFERENCES async_runtime_runs(id) ON DELETE CASCADE,
@@ -140,15 +143,40 @@ class AsyncLabStore {
                     UNIQUE(run_id, cursor)
                 )
             `);
-            await this.postgres.query(`
+                await query(`
                 CREATE INDEX IF NOT EXISTS async_runtime_events_run_cursor_idx
                 ON async_runtime_events(run_id, cursor)
             `);
+            });
+            this.initialized = true;
             return true;
         } catch (error) {
             console.warn(`[AsyncLabStore] Postgres unavailable; falling back to memory: ${error.message}`);
             this.usePostgres = false;
+            this.initialized = true;
             return false;
+        }
+    }
+
+    async withSchemaLock(callback = async () => {}) {
+        const pool = typeof this.postgres?.getPool === 'function' ? this.postgres.getPool() : null;
+        if (!pool?.connect) {
+            return callback((text, params = []) => this.postgres.query(text, params));
+        }
+
+        const client = await pool.connect();
+        let locked = false;
+        try {
+            await client.query('SELECT pg_advisory_lock($1)', [SCHEMA_LOCK_ID]);
+            locked = true;
+            return await callback((text, params = []) => client.query(text, params));
+        } finally {
+            if (locked) {
+                await client.query('SELECT pg_advisory_unlock($1)', [SCHEMA_LOCK_ID]).catch((error) => {
+                    console.warn(`[AsyncLabStore] Failed to release schema lock: ${error.message}`);
+                });
+            }
+            client.release();
         }
     }
 
