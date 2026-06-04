@@ -468,14 +468,18 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
         });
         app.locals.agentWorkloadRunner.start();
         app.locals.asyncLabService = asyncLabService;
-        if (config.asyncRuntime.enabled) {
-            console.log('[Boot] Initializing async runtime lab...');
-            try {
-                await asyncLabService.initialize();
-                asyncLabService.startWorker();
-                console.log(`[Boot] Async runtime lab ready (${asyncLabService.getStatus().bus.backend} bus)`);
-            } catch (error) {
-                console.warn(`[Boot] Async runtime lab unavailable, production runtime continues unchanged: ${error.message}`);
+        const asyncRuntimeControl = settingsController.getEffectiveAsyncRuntimeConfig?.() || {
+            enabled: config.asyncRuntime.enabled,
+            adminToggleAllowed: config.asyncRuntime.adminToggleAllowed,
+        };
+        if (asyncRuntimeControl.requestedEnabled || asyncRuntimeControl.adminToggleAllowed) {
+            console.log('[Boot] Applying async runtime lab control plane...');
+            const asyncRuntimeResult = await asyncLabService.applyControlConfig(asyncRuntimeControl);
+            const asyncRuntimeStatus = asyncLabService.getStatus();
+            if (asyncRuntimeResult.active) {
+                console.log(`[Boot] Async runtime lab ready (${asyncRuntimeStatus.bus.backend} bus)`);
+            } else {
+                console.log(`[Boot] Async runtime lab standby (${asyncRuntimeResult.reason}); production runtime continues unchanged`);
             }
         }
         const ttsConfig = ttsService.getPublicConfig();

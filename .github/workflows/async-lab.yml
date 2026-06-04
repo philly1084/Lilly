@@ -13,12 +13,18 @@ on:
       - Dockerfile
       - docker-compose.async.yml
       - docker-compose.yml
+      - docs/async-runtime-primary-sidecar.md
+      - frontend/agent-dashboard/**
       - frontend/async-lab/**
+      - k8s/configmap.yaml
       - k8s/async-lab/**
+      - k8s/primary-async-runtime.yaml
       - package.json
       - package-lock.json
       - src/async-lab/**
       - src/config.js
+      - src/routes/admin/settings.controller.js
+      - src/routes/admin/settings.controller.test.js
       - src/routes/async-lab*.js
       - src/server.js
   workflow_dispatch:
@@ -74,8 +80,12 @@ jobs:
           node --check src/async-lab/service.js
           node --check src/async-lab/store.js
           node --check src/async-lab/valkey-live-bus.js
+          node --check src/config.js
+          node --check src/routes/admin/settings.controller.js
           node --check src/routes/async-lab.js
           node --check src/routes/async-lab-webhooks.js
+          node --check src/server.js
+          node --check frontend/agent-dashboard/js/dashboard.js
           node --check frontend/async-lab/app.js
 
       - name: Run async lab unit and route tests

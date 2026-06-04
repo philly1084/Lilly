@@ -110,6 +110,18 @@ data:
   OLLAMA_EMBED_MODEL: "nomic-embed-text:latest"
   QDRANT_URL: "http://qdrant:6333"
   QDRANT_COLLECTION: "conversations"
+  # Primary-safe async runtime lane. The code path is present after deploy, but
+  # it stays inactive until the admin dashboard requests it.
+  ASYNC_RUNTIME_ENABLED: "false"
+  ASYNC_RUNTIME_ADMIN_TOGGLE_ALLOWED: "true"
+  ASYNC_RUNTIME_MODE: "primary-sidecar"
+  ASYNC_RUNTIME_NAMESPACE: "kimibuilt"
+  ASYNC_RUNTIME_SURFACE: "async-lab"
+  ASYNC_VALKEY_URL: "redis://valkey-async-runtime.kimibuilt.svc.cluster.local:6379/0"
+  ASYNC_VALKEY_KEY_PREFIX: "kimibuilt:primary:async-runtime"
+  ASYNC_RUNTIME_WORKER_ENABLED: "true"
+  ASYNC_RUNTIME_POSTGRES_ENABLED: "true"
+  ASYNC_LAB_ALLOW_LIVE_REMOTE: "false"
   POSTGRES_HOST: "postgres"
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "kimibuilt"

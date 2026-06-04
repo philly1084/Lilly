@@ -112,6 +112,8 @@ class AsyncLabService {
         const runtimeConfig = options.config || config.asyncRuntime || {};
         this.config = {
             enabled: runtimeConfig.enabled === true,
+            adminToggleAllowed: runtimeConfig.adminToggleAllowed === true
+                || runtimeConfig.enabled === true,
             mode: runtimeConfig.mode || 'lab',
             namespace: runtimeConfig.namespace || 'kimibuilt-async-lab',
             surface: runtimeConfig.surface || 'async-lab',
@@ -129,6 +131,7 @@ class AsyncLabService {
             webhookSecret: runtimeConfig.webhookSecret || '',
             persistToPostgres: runtimeConfig.persistToPostgres !== false,
         };
+        this.liveRemoteConfigured = this.config.allowLiveRemote === true;
         this.store = options.store || new AsyncLabStore({
             persistToPostgres: this.config.persistToPostgres,
         });
@@ -144,10 +147,16 @@ class AsyncLabService {
         this.drainPromise = null;
         this.initialized = false;
         this.lastError = '';
+        this.controlRequestedEnabled = this.config.enabled === true;
+        this.webChatParallelEnabled = false;
     }
 
     isEnabled() {
         return this.config.enabled === true;
+    }
+
+    isAdminToggleAllowed() {
+        return this.config.adminToggleAllowed === true;
     }
 
     assertEnabled() {
@@ -165,6 +174,54 @@ class AsyncLabService {
         await this.bus.connect();
         this.initialized = true;
         return true;
+    }
+
+    async applyControlConfig(control = {}) {
+        if (control.adminToggleAllowed !== undefined) {
+            this.config.adminToggleAllowed = control.adminToggleAllowed === true;
+        }
+        if (control.workerEnabled !== undefined) {
+            this.config.workerEnabled = control.workerEnabled !== false;
+        }
+
+        const requestedEnabled = control.enabled === true;
+        this.controlRequestedEnabled = requestedEnabled;
+        this.webChatParallelEnabled = control.webChatParallelEnabled === true;
+        const nextEnabled = requestedEnabled && this.isAdminToggleAllowed();
+        this.config.allowLiveRemote = this.liveRemoteConfigured && control.allowLiveRemote === true;
+        this.config.enabled = nextEnabled;
+
+        if (!nextEnabled) {
+            this.stopWorker();
+            return {
+                active: false,
+                enabled: false,
+                reason: requestedEnabled ? 'admin-toggle-not-allowed' : 'disabled',
+            };
+        }
+
+        try {
+            await this.initialize();
+            if (this.config.workerEnabled) {
+                this.startWorker();
+            } else {
+                this.stopWorker();
+            }
+            return {
+                active: true,
+                enabled: true,
+                reason: 'enabled',
+            };
+        } catch (error) {
+            this.config.enabled = false;
+            this.stopWorker();
+            this.lastError = error.message;
+            return {
+                active: false,
+                enabled: false,
+                reason: error.message,
+            };
+        }
     }
 
     startWorker() {
@@ -205,10 +262,14 @@ class AsyncLabService {
 
     getStatus() {
         return {
+            requestedEnabled: this.controlRequestedEnabled,
             enabled: this.isEnabled(),
+            adminToggleAllowed: this.isAdminToggleAllowed(),
             mode: this.config.mode,
             namespace: this.config.namespace,
             surface: this.config.surface,
+            webChatParallelEnabled: this.webChatParallelEnabled,
+            valkeyConfigured: Boolean(this.config.valkeyUrl),
             workerEnabled: this.config.workerEnabled,
             workerRunning: Boolean(this.workerTimer),
             allowLiveRemote: this.config.allowLiveRemote,

@@ -113,7 +113,7 @@ function updateRuntimeStatus(status = {}) {
   const enabled = status.enabled === true;
   els.runtimeLine.textContent = enabled
     ? `${status.namespace || 'async lab'} | ${bus.backend || 'memory'} bus | live remote ${status.allowLiveRemote ? 'allowed' : 'dry-run'}`
-    : 'Async runtime lab disabled';
+    : `Async runtime lab ${status.requestedEnabled ? 'requested' : 'standby'} | Valkey ${status.valkeyConfigured ? 'configured' : 'not configured'}`;
   els.busValue.textContent = `${bus.backend || 'unknown'}${bus.available ? ' connected' : ''}`;
 }
 
@@ -132,7 +132,13 @@ async function loadStatus() {
 
   try {
     const payload = await fetchJson('/api/async-lab/status');
-    updateRuntimeStatus(payload.status || {});
+    const status = payload.status || {};
+    updateRuntimeStatus(status);
+    if (!status.enabled) {
+      setConnection(status.requestedEnabled ? 'Requested' : 'Standby', 'warn');
+      setControlsEnabled(false);
+      return;
+    }
     setConnection('Ready', 'live');
     setControlsEnabled(true);
     await loadRuns();

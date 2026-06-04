@@ -29,7 +29,7 @@ function shouldStream(req) {
 router.get('/status', async (req, res, next) => {
     try {
         const service = getService(req);
-        if (!service?.isEnabled()) {
+        if (!service?.getStatus) {
             return respondDisabled(res);
         }
         res.json({

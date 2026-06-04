@@ -574,6 +574,7 @@ class SettingsController {
       // Save to file (optional persistence)
       await this.saveSettings();
       this.applyAudioProcessingSettingsToRuntime();
+      await this.applyAsyncRuntimeSettingsToRuntime(req);
 
       res.json({
         success: true,
@@ -1212,6 +1213,15 @@ class SettingsController {
     next.neuralWaveResearchMode = value.neuralWaveResearchMode !== undefined
       ? Boolean(value.neuralWaveResearchMode)
       : current.neuralWaveResearchMode === true;
+    next.asyncRuntimeEnabled = value.asyncRuntimeEnabled !== undefined
+      ? Boolean(value.asyncRuntimeEnabled)
+      : current.asyncRuntimeEnabled === true;
+    next.asyncRuntimeWebChatParallel = value.asyncRuntimeWebChatParallel !== undefined
+      ? Boolean(value.asyncRuntimeWebChatParallel)
+      : current.asyncRuntimeWebChatParallel === true;
+    next.asyncRuntimeAllowLiveRemote = value.asyncRuntimeAllowLiveRemote !== undefined
+      ? Boolean(value.asyncRuntimeAllowLiveRemote)
+      : current.asyncRuntimeAllowLiveRemote === true;
 
     next.fallbackModels = this.normalizeStringArray(
       value.fallbackModels ?? value.fallbackModelList ?? next.fallbackModels,
@@ -1263,6 +1273,7 @@ class SettingsController {
       publicSettings.security.requireAuth = authEnabled;
     }
     publicSettings.orchestration = this.getEffectiveOrchestrationConfig();
+    publicSettings.asyncRuntime = this.getEffectiveAsyncRuntimeConfig();
     publicSettings.privacyPii = this.getEffectivePrivacyPiiConfig();
     if (publicSettings.integrations?.opencode) {
       delete publicSettings.integrations.opencode;
@@ -1282,6 +1293,19 @@ class SettingsController {
       });
     } catch (error) {
       console.warn('[Settings] Failed to apply audio processing settings:', error.message);
+    }
+  }
+
+  async applyAsyncRuntimeSettingsToRuntime(req) {
+    try {
+      const service = req?.app?.locals?.asyncLabService;
+      if (!service?.applyControlConfig) {
+        return null;
+      }
+      return await service.applyControlConfig(this.getEffectiveAsyncRuntimeConfig());
+    } catch (error) {
+      console.warn('[Settings] Failed to apply async runtime settings:', error.message);
+      return null;
     }
   }
 
@@ -1555,8 +1579,36 @@ class SettingsController {
         || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_AGENT_DIRECTED_RUNTIME || '').trim().toLowerCase()),
       neuralWaveResearchMode: merged.neuralWaveResearchMode === true
         || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_NEURAL_WAVE_RESEARCH_MODE || '').trim().toLowerCase()),
+      asyncRuntimeEnabled: merged.asyncRuntimeEnabled === true,
+      asyncRuntimeWebChatParallel: merged.asyncRuntimeWebChatParallel === true,
+      asyncRuntimeAllowLiveRemote: merged.asyncRuntimeAllowLiveRemote === true,
       fallbackModels: this.normalizeStringArray(merged.fallbackModels, defaults.fallbackModels),
       source: this.canUsePostgresSettings() ? 'postgres' : 'file',
+    };
+  }
+
+  getEffectiveAsyncRuntimeConfig() {
+    const orchestration = this.getEffectiveOrchestrationConfig();
+    const runtimeConfig = config.asyncRuntime || {};
+    const adminToggleAllowed = runtimeConfig.adminToggleAllowed === true;
+    const requestedEnabled = orchestration.asyncRuntimeEnabled === true;
+    const liveRemoteRequested = orchestration.asyncRuntimeAllowLiveRemote === true;
+    const liveRemoteAllowed = liveRemoteRequested && runtimeConfig.allowLiveRemote === true;
+
+    return {
+      requestedEnabled,
+      enabled: requestedEnabled && adminToggleAllowed,
+      adminToggleAllowed,
+      webChatParallelEnabled: orchestration.asyncRuntimeWebChatParallel === true,
+      allowLiveRemote: liveRemoteAllowed,
+      liveRemoteRequested,
+      dryRunOnly: !liveRemoteAllowed,
+      valkeyConfigured: Boolean(runtimeConfig.valkeyUrl),
+      mode: runtimeConfig.mode || 'lab',
+      namespace: runtimeConfig.namespace || 'kimibuilt-async-lab',
+      surface: runtimeConfig.surface || 'async-lab',
+      valkeyKeyPrefix: runtimeConfig.valkeyKeyPrefix || 'kimibuilt:async-lab',
+      workerEnabled: runtimeConfig.workerEnabled !== false,
     };
   }
 
@@ -1621,6 +1673,9 @@ class SettingsController {
         applyAlignmentGuidance: true,
         agentDirectedRuntime: false,
         neuralWaveResearchMode: false,
+        asyncRuntimeEnabled: config.asyncRuntime?.enabled === true,
+        asyncRuntimeWebChatParallel: false,
+        asyncRuntimeAllowLiveRemote: false,
       },
       personality: {
         enabled: true,

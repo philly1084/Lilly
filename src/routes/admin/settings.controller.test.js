@@ -63,6 +63,17 @@ jest.mock('../../config', () => ({
       registryPullSecretName: 'gitlab-registry-credentials',
       webhookEndpointPath: '/api/integrations/gitlab/build-events',
     },
+    asyncRuntime: {
+      enabled: false,
+      adminToggleAllowed: true,
+      mode: 'primary-sidecar',
+      namespace: 'kimibuilt',
+      surface: 'async-lab',
+      valkeyUrl: 'redis://valkey-async-runtime.kimibuilt.svc.cluster.local:6379/0',
+      valkeyKeyPrefix: 'kimibuilt:primary:async-runtime',
+      workerEnabled: true,
+      allowLiveRemote: false,
+    },
   },
 }));
 
@@ -301,6 +312,19 @@ describe('settings.controller personality support', () => {
       plannerModel: 'gpt-5.5',
       fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
       neuralWaveResearchMode: false,
+      asyncRuntimeEnabled: false,
+      asyncRuntimeWebChatParallel: false,
+      asyncRuntimeAllowLiveRemote: false,
+    }));
+    expect(publicSettings.asyncRuntime).toEqual(expect.objectContaining({
+      requestedEnabled: false,
+      enabled: false,
+      adminToggleAllowed: true,
+      webChatParallelEnabled: false,
+      dryRunOnly: true,
+      valkeyConfigured: true,
+      mode: 'primary-sidecar',
+      namespace: 'kimibuilt',
     }));
   });
 
@@ -323,6 +347,16 @@ describe('settings.controller personality support', () => {
           applyAlignmentGuidance: false,
           agentDirectedRuntime: true,
           neuralWaveResearchMode: true,
+          asyncRuntimeEnabled: true,
+          asyncRuntimeWebChatParallel: true,
+          asyncRuntimeAllowLiveRemote: true,
+        },
+      },
+      app: {
+        locals: {
+          asyncLabService: {
+            applyControlConfig: jest.fn().mockResolvedValue({ active: true }),
+          },
         },
       },
     };
@@ -346,6 +380,17 @@ describe('settings.controller personality support', () => {
       applyAlignmentGuidance: false,
       agentDirectedRuntime: true,
       neuralWaveResearchMode: true,
+      asyncRuntimeEnabled: true,
+      asyncRuntimeWebChatParallel: true,
+      asyncRuntimeAllowLiveRemote: true,
+    }));
+    expect(req.app.locals.asyncLabService.applyControlConfig).toHaveBeenCalledWith(expect.objectContaining({
+      requestedEnabled: true,
+      enabled: true,
+      webChatParallelEnabled: true,
+      liveRemoteRequested: true,
+      allowLiveRemote: false,
+      dryRunOnly: true,
     }));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
@@ -357,6 +402,17 @@ describe('settings.controller personality support', () => {
           applyAlignmentGuidance: false,
           agentDirectedRuntime: true,
           neuralWaveResearchMode: true,
+          asyncRuntimeEnabled: true,
+          asyncRuntimeWebChatParallel: true,
+          asyncRuntimeAllowLiveRemote: true,
+        }),
+        asyncRuntime: expect.objectContaining({
+          requestedEnabled: true,
+          enabled: true,
+          webChatParallelEnabled: true,
+          liveRemoteRequested: true,
+          allowLiveRemote: false,
+          dryRunOnly: true,
         }),
       }),
     }));

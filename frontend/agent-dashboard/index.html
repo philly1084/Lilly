@@ -573,6 +573,32 @@
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
+                                        <label for="orchestrationAsyncRuntimeEnabled">Async Valkey lane</label>
+                                        <select class="form-control" id="orchestrationAsyncRuntimeEnabled">
+                                            <option value="false">Standby</option>
+                                            <option value="true">Active</option>
+                                        </select>
+                                        <p class="text-muted">Run the message-based Valkey mock path beside the existing chat runtime for side-by-side testing.</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="orchestrationAsyncRuntimeWebChatParallel">Web-chat comparison path</label>
+                                        <select class="form-control" id="orchestrationAsyncRuntimeWebChatParallel">
+                                            <option value="false">Hidden</option>
+                                            <option value="true">Available</option>
+                                        </select>
+                                        <p class="text-muted">Expose the parallel `/async-lab` surface without changing the normal web-chat composer.</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="orchestrationAsyncRuntimeAllowLiveRemote">Remote execution mode</label>
+                                        <select class="form-control" id="orchestrationAsyncRuntimeAllowLiveRemote">
+                                            <option value="false">Dry-run only</option>
+                                            <option value="true">Allow live remote</option>
+                                        </select>
+                                        <p class="text-muted">Keep copied tool, SSH, and webhook events mocked unless the deployment env also permits live remote actions.</p>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
                                         <label for="orchestrationPlannerModel">Planner model</label>
                                         <select class="form-control orchestration-model-select" id="orchestrationPlannerModel">
                                             <option value="gpt-5.5">GPT 5.5</option>
@@ -1561,6 +1587,36 @@
                                                 </div>
                                                 <label class="toggle">
                                                     <input type="checkbox" id="settingsNeuralWaveResearchMode">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
+                                                    <span class="feature-name">Async Valkey lane</span>
+                                                    <span class="feature-desc" id="settingsAsyncRuntimeStatus">Prepare the side-by-side message runtime without replacing the current chat path.</span>
+                                                </div>
+                                                <label class="toggle">
+                                                    <input type="checkbox" id="settingsAsyncRuntimeEnabled">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
+                                                    <span class="feature-name">Web-chat comparison path</span>
+                                                    <span class="feature-desc">Expose the parallel `/async-lab` surface for browser testing while normal web chat stays primary.</span>
+                                                </div>
+                                                <label class="toggle">
+                                                    <input type="checkbox" id="settingsAsyncRuntimeWebChatParallel">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
+                                                    <span class="feature-name">Live remote actions</span>
+                                                    <span class="feature-desc">Allow the async lane to leave dry-run mode only when the server env also allows it.</span>
+                                                </div>
+                                                <label class="toggle">
+                                                    <input type="checkbox" id="settingsAsyncRuntimeAllowLiveRemote">
                                                     <span class="toggle-slider"></span>
                                                 </label>
                                             </div>

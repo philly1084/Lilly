@@ -42,6 +42,39 @@ describe('AsyncLabService', () => {
         });
     });
 
+    test('applies admin control without enabling live remote unless env permits it', async () => {
+        const service = createService({
+            enabled: false,
+            adminToggleAllowed: true,
+            allowLiveRemote: false,
+        });
+
+        const enabled = await service.applyControlConfig({
+            enabled: true,
+            allowLiveRemote: true,
+            workerEnabled: false,
+        });
+
+        expect(enabled).toEqual(expect.objectContaining({
+            active: true,
+            enabled: true,
+        }));
+        expect(service.getStatus()).toEqual(expect.objectContaining({
+            enabled: true,
+            adminToggleAllowed: true,
+            allowLiveRemote: false,
+            workerRunning: false,
+        }));
+
+        const disabled = await service.applyControlConfig({ enabled: false });
+        expect(disabled).toEqual(expect.objectContaining({
+            active: false,
+            enabled: false,
+            reason: 'disabled',
+        }));
+        expect(service.isEnabled()).toBe(false);
+    });
+
     test('creates lab-tagged runs and keeps remote adapters dry-run by default', async () => {
         const service = createService();
         const created = await service.createRun({

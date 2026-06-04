@@ -280,6 +280,24 @@ class Dashboard {
         document.getElementById('orchestrationNeuralWaveResearchMode')?.addEventListener('change', (e) => {
             this.setCheckboxValue('settingsNeuralWaveResearchMode', e.target.value === 'true');
         });
+        document.getElementById('settingsAsyncRuntimeEnabled')?.addEventListener('change', (e) => {
+            this.setInputValue('orchestrationAsyncRuntimeEnabled', String(e.target.checked));
+        });
+        document.getElementById('orchestrationAsyncRuntimeEnabled')?.addEventListener('change', (e) => {
+            this.setCheckboxValue('settingsAsyncRuntimeEnabled', e.target.value === 'true');
+        });
+        document.getElementById('settingsAsyncRuntimeWebChatParallel')?.addEventListener('change', (e) => {
+            this.setInputValue('orchestrationAsyncRuntimeWebChatParallel', String(e.target.checked));
+        });
+        document.getElementById('orchestrationAsyncRuntimeWebChatParallel')?.addEventListener('change', (e) => {
+            this.setCheckboxValue('settingsAsyncRuntimeWebChatParallel', e.target.value === 'true');
+        });
+        document.getElementById('settingsAsyncRuntimeAllowLiveRemote')?.addEventListener('change', (e) => {
+            this.setInputValue('orchestrationAsyncRuntimeAllowLiveRemote', String(e.target.checked));
+        });
+        document.getElementById('orchestrationAsyncRuntimeAllowLiveRemote')?.addEventListener('change', (e) => {
+            this.setCheckboxValue('settingsAsyncRuntimeAllowLiveRemote', e.target.value === 'true');
+        });
         
         document.getElementById('addModelBtn')?.addEventListener('click', () => {
             this.showToast('Add model functionality coming soon', 'info');
@@ -3032,6 +3050,9 @@ class Dashboard {
                     applyAlignmentGuidance: document.getElementById('orchestrationApplyAlignmentGuidance').value === 'true',
                     agentDirectedRuntime: document.getElementById('orchestrationAgentDirectedRuntime').value === 'true',
                     neuralWaveResearchMode: document.getElementById('orchestrationNeuralWaveResearchMode').value === 'true',
+                    asyncRuntimeEnabled: document.getElementById('orchestrationAsyncRuntimeEnabled').value === 'true',
+                    asyncRuntimeWebChatParallel: document.getElementById('orchestrationAsyncRuntimeWebChatParallel').value === 'true',
+                    asyncRuntimeAllowLiveRemote: document.getElementById('orchestrationAsyncRuntimeAllowLiveRemote').value === 'true',
                 },
             };
 
@@ -3052,6 +3073,9 @@ class Dashboard {
                     ...existing,
                     agentDirectedRuntime: document.getElementById('settingsAgentDirectedRuntime').checked,
                     neuralWaveResearchMode: document.getElementById('settingsNeuralWaveResearchMode').checked,
+                    asyncRuntimeEnabled: document.getElementById('settingsAsyncRuntimeEnabled').checked,
+                    asyncRuntimeWebChatParallel: document.getElementById('settingsAsyncRuntimeWebChatParallel').checked,
+                    asyncRuntimeAllowLiveRemote: document.getElementById('settingsAsyncRuntimeAllowLiveRemote').checked,
                 },
             };
 
@@ -5923,6 +5947,7 @@ class Dashboard {
         const api = settings.api || {};
         const features = settings.features || {};
         const orchestration = settings.orchestration || {};
+        const asyncRuntime = settings.asyncRuntime || {};
         const personality = settings.personality || {};
         const userProfile = settings.userProfile || {};
         const agentNotes = settings.agentNotes || {};
@@ -6019,6 +6044,21 @@ class Dashboard {
         this.setCheckboxValue('settingsAgentDirectedRuntime', orchestration.agentDirectedRuntime === true);
         this.setInputValue('orchestrationNeuralWaveResearchMode', String(orchestration.neuralWaveResearchMode === true));
         this.setCheckboxValue('settingsNeuralWaveResearchMode', orchestration.neuralWaveResearchMode === true);
+        this.setInputValue('orchestrationAsyncRuntimeEnabled', String(asyncRuntime.requestedEnabled === true || asyncRuntime.enabled === true));
+        this.setCheckboxValue('settingsAsyncRuntimeEnabled', asyncRuntime.requestedEnabled === true || asyncRuntime.enabled === true);
+        this.setInputValue('orchestrationAsyncRuntimeWebChatParallel', String(asyncRuntime.webChatParallelEnabled === true));
+        this.setCheckboxValue('settingsAsyncRuntimeWebChatParallel', asyncRuntime.webChatParallelEnabled === true);
+        this.setInputValue('orchestrationAsyncRuntimeAllowLiveRemote', String(asyncRuntime.liveRemoteRequested === true || asyncRuntime.allowLiveRemote === true));
+        this.setCheckboxValue('settingsAsyncRuntimeAllowLiveRemote', asyncRuntime.liveRemoteRequested === true || asyncRuntime.allowLiveRemote === true);
+        const asyncRuntimeStatus = document.getElementById('settingsAsyncRuntimeStatus');
+        if (asyncRuntimeStatus) {
+            const availability = asyncRuntime.adminToggleAllowed
+                ? (asyncRuntime.valkeyConfigured ? 'Valkey configured' : 'Valkey not configured')
+                : 'Deployment toggle disabled';
+            const mode = asyncRuntime.enabled ? 'active' : (asyncRuntime.requestedEnabled ? 'requested' : 'standby');
+            const remoteMode = asyncRuntime.allowLiveRemote ? 'live remote allowed' : 'dry-run remote mode';
+            asyncRuntimeStatus.textContent = `${availability}; ${mode}; ${remoteMode}.`;
+        }
         apiClient.baseUrl = window.location.origin;
 
         this.setCheckboxValue('featureWebsocket', Boolean(features.realTimeUpdates));

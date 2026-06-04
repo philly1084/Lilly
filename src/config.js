@@ -1168,6 +1168,8 @@ const config = {
 
     asyncRuntime: {
         enabled: process.env.ASYNC_RUNTIME_ENABLED === 'true',
+        adminToggleAllowed: process.env.ASYNC_RUNTIME_ADMIN_TOGGLE_ALLOWED === 'true'
+            || process.env.ASYNC_RUNTIME_ENABLED === 'true',
         mode: process.env.ASYNC_RUNTIME_MODE || 'lab',
         namespace: process.env.ASYNC_RUNTIME_NAMESPACE || 'kimibuilt-async-lab',
         surface: process.env.ASYNC_RUNTIME_SURFACE || 'async-lab',
