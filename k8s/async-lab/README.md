@@ -2,6 +2,9 @@
 
 This directory is an adjacent runtime lab. It does not change the production
 `kimibuilt/backend` Deployment, Service, Ingress, or web-chat routes.
+The lab has its own Valkey and Postgres Deployments/PVCs inside
+`kimibuilt-async-lab` so live queues, leases, and durable event checkpoints do
+not share production runtime state.
 
 ## Local Overlay
 
@@ -28,6 +31,7 @@ do not commit real values.
 kubectl apply -f k8s/async-lab/async-lab.yaml --dry-run=server
 kubectl apply -f k8s/async-lab/secret.example.yaml --dry-run=client
 kubectl apply -f k8s/async-lab/async-lab.yaml
+kubectl -n kimibuilt-async-lab rollout status deploy/postgres-async-lab
 kubectl -n kimibuilt-async-lab rollout status deploy/valkey-async-lab
 kubectl -n kimibuilt-async-lab rollout status deploy/backend-async-lab
 ```

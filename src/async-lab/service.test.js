@@ -188,4 +188,32 @@ describe('AsyncLabService', () => {
             'checkpoint',
         ]));
     });
+
+    test('drainQueue scans expired running leases when Valkey has no queued item', async () => {
+        const store = new AsyncLabStore({ persistToPostgres: false });
+        const bus = new ValkeyLiveBus({});
+        const worker = createService({ store, bus, instanceId: 'recovery-worker' });
+        await store.createRun({
+            id: 'stale-running-run',
+            runtimeSurface: 'async-lab',
+            mode: 'lab',
+            adapter: 'dry-run',
+            status: 'running',
+            targetKey: 'lab/stale-running',
+            task: 'recover from expired lease without queue entry',
+            claimOwner: 'dead-worker',
+            claimExpiresAt: new Date(Date.now() - 1000).toISOString(),
+            attempt: 1,
+            metadata: {},
+        });
+
+        const processed = await worker.drainQueue();
+        const run = await worker.getRun('stale-running-run', '');
+        const events = await worker.listEvents(run.id, 0);
+
+        expect(processed).toBeGreaterThan(0);
+        expect(run.status).toBe('completed');
+        expect(run.metadata.recoveredBy).toBe('recovery-worker');
+        expect(events.map((event) => event.type)).toContain('lease_recovered');
+    });
 });

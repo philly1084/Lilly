@@ -411,6 +411,17 @@ class AsyncLabService {
             processed += 1;
             await this.processRun(runId);
         }
+
+        if (processed < 50) {
+            const runnableRuns = await this.store.listRunnableRuns(this.config.surface, 50 - processed);
+            for (const run of runnableRuns) {
+                processed += 1;
+                await this.processRun(run.id);
+                if (processed >= 50) {
+                    break;
+                }
+            }
+        }
         return processed;
     }
 
