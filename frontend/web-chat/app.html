@@ -950,6 +950,17 @@
                                             <span>Clear</span>
                                         </button>
                                     </div>
+                                    <div id="tool-command-picker" class="tool-command-picker hidden" aria-label="Tool picker">
+                                        <div class="tool-command-picker__head">
+                                            <span class="tool-command-picker__title">Tool Call</span>
+                                            <span id="tool-command-status" class="tool-command-picker__status">Pick a tool</span>
+                                        </div>
+                                        <div class="tool-command-picker__search">
+                                            <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+                                            <input id="tool-command-search" type="search" placeholder="Search tools" autocomplete="off" aria-label="Search tools">
+                                        </div>
+                                        <div id="tool-command-list" class="tool-command-list" role="listbox" aria-label="Available tools"></div>
+                                    </div>
                                 </div>
                             </div>
                             <!-- Image Generation Button -->

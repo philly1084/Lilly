@@ -157,4 +157,37 @@ describe('web-chat stream stability', () => {
             expect.objectContaining({ id: 'remote' }),
         ]));
     });
+
+    test('builds tool-picker command templates from selected lanes and catalog schemas', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set(['remote']);
+        app.toolCatalogTools = [
+            {
+                id: 'web-search',
+                name: 'Web Search',
+                description: 'Search the web',
+                category: 'web',
+                inputSchema: {
+                    type: 'object',
+                    required: ['query'],
+                    properties: {
+                        query: { type: 'string' },
+                    },
+                },
+            },
+            {
+                id: 'remote-cli-agent',
+                name: 'Remote CLI Agent',
+                description: 'Run remote build loops',
+                category: 'ssh',
+            },
+        ];
+
+        expect(app.getToolCommandPickerTools().map((tool) => tool.id)).toEqual([
+            'remote-cli-agent',
+            'web-search',
+        ]);
+        expect(app.buildToolCommandTemplate('remote-cli-agent')).toBe('/tool remote-cli-agent {"task":"","adminMode":true}');
+        expect(app.buildToolCommandTemplate('web-search')).toBe('/tool web-search {"query":""}');
+    });
 });

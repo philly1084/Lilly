@@ -2,14 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadApiClient(fetchMock = jest.fn()) {
+function loadApiClient(fetchMock = jest.fn(), locationOverrides = {}) {
     const source = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
     const window = {
         location: {
             hostname: 'localhost',
             protocol: 'http:',
             host: 'localhost:3000',
+            port: '3000',
             href: 'http://localhost:3000/web-chat/app.html',
+            ...locationOverrides,
         },
         KimiBuiltGatewaySSE: null,
         KimiBuiltWebChatWorkspace: null,
@@ -21,6 +23,7 @@ function loadApiClient(fetchMock = jest.fn()) {
         console,
         EventTarget,
         URL,
+        URLSearchParams,
         Intl,
         Date,
         setTimeout,
@@ -97,6 +100,48 @@ describe('web-chat image API client', () => {
             model: 'gpt-image-2',
             response_format: 'b64_json',
         }));
+    });
+});
+
+describe('web-chat API origin selection', () => {
+    test('uses the current local port-3000 origin instead of hard-coding localhost', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                data: [],
+                meta: {},
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock, {
+            hostname: '127.0.0.1',
+            host: '127.0.0.1:3000',
+            port: '3000',
+            href: 'http://127.0.0.1:3000/web-chat/app.html',
+        });
+
+        await apiClient.getAvailableTools(null, { includeAll: true });
+
+        expect(fetchMock.mock.calls[0][0]).toContain('http://127.0.0.1:3000/api/tools/available');
+    });
+
+    test('keeps the backend fallback for non-3000 local preview ports', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                data: [],
+                meta: {},
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock, {
+            hostname: '127.0.0.1',
+            host: '127.0.0.1:3100',
+            port: '3100',
+            href: 'http://127.0.0.1:3100/web-chat/app.html',
+        });
+
+        await apiClient.getAvailableTools(null, { includeAll: true });
+
+        expect(fetchMock.mock.calls[0][0]).toContain('http://localhost:3000/api/tools/available');
     });
 });
 

@@ -10,10 +10,10 @@ This profile is tuned for a single ARM64 k3s node with 16 CPU cores and 32GB RAM
 | ollama | 2 CPU / 3Gi | 6 CPU / 8Gi | Keeps the embedding model warm, allows four parallel embedding requests, and caps loaded models at one. |
 | postgres | 1 CPU / 2Gi | 3 CPU / 6Gi | Uses a 1.5Gi shared buffer and 12GB effective cache estimate for the host. |
 | qdrant | 1 CPU / 2Gi | 4 CPU / 5Gi | Allows four search workers and two optimizer threads for vector recall without taking the whole node. |
-| kokoro-tts | 1 CPU / 1Gi per replica | 4 CPU / 5Gi per replica | Four isolated replicas reserve 4 CPU total for snappy realtime TTS while keeping one Kokoro synthesis lane per process. |
+| kokoro-tts | 0.25 CPU / 512Mi per replica | 2 CPU / 2Gi per replica | Keeps six isolated single-lane TTS workers close to observed steady-state memory while preserving burst headroom for synthesis. |
 | frontend nginx | 0.1 CPU / 128Mi | 0.5 CPU / 512Mi | Only applies to the Rancher bundle that serves static frontend files through a separate nginx pod. |
 
-Steady-state requests total about 9 CPU and 13Gi RAM with four Kokoro replicas. That still leaves meaningful headroom on a 16-core / 32GB node for OS/k3s overhead, ingress, gateway services, transient jobs, page rendering, and traffic spikes.
+Steady-state requests total about 6 CPU and 11Gi RAM with six Kokoro replicas. That still leaves meaningful headroom on a 16-core / 32GB node for OS/k3s overhead, ingress, gateway services, transient jobs, page rendering, and traffic spikes.
 
 ## Why these settings
 

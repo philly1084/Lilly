@@ -569,7 +569,7 @@ spec:
             - name: KOKORO_TTS_BASE_URL
               value: ""
             - name: NODE_OPTIONS
-              value: "--max-old-space-size=3072"
+              value: "--max-old-space-size=1536"
             - name: UV_THREADPOOL_SIZE
               value: "12"
           readinessProbe:
@@ -590,11 +590,11 @@ spec:
             failureThreshold: 10
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "1000m"
+              memory: "512Mi"
+              cpu: "250m"
             limits:
-              memory: "5Gi"
-              cpu: "4000m"
+              memory: "2Gi"
+              cpu: "2000m"
 
 ---
 apiVersion: v1

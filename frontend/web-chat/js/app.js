@@ -13,6 +13,24 @@ const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
 const MANAGED_APP_PROGRESS_RENDER_BUFFER_MS = 1200;
 const WEB_CHAT_TOOL_MENU_STORAGE_KEY = 'kimibuilt_web_chat_plugin_lanes';
+const WEB_CHAT_TOOL_COMMAND_STARTER_PARAMS = Object.freeze({
+    'web-search': { query: '' },
+    'web-fetch': { url: '' },
+    'web-scrape': { url: '', browser: true },
+    'news-scraper': { query: '' },
+    'image-generate': { prompt: '' },
+    'image-search-unsplash': { query: '' },
+    'image-from-url': { url: '' },
+    'asset-search': { query: '' },
+    'document-workflow': { action: 'recommend', request: '' },
+    'design-resource-search': { query: '' },
+    'code-sandbox': { prompt: '' },
+    'remote-cli-agent': { task: '', adminMode: true },
+    'remote-command': { command: '' },
+    'remote-workbench': { action: 'inspect' },
+    'k3s-deploy': { action: 'status' },
+    'agent-workload': { action: 'recommend', prompt: '' },
+});
 const WEB_CHAT_TOOL_INTENT_DEFINITIONS = Object.freeze([
     {
         id: 'research',
@@ -456,6 +474,57 @@ function buildToolIntentSelectionSummary(definitions = []) {
     return `${labels.slice(0, 3).join(', ')} +${labels.length - 3}`;
 }
 
+function escapeToolMenuHtml(value = '') {
+    const text = String(value ?? '');
+    if (typeof uiHelpers !== 'undefined' && typeof uiHelpers?.escapeHtml === 'function') {
+        return uiHelpers.escapeHtml(text);
+    }
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeToolMenuHtmlAttr(value = '') {
+    if (typeof uiHelpers !== 'undefined' && typeof uiHelpers?.escapeHtmlAttr === 'function') {
+        return uiHelpers.escapeHtmlAttr(String(value ?? ''));
+    }
+    return escapeToolMenuHtml(value);
+}
+
+function cloneToolCommandStarterParams(params = {}) {
+    try {
+        return JSON.parse(JSON.stringify(params || {}));
+    } catch (_error) {
+        return {};
+    }
+}
+
+function buildDefaultToolParameterValue(schema = {}) {
+    const type = Array.isArray(schema?.type) ? schema.type[0] : schema?.type;
+    if (schema && Object.prototype.hasOwnProperty.call(schema, 'default')) {
+        return schema.default;
+    }
+    if (Array.isArray(schema?.enum) && schema.enum.length > 0) {
+        return schema.enum[0];
+    }
+    if (type === 'boolean') {
+        return false;
+    }
+    if (type === 'integer' || type === 'number') {
+        return 0;
+    }
+    if (type === 'array') {
+        return [];
+    }
+    if (type === 'object') {
+        return {};
+    }
+    return '';
+}
+
 class ChatApp {
     constructor() {
         this.messageInput = document.getElementById('message-input');
@@ -470,6 +539,10 @@ class ChatApp {
         this.toolMenuSkillBtn = typeof document.querySelector === 'function' ? document.querySelector('[data-tool-menu-action="skill"]') : null;
         this.toolMenuCommandBtn = typeof document.querySelector === 'function' ? document.querySelector('[data-tool-menu-action="command"]') : null;
         this.toolMenuClearBtn = typeof document.querySelector === 'function' ? document.querySelector('[data-tool-menu-action="clear"]') : null;
+        this.toolCommandPicker = document.getElementById('tool-command-picker');
+        this.toolCommandSearch = document.getElementById('tool-command-search');
+        this.toolCommandStatus = document.getElementById('tool-command-status');
+        this.toolCommandList = document.getElementById('tool-command-list');
         this.messagesContainer = document.getElementById('messages-container');
         this.charCounter = document.getElementById('char-counter');
         this.currentSessionInfo = document.getElementById('current-session-info');
@@ -548,6 +621,10 @@ class ChatApp {
         this.isProcessingQueue = false;
         this.skillWizardState = null;
         this.selectedToolIntentIds = new Set(this.loadStoredToolIntentIds());
+        this.toolCatalogTools = [];
+        this.toolCatalogLoaded = false;
+        this.toolCatalogLoading = false;
+        this.toolCatalogLoadError = '';
         
         // Track retry state
         this.retryAttempt = 0;
@@ -693,6 +770,13 @@ class ChatApp {
             this.toggleToolMenu();
         });
         this.toolMenuPanel?.addEventListener('click', (event) => {
+            const toolCommandButton = event.target?.closest?.('[data-tool-command-id]');
+            if (toolCommandButton) {
+                event.preventDefault();
+                this.insertToolCommandTemplateForTool(toolCommandButton.dataset.toolCommandId);
+                return;
+            }
+
             const checkbox = event.target?.closest?.('[data-tool-intent-checkbox]');
             if (checkbox) {
                 this.handleToolIntentCheckboxChange(checkbox);
@@ -709,10 +793,24 @@ class ChatApp {
             if (action === 'skill') {
                 this.startSkillWizardFromToolMenu();
             } else if (action === 'command') {
-                this.insertToolCommandTemplateFromToolMenu();
+                void this.openToolCommandPicker();
             } else if (action === 'clear') {
                 this.clearToolIntentSelections();
             }
+        });
+        this.toolCommandSearch?.addEventListener('input', () => {
+            this.renderToolCommandPicker();
+        });
+        this.toolCommandSearch?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') {
+                return;
+            }
+            const firstTool = this.getToolCommandPickerTools()[0] || null;
+            if (!firstTool) {
+                return;
+            }
+            event.preventDefault();
+            this.insertToolCommandTemplateForTool(firstTool.id);
         });
         document.addEventListener('click', (event) => {
             if (!this.toolMenuPanel || this.toolMenuPanel.classList.contains('hidden')) {
@@ -1107,6 +1205,10 @@ class ChatApp {
             choice?.classList.toggle('is-selected', isSelected);
             choice?.setAttribute('aria-checked', isSelected ? 'true' : 'false');
         });
+
+        if (this.toolCommandPicker && !this.toolCommandPicker.classList.contains('hidden')) {
+            this.renderToolCommandPicker();
+        }
     }
 
     toggleToolMenu() {
@@ -1134,6 +1236,7 @@ class ChatApp {
             return;
         }
         this.toolMenuPanel.classList.add('hidden');
+        this.toolCommandPicker?.classList.add('hidden');
         this.syncToolMenuState();
     }
 
@@ -1149,6 +1252,9 @@ class ChatApp {
         }
         this.saveStoredToolIntentIds();
         this.syncToolMenuState();
+        if (this.toolCommandPicker && !this.toolCommandPicker.classList.contains('hidden')) {
+            this.renderToolCommandPicker();
+        }
     }
 
     clearToolIntentSelections() {
@@ -1156,6 +1262,184 @@ class ChatApp {
         this.saveStoredToolIntentIds();
         this.syncToolMenuState();
         uiHelpers.showToast?.('Plugin choices cleared.', 'info');
+    }
+
+    getSelectedPlannedToolIds() {
+        return getUniqueToolIdsFromIntentDefinitions(this.getSelectedToolIntentDefinitions());
+    }
+
+    normalizeToolCatalogTools(tools = []) {
+        const seen = new Set();
+        return (Array.isArray(tools) ? tools : [])
+            .map((tool) => ({
+                ...tool,
+                id: String(tool?.id || tool?.name || '').trim(),
+                name: String(tool?.name || tool?.id || '').trim(),
+                description: String(tool?.description || '').trim(),
+                category: String(tool?.category || '').trim(),
+                icon: String(tool?.icon || 'wrench').trim() || 'wrench',
+            }))
+            .filter((tool) => {
+                if (!tool.id || seen.has(tool.id)) {
+                    return false;
+                }
+                seen.add(tool.id);
+                return true;
+            });
+    }
+
+    getToolCommandPickerTools(query = null) {
+        const rawQuery = query === null
+            ? String(this.toolCommandSearch?.value || '')
+            : String(query || '');
+        const normalizedQuery = rawQuery.trim().toLowerCase();
+        const selectedPlannedToolIds = new Set(this.getSelectedPlannedToolIds());
+        const remoteToolOrder = new Map([
+            ['remote-cli-agent', 0],
+            ['managed-app', 1],
+            ['k3s-deploy', 2],
+            ['remote-command', 3],
+            ['remote-workbench', 4],
+        ]);
+
+        return this.normalizeToolCatalogTools(this.toolCatalogTools)
+            .filter((tool) => {
+                if (!normalizedQuery) {
+                    return true;
+                }
+                return [
+                    tool.id,
+                    tool.name,
+                    tool.description,
+                    tool.category,
+                ].some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
+            })
+            .sort((first, second) => {
+                const firstSelected = selectedPlannedToolIds.has(first.id) ? 0 : 1;
+                const secondSelected = selectedPlannedToolIds.has(second.id) ? 0 : 1;
+                if (firstSelected !== secondSelected) {
+                    return firstSelected - secondSelected;
+                }
+
+                const firstRank = remoteToolOrder.has(first.id) ? remoteToolOrder.get(first.id) : 50;
+                const secondRank = remoteToolOrder.has(second.id) ? remoteToolOrder.get(second.id) : 50;
+                if (firstRank !== secondRank) {
+                    return firstRank - secondRank;
+                }
+
+                return (first.name || first.id).localeCompare(second.name || second.id);
+            });
+    }
+
+    renderToolCommandPicker() {
+        if (!this.toolCommandPicker || !this.toolCommandList) {
+            return;
+        }
+
+        const selectedPlannedToolIds = new Set(this.getSelectedPlannedToolIds());
+        const matchingTools = this.getToolCommandPickerTools();
+        const query = String(this.toolCommandSearch?.value || '').trim();
+
+        if (this.toolCommandStatus) {
+            if (this.toolCatalogLoading) {
+                this.toolCommandStatus.textContent = 'Loading tools...';
+            } else if (this.toolCatalogLoadError) {
+                this.toolCommandStatus.textContent = 'Could not load tools';
+            } else if (matchingTools.length === 0) {
+                this.toolCommandStatus.textContent = query ? 'No matches' : 'No tools available';
+            } else {
+                this.toolCommandStatus.textContent = selectedPlannedToolIds.size > 0
+                    ? `${matchingTools.length} tools, suggested first`
+                    : `${matchingTools.length} tools`;
+            }
+        }
+
+        if (this.toolCatalogLoading) {
+            this.toolCommandList.innerHTML = '<div class="tool-command-empty">Loading available tools...</div>';
+            return;
+        }
+
+        if (this.toolCatalogLoadError) {
+            this.toolCommandList.innerHTML = `<div class="tool-command-empty">${escapeToolMenuHtml(this.toolCatalogLoadError)}</div>`;
+            return;
+        }
+
+        if (matchingTools.length === 0) {
+            this.toolCommandList.innerHTML = '<div class="tool-command-empty">No tools match this search.</div>';
+            return;
+        }
+
+        this.toolCommandList.innerHTML = matchingTools.map((tool) => {
+            const isSuggested = selectedPlannedToolIds.has(tool.id);
+            const params = Object.keys(this.getToolCommandStarterParams(tool));
+            const metaParts = [
+                tool.category || 'tool',
+                isSuggested ? 'selected lane' : '',
+                params.length ? `params: ${params.slice(0, 4).join(', ')}` : 'params: {}',
+            ].filter(Boolean);
+
+            return `
+                <button type="button" class="tool-command-option ${isSuggested ? 'is-suggested' : ''}" data-tool-command-id="${escapeToolMenuHtmlAttr(tool.id)}" role="option">
+                    <span class="tool-command-option__icon"><i data-lucide="${escapeToolMenuHtmlAttr(tool.icon)}" class="w-4 h-4" aria-hidden="true"></i></span>
+                    <span class="tool-command-option__copy">
+                        <span class="tool-command-option__name">${escapeToolMenuHtml(tool.name || tool.id)}</span>
+                        <span class="tool-command-option__desc">${escapeToolMenuHtml(tool.description || tool.id)}</span>
+                        <span class="tool-command-option__meta">${escapeToolMenuHtml(metaParts.join(' | '))}</span>
+                    </span>
+                </button>
+            `;
+        }).join('');
+        uiHelpers.reinitializeIcons?.(this.toolCommandList);
+    }
+
+    async openToolCommandPicker() {
+        if (!this.toolCommandPicker) {
+            this.insertToolCommandTemplateFromToolMenu();
+            return;
+        }
+
+        this.openToolMenu();
+        this.toolCommandPicker.classList.remove('hidden');
+        if (this.toolCommandSearch) {
+            this.toolCommandSearch.value = '';
+        }
+        this.renderToolCommandPicker();
+        this.toolCommandSearch?.focus();
+
+        await this.loadToolCatalogForPicker();
+    }
+
+    async loadToolCatalogForPicker(options = {}) {
+        if (this.toolCatalogLoaded && options.force !== true) {
+            this.renderToolCommandPicker();
+            return;
+        }
+        if (this.toolCatalogLoading) {
+            return;
+        }
+
+        this.toolCatalogLoading = true;
+        this.toolCatalogLoadError = '';
+        this.renderToolCommandPicker();
+
+        try {
+            if (typeof apiClient === 'undefined' || typeof apiClient?.getAvailableTools !== 'function') {
+                throw new Error('Tool catalog is not available in this session.');
+            }
+            const requestOptions = this.buildToolIntentRequestOptions();
+            const response = await apiClient.getAvailableTools(null, {
+                includeAll: true,
+                ...(requestOptions.executionProfile ? { executionProfile: requestOptions.executionProfile } : {}),
+            });
+            this.toolCatalogTools = this.normalizeToolCatalogTools(response?.tools || []);
+            this.toolCatalogLoaded = true;
+        } catch (error) {
+            this.toolCatalogLoadError = error?.message || 'Failed to load tools.';
+            this.toolCatalogTools = [];
+        } finally {
+            this.toolCatalogLoading = false;
+            this.renderToolCommandPicker();
+        }
     }
 
     buildToolIntentRequestOptions() {
@@ -1258,34 +1542,63 @@ class ChatApp {
         void this.startSkillWizard(prompt);
     }
 
+    getToolCommandStarterParams(tool = {}) {
+        const toolId = String(tool?.id || '').trim();
+        if (toolId && WEB_CHAT_TOOL_COMMAND_STARTER_PARAMS[toolId]) {
+            return cloneToolCommandStarterParams(WEB_CHAT_TOOL_COMMAND_STARTER_PARAMS[toolId]);
+        }
+
+        const inputSchema = (tool?.inputSchema && typeof tool.inputSchema === 'object')
+            ? tool.inputSchema
+            : {};
+        const schemaProperties = (inputSchema.properties && typeof inputSchema.properties === 'object')
+            ? inputSchema.properties
+            : {};
+        const parameterProperties = (!Array.isArray(tool?.parameters) && tool?.parameters && typeof tool.parameters === 'object')
+            ? tool.parameters
+            : {};
+        const properties = Object.keys(schemaProperties).length > 0
+            ? schemaProperties
+            : parameterProperties;
+        const requiredKeys = Array.isArray(inputSchema.required)
+            ? inputSchema.required.map((key) => String(key || '').trim()).filter(Boolean)
+            : [];
+        const keys = requiredKeys.filter((key) => Object.prototype.hasOwnProperty.call(properties, key)).slice(0, 8);
+
+        return keys.reduce((params, key) => ({
+            ...params,
+            [key]: buildDefaultToolParameterValue(properties[key] || {}),
+        }), {});
+    }
+
+    buildToolCommandTemplate(toolOrId = {}) {
+        const tool = typeof toolOrId === 'string'
+            ? this.normalizeToolCatalogTools(this.toolCatalogTools).find((entry) => entry.id === toolOrId) || { id: toolOrId }
+            : toolOrId;
+        const toolId = String(tool?.id || '').trim();
+        if (!toolId) {
+            return '/tools';
+        }
+
+        const payload = JSON.stringify(this.getToolCommandStarterParams(tool));
+        return `/tool ${toolId} ${payload}`;
+    }
+
+    insertToolCommandTemplateForTool(toolId = '') {
+        const command = this.buildToolCommandTemplate(String(toolId || '').trim());
+        this.insertTextAtCursor(command);
+        this.closeToolMenu();
+    }
+
     insertToolCommandTemplateFromToolMenu() {
-        const definitions = this.getSelectedToolIntentDefinitions();
-        const plannedTools = getUniqueToolIdsFromIntentDefinitions(definitions);
+        const plannedTools = this.getSelectedPlannedToolIds();
         if (plannedTools.length === 0) {
             this.insertTextAtCursor('/tools');
             this.closeToolMenu();
             return;
         }
 
-        const primaryTool = plannedTools[0];
-        const starterParamsByTool = {
-            'web-search': { query: '' },
-            'web-fetch': { url: '' },
-            'web-scrape': { url: '', browser: true },
-            'news-scraper': { query: '' },
-            'image-generate': { prompt: '' },
-            'image-search-unsplash': { query: '' },
-            'image-from-url': { url: '' },
-            'asset-search': { query: '' },
-            'document-workflow': { action: 'recommend', request: '' },
-            'design-resource-search': { query: '' },
-            'code-sandbox': { prompt: '' },
-            'remote-cli-agent': { task: '', adminMode: true },
-            'agent-workload': { action: 'recommend', prompt: '' },
-        };
-        const payload = JSON.stringify(starterParamsByTool[primaryTool] || {});
-        this.insertTextAtCursor(`/tool ${primaryTool} ${payload}`);
-        this.closeToolMenu();
+        this.insertToolCommandTemplateForTool(plannedTools[0]);
     }
 
     getTrackedStreamRequest() {
