@@ -121,7 +121,7 @@ data:
   ASYNC_VALKEY_KEY_PREFIX: "kimibuilt:primary:async-runtime"
   ASYNC_RUNTIME_WORKER_ENABLED: "true"
   ASYNC_RUNTIME_POSTGRES_ENABLED: "true"
-  ASYNC_LAB_ALLOW_LIVE_REMOTE: "false"
+  ASYNC_LAB_ALLOW_LIVE_REMOTE: "true"
   POSTGRES_HOST: "postgres"
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "kimibuilt"
