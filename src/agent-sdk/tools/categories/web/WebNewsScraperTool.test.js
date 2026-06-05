@@ -117,6 +117,119 @@ describe('WebNewsScraperTool', () => {
     expect(result.articles[0].text).toContain('rather than only a search-result headline');
   });
 
+  test('extracts article text from cluttered modern markup without boilerplate', async () => {
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <meta content="Modern News Story" property="og:title">
+          <meta content="The dek should survive flexible metadata parsing." name="description">
+          <link href="/news/modern-story" rel="canonical">
+        </head>
+        <body>
+          <nav><p>Subscribe to our newsletter for unrelated navigation and offers.</p></nav>
+          <main>
+            <section class="layout-shell">
+              <div class="article-content">
+                <p>The first real paragraph carries enough original reporting detail to beat the page chrome and prove the scraper can find semantic article containers.</p>
+                <p>The second real paragraph includes additional names, dates, and context so the extracted article is useful for downstream research instead of a headline.</p>
+                <p>The third real paragraph gives the body enough depth to support summaries, source injection, and article cards without dragging in menus.</p>
+              </div>
+              <aside><p>Advertisement: this sidebar should not become article text.</p></aside>
+            </section>
+          </main>
+        </body>
+      </html>`;
+    const fetchTool = {
+      execute: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          url: 'https://publisher.example/raw?id=123',
+          body: html,
+        },
+      }),
+    };
+    const tool = new WebNewsScraperTool();
+
+    const result = await tool.handler({
+      urls: ['https://publisher.example/raw?id=123'],
+    }, {
+      tools: {
+        get: jest.fn((id) => (id === 'web-fetch' ? fetchTool : null)),
+      },
+    }, { recordRead: jest.fn() });
+
+    expect(result.articles).toHaveLength(1);
+    expect(result.articles[0].title).toBe('Modern News Story');
+    expect(result.articles[0].url).toBe('https://publisher.example/news/modern-story');
+    expect(result.articles[0].dek).toBe('The dek should survive flexible metadata parsing.');
+    expect(result.articles[0].text).toContain('first real paragraph');
+    expect(result.articles[0].text).toContain('third real paragraph');
+    expect(result.articles[0].text).not.toContain('Subscribe to our newsletter');
+    expect(result.articles[0].text).not.toContain('Advertisement');
+    expect(result.articles[0].stats.extraction.candidates.length).toBeGreaterThan(1);
+  });
+
+  test('falls back to rendered HTML when static fetch only returns an app shell', async () => {
+    const shellHtml = `<!doctype html>
+      <html>
+        <head><title>Loading Story</title></head>
+        <body>
+          <div id="__next"></div>
+          <script id="__NEXT_DATA__" type="application/json">{"props":{}}</script>
+          <script>window.__APOLLO_STATE__ = {};</script>
+        </body>
+      </html>`;
+    const renderedHtml = `<!doctype html>
+      <html>
+        <head>
+          <meta property="og:title" content="Rendered News Story">
+          <meta property="article:published_time" content="2026-06-04T14:00:00Z">
+        </head>
+        <body>
+          <article>
+            <h1>Rendered News Story</h1>
+            <p>The rendered article body appears only after browser rendering, which is exactly where static fetch used to stop at a shell.</p>
+            <p>This second rendered paragraph is long enough to make the article usable and proves the fallback replaces the weak static result.</p>
+          </article>
+        </body>
+      </html>`;
+    const fetchTool = {
+      execute: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          url: 'https://dynamic.example/story',
+          body: shellHtml,
+        },
+      }),
+    };
+    const tool = new WebNewsScraperTool();
+    tool.fetchRenderedPage = jest.fn().mockResolvedValue({
+      url: 'https://dynamic.example/story',
+      engine: 'mock-browser',
+      html: renderedHtml,
+      warnings: [],
+    });
+
+    const result = await tool.handler({
+      urls: ['https://dynamic.example/story'],
+    }, {
+      tools: {
+        get: jest.fn((id) => (id === 'web-fetch' ? fetchTool : null)),
+      },
+    }, { recordRead: jest.fn(), recordNetworkCall: jest.fn() });
+
+    expect(tool.fetchRenderedPage).toHaveBeenCalledWith(
+      'https://dynamic.example/story',
+      expect.any(Object),
+      expect.any(Object),
+    );
+    expect(result.articles).toHaveLength(1);
+    expect(result.articles[0].title).toBe('Rendered News Story');
+    expect(result.articles[0].text).toContain('only after browser rendering');
+    expect(result.articles[0].stats.renderedFallback).toBe(true);
+    expect(result.articles[0].stats.renderedEngine).toBe('mock-browser');
+  });
+
   test('allows full-text site rendering only when content rights permit it', async () => {
     const fetchTool = {
       execute: jest.fn().mockResolvedValue({

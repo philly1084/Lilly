@@ -25,7 +25,13 @@ Behavior:
 1. If `urls` are supplied, fetch those article pages directly.
 2. If only `query` is supplied, use Perplexity `pro-search` with larger budgets to find article URLs.
 3. Fetch each source page and extract title, canonical URL, source host, byline, publish date, lead image, description, readable article text, and excerpt.
-4. Return `articles[]` for research/internal use, plus `injection` and `site.html` for a static news website.
+4. Prefer Mozilla Readability extraction, then JSON-LD `articleBody`, semantic article containers, and finally the legacy HTML paragraph fallback.
+5. If a static fetch looks like a client-rendered shell and article text is too short, retry through rendered browser HTML before skipping the URL.
+6. Return `articles[]` for research/internal use, plus `injection` and `site.html` for a static news website.
+
+Extraction diagnostics:
+- Each article includes `stats.extraction.method`, `score`, `paragraphs`, and candidate summaries so weak pages can be debugged without guessing which parser won.
+- `stats.renderedFallback: true` means the source needed browser-rendered HTML rather than static fetch output.
 
 Publication guardrail:
 - `siteTextMode: "excerpt"` is the default for public websites.

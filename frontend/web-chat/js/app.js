@@ -31,6 +31,13 @@ const WEB_CHAT_TOOL_COMMAND_STARTER_PARAMS = Object.freeze({
     'k3s-deploy': { action: 'status' },
     'agent-workload': { action: 'recommend', prompt: '' },
 });
+const WEB_CHAT_REMOTE_TOOL_IDS = new Set([
+    'remote-cli-agent',
+    'managed-app',
+    'k3s-deploy',
+    'remote-command',
+    'remote-workbench',
+]);
 const WEB_CHAT_TOOL_INTENT_DEFINITIONS = Object.freeze([
     {
         id: 'research',
@@ -1515,6 +1522,22 @@ class ChatApp {
         return true;
     }
 
+    replaceOrInsertToolCommandTemplate(command = '') {
+        const input = this.messageInput;
+        const value = String(command || '').trim();
+        if (!input || !value) {
+            return false;
+        }
+
+        const currentValue = String(input.value || '').trim();
+        if (!currentValue || /^\/tools?(?:\s|$)/i.test(currentValue)) {
+            this.setInput(value);
+            return true;
+        }
+
+        return this.insertTextAtCursor(value);
+    }
+
     buildSkillWizardPromptFromToolMenu() {
         const definitions = this.getSelectedToolIntentDefinitions();
         const plannedTools = getUniqueToolIdsFromIntentDefinitions(definitions);
@@ -1586,14 +1609,14 @@ class ChatApp {
 
     insertToolCommandTemplateForTool(toolId = '') {
         const command = this.buildToolCommandTemplate(String(toolId || '').trim());
-        this.insertTextAtCursor(command);
+        this.replaceOrInsertToolCommandTemplate(command);
         this.closeToolMenu();
     }
 
     insertToolCommandTemplateFromToolMenu() {
         const plannedTools = this.getSelectedPlannedToolIds();
         if (plannedTools.length === 0) {
-            this.insertTextAtCursor('/tools');
+            this.replaceOrInsertToolCommandTemplate('/tools');
             this.closeToolMenu();
             return;
         }
@@ -2168,6 +2191,12 @@ class ChatApp {
         }
 
         uiHelpers.stopSpeechPlayback();
+        const shouldReconcileVisible = options.reconcileVisible === true && this.isVisibleSession(normalizedSessionId);
+        const previousVisibleMessages = shouldReconcileVisible
+            ? (Array.isArray(options.previousMessages)
+                ? options.previousMessages
+                : [...sessionManager.getMessages(normalizedSessionId)])
+            : [];
         if (options.renderCachedFirst === true && this.isVisibleSession(normalizedSessionId)) {
             const cachedMessages = this.syncAnnotatedSurveyStates(normalizedSessionId);
             this.renderMessages(cachedMessages);
@@ -2189,7 +2218,11 @@ class ChatApp {
         }
 
         this.renderProjectViewport();
-        this.renderMessages(messages);
+        if (shouldReconcileVisible) {
+            this.reconcileVisibleMessages(previousVisibleMessages, messages);
+        } else {
+            this.renderMessages(messages);
+        }
         if (options.notifyNewAssistant === true && Array.isArray(options.previousMessages)) {
             this.playCueForNewAssistantMessages(options.previousMessages, messages);
         }
@@ -2225,6 +2258,7 @@ class ChatApp {
         }
         if (this.projectViewportFrame) {
             this.projectViewportFrame.dataset.rawProjectUrl = '';
+            this.projectViewportFrame.dataset.rawProjectUrlKey = '';
             this.projectViewportFrame.dataset.projectUrl = '';
             this.projectViewportFrame.dataset.suspendedProjectUrl = '';
             this.projectViewportFrame.removeAttribute('src');
@@ -3858,6 +3892,24 @@ class ChatApp {
         return publicHost ? `https://${publicHost}` : '';
     }
 
+    buildProjectViewportUrlKey(url = '') {
+        const normalized = String(url || '').trim();
+        if (!normalized) {
+            return '';
+        }
+
+        try {
+            const parsed = new URL(normalized, window.location.href);
+            parsed.hash = '';
+            if (parsed.pathname !== '/') {
+                parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+            }
+            return parsed.toString();
+        } catch (_error) {
+            return normalized.replace(/#.*$/, '').replace(/\/+$/, '');
+        }
+    }
+
     resolveProjectApiUrl(urlPath = '') {
         const normalized = String(urlPath || '').trim();
         if (!normalized) {
@@ -4023,6 +4075,7 @@ class ChatApp {
         if (!hasProject) {
             if (this.projectViewportFrame) {
                 this.projectViewportFrame.dataset.rawProjectUrl = '';
+                this.projectViewportFrame.dataset.rawProjectUrlKey = '';
                 this.projectViewportFrame.dataset.projectUrl = '';
                 this.projectViewportFrame.dataset.suspendedProjectUrl = '';
                 this.projectViewportFrame.removeAttribute('src');
@@ -4051,6 +4104,7 @@ class ChatApp {
         }
         if (this.projectViewportFrame && isSuspended) {
             this.projectViewportFrame.dataset.rawProjectUrl = '';
+            this.projectViewportFrame.dataset.rawProjectUrlKey = '';
             this.projectViewportFrame.dataset.suspendedProjectUrl = hasUrl ? rawUrl : '';
             this.projectViewportFrame.dataset.projectUrl = '';
             this.projectViewportFrame.removeAttribute('src');
@@ -4061,8 +4115,10 @@ class ChatApp {
                     ? 'GitLab and k3s progress stay in the status card; the website preview appears after public verification.'
                     : '',
             );
-        } else if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.rawProjectUrl !== rawUrl) {
+        } else if (this.projectViewportFrame && hasUrl && this.projectViewportFrame.dataset.rawProjectUrlKey !== this.buildProjectViewportUrlKey(rawUrl)) {
+            const rawUrlKey = this.buildProjectViewportUrlKey(rawUrl);
             this.projectViewportFrame.dataset.rawProjectUrl = rawUrl;
+            this.projectViewportFrame.dataset.rawProjectUrlKey = rawUrlKey;
             this.projectViewportFrame.dataset.projectUrl = '';
             this.projectViewportFrame.dataset.suspendedProjectUrl = '';
             this.projectViewportFrame.removeAttribute('src');
@@ -4075,6 +4131,9 @@ class ChatApp {
                     }
                     if (!resolvedUrl) {
                         this.setProjectViewportFrameState('empty');
+                        return;
+                    }
+                    if (this.buildProjectViewportUrlKey(this.projectViewportFrame.dataset.projectUrl || '') === this.buildProjectViewportUrlKey(resolvedUrl)) {
                         return;
                     }
                     this.projectViewportFrame.dataset.projectUrl = resolvedUrl;
@@ -4168,6 +4227,7 @@ class ChatApp {
 
         if (normalizedAction === 'reload') {
             this.projectViewportFrame.dataset.rawProjectUrl = '';
+            this.projectViewportFrame.dataset.rawProjectUrlKey = '';
             this.renderProjectViewport();
         }
     }
@@ -4718,6 +4778,25 @@ class ChatApp {
         return activeProjectKey === normalizedKey;
     }
 
+    hasManagedAppSurfaceForSession(sessionId = '') {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
+            return false;
+        }
+
+        if (this.getSessionActiveProject(normalizedSessionId)) {
+            return true;
+        }
+
+        return sessionManager.getMessages(normalizedSessionId).some((message) => (
+            message?.role === 'assistant'
+            && (
+                message?.metadata?.managedAppLifecycle === true
+                || message?.metadata?.managedAppProjectSummary === true
+            )
+        ));
+    }
+
     resolveManagedAppHostMessageId(sessionId, event = {}) {
         const normalizedSessionId = String(sessionId || '').trim();
         const progressKey = this.buildManagedAppProgressKey(event);
@@ -5092,6 +5171,7 @@ class ChatApp {
                 await this.loadSessionMessages(sessionId, {
                     notifyNewAssistant: true,
                     previousMessages,
+                    reconcileVisible: this.hasManagedAppSurfaceForSession(sessionId),
                 });
             }
             await this.loadSessionWorkloads(sessionId, { force: true });
@@ -6269,7 +6349,7 @@ class ChatApp {
             await this.createNewSession();
         }
 
-        const sessionId = sessionManager.currentSessionId;
+        let sessionId = sessionManager.currentSessionId;
         uiHelpers.hideWelcomeMessage();
 
         const userMessage = {
@@ -6277,8 +6357,8 @@ class ChatApp {
             content: trimmed,
             timestamp: new Date().toISOString(),
         };
-        sessionManager.addMessage(sessionId, userMessage);
-        this.messagesContainer.appendChild(uiHelpers.renderMessage(userMessage));
+        const savedUserMessage = sessionManager.addMessage(sessionId, userMessage);
+        this.messagesContainer.appendChild(uiHelpers.renderMessage(savedUserMessage));
 
         try {
             let assistantContent = '';
@@ -6342,9 +6422,10 @@ class ChatApp {
                     params = JSON.parse(rawParams);
                 }
 
-                const invocation = await apiClient.invokeTool(toolId, params);
+                const invocation = await apiClient.invokeTool(toolId, params, this.buildToolInvokeRequestOptions(toolId));
                 if (invocation?.sessionId) {
                     this.syncBackendSession(invocation.sessionId);
+                    sessionId = sessionManager.currentSessionId || invocation.sessionId || sessionId;
                 }
                 assistantContent = `## Tool Result: \`${toolId}\`\n\n\`\`\`json\n${JSON.stringify(invocation?.result, null, 2)}\n\`\`\``;
             }
@@ -6354,8 +6435,8 @@ class ChatApp {
                 content: assistantContent,
                 timestamp: new Date().toISOString(),
             };
-            sessionManager.addMessage(sessionId, assistantMessage);
-            this.messagesContainer.appendChild(uiHelpers.renderMessage(assistantMessage));
+            const savedAssistantMessage = sessionManager.addMessage(sessionId, assistantMessage);
+            this.messagesContainer.appendChild(uiHelpers.renderMessage(savedAssistantMessage));
             uiHelpers.reinitializeIcons(this.messagesContainer);
             uiHelpers.scrollToBottom();
             this.updateSessionInfo();
@@ -6366,12 +6447,48 @@ class ChatApp {
                 content: `**Tool error:** ${error.message}`,
                 timestamp: new Date().toISOString(),
             };
-            sessionManager.addMessage(sessionId, assistantMessage);
-            this.messagesContainer.appendChild(uiHelpers.renderMessage(assistantMessage));
+            const savedAssistantMessage = sessionManager.addMessage(sessionId, assistantMessage);
+            this.messagesContainer.appendChild(uiHelpers.renderMessage(savedAssistantMessage));
             uiHelpers.scrollToBottom();
             this.updateSessionInfo();
             return true;
         }
+    }
+
+    buildToolInvokeRequestOptions(toolId = '') {
+        const normalizedToolId = String(toolId || '').trim();
+        const selectionOptions = this.buildToolIntentRequestOptions();
+        const selectionMetadata = selectionOptions.metadata && typeof selectionOptions.metadata === 'object'
+            ? selectionOptions.metadata
+            : {};
+        const selectedPlannedTools = Array.isArray(selectionMetadata.plannedTools)
+            ? selectionMetadata.plannedTools
+            : [];
+        const plannedTools = Array.from(new Set([
+            ...selectedPlannedTools,
+            ...(normalizedToolId ? [normalizedToolId] : []),
+        ]));
+        const remoteToolRequested = normalizedToolId && WEB_CHAT_REMOTE_TOOL_IDS.has(normalizedToolId);
+        const executionProfile = selectionOptions.executionProfile
+            || (remoteToolRequested ? 'remote-build' : '');
+
+        const metadata = {
+            ...selectionMetadata,
+            directToolCallSource: 'web-chat-tool-command',
+            ...(normalizedToolId ? { directToolId: normalizedToolId } : {}),
+            ...(plannedTools.length ? { plannedTools, userSelectedToolIds: plannedTools } : {}),
+            ...(normalizedToolId ? { preferredTool: normalizedToolId } : {}),
+            ...(remoteToolRequested ? {
+                remoteBuildAutonomyApproved: true,
+                frontendRemoteBuildAutonomyApproved: true,
+                remoteBuildIntent: true,
+            } : {}),
+        };
+
+        return {
+            ...(executionProfile ? { executionProfile } : {}),
+            metadata,
+        };
     }
 
     formatToolsList(toolResponse, category = null) {

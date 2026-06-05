@@ -212,6 +212,44 @@ describe('web-chat remote build metadata', () => {
         expect(body.metadata.preferManagedApp).toBeUndefined();
     });
 
+    test('sends execution profile and metadata on direct tool invokes', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                success: true,
+                data: { ok: true },
+                sessionId: 'session-1',
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await apiClient.invokeTool('remote-cli-agent', { task: 'check status', adminMode: true }, {
+            executionProfile: 'remote-build',
+            metadata: {
+                directToolCallSource: 'web-chat-tool-command',
+                directToolId: 'remote-cli-agent',
+                plannedTools: ['remote-cli-agent'],
+                userSelectedToolIds: ['remote-cli-agent'],
+            },
+        });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(fetchMock.mock.calls[0][0]).toContain('/api/tools/invoke');
+        expect(body).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: { task: 'check status', adminMode: true },
+            executionProfile: 'remote-build',
+            taskType: 'chat',
+            clientSurface: 'web-chat',
+        }));
+        expect(body.metadata).toEqual(expect.objectContaining({
+            directToolCallSource: 'web-chat-tool-command',
+            directToolId: 'remote-cli-agent',
+            plannedTools: ['remote-cli-agent'],
+            userSelectedToolIds: ['remote-cli-agent'],
+        }));
+    });
+
     test('prefers managed-app only for explicit managed or GitLab chat requests', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,

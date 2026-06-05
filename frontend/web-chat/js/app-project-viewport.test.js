@@ -205,6 +205,74 @@ describe('web-chat project viewport helpers', () => {
         })).toBe('https://requested-site.demoserver2.buzz');
     });
 
+    test('keeps the managed app iframe mounted when live URL formatting changes', async () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        const projectViewport = createFakeElement('project-viewport');
+        const appShell = createFakeElement('app');
+        const frame = createFakeElement('project-viewport-frame');
+        const label = createFakeElement('project-viewport-label');
+        const link = createFakeElement('project-viewport-link');
+        const session = {
+            id: 'session-1',
+            metadata: {
+                activeProject: {
+                    type: 'managed-app',
+                    title: 'Demo Site',
+                    appId: 'app-1',
+                    appSlug: 'demo-site',
+                    phase: 'live',
+                    livePublicUrl: 'https://demo-site.demoserver2.buzz',
+                },
+            },
+        };
+        const removeAttribute = frame.removeAttribute;
+        frame.removeAttribute = jest.fn((name) => removeAttribute(name));
+
+        context.sessionManager = {
+            currentSessionId: 'session-1',
+            sessions: [session],
+        };
+        context.uiHelpers = {
+            isMinimalistMode: () => false,
+            reinitializeIcons: () => {},
+        };
+        context.document = {
+            getElementById: (id) => ({
+                app: appShell,
+            }[id] || null),
+        };
+
+        app.projectViewport = projectViewport;
+        app.projectViewportFrame = frame;
+        app.projectViewportLabel = label;
+        app.projectViewportLink = link;
+        app.projectViewportRequestId = 0;
+        app.projectViewportStateLabel = createFakeElement('project-viewport-state-label');
+        app.projectViewportStateDetail = createFakeElement('project-viewport-state-detail');
+        app.resolveProjectViewportUrl = jest.fn(async (project) => app.buildProjectViewportUrl(project));
+
+        app.renderProjectViewport();
+        await Promise.resolve();
+
+        expect(frame.src).toBe('https://demo-site.demoserver2.buzz');
+        expect(app.resolveProjectViewportUrl).toHaveBeenCalledTimes(1);
+
+        frame.removeAttribute.mockClear();
+        session.metadata.activeProject = {
+            ...session.metadata.activeProject,
+            livePublicUrl: 'https://demo-site.demoserver2.buzz/',
+            updatedAt: '2026-06-03T10:00:01.000Z',
+        };
+
+        app.renderProjectViewport();
+        await Promise.resolve();
+
+        expect(app.resolveProjectViewportUrl).toHaveBeenCalledTimes(1);
+        expect(frame.removeAttribute).not.toHaveBeenCalledWith('src');
+        expect(frame.src).toBe('https://demo-site.demoserver2.buzz');
+    });
+
     test('uses preview URLs before sandbox wrappers as viewport project targets', () => {
         const app = Object.create(loadChatAppPrototype());
 
@@ -439,6 +507,112 @@ describe('web-chat project viewport helpers', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+
+    test('reconciles managed app message refreshes without scrolling the transcript', async () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        const previousMessages = [
+            {
+                id: 'user-1',
+                role: 'user',
+                content: 'Deploy the demo site.',
+                timestamp: '2026-06-03T10:00:00.000Z',
+            },
+            {
+                id: 'managed-project:app-1',
+                role: 'assistant',
+                content: 'Demo Site build queued.',
+                timestamp: '2026-06-03T10:00:01.000Z',
+                metadata: {
+                    managedAppProjectSummary: true,
+                    managedAppId: 'app-1',
+                },
+            },
+        ];
+        const nextMessages = [
+            previousMessages[0],
+            {
+                ...previousMessages[1],
+                content: 'Demo Site finished building.',
+                timestamp: '2026-06-03T10:00:02.000Z',
+            },
+        ];
+        const visibleElements = previousMessages.map((message) => {
+            const element = createFakeElement(message.id);
+            element.dataset.messageId = message.id;
+            return element;
+        });
+
+        context.sessionManager = {
+            currentSessionId: 'session-1',
+            getMessages: jest.fn(() => previousMessages),
+            loadSessionMessagesFromBackend: jest.fn(async () => previousMessages),
+        };
+        context.uiHelpers = {
+            stopSpeechPlayback: jest.fn(),
+            clearMessages: jest.fn(),
+            hideWelcomeMessage: jest.fn(),
+            showWelcomeMessage: jest.fn(),
+            updateMessageContent: jest.fn(),
+            updateMessageSpeechButtons: jest.fn(),
+            scrollToBottom: jest.fn(),
+        };
+
+        app.isVisibleSession = (sessionId) => sessionId === 'session-1';
+        app.syncAnnotatedSurveyStates = jest.fn(() => nextMessages);
+        app.resumePersistedBackgroundStream = jest.fn(() => false);
+        app.renderProjectViewport = jest.fn();
+        app.messagesContainer = {
+            querySelectorAll: jest.fn(() => visibleElements),
+        };
+        app.updateAudioControls = jest.fn();
+
+        await app.loadSessionMessages('session-1', {
+            previousMessages,
+            reconcileVisible: true,
+            refreshManagedApp: false,
+        });
+
+        expect(context.uiHelpers.clearMessages).not.toHaveBeenCalled();
+        expect(context.uiHelpers.scrollToBottom).not.toHaveBeenCalled();
+        expect(context.uiHelpers.updateMessageContent).toHaveBeenCalledWith(
+            'managed-project:app-1',
+            expect.objectContaining({
+                content: 'Demo Site finished building.',
+            }),
+            false,
+        );
+    });
+
+    test('uses in-place message refreshes for workload events with managed app surfaces', async () => {
+        const context = loadChatAppContext();
+        const { app, messages } = createManagedAppProgressHarness(context);
+        messages.push({
+            id: 'managed-project:app-1',
+            role: 'assistant',
+            content: 'Demo Site build queued.',
+            metadata: {
+                managedAppProjectSummary: true,
+                managedAppId: 'app-1',
+            },
+        });
+        app.refreshSessionSummaries = jest.fn(async () => {});
+        app.isSessionProcessing = jest.fn(() => false);
+        app.loadSessionMessages = jest.fn(async () => []);
+        app.loadSessionWorkloads = jest.fn(async () => []);
+
+        await app.handleWorkloadEvent({
+            type: 'workload_updated',
+            sessionId: 'session-1',
+        });
+
+        expect(app.loadSessionMessages).toHaveBeenCalledTimes(1);
+        const [calledSessionId, loadOptions] = app.loadSessionMessages.mock.calls[0];
+        expect(calledSessionId).toBe('session-1');
+        expect(loadOptions.reconcileVisible).toBe(true);
+        expect(Array.isArray(loadOptions.previousMessages)).toBe(true);
+        expect(app.loadSessionWorkloads).toHaveBeenCalledWith('session-1', { force: true });
     });
 
     test('minimal layout fully removes the viewport and unloads the iframe', () => {

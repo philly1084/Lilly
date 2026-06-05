@@ -6,11 +6,38 @@
 const { ToolBase } = require('../../ToolBase');
 const { WebFetchTool } = require('./WebFetchTool');
 const { WebSearchTool } = require('./WebSearchTool');
+const { browsePage } = require('./browser-runtime');
+const { JSDOM, VirtualConsole } = require('jsdom');
+const { Readability, isProbablyReaderable } = require('@mozilla/readability');
 
 const DEFAULT_LIMIT = 8;
 const DEFAULT_ARTICLE_CHAR_LIMIT = 20000;
 const DEFAULT_SITE_TEXT_LIMIT = 900;
+const MIN_ARTICLE_TEXT_CHARS = 160;
+const READABILITY_CHAR_THRESHOLD = 120;
 const FULL_TEXT_RIGHTS = new Set(['owned', 'licensed', 'public-domain', 'creative-commons', 'explicit-permission']);
+const QUIET_VIRTUAL_CONSOLE = new VirtualConsole();
+
+QUIET_VIRTUAL_CONSOLE.on('jsdomError', () => {});
+
+const SEMANTIC_ARTICLE_SELECTORS = [
+  'article',
+  'main article',
+  '[itemprop="articleBody"]',
+  '[data-testid="article-body"]',
+  '[data-test-id="article-body"]',
+  '[data-component-name="paragraph"]',
+  '[class*="article-body"]',
+  '[class*="articleBody"]',
+  '[class*="article-content"]',
+  '[class*="ArticleContent"]',
+  '[class*="story-body"]',
+  '[class*="StoryBody"]',
+  '[class*="entry-content"]',
+  '[class*="post-content"]',
+  '[id*="article-body"]',
+  '[id*="story-body"]',
+];
 
 function clampInteger(value, fallback, { min = 1, max = 50 } = {}) {
   const number = Number(value);
@@ -73,6 +100,51 @@ function normalizeUrl(candidate = '', baseUrl = '') {
   } catch (_error) {
     return '';
   }
+}
+
+function htmlAttribute(tag = '', attribute = '') {
+  const safeAttribute = String(attribute || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`\\b${safeAttribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`, 'i');
+  const match = String(tag || '').match(pattern);
+  return decodeHtml(match?.[1] || match?.[2] || match?.[3] || '').trim();
+}
+
+function findMetaContent(html = '', names = []) {
+  const wanted = new Set(names.map((name) => String(name || '').toLowerCase()));
+  const tags = Array.from(String(html || '').matchAll(/<meta\b[^>]*>/gi)).map((match) => match[0]);
+
+  for (const tag of tags) {
+    const key = (
+      htmlAttribute(tag, 'property')
+      || htmlAttribute(tag, 'name')
+      || htmlAttribute(tag, 'itemprop')
+    ).toLowerCase();
+    if (wanted.has(key)) {
+      const content = htmlAttribute(tag, 'content');
+      if (content) {
+        return normalizeText(content);
+      }
+    }
+  }
+
+  return '';
+}
+
+function findLinkHref(html = '', relName = '', baseUrl = '') {
+  const wanted = String(relName || '').toLowerCase();
+  const tags = Array.from(String(html || '').matchAll(/<link\b[^>]*>/gi)).map((match) => match[0]);
+
+  for (const tag of tags) {
+    const rels = htmlAttribute(tag, 'rel').toLowerCase().split(/\s+/).filter(Boolean);
+    if (rels.includes(wanted)) {
+      const href = htmlAttribute(tag, 'href');
+      if (href) {
+        return normalizeUrl(href, baseUrl);
+      }
+    }
+  }
+
+  return '';
 }
 
 function firstMatch(html = '', patterns = []) {
@@ -141,6 +213,34 @@ function normalizeAuthor(author) {
   return normalizeText(author || '');
 }
 
+function firstImageValue(image) {
+  if (Array.isArray(image)) {
+    for (const entry of image) {
+      const value = firstImageValue(entry);
+      if (value) {
+        return value;
+      }
+    }
+    return '';
+  }
+
+  if (image && typeof image === 'object') {
+    return image.url || image.contentUrl || image['@id'] || '';
+  }
+
+  return image || '';
+}
+
+function createDom(html = '', url = '') {
+  return new JSDOM(String(html || ''), {
+    url: normalizeUrl(url) || 'https://example.invalid/',
+    contentType: 'text/html',
+    runScripts: undefined,
+    resources: undefined,
+    virtualConsole: QUIET_VIRTUAL_CONSOLE,
+  });
+}
+
 function articleBodyFromHtml(html = '') {
   const withoutNoise = String(html || '')
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -167,6 +267,189 @@ function articleBodyFromHtml(html = '') {
     .filter((line) => !/\b(subscribe|sign up|advertisement|cookie policy|all rights reserved)\b/i.test(line));
 
   return Array.from(new Set(lines)).join('\n\n');
+}
+
+function removeDomNoise(root) {
+  if (!root?.querySelectorAll) {
+    return;
+  }
+
+  root.querySelectorAll([
+    'script',
+    'style',
+    'noscript',
+    'svg',
+    'nav',
+    'header',
+    'footer',
+    'aside',
+    'form',
+    'button',
+    'iframe',
+    '[aria-hidden="true"]',
+    '[hidden]',
+  ].join(',')).forEach((element) => element.remove());
+}
+
+function textFromDomNode(node) {
+  if (!node?.cloneNode) {
+    return '';
+  }
+
+  const clone = node.cloneNode(true);
+  removeDomNoise(clone);
+  const blockSelectors = [
+    'h1',
+    'h2',
+    'h3',
+    'p',
+    'li',
+    'blockquote',
+    '[data-component-name="paragraph"]',
+    '[data-editable="text"]',
+  ].join(',');
+  const blocks = Array.from(clone.querySelectorAll?.(blockSelectors) || [])
+    .map((element) => normalizeText(element.textContent || ''))
+    .filter((line) => line.length >= 30)
+    .filter((line) => !/\b(subscribe|sign up|advertisement|cookie policy|all rights reserved)\b/i.test(line));
+
+  if (blocks.length > 0) {
+    return Array.from(new Set(blocks)).join('\n\n');
+  }
+
+  const fallback = normalizeText(clone.textContent || '');
+  return fallback.length >= 30 ? fallback : '';
+}
+
+function extractSemanticArticleCandidates(html = '', url = '') {
+  let dom;
+  try {
+    dom = createDom(html, url);
+    const document = dom.window.document;
+    const candidates = [];
+    const seen = new Set();
+
+    for (const selector of SEMANTIC_ARTICLE_SELECTORS) {
+      const elements = Array.from(document.querySelectorAll(selector));
+      for (const element of elements) {
+        if (seen.has(element)) {
+          continue;
+        }
+        seen.add(element);
+        const text = textFromDomNode(element);
+        if (text) {
+          candidates.push(buildArticleCandidate('semantic-dom', text, { selector }));
+        }
+      }
+    }
+
+    return candidates;
+  } catch (_error) {
+    return [];
+  } finally {
+    dom?.window?.close();
+  }
+}
+
+function extractReadabilityArticle(html = '', url = '') {
+  let dom;
+  try {
+    dom = createDom(html, url);
+    const document = dom.window.document;
+    const readerable = isProbablyReaderable(document, {
+      minContentLength: 80,
+      minScore: 10,
+    });
+    const parsed = new Readability(document, {
+      charThreshold: READABILITY_CHAR_THRESHOLD,
+      keepClasses: false,
+    }).parse();
+    if (!parsed) {
+      return null;
+    }
+
+    const textFromContent = articleBodyFromHtml(parsed.content || '');
+    const text = normalizeText(textFromContent || parsed.textContent || '');
+    if (!text) {
+      return null;
+    }
+
+    return buildArticleCandidate('readability', text, {
+      title: normalizeText(parsed.title || ''),
+      byline: normalizeText(parsed.byline || ''),
+      dek: normalizeText(parsed.excerpt || ''),
+      publishedAt: normalizeText(parsed.publishedTime || ''),
+      siteName: normalizeText(parsed.siteName || ''),
+      readerable,
+      length: parsed.length || text.length,
+    });
+  } catch (_error) {
+    return null;
+  } finally {
+    dom?.window?.close();
+  }
+}
+
+function countParagraphs(text = '') {
+  return normalizeText(text)
+    .split(/\n{2,}|(?<=[.!?])\s+(?=[A-Z])/)
+    .map((entry) => normalizeText(entry))
+    .filter((entry) => entry.length >= 30)
+    .length;
+}
+
+function boilerplatePenalty(text = '') {
+  const matches = String(text || '').match(/\b(subscribe|newsletter|sign up|advertisement|sponsored|cookie policy|privacy policy|all rights reserved|share this article|follow us)\b/gi);
+  return matches ? matches.length : 0;
+}
+
+function buildArticleCandidate(method, text = '', metadata = {}) {
+  const normalized = normalizeText(text);
+  const paragraphs = countParagraphs(normalized);
+  const penalties = boilerplatePenalty(normalized);
+  const methodWeight = {
+    readability: 2600,
+    'json-ld': 2100,
+    'semantic-dom': 1700,
+    'html-article': 800,
+    'browser-text': 500,
+  }[method] || 0;
+  const score = methodWeight
+    + Math.min(normalized.length, 8000)
+    + Math.min(paragraphs * 160, 1600)
+    - (penalties * 400);
+
+  return {
+    method,
+    text: normalized,
+    score,
+    textChars: normalized.length,
+    paragraphs,
+    penalties,
+    ...metadata,
+  };
+}
+
+function chooseBestArticleCandidate(candidates = []) {
+  return candidates
+    .filter((candidate) => candidate?.text && candidate.text.length >= READABILITY_CHAR_THRESHOLD)
+    .sort((a, b) => b.score - a.score)[0] || null;
+}
+
+function looksLikeRenderedShell(html = '', extractedText = '') {
+  const source = String(html || '');
+  if (normalizeText(extractedText).length >= 500) {
+    return false;
+  }
+
+  const scriptCount = (source.match(/<script\b/gi) || []).length;
+  const paragraphCount = (source.match(/<p\b/gi) || []).length;
+  const hasArticleSignals = /<article\b|itemprop=["']articleBody["']|article-body|story-body|entry-content|post-content/i.test(source);
+  const hasAppShellSignals = /__NEXT_DATA__|data-reactroot|id=["'](?:root|app|__next)["']|webpackJsonp|window\.__APOLLO_STATE__|vite\/client/i.test(source);
+
+  return normalizeText(extractedText).length < MIN_ARTICLE_TEXT_CHARS
+    ? (hasAppShellSignals || scriptCount >= 8 || paragraphCount < 3)
+    : (hasAppShellSignals && !hasArticleSignals);
 }
 
 function summarize(text = '', maxChars = DEFAULT_SITE_TEXT_LIMIT) {
@@ -269,7 +552,7 @@ class WebNewsScraperTool extends ToolBase {
     for (const url of urls.slice(0, limit)) {
       try {
         const article = await this.extractArticle(url, { articleCharLimit }, context, tracker);
-        if (!article.text || article.text.length < 160) {
+        if (!article.text || article.text.length < MIN_ARTICLE_TEXT_CHARS) {
           skipped.push({ url, reason: 'article-text-too-short' });
           continue;
         }
@@ -367,44 +650,108 @@ class WebNewsScraperTool extends ToolBase {
     }
 
     const html = String(fetched?.data?.body || fetched?.body || '');
-    const finalUrl = normalizeUrl(fetched?.data?.url || fetched?.url || url) || url;
+    let finalUrl = normalizeUrl(fetched?.data?.url || fetched?.url || url) || url;
     if (!html) {
       throw new Error('empty-response-body');
     }
 
     tracker?.recordRead?.(finalUrl, { type: 'news-article-html', size: html.length });
+    let article = this.buildArticleFromHtml(html, finalUrl, { articleCharLimit });
 
+    if (looksLikeRenderedShell(html, article.text)) {
+      const rendered = await this.fetchRenderedPage(finalUrl, context, tracker).catch((error) => ({
+        error: error.message,
+      }));
+      if (rendered?.html) {
+        const renderedUrl = normalizeUrl(rendered.url || finalUrl) || finalUrl;
+        const renderedArticle = this.buildArticleFromHtml(rendered.html, renderedUrl, { articleCharLimit });
+        const renderedBetter = renderedArticle.text.length > article.text.length
+          || renderedArticle.stats.extraction.score > article.stats.extraction.score + 500;
+        if (renderedBetter) {
+          finalUrl = renderedUrl;
+          article = {
+            ...renderedArticle,
+            stats: {
+              ...renderedArticle.stats,
+              staticHtmlChars: html.length,
+              renderedFallback: true,
+              renderedEngine: rendered.engine || 'browser',
+              browserWarnings: rendered.warnings || [],
+            },
+          };
+        } else {
+          article.stats.renderedFallback = false;
+          article.stats.renderedFallbackReason = 'static-extraction-was-better';
+        }
+      } else if (rendered?.error) {
+        article.stats.renderedFallback = false;
+        article.stats.renderedFallbackError = rendered.error;
+      }
+    }
+
+    return article;
+  }
+
+  buildArticleFromHtml(html, finalUrl, { articleCharLimit }) {
     const jsonLdArticles = extractJsonLdArticles(html);
     const jsonArticle = jsonLdArticles[0] || {};
-    const canonicalUrl = firstAttribute(html, [
-      /<link\b[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["'][^>]*>/i,
-      /<meta\b[^>]*(?:property|name)=["']og:url["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-    ], finalUrl) || finalUrl;
+    const readabilityCandidate = extractReadabilityArticle(html, finalUrl);
+    const semanticCandidates = extractSemanticArticleCandidates(html, finalUrl);
+    const jsonBody = normalizeText(jsonArticle.articleBody || jsonArticle.text || '');
+    const htmlBody = articleBodyFromHtml(html);
+    const bodyCandidate = chooseBestArticleCandidate([
+      readabilityCandidate,
+      jsonBody ? buildArticleCandidate('json-ld', jsonBody) : null,
+      ...semanticCandidates,
+      htmlBody ? buildArticleCandidate('html-article', htmlBody) : null,
+    ]);
+    const canonicalUrl = findLinkHref(html, 'canonical', finalUrl)
+      || normalizeUrl(findMetaContent(html, ['og:url']), finalUrl)
+      || firstAttribute(html, [
+        /<link\b[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+        /<meta\b[^>]*(?:property|name)=["']og:url["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+      ], finalUrl)
+      || finalUrl;
 
-    const title = normalizeText(jsonArticle.headline || jsonArticle.name || firstMatch(html, [
-      /<meta\b[^>]*(?:property|name)=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      /<h1\b[^>]*>([\s\S]*?)<\/h1>/i,
-      /<title\b[^>]*>([\s\S]*?)<\/title>/i,
-    ])) || canonicalUrl;
-    const byline = normalizeAuthor(jsonArticle.author) || firstMatch(html, [
-      /<meta\b[^>]*name=["']author["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    const title = normalizeText(
+      jsonArticle.headline
+      || jsonArticle.name
+      || findMetaContent(html, ['og:title', 'twitter:title'])
+      || firstMatch(html, [
+        /<h1\b[^>]*>([\s\S]*?)<\/h1>/i,
+        /<title\b[^>]*>([\s\S]*?)<\/title>/i,
+      ])
+      || readabilityCandidate?.title,
+    ) || canonicalUrl;
+    const byline = normalizeAuthor(jsonArticle.author) || findMetaContent(html, ['author', 'article:author']) || readabilityCandidate?.byline || firstMatch(html, [
       /<span\b[^>]*class=["'][^"']*(?:author|byline)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
       /<p\b[^>]*class=["'][^"']*(?:author|byline)[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
     ]);
-    const publishedAt = normalizeText(jsonArticle.datePublished || firstMatch(html, [
-      /<meta\b[^>]*(?:property|name)=["']article:published_time["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      /<meta\b[^>]*name=["'](?:date|publishdate|pubdate)["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      /<time\b[^>]*datetime=["']([^"']+)["'][^>]*>/i,
-    ]));
+    const publishedAt = normalizeText(
+      jsonArticle.datePublished
+      || jsonArticle.dateCreated
+      || findMetaContent(html, ['article:published_time', 'date', 'publishdate', 'pubdate', 'dc.date', 'dc.date.issued'])
+      || firstMatch(html, [
+        /<time\b[^>]*datetime=["']([^"']+)["'][^>]*>/i,
+      ])
+      || readabilityCandidate?.publishedAt,
+    );
     const leadImage = normalizeUrl(
-      (jsonArticle.image && (Array.isArray(jsonArticle.image) ? jsonArticle.image[0] : jsonArticle.image.url || jsonArticle.image))
+      firstImageValue(jsonArticle.image)
+        || findMetaContent(html, ['og:image', 'twitter:image'])
         || firstAttribute(html, [
           /<meta\b[^>]*(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i,
           /<meta\b[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i,
         ], finalUrl),
       finalUrl,
     );
-    const body = normalizeText(jsonArticle.articleBody || articleBodyFromHtml(html)).slice(0, articleCharLimit);
+    const body = normalizeText(bodyCandidate?.text || '').slice(0, articleCharLimit);
+    const dek = findMetaContent(html, ['og:description', 'twitter:description', 'description'])
+      || readabilityCandidate?.dek
+      || firstMatch(html, [
+        /<meta\b[^>]*(?:property|name)=["']og:description["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+        /<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+      ]);
 
     return {
       title,
@@ -414,18 +761,49 @@ class WebNewsScraperTool extends ToolBase {
       byline,
       publishedAt,
       leadImage,
-      dek: firstMatch(html, [
-        /<meta\b[^>]*(?:property|name)=["']og:description["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-        /<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-      ]),
+      dek,
       text: body,
       excerpt: summarize(body),
       extractedAt: new Date().toISOString(),
       stats: {
         htmlChars: html.length,
         textChars: body.length,
+        extraction: {
+          method: bodyCandidate?.method || 'none',
+          score: bodyCandidate?.score || 0,
+          paragraphs: bodyCandidate?.paragraphs || 0,
+          candidates: [
+            readabilityCandidate,
+            ...(jsonBody ? [buildArticleCandidate('json-ld', jsonBody)] : []),
+            ...semanticCandidates,
+            ...(htmlBody ? [buildArticleCandidate('html-article', htmlBody)] : []),
+          ].filter(Boolean).map((candidate) => ({
+            method: candidate.method,
+            selector: candidate.selector,
+            textChars: candidate.textChars,
+            paragraphs: candidate.paragraphs,
+            score: candidate.score,
+          })),
+        },
       },
     };
+  }
+
+  async fetchRenderedPage(url, context, tracker) {
+    tracker?.recordNetworkCall?.(url, 'GET', { browserFallback: true });
+    const rendered = await browsePage(url, {
+      timeout: 45000,
+      waitForSelector: 'body',
+      actions: [{ type: 'wait_for_timeout', ms: 1200 }],
+      sessionId: context?.sessionId || null,
+      contentCharLimit: DEFAULT_ARTICLE_CHAR_LIMIT,
+    });
+    tracker?.recordRead?.(rendered.url || url, {
+      type: 'news-article-rendered-html',
+      size: String(rendered.html || '').length,
+      engine: rendered.engine || 'browser',
+    });
+    return rendered;
   }
 
   buildInjectionPayload({ query, title, articles, weather, includeWeatherPlaceholder, canPublishFullText }) {

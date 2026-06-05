@@ -190,4 +190,61 @@ describe('web-chat stream stability', () => {
         expect(app.buildToolCommandTemplate('remote-cli-agent')).toBe('/tool remote-cli-agent {"task":"","adminMode":true}');
         expect(app.buildToolCommandTemplate('web-search')).toBe('/tool web-search {"query":""}');
     });
+
+    test('replaces stale tool command drafts when picking a new tool', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set(['remote']);
+        app.toolCatalogTools = [{ id: 'remote-cli-agent' }];
+        app.messageInput = {
+            value: '/tool web-search {"query":""}',
+            focus: jest.fn(),
+        };
+        app.autoResize = { resize: jest.fn() };
+        app.updateSendButton = jest.fn();
+        app.toolMenuPanel = null;
+        app.toolCommandPicker = null;
+
+        app.insertToolCommandTemplateForTool('remote-cli-agent');
+
+        expect(app.messageInput.value).toBe('/tool remote-cli-agent {"task":"","adminMode":true}');
+        expect(app.updateSendButton).toHaveBeenCalled();
+    });
+
+    test('builds direct tool invoke options from plus-menu selections', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set(['remote']);
+
+        const options = app.buildToolInvokeRequestOptions('remote-cli-agent');
+
+        expect(options.executionProfile).toBe('remote-build');
+        expect(options.metadata).toEqual(expect.objectContaining({
+            toolSelectionSource: 'web-chat-plugin-menu',
+            directToolCallSource: 'web-chat-tool-command',
+            directToolId: 'remote-cli-agent',
+            preferredTool: 'remote-cli-agent',
+            remoteBuildAutonomyApproved: true,
+            frontendRemoteBuildAutonomyApproved: true,
+            remoteBuildIntent: true,
+        }));
+        expect(options.metadata.plannedTools).toEqual(expect.arrayContaining(['remote-cli-agent']));
+        expect(options.metadata.userSelectedToolIds).toEqual(expect.arrayContaining(['remote-cli-agent']));
+    });
+
+    test('infers remote-build context for typed remote tool commands without menu selections', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set();
+
+        const options = app.buildToolInvokeRequestOptions('remote-command');
+
+        expect(options.executionProfile).toBe('remote-build');
+        expect(options.metadata).toEqual(expect.objectContaining({
+            directToolCallSource: 'web-chat-tool-command',
+            directToolId: 'remote-command',
+            preferredTool: 'remote-command',
+            remoteBuildAutonomyApproved: true,
+            frontendRemoteBuildAutonomyApproved: true,
+            remoteBuildIntent: true,
+        }));
+        expect(options.metadata.plannedTools).toEqual(['remote-command']);
+    });
 });
