@@ -71,6 +71,7 @@ const {
     parseUserCheckpointResponseMessage,
 } = require('./user-checkpoints');
 const {
+    buildContextContinuityFrame,
     isLikelyTranscriptDependentTurn,
     resolveTranscriptObjectiveFromSession,
 } = require('./conversation-continuity');
@@ -9346,7 +9347,7 @@ class ConversationOrchestrator extends EventEmitter {
             incomingInstructions,
             naturalContextInstructions,
         ].filter(Boolean).join('\n\n');
-        const effectiveInstructions = (taskFrameObjective.usedTaskFrameContext || transcriptObjective.usedTranscriptContext)
+        let effectiveInstructions = (taskFrameObjective.usedTaskFrameContext || transcriptObjective.usedTranscriptContext)
             ? [
                 effectiveInstructionsBase,
                 ...(taskFrameObjective.usedTaskFrameContext
@@ -9454,6 +9455,30 @@ class ConversationOrchestrator extends EventEmitter {
                 workflow: endToEndWorkflow,
             });
             toolPolicy.projectPlan = activeProjectPlan;
+        }
+        const contextContinuityInstructions = buildContextContinuityFrame({
+            currentInput: rawObjective,
+            recentMessages: resolvedRecentMessages,
+            session,
+            controlState: mergeControlState(
+                sessionControlState,
+                mergeControlState(
+                    toolPolicy.activeTaskFrame ? { activeTaskFrame: toolPolicy.activeTaskFrame } : {},
+                    mergeControlState(
+                        endToEndWorkflow ? { workflow: endToEndWorkflow } : {},
+                        activeProjectPlan ? { projectPlan: activeProjectPlan } : {},
+                    ),
+                ),
+            ),
+            requestFrame: metadata?.requestFrame || metadata?.request_frame || null,
+            clientSurface,
+            taskType,
+        });
+        if (contextContinuityInstructions && !effectiveInstructions.includes('[Context continuity frame]')) {
+            effectiveInstructions = [
+                effectiveInstructions,
+                contextContinuityInstructions,
+            ].filter(Boolean).join('\n\n');
         }
 
         this.emit('task:start', {

@@ -1,7 +1,10 @@
 const { sessionStore } = require('./session-store');
 const { memoryService } = require('./memory/memory-service');
 const { createResponse } = require('./openai-client');
-const { resolveTranscriptObjectiveFromSession } = require('./conversation-continuity');
+const {
+    buildContextContinuityFrame,
+    resolveTranscriptObjectiveFromSession,
+} = require('./conversation-continuity');
 const { getSessionControlState } = require('./runtime-control-state');
 const { config } = require('./config');
 const { buildScopedMemoryMetadata, isSessionIsolationEnabled, resolveProjectKey, resolveSessionScope } = require('./session-scope');
@@ -495,6 +498,14 @@ async function executeConversationRuntime(app, params = {}) {
     const recallInput = effectiveParams.memoryInput || extractRuntimeText(effectiveParams.input || '');
     const continuityObjective = resolveTranscriptObjectiveFromSession(recallInput, recentMessages);
     const recallQuery = continuityObjective.objective || recallInput;
+    const continuityFrame = buildContextContinuityFrame({
+        currentInput: recallInput,
+        recentMessages,
+        session: effectiveParams.session || params.session || null,
+        requestFrame: effectiveParams.metadata?.requestFrame || params.metadata?.requestFrame || null,
+        clientSurface,
+        taskType: effectiveParams.taskType || params.taskType || '',
+    });
     const contextMessages = effectiveParams.contextMessages || (
         effectiveParams.loadContextMessages === false
             ? []
@@ -518,6 +529,12 @@ async function executeConversationRuntime(app, params = {}) {
             })
     );
     let agentDirectedBaseInstructions = effectiveParams.instructions;
+    if (continuityFrame && !String(agentDirectedBaseInstructions || '').includes('[Context continuity frame]')) {
+        agentDirectedBaseInstructions = [
+            agentDirectedBaseInstructions,
+            continuityFrame,
+        ].filter(Boolean).join('\n\n');
+    }
     if (useAgentDirectedRuntime && !hasSessionIdentityInstructions(agentDirectedBaseInstructions)) {
         agentDirectedBaseInstructions = buildSessionInstructions(
             effectiveParams.session || params.session || null,
@@ -545,7 +562,7 @@ async function executeConversationRuntime(app, params = {}) {
             clientSurface,
             taskType: effectiveParams.taskType || params.taskType || '',
         })
-        : effectiveParams.instructions;
+        : agentDirectedBaseInstructions;
 
     return {
         response: await createResponse({

@@ -352,6 +352,45 @@ describe('runtime-execution', () => {
         );
     });
 
+    test('injects a continuity frame into direct runtime instructions', async () => {
+        sessionStore.getRecentMessages.mockResolvedValue([
+            { role: 'user', content: 'Fix the web-chat context loss and verify the long task behavior.' },
+            { role: 'assistant', content: 'I found the prompt state was too loose around older memory.' },
+        ]);
+
+        await executeConversationRuntime({
+            locals: {},
+        }, {
+            sessionId: 'session-context-frame',
+            input: 'continue',
+            memoryInput: 'continue',
+            instructions: 'Base instructions.',
+            session: {
+                metadata: {
+                    controlState: {
+                        workflow: {
+                            status: 'active',
+                            lane: 'quality',
+                            stage: 'patch',
+                            taskList: [
+                                { title: 'Add continuity frame', status: 'in_progress' },
+                            ],
+                        },
+                    },
+                },
+            },
+        });
+
+        expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
+            instructions: expect.stringContaining('[Context continuity frame]'),
+        }));
+        const instructions = createResponse.mock.calls[0][0].instructions;
+        expect(instructions).toContain('Base instructions.');
+        expect(instructions).toContain('Current user turn: continue');
+        expect(instructions).toContain('Latest explicit user request in recent transcript: Fix the web-chat context loss and verify the long task behavior.');
+        expect(instructions).toContain('Workflow state: quality is active at patch; next: Add continuity frame');
+    });
+
     test('passes prior prompt state from the session into direct runtime responses', async () => {
         await executeConversationRuntime({
             locals: {},

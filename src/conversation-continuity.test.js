@@ -1,4 +1,5 @@
 const {
+    buildContextContinuityFrame,
     buildRecentTranscriptAnchor,
     isLikelyTranscriptDependentTurn,
     resolveTranscriptObjectiveFromSession,
@@ -97,5 +98,52 @@ describe('conversation continuity', () => {
         expect(anchor).toContain('last completed action, unresolved blocker, and next incomplete step');
         expect(anchor).toContain('user: Build the product dashboard and verify it in the browser.');
         expect(anchor).toContain('assistant: The first sandbox render failed due to a missing import.');
+    });
+
+    test('context continuity frame prioritizes current turn and active task state over older memory', () => {
+        const frame = buildContextContinuityFrame({
+            currentInput: 'continue',
+            recentMessages: [
+                { role: 'user', content: 'Build the managed-app dashboard and verify it in web chat.' },
+                { role: 'assistant', content: 'I fixed the first render issue and still need to run mobile QA.' },
+            ],
+            session: {
+                metadata: {
+                    projectMemory: {
+                        tasks: [
+                            {
+                                summary: 'Generated an unrelated podcast script last week.',
+                                status: 'completed',
+                            },
+                        ],
+                    },
+                },
+            },
+            controlState: {
+                workflow: {
+                    status: 'active',
+                    lane: 'frontend',
+                    stage: 'verify',
+                    taskList: [
+                        { title: 'Patch the dashboard render issue', status: 'completed' },
+                        { title: 'Run mobile and desktop QA', status: 'pending' },
+                    ],
+                },
+            },
+            requestFrame: {
+                intent: 'frontend_design_build',
+                preferredTool: 'document-workflow',
+            },
+            clientSurface: 'web-chat',
+            taskType: 'chat',
+        });
+
+        expect(frame).toContain('[Context continuity frame]');
+        expect(frame).toContain('Trust order: latest user turn first');
+        expect(frame).toContain('Current turn is referential or abbreviated');
+        expect(frame).toContain('Latest explicit user request in recent transcript: Build the managed-app dashboard and verify it in web chat.');
+        expect(frame).toContain('Workflow state: frontend is active at verify; next: Run mobile and desktop QA');
+        expect(frame).toContain('This-turn routing intent: frontend_design_build via document-workflow.');
+        expect(frame).toContain('prefer this frame and the current user turn');
     });
 });

@@ -38,7 +38,10 @@ const {
 const { extractSaveableDocumentArtifact } = require('../artifacts/saveable-document-extractor');
 const { startRuntimeTask, completeRuntimeTask, failRuntimeTask } = require('../admin/runtime-monitor');
 const settingsController = require('./admin/settings.controller');
-const { resolveTranscriptObjectiveFromSession } = require('../conversation-continuity');
+const {
+    buildContextContinuityFrame,
+    resolveTranscriptObjectiveFromSession,
+} = require('../conversation-continuity');
 const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-memory');
 const {
     buildRequestDecisionFrame,
@@ -1503,9 +1506,23 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         });
         const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
         const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+        const recentMessagesForContinuity = recentMessagesForWorkloadPreflight.length > 0
+            ? recentMessagesForWorkloadPreflight
+            : await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT);
+        const contextContinuityInstructions = buildContextContinuityFrame({
+            currentInput: message,
+            recentMessages: recentMessagesForContinuity,
+            session: effectiveSession,
+            requestFrame,
+            clientSurface,
+            taskType,
+        });
         effectiveRequestMetadata = {
             ...effectiveRequestMetadata,
             ...requestFrameMetadata,
+            ...(contextContinuityInstructions
+                ? { contextContinuityFrame: contextContinuityInstructions }
+                : {}),
             ...(useAgentDirectedRuntime
                 ? {
                     runtimeMode: 'agent-directed',
@@ -2083,6 +2100,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 agentJournalInstructions,
                 alignmentGuidanceInstructions,
                 requestFrameInstructions,
+                contextContinuityInstructions,
                 buildContinuityInstructions(buildUserCheckpointInstructions(userCheckpointPolicy)),
                 naturalInstructions,
                 responseFormattingInstructions,
@@ -2132,6 +2150,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 memoryInput: message,
                 previousResponseId: effectiveSession.previousResponseId,
                 instructions,
+                recentMessages: recentMessagesForContinuity,
                 stream: true,
                 model,
                 reasoningEffort,
@@ -2370,6 +2389,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             memoryInput: message,
             previousResponseId: effectiveSession.previousResponseId,
             instructions,
+            recentMessages: recentMessagesForContinuity,
             stream: false,
             model,
             reasoningEffort,

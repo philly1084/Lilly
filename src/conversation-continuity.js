@@ -1,4 +1,5 @@
 const { stripNullCharacters } = require('./utils/text');
+const { getSessionControlState } = require('./runtime-control-state');
 
 function normalizeMessageText(content = '') {
     if (typeof content === 'string') {
@@ -33,6 +34,17 @@ function truncateText(value = '', limit = 600) {
 
     return normalized.length > limit
         ? `${normalized.slice(0, Math.max(0, limit - 3))}...`
+        : normalized;
+}
+
+function normalizeOneLine(value = '', limit = 220) {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+        return '';
+    }
+
+    return normalized.length > limit
+        ? `${normalized.slice(0, Math.max(0, limit - 3)).trim()}...`
         : normalized;
 }
 
@@ -159,7 +171,159 @@ function buildRecentTranscriptAnchor({
     ].join('\n');
 }
 
+function findLatestMeaningfulMessage(recentMessages = [], role = '') {
+    const messages = Array.isArray(recentMessages) ? recentMessages : [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (message?.role !== role) {
+            continue;
+        }
+
+        const text = normalizeOneLine(normalizeMessageText(message.content || ''), 260);
+        if (!text) {
+            continue;
+        }
+
+        if (role === 'user' && isLikelyTranscriptDependentTurn(text)) {
+            continue;
+        }
+
+        return text;
+    }
+
+    return '';
+}
+
+function findNextIncompleteItem(items = []) {
+    return (Array.isArray(items) ? items : []).find((entry) => {
+        const status = String(entry?.status || '').trim().toLowerCase();
+        return !['completed', 'done', 'skipped', 'cancelled'].includes(status);
+    }) || null;
+}
+
+function summarizeWorkflowState(controlState = {}) {
+    const workflow = controlState?.workflow && typeof controlState.workflow === 'object'
+        ? controlState.workflow
+        : null;
+    if (!workflow) {
+        return '';
+    }
+
+    const status = normalizeOneLine(workflow.status || 'active', 40);
+    const lane = normalizeOneLine(workflow.lane || 'workflow', 80);
+    const stage = normalizeOneLine(workflow.stage || 'planned', 80);
+    const nextTask = findNextIncompleteItem(workflow.taskList || []);
+    const blocker = normalizeOneLine(workflow.lastError || workflow.blocker || '', 180);
+    return normalizeOneLine([
+        `${lane} is ${status} at ${stage}`,
+        nextTask?.title ? `next: ${nextTask.title}` : '',
+        blocker ? `blocker: ${blocker}` : '',
+    ].filter(Boolean).join('; '), 320);
+}
+
+function summarizeProjectPlanState(controlState = {}) {
+    const projectPlan = controlState?.projectPlan && typeof controlState.projectPlan === 'object'
+        ? controlState.projectPlan
+        : null;
+    if (!projectPlan) {
+        return '';
+    }
+
+    const milestones = Array.isArray(projectPlan.milestones) ? projectPlan.milestones : [];
+    const completedCount = milestones.filter((entry) => {
+        const status = String(entry?.status || '').trim().toLowerCase();
+        return ['completed', 'done', 'skipped'].includes(status);
+    }).length;
+    const nextMilestone = milestones.find((entry) => {
+        const status = String(entry?.status || '').trim().toLowerCase();
+        return !['completed', 'done', 'skipped', 'cancelled'].includes(status);
+    });
+    const status = normalizeOneLine(projectPlan.status || 'active', 40);
+
+    return normalizeOneLine([
+        `project plan is ${status}`,
+        milestones.length > 0 ? `${completedCount}/${milestones.length} milestones resolved` : '',
+        nextMilestone?.title ? `next: ${nextMilestone.title}` : '',
+    ].filter(Boolean).join('; '), 320);
+}
+
+function summarizeActiveTaskFrame(controlState = {}) {
+    const frame = controlState?.activeTaskFrame && typeof controlState.activeTaskFrame === 'object'
+        ? controlState.activeTaskFrame
+        : null;
+    if (!frame?.objective) {
+        return '';
+    }
+
+    return normalizeOneLine([
+        frame.objective,
+        frame.nextSensibleStep ? `next: ${frame.nextSensibleStep}` : '',
+        Array.isArray(frame.unresolvedBlockers) && frame.unresolvedBlockers.length > 0
+            ? `blockers: ${frame.unresolvedBlockers.join('; ')}`
+            : '',
+    ].filter(Boolean).join('; '), 360);
+}
+
+function summarizeProjectMemoryState(session = null) {
+    const tasks = Array.isArray(session?.metadata?.projectMemory?.tasks)
+        ? session.metadata.projectMemory.tasks
+        : [];
+    const latestTask = tasks.slice().reverse().find((task) => normalizeOneLine(task?.summary || '', 180));
+    if (!latestTask) {
+        return '';
+    }
+
+    return normalizeOneLine(`${latestTask.summary} [${latestTask.status || 'completed'}]`, 260);
+}
+
+function buildContextContinuityFrame({
+    currentInput = '',
+    recentMessages = [],
+    session = null,
+    controlState = null,
+    requestFrame = null,
+    clientSurface = '',
+    taskType = '',
+} = {}) {
+    const currentTurn = normalizeOneLine(currentInput, 280);
+    if (!currentTurn && !session && (!Array.isArray(recentMessages) || recentMessages.length === 0)) {
+        return '';
+    }
+
+    const resolvedControlState = controlState && typeof controlState === 'object'
+        ? controlState
+        : getSessionControlState(session);
+    const latestExplicitUserRequest = findLatestMeaningfulMessage(recentMessages, 'user');
+    const latestAssistantState = findLatestMeaningfulMessage(recentMessages, 'assistant');
+    const activeTaskFrame = summarizeActiveTaskFrame(resolvedControlState);
+    const workflowState = summarizeWorkflowState(resolvedControlState);
+    const projectPlanState = summarizeProjectPlanState(resolvedControlState);
+    const projectMemoryState = summarizeProjectMemoryState(session);
+    const isReferential = isLikelyTranscriptDependentTurn(currentTurn);
+    const lines = [
+        '[Context continuity frame]',
+        'Use this frame to keep long-horizon answers grounded in the current session.',
+        'Trust order: latest user turn first, then active task/plan/tool state, then recent transcript, then compacted/project/durable memory. Older recalled memory is support, not permission to change the current ask.',
+        currentTurn ? `Current user turn: ${currentTurn}` : '',
+        isReferential ? 'Current turn is referential or abbreviated: resolve it against recent transcript and active task state before using older memory.' : '',
+        latestExplicitUserRequest && latestExplicitUserRequest.toLowerCase() !== currentTurn.toLowerCase()
+            ? `Latest explicit user request in recent transcript: ${latestExplicitUserRequest}`
+            : '',
+        latestAssistantState ? `Most recent assistant state: ${latestAssistantState}` : '',
+        activeTaskFrame ? `Active task frame: ${activeTaskFrame}` : '',
+        workflowState ? `Workflow state: ${workflowState}` : '',
+        projectPlanState ? `Project plan state: ${projectPlanState}` : '',
+        projectMemoryState ? `Latest project memory task: ${projectMemoryState}` : '',
+        requestFrame?.intent ? `This-turn routing intent: ${requestFrame.intent}${requestFrame.preferredTool ? ` via ${requestFrame.preferredTool}` : ''}.` : '',
+        clientSurface || taskType ? `Scope: ${[clientSurface, taskType].filter(Boolean).join(' / ')}.` : '',
+        'If this frame conflicts with recalled memory or generic rules, prefer this frame and the current user turn. If it is still ambiguous, state the assumption briefly or ask one narrow question.',
+    ];
+
+    return lines.filter(Boolean).join('\n');
+}
+
 module.exports = {
+    buildContextContinuityFrame,
     buildRecentTranscriptAnchor,
     isLikelyTranscriptDependentTurn,
     normalizeMessageText,
