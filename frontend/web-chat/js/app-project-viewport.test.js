@@ -482,6 +482,35 @@ describe('web-chat project viewport helpers', () => {
         }
     });
 
+    test('preserves collapsed managed app viewport sizing during hook progress', () => {
+        const context = loadChatAppContext();
+        const { app } = createManagedAppProgressHarness(context);
+        const session = context.sessionManager.sessions[0];
+        session.metadata.activeProject = {
+            type: 'managed-app',
+            appId: 'app-1',
+            appSlug: 'demo-site',
+            title: 'Demo Site',
+            viewportSize: 'collapsed',
+            projectViewportSize: 'collapsed',
+            previousViewportSize: 'full',
+            previousProjectViewportSize: 'full',
+        };
+
+        app.applyManagedAppProgressEvent('session-1', buildManagedAppEvent({
+            phase: 'built',
+            summary: 'Demo Site finished building in GitLab.',
+        }));
+
+        expect(session.metadata.activeProject).toEqual(expect.objectContaining({
+            phase: 'built',
+            viewportSize: 'collapsed',
+            projectViewportSize: 'collapsed',
+            previousViewportSize: 'full',
+            previousProjectViewportSize: 'full',
+        }));
+    });
+
     test('handles managed app hook progress without refreshing the whole transcript', async () => {
         jest.useFakeTimers();
         try {

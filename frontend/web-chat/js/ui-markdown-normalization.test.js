@@ -56,6 +56,7 @@ function loadUIHelpersPrototype() {
             setOptions: () => {},
             Renderer: function Renderer() {},
             use: () => {},
+            parse: (value) => `<p>${escapeHtml(value)}</p>`,
         },
         DOMPurify: { sanitize: (html) => html },
         console,
@@ -233,6 +234,47 @@ describe('web-chat markdown normalization', () => {
         expect(html).toContain('user-build-brief');
         expect(html).toContain('Sandbox/front-end build');
         expect(html).toContain('Preview opens');
+    });
+
+    test('renders selected tool chips beside clean user text', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.renderUserMessage('Deploy the latest frontend fix', {
+            metadata: {
+                selectedToolChip: {
+                    id: 'remote-cli-agent',
+                    name: 'Remote CLI Agent',
+                    icon: 'server',
+                },
+            },
+        });
+
+        expect(html).toContain('message-tool-chip--selected');
+        expect(html).toContain('Remote CLI Agent');
+        expect(html).toContain('Deploy the latest frontend fix');
+        expect(html).not.toContain('/tool remote-cli-agent');
+        expect(html).not.toContain('{&quot;task&quot;');
+    });
+
+    test('renders direct tool result chips without forcing raw JSON blocks', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAssistantRenderPlan({
+            role: 'assistant',
+            content: 'Remote job completed successfully.',
+            metadata: {
+                toolResultChip: {
+                    id: 'remote-cli-agent',
+                    name: 'Remote CLI Agent',
+                    icon: 'server',
+                    status: 'completed',
+                },
+            },
+        }, false).html;
+
+        expect(html).toContain('message-tool-chip--result');
+        expect(html).toContain('Remote CLI Agent');
+        expect(html).toContain('completed');
+        expect(html).toContain('Remote job completed successfully.');
+        expect(html).not.toContain('```json');
     });
 
     test('renders voted alignment feedback as disabled state', () => {

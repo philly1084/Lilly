@@ -550,6 +550,7 @@ class ChatApp {
         this.toolCommandSearch = document.getElementById('tool-command-search');
         this.toolCommandStatus = document.getElementById('tool-command-status');
         this.toolCommandList = document.getElementById('tool-command-list');
+        this.selectedToolChipTray = document.getElementById('selected-tool-chip-tray');
         this.messagesContainer = document.getElementById('messages-container');
         this.charCounter = document.getElementById('char-counter');
         this.currentSessionInfo = document.getElementById('current-session-info');
@@ -628,6 +629,7 @@ class ChatApp {
         this.isProcessingQueue = false;
         this.skillWizardState = null;
         this.selectedToolIntentIds = new Set(this.loadStoredToolIntentIds());
+        this.selectedDirectTool = null;
         this.toolCatalogTools = [];
         this.toolCatalogLoaded = false;
         this.toolCatalogLoading = false;
@@ -738,6 +740,7 @@ class ChatApp {
         // Initialize Lucide icons
         uiHelpers.reinitializeIcons();
         this.syncToolMenuState();
+        this.renderSelectedDirectToolChip();
         
         // Restore input area state (hidden/shown)
         uiHelpers.restoreInputAreaState();
@@ -780,7 +783,7 @@ class ChatApp {
             const toolCommandButton = event.target?.closest?.('[data-tool-command-id]');
             if (toolCommandButton) {
                 event.preventDefault();
-                this.insertToolCommandTemplateForTool(toolCommandButton.dataset.toolCommandId);
+                this.selectToolForNextMessage(toolCommandButton.dataset.toolCommandId);
                 return;
             }
 
@@ -817,7 +820,15 @@ class ChatApp {
                 return;
             }
             event.preventDefault();
-            this.insertToolCommandTemplateForTool(firstTool.id);
+            this.selectToolForNextMessage(firstTool.id);
+        });
+        this.selectedToolChipTray?.addEventListener('click', (event) => {
+            const clearButton = event.target?.closest?.('[data-clear-selected-tool]');
+            if (!clearButton) {
+                return;
+            }
+            event.preventDefault();
+            this.clearSelectedDirectTool();
         });
         document.addEventListener('click', (event) => {
             if (!this.toolMenuPanel || this.toolMenuPanel.classList.contains('hidden')) {
@@ -1267,8 +1278,9 @@ class ChatApp {
     clearToolIntentSelections() {
         this.selectedToolIntentIds.clear();
         this.saveStoredToolIntentIds();
+        this.clearSelectedDirectTool({ quiet: true });
         this.syncToolMenuState();
-        uiHelpers.showToast?.('Plugin choices cleared.', 'info');
+        uiHelpers.showToast?.('Tool choices cleared.', 'info');
     }
 
     getSelectedPlannedToolIds() {
@@ -1293,6 +1305,103 @@ class ChatApp {
                 seen.add(tool.id);
                 return true;
             });
+    }
+
+    getToolCatalogEntryById(toolId = '') {
+        const normalizedToolId = String(toolId || '').trim();
+        if (!normalizedToolId) {
+            return null;
+        }
+
+        return this.normalizeToolCatalogTools(this.toolCatalogTools)
+            .find((tool) => tool.id === normalizedToolId) || null;
+    }
+
+    normalizeDirectToolSelection(toolOrId = null) {
+        const tool = typeof toolOrId === 'string'
+            ? this.getToolCatalogEntryById(toolOrId) || { id: toolOrId }
+            : toolOrId;
+        const toolId = String(tool?.id || tool?.name || '').trim();
+        if (!toolId) {
+            return null;
+        }
+
+        return {
+            id: toolId,
+            name: String(tool?.name || toolId).trim() || toolId,
+            description: String(tool?.description || '').trim(),
+            category: String(tool?.category || '').trim(),
+            icon: String(tool?.icon || 'wrench').trim() || 'wrench',
+        };
+    }
+
+    renderSelectedDirectToolChip() {
+        if (!this.selectedToolChipTray) {
+            return false;
+        }
+
+        const tool = this.normalizeDirectToolSelection(this.selectedDirectTool);
+        if (!tool) {
+            this.selectedToolChipTray.innerHTML = '';
+            this.selectedToolChipTray.classList.add('hidden');
+            return false;
+        }
+
+        this.selectedToolChipTray.classList.remove('hidden');
+        this.selectedToolChipTray.innerHTML = `
+            <span class="selected-tool-chip" title="${escapeToolMenuHtmlAttr(tool.description || tool.name)}">
+                <span class="selected-tool-chip__icon" aria-hidden="true">
+                    <i data-lucide="${escapeToolMenuHtmlAttr(tool.icon)}" class="w-4 h-4"></i>
+                </span>
+                <span class="selected-tool-chip__name">${escapeToolMenuHtml(tool.name)}</span>
+                <button type="button" class="selected-tool-chip__clear" data-clear-selected-tool aria-label="Remove selected tool ${escapeToolMenuHtmlAttr(tool.name)}">
+                    <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                </button>
+            </span>
+        `;
+        uiHelpers.reinitializeIcons?.(this.selectedToolChipTray);
+        return true;
+    }
+
+    removeToolCommandDraftFromInput() {
+        const input = this.messageInput;
+        if (!input) {
+            return false;
+        }
+
+        const currentValue = String(input.value || '');
+        if (!/^\/tool\s+\S+(?:\s+[\s\S]*)?$/i.test(currentValue.trim())) {
+            return false;
+        }
+
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+    }
+
+    selectToolForNextMessage(toolId = '') {
+        const tool = this.normalizeDirectToolSelection(toolId);
+        if (!tool) {
+            return false;
+        }
+
+        this.selectedDirectTool = tool;
+        this.removeToolCommandDraftFromInput();
+        this.renderSelectedDirectToolChip();
+        this.closeToolMenu();
+        this.messageInput?.focus();
+        uiHelpers.showToast?.(`${tool.name} selected for the next message.`, 'info');
+        return true;
+    }
+
+    clearSelectedDirectTool(options = {}) {
+        const hadSelection = Boolean(this.selectedDirectTool?.id);
+        this.selectedDirectTool = null;
+        this.renderSelectedDirectToolChip();
+        if (hadSelection && options.quiet !== true) {
+            uiHelpers.showToast?.('Selected tool removed.', 'info');
+        }
+        return hadSelection;
     }
 
     getToolCommandPickerTools(query = null) {
@@ -1496,6 +1605,63 @@ class ChatApp {
         return {
             metadata,
             ...(executionProfile ? { executionProfile } : {}),
+        };
+    }
+
+    buildSelectedDirectToolRequestOptions() {
+        const tool = this.normalizeDirectToolSelection(this.selectedDirectTool);
+        if (!tool) {
+            return this.buildToolIntentRequestOptions();
+        }
+
+        const selectionOptions = this.buildToolIntentRequestOptions();
+        const selectionMetadata = selectionOptions.metadata && typeof selectionOptions.metadata === 'object'
+            ? selectionOptions.metadata
+            : {};
+        const selectedPlannedTools = Array.isArray(selectionMetadata.plannedTools)
+            ? selectionMetadata.plannedTools
+            : [];
+        const selectedUserTools = Array.isArray(selectionMetadata.userSelectedToolIds)
+            ? selectionMetadata.userSelectedToolIds
+            : [];
+        const plannedTools = Array.from(new Set([
+            ...selectedPlannedTools,
+            tool.id,
+        ].filter(Boolean)));
+        const userSelectedToolIds = Array.from(new Set([
+            ...selectedUserTools,
+            tool.id,
+        ].filter(Boolean)));
+        const remoteToolRequested = WEB_CHAT_REMOTE_TOOL_IDS.has(tool.id);
+        const executionProfile = selectionOptions.executionProfile
+            || (remoteToolRequested ? 'remote-build' : '');
+        const existingInstructions = String(selectionMetadata.toolSelectionInstructions || '').trim();
+        const toolInstruction = `The user selected the ${tool.name} tool chip for this message. Treat it as a preferred tool hint while answering the typed chat content.`;
+
+        return {
+            ...(executionProfile ? { executionProfile } : {}),
+            metadata: {
+                ...selectionMetadata,
+                toolSelectionSource: selectionMetadata.toolSelectionSource
+                    ? `${selectionMetadata.toolSelectionSource}+web-chat-tool-chip`
+                    : 'web-chat-tool-chip',
+                selectedToolSource: 'web-chat-tool-chip',
+                selectedDirectTool: tool,
+                selectedToolChip: tool,
+                directToolId: tool.id,
+                preferredTool: tool.id,
+                plannedTools,
+                userSelectedToolIds,
+                toolSelectionInstructions: [
+                    existingInstructions,
+                    toolInstruction,
+                ].filter(Boolean).join('\n'),
+                ...(remoteToolRequested ? {
+                    remoteBuildAutonomyApproved: true,
+                    frontendRemoteBuildAutonomyApproved: true,
+                    remoteBuildIntent: true,
+                } : {}),
+            },
         };
     }
 
@@ -5080,11 +5246,17 @@ class ChatApp {
             updatedAt: event?.timestamp || new Date().toISOString(),
             progress: nextState.progressState,
         };
+        const projectViewportSize = this.normalizeProjectViewportSize(
+            existingProject?.viewportSize
+            || existingProject?.projectViewportSize
+            || 'wide',
+        );
         sessionManager.mergeSessionMetadataLocally(normalizedSessionId, {
             activeProject: {
                 ...(existingProject || {}),
                 ...projectState,
-                viewportSize: this.normalizeProjectViewportSize(existingProject?.viewportSize || existingProject?.projectViewportSize || 'wide'),
+                viewportSize: projectViewportSize,
+                projectViewportSize,
             },
             title: String(projectState.title || '').trim(),
         });
@@ -5515,11 +5687,14 @@ class ChatApp {
             return;
         }
 
-        const toolIntentOptions = this.buildToolIntentRequestOptions();
+        const toolIntentOptions = this.selectedDirectTool
+            ? this.buildSelectedDirectToolRequestOptions()
+            : this.buildToolIntentRequestOptions();
         this.messageInput.value = '';
         this.autoResize?.reset?.();
         this.updateSendButton();
         uiHelpers.updateCharCounter(this.messageInput, this.charCounter);
+        this.clearSelectedDirectTool({ quiet: true });
 
         if (this.isCurrentSessionProcessing() || this.getQueuedMessageCount() >= WEB_CHAT_QUEUE_MAX_SIZE) {
             this.enqueueMessage(content, toolIntentOptions);
@@ -5579,6 +5754,13 @@ class ChatApp {
         if (inferredBuildRunBrief && typeof inferredBuildRunBrief === 'object') {
             requestMetadata.buildRunBrief = inferredBuildRunBrief;
         }
+        const selectedToolChip = this.normalizeDirectToolSelection(
+            requestMetadata.selectedToolChip || requestMetadata.selectedDirectTool || null,
+        );
+        const userMessageMetadata = {
+            ...(inferredBuildRunBrief ? { buildRunBrief: inferredBuildRunBrief } : {}),
+            ...(selectedToolChip ? { selectedToolChip } : {}),
+        };
 
         // Hide welcome message
         uiHelpers.hideWelcomeMessage();
@@ -5590,22 +5772,18 @@ class ChatApp {
                 role: 'user',
                 content: normalizedContent,
                 timestamp: new Date().toISOString(),
-                ...(inferredBuildRunBrief
-                    ? {
-                        metadata: {
-                            buildRunBrief: inferredBuildRunBrief,
-                        },
-                    }
+                ...(Object.keys(userMessageMetadata).length > 0
+                    ? { metadata: userMessageMetadata }
                     : {}),
             };
         const storedUserMessage = shouldReuseUserMessage
             ? {
                 ...userMessage,
                 content: normalizedContent,
-                metadata: inferredBuildRunBrief
+                metadata: Object.keys(userMessageMetadata).length > 0
                     ? {
                         ...(userMessage.metadata || {}),
-                        buildRunBrief: inferredBuildRunBrief,
+                        ...userMessageMetadata,
                     }
                     : userMessage.metadata,
             }
@@ -6362,6 +6540,7 @@ class ChatApp {
 
         try {
             let assistantContent = '';
+            let assistantMetadata = {};
 
             if (isListCommand) {
                 const category = trimmed.startsWith('/tools ') ? trimmed.slice('/tools '.length).trim() : null;
@@ -6427,13 +6606,24 @@ class ChatApp {
                     this.syncBackendSession(invocation.sessionId);
                     sessionId = sessionManager.currentSessionId || invocation.sessionId || sessionId;
                 }
-                assistantContent = `## Tool Result: \`${toolId}\`\n\n\`\`\`json\n${JSON.stringify(invocation?.result, null, 2)}\n\`\`\``;
+                const toolInfo = this.getToolDisplayInfo(toolId);
+                assistantContent = this.formatToolInvocationResult(toolId, invocation?.result);
+                assistantMetadata = {
+                    toolResultChip: {
+                        ...toolInfo,
+                        status: 'completed',
+                    },
+                    directToolId: toolId,
+                };
             }
 
             const assistantMessage = {
                 role: 'assistant',
                 content: assistantContent,
                 timestamp: new Date().toISOString(),
+                ...(Object.keys(assistantMetadata).length > 0
+                    ? { metadata: assistantMetadata }
+                    : {}),
             };
             const savedAssistantMessage = sessionManager.addMessage(sessionId, assistantMessage);
             this.messagesContainer.appendChild(uiHelpers.renderMessage(savedAssistantMessage));
@@ -6489,6 +6679,106 @@ class ChatApp {
             ...(executionProfile ? { executionProfile } : {}),
             metadata,
         };
+    }
+
+    getToolDisplayInfo(toolId = '') {
+        return this.normalizeDirectToolSelection(toolId)
+            || {
+                id: String(toolId || 'tool').trim() || 'tool',
+                name: String(toolId || 'Tool').trim() || 'Tool',
+                description: '',
+                category: '',
+                icon: 'wrench',
+            };
+    }
+
+    extractToolInvocationText(value = null, depth = 0) {
+        if (value == null || depth > 5) {
+            return '';
+        }
+
+        if (typeof value === 'string') {
+            return value.trim();
+        }
+
+        if (typeof value === 'number' || typeof value === 'boolean') {
+            return String(value);
+        }
+
+        if (Array.isArray(value)) {
+            return value
+                .map((entry) => this.extractToolInvocationText(entry, depth + 1))
+                .filter(Boolean)
+                .join('\n\n')
+                .trim();
+        }
+
+        if (typeof value !== 'object') {
+            return '';
+        }
+
+        const stdout = String(value.stdout || '').trim();
+        const stderr = String(value.stderr || '').trim();
+        if (stdout || stderr) {
+            return [
+                stdout,
+                stderr ? `STDERR:\n${stderr}` : '',
+            ].filter(Boolean).join('\n\n').trim();
+        }
+
+        for (const key of [
+            'finalOutput',
+            'final_output',
+            'assistantText',
+            'assistant_text',
+            'outputText',
+            'output_text',
+            'artifactMessage',
+            'artifact_message',
+            'output',
+            'message',
+            'summary',
+            'text',
+            'content',
+            'result',
+            'data',
+        ]) {
+            if (!Object.prototype.hasOwnProperty.call(value, key)) {
+                continue;
+            }
+            const extracted = this.extractToolInvocationText(value[key], depth + 1);
+            if (extracted) {
+                return extracted;
+            }
+        }
+
+        return '';
+    }
+
+    formatToolInvocationResult(toolId = '', result = null) {
+        const normalizedToolId = String(toolId || '').trim();
+        const unwrapped = result?.data || result?.result || result || {};
+
+        if (normalizedToolId === 'remote-cli-agent') {
+            const remoteContent = this.formatRemoteAgentResult(unwrapped);
+            if (!/```json/i.test(remoteContent)) {
+                return remoteContent;
+            }
+        }
+
+        if (['remote-command', 'remote-workbench', 'k3s-deploy'].includes(normalizedToolId)) {
+            const remoteContent = this.formatRemoteResult(unwrapped, `${this.getToolDisplayInfo(normalizedToolId).name} Result`);
+            if (!/```json/i.test(remoteContent)) {
+                return remoteContent;
+            }
+        }
+
+        const readableText = this.extractToolInvocationText(unwrapped);
+        if (readableText) {
+            return readableText;
+        }
+
+        return 'Tool finished, but it did not return readable chat content.';
     }
 
     formatToolsList(toolResponse, category = null) {

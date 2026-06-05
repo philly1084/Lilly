@@ -150,6 +150,72 @@ describe('web-chat session switching refresh guards', () => {
         expect(manager.currentSessionId).toBe('session-b');
     });
 
+    test('preserves active project viewport sizing during backend session refresh', async () => {
+        const fetchMock = jest.fn(async (url) => {
+            const href = String(url);
+            if (href.includes('/preferences/web-chat')) {
+                return { ok: true, json: async () => ({ preferences: {} }) };
+            }
+            if (href.includes('/sessions?')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        activeSessionId: 'session-a',
+                        sessions: [{
+                            id: 'session-a',
+                            title: 'Demo Site',
+                            createdAt: '2026-05-11T10:00:00.000Z',
+                            updatedAt: '2026-05-11T10:01:00.000Z',
+                            metadata: {
+                                mode: 'chat',
+                                memoryScope: 'web-chat',
+                                activeProject: {
+                                    type: 'managed-app',
+                                    appId: 'app-1',
+                                    appSlug: 'demo-site',
+                                    title: 'Demo Site',
+                                    phase: 'built',
+                                },
+                            },
+                            scopeKey: 'web-chat',
+                        }],
+                    }),
+                };
+            }
+            return { ok: true, json: async () => ({}) };
+        });
+        const manager = createSessionManager(fetchMock);
+        manager.sessions = [{
+            id: 'session-a',
+            mode: 'chat',
+            title: 'Demo Site',
+            updatedAt: '2026-05-11T10:00:00.000Z',
+            metadata: {
+                memoryScope: 'web-chat',
+                activeProject: {
+                    type: 'managed-app',
+                    appId: 'app-1',
+                    appSlug: 'demo-site',
+                    viewportSize: 'collapsed',
+                    projectViewportSize: 'collapsed',
+                    previousViewportSize: 'full',
+                    previousProjectViewportSize: 'full',
+                },
+            },
+            scopeKey: 'web-chat',
+        }];
+
+        await manager.loadSessions({ preserveCurrentSession: true });
+
+        expect(manager.sessions[0].metadata.activeProject).toEqual(expect.objectContaining({
+            phase: 'built',
+            viewportSize: 'collapsed',
+            projectViewportSize: 'collapsed',
+            previousViewportSize: 'full',
+            previousProjectViewportSize: 'full',
+        }));
+    });
+
     test('still accepts backend active session on ordinary load after the local hold expires', async () => {
         const fetchMock = jest.fn(async (url) => {
             const href = String(url);

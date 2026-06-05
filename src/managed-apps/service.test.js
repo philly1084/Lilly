@@ -1377,6 +1377,74 @@ describe('ManagedAppService', () => {
         }));
     });
 
+    test('broadcastLifecycleEvent preserves managed app project viewport sizing', async () => {
+        const app = {
+            id: 'app-1',
+            ownerId: 'user-1',
+            sessionId: 'session-1',
+            slug: 'demo-app',
+            appName: 'Demo App',
+            repoOwner: 'agent-apps',
+            repoName: 'demo-app',
+            repoUrl: 'https://gitea.demoserver2.buzz/agent-apps/demo-app.git',
+            repoCloneUrl: 'https://gitea.demoserver2.buzz/agent-apps/demo-app.git',
+            defaultBranch: 'main',
+            namespace: 'app-demo-app',
+            publicHost: 'demo-app.demoserver2.buzz',
+            status: 'building',
+            metadata: {
+                desiredDeploy: {
+                    deploymentTarget: 'ssh',
+                    namespace: 'app-demo-app',
+                    publicHost: 'demo-app.demoserver2.buzz',
+                    defaultBranch: 'main',
+                },
+            },
+        };
+        const buildRun = {
+            id: 'build-1',
+            buildStatus: 'success',
+            deployStatus: 'pending',
+            verificationStatus: 'pending',
+        };
+        const sessionStore = {
+            upsertMessage: jest.fn(async () => null),
+            getOwned: jest.fn(async () => ({
+                id: 'session-1',
+                metadata: {
+                    title: 'Demo App',
+                    activeProject: {
+                        type: 'managed-app',
+                        appId: 'app-1',
+                        appSlug: 'demo-app',
+                        viewportSize: 'collapsed',
+                        projectViewportSize: 'collapsed',
+                        previousViewportSize: 'full',
+                        previousProjectViewportSize: 'full',
+                    },
+                },
+            })),
+            update: jest.fn(async () => null),
+        };
+        const service = new ManagedAppService({
+            sessionStore,
+        });
+
+        await service.broadcastLifecycleEvent(app, buildRun, 'built');
+
+        expect(sessionStore.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                activeProject: expect.objectContaining({
+                    phase: 'built',
+                    viewportSize: 'collapsed',
+                    projectViewportSize: 'collapsed',
+                    previousViewportSize: 'full',
+                    previousProjectViewportSize: 'full',
+                }),
+            }),
+        }));
+    });
+
     test('broadcastLifecycleEvent withholds managed app publicUrl until the public endpoint is verified', async () => {
         const app = {
             id: 'app-1',

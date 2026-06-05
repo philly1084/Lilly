@@ -25,6 +25,12 @@ const { stripAgentJournalBlocks } = require('./agent-journal');
 
 const MAX_RECENT_MESSAGES = config.memory.recentMessageWindow;
 const MAX_RECENT_MESSAGE_LENGTH = config.memory.recentMessageCharLimit;
+const ACTIVE_PROJECT_VIEWPORT_STATE_KEYS = [
+    'viewportSize',
+    'projectViewportSize',
+    'previousViewportSize',
+    'previousProjectViewportSize',
+];
 
 class SessionStore {
     constructor() {
@@ -233,6 +239,37 @@ class SessionStore {
         }], 1);
 
         return normalized[0] || null;
+    }
+
+    isPlainMetadataObject(value) {
+        return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+    }
+
+    mergeMetadata(baseMetadata = {}, metadataUpdates = {}) {
+        const base = this.isPlainMetadataObject(baseMetadata) ? baseMetadata : {};
+        const updates = this.isPlainMetadataObject(metadataUpdates) ? metadataUpdates : {};
+        const merged = {
+            ...base,
+            ...updates,
+        };
+
+        if (Object.prototype.hasOwnProperty.call(updates, 'activeProject')
+            && this.isPlainMetadataObject(updates.activeProject)) {
+            const existingProject = this.isPlainMetadataObject(base.activeProject)
+                ? base.activeProject
+                : {};
+            merged.activeProject = {
+                ...updates.activeProject,
+            };
+            ACTIVE_PROJECT_VIEWPORT_STATE_KEYS.forEach((key) => {
+                if (!Object.prototype.hasOwnProperty.call(merged.activeProject, key)
+                    && Object.prototype.hasOwnProperty.call(existingProject, key)) {
+                    merged.activeProject[key] = existingProject[key];
+                }
+            });
+        }
+
+        return merged;
     }
 
     normalizeMetadata(metadata = {}) {
@@ -1013,10 +1050,7 @@ class SessionStore {
             const session = this.sessions.get(id);
             if (!session) return null;
             const nextMetadata = updates.metadata
-                ? this.normalizeMetadata({
-                    ...(session.metadata || {}),
-                    ...updates.metadata,
-                })
+                ? this.normalizeMetadata(this.mergeMetadata(session.metadata, updates.metadata))
                 : session.metadata;
 
             const next = {
@@ -1042,10 +1076,7 @@ class SessionStore {
         if (!current) return null;
 
         const nextMetadata = updates.metadata
-            ? this.normalizeMetadata({
-                ...(current.metadata || {}),
-                ...updates.metadata,
-            })
+            ? this.normalizeMetadata(this.mergeMetadata(current.metadata, updates.metadata))
             : current.metadata;
         const nextScopeKey = updates.scopeKey || this.buildSessionScopeKey(nextMetadata || {});
         const nextControlState = updates.controlState
@@ -1373,10 +1404,7 @@ class SessionStore {
                 previousResponseId: responseId,
                 messageCount: (session.messageCount || 0) + 1,
                 metadata: metadataUpdates
-                    ? this.normalizeMetadata({
-                        ...(session.metadata || {}),
-                        ...metadataUpdates,
-                    })
+                    ? this.normalizeMetadata(this.mergeMetadata(session.metadata, metadataUpdates))
                     : session.metadata,
                 updatedAt: new Date().toISOString(),
             };
@@ -1392,10 +1420,7 @@ class SessionStore {
             if (!current) {
                 return null;
             }
-            nextMetadata = this.normalizeMetadata({
-                ...(current.metadata || {}),
-                ...metadataUpdates,
-            });
+            nextMetadata = this.normalizeMetadata(this.mergeMetadata(current.metadata, metadataUpdates));
         }
 
         try {

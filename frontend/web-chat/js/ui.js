@@ -4021,12 +4021,62 @@ class UIHelpers {
         `;
     }
 
+    normalizeMessageToolChip(value = null) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return null;
+        }
+
+        const id = String(value.id || value.toolId || value.tool_id || '').trim();
+        const name = String(value.name || value.label || id || 'Tool').trim();
+        if (!id && !name) {
+            return null;
+        }
+
+        return {
+            id,
+            name: name || id || 'Tool',
+            icon: String(value.icon || 'wrench').trim() || 'wrench',
+            status: String(value.status || '').trim(),
+        };
+    }
+
+    buildMessageToolChipMarkup(value = null, options = {}) {
+        const tool = this.normalizeMessageToolChip(value);
+        if (!tool) {
+            return '';
+        }
+
+        const kind = String(options.kind || '').trim().toLowerCase();
+        const statusLabel = tool.status
+            ? tool.status.replace(/[-_]+/g, ' ')
+            : '';
+        const classes = [
+            'message-tool-chip',
+            kind ? `message-tool-chip--${kind}` : '',
+            statusLabel ? 'message-tool-chip--has-status' : '',
+        ].filter(Boolean).join(' ');
+
+        return `
+            <span class="${classes}" title="${this.escapeHtmlAttr(tool.id || tool.name)}">
+                <span class="message-tool-chip__icon" aria-hidden="true">
+                    <i data-lucide="${this.escapeHtmlAttr(tool.icon)}" class="w-3.5 h-3.5"></i>
+                </span>
+                <span class="message-tool-chip__name">${this.escapeHtml(tool.name)}</span>
+                ${statusLabel ? `<span class="message-tool-chip__status">${this.escapeHtml(statusLabel)}</span>` : ''}
+            </span>
+        `;
+    }
+
     buildAssistantRenderPlan(messageOrContent, isStreaming = false) {
         const message = messageOrContent && typeof messageOrContent === 'object'
             ? messageOrContent
             : { content: messageOrContent };
         const effectiveStreaming = isStreaming === true || message?.isStreaming === true;
         const content = this.resolveAssistantVisibleContent(message);
+        const toolResultChip = this.buildMessageToolChipMarkup(
+            message?.metadata?.toolResultChip || message?.toolResultChip || null,
+            { kind: 'result' },
+        );
         const managedAppProgress = this.buildManagedAppProgressMarkup(message, effectiveStreaming);
         const progressTracker = this.buildProgressTrackerMarkup(message, effectiveStreaming);
         const reasoningRibbon = progressTracker
@@ -4040,13 +4090,13 @@ class UIHelpers {
             && !reasoningRibbon;
         if (isManagedAppProjectSummary && managedAppProgress) {
             return {
-                html: `${managedAppProgress}${progressTracker}${reasoningRibbon}`,
+                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}`,
                 variant: 'default',
             };
         }
         if (!content) {
             return {
-                html: `${managedAppProgress}${progressTracker}${reasoningRibbon || (shouldShowStreamingPlaceholder ? this.buildStreamingPlaceholderMarkup(message) : '')}`,
+                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon || (shouldShowStreamingPlaceholder ? this.buildStreamingPlaceholderMarkup(message) : '')}`,
                 variant: 'default',
             };
         }
@@ -4096,7 +4146,7 @@ class UIHelpers {
             }
 
             return {
-                html: `${managedAppProgress}${progressTracker}${reasoningRibbon}${html}`,
+                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}${html}`,
                 variant: 'agent-brief',
             };
         }
@@ -4109,7 +4159,7 @@ class UIHelpers {
         }
 
         return {
-            html: `${managedAppProgress}${progressTracker}${reasoningRibbon}${html}`,
+            html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}${html}`,
             variant: 'default',
         };
     }
@@ -4248,8 +4298,13 @@ class UIHelpers {
 
     renderUserMessage(content, message = {}) {
         const bodyHtml = this.escapeHtml(content);
+        const toolChipHtml = this.buildMessageToolChipMarkup(
+            message?.metadata?.selectedToolChip || message?.selectedToolChip || null,
+            { kind: 'selected' },
+        );
         const brief = this.normalizeBuildRunBrief(message?.metadata?.buildRunBrief);
-        return brief ? `${bodyHtml}${this.buildUserBuildBriefMarkup(brief)}` : bodyHtml;
+        const briefHtml = brief ? this.buildUserBuildBriefMarkup(brief) : '';
+        return `${toolChipHtml}${bodyHtml}${briefHtml}`;
     }
 
     normalizeBuildRunBrief(value = null) {

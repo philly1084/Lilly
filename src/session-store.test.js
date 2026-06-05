@@ -315,6 +315,45 @@ describe('SessionStore recent message continuity', () => {
         expect(sessions.map((session) => session.id)).toEqual(['web-chat-session']);
     });
 
+    test('update preserves active project viewport state during progress metadata refreshes', async () => {
+        const store = new SessionStore();
+        store.initialized = true;
+        store.usePostgres = false;
+
+        await store.create({
+            mode: 'chat',
+            activeProject: {
+                type: 'managed-app',
+                appId: 'app-1',
+                appSlug: 'demo-site',
+                viewportSize: 'collapsed',
+                projectViewportSize: 'collapsed',
+                previousViewportSize: 'full',
+                previousProjectViewportSize: 'full',
+            },
+        }, 'project-viewport-session');
+
+        const updated = await store.update('project-viewport-session', {
+            metadata: {
+                activeProject: {
+                    type: 'managed-app',
+                    appId: 'app-1',
+                    appSlug: 'demo-site',
+                    title: 'Demo Site',
+                    phase: 'built',
+                },
+            },
+        });
+
+        expect(updated.metadata.activeProject).toEqual(expect.objectContaining({
+            phase: 'built',
+            viewportSize: 'collapsed',
+            projectViewportSize: 'collapsed',
+            previousViewportSize: 'full',
+            previousProjectViewportSize: 'full',
+        }));
+    });
+
     test('list keeps parallel web-chat workspaces in their own scopes', async () => {
         const store = new SessionStore();
         store.initialized = true;

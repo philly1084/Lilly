@@ -18,6 +18,12 @@ const WEB_CHAT_LOCAL_CACHE_OBJECT_DEPTH_LIMIT = 5;
 const WEB_CHAT_ACTIVE_SESSION_LOCAL_HOLD_MS = 45000;
 const WEB_CHAT_STALE_FOREGROUND_MESSAGE_MS = 6 * 60 * 60 * 1000;
 const WEB_CHAT_STALE_FOREGROUND_FALLBACK = 'This background reply did not finish cleanly before the page was refreshed. You can retry from here.';
+const WEB_CHAT_ACTIVE_PROJECT_VIEWPORT_KEYS = [
+    'viewportSize',
+    'projectViewportSize',
+    'previousViewportSize',
+    'previousProjectViewportSize',
+];
 const WEB_CHAT_LOCAL_CACHE_HEAVY_KEYS = new Set([
     'audioData',
     'audio_data',
@@ -120,6 +126,54 @@ function resolveSessionWorkspaceStorageKey(storageKey = '') {
 
 function normalizeSessionModel(model, fallbackModel = SESSION_DEFAULT_MODEL) {
     return resolveSessionPreferredModel([], model, fallbackModel);
+}
+
+function isPlainSessionObject(value) {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function mergeSessionActiveProject(baseProject = null, incomingProject = null, options = {}) {
+    if (!isPlainSessionObject(incomingProject)) {
+        return incomingProject;
+    }
+
+    const base = isPlainSessionObject(baseProject) ? baseProject : {};
+    if (options.preserveAllActiveProjectFields === true) {
+        return {
+            ...base,
+            ...incomingProject,
+        };
+    }
+
+    const merged = {
+        ...incomingProject,
+    };
+    WEB_CHAT_ACTIVE_PROJECT_VIEWPORT_KEYS.forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(merged, key)
+            && Object.prototype.hasOwnProperty.call(base, key)) {
+            merged[key] = base[key];
+        }
+    });
+    return merged;
+}
+
+function mergeSessionMetadataObjects(baseMetadata = null, incomingMetadata = null, options = {}) {
+    const base = isPlainSessionObject(baseMetadata) ? baseMetadata : {};
+    const incoming = isPlainSessionObject(incomingMetadata) ? incomingMetadata : {};
+    const merged = {
+        ...base,
+        ...incoming,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(incoming, 'activeProject')) {
+        merged.activeProject = mergeSessionActiveProject(
+            base.activeProject,
+            incoming.activeProject,
+            options,
+        );
+    }
+
+    return merged;
 }
 
 function extractSessionReasoningSummary(value) {
@@ -1037,14 +1091,10 @@ class SessionManager extends EventTarget {
 
             this.sessions = backendSessions.map((session) => {
                 const stored = storedSessions.get(session.id);
-                const mergedMetadata = {
-                    ...(stored?.metadata && typeof stored.metadata === 'object' && !Array.isArray(stored.metadata)
-                        ? stored.metadata
-                        : {}),
-                    ...(session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
-                        ? session.metadata
-                        : {}),
-                };
+                const mergedMetadata = mergeSessionMetadataObjects(
+                    stored?.metadata,
+                    session.metadata,
+                );
                 let model;
                 
                 // Safely get default model
@@ -1820,10 +1870,11 @@ class SessionManager extends EventTarget {
                 const savedMetadata = savedSession?.metadata && typeof savedSession.metadata === 'object' && !Array.isArray(savedSession.metadata)
                     ? savedSession.metadata
                     : {};
-                targetSession.metadata = {
-                    ...(targetSession.metadata || {}),
-                    ...savedMetadata,
-                };
+                targetSession.metadata = mergeSessionMetadataObjects(
+                    targetSession.metadata,
+                    savedMetadata,
+                    { preserveAllActiveProjectFields: true },
+                );
                 targetSession.updatedAt = savedSession?.updatedAt || targetSession.updatedAt || new Date().toISOString();
                 targetSession.title = this.resolveSessionTitle({
                     ...savedSession,
@@ -1849,17 +1900,11 @@ class SessionManager extends EventTarget {
             return null;
         }
 
-        const nextMetadata = {
-            ...(targetSession.metadata || {}),
-            ...metadataPatch,
-        };
-
-        if (metadataPatch.activeProject && typeof metadataPatch.activeProject === 'object' && !Array.isArray(metadataPatch.activeProject)) {
-            nextMetadata.activeProject = {
-                ...(targetSession.metadata?.activeProject || {}),
-                ...metadataPatch.activeProject,
-            };
-        }
+        const nextMetadata = mergeSessionMetadataObjects(
+            targetSession.metadata,
+            metadataPatch,
+            { preserveAllActiveProjectFields: true },
+        );
 
         targetSession.metadata = nextMetadata;
         targetSession.updatedAt = new Date().toISOString();
@@ -2546,4 +2591,3 @@ class SessionManager extends EventTarget {
 // Create global session manager instance
 const sessionManager = new SessionManager();
 window.sessionManager = sessionManager;
-

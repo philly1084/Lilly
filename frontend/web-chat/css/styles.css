@@ -7662,6 +7662,112 @@ code[class*="language-"] {
     text-align: center;
 }
 
+.selected-tool-chip-tray {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: min(13rem, 30vw);
+    margin-bottom: 0.95rem;
+}
+
+.selected-tool-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 2.25rem;
+    padding: 0.28rem 0.35rem 0.28rem 0.45rem;
+    border: 1px solid rgba(88, 166, 255, 0.28);
+    border-radius: 0.55rem;
+    background: rgba(88, 166, 255, 0.11);
+    color: var(--text-primary);
+    box-shadow: 0 10px 22px rgba(5, 10, 18, 0.16);
+}
+
+.selected-tool-chip__icon,
+.message-tool-chip__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: var(--accent);
+}
+
+.selected-tool-chip__name {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.selected-tool-chip__clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 0.4rem;
+    color: var(--text-secondary);
+    transition:
+        color var(--transition-fast),
+        background var(--transition-fast);
+}
+
+.selected-tool-chip__clear:hover,
+.selected-tool-chip__clear:focus-visible {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.message-tool-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 1.9rem;
+    margin: 0 0 0.55rem;
+    padding: 0.24rem 0.55rem;
+    border: 1px solid rgba(88, 166, 255, 0.26);
+    border-radius: 0.5rem;
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--text-primary);
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1.2;
+    vertical-align: middle;
+}
+
+.message-tool-chip__name,
+.message-tool-chip__status {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.message-tool-chip__status {
+    color: var(--text-tertiary);
+    font-size: 0.68rem;
+    font-weight: 650;
+    text-transform: capitalize;
+}
+
+.message-tool-chip--result {
+    margin-bottom: 0.65rem;
+    border-color: rgba(52, 211, 153, 0.26);
+    background: rgba(52, 211, 153, 0.09);
+}
+
+.message-tool-chip--result .message-tool-chip__icon {
+    color: #34d399;
+}
+
 /* Image Button */
 .image-btn {
     flex-shrink: 0;

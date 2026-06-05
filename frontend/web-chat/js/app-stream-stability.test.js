@@ -230,6 +230,61 @@ describe('web-chat stream stability', () => {
         expect(options.metadata.userSelectedToolIds).toEqual(expect.arrayContaining(['remote-cli-agent']));
     });
 
+    test('selects picker tools as chips without writing JSON command drafts', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set();
+        app.toolCatalogTools = [{
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'server',
+            description: 'Run remote build loops',
+        }];
+        app.selectedToolChipTray = null;
+        app.toolMenuPanel = null;
+        app.toolCommandPicker = null;
+        app.messageInput = {
+            value: 'Deploy the latest frontend fix',
+            focus: jest.fn(),
+        };
+
+        expect(app.selectToolForNextMessage('remote-cli-agent')).toBe(true);
+
+        expect(app.messageInput.value).toBe('Deploy the latest frontend fix');
+        expect(app.selectedDirectTool).toEqual(expect.objectContaining({
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'server',
+        }));
+    });
+
+    test('builds selected tool chip metadata around clean chat content', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set();
+        app.selectedDirectTool = {
+            id: 'remote-cli-agent',
+            name: 'Remote CLI Agent',
+            icon: 'server',
+        };
+        app.toolCatalogTools = [];
+
+        const options = app.buildSelectedDirectToolRequestOptions();
+
+        expect(options.executionProfile).toBe('remote-build');
+        expect(options.metadata).toEqual(expect.objectContaining({
+            toolSelectionSource: 'web-chat-tool-chip',
+            selectedToolSource: 'web-chat-tool-chip',
+            directToolId: 'remote-cli-agent',
+            preferredTool: 'remote-cli-agent',
+            selectedToolChip: expect.objectContaining({
+                id: 'remote-cli-agent',
+                name: 'Remote CLI Agent',
+            }),
+        }));
+        expect(options.metadata.plannedTools).toEqual(['remote-cli-agent']);
+        expect(options.metadata.userSelectedToolIds).toEqual(['remote-cli-agent']);
+        expect(options.metadata.toolSelectionInstructions).toContain('selected the Remote CLI Agent tool chip');
+    });
+
     test('infers remote-build context for typed remote tool commands without menu selections', () => {
         const app = Object.create(loadChatAppPrototype());
         app.selectedToolIntentIds = new Set();

@@ -61,6 +61,12 @@ const MAX_MANAGED_APP_SLUG_LENGTH = 63;
 const MAX_KUBERNETES_NAME_LENGTH = 63;
 const DEFAULT_GITLAB_RUNNER_TAGS = 'kimibuilt,buildkit';
 const DEFAULT_MANAGED_APP_SLUG_PREFIX = 'managed-app';
+const MANAGED_APP_VIEWPORT_STATE_KEYS = [
+    'viewportSize',
+    'projectViewportSize',
+    'previousViewportSize',
+    'previousProjectViewportSize',
+];
 const MANAGED_APP_ITERATION_ACTIONS = new Set(['edit', 'build', 'deploy', 'verify']);
 const PROMPT_NAME_STOPWORDS = new Set([
     'a', 'an', 'and', 'app', 'application', 'build', 'built', 'called', 'can', 'could', 'create', 'deploy',
@@ -1425,6 +1431,23 @@ function shouldPromoteManagedProjectTitle(currentTitle = '', previousProjectTitl
     return !normalizedCurrentTitle
         || /^new chat$/i.test(normalizedCurrentTitle)
         || (normalizedPreviousProjectTitle && normalizedCurrentTitle === normalizedPreviousProjectTitle);
+}
+
+function preserveManagedProjectViewportState(project = {}, previousProject = {}) {
+    const nextProject = project && typeof project === 'object' && !Array.isArray(project)
+        ? { ...project }
+        : {};
+    const sourceProject = previousProject && typeof previousProject === 'object' && !Array.isArray(previousProject)
+        ? previousProject
+        : {};
+
+    MANAGED_APP_VIEWPORT_STATE_KEYS.forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(nextProject, key)
+            && Object.prototype.hasOwnProperty.call(sourceProject, key)) {
+            nextProject[key] = sourceProject[key];
+        }
+    });
+    return nextProject;
 }
 
 function buildManagedProjectState(app = null, buildRun = null, phase = '', details = {}) {
@@ -4113,10 +4136,13 @@ class ManagedAppService {
                 ? session.metadata
                 : {};
             const previousProjectTitle = normalizeText(currentMetadata?.activeProject?.title);
-            const activeProject = buildManagedProjectState(normalizedApp, buildRun, phase, {
-                ...details,
-                summary,
-            });
+            const activeProject = preserveManagedProjectViewportState(
+                buildManagedProjectState(normalizedApp, buildRun, phase, {
+                    ...details,
+                    summary,
+                }),
+                currentMetadata?.activeProject,
+            );
             const metadataPatch = {
                 activeProject,
             };
