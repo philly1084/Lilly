@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { createResponse } = require('../openai-client');
 const { extractResponseText } = require('../artifacts/artifact-service');
 const { parseLenientJson } = require('../utils/lenient-json');
@@ -674,7 +674,7 @@ function buildRegressionFixtureCandidate({
     }
 
     return {
-        id: feedbackId ? `alignment-${feedbackId}` : `alignment-${uuidv4()}`,
+        id: feedbackId ? `alignment-${feedbackId}` : `alignment-${randomUUID()}`,
         source: 'alignment-feedback',
         sessionId,
         messageId,
@@ -767,7 +767,7 @@ function buildEvaluatorPrompt({
 
 async function evaluateAlignment(input = {}, options = {}) {
     const config = resolveEvaluatorConfig(options);
-    const feedbackId = input.feedbackId || `align_${uuidv4()}`;
+    const feedbackId = input.feedbackId || `align_${randomUUID()}`;
 
     if (input.rating !== 'down' || config.enabled === false) {
         return {

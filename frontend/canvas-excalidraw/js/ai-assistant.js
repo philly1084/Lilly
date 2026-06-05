@@ -1,7 +1,43 @@
 /**
- * AI Assistant Module - AI diagram generation panel
- * Enhanced: Uses OpenAI SDK for diagram and image generation
+ * AI Assistant Module - object-first canvas agent panel.
  */
+
+const CANVAS_AGENT_TOOL_LANES = Object.freeze({
+    inspect: {
+        label: 'Inspect',
+        toolIds: [],
+        actionPolicy: 'read_board_context',
+    },
+    create: {
+        label: 'Create',
+        toolIds: ['graph-diagram'],
+        actionPolicy: 'create_editable_canvas_objects',
+    },
+    arrange: {
+        label: 'Arrange',
+        toolIds: ['graph-diagram'],
+        actionPolicy: 'move_and_align_existing_objects',
+    },
+    label: {
+        label: 'Label',
+        toolIds: ['graph-diagram'],
+        actionPolicy: 'add_text_sticky_and_connection_labels',
+    },
+    research: {
+        label: 'Research',
+        toolIds: ['web-search', 'web-fetch'],
+        actionPolicy: 'ground_board_content_before_editing',
+    },
+    qa: {
+        label: 'QA',
+        toolIds: ['design-resource-search'],
+        actionPolicy: 'review_layout_readability_and_missing_links',
+    },
+});
+
+const CANVAS_AGENT_DEFAULT_TOOL_LANES = ['inspect', 'create', 'arrange', 'label'];
+const CANVAS_AGENT_TOOL_LANE_STORAGE_KEY = 'kimi-canvas-agent-tool-lanes';
+const CANVAS_AGENT_STEP_ORDER = ['read', 'tool', 'apply'];
 
 class AIAssistant {
     constructor() {
@@ -17,8 +53,13 @@ class AIAssistant {
         this.boardSummary = document.getElementById('aiBoardSummary');
         this.selectionSummary = document.getElementById('aiSelectionSummary');
         this.applySummary = document.getElementById('aiApplySummary');
+        this.stateSummary = document.getElementById('aiStateSummary');
+        this.toolPlanSummary = document.getElementById('aiToolPlanSummary');
+        this.toolPlanPill = document.getElementById('aiToolPlanPill');
+        this.planSteps = document.getElementById('aiPlanSteps');
         this.isGenerating = false;
         this.scope = 'auto';
+        this.toolLaneIds = this.loadToolLaneSelection();
         
         // Mode: 'chat' | 'diagram' | 'image'
         this.mode = 'chat';
@@ -39,6 +80,8 @@ class AIAssistant {
         this.pendingImagePosition = null;
 
         this.chatHistory = [];
+        this.lastAppliedActionCount = 0;
+        this.lastAgentRunAt = 0;
         
         this.init();
     }
@@ -79,6 +122,8 @@ class AIAssistant {
             this.updateGroundingPanel();
         });
 
+        this.setupToolLaneControls();
+
         document.querySelectorAll('[data-ai-context-prompt], [data-ai-local-action]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 if (btn.dataset.aiLocalAction) {
@@ -99,6 +144,133 @@ class AIAssistant {
         this.setMode('chat');
         this.restoreSharedConversation();
         this.updateGroundingPanel();
+        this.renderToolPlan();
+        this.setAgentPlanStep();
+    }
+
+    loadToolLaneSelection() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CANVAS_AGENT_TOOL_LANE_STORAGE_KEY) || 'null');
+            if (Array.isArray(saved)) {
+                const valid = saved
+                    .map((lane) => String(lane || '').trim())
+                    .filter((lane) => CANVAS_AGENT_TOOL_LANES[lane]);
+                if (valid.length > 0) {
+                    return Array.from(new Set(valid));
+                }
+            }
+        } catch {}
+
+        return [...CANVAS_AGENT_DEFAULT_TOOL_LANES];
+    }
+
+    setupToolLaneControls() {
+        document.querySelectorAll('[data-ai-tool-lane]').forEach((input) => {
+            const lane = String(input.dataset.aiToolLane || '').trim();
+            input.checked = this.toolLaneIds.includes(lane);
+            input.addEventListener('change', () => {
+                this.toolLaneIds = this.getSelectedToolLaneIds();
+                this.persistToolLaneSelection();
+                this.renderToolPlan();
+                this.updateGroundingPanel();
+            });
+        });
+    }
+
+    getSelectedToolLaneIds() {
+        const selected = Array.from(document.querySelectorAll('[data-ai-tool-lane]'))
+            .filter((input) => input.checked)
+            .map((input) => String(input.dataset.aiToolLane || '').trim())
+            .filter((lane) => CANVAS_AGENT_TOOL_LANES[lane]);
+
+        return selected.length > 0 ? Array.from(new Set(selected)) : [...CANVAS_AGENT_DEFAULT_TOOL_LANES];
+    }
+
+    persistToolLaneSelection() {
+        try {
+            localStorage.setItem(CANVAS_AGENT_TOOL_LANE_STORAGE_KEY, JSON.stringify(this.toolLaneIds));
+        } catch {}
+    }
+
+    buildToolPlan(mode = this.mode) {
+        const lanes = this.getSelectedToolLaneIds();
+        const plannedTools = [];
+        lanes.forEach((laneId) => {
+            CANVAS_AGENT_TOOL_LANES[laneId]?.toolIds?.forEach((toolId) => {
+                if (toolId && !plannedTools.includes(toolId)) {
+                    plannedTools.push(toolId);
+                }
+            });
+        });
+
+        if (mode === 'image') {
+            if (!plannedTools.includes('image-generate')) {
+                plannedTools.unshift('image-generate');
+            }
+        } else {
+            const imageToolIndex = plannedTools.indexOf('image-generate');
+            if (imageToolIndex !== -1) {
+                plannedTools.splice(imageToolIndex, 1);
+            }
+        }
+
+        const laneLabels = lanes.map((laneId) => CANVAS_AGENT_TOOL_LANES[laneId]?.label || laneId);
+        const lanePolicies = lanes
+            .map((laneId) => CANVAS_AGENT_TOOL_LANES[laneId]?.actionPolicy)
+            .filter(Boolean);
+
+        return {
+            mode,
+            lanes,
+            laneLabels,
+            lanePolicies,
+            plannedTools,
+            preferredTool: plannedTools[0] || null,
+            executionProfile: 'default',
+            creationMode: mode === 'image' ? 'explicit-image-asset' : 'editable-object-actions',
+            preferEditableObjects: mode !== 'image',
+            avoidRasterSnapshots: mode !== 'image',
+            stateBackend: {
+                current: 'browser-local-draft',
+                target: 'valkey-live-bus',
+                savedAt: new Date().toISOString(),
+            },
+            allowedActions: mode === 'image'
+                ? ['add image asset after explicit image generation']
+                : ['add', 'add_many', 'update', 'update_many', 'delete', 'select'],
+        };
+    }
+
+    renderToolPlan() {
+        const plan = this.buildToolPlan();
+        if (this.toolPlanSummary) {
+            this.toolPlanSummary.textContent = plan.laneLabels.join(', ') || 'Editable object actions';
+        }
+        if (this.toolPlanPill) {
+            this.toolPlanPill.textContent = plan.preferEditableObjects ? 'Object-first' : 'Image asset';
+        }
+        if (this.stateSummary) {
+            const elementCount = window.infiniteCanvas?.elements?.length || 0;
+            const lastRun = this.lastAgentRunAt ? `run ${new Date(this.lastAgentRunAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'ready';
+            this.stateSummary.textContent = `${elementCount} objects, ${lastRun}`;
+        }
+    }
+
+    setAgentPlanStep(activeStep = '', doneSteps = [], errorStep = '') {
+        if (!this.planSteps) {
+            return;
+        }
+
+        const done = new Set(doneSteps);
+        CANVAS_AGENT_STEP_ORDER.forEach((step) => {
+            const node = this.planSteps.querySelector(`[data-agent-step="${step}"]`);
+            if (!node) {
+                return;
+            }
+            node.classList.toggle('active', step === activeStep);
+            node.classList.toggle('done', done.has(step));
+            node.classList.toggle('error', step === errorStep);
+        });
     }
     
     async fetchModels() {
@@ -320,8 +492,9 @@ class AIAssistant {
                 ...this.cloneElementForAI(element),
                 bounds: this.getElementBounds(element),
             })),
-            allowedActions: ['add', 'update', 'delete', 'select'],
-            instruction: 'Ground your answer in selected objects when scope is selection. Preserve element ids for updates. Use actions for canvas edits.',
+            toolPlan: this.buildToolPlan(),
+            allowedActions: ['add', 'add_many', 'update', 'update_many', 'delete', 'select'],
+            instruction: 'Ground your answer in selected objects when scope is selection. Preserve element ids for updates. Use editable object actions for canvas edits. Do not create raster snapshots unless the user explicitly switches to image asset mode.',
         };
     }
 
@@ -354,11 +527,14 @@ class AIAssistant {
         if (this.applySummary) {
             this.applySummary.textContent = scope === 'selection' ? 'Backend + selected objects' : (scope === 'viewport' ? 'Backend + visible objects' : 'Backend + board');
         }
+        this.renderToolPlan();
     }
 
     handleLocalAction(action) {
         if (action === 'tidy-selection') {
             this.tidySelection();
+        } else if (action === 'frame-selection') {
+            this.frameSelection();
         }
     }
 
@@ -416,6 +592,45 @@ class AIAssistant {
         window.app?.showToast?.('Tidied selected objects');
         this.showStatus('Tidied selected objects locally. Ask the agent for labels or deeper restructuring.', 'success');
     }
+
+    frameSelection() {
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        if (!canvas || selected.length === 0) {
+            this.showStatus('Select one or more objects to frame.', 'error');
+            return;
+        }
+
+        const bounds = selected.map((element) => this.getElementBounds(element));
+        const minLeft = Math.min(...bounds.map((entry) => entry.left));
+        const maxRight = Math.max(...bounds.map((entry) => entry.right));
+        const minTop = Math.min(...bounds.map((entry) => entry.top));
+        const maxBottom = Math.max(...bounds.map((entry) => entry.bottom));
+        const padding = 42;
+        const frame = {
+            id: window.toolManager?.generateId?.() || `frame-${Date.now()}`,
+            type: 'frame',
+            x: (minLeft + maxRight) / 2,
+            y: (minTop + maxBottom) / 2,
+            width: Math.max(160, maxRight - minLeft + padding * 2),
+            height: Math.max(120, maxBottom - minTop + padding * 2),
+            text: 'Frame',
+            strokeColor: window.toolManager?.defaultProperties?.strokeColor || '#1971c2',
+            backgroundColor: 'transparent',
+            strokeWidth: 2,
+            strokeStyle: 'dashed',
+            roughness: 1,
+            opacity: 1,
+        };
+
+        canvas.addElement(frame);
+        canvas.selectElements([frame, ...selected]);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.updateGroundingPanel();
+        this.showStatus('Framed selected objects locally.', 'success');
+    }
     
     setMode(mode) {
         this.mode = mode;
@@ -435,10 +650,10 @@ class AIAssistant {
             diagramOptions?.classList.remove('hidden');
             imageOptions?.classList.add('hidden');
             if (aiDescription) {
-                aiDescription.textContent = 'Chat with the canvas agent about the current board, then ask it to make changes.';
+                aiDescription.textContent = 'Talk through the board and ask for editable object actions when you want changes.';
             }
             if (this.input) {
-                this.input.placeholder = "e.g., 'What is missing from this flow?' or 'Suggest a cleaner layout for these boxes'";
+                this.input.placeholder = "e.g., 'What is missing from this flow?' or 'Arrange these boxes into a cleaner sequence'";
             }
             if (this.generateBtn) {
                 this.generateBtn.lastChild.textContent = 'Send';
@@ -450,13 +665,13 @@ class AIAssistant {
             diagramOptions?.classList.remove('hidden');
             imageOptions?.classList.add('hidden');
             if (aiDescription) {
-                aiDescription.textContent = "Describe what you'd like me to draw, and I'll generate a diagram for you.";
+                aiDescription.textContent = "Describe the board objects to create or change; the agent will return editable actions.";
             }
             if (this.input) {
-                this.input.placeholder = "e.g., 'Create a flowchart showing user authentication process' or 'Draw a mind map about machine learning'";
+                this.input.placeholder = "e.g., 'Create a login flow with decisions, arrows, labels, and a risk note'";
             }
             if (this.generateBtn) {
-                this.generateBtn.lastChild.textContent = 'Generate';
+                this.generateBtn.lastChild.textContent = 'Build';
             }
         } else {
             chatModeBtn?.classList.remove('active');
@@ -465,15 +680,16 @@ class AIAssistant {
             diagramOptions?.classList.add('hidden');
             imageOptions?.classList.remove('hidden');
             if (aiDescription) {
-                aiDescription.textContent = "Describe the image you want to generate, and I'll create it for you.";
+                aiDescription.textContent = "Generate a raster asset only when the board needs a non-editable image.";
             }
             if (this.input) {
-                this.input.placeholder = "e.g., 'A cute robot illustration, flat design' or 'Abstract geometric pattern in blue tones'";
+                this.input.placeholder = "e.g., 'A flat product icon with transparent background'";
             }
             if (this.generateBtn) {
                 this.generateBtn.lastChild.textContent = 'Generate';
             }
         }
+        this.renderToolPlan();
     }
     
     async generate() {
@@ -494,6 +710,9 @@ class AIAssistant {
         this.showStatus('Thinking...', 'loading');
         this.generateBtn.disabled = true;
         window.app?.showLoading('AI is thinking...');
+        this.lastAgentRunAt = Date.now();
+        this.setAgentPlanStep('read');
+        this.renderToolPlan();
 
         this.chatHistory.push({ role: 'user', content: prompt });
         this.trimChatHistory();
@@ -501,21 +720,26 @@ class AIAssistant {
 
         try {
             const canvasContext = this.buildCanvasContext();
+            const toolPlan = canvasContext.toolPlan || this.buildToolPlan('chat');
+            this.setAgentPlanStep('tool', ['read']);
             let response;
             try {
                 response = await window.apiManager.requestCanvasAgent({
                     message: prompt,
                     canvasContext,
                     mode: 'chat',
+                    toolPlan,
                 });
             } catch (primaryError) {
                 console.warn('Canvas agent route failed, falling back to OpenAI-compatible chat:', primaryError);
                 const messages = this.buildChatMessages(canvasContext);
-                response = await window.apiManager.chat(messages, canvasContext);
+                response = await window.apiManager.chat(messages, canvasContext, toolPlan);
             }
             const content = response.content || 'No response received.';
             const structured = this.parseStructuredCanvasResponse(content);
             const applied = this.applyCanvasActions(structured);
+            this.lastAppliedActionCount = applied;
+            this.setAgentPlanStep('', ['read', 'tool', 'apply']);
             const assistantText = structured?.message || content;
             this.chatHistory.push({ role: 'assistant', content: assistantText });
             this.trimChatHistory();
@@ -524,26 +748,33 @@ class AIAssistant {
             this.input.value = '';
         } catch (error) {
             console.error('Agent chat error:', error);
+            this.setAgentPlanStep('', ['read'], 'tool');
             this.addConversationMessage('assistant', `Error: ${error.message}`);
             this.showStatus('Error talking to agent.', 'error');
         } finally {
             this.isGenerating = false;
             this.generateBtn.disabled = false;
             window.app?.hideLoading();
+            this.renderToolPlan();
         }
     }
     
     async generateDiagram(prompt) {
         this.isGenerating = true;
-        this.showStatus('Generating diagram...', 'loading');
+        this.showStatus('Building objects...', 'loading');
         this.generateBtn.disabled = true;
-        window.app?.showLoading('Generating diagram...');
+        window.app?.showLoading('Building editable objects...');
+        this.lastAgentRunAt = Date.now();
+        this.setAgentPlanStep('read');
+        this.renderToolPlan();
         
         try {
             // Get current canvas state for context
             const canvasContext = this.buildCanvasContext();
+            const toolPlan = canvasContext.toolPlan || this.buildToolPlan('diagram');
             const existingContent = JSON.stringify(canvasContext.elements);
             this.addConversationMessage('user', prompt);
+            this.setAgentPlanStep('tool', ['read']);
             
             let response;
             try {
@@ -552,27 +783,33 @@ class AIAssistant {
                     canvasContext,
                     mode: 'diagram',
                     existingContent,
+                    toolPlan,
                 });
             } catch (primaryError) {
                 console.warn('Canvas agent route failed, falling back to OpenAI-compatible diagram generation:', primaryError);
-                response = await window.apiManager.generateDiagram(prompt, existingContent, canvasContext);
+                response = await window.apiManager.generateDiagram(prompt, existingContent, canvasContext, toolPlan);
             }
             
             if (response.content) {
-                this.processGeneratedContent(response);
-                this.addConversationMessage('assistant', 'Applied a new diagram to the canvas.');
-                this.showStatus('Diagram generated successfully!', 'success');
+                const applied = this.processGeneratedContent(response);
+                this.lastAppliedActionCount = applied || 0;
+                this.setAgentPlanStep('', ['read', 'tool', 'apply']);
+                this.addConversationMessage('assistant', 'Applied editable object actions to the canvas.');
+                this.showStatus('Canvas objects updated.', 'success');
                 this.input.value = '';
             } else {
-                this.showStatus('No diagram generated. Try a different prompt.', 'error');
+                this.setAgentPlanStep('', ['read', 'tool'], 'apply');
+                this.showStatus('No object actions returned. Try a different prompt.', 'error');
             }
         } catch (error) {
             console.error('Generation error:', error);
-            this.showStatus('Error generating diagram. Please try again.', 'error');
+            this.setAgentPlanStep('', ['read'], 'tool');
+            this.showStatus('Error building objects. Please try again.', 'error');
         } finally {
             this.isGenerating = false;
             this.generateBtn.disabled = false;
             window.app?.hideLoading();
+            this.renderToolPlan();
         }
     }
     
@@ -893,7 +1130,7 @@ class AIAssistant {
     }
 
     normalizeGeneratedElement(element = {}) {
-        const allowedTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame', 'image']);
+        const allowedTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame']);
         const normalized = {
             ...element,
             id: window.toolManager?.generateId?.() || `el-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -989,11 +1226,41 @@ class AIAssistant {
             }
 
             const type = String(action.type || '').toLowerCase();
+            if (type === 'add_many' && Array.isArray(action.elements)) {
+                action.elements.forEach((entry) => {
+                    if (!entry || typeof entry !== 'object') {
+                        return;
+                    }
+                    const element = this.normalizeGeneratedElement(entry);
+                    canvas.addElement(element);
+                    nextSelectionIds.add(element.id);
+                    applied += 1;
+                });
+                return;
+            }
+
             if (type === 'add' && action.element) {
                 const element = this.normalizeGeneratedElement(action.element);
                 canvas.addElement(element);
                 nextSelectionIds.add(element.id);
                 applied += 1;
+                return;
+            }
+
+            if (type === 'update_many' && Array.isArray(action.patches)) {
+                action.patches.forEach((entry) => {
+                    if (!entry?.id || !entry?.patch || typeof entry.patch !== 'object') {
+                        return;
+                    }
+                    const element = canvas.elements.find((candidate) => candidate.id === entry.id);
+                    if (!element) {
+                        return;
+                    }
+                    const safePatch = this.sanitizeElementPatch(entry.patch);
+                    Object.assign(element, safePatch);
+                    nextSelectionIds.add(element.id);
+                    applied += 1;
+                });
                 return;
             }
 
@@ -1043,6 +1310,7 @@ class AIAssistant {
 
         if (applied > 0) {
             window.historyManager?.pushState(canvas.elements);
+            window.app?.saveCanvasToStorage?.();
             canvas.render();
             this.updateGroundingPanel();
         }
@@ -1058,7 +1326,7 @@ class AIAssistant {
             if (structured.message) {
                 this.addConversationMessage('assistant', structured.message);
             }
-            return;
+            return actionCount;
         }
         
         // Parse the response content
@@ -1092,8 +1360,9 @@ class AIAssistant {
             elements = this.parseDiagramDescription(response.content);
         }
         
-        // Validate and filter elements
-        elements = elements.filter(el => el && typeof el === 'object' && el.type);
+        // Validate and filter elements. Image assets are handled by explicit image mode.
+        const objectTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame']);
+        elements = elements.filter(el => el && typeof el === 'object' && objectTypes.has(el.type));
         
         // Add elements to canvas
         if (elements.length > 0) {
@@ -1178,11 +1447,15 @@ class AIAssistant {
             
             if (addedCount > 0) {
                 window.historyManager?.pushState(canvas.elements);
+                window.app?.saveCanvasToStorage?.();
                 this.showStatus(`Added ${addedCount} elements to canvas`, 'success');
+                return addedCount;
             }
         } else {
             console.warn('No valid elements found in AI response');
         }
+
+        return 0;
     }
     
     parseDiagramDescription(description) {
@@ -1463,8 +1736,9 @@ class AIAssistant {
                     'You are a canvas agent helping the user reason about and improve a visual Excalidraw-style whiteboard.',
                     'Be concise and ground every answer in the provided canvas context.',
                     'When the user asks you to change the canvas, return strict JSON with this shape:',
-                    '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"update","id":"existing-id","patch":{...}},{"type":"delete","id":"existing-id"},{"type":"select","ids":["existing-id"]}]}',
+                    '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"existing-id","patch":{...}},{"type":"update_many","patches":[{"id":"existing-id","patch":{...}}]},{"type":"delete","id":"existing-id"},{"type":"select","ids":["existing-id"]}]}',
                     'Use selected element ids for updates. Do not invent ids for existing objects. Keep geometry changes modest unless asked for a large rewrite.',
+                    'Default to editable objects and object actions. Do not create image elements, screenshots, or raster snapshots unless image asset mode is explicit.',
                     'For discussion-only answers, plain text is fine.',
                 ].join(' '),
             },

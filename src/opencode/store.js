@@ -1,6 +1,6 @@
 'use strict';
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { postgres } = require('../postgres');
 
 const RUN_STATUS = Object.freeze({
@@ -116,7 +116,7 @@ class OpenCodeStore {
                 RETURNING *
             `,
             [
-                uuidv4(),
+                randomUUID(),
                 ownerId,
                 sessionId,
                 target,
@@ -194,7 +194,7 @@ class OpenCodeStore {
                 RETURNING *
             `,
             [
-                input.id || uuidv4(),
+                input.id || randomUUID(),
                 input.ownerId,
                 input.sessionId || null,
                 input.opencodeSessionId || null,

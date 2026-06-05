@@ -1,7 +1,7 @@
 const { QdrantClient } = require('@qdrant/js-client-rest');
+const { randomUUID } = require('crypto');
 const { config } = require('../config');
 const { embedder } = require('./embedder');
-const { v4: uuidv4 } = require('uuid');
 
 /**
  * Qdrant vector store wrapper.
@@ -92,7 +92,7 @@ class VectorStore {
     async store(sessionId, text, metadata = {}) {
         await this.ensureCollection(this.collection);
         const vector = await embedder.embed(text);
-        const pointId = uuidv4();
+        const pointId = randomUUID();
 
         await this.client.upsert(this.collection, {
             wait: true,

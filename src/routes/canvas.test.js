@@ -21,6 +21,10 @@ jest.mock('../ai-route-utils', () => ({
     resolveReasoningEffort: jest.fn(() => null),
 }));
 
+jest.mock('../artifacts/artifact-service', () => ({
+    extractResponseText: jest.fn(() => ''),
+}));
+
 jest.mock('../admin/runtime-monitor', () => ({
     startRuntimeTask: jest.fn(() => ({ id: 'task-1' })),
     completeRuntimeTask: jest.fn(),
@@ -78,6 +82,21 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('[Dashboard template catalog]');
         expect(instructions).toContain('metadata.dashboardTemplate');
         expect(instructions).toContain('data-dashboard-template');
+    });
+
+    test('buildCanvasInstructions supports editable Excalidraw object actions in diagram mode', () => {
+        const instructions = buildCanvasInstructions(
+            'diagram',
+            '',
+            'Use the canvas-excalidraw actionContract to update selected object ids.',
+        );
+
+        expect(instructions).toContain('editable board objects');
+        expect(instructions).toContain('add_many');
+        expect(instructions).toContain('update_many');
+        expect(instructions).toContain('selected ids');
+        expect(instructions).toContain('do not create raster screenshots');
+        expect(instructions).toContain('image snapshots');
     });
 
     test('buildCanvasInstructions includes recursive template store guidance when provided', () => {

@@ -1905,6 +1905,141 @@ html, body {
     border-color: var(--accent-color);
 }
 
+.ai-tool-plan {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+
+.ai-tool-plan-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.ai-tool-plan-header strong {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.ai-tool-plan-pill {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    color: var(--accent-color);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.ai-tool-lanes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.ai-tool-lane {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+    min-height: 32px;
+    padding: 7px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ai-tool-lane:hover,
+.ai-tool-lane:focus-within {
+    border-color: var(--accent-color);
+}
+
+.ai-tool-lane input {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent-color);
+    flex: 0 0 auto;
+}
+
+.ai-tool-lane span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ai-plan-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.ai-plan-step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 30px;
+    padding: 6px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.ai-plan-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--border-color);
+    flex: 0 0 auto;
+}
+
+.ai-plan-step.active {
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.ai-plan-step.active .ai-plan-dot {
+    background: var(--accent-color);
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+}
+
+.ai-plan-step.done {
+    border-color: rgba(34, 197, 94, 0.4);
+    color: var(--success-color);
+}
+
+.ai-plan-step.done .ai-plan-dot {
+    background: var(--success-color);
+}
+
+.ai-plan-step.error {
+    border-color: rgba(239, 68, 68, 0.45);
+    color: var(--danger-color);
+}
+
+.ai-plan-step.error .ai-plan-dot {
+    background: var(--danger-color);
+}
+
 .ai-conversation {
     display: flex;
     flex-direction: column;
@@ -2526,6 +2661,15 @@ body.drag-over::after {
         width: auto;
         max-height: calc(100dvh - 84px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
         z-index: 270;
+    }
+
+    .ai-tool-lanes,
+    .ai-plan-steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .ai-grounding-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     
     .model-selector {

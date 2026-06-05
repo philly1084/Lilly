@@ -12,7 +12,7 @@
  * @requires uuid
  */
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 /**
  * Enum for side effect types
@@ -70,7 +70,7 @@ class SideEffect {
      * @type {string}
      * @readonly
      */
-    this.id = uuidv4();
+    this.id = randomUUID();
 
     /**
      * The type of side effect

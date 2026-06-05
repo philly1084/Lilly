@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 /**
  * @typedef {Object} ContextItem
@@ -68,7 +68,7 @@ class WorkingMemory {
     }
 
     this.sessionId = sessionId;
-    this.id = uuidv4();
+    this.id = randomUUID();
     
     // Core context
     /** @type {Object|null} */
@@ -276,7 +276,7 @@ class WorkingMemory {
     }
     
     const message = {
-      id: uuidv4(),
+      id: randomUUID(),
       role,
       content,
       timestamp: new Date().toISOString(),

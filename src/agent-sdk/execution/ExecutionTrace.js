@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 /**
  * Represents a single step in an execution trace.
@@ -25,7 +25,7 @@ class ExecutionStep {
     metadata = {}
   }) {
     /** @type {string} Unique identifier for this step */
-    this.id = uuidv4();
+    this.id = randomUUID();
     
     /** @type {string} Type of execution step */
     this.type = type;
@@ -124,7 +124,7 @@ class ExecutionTrace {
    */
   constructor(taskId) {
     /** @type {string} Unique identifier for this trace */
-    this.id = uuidv4();
+    this.id = randomUUID();
     
     /** @type {string} ID of the associated task */
     this.taskId = taskId;

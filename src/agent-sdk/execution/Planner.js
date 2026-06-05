@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 /**
  * Step status values.
  * @typedef {('pending'|'running'|'completed'|'failed'|'skipped')} StepStatus
@@ -39,7 +39,7 @@ class ExecutionPlan {
    */
   constructor(taskId) {
     /** @type {string} Unique plan identifier */
-    this.id = uuidv4();
+    this.id = randomUUID();
     
     /** @type {string} Associated task ID */
     this.taskId = taskId;
@@ -74,7 +74,7 @@ class ExecutionPlan {
    */
   addStep(step, dependencies = []) {
     const stepWithId = {
-      id: uuidv4(),
+      id: randomUUID(),
       ...step,
       status: 'pending'
     };

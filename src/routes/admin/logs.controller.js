@@ -3,7 +3,7 @@
  * Manages request/response logs
  */
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const path = require('path');
 const { PROJECT_ROOT, resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const {
@@ -31,7 +31,7 @@ class LogsController {
    */
   addLog(entry) {
     const log = {
-      id: uuidv4(),
+      id: randomUUID(),
       timestamp: new Date().toISOString(),
       ...entry
     };

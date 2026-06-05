@@ -8,9 +8,10 @@ const CANVAS_EXCALIDRAW_CLIENT_SURFACE = 'canvas-excalidraw';
 const CANVAS_DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 const CANVAS_EXCALIDRAW_ACTION_CONTRACT = [
     'Return /api/canvas-compatible JSON. Put board edits inside the top-level content string using this inner shape:',
-    '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"update","id":"element-id","patch":{...}},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[]}',
+    '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"element-id","patch":{...}},{"type":"update_many","patches":[{"id":"element-id","patch":{...}}]},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[]}',
     'The full response shape should be {"content":"<inner board-edit JSON string>","metadata":{"type":"diagram","surface":"canvas-excalidraw"},"suggestions":[]}.',
     'Use existing selected ids for updates. Keep changes modest unless the user asks for a rewrite.',
+    'Default to editable board objects and object actions. Do not create raster screenshots, image snapshots, or image elements unless the user explicitly asks for an image asset.',
 ].join(' ');
 const canvasGatewayHelpers = window.KimiBuiltGatewaySSE || {};
 const buildCanvasGatewayHeaders = canvasGatewayHelpers.buildGatewayHeaders || ((headers = {}) => ({
@@ -19,8 +20,8 @@ const buildCanvasGatewayHeaders = canvasGatewayHelpers.buildGatewayHeaders || ((
 }));
 
 class OpenAICanvasAPI {
-    constructor(baseUrl = 'http://localhost:3000/v1') {
-        this.baseURL = baseUrl;
+    constructor(baseUrl = null) {
+        this.baseURL = baseUrl || `${window.location.origin}/v1`;
         this.client = null;
         this.sessionId = null;
         this.sdkAvailable = false;
@@ -76,8 +77,10 @@ class OpenAICanvasAPI {
         canvasContext = null,
         mode = 'chat',
         existingContent = '',
+        toolPlan = null,
     }) {
         const contextText = canvasContext ? JSON.stringify(canvasContext) : '';
+        const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools : [];
         const prompt = [
             message,
             '',
@@ -102,12 +105,25 @@ class OpenAICanvasAPI {
                 canvasType: 'diagram',
                 existingContent: existingContent || contextText,
                 model: this.selectedModel,
+                executionProfile: toolPlan?.executionProfile || 'default',
+                enableConversationExecutor: true,
                 metadata: {
                     taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                     clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+                    enableConversationExecutor: true,
                     surfaceMode: mode,
                     canvasContext,
+                    canvasToolPlan: toolPlan,
+                    plannedTools,
+                    preferredTool: toolPlan?.preferredTool || plannedTools[0] || null,
+                    userSelectedToolIds: plannedTools,
+                    toolIds: plannedTools,
                     actionContract: 'excalidraw-actions-v1',
+                    artifactPolicy: {
+                        preferEditableObjects: toolPlan?.preferEditableObjects !== false,
+                        avoidRasterSnapshots: toolPlan?.avoidRasterSnapshots !== false,
+                        explicitImageMode: mode === 'image',
+                    },
                 },
             }),
         });
@@ -131,17 +147,26 @@ class OpenAICanvasAPI {
         };
     }
 
-    async chat(messages, canvasContext = null) {
+    async chat(messages, canvasContext = null, toolPlan = null) {
+        const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools : [];
         const params = {
             model: this.selectedModel,
             messages,
             stream: false,
+            enableConversationExecutor: true,
+            executionProfile: toolPlan?.executionProfile || 'default',
             taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
             clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+                enableConversationExecutor: true,
                 canvasContext,
+                canvasToolPlan: toolPlan,
+                plannedTools,
+                preferredTool: toolPlan?.preferredTool || plannedTools[0] || null,
+                userSelectedToolIds: plannedTools,
+                toolIds: plannedTools,
             },
         };
 
@@ -185,16 +210,17 @@ class OpenAICanvasAPI {
     }
 
     // Generate diagram (uses chat completions with special prompt)
-    async generateDiagram(message, existingContent = null, canvasContext = null) {
+    async generateDiagram(message, existingContent = null, canvasContext = null, toolPlan = null) {
         const messages = [
             {
                 role: 'system',
                 content: [
                     'You are an AI visual canvas assistant for an Excalidraw-style whiteboard.',
                     'Respond with strict JSON only.',
-                    'Use this shape: {"message":"short human summary","actions":[{"type":"add","element":{...}},{"type":"update","id":"element-id","patch":{...}},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[...]}',
+                    'Use this shape: {"message":"short human summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"element-id","patch":{...}},{"type":"update_many","patches":[{"id":"element-id","patch":{...}}]},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[...]}',
                     'Prefer actions when changing existing selected objects. Use elements for newly generated diagrams.',
-                    'Element types: rectangle, diamond, ellipse, arrow, line, freedraw, text, sticky, frame, image.',
+                    'Element types: rectangle, diamond, ellipse, arrow, line, freedraw, text, sticky, frame.',
+                    'Do not return image elements, screenshots, or raster snapshots unless the user explicitly asks for an image asset.',
                 ].join(' ')
             },
             {
@@ -207,16 +233,25 @@ class OpenAICanvasAPI {
             }
         ];
 
+        const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools : [];
         const params = {
             model: this.selectedModel,
             messages,
             stream: false,
+            enableConversationExecutor: true,
+            executionProfile: toolPlan?.executionProfile || 'default',
             taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
             clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
+                enableConversationExecutor: true,
                 canvasContext,
+                canvasToolPlan: toolPlan,
+                plannedTools,
+                preferredTool: toolPlan?.preferredTool || plannedTools[0] || null,
+                userSelectedToolIds: plannedTools,
+                toolIds: plannedTools,
             },
         };
 
@@ -563,12 +598,8 @@ class OpenAICanvasAPI {
 
 // Create global instance
 // Auto-detect backend URL
-const localHostnames = new Set(['localhost', '127.0.0.1', '[::1]']);
-const currentHost = window.location.hostname;
 const currentOrigin = `${window.location.protocol}//${window.location.host}`;
-const autoBaseUrl = localHostnames.has(currentHost)
-    ? 'http://localhost:3000/v1'
-    : `${currentOrigin}/v1`;
+const autoBaseUrl = `${currentOrigin}/v1`;
 
 window.apiManager = new OpenAICanvasAPI(autoBaseUrl);
 

@@ -354,14 +354,14 @@
                 </svg>
             </div>
             <div class="tool-category-content">
-                <button class="tool-btn ai-btn ai-prominent" data-tool="ai-image" data-key="g" title="AI Image Generation (G)">
+                <button class="tool-btn ai-btn" data-tool="ai-image" data-key="g" title="AI Image Asset (G)">
                     <svg viewBox="0 0 24 24" width="20" height="20">
                         <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
                         <circle cx="18" cy="6" r="3" fill="#ff6b6b"/>
                     </svg>
                     <span class="key-hint">G</span>
                 </button>
-                <button class="tool-btn ai-btn" id="aiAssistantBtn" data-key="z" title="AI Assistant (Z)">
+                <button class="tool-btn ai-btn ai-prominent" id="aiAssistantBtn" data-key="z" title="Canvas Agent (Z)">
                     <svg viewBox="0 0 24 24" width="20" height="20">
                         <path fill="currentColor" d="M7.5 2C7.5 2 8.5 5.5 12 5.5C15.5 5.5 16.5 2 16.5 2C16.5 2 15 9.5 12 9.5C9 9.5 7.5 2 7.5 2ZM2 12.5C2 12.5 5.5 11.5 5.5 15C5.5 18.5 2 19.5 2 19.5C2 19.5 9.5 18 9.5 15C9.5 12 2 12.5 2 12.5ZM22 12.5C22 12.5 14.5 12 14.5 15C14.5 18 22 19.5 22 19.5C22 19.5 18.5 18.5 18.5 15C18.5 11.5 22 12.5 22 12.5ZM7.5 22C7.5 22 9 15.5 12 15.5C15 15.5 16.5 22 16.5 22C16.5 22 15.5 18.5 12 18.5C8.5 18.5 7.5 22 7.5 22Z"/>
                     </svg>
@@ -1182,7 +1182,7 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px; vertical-align: middle;">
                     <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                AI Assistant
+                Canvas Agent
             </h3>
             <button class="close-btn" id="closeAiPanel">
                 <svg viewBox="0 0 24 24" width="18" height="18">
@@ -1197,19 +1197,19 @@
                     <svg viewBox="0 0 24 24" width="16" height="16" style="margin-right: 6px; vertical-align: middle;">
                         <path fill="currentColor" d="M4 4h16v12H7l-3 3V4z"/>
                     </svg>
-                    Agent Chat
+                    Talk
                 </button>
                 <button class="ai-mode-btn" id="diagramModeBtn" data-mode="diagram">
                     <svg viewBox="0 0 24 24" width="16" height="16" style="margin-right: 6px; vertical-align: middle;">
                         <path fill="currentColor" d="M3 3h18v18H3V3zm16 16V5H5v14h14zM7 7h4v4H7V7zm0 6h4v4H7v-4zm6-6h4v4h-4V7zm0 6h4v4h-4v-4z"/>
                     </svg>
-                    Generate Diagram
+                    Build Objects
                 </button>
                 <button class="ai-mode-btn" id="imageModeBtn" data-mode="image">
                     <svg viewBox="0 0 24 24" width="16" height="16" style="margin-right: 6px; vertical-align: middle;">
                         <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
                     </svg>
-                    Generate Image
+                    Image Asset
                 </button>
             </div>
             
@@ -1245,11 +1245,65 @@
                         <span>Apply</span>
                         <strong id="aiApplySummary">Actions + messages</strong>
                     </div>
+                    <div class="ai-grounding-fact">
+                        <span>State</span>
+                        <strong id="aiStateSummary">Local draft</strong>
+                    </div>
                 </div>
                 <div class="ai-grounding-actions">
                     <button type="button" class="ai-context-btn" data-ai-context-prompt="What is selected and what should I improve first?">Inspect selection</button>
                     <button type="button" class="ai-context-btn" data-ai-local-action="tidy-selection">Tidy layout</button>
-                    <button type="button" class="ai-context-btn" data-ai-context-prompt="Add concise labels or notes to make the selected area easier to understand.">Label</button>
+                    <button type="button" class="ai-context-btn" data-ai-local-action="frame-selection">Frame</button>
+                </div>
+            </div>
+
+            <div class="ai-tool-plan" id="aiToolPlan">
+                <div class="ai-tool-plan-header">
+                    <div>
+                        <span class="ai-grounding-kicker">Tool Plan</span>
+                        <strong id="aiToolPlanSummary">Editable object actions</strong>
+                    </div>
+                    <span class="ai-tool-plan-pill" id="aiToolPlanPill">Object-first</span>
+                </div>
+                <div class="ai-tool-lanes">
+                    <label class="ai-tool-lane">
+                        <input type="checkbox" data-ai-tool-lane="inspect" checked>
+                        <span>Inspect</span>
+                    </label>
+                    <label class="ai-tool-lane">
+                        <input type="checkbox" data-ai-tool-lane="create" checked>
+                        <span>Create</span>
+                    </label>
+                    <label class="ai-tool-lane">
+                        <input type="checkbox" data-ai-tool-lane="arrange" checked>
+                        <span>Arrange</span>
+                    </label>
+                    <label class="ai-tool-lane">
+                        <input type="checkbox" data-ai-tool-lane="label" checked>
+                        <span>Label</span>
+                    </label>
+                    <label class="ai-tool-lane">
+                        <input type="checkbox" data-ai-tool-lane="research">
+                        <span>Research</span>
+                    </label>
+                    <label class="ai-tool-lane">
+                        <input type="checkbox" data-ai-tool-lane="qa">
+                        <span>QA</span>
+                    </label>
+                </div>
+                <div class="ai-plan-steps" id="aiPlanSteps" aria-live="polite">
+                    <div class="ai-plan-step" data-agent-step="read">
+                        <span class="ai-plan-dot"></span>
+                        <span>Read</span>
+                    </div>
+                    <div class="ai-plan-step" data-agent-step="tool">
+                        <span class="ai-plan-dot"></span>
+                        <span>Tool</span>
+                    </div>
+                    <div class="ai-plan-step" data-agent-step="apply">
+                        <span class="ai-plan-dot"></span>
+                        <span>Apply</span>
+                    </div>
                 </div>
             </div>
 
@@ -1312,10 +1366,10 @@
             <div class="ai-suggestions" id="aiSuggestions">
                 <h4>Suggestions</h4>
                 <div class="suggestion-list">
-                    <button class="suggestion-btn" data-prompt="User login flowchart">Login Flowchart</button>
-                    <button class="suggestion-btn" data-prompt="System architecture diagram">System Architecture</button>
-                    <button class="suggestion-btn" data-prompt="Decision tree for product selection">Decision Tree</button>
-                    <button class="suggestion-btn" data-prompt="Entity relationship diagram">ER Diagram</button>
+                    <button class="suggestion-btn" data-prompt="Build an editable user login flow with shapes, arrows, labels, and one risk note.">Login Flow</button>
+                    <button class="suggestion-btn" data-prompt="Create an editable system architecture map with services, data stores, trust boundaries, and handoff notes.">Architecture Map</button>
+                    <button class="suggestion-btn" data-prompt="Inspect the current board and add missing labels, connections, and one concise QA note.">Board QA</button>
+                    <button class="suggestion-btn" data-prompt="Turn the selected objects into a cleaner decision tree using object actions, not a raster image.">Selection Rewrite</button>
                 </div>
             </div>
             <div class="ai-status" id="aiStatus"></div>
@@ -1482,11 +1536,11 @@
                     </div>
                     <div class="shortcut-item">
                         <span class="key">G</span>
-                        <span>AI Image Tool</span>
+                        <span>AI Image Asset</span>
                     </div>
                     <div class="shortcut-item">
                         <span class="key">Z</span>
-                        <span>AI Assistant</span>
+                        <span>Canvas Agent</span>
                     </div>
                     <div class="shortcut-item">
                         <span class="key">K</span>

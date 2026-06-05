@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 /**
  * @typedef {Object} SuccessExample
@@ -102,7 +102,7 @@ class Skill {
       throw new TypeError('metadata must be an object');
     }
 
-    this.id = id || uuidv4();
+    this.id = id || randomUUID();
     this.name = name;
     this.description = description;
     this.triggerPatterns = triggerPatterns;

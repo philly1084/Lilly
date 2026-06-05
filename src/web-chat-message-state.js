@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { stripNullCharacters } = require('./utils/text');
 const { parseLenientJson } = require('./utils/lenient-json');
 const { looksLikeSaveableDocumentResponse } = require('./artifacts/saveable-document-extractor');
@@ -639,7 +639,7 @@ function buildWebChatSessionMessages({
 } = {}) {
     const resolvedUserTimestamp = userTimestamp || offsetIsoTimestamp(timestamp, 0);
     const resolvedAssistantTimestamp = assistantTimestamp || offsetIsoTimestamp(resolvedUserTimestamp, 1);
-    const assistantMessageId = String(inputAssistantMessageId || '').trim() || uuidv4();
+    const assistantMessageId = String(inputAssistantMessageId || '').trim() || randomUUID();
     const normalizedAssistantText = stripNullCharacters(String(assistantText || '')).trim();
     const placeholderAssistantText = isBackgroundPlaceholderText(normalizedAssistantText);
     const { assistantMetadata, auxiliaryMessages } = buildWebChatAssistantEnvelope({
@@ -673,7 +673,7 @@ function buildWebChatSessionMessages({
 
     return [
         {
-            id: String(userMessageId || '').trim() || uuidv4(),
+            id: String(userMessageId || '').trim() || randomUUID(),
             role: 'user',
             content: stripNullCharacters(String(userText || '')).trim(),
             timestamp: resolvedUserTimestamp,

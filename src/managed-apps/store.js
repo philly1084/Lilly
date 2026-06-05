@@ -1,6 +1,6 @@
 'use strict';
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { postgres } = require('../postgres');
 
 function serializeDate(value = null) {
@@ -110,7 +110,7 @@ class ManagedAppStore {
                 RETURNING *
             `,
             [
-                input.id || uuidv4(),
+                input.id || randomUUID(),
                 input.ownerId,
                 input.sessionId || null,
                 input.slug,
@@ -320,7 +320,7 @@ class ManagedAppStore {
                 RETURNING *
             `,
             [
-                input.id || uuidv4(),
+                input.id || randomUUID(),
                 input.appId,
                 input.ownerId,
                 input.sessionId || null,

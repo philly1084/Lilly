@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { getSessionControlState } = require('./runtime-control-state');
 
 const DEFAULT_FOREGROUND_PLACEHOLDER = 'Working in background...';
@@ -75,7 +75,7 @@ function buildForegroundTurn(metadata = {}, clientSurface = '', taskType = 'chat
     const requestId = normalizeString(
         normalizedMetadata.foregroundRequestId
         || normalizedMetadata.foreground_request_id,
-    ) || uuidv4();
+    ) || randomUUID();
     const userTimestamp = normalizeIsoTimestamp(
         normalizedMetadata.userMessageTimestamp
         || normalizedMetadata.user_message_timestamp
@@ -91,11 +91,11 @@ function buildForegroundTurn(metadata = {}, clientSurface = '', taskType = 'chat
             || normalizedMetadata.user_message_id
             || normalizedMetadata.messageId
             || normalizedMetadata.message_id,
-        ) || uuidv4(),
+        ) || randomUUID(),
         assistantMessageId: normalizeString(
             normalizedMetadata.assistantMessageId
             || normalizedMetadata.assistant_message_id,
-        ) || uuidv4(),
+        ) || randomUUID(),
         clientSurface,
         taskType,
         status: 'running',

@@ -10,9 +10,12 @@
 
 'use strict';
 
-const { v4: uuidv4, validate: validateUuid } = require('uuid');
+const { randomUUID } = require('crypto');
 const { TaskStatus, canTransition, isTerminalState } = require('./TaskStatus');
 const { validateTask, validateTaskOutput } = require('./TaskSchema');
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const validateUuid = (value) => typeof value === 'string' && UUID_PATTERN.test(value);
 
 /**
  * Custom error class for Task-related errors.
@@ -82,7 +85,7 @@ class Task {
       }
       this.id = data.id;
     } else {
-      this.id = uuidv4();
+      this.id = randomUUID();
     }
 
     // Core properties
@@ -292,7 +295,7 @@ class Task {
     }
 
     const enrichedStep = {
-      id: uuidv4(),
+      id: randomUUID(),
       type: step.type,
       description: step.description || '',
       input: step.input,

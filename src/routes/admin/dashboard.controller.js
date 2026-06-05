@@ -3,7 +3,7 @@
  * Handles dashboard overview and SDK control endpoints
  */
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const logsController = require('./logs.controller');
 const tracesController = require('./traces.controller');
 const { vectorStore } = require('../../memory/vector-store');
@@ -629,8 +629,8 @@ class DashboardController {
         return res.status(400).json({ success: false, error: 'Prompt is required' });
       }
 
-      const taskId = uuidv4();
-      const sessionId = options.sessionId || uuidv4();
+      const taskId = randomUUID();
+      const sessionId = options.sessionId || randomUUID();
 
       // Create task configuration
       const taskConfig = {
@@ -832,7 +832,7 @@ class DashboardController {
 
   logActivity(type, description, metadata = {}) {
     this.activityLog.push({
-      id: uuidv4(),
+      id: randomUUID(),
       type,
       description,
       timestamp: new Date().toISOString(),
@@ -870,7 +870,7 @@ class DashboardController {
   }
 
   recordRuntimeTaskStart({ sessionId, input, model, mode = 'chat', transport = 'http', metadata = {} }) {
-    const taskId = uuidv4();
+    const taskId = randomUUID();
     const now = new Date().toISOString();
     const task = {
       id: taskId,

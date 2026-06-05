@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const { postgres } = require('./postgres');
@@ -118,7 +118,7 @@ class SessionStore {
                 }
 
                 return {
-                    id: entry?.id || uuidv4(),
+                    id: entry?.id || randomUUID(),
                     role,
                     content,
                     timestamp,
@@ -132,7 +132,7 @@ class SessionStore {
         const metadata = this.normalizeMessageMetadata(message?.metadata || {});
 
         return {
-            id: message?.id || uuidv4(),
+            id: message?.id || randomUUID(),
             role: message?.role,
             content: message?.content,
             timestamp: message?.timestamp || new Date().toISOString(),
@@ -568,7 +568,7 @@ class SessionStore {
     async create(metadata = {}, preferredId = null) {
         await this.initialize();
 
-        const id = preferredId || uuidv4();
+        const id = preferredId || randomUUID();
         const existing = preferredId ? await this.get(id) : null;
         if (existing) {
             return existing;

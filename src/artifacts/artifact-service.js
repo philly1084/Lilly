@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { config } = require('../config');
 const { artifactStore } = require('./artifact-store');
 const { extractArtifact } = require('./artifact-extractor');
@@ -2086,7 +2086,7 @@ class ArtifactService {
             await this.ensureSessionRecord(sessionId, session);
 
             const artifact = await artifactStore.create({
-                id: uuidv4(),
+                id: randomUUID(),
                 sessionId,
                 parentArtifactId,
                 direction,

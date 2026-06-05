@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 /**
  * Error classification types for retry decisions.
@@ -54,7 +54,7 @@ class RetryPolicy {
     onRetry = null
   }) {
     /** @type {string} Unique policy identifier */
-    this.id = uuidv4();
+    this.id = randomUUID();
     
     /** @type {number} Maximum number of retry attempts */
     this.maxAttempts = maxAttempts;

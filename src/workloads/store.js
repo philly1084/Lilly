@@ -1,6 +1,6 @@
 'use strict';
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { postgres } = require('../postgres');
 
 const RUN_STATUS = Object.freeze({
@@ -83,7 +83,7 @@ class WorkloadStore {
     async createWorkload(input = {}) {
         await this.ensureAvailable();
 
-        const id = uuidv4();
+        const id = randomUUID();
         try {
             const result = await postgres.query(
                 `
@@ -388,7 +388,7 @@ class WorkloadStore {
     }) {
         await this.ensureAvailable();
 
-        const id = uuidv4();
+        const id = randomUUID();
         try {
             const result = await postgres.query(
                 `
@@ -618,7 +618,7 @@ class WorkloadStore {
                     VALUES ($1, $2, $3, $4::jsonb)
                 `,
                 [
-                    uuidv4(),
+                    randomUUID(),
                     runId,
                     eventType,
                     JSON.stringify(payload || {}),
