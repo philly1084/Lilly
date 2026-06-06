@@ -1359,6 +1359,54 @@ function buildPdfRuntimeStyleOverrides(pageOptions = {}) {
             break-inside: avoid;
             page-break-inside: avoid;
         }
+        @media print {
+            html, body {
+                min-width: ${pageOptions?.width || DEFAULT_PORTRAIT_PDF_WIDTH};
+            }
+            .document-shell,
+            body > header,
+            body > main,
+            body > section,
+            body > article,
+            body > footer {
+                max-width: 100% !important;
+            }
+            .document-flow {
+                gap: 0 !important;
+            }
+            .document-section {
+                border: 0 !important;
+                border-top: 1px solid var(--doc-print-border, var(--doc-border, #d1d5db)) !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                padding: 0.22in 0 0 !important;
+                margin: 0.18in 0 0 !important;
+                background: transparent !important;
+            }
+            .document-flow > .document-section:first-child {
+                border-top: 0 !important;
+                padding-top: 0 !important;
+                margin-top: 0 !important;
+            }
+            .document-layout-chapter-bands .section-chrome,
+            .document-layout-chapter-bands .section-content {
+                border-left: 0 !important;
+                border-right: 0 !important;
+                border-radius: 0 !important;
+            }
+            section:not(.deck-slide):not(.document-section),
+            article:not(.deck-slide),
+            aside,
+            .card,
+            .panel,
+            .tile,
+            .widget,
+            .metric,
+            .kpi,
+            [data-dashboard-zone] {
+                box-shadow: none !important;
+            }
+        }
     `;
 
     if (pageOptions?.explicitCssPageSize) {

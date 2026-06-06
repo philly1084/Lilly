@@ -15,6 +15,28 @@ describe('PdfGenerator', () => {
     expect(definition.pageMargins).toEqual([54, 62, 54, 58]);
   });
 
+  test('separates generated sections with dividers instead of full card borders', () => {
+    const generator = new PdfGenerator();
+    const definition = generator.buildContentDefinition({
+      title: 'Decision Brief',
+      sections: [
+        { heading: 'Recommendation', content: 'Approve the rollout.' },
+        { heading: 'Evidence', content: 'The rollout checks are green.' },
+      ],
+    });
+
+    const firstSection = definition.content[1];
+    const secondSection = definition.content[2];
+
+    expect(firstSection.stack[0].layout).toBe('noBorders');
+    expect(secondSection.stack[0].canvas[0]).toEqual(expect.objectContaining({
+      type: 'line',
+      lineWidth: 0.75,
+    }));
+    expect(secondSection.stack[1].layout).toBe('noBorders');
+    expect(secondSection.layout).toBeUndefined();
+  });
+
   test('generates a Notes page PDF buffer', async () => {
     const generator = new PdfGenerator();
 

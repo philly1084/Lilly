@@ -8,6 +8,7 @@ jest.mock('../artifacts/artifact-renderer', () => {
 
 const { renderPdfViaBrowser } = require('../artifacts/artifact-renderer');
 const { DocumentService } = require('./document-service');
+const { resolveDocumentTheme } = require('./document-design-engine');
 
 describe('DocumentService', () => {
   beforeEach(() => {
@@ -52,6 +53,22 @@ describe('DocumentService', () => {
       number: '1',
       anchor: 'findings',
     })).not.toThrow();
+  });
+
+  test('renders PDF print CSS with large portrait geometry and clean section dividers', () => {
+    const service = new DocumentService({
+      responses: {
+        create: jest.fn(),
+      },
+    });
+
+    const css = service.renderDocumentStyles(resolveDocumentTheme('editorial'));
+
+    expect(css).toContain('@page');
+    expect(css).toContain('size: 11.33in 14.67in portrait');
+    expect(css).toContain('html, body { width: 11.33in; min-height: 14.67in;');
+    expect(css).toContain('border-top: 1px solid var(--doc-print-border) !important');
+    expect(css).toContain('.document-flow > .document-section:first-child');
   });
 
   test('uses browser-rendered HTML as the primary PDF pipeline for structured documents', async () => {

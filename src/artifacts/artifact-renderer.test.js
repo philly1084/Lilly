@@ -132,6 +132,9 @@ describe('normalizeMermaidSource', () => {
         expect(css).toContain('@page { size: 11.33in 14.67in portrait');
         expect(css).toContain('.document-shell');
         expect(css).toContain('max-width: 100% !important');
+        expect(css).toContain('min-width: 11.33in');
+        expect(css).toContain('border-top: 1px solid var(--doc-print-border, var(--doc-border, #d1d5db)) !important');
+        expect(css).toContain('.document-flow > .document-section:first-child');
         expect(css).toContain('table-layout: fixed');
         expect(css).toContain('white-space: pre-wrap');
     });

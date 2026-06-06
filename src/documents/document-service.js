@@ -2881,7 +2881,7 @@ class DocumentService {
           .document-layout-field-guide-rail .document-outline { position: static; }
         }
         @media print {
-          html, body { max-width: 100% !important; overflow: visible !important; }
+          html, body { width: 11.33in; min-height: 14.67in; max-width: 100% !important; overflow: visible !important; }
           body { background: var(--doc-print-bg) !important; color: var(--doc-print-text) !important; }
           .document-shell { max-width: none; width: 100%; padding: 0; }
           .document-hero,
@@ -2916,6 +2916,27 @@ class DocumentService {
           .insight-card {
             break-inside: avoid;
             page-break-inside: avoid;
+          }
+          .document-flow { gap: 0 !important; }
+          .document-section {
+            border: 0 !important;
+            border-top: 1px solid var(--doc-print-border) !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            padding: 0.22in 0 0 !important;
+            margin: 0.18in 0 0 !important;
+          }
+          .document-flow > .document-section:first-child {
+            border-top: 0 !important;
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+          }
+          .document-layout-chapter-bands .section-chrome,
+          .document-layout-chapter-bands .section-content {
+            border-left: 0 !important;
+            border-right: 0 !important;
+            border-radius: 0 !important;
           }
           table { table-layout: fixed; width: 100% !important; max-width: 100% !important; }
           img, svg, canvas { max-width: 100% !important; height: auto !important; }

@@ -236,7 +236,7 @@ class PdfGenerator {
       for (let index = 0; index < content.sections.length; index += 1) {
         const section = content.sections[index];
         const sectionPlan = Array.isArray(designPlan.sections) ? designPlan.sections[index] || {} : {};
-        docContent.push(this.buildSectionCard(section, sectionPlan, theme));
+        docContent.push(this.buildSectionCard(section, sectionPlan, theme, index));
       }
     }
 
@@ -357,7 +357,7 @@ class PdfGenerator {
     };
   }
 
-  buildSectionCard(section = {}, sectionPlan = {}, theme) {
+  buildSectionCard(section = {}, sectionPlan = {}, theme, index = 0) {
     const nodes = [];
     const styleName = `heading${Math.min(section.level || 1, 3)}`;
 
@@ -386,18 +386,28 @@ class PdfGenerator {
       theme,
     }));
 
-    return {
+    const stack = [];
+
+    if (index > 0) {
+      stack.push(this.buildSectionDivider(theme.border));
+    }
+
+    stack.push({
       table: {
         widths: ['*'],
         body: [[{
           stack: nodes,
           fillColor: theme.page,
-          margin: [16, 14, 16, 14],
+          margin: [0, 2, 0, 0],
           border: [false, false, false, false]
         }]]
       },
-      layout: this.createCardLayout(theme.border),
-      margin: [0, 0, 0, 14]
+      layout: 'noBorders'
+    });
+
+    return {
+      stack,
+      margin: [0, index > 0 ? 4 : 0, 0, 16]
     };
   }
 
@@ -1233,6 +1243,21 @@ class PdfGenerator {
       vLineWidth: () => 1,
       hLineColor: () => strokeColor,
       vLineColor: () => strokeColor,
+    };
+  }
+
+  buildSectionDivider(strokeColor = '#D8E1F0') {
+    return {
+      canvas: [{
+        type: 'line',
+        x1: 0,
+        y1: 0,
+        x2: DEFAULT_CONTENT_WIDTH,
+        y2: 0,
+        lineWidth: 0.75,
+        lineColor: strokeColor,
+      }],
+      margin: [0, 0, 0, 14],
     };
   }
 
