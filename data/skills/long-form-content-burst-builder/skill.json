@@ -1,0 +1,84 @@
+{
+  "id": "long-form-content-burst-builder",
+  "name": "Long-Form Content Burst Builder",
+  "description": "Workflow for building researched books, guides, long-form HTML, PDFs, or visual reports through a designed index, section-scoped fresh-context agent bursts, image planning, master review, and rebuild loops.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "web-search",
+    "web-fetch",
+    "web-scrape",
+    "research-bucket-list",
+    "research-bucket-search",
+    "research-bucket-read",
+    "research-bucket-write",
+    "research-bucket-mkdir",
+    "image-generate",
+    "graph-diagram",
+    "document-workflow",
+    "code-sandbox",
+    "file-read",
+    "file-search",
+    "agent-delegate",
+    "skill-context"
+  ],
+  "triggerPatterns": [
+    "make a book",
+    "write a book",
+    "long form content",
+    "long-form content",
+    "researched html report",
+    "researched pdf",
+    "designed index",
+    "section agents",
+    "fresh context builders",
+    "agent burst",
+    "burst build",
+    "master review agent",
+    "rebuild sections",
+    "multi agent book",
+    "multi-agent long form",
+    "html book",
+    "pdf book"
+  ],
+  "chain": [
+    {
+      "step": "Lock the brief, delivery formats, audience, quality bar, research depth, image needs, and acceptance checks.",
+      "tool": null
+    },
+    {
+      "step": "Research current facts and source/image candidates, then store verified source notes and assets in the research bucket.",
+      "tool": "web-search"
+    },
+    {
+      "step": "Create a designed index with section promises, source needs, visual plan, output paths, and per-section acceptance checks.",
+      "tool": "document-workflow"
+    },
+    {
+      "step": "Create fresh section packets from the index and source bundle; each packet must be small, self-contained, and scoped to one section.",
+      "tool": "research-bucket-write"
+    },
+    {
+      "step": "Spawn bounded section-builder bursts with agent-delegate; each sub-agent receives only its section packet, allowed source paths, output path, and four-step build rubric.",
+      "tool": "agent-delegate"
+    },
+    {
+      "step": "Run master grep/review against the index, section files, citations, image plan, design tokens, and verification report.",
+      "tool": "file-search"
+    },
+    {
+      "step": "Send exact rebuild packets for failed sections and repeat burst review until blockers are cleared.",
+      "tool": "agent-delegate"
+    },
+    {
+      "step": "Assemble the final HTML/PDF suite, run rendered QA, and hand off source paths, artifacts, checks, and residual assumptions.",
+      "tool": "document-workflow"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 4200,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

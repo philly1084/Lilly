@@ -195,6 +195,22 @@ describe('ToolManager image tools', () => {
     ]));
   });
 
+  test('skill-context selects the long-form burst builder workflow', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+
+    const result = await toolManager.executeTool('skill-context', {
+      text: 'make a researched HTML and PDF book with images using fresh context builders, section agent bursts, a designed index, and master review rebuild passes',
+      limit: 3,
+    }, {});
+
+    expect(result.success).toBe(true);
+    expect(result.data.selectedSkills).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'long-form-content-burst-builder' }),
+    ]));
+    expect(result.data.context).toContain('Use immediate bounded `agent-delegate` bursts');
+  });
+
   test('registers remote operation skills with kubectl and k3s trigger coverage', async () => {
     const toolManager = new ToolManager();
     await toolManager.initialize();
