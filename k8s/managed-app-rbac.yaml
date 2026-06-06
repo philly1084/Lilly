@@ -14,10 +14,16 @@ rules:
     resources: ['namespaces']
     verbs: ['get', 'list', 'create']
   - apiGroups: ['']
-    resources: ['secrets', 'services']
+    resources: ['configmaps', 'secrets', 'services', 'serviceaccounts', 'persistentvolumeclaims']
     verbs: ['get', 'list', 'create', 'update', 'patch']
+  - apiGroups: ['']
+    resources: ['events', 'pods', 'pods/log']
+    verbs: ['get', 'list', 'watch']
   - apiGroups: ['apps']
-    resources: ['deployments']
+    resources: ['daemonsets', 'deployments', 'replicasets', 'statefulsets']
+    verbs: ['get', 'list', 'create', 'update', 'patch']
+  - apiGroups: ['batch']
+    resources: ['cronjobs', 'jobs']
     verbs: ['get', 'list', 'create', 'update', 'patch']
   - apiGroups: ['networking.k8s.io']
     resources: ['ingresses']
@@ -36,6 +42,42 @@ subjects:
     name: kimibuilt-managed-apps
     namespace: kimibuilt
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kimibuilt-remote-cli-agent
+  namespace: kimibuilt
+rules:
+  - apiGroups: ['']
+    resources: ['configmaps', 'secrets', 'services', 'serviceaccounts', 'persistentvolumeclaims']
+    verbs: ['get', 'list', 'create', 'update', 'patch']
+  - apiGroups: ['']
+    resources: ['events', 'pods', 'pods/log']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['apps']
+    resources: ['daemonsets', 'deployments', 'replicasets', 'statefulsets']
+    verbs: ['get', 'list', 'create', 'update', 'patch']
+  - apiGroups: ['batch']
+    resources: ['cronjobs', 'jobs']
+    verbs: ['get', 'list', 'create', 'update', 'patch']
+  - apiGroups: ['networking.k8s.io']
+    resources: ['ingresses']
+    verbs: ['get', 'list', 'create', 'update', 'patch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kimibuilt-remote-cli-agent
+  namespace: kimibuilt
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kimibuilt-remote-cli-agent
+subjects:
+  - kind: ServiceAccount
+    name: n8n-openai-cli-gateway
+    namespace: n8n-openai-gateway
+---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -47,11 +89,15 @@ spec:
       - apiGroups: ['']
         apiVersions: ['v1']
         operations: ['CREATE', 'UPDATE']
-        resources: ['namespaces', 'secrets', 'services']
+        resources: ['configmaps', 'namespaces', 'secrets', 'services', 'serviceaccounts', 'persistentvolumeclaims']
       - apiGroups: ['apps']
         apiVersions: ['v1']
         operations: ['CREATE', 'UPDATE']
-        resources: ['deployments']
+        resources: ['daemonsets', 'deployments', 'statefulsets']
+      - apiGroups: ['batch']
+        apiVersions: ['v1']
+        operations: ['CREATE', 'UPDATE']
+        resources: ['cronjobs', 'jobs']
       - apiGroups: ['networking.k8s.io']
         apiVersions: ['v1']
         operations: ['CREATE', 'UPDATE']
@@ -60,8 +106,8 @@ spec:
     - name: managedAppServiceAccount
       expression: 'request.userInfo.username == "system:serviceaccount:kimibuilt:kimibuilt-managed-apps"'
   validations:
-    - expression: 'request.resource.resource == "namespaces" ? object.metadata.name.startsWith("app-") : request.namespace.startsWith("app-")'
-      message: Managed app operations are limited to app-* namespaces.
+    - expression: 'request.resource.resource == "namespaces" ? object.metadata.name.startsWith("app-") : (request.namespace.startsWith("app-") || request.namespace == "kimibuilt")'
+      message: Managed app operations are limited to app-* namespaces and the kimibuilt control namespace.
     - expression: 'request.resource.resource != "namespaces" || (has(object.metadata.labels) && object.metadata.labels["kimibuilt.io/managed-app"] == "true")'
       message: Managed app namespaces must be labeled kimibuilt.io/managed-app=true.
 ---

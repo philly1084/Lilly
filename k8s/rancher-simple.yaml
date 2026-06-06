@@ -112,10 +112,16 @@ spec:
           volumeMounts:
             - name: backend-state
               mountPath: /home/kimibuilt/.kimibuilt
+            - name: kimibuilt-workspace
+              mountPath: /opt/kimibuilt
       volumes:
         - name: backend-state
           persistentVolumeClaim:
             claimName: backend-state
+        - name: kimibuilt-workspace
+          hostPath:
+            path: /opt/kimibuilt
+            type: Directory
 
 ---
 apiVersion: v1

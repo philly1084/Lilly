@@ -24,6 +24,7 @@ data:
   REMOTE_CLI_AGENT_TRANSPORT: "codex-agent"
   REMOTE_CLI_CODEX_AGENT_BASE_URL: "http://n8n-openai-cli-gateway.n8n-openai-gateway.svc.cluster.local"
   REMOTE_CLI_CODEX_AGENT_WORKSPACE_PATH: "/opt/kimibuilt"
+  CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS: "/opt/kimibuilt"
   REMOTE_CLI_CODEX_AGENT_MODEL: "gpt-5.5"
   REMOTE_CLI_CODEX_AGENT_APPROVAL_POLICY: "never"
   REMOTE_CLI_CODEX_AGENT_THREAD_SANDBOX: "workspace-write"
