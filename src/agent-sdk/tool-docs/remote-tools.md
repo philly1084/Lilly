@@ -70,6 +70,7 @@ Router implementation shape, as used by the `nuts` gateway:
 - `/api/codex-agent/run` validates bearer or API-key auth, validates `workspacePath` against `CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS`, starts `codex app-server --listen stdio://`, and starts a turn in that workspace.
 - `/api/codex-agent/runs/:runId/events` is the live communication channel. It streams `session_started`, `output`, and exactly one terminal event: `turn_completed`, `turn_failed`, `turn_cancelled`, or `turn_input_required`.
 - The returned `threadId` is the durable continuation handle for future Codex-agent turns. Preserve it as `threadId`/`REMOTE_CLI_SESSION_ID` instead of inventing a separate polling session.
+- In this lane, `localhost` and `127.0.0.1` are loopback inside the remote gateway runner, not the user's desktop and not the public app. Verify live remote work through the named public host, Kubernetes service DNS, or `kubectl` in the target namespace unless the task explicitly asks for a local dev-server check.
 - Approval and user-input prompts are denied and converted into `turn_input_required`, so the outer KimiBuilt agent can ask the user once and continue the same run/thread.
 
 Legacy MCP calls used by `remote-cli-agent` only:

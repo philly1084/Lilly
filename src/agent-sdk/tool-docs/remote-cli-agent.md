@@ -106,6 +106,7 @@ remoteCliTargets:
 Behavior:
 - The bearer key is used only by backend Node.js code. Do not expose it to browser JavaScript.
 - The Codex agent receives instructions to work inside `workspacePath`, emit proof markers, and avoid waiting forever on approval or user input.
+- The Codex-agent process runs inside the remote gateway/container. `localhost` and `127.0.0.1` mean that runner container only; they are not the user's desktop, the KimiBuilt backend pod, or proof of the public remote app. For live verification, use the public URL, Kubernetes service DNS, or `kubectl` in the target namespace unless the user explicitly asks for a local dev-server check.
 - The backend stores returned session/thread metadata in the conversation control state and records project facts in the cluster continuity registry, so follow-up requests can continue the same remote workbench session when the task matches the same repo/workspace/deployment/domain.
 - The continuity registry is shared across the remote tool family and captures repo, workspace, deployment, ingress/public host, commit, changed files, verification markers, UI check artifacts, and recent activity when tools return those markers.
 - Treat registry facts as candidate context. Match by explicit repo, workspace, deployment, namespace, domain, or target before editing, and inspect first when the user names a different project.

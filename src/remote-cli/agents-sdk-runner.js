@@ -1218,6 +1218,8 @@ function buildCodexAgentPrompt({
     priorThreadId ? '- Keep that thread id as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.' : '- If a thread id is available during the run, treat it as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.',
     adminMode ? '- Admin runner mode was requested. Keep privilege use scoped to the task and stop on repeated blocked commands.' : '',
     '- Work in the current workspace. Do not ask for SSH details unless the task explicitly needs a separate server not represented by this workspace.',
+    '- You are executing inside the remote Codex-agent gateway/container, not on the user desktop. Treat localhost and 127.0.0.1 as this runner container only; they are not the public app, the user local server, or proof of the live remote site.',
+    '- For live remote verification, prefer the explicit public URL, Kubernetes service DNS, or kubectl in the target namespace. Use localhost only when the user explicitly asks for a local dev-server check or when you clearly label it as runner-local diagnostics.',
     '- Inspect before editing, keep changes scoped, and verify the exact requested path.',
     '- For long work, emit concise milestone messages as normal assistant output before or after major phases such as inspect, edit, build/test, deploy, and verify. These messages are streamed through /events for the outer agent; do not wait silently until the final answer.',
     '- Do not call outer KimiBuilt tools from inside this run. Do not invent remote_code_run, remote_code_status, command, shell, executable, or args payloads here; use the workspace tools available to this Codex process.',
