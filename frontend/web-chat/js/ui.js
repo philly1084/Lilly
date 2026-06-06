@@ -19,7 +19,7 @@ const WEB_CHAT_SHARED_THEMES = window.KimiBuiltThemePresets || {};
 const WEB_CHAT_THEME_PRESET_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.preset || 'kimibuilt_theme_preset';
 const WEB_CHAT_THEME_MODE_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.mode || 'kimibuilt_theme';
 const WEB_CHAT_LONG_AGENT_DEFAULT_KEY = 'kimibuilt_long_agent_default_enabled';
-const WEB_CHAT_SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
+const WEB_CHAT_SYNTHETIC_REASONING_TITLE = 'Live progress';
 const WEB_CHAT_ESTIMATED_REASONING_STEPS = Object.freeze([
     'Getting oriented',
     'Choosing the next move',
@@ -3387,6 +3387,9 @@ class UIHelpers {
         const rawTitle = this.extractDisplayText(value);
         const cleanedTitle = rawTitle
             .replace(/\s*\[truncated\s+\d+\s+chars\]\s*$/i, '')
+            .replace(/^(?:output|stdout|stderr|result|response|message|detail|summary|label|manual\s+label|step)\s*:\s*/i, '')
+            .replace(/`([^`]{1,120})`/g, '$1')
+            .replace(/\s+([,.;:!?])/g, '$1')
             .trim();
         return this.extractDisplayText(cleanedTitle || rawTitle || fallback, {
             maxLength: 180,
@@ -3421,6 +3424,107 @@ class UIHelpers {
     getEstimatedReasoningStepTitle(index = 0) {
         const labels = WEB_CHAT_ESTIMATED_REASONING_STEPS;
         return labels[index % labels.length] || `Step ${index + 1}`;
+    }
+
+    isAssistantProgressCountLine(value = '') {
+        const text = this.extractDisplayText(value).trim();
+        return /^\d+\s*\/\s*\d+\s+steps?\s+complete$/i.test(text)
+            || /^steps?\s+\d+\s*(?:of|\/)\s*\d+$/i.test(text)
+            || /^progress\s+\d+\s*(?:of|\/)\s*\d+$/i.test(text);
+    }
+
+    cleanAssistantProgressLine(value = '', options = {}) {
+        const maxLength = Number.isFinite(Number(options.maxLength)) && Number(options.maxLength) > 0
+            ? Number(options.maxLength)
+            : 220;
+        const rawText = this.extractDisplayText(value, { maxLength: 0 })
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!rawText) {
+            return '';
+        }
+
+        const withoutPrefix = rawText
+            .replace(/^\s*(?:output|stdout|stderr|result|response|message|detail|summary|label|manual\s+label|step)\s*:\s*/i, '')
+            .replace(/^["'“”]+|["'“”]+$/g, '')
+            .replace(/`([^`]{1,120})`/g, '$1')
+            .replace(/\s+([,.;:!?])/g, '$1')
+            .replace(/([.!?]){2,}$/g, '$1')
+            .trim();
+        const humanized = this.humanizeAssistantProgressStepTitle(withoutPrefix) || withoutPrefix;
+        const clipped = this.extractDisplayText(humanized, {
+            maxLength,
+            preferSentenceBoundary: true,
+            truncationSuffix: '',
+        }).trim();
+        if (!clipped) {
+            return '';
+        }
+
+        return /[.!?]$/.test(clipped) ? clipped : `${clipped}.`;
+    }
+
+    shouldShowAssistantProgressSteps(rawProgress = null, steps = [], context = {}) {
+        if (!rawProgress || typeof rawProgress !== 'object') {
+            return false;
+        }
+
+        if (rawProgress.showSteps === true || rawProgress.displayMode === 'steps') {
+            return true;
+        }
+        if (rawProgress.showSteps === false || rawProgress.displayMode === 'line') {
+            return false;
+        }
+
+        const explicitStepCount = Number(context.explicitStepCount) || 0;
+        if (explicitStepCount < 2 || rawProgress.estimated !== false) {
+            return false;
+        }
+
+        const source = this.extractDisplayText(rawProgress.source, { maxLength: 80 }).toLowerCase();
+        const combined = [
+            source,
+            rawProgress.phase,
+            rawProgress.detail,
+            rawProgress.summary,
+            ...steps.map((step) => step?.title || ''),
+        ]
+            .map((item) => this.extractDisplayText(item, { maxLength: 160 }).toLowerCase())
+            .filter(Boolean)
+            .join(' ');
+        const hasPlanSource = /\b(?:tool-plan|project-plan|workflow|build-plan|managed-app)\b/.test(source);
+        const hasBuildLanguage = /\b(?:build|building|deploy|deployment|release|sandbox|site|website|frontend|app|implementation|gitlab|image|k3s|verify public|public endpoint)\b/.test(combined);
+
+        return hasPlanSource && hasBuildLanguage;
+    }
+
+    buildAssistantProgressLine(context = {}) {
+        const steps = Array.isArray(context.steps) ? context.steps : [];
+        const activeStepIndex = Number.isFinite(Number(context.activeStepIndex))
+            ? Number(context.activeStepIndex)
+            : -1;
+        const activeStep = activeStepIndex >= 0 ? steps[activeStepIndex] : null;
+        const candidates = [
+            context.detail,
+            context.progressReasoningSummary,
+            context.latestToolEventDetail,
+            context.summary,
+            activeStep?.title,
+            context.phaseMeta?.detail,
+            'Working through the next step.',
+        ];
+
+        for (const candidate of candidates) {
+            if (!candidate || this.isAssistantProgressCountLine(candidate)) {
+                continue;
+            }
+            const cleaned = this.cleanAssistantProgressLine(candidate);
+            if (cleaned && !this.isAssistantProgressCountLine(cleaned)) {
+                return cleaned;
+            }
+        }
+
+        return 'Working through the next step.';
     }
 
     isRemoteCliProgressState(rawProgress = null) {
@@ -3536,7 +3640,8 @@ class UIHelpers {
             return null;
         }
 
-        let steps = (Array.isArray(rawProgress.steps) ? rawProgress.steps : [])
+        const rawSteps = Array.isArray(rawProgress.steps) ? rawProgress.steps : [];
+        let steps = rawSteps
             .map((step, index) => {
                 const title = this.normalizeAssistantProgressStepTitle(
                     step?.title
@@ -3562,6 +3667,7 @@ class UIHelpers {
                 };
             })
             .filter(Boolean);
+        const explicitStepCount = steps.length;
         if (steps.length < 2) {
             steps = this.buildFallbackAssistantProgressSteps(rawProgress);
         }
@@ -3650,6 +3756,17 @@ class UIHelpers {
             || this.extractDisplayText(progressReasoningSummary, { maxLength: 160 })
             || this.extractDisplayText(latestToolEventDetail, { maxLength: 160 })
             || `${completedSteps}/${totalSteps} steps complete`;
+        const phaseMeta = this.getLivePhaseMeta(phase);
+        const showSteps = this.shouldShowAssistantProgressSteps(rawProgress, steps, { explicitStepCount });
+        const line = this.buildAssistantProgressLine({
+            steps,
+            activeStepIndex,
+            detail,
+            summary,
+            progressReasoningSummary,
+            latestToolEventDetail,
+            phaseMeta,
+        });
         const progressUnits = Math.min(totalSteps, completedSteps + (activeStepIndex >= 0 && completedSteps < totalSteps ? 0.45 : 0));
         const percent = totalSteps > 0
             ? Math.max(8, Math.min(100, Math.round((progressUnits / totalSteps) * 100)))
@@ -3659,6 +3776,8 @@ class UIHelpers {
             phase,
             detail,
             estimated,
+            line,
+            showSteps,
             summary,
             totalSteps,
             completedSteps,
@@ -3809,9 +3928,11 @@ class UIHelpers {
 
         const reasoningState = this.getMessageReasoningDisplayState(message, isStreaming);
         const phaseMeta = this.getLivePhaseMeta(progressState.phase || message?.liveState?.phase || 'thinking');
+        const useGeneratedReasoning = reasoningState?.source === 'generated';
         const reasoningText = this.extractDisplayText(
-            reasoningState?.bodyText
-            || reasoningState?.previewText
+            (!useGeneratedReasoning ? reasoningState?.bodyText : '')
+            || (!useGeneratedReasoning ? reasoningState?.previewText : '')
+            || progressState.line
             || progressState.detail
             || message?.liveState?.detail
             || phaseMeta.detail
@@ -3820,10 +3941,10 @@ class UIHelpers {
         );
         const reasoningIcon = reasoningState?.icon || phaseMeta.icon || 'brain';
         const reasoningAnimated = reasoningState?.animated === true && isStreaming;
-        const reasoningEyebrow = reasoningState?.source === 'generated'
+        const reasoningEyebrow = useGeneratedReasoning
             ? WEB_CHAT_SYNTHETIC_REASONING_TITLE
-            : 'Live reasoning';
-        const stepsHtml = progressState.steps.map((step, index) => {
+            : 'Live progress';
+        const stepsHtml = progressState.showSteps ? progressState.steps.map((step, index) => {
             const isActive = index === progressState.activeStepIndex;
             const stateLabel = ({
                 completed: 'Done',
@@ -3840,7 +3961,10 @@ class UIHelpers {
                     <span class="assistant-progress-card__step-state sr-only">${this.escapeHtml(stateLabel)}</span>
                 </li>
             `;
-        }).join('');
+        }).join('') : '';
+        const stepsMarkup = progressState.showSteps
+            ? `<ol class="assistant-progress-card__steps">${stepsHtml}</ol>`
+            : '';
 
         return `
             <div class="assistant-progress-card assistant-progress-card--reasoning${isStreaming ? ' is-live' : ''}">
@@ -3854,7 +3978,7 @@ class UIHelpers {
                             <span class="assistant-progress-card__summary">${this.escapeHtml(reasoningText)}${reasoningAnimated ? '<span class="streaming-cursor" aria-hidden="true"></span>' : ''}</span>
                         </span>
                     </div>
-                    <ol class="assistant-progress-card__steps">${stepsHtml}</ol>
+                    ${stepsMarkup}
                 </div>
             </div>
         `;

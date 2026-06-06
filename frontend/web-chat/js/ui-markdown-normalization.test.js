@@ -545,7 +545,7 @@ Options I ruled out:
         expect(html).toContain('data-option-id="screenshots"');
     });
 
-    test('renders progress as one live reasoning block with completed task styling', () => {
+    test('renders ordinary progress as one clean live status line', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const html = helper.buildAssistantRenderPlan({
             role: 'assistant',
@@ -569,11 +569,11 @@ Options I ruled out:
             },
         }, true).html;
 
-        expect(html).toContain('Live reasoning (day dreaming answers)');
-        expect(html).toContain('Checking the next useful step.');
-        expect(html).toContain('assistant-progress-card__step--completed');
-        expect(html).toContain('assistant-progress-card__step--in_progress');
-        expect(html).toContain('Inspect the stream payload');
+        expect(html).toContain('Live progress');
+        expect(html).toContain('Running the task list.');
+        expect(html).not.toContain('assistant-progress-card__steps');
+        expect(html).not.toContain('assistant-progress-card__step--completed');
+        expect(html).not.toContain('Inspect the stream payload');
         expect(html).not.toContain('[object Object]');
         expect(html).not.toContain('assistant-reasoning-ribbon');
         expect(html).not.toContain('Snapshot');
@@ -592,7 +592,9 @@ Options I ruled out:
             reasoningDisplayIcon: 'sparkles',
             progressState: {
                 phase: 'planning',
-                detail: 'Planning the task list.',
+                detail: 'Building the requested feature.',
+                source: 'tool-plan',
+                estimated: false,
                 completedSteps: 1,
                 activeStepIndex: 1,
                 steps: [
@@ -624,7 +626,9 @@ Options I ruled out:
             reasoningDisplayIcon: 'sparkles',
             progressState: {
                 phase: 'executing',
-                detail: 'Running the task list.',
+                detail: 'Building the deployment update.',
+                source: 'tool-plan',
+                estimated: false,
                 completedSteps: 0,
                 activeStepIndex: 0,
                 steps: [
@@ -672,11 +676,37 @@ Options I ruled out:
         expect(state).toEqual(expect.objectContaining({
             detail: 'Remote CLI agent is still working (390s elapsed).',
             summary: 'Remote CLI agent is still working (390s elapsed).',
+            line: 'Remote CLI agent is still working (390s elapsed).',
+            showSteps: false,
         }));
         expect(html).toContain('Remote CLI agent is still working (390s elapsed).');
-        expect(html).toContain('Connecting to the remote runner');
-        expect(html).toContain('Bringing back verification');
+        expect(html).not.toContain('Connecting to the remote runner');
+        expect(html).not.toContain('Bringing back verification');
+        expect(html).not.toContain('assistant-progress-card__steps');
         expect(html).not.toContain('Working through the next step.');
+    });
+
+    test('cleans raw output labels from progress card status text', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAssistantRenderPlan({
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            progressState: {
+                phase: 'checking-tools',
+                detail: 'output: The public page is live and served as a single `index.html`; checking the fullscreen CSS.',
+                toolEvents: [{
+                    toolId: 'remote-cli-agent',
+                    stage: 'in_progress',
+                    detail: 'output: The public page is live and served as a single `index.html`; checking the fullscreen CSS.',
+                }],
+            },
+        }, true).html;
+
+        expect(html).toContain('The public page is live and served as a single index.html; checking the fullscreen CSS.');
+        expect(html).not.toContain('output:');
+        expect(html).not.toContain('`index.html`');
+        expect(html).not.toContain('assistant-progress-card__steps');
     });
 
     test('renders managed deployment progress as one card without raw remote SSE telemetry', () => {
@@ -778,7 +808,9 @@ Options I ruled out:
             reasoningDisplayIcon: 'sparkles',
             progressState: {
                 phase: 'executing',
-                detail: 'Writing the next document sections.',
+                detail: 'Building the next document sections.',
+                source: 'workflow',
+                estimated: false,
                 totalSteps: 5,
                 completedSteps: 4,
                 steps: [
@@ -816,7 +848,7 @@ Options I ruled out:
         }, true).html;
 
         expect(html).toContain('assistant-reasoning-ribbon__surface');
-        expect(html).toContain('Live reasoning (day dreaming answers)');
+        expect(html).toContain('Live progress');
         expect(html).toContain('Checking the next useful step.');
         expect(html).not.toContain('<details');
         expect(html).not.toContain('<summary');

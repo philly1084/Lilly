@@ -295,6 +295,10 @@ function isUnsafeRemoteCliTargetId(value = '') {
     return true;
   }
 
+  if (/[\\/]/.test(normalized)) {
+    return true;
+  }
+
   const sshStyleMatch = normalized.match(/^(?:[^@\s]+@)?(?<host>[a-z0-9.-]+\.[a-z]{2,}|(?:\d{1,3}\.){3}\d{1,3})(?::\d{2,5})?$/i);
   if (sshStyleMatch?.groups?.host) {
     return normalized.includes('@')

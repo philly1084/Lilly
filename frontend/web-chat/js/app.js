@@ -8,7 +8,7 @@ const AMBIENT_REASONING_ROTATE_MIN_MS = 20000;
 const AMBIENT_REASONING_ROTATE_MAX_MS = 30000;
 const AMBIENT_REASONING_TYPE_TICK_MS = 120;
 const REAL_REASONING_DISPLAY_HOLD_MS = 40000;
-const SYNTHETIC_REASONING_TITLE = 'Live reasoning (day dreaming answers)';
+const SYNTHETIC_REASONING_TITLE = 'Live progress';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
 const MANAGED_APP_PROGRESS_RENDER_BUFFER_MS = 1200;
@@ -408,14 +408,6 @@ function shuffleArray(items = []) {
 }
 
 function buildAmbientReasoningLines() {
-    const starts = shuffleArray(AMBIENT_REASONING_STARTS);
-    const endings = shuffleArray(AMBIENT_REASONING_ENDINGS);
-    if (starts.length > 0 && endings.length > 0) {
-        return starts.map((start, index) => (
-            `${start} ${endings[index % endings.length]}.`
-        ));
-    }
-
     return shuffleArray(AMBIENT_REASONING_LINES);
 }
 
@@ -461,6 +453,23 @@ function extractChatReasoningText(value = null) {
     }
 
     return extractChatDisplayText(value);
+}
+
+function cleanChatStatusText(value = null, options = {}) {
+    const text = extractChatDisplayText(value, options)
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!text) {
+        return '';
+    }
+
+    return text
+        .replace(/^\s*(?:output|stdout|stderr|result|response|message|detail|summary|label|manual\s+label|step)\s*:\s*/i, '')
+        .replace(/^["'“”]+|["'“”]+$/g, '')
+        .replace(/`([^`]{1,120})`/g, '$1')
+        .replace(/\s+([,.;:!?])/g, '$1')
+        .replace(/([.!?]){2,}$/g, '$1')
+        .trim();
 }
 
 function extractChatStreamText(value = null) {
@@ -10482,7 +10491,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
             ? chunk.progress
             : {};
         const phase = extractChatDisplayText(progress.phase || chunk.phase || '', { maxLength: 80 }) || 'thinking';
-        const detail = extractChatDisplayText(progress.detail || chunk.detail || '', { maxLength: 240 });
+        const detail = cleanChatStatusText(progress.detail || chunk.detail || '', { maxLength: 240 });
 
         this.updateLiveResponsePhase(phase, detail);
         this.updateStreamingMessageState({
@@ -10530,7 +10539,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
     }
 
     handleToolEvent(chunk = {}) {
-        const detail = extractChatDisplayText(chunk.detail, { maxLength: 220 }) || 'Checking tool results';
+        const detail = cleanChatStatusText(chunk.detail, { maxLength: 220 }) || 'Checking tool results';
         this.updateLiveResponsePhase('checking-tools', detail);
 
         const sessionId = this.getStreamingMessageSessionId();

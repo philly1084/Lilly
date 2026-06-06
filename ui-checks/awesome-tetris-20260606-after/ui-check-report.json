@@ -1,0 +1,173 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "https://awesome.demoserver2.buzz/",
+  "originalUrl": "https://awesome.demoserver2.buzz/",
+  "authenticated": false,
+  "generatedAt": "2026-06-06T18:04:53.915Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\awesome-tetris-20260606-after\\orbit-tetris-desktop.png",
+      "metrics": {
+        "title": "Orbit Tetris",
+        "url": "https://awesome.demoserver2.buzz/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "i",
+            "id": "",
+            "className": "orbit-comet",
+            "text": "",
+            "left": -79,
+            "right": 93,
+            "width": 172
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "orbit-comet",
+            "text": "",
+            "left": 1347,
+            "right": 1519,
+            "width": 172
+          },
+          {
+            "tag": "i",
+            "id": "",
+            "className": "orbit-comet",
+            "text": "",
+            "left": -316,
+            "right": -144,
+            "width": 172
+          }
+        ],
+        "bodyTextLength": 326,
+        "bodyTextPreview": "SCORE 0 LEVEL 1 LINES 0 BEST 0 Orbit Tetris Stack clean. Clear bright. Start Start Pause Restart Sound On NEXT HOLD CONTROLS Move: arrows or A/D Rotate: Up or W Soft drop: Down or S, silent Hard drop: Space Hold: C or Shift Pause: P or Esc Classic Nebula Arcade Sunset Ocean Ice Level Up Classic Nebula Arcade Sunset Ocean Ice",
+        "headings": [
+          "Orbit Tetris"
+        ],
+        "interactiveControls": 23,
+        "textContrast": {
+          "checked": 36,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\awesome-tetris-20260606-after\\orbit-tetris-mobile.png",
+      "metrics": {
+        "title": "Orbit Tetris",
+        "url": "https://awesome.demoserver2.buzz/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [
+          {
+            "tag": "div",
+            "id": "",
+            "className": "",
+            "text": "Orbit Tetris Stack clean. Clear bright. Start",
+            "left": 81,
+            "right": 411,
+            "width": 330
+          },
+          {
+            "tag": "h1",
+            "id": "",
+            "className": "",
+            "text": "Orbit Tetris",
+            "left": 81,
+            "right": 411,
+            "width": 330
+          },
+          {
+            "tag": "p",
+            "id": "overlayText",
+            "className": "",
+            "text": "Stack clean. Clear bright.",
+            "left": 81,
+            "right": 411,
+            "width": 330
+          }
+        ],
+        "bodyTextLength": 225,
+        "bodyTextPreview": "SCORE 0 LEVEL 1 LINES 0 BEST 0 Orbit Tetris Stack clean. Clear bright. Start Start Pause Restart Sound On Left Rotate Right Hold Down Drop Classic Nebula Arcade Sunset Ocean Ice Level Up Classic Nebula Arcade Sunset Ocean Ice",
+        "headings": [
+          "Orbit Tetris"
+        ],
+        "interactiveControls": 23,
+        "textContrast": {
+          "checked": 33,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\awesome-tetris-20260606-after\\orbit-tetris-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\awesome-tetris-20260606-after\\orbit-tetris-mobile.png"
+    ],
+    "issues": []
+  }
+}

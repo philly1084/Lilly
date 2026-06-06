@@ -1,0 +1,326 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:4179/web-chat/app.html",
+  "originalUrl": "http://127.0.0.1:4179/web-chat/app.html",
+  "authenticated": false,
+  "generatedAt": "2026-06-06T18:06:11.808Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\progress-card-cleanup\\lilly-workspace-desktop.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://127.0.0.1:4179/web-chat/app.html",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 932,
+        "bodyTextPreview": "Skip to main content AI WORKSPACE Lilly Chat-first interface with sessions, files, exports, and agent workloads close at hand. New Chat No conversations yet Start a new chat to begin WORKSPACE Import Export Search Files Focus Mode APPEARANCE Paper Theme Lilly LIVE CHAT No active session Offline Auto STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them. Live streaming Sear",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 193,
+        "textContrast": {
+          "checked": 80,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://127.0.0.1:4179/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load synced web-chat preferences: Error: HTTP 404\n    at SessionManager.loadUserPreferences (http://127.0.0.1:4179/web-chat/js/session.js?v=20260510b:650:23)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load backend sessions, using local cache: Error: HTTP 404\n    at SessionManager.loadSessions (http://127.0.0.1:4179/web-chat/js/session.js?v=20260510b:1082:23)\n    at async ChatApp.loadSessions (http://127.0.0.1:4179/web-chat/js/app.js?v=20260531a:2339:13)\n    at async ChatApp.init (http://127.0.0.1:4179/web-chat/js/app.js?v=20260531a:768:9)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/api/tts/voices' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/live' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/v1/models' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Fetch fallback failed: TypeError: Failed to fetch\n    at OpenAIAPIClient.getModels (http://127.0.0.1:4179/web-chat/js/api.js?v=20260531a:1832:40)\n    at UIHelpers.loadModels (http://127.0.0.1:4179/web-chat/js/ui.js?v=20260523a:6088:46)\n    at ChatApp.init (http://127.0.0.1:4179/web-chat/js/app.js?v=20260531a:762:19)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/live' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 501 (Unsupported method ('PUT'))"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to save synced web-chat preferences: Error: HTTP 501\n    at SessionManager.flushUserPreferencePatch (http://127.0.0.1:4179/web-chat/js/session.js?v=20260510b:749:23)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/api/tts/voices",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/v1/models",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": false,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\progress-card-cleanup\\lilly-workspace-mobile.png",
+      "metrics": {
+        "title": "Lilly Workspace",
+        "url": "http://127.0.0.1:4179/web-chat/app.html",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 206,
+        "bodyTextPreview": "Skip to main content Lilly STREAMLINED CHAT WORKSPACE Ask, build, and ship from one conversation. Keep the thread central while models, files, exports, and agent workloads stay available when you need them.",
+        "headings": [
+          "Export Conversation",
+          "Import Conversation",
+          "Create Media",
+          "Model & behavior",
+          "Find in this conversation",
+          "Theme gallery",
+          "Core themes",
+          "Experimental textures",
+          "Lilly",
+          "Lilly",
+          "Agent Workloads",
+          "Ask, build, and ship from one conversation.",
+          "Chat actions",
+          "Create workload",
+          "Recurring schedule presets",
+          "File Manager"
+        ],
+        "interactiveControls": 193,
+        "textContrast": {
+          "checked": 13,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 1,
+          "broken": [
+            {
+              "src": "http://127.0.0.1:4179/web-chat/app.html",
+              "alt": "",
+              "complete": true,
+              "naturalWidth": 0,
+              "naturalHeight": 0,
+              "renderedWidth": 0,
+              "renderedHeight": 0
+            }
+          ],
+          "missingAltCount": 1
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load synced web-chat preferences: Error: HTTP 404\n    at SessionManager.loadUserPreferences (http://127.0.0.1:4179/web-chat/js/session.js?v=20260510b:650:23)"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (File not found)"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to load backend sessions, using local cache: Error: HTTP 404\n    at SessionManager.loadSessions (http://127.0.0.1:4179/web-chat/js/session.js?v=20260510b:1082:23)\n    at async ChatApp.loadSessions (http://127.0.0.1:4179/web-chat/js/app.js?v=20260531a:2339:13)\n    at async ChatApp.init (http://127.0.0.1:4179/web-chat/js/app.js?v=20260531a:768:9)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/api/tts/voices' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/live' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/v1/models' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "warning",
+          "text": "Fetch fallback failed: TypeError: Failed to fetch\n    at OpenAIAPIClient.getModels (http://127.0.0.1:4179/web-chat/js/api.js?v=20260531a:1832:40)\n    at UIHelpers.loadModels (http://127.0.0.1:4179/web-chat/js/ui.js?v=20260523a:6088:46)\n    at ChatApp.init (http://127.0.0.1:4179/web-chat/js/app.js?v=20260531a:762:19)"
+        },
+        {
+          "type": "error",
+          "text": "Access to fetch at 'http://localhost:3000/live' from origin 'http://127.0.0.1:4179' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 501 (Unsupported method ('PUT'))"
+        },
+        {
+          "type": "warning",
+          "text": "Failed to save synced web-chat preferences: Error: HTTP 501\n    at SessionManager.flushUserPreferencePatch (http://127.0.0.1:4179/web-chat/js/session.js?v=20260510b:749:23)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [
+        {
+          "url": "http://localhost:3000/api/tts/voices",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/v1/models",
+          "failure": "net::ERR_FAILED"
+        },
+        {
+          "url": "http://localhost:3000/live",
+          "failure": "net::ERR_FAILED"
+        }
+      ],
+      "issues": [
+        "cors-errors",
+        "failed-requests"
+      ]
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\progress-card-cleanup\\lilly-workspace-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\progress-card-cleanup\\lilly-workspace-mobile.png"
+    ],
+    "issues": [
+      "cors-errors",
+      "failed-requests"
+    ]
+  }
+}
