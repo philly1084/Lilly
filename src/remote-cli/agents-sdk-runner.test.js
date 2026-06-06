@@ -522,6 +522,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
         expect(body.workspacePath).toBe('/srv/apps/my-app');
         expect(body.prompt).toContain('Fix the remote app and verify it.');
         expect(body.prompt).toContain('/api/codex-agent/run');
+        expect(body.prompt).toContain('GET /api/codex-agent/runs/:runId/events streams progress');
+        expect(body.prompt).toContain('MCP remote_code_run/remote_code_status path is only a compatibility fallback');
+        expect(body.prompt).toContain('emit concise milestone messages');
+        expect(body.prompt).toContain('REMOTE_CLI_SESSION_ID');
         expect(body.config).toMatchObject({
           approvalPolicy: 'never',
           threadSandbox: 'workspace-write',

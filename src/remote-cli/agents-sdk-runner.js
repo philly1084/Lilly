@@ -1211,12 +1211,16 @@ function buildCodexAgentPrompt({
 } = {}) {
   return [
     'Codex-agent execution contract:',
-    '- You are running through the KimiBuilt /api/codex-agent/run gateway contract.',
+    '- You are running through the KimiBuilt /api/codex-agent/run gateway contract, which mirrors the router-side Codex app-server bridge: POST /api/codex-agent/run starts a turn and GET /api/codex-agent/runs/:runId/events streams progress.',
+    '- Treat this as the primary stateful remote-agent lane. The older MCP remote_code_run/remote_code_status path is only a compatibility fallback outside this Codex-agent run.',
     workspacePath ? `- Your process cwd is the checked-out workspace "${workspacePath}".` : '',
     priorThreadId ? `- Continue prior Codex thread "${priorThreadId}" when relevant.` : '',
+    priorThreadId ? '- Keep that thread id as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.' : '- If a thread id is available during the run, treat it as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.',
     adminMode ? '- Admin runner mode was requested. Keep privilege use scoped to the task and stop on repeated blocked commands.' : '',
     '- Work in the current workspace. Do not ask for SSH details unless the task explicitly needs a separate server not represented by this workspace.',
     '- Inspect before editing, keep changes scoped, and verify the exact requested path.',
+    '- For long work, emit concise milestone messages as normal assistant output before or after major phases such as inspect, edit, build/test, deploy, and verify. These messages are streamed through /events for the outer agent; do not wait silently until the final answer.',
+    '- Do not call outer KimiBuilt tools from inside this run. Do not invent remote_code_run, remote_code_status, command, shell, executable, or args payloads here; use the workspace tools available to this Codex process.',
     '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
     '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
     continuitySummary ? 'Remote project continuity context:' : '',

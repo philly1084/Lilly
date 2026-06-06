@@ -58,6 +58,13 @@ REMOTE_CLI_TOOL_AUTH_SCOPES=n8n,frontend,admin
 # Public gateway ingresses must route /api/codex-agent as well as /v1 and /mcp.
 ```
 
+Headless Codex operating model:
+
+- KimiBuilt's preferred remote CLI agent path is not a raw TTY automation. It uses the router's Codex app-server bridge: start a run with `POST /api/codex-agent/run`, then consume `GET /api/codex-agent/runs/:runId/events`.
+- This maps to the current Codex headless guidance better than driving the interactive TUI. One-shot automation can use `codex exec --json`, but multi-turn orchestration should keep a durable conversation handle. In this router contract, that handle is `threadId`.
+- The remote agent should emit short milestone messages during inspect/edit/build/deploy/verify phases so the outer web-chat stream has real progress. Do not leave the user with only a start card and final result.
+- Treat `turn_input_required` as a controlled pause: forward the concise decision to the user, then resume with the same `threadId` when possible.
+
 Codex-agent gateway contract:
 
 - `POST /api/codex-agent/run` with `{ workspacePath, prompt, continuation?, threadId?, config? }`.
