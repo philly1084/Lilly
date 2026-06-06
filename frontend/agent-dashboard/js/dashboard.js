@@ -57,6 +57,8 @@ class Dashboard {
         
         this.charts = {};
         this.storageSelection = new Set();
+        this.dirtyInputIds = new Set();
+        this.promptEditorDirty = false;
         this.piiDetectorDefinitions = [
             { id: 'email', label: 'Email' },
             { id: 'phone', label: 'Phone' },
@@ -262,7 +264,11 @@ class Dashboard {
         
         // Prompt editor input
         document.getElementById('promptEditor')?.addEventListener('input', (e) => {
+            this.promptEditorDirty = true;
             this.updatePromptEditor(e.target.value);
+        });
+        document.getElementById('promptName')?.addEventListener('input', () => {
+            this.promptEditorDirty = true;
         });
         
         // Test prompt modal
@@ -397,12 +403,15 @@ class Dashboard {
         });
 
         document.getElementById('agentNotesContent')?.addEventListener('input', () => {
+            this.markInputDirty('agentNotesContent');
             this.syncAgentNotesCharacterCount();
         });
         document.getElementById('soulContent')?.addEventListener('input', () => {
+            this.markInputDirty('soulContent');
             this.syncSoulCharacterCount();
         });
         document.getElementById('userProfileContent')?.addEventListener('input', () => {
+            this.markInputDirty('userProfileContent');
             this.syncUserProfileCharacterCount();
         });
 
@@ -1088,14 +1097,25 @@ class Dashboard {
     /**
      * Load prompts
      */
-    async loadPrompts() {
+    async loadPrompts({ preserveEditor = true } = {}) {
         try {
             const response = await apiClient.get('/api/admin/prompts');
             const prompts = this.unwrapApiPayload(response, []);
+            const selectedPromptId = this.state.selectedPrompt?.id || null;
             this.state.prompts = prompts;
             this.renderPromptList(prompts);
-            
-            if (prompts.length > 0 && !this.state.selectedPrompt) {
+
+            const refreshedSelection = selectedPromptId
+                ? prompts.find((prompt) => prompt.id === selectedPromptId)
+                : null;
+            if (refreshedSelection) {
+                if (!preserveEditor || !this.promptEditorDirty) {
+                    this.selectPrompt(refreshedSelection);
+                } else {
+                    this.state.selectedPrompt = refreshedSelection;
+                    this.updatePromptListActiveState(refreshedSelection.id);
+                }
+            } else if (prompts.length > 0 && !this.state.selectedPrompt) {
                 this.selectPrompt(prompts[0]);
             }
         } catch (error) {
@@ -1460,6 +1480,8 @@ class Dashboard {
             const actionCount = Array.isArray(payload.result?.actions) ? payload.result.actions.length : 0;
             this.showToast(`Applied ${actionCount || 1} self-reflection action${actionCount === 1 ? '' : 's'}`, 'success');
             await this.loadSelfReflectionUpdates({ force: true });
+            await this.loadSettings({ preserveDirty: true, background: true });
+            await this.loadPrompts({ preserveEditor: true });
         } catch (error) {
             this.showToast(error.userMessage || error.message || 'Failed to apply self-reflection suggestion', 'error');
         } finally {
@@ -1870,7 +1892,7 @@ class Dashboard {
     /**
      * Load settings
      */
-    async loadSettings() {
+    async loadSettings({ preserveDirty = true, background = false } = {}) {
         try {
             const [settingsResponse, podcastAudioResponse, storageResponse] = await Promise.allSettled([
                 apiClient.get('/api/admin/settings'),
@@ -1882,7 +1904,7 @@ class Dashboard {
                 const settings = this.unwrapApiPayload(settingsResponse.value, null);
                 if (settings) {
                     this.state.settings = settings;
-                    this.applySettings(settings);
+                    this.applySettings(settings, { preserveDirty });
                 }
             } else {
                 throw settingsResponse.reason;
@@ -1896,7 +1918,9 @@ class Dashboard {
                 this.renderStorageSettings(this.unwrapApiPayload(storageResponse.value, null));
             }
 
-            await this.loadAfterProcessAudits();
+            if (!background) {
+                await this.loadAfterProcessAudits();
+            }
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -2076,6 +2100,12 @@ class Dashboard {
             if (this.state.currentView === 'settings' && this.state.afterProcessAuditSupported !== false) {
                 await this.loadAfterProcessAudits();
             }
+            if (this.state.currentView === 'settings') {
+                await this.loadSettings({ preserveDirty: true, background: true });
+            }
+            if (this.state.currentView === 'prompts') {
+                await this.loadPrompts({ preserveEditor: true });
+            }
             if (this.state.currentView === 'skills') {
                 await this.loadSkills();
             }
@@ -2174,9 +2204,20 @@ class Dashboard {
             <div class="prompt-item ${this.state.selectedPrompt?.id === prompt.id ? 'active' : ''}" 
                  data-id="${prompt.id}" onclick="dashboard.selectPromptById('${prompt.id}')">
                 <span class="prompt-item-name">${this.escapeHtml(prompt.name)}</span>
-                <span class="prompt-item-meta">${this.escapeHtml(prompt.assignment || prompt.category || 'runtime slot')}</span>
+                <span class="prompt-item-meta">${this.escapeHtml(this.formatPromptSurfaceMeta(prompt))}</span>
             </div>
         `).join('');
+    }
+
+    formatPromptSurfaceMeta(prompt = {}) {
+        const assignment = prompt.assignment || prompt.category || 'runtime slot';
+        if (prompt.inventoryOnly) {
+            return `${assignment} | request-time inventory`;
+        }
+        if (prompt.dynamic && prompt.source) {
+            return `${assignment} | ${prompt.source === 'default' ? 'default template' : 'live file'}`;
+        }
+        return assignment;
     }
     
     /**
@@ -2797,6 +2838,7 @@ class Dashboard {
     
     selectPrompt(prompt) {
         this.state.selectedPrompt = prompt;
+        this.promptEditorDirty = false;
         
         const promptNameInput = document.getElementById('promptName');
         const promptEditor = document.getElementById('promptEditor');
@@ -2826,8 +2868,12 @@ class Dashboard {
         }
         
         // Update active state in list
+        this.updatePromptListActiveState(prompt.id);
+    }
+
+    updatePromptListActiveState(id) {
         document.querySelectorAll('.prompt-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.id === prompt.id);
+            item.classList.toggle('active', item.dataset.id === id);
         });
     }
     
@@ -5456,7 +5502,8 @@ class Dashboard {
             };
 
             const response = await apiClient.put('/api/admin/settings', settings);
-            this.applySettings(this.unwrapApiPayload(response, settings));
+            this.clearDurablePromptDirtyState();
+            this.applySettings(this.unwrapApiPayload(response, settings), { preserveDirty: false });
             this.showToast('Settings saved', 'success');
         } catch (error) {
             console.error('Error saving general settings:', error);
@@ -5845,7 +5892,8 @@ class Dashboard {
             const response = await apiClient.post('/api/admin/settings/reset', {
                 section: 'personality',
             });
-            this.applySettings(this.unwrapApiPayload(response, this.state.settings));
+            this.dirtyInputIds.delete('soulContent');
+            this.applySettings(this.unwrapApiPayload(response, this.state.settings), { preserveDirty: false });
             this.showToast('soul.md reset to default', 'success');
         } catch (error) {
             console.error('Error resetting soul.md:', error);
@@ -5862,7 +5910,8 @@ class Dashboard {
             const response = await apiClient.post('/api/admin/settings/reset', {
                 section: 'userProfile',
             });
-            this.applySettings(this.unwrapApiPayload(response, this.state.settings));
+            this.dirtyInputIds.delete('userProfileContent');
+            this.applySettings(this.unwrapApiPayload(response, this.state.settings), { preserveDirty: false });
             this.showToast('user.md reset to default', 'success');
         } catch (error) {
             console.error('Error resetting user.md:', error);
@@ -5879,7 +5928,8 @@ class Dashboard {
             const response = await apiClient.post('/api/admin/settings/reset', {
                 section: 'agentNotes',
             });
-            this.applySettings(this.unwrapApiPayload(response, this.state.settings));
+            this.dirtyInputIds.delete('agentNotesContent');
+            this.applySettings(this.unwrapApiPayload(response, this.state.settings), { preserveDirty: false });
             this.showToast('agent-notes.md reset to default', 'success');
         } catch (error) {
             console.error('Error resetting agent-notes.md:', error);
@@ -6193,7 +6243,7 @@ class Dashboard {
         select.value = models.includes(currentValue) || currentValue === 'all' ? currentValue : 'all';
     }
 
-    applySettings(settings = {}) {
+    applySettings(settings = {}, { preserveDirty = false } = {}) {
         this.state.settings = settings;
 
         const general = settings.general || {};
@@ -6230,7 +6280,7 @@ class Dashboard {
         this.setCheckboxValue('clearSshPassword', false);
         this.setCheckboxValue('personalityEnabled', personality.enabled !== false);
         this.setInputValue('personalityName', personality.displayName || 'Agent Soul');
-        this.setInputValue('soulContent', personality.content || '');
+        this.setInputValue('soulContent', personality.content || '', { preserveDirty });
         this.setInputValue(
             'personalityUpdatedAt',
             personality.updatedAt ? this.formatDate(personality.updatedAt) : 'Default content',
@@ -6247,7 +6297,7 @@ class Dashboard {
 
         this.setCheckboxValue('userProfileEnabled', userProfile.enabled !== false);
         this.setInputValue('userProfileName', userProfile.displayName || 'User Profile');
-        this.setInputValue('userProfileContent', userProfile.content || '');
+        this.setInputValue('userProfileContent', userProfile.content || '', { preserveDirty });
         this.setInputValue(
             'userProfileUpdatedAt',
             userProfile.updatedAt ? this.formatDate(userProfile.updatedAt) : 'Default content',
@@ -6264,7 +6314,7 @@ class Dashboard {
 
         this.setCheckboxValue('agentNotesEnabled', agentNotes.enabled !== false);
         this.setInputValue('agentNotesName', agentNotes.displayName || 'Carryover Notes');
-        this.setInputValue('agentNotesContent', agentNotes.content || '');
+        this.setInputValue('agentNotesContent', agentNotes.content || '', { preserveDirty });
         this.setInputValue(
             'agentNotesUpdatedAt',
             agentNotes.updatedAt ? this.formatDate(agentNotes.updatedAt) : 'Default content',
@@ -6363,21 +6413,50 @@ class Dashboard {
         element.textContent = label;
     }
 
-    setInputValue(id, value) {
+    setInputValue(id, value, { preserveDirty = false } = {}) {
         const element = document.getElementById(id);
         if (!element || value === undefined || value === null) return;
+        const nextValue = String(value);
+
+        if (preserveDirty && this.isInputDirty(id)) {
+            return false;
+        }
 
         if (element.tagName === 'SELECT') {
-            const exists = Array.from(element.options).some((option) => option.value === String(value));
+            const exists = Array.from(element.options).some((option) => option.value === nextValue);
             if (!exists) {
                 const option = document.createElement('option');
-                option.value = String(value);
-                option.textContent = String(value);
+                option.value = nextValue;
+                option.textContent = nextValue;
                 element.appendChild(option);
             }
         }
 
-        element.value = String(value);
+        element.value = nextValue;
+        element.dataset.lastAppliedValue = nextValue;
+        this.dirtyInputIds?.delete(id);
+        return true;
+    }
+
+    markInputDirty(id) {
+        const element = document.getElementById(id);
+        if (!element) return;
+        const lastApplied = element.dataset.lastAppliedValue;
+        if (lastApplied === undefined || element.value !== lastApplied) {
+            this.dirtyInputIds.add(id);
+        } else {
+            this.dirtyInputIds.delete(id);
+        }
+    }
+
+    isInputDirty(id) {
+        return this.dirtyInputIds?.has(id) === true;
+    }
+
+    clearDurablePromptDirtyState() {
+        ['soulContent', 'userProfileContent', 'agentNotesContent'].forEach((id) => {
+            this.dirtyInputIds.delete(id);
+        });
     }
 
     setCheckboxValue(id, value) {

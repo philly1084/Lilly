@@ -168,7 +168,7 @@ function resetAgentNotesFile() {
 function buildAgentNotesInstructions(settings = {}) {
     const effective = getEffectiveAgentNotesConfig(settings);
 
-    if (!effective.enabled) {
+    if (!effective.enabled || effective.source === 'default') {
         return '';
     }
 

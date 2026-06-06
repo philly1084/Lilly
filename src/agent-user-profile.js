@@ -147,7 +147,7 @@ function resetUserProfileFile() {
 function buildUserProfileInstructions(settings = {}) {
     const effective = getEffectiveUserProfileConfig(settings);
 
-    if (!effective.enabled) {
+    if (!effective.enabled || effective.source === 'default') {
         return '';
     }
 

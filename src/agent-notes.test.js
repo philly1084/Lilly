@@ -66,4 +66,14 @@ describe('agent notes helpers', () => {
     expect(instructions).toContain('do not write filler');
     expect(instructions).toContain('- Remember the roadmap naming.');
   });
+
+  test('does not inject the default carryover template as learned runtime memory', () => {
+    const instructions = agentNotes.buildAgentNotesInstructions({
+      enabled: true,
+      displayName: 'Carryover Notes',
+    });
+
+    expect(agentNotes.getEffectiveAgentNotesConfig().source).toBe('default');
+    expect(instructions).toBe('');
+  });
 });
