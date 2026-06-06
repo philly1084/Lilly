@@ -89,6 +89,17 @@ function shouldSuppressUploadedArtifactPreview(req, artifact = {}) {
         return false;
     }
 
+    const piiMetadata = artifact?.metadata?.piiCleansing && typeof artifact.metadata.piiCleansing === 'object'
+        ? artifact.metadata.piiCleansing
+        : null;
+    if (
+        artifact?.metadata?.privacyPreviewSuppressed === true
+        || piiMetadata?.enabled === true
+        || piiMetadata?.uploadPreviewSuppressed === true
+    ) {
+        return true;
+    }
+
     try {
         return resolvePiiPolicy({
             metadata: {
@@ -344,7 +355,65 @@ const generationSchema = {
     reasoningEffort: { required: false, type: 'string' },
     executionProfile: { required: false, type: 'string' },
     memoryKeywords: { required: false, type: 'array' },
+    asyncRuntime: { required: false, type: 'boolean' },
+    asyncRuntimePreferred: { required: false, type: 'boolean' },
+    idempotencyKey: { required: false, type: 'string' },
 };
+
+function shouldQueueArtifactAsyncGeneration(body = {}) {
+    return body?.asyncRuntime === true
+        || body?.asyncRuntimePreferred === true
+        || String(body?.executionProfile || '').trim().toLowerCase() === 'async-runtime';
+}
+
+async function maybeQueueArtifactAsyncGeneration(req, {
+    session = null,
+    sessionId = '',
+    ownerId = '',
+    mode = '',
+    prompt = '',
+    format = '',
+    model = null,
+    reasoningEffort = null,
+    executionProfile = 'default',
+    memoryKeywords = [],
+} = {}) {
+    if (!shouldQueueArtifactAsyncGeneration(req.body || {})) {
+        return null;
+    }
+
+    const asyncService = req.app.locals.asyncLabService;
+    if (!asyncService?.isEnabled?.() || !asyncService?.createRun) {
+        return null;
+    }
+
+    const normalizedSessionId = String(sessionId || session?.id || '').trim();
+    const normalizedFormat = String(format || 'html').trim().toLowerCase() || 'html';
+    return asyncService.createRun({
+        adapter: 'document-workflow',
+        task: prompt,
+        targetKey: `artifact:${normalizedSessionId || 'session'}:${normalizedFormat}`,
+        sessionId: normalizedSessionId,
+        idempotencyKey: String(req.body?.idempotencyKey || req.body?.idempotency_key || '').trim(),
+        requireGeneratedIdempotency: true,
+        metadata: {
+            source: 'artifact-generate',
+            artifactMode: mode,
+            outputFormat: normalizedFormat,
+            executionProfile,
+            memoryKeywords,
+            toolParams: {
+                action: 'generate',
+                prompt,
+                format: normalizedFormat,
+                model,
+                reasoningEffort,
+                buildMode: normalizedFormat === 'html' ? 'sandbox' : 'document',
+                includeContent: false,
+            },
+        },
+    }, ownerId);
+}
 
 function buildPreviewContentBuffer(artifactId, file, previewAccessToken = '') {
     const filePath = String(file?.path || '').trim();
@@ -487,6 +556,147 @@ function buildManagedAppNameFromArtifact(artifact = {}, fallback = 'Website Arti
         .slice(0, 80) || fallback;
 }
 
+function normalizeDomainHost(value = '') {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) {
+        return '';
+    }
+
+    let candidate = raw;
+    try {
+        const parsed = new URL(/^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`);
+        candidate = parsed.hostname;
+    } catch (_error) {
+        candidate = candidate
+            .replace(/^https?:\/\//i, '')
+            .split(/[/?#]/)[0];
+    }
+
+    const normalized = candidate
+        .replace(/^\.+|\.+$/g, '')
+        .replace(/[^a-z0-9.-]+/g, '-')
+        .replace(/\.{2,}/g, '.');
+    const labels = normalized.split('.').filter(Boolean);
+    if (labels.length < 2 || normalized.length > 253) {
+        return '';
+    }
+    if (labels.some((label) => label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))) {
+        return '';
+    }
+
+    return labels.join('.');
+}
+
+function normalizeDnsLabel(value = '') {
+    const normalized = String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//i, '')
+        .split(/[./?#]/)[0]
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-{2,}/g, '-')
+        .slice(0, 63)
+        .replace(/-+$/g, '');
+    return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(normalized) ? normalized : '';
+}
+
+function resolveManagedAppPublicHost(body = {}, service = null) {
+    const explicitHost = normalizeDomainHost(
+        body.publicHost
+        || body.webAddress
+        || body.webAddressHost
+        || body.host
+        || '',
+    );
+    if (explicitHost) {
+        return explicitHost;
+    }
+
+    const configuredDomain = typeof service?.getEffectiveManagedAppsConfig === 'function'
+        ? service.getEffectiveManagedAppsConfig()?.appBaseDomain
+        : '';
+    const baseDomain = normalizeDomainHost(
+        body.publicBaseDomain
+        || body.remoteAddress
+        || body.baseDomain
+        || configuredDomain
+        || 'demoserver2.buzz',
+    ) || 'demoserver2.buzz';
+    const dnsName = String(
+        body.dnsName
+        || body.subdomain
+        || body.webAddressName
+        || body.publicName
+        || '',
+    ).trim();
+    const fullDnsHost = normalizeDomainHost(dnsName);
+    if (fullDnsHost) {
+        return fullDnsHost;
+    }
+
+    const label = normalizeDnsLabel(dnsName);
+    return label ? `${label}.${baseDomain}` : '';
+}
+
+function shouldQueueManagedAppAsyncDeploy(body = {}, requestedAction = '') {
+    if (body?.asyncRuntime === false || body?.queueAsyncDeploy === false) {
+        return false;
+    }
+    const action = String(requestedAction || body?.requestedAction || body?.action || '').trim().toLowerCase();
+    return body?.deployRequested === true
+        || ['deploy', 'publish', 'launch', 'live'].includes(action);
+}
+
+async function maybeQueueManagedAppAsyncDeploy(req, {
+    managedAppResult = null,
+    requestedAction = '',
+    publicHost = '',
+    artifact = null,
+} = {}) {
+    if (!shouldQueueManagedAppAsyncDeploy(req.body || {}, requestedAction)) {
+        return null;
+    }
+
+    const asyncService = req.app.locals.asyncLabService;
+    if (!asyncService?.isEnabled?.() || !asyncService?.createRun) {
+        return null;
+    }
+
+    const app = managedAppResult?.app || {};
+    const appRef = String(app.id || app.slug || '').trim();
+    if (!appRef) {
+        return null;
+    }
+
+    const targetHost = String(publicHost || app.publicHost || '').trim();
+    const targetKey = `managed-app:${targetHost || appRef}`;
+    const sessionId = String(req.body?.sessionId || artifact?.sessionId || '').trim();
+    return asyncService.createRun({
+        adapter: 'managed-app',
+        task: `Deploy managed app ${app.slug || app.appName || appRef}${targetHost ? ` to ${targetHost}` : ''}.`,
+        targetKey,
+        sessionId,
+        liveRemote: true,
+        idempotencyKey: `managed-app-deploy:${appRef}:${managedAppResult?.buildRun?.id || targetHost || requestedAction || 'deploy'}`,
+        metadata: {
+            source: 'artifact-managed-app-export',
+            appRef,
+            publicHost: targetHost,
+            buildRunId: managedAppResult?.buildRun?.id || '',
+            sourceArtifactId: artifact?.id || '',
+            toolParams: {
+                action: 'deploy',
+                appRef,
+                requestedAction: 'deploy',
+                deployRequested: true,
+                sessionId,
+                ...(targetHost ? { publicHost: targetHost } : {}),
+            },
+        },
+    }, getRequestOwnerId(req));
+}
+
 router.post('/upload', async (req, res, next) => {
     try {
         const { fields, file } = await parseMultipartRequest(req);
@@ -583,6 +793,29 @@ router.post('/generate', validate(generationSchema), async (req, res, next) => {
             ...requestedSessionMetadata,
             clientSurface,
         }, session);
+        const asyncRuntime = await maybeQueueArtifactAsyncGeneration(req, {
+            session,
+            sessionId,
+            ownerId,
+            mode,
+            prompt,
+            format,
+            model,
+            reasoningEffort,
+            executionProfile,
+            memoryKeywords,
+        });
+        if (asyncRuntime) {
+            return res.status(asyncRuntime.duplicate ? 200 : 202).json({
+                sessionId,
+                asyncRuntime: {
+                    run: asyncRuntime.run,
+                    events: asyncRuntime.events,
+                    duplicate: asyncRuntime.duplicate === true,
+                },
+            });
+        }
+
         const toolManager = await ensureRuntimeToolManager(req.app);
         const result = await artifactService.generateArtifact({
             session,
@@ -835,9 +1068,11 @@ router.post('/:id/managed-app', async (req, res, next) => {
             || (req.body?.deployRequested === true ? 'deploy' : 'build');
         const appName = String(req.body?.appName || req.body?.name || '').trim()
             || buildManagedAppNameFromArtifact(artifact);
+        const publicHost = resolveManagedAppPublicHost(req.body || {}, service);
         const result = await service.createApp({
             ...(req.body && typeof req.body === 'object' ? req.body : {}),
             appName,
+            ...(publicHost ? { publicHost } : {}),
             sourcePrompt: String(
                 req.body?.sourcePrompt
                 || artifact?.metadata?.sourcePrompt
@@ -853,10 +1088,20 @@ router.post('/:id/managed-app', async (req, res, next) => {
                     filename: artifact.filename,
                     format: artifact.extension || artifact.format,
                 },
+                ...(publicHost ? {
+                    requestedPublicHost: publicHost,
+                    acmeRequestHost: publicHost,
+                } : {}),
             },
         }, getRequestOwnerId(req), {
             sessionId: artifact.sessionId,
             model: req.body?.model || null,
+        });
+        const asyncRuntime = await maybeQueueManagedAppAsyncDeploy(req, {
+            managedAppResult: result,
+            requestedAction,
+            publicHost,
+            artifact,
         });
 
         res.status(202).json({
@@ -864,6 +1109,14 @@ router.post('/:id/managed-app', async (req, res, next) => {
             fileCount: files.length,
             files: files.map((file) => file.path),
             ...result,
+            publicHost: publicHost || result?.publicHost || result?.app?.publicHost || null,
+            ...(asyncRuntime ? {
+                asyncRuntime: {
+                    run: asyncRuntime.run,
+                    events: asyncRuntime.events,
+                    duplicate: asyncRuntime.duplicate === true,
+                },
+            } : {}),
         });
     } catch (err) {
         next(err);

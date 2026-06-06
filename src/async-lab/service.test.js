@@ -8,9 +8,13 @@ function createService(overrides = {}) {
     const store = overrides.store || new AsyncLabStore({ persistToPostgres: false });
     const bus = overrides.bus || new ValkeyLiveBus({});
     const instanceId = overrides.instanceId || 'test-async-lab';
+    const toolManager = overrides.toolManager || null;
+    const toolExecutionContext = overrides.toolExecutionContext || {};
     delete overrides.store;
     delete overrides.bus;
     delete overrides.instanceId;
+    delete overrides.toolManager;
+    delete overrides.toolExecutionContext;
 
     return new AsyncLabService({
         config: {
@@ -30,6 +34,8 @@ function createService(overrides = {}) {
         store,
         bus,
         instanceId,
+        toolManager,
+        toolExecutionContext,
     });
 }
 
@@ -106,6 +112,183 @@ describe('AsyncLabService', () => {
         expect(events.find((event) => event.type === 'safety').payload.dryRun).toBe(true);
     });
 
+    test('executes approved live remote adapters through the attached tool manager', async () => {
+        const executeTool = jest.fn(async () => ({
+            success: true,
+            data: {
+                message: 'remote command observed',
+                stdout: 'ok',
+            },
+            duration: 25,
+            toolId: 'remote-command',
+            verification: {
+                status: 'observed',
+                evidence: 'fake tool result',
+            },
+        }));
+        const managedAppService = { id: 'managed-app-service' };
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+            toolExecutionContext: {
+                managedAppService,
+            },
+        });
+        const created = await service.createRun({
+            task: 'hostname',
+            adapter: 'remote-command',
+            targetKey: 'primary/main-server',
+            liveRemote: true,
+            metadata: {
+                toolParams: {
+                    command: 'hostname',
+                    targetId: 'primary',
+                },
+            },
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const run = await service.getRun(created.run.id, 'tester');
+        const events = await service.listEvents(run.id, 0);
+        expect(run.status).toBe('completed');
+        expect(run.metadata.toolResult).toEqual(expect.objectContaining({
+            adapter: 'remote-command',
+            success: true,
+            durationMs: 25,
+        }));
+        expect(executeTool).toHaveBeenCalledWith(
+            'remote-command',
+            expect.objectContaining({
+                command: 'hostname',
+                targetId: 'primary',
+            }),
+            expect.objectContaining({
+                route: '/api/async-lab',
+                transport: 'async-runtime',
+                executionProfile: 'async-runtime',
+                ownerId: 'tester',
+                managedAppService,
+            }),
+        );
+        expect(events.map((event) => event.type)).toEqual(expect.arrayContaining([
+            'tool_started',
+            'tool_completed',
+            'completed',
+        ]));
+        expect(events.find((event) => event.type === 'completed').payload.toolExecuted).toBe(true);
+    });
+
+    test('records a skipped live adapter when no tool manager is attached', async () => {
+        const service = createService({ allowLiveRemote: true });
+        const created = await service.createRun({
+            task: 'hostname',
+            adapter: 'remote-command',
+            targetKey: 'primary/main-server',
+            liveRemote: true,
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const run = await service.getRun(created.run.id, 'tester');
+        const events = await service.listEvents(run.id, 0);
+        expect(run.status).toBe('completed');
+        expect(run.metadata.toolResult).toBeUndefined();
+        expect(events.map((event) => event.type)).toContain('tool_skipped');
+        expect(events.find((event) => event.type === 'completed').payload.toolExecuted).toBe(false);
+    });
+
+    test('executes document workflow runs without live remote permission', async () => {
+        const executeTool = jest.fn(async () => ({
+            success: true,
+            toolId: 'document-workflow',
+            duration: 31,
+            data: {
+                message: 'document generated',
+            },
+        }));
+        const service = createService({
+            toolManager: { executeTool },
+            toolExecutionContext: {
+                documentService: { id: 'document-service' },
+            },
+        });
+        const created = await service.createRun({
+            task: 'Create a deployment report.',
+            adapter: 'document-workflow',
+            targetKey: 'artifact/session-1/html',
+            metadata: {
+                outputFormat: 'html',
+                toolParams: {
+                    action: 'generate',
+                    prompt: 'Create a deployment report.',
+                    format: 'html',
+                    buildMode: 'sandbox',
+                },
+            },
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const run = await service.getRun(created.run.id, 'tester');
+        const events = await service.listEvents(run.id, 0);
+        expect(run.status).toBe('completed');
+        expect(run.metadata.toolResult).toEqual(expect.objectContaining({
+            adapter: 'document-workflow',
+            success: true,
+            durationMs: 31,
+        }));
+        expect(executeTool).toHaveBeenCalledWith(
+            'document-workflow',
+            expect.objectContaining({
+                action: 'generate',
+                prompt: 'Create a deployment report.',
+                format: 'html',
+            }),
+            expect.objectContaining({
+                route: '/api/async-lab',
+                transport: 'async-runtime',
+                documentService: expect.objectContaining({ id: 'document-service' }),
+            }),
+        );
+        expect(events.map((event) => event.type)).toEqual(expect.arrayContaining([
+            'tool_started',
+            'tool_completed',
+            'completed',
+        ]));
+    });
+
+    test('marks live adapter runs failed when tool execution returns an error', async () => {
+        const executeTool = jest.fn(async () => ({
+            success: false,
+            error: 'remote failed',
+            duration: 12,
+            toolId: 'remote-command',
+        }));
+        const service = createService({
+            allowLiveRemote: true,
+            toolManager: { executeTool },
+        });
+        const created = await service.createRun({
+            task: 'exit 1',
+            adapter: 'remote-command',
+            targetKey: 'primary/main-server',
+            liveRemote: true,
+        }, 'tester');
+
+        await service.drainQueue();
+
+        const run = await service.getRun(created.run.id, 'tester');
+        const events = await service.listEvents(run.id, 0);
+        expect(run.status).toBe('failed');
+        expect(run.metadata.failure).toBe('remote failed');
+        expect(events.map((event) => event.type)).toEqual(expect.arrayContaining([
+            'tool_started',
+            'tool_failed',
+            'failed',
+        ]));
+    });
+
     test('returns the existing run for duplicate idempotency keys', async () => {
         const service = createService();
         const first = await service.createRun({
@@ -121,6 +304,38 @@ describe('AsyncLabService', () => {
 
         expect(second.duplicate).toBe(true);
         expect(second.run.id).toBe(first.run.id);
+    });
+
+    test('queues managed-app follow-up work from successful build webhooks', async () => {
+        const service = createService({ allowLiveRemote: true });
+
+        const result = await service.handleBuildWebhook({
+            project: { path_with_namespace: 'agent-apps/demo-site' },
+            object_attributes: {
+                id: 42,
+                status: 'success',
+                sha: 'abc123',
+            },
+            imageTag: 'sha-abc123',
+        }, {
+            ownerId: 'tester',
+            followUp: 'managed-app-verify',
+            externalRunId: 'pipeline-42',
+        });
+
+        expect(result.run.adapter).toBe('build-webhook-copy');
+        expect(result.followUp.run).toEqual(expect.objectContaining({
+            adapter: 'managed-app',
+            targetKey: 'managed-app:demo-site',
+            liveRemoteRequested: true,
+            liveRemoteAllowed: true,
+        }));
+        expect(result.followUp.run.metadata.toolParams).toEqual(expect.objectContaining({
+            action: 'verify',
+            appRef: 'demo-site',
+            imageTag: 'sha-abc123',
+            runId: 'pipeline-42',
+        }));
     });
 
     test('replays events after a cursor', async () => {

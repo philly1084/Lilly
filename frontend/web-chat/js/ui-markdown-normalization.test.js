@@ -679,6 +679,92 @@ Options I ruled out:
         expect(html).not.toContain('Working through the next step.');
     });
 
+    test('renders managed deployment progress as one card without raw remote SSE telemetry', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const message = {
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            reasoningDisplaySource: 'stream',
+            reasoningDisplayText: '{"toolCalls":1,"successfulToolCalls":1,"failedToolCalls":0,"uniqueStepSignatures":1}',
+            reasoningDisplayFullText: '{"toolCalls":1,"successfulToolCalls":1,"failedToolCalls":0,"uniqueStepSignatures":1}',
+            reasoningDisplayTitle: 'Reasoning',
+            reasoningDisplayIcon: 'brain',
+            managedAppProgressState: {
+                phase: 'deploying',
+                summary: 'Remote deployment is running.',
+                detail: 'Build is queued and waiting on the deployment runner.',
+                steps: [
+                    { id: 'prepare', title: 'Prepare app record', status: 'completed' },
+                    { id: 'build', title: 'Build and publish image', status: 'in_progress' },
+                    { id: 'deploy', title: 'Roll out deployment', status: 'pending' },
+                    { id: 'verify', title: 'Verify public endpoint', status: 'pending' },
+                ],
+            },
+            progressState: {
+                phase: 'checking-tools',
+                detail: '{"toolCalls":1,"successfulToolCalls":1,"failedToolCalls":0,"uniqueStepSignatures":1}',
+                toolEvents: [{
+                    toolId: 'remote-cli-agent',
+                    stage: 'in_progress',
+                    detail: '{"toolCalls":1,"successfulToolCalls":1,"failedToolCalls":0,"uniqueStepSignatures":1}',
+                }],
+            },
+        };
+
+        const html = helper.buildAssistantRenderPlan(message, true).html;
+        const cardCount = (html.match(/assistant-progress-card /g) || []).length;
+
+        expect(cardCount).toBe(1);
+        expect(html).toContain('assistant-progress-card--managed-app');
+        expect(html).toContain('Remote deployment is running.');
+        expect(html).toContain('Remote runner is checking tool results.');
+        expect(html).not.toContain('assistant-progress-card--reasoning');
+        expect(html).not.toContain('assistant-reasoning-ribbon');
+        expect(html).not.toContain('successfulToolCalls');
+        expect(html).not.toContain('uniqueStepSignatures');
+    });
+
+    test('hides oversized git deployment status dumps beside managed progress', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const statusDump = [
+            'git status',
+            'On branch main',
+            'Changes not staged for commit:',
+            '  modified: frontend/web-chat/js/app.js',
+            'remote-cli-agent deployment status:',
+            'namespace: app-demo',
+            'deployment: app-demo',
+            'ingress: app-demo.demoserver2.buzz',
+            'verify_results=waiting for public url',
+            'current state: build webhook queued',
+        ].join('\n');
+        const message = {
+            role: 'assistant',
+            content: statusDump,
+            isStreaming: false,
+            managedAppProgressState: {
+                phase: 'updated',
+                summary: 'Remote build is queued.',
+                detail: 'Deployment will continue after the build webhook succeeds.',
+                steps: [
+                    { id: 'prepare', title: 'Prepare app record', status: 'completed' },
+                    { id: 'build', title: 'Build and publish image', status: 'in_progress' },
+                    { id: 'deploy', title: 'Roll out deployment', status: 'pending' },
+                    { id: 'verify', title: 'Verify public endpoint', status: 'pending' },
+                ],
+            },
+        };
+
+        const html = helper.buildAssistantRenderPlan(message, false).html;
+
+        expect(html).toContain('Remote build is queued.');
+        expect(html).toContain('Deployment will continue after the build webhook succeeds.');
+        expect(html).not.toContain('git status');
+        expect(html).not.toContain('Changes not staged');
+        expect(html).not.toContain('verify_results=');
+    });
+
     test('renders progress rows for completed sections beyond the initially supplied step records', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const message = {

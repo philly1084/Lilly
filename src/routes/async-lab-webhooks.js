@@ -47,6 +47,7 @@ router.post('/build-events', async (req, res, next) => {
             ownerId: normalizeText(req.get('x-kimibuilt-owner-id')) || 'async-lab-webhook',
             idempotencyKey: normalizeText(req.get('x-idempotency-key')),
             externalRunId: normalizeText(req.get('x-gitlab-event-uuid')),
+            followUp: normalizeText(req.get('x-kimibuilt-async-follow-up')),
         });
         res.status(result.duplicate ? 200 : 202).json({
             success: true,

@@ -826,6 +826,79 @@ describe('/api/chat route', () => {
         expect(runtimeParams.instructions).not.toContain('<skills_tree>');
     });
 
+    test('queues web-chat shadow runs when async parallel mode is enabled', async () => {
+        const toolManager = {
+            executeTool: jest.fn(),
+            getTool: jest.fn(),
+        };
+        const createRun = jest.fn(async () => ({
+            run: {
+                id: 'shadow-run-1',
+                adapter: 'web-chat-shadow',
+                targetKey: 'web-chat:session-1',
+                status: 'queued',
+            },
+            events: [{ type: 'queued', cursor: 1 }],
+            duplicate: false,
+        }));
+        ensureRuntimeToolManager.mockResolvedValue(toolManager);
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: {
+                id: 'resp-shadow-1',
+                model: 'gpt-test',
+                output: [{
+                    type: 'message',
+                    content: [{ text: 'Foreground answer.' }],
+                }],
+                metadata: {
+                    toolEvents: [],
+                },
+            },
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.locals.asyncLabService = {
+            isEnabled: jest.fn(() => true),
+            getStatus: jest.fn(() => ({ webChatParallelEnabled: true })),
+            createRun,
+        };
+        app.use('/api/chat', chatRouter);
+
+        const response = await request(app)
+            .post('/api/chat')
+            .send({
+                sessionId: 'session-1',
+                message: 'Compare this in the background.',
+                stream: false,
+                model: 'gpt-test',
+                metadata: {
+                    clientSurface: 'web-chat',
+                },
+            });
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Foreground answer.');
+        expect(response.body.asyncRuntime.shadowRun.id).toBe('shadow-run-1');
+        expect(createRun).toHaveBeenCalledWith(
+            expect.objectContaining({
+                adapter: 'web-chat-shadow',
+                task: 'Compare this in the background.',
+                targetKey: 'web-chat:session-1',
+                sessionId: 'session-1',
+                requireGeneratedIdempotency: true,
+                metadata: expect.objectContaining({
+                    source: 'web-chat-parallel-shadow',
+                    shadowOnly: true,
+                    model: 'gpt-test',
+                }),
+            }),
+            null,
+        );
+        expect(executeConversationRuntime).toHaveBeenCalled();
+    });
+
     test('infers remote-build profile for normal chat remote inspection prompts', async () => {
         const toolManager = {
             executeTool: jest.fn(),

@@ -158,4 +158,38 @@ describe('/api/async-lab/webhooks routes', () => {
         expect(response.body.data.run.runtimeSurface).toBe('async-lab');
         expect(response.body.data.run.metadata.dryRun).toBe(true);
     });
+
+    test('queues managed-app follow-up runs from successful build events when requested', async () => {
+        const service = createService({ allowLiveRemote: true });
+        const app = buildWebhookApp(service);
+
+        const response = await request(app)
+            .post('/api/async-lab/webhooks/build-events')
+            .set('x-kimibuilt-async-lab-secret', 'lab-secret')
+            .set('x-kimibuilt-async-follow-up', 'managed-app-deploy')
+            .set('x-gitlab-event-uuid', 'pipeline-77')
+            .send({
+                project: { path_with_namespace: 'agent-apps/landing-demo' },
+                object_attributes: {
+                    id: 77,
+                    status: 'success',
+                    sha: 'def456',
+                },
+                imageTag: 'sha-def456',
+            });
+
+        expect(response.status).toBe(202);
+        expect(response.body.data.followUp.run).toEqual(expect.objectContaining({
+            adapter: 'managed-app',
+            targetKey: 'managed-app:landing-demo',
+            liveRemoteAllowed: true,
+        }));
+        expect(response.body.data.followUp.run.metadata.toolParams).toEqual(expect.objectContaining({
+            action: 'deploy',
+            appRef: 'landing-demo',
+            deployRequested: true,
+            imageTag: 'sha-def456',
+            runId: 'pipeline-77',
+        }));
+    });
 });

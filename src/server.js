@@ -468,6 +468,17 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
         });
         app.locals.agentWorkloadRunner.start();
         app.locals.asyncLabService = asyncLabService;
+        asyncLabService.configureExecutionRuntime?.({
+            toolManager,
+            toolExecutionContext: {
+                memoryService,
+                documentService: app.locals.documentService,
+                managedAppService: app.locals.managedAppService,
+                workloadService: app.locals.agentWorkloadService,
+                providerSessionService: app.locals.providerSessionService,
+                remoteAgentTaskService: app.locals.remoteAgentTaskService,
+            },
+        });
         const asyncRuntimeControl = settingsController.getEffectiveAsyncRuntimeConfig?.() || {
             enabled: config.asyncRuntime.enabled,
             adminToggleAllowed: config.asyncRuntime.adminToggleAllowed,

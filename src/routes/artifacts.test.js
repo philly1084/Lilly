@@ -55,6 +55,7 @@ describe('/api/artifacts route', () => {
                     id: 'managed-app-1',
                     appName: input.appName,
                     slug: 'newsroom',
+                    publicHost: input.publicHost || '',
                 },
                 buildRun: {
                     id: 'build-1',
@@ -63,6 +64,7 @@ describe('/api/artifacts route', () => {
                 committedPaths: input.files.map((file) => file.path),
             })),
         };
+        app.locals.asyncLabService = options.asyncLabService || null;
         app.use((req, _res, next) => {
             req.user = { username: 'phill' };
             next();
@@ -193,7 +195,11 @@ describe('/api/artifacts route', () => {
             mimeType: 'text/csv',
             previewHtml: '<pre>Jane Patient,123-45-6789</pre>',
             contentBuffer: Buffer.from('Jane Patient,123-45-6789'),
-            metadata: {},
+            metadata: {
+                piiCleansing: {
+                    enabled: true,
+                },
+            },
         });
         sessionStore.getOwned.mockResolvedValue({
             id: 'session-1',
@@ -603,6 +609,65 @@ describe('/api/artifacts route', () => {
         expect(Number(response.headers['content-length'] || 0)).toBeGreaterThan(0);
     });
 
+    test('queues long-running artifact generation through the async runtime when requested', async () => {
+        sessionStore.resolveOwnedSession.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const createRun = jest.fn(async () => ({
+            run: {
+                id: 'async-artifact-1',
+                adapter: 'document-workflow',
+                targetKey: 'artifact:session-1:html',
+                status: 'queued',
+            },
+            events: [{ type: 'queued', cursor: 1 }],
+            duplicate: false,
+        }));
+
+        const response = await request(buildApp({
+            asyncLabService: {
+                isEnabled: jest.fn(() => true),
+                createRun,
+            },
+        }))
+            .post('/api/artifacts/generate')
+            .send({
+                sessionId: 'session-1',
+                mode: 'document',
+                prompt: 'Create a deployment report.',
+                format: 'html',
+                asyncRuntimePreferred: true,
+                model: 'gpt-5.4-mini',
+                reasoningEffort: 'medium',
+            });
+
+        expect(response.status).toBe(202);
+        expect(response.body.asyncRuntime.run.id).toBe('async-artifact-1');
+        expect(createRun).toHaveBeenCalledWith(
+            expect.objectContaining({
+                adapter: 'document-workflow',
+                task: 'Create a deployment report.',
+                targetKey: 'artifact:session-1:html',
+                sessionId: 'session-1',
+                requireGeneratedIdempotency: true,
+                metadata: expect.objectContaining({
+                    source: 'artifact-generate',
+                    outputFormat: 'html',
+                    toolParams: expect.objectContaining({
+                        action: 'generate',
+                        prompt: 'Create a deployment report.',
+                        format: 'html',
+                        model: 'gpt-5.4-mini',
+                        reasoningEffort: 'medium',
+                    }),
+                }),
+            }),
+            'phill',
+        );
+        expect(artifactService.generateArtifact).not.toHaveBeenCalled();
+    });
+
     test('exports a site bundle artifact to the managed app build lane', async () => {
         artifactService.getArtifact.mockResolvedValue({
             id: 'artifact-site-zip-1',
@@ -673,6 +738,128 @@ describe('/api/artifacts route', () => {
             }),
             'phill',
             expect.objectContaining({ sessionId: 'session-1' }),
+        );
+    });
+
+    test('exports a previewable single HTML artifact with requested DNS host', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-html-1',
+            sessionId: 'session-1',
+            filename: 'landing-page.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!DOCTYPE html><html><body><img src="https://example.com/hero.jpg"><h1>Landing</h1></body></html>',
+            contentBuffer: Buffer.from('<!DOCTYPE html><html><body><h1>Raw</h1></body></html>'),
+            metadata: {
+                title: 'Landing Page',
+                sourcePrompt: 'Build a landing page with images.',
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+
+        const app = buildApp();
+        const response = await request(app)
+            .post('/api/artifacts/artifact-html-1/managed-app')
+            .send({
+                requestedAction: 'deploy',
+                deployRequested: true,
+                dnsName: 'demo',
+                publicBaseDomain: 'demoserver2.buzz',
+            });
+
+        expect(response.status).toBe(202);
+        expect(response.body.fileCount).toBe(1);
+        expect(response.body.files).toEqual(['public/index.html']);
+        expect(response.body.publicHost).toBe('demo.demoserver2.buzz');
+        expect(app.locals.managedAppService.createApp).toHaveBeenCalledWith(
+            expect.objectContaining({
+                appName: 'Landing Page',
+                publicHost: 'demo.demoserver2.buzz',
+                requestedAction: 'deploy',
+                deployRequested: true,
+                files: [
+                    expect.objectContaining({
+                        path: 'public/index.html',
+                        content: expect.stringContaining('hero.jpg'),
+                    }),
+                ],
+                metadata: expect.objectContaining({
+                    requestedPublicHost: 'demo.demoserver2.buzz',
+                    acmeRequestHost: 'demo.demoserver2.buzz',
+                }),
+            }),
+            'phill',
+            expect.objectContaining({ sessionId: 'session-1' }),
+        );
+    });
+
+    test('queues requested managed-app deploys through the async runtime when enabled', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-html-async',
+            sessionId: 'session-1',
+            filename: 'landing-page.html',
+            extension: 'html',
+            mimeType: 'text/html',
+            previewHtml: '<!DOCTYPE html><html><body><h1>Async</h1></body></html>',
+            contentBuffer: Buffer.from('<!DOCTYPE html><html><body><h1>Raw</h1></body></html>'),
+            metadata: {
+                title: 'Async Landing',
+                sourcePrompt: 'Build an async landing page.',
+            },
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        const createRun = jest.fn(async () => ({
+            run: {
+                id: 'async-run-1',
+                adapter: 'managed-app',
+                targetKey: 'managed-app:async-demo.demoserver2.buzz',
+                status: 'queued',
+            },
+            events: [{ type: 'queued', cursor: 1 }],
+            duplicate: false,
+        }));
+
+        const app = buildApp({
+            asyncLabService: {
+                isEnabled: jest.fn(() => true),
+                createRun,
+            },
+        });
+        const response = await request(app)
+            .post('/api/artifacts/artifact-html-async/managed-app')
+            .send({
+                requestedAction: 'deploy',
+                deployRequested: true,
+                dnsName: 'async-demo',
+                publicBaseDomain: 'demoserver2.buzz',
+            });
+
+        expect(response.status).toBe(202);
+        expect(response.body.asyncRuntime.run.id).toBe('async-run-1');
+        expect(createRun).toHaveBeenCalledWith(
+            expect.objectContaining({
+                adapter: 'managed-app',
+                targetKey: 'managed-app:async-demo.demoserver2.buzz',
+                liveRemote: true,
+                idempotencyKey: 'managed-app-deploy:managed-app-1:build-1',
+                metadata: expect.objectContaining({
+                    appRef: 'managed-app-1',
+                    publicHost: 'async-demo.demoserver2.buzz',
+                    toolParams: expect.objectContaining({
+                        action: 'deploy',
+                        appRef: 'managed-app-1',
+                        deployRequested: true,
+                        publicHost: 'async-demo.demoserver2.buzz',
+                    }),
+                }),
+            }),
+            'phill',
         );
     });
 });

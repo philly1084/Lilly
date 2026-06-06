@@ -38,6 +38,27 @@ const WEB_CHAT_REMOTE_TOOL_IDS = new Set([
     'remote-command',
     'remote-workbench',
 ]);
+const WEB_CHAT_ASYNC_REMOTE_EVENT_TYPES = [
+    'queued',
+    'started',
+    'lease_recovered',
+    'heartbeat',
+    'progress',
+    'safety',
+    'tool_message',
+    'tool_started',
+    'tool_completed',
+    'tool_failed',
+    'tool_skipped',
+    'checkpoint',
+    'lock_acquired',
+    'lock_wait',
+    'webhook_received',
+    'completed',
+    'failed',
+    'cancelled',
+    'cancel_requested',
+];
 const WEB_CHAT_TOOL_INTENT_DEFINITIONS = Object.freeze([
     {
         id: 'research',
@@ -1660,6 +1681,7 @@ class ChatApp {
                     remoteBuildAutonomyApproved: true,
                     frontendRemoteBuildAutonomyApproved: true,
                     remoteBuildIntent: true,
+                    asyncRuntimePreferred: tool.id === 'remote-cli-agent',
                 } : {}),
             },
         };
@@ -5690,11 +5712,17 @@ class ChatApp {
         const toolIntentOptions = this.selectedDirectTool
             ? this.buildSelectedDirectToolRequestOptions()
             : this.buildToolIntentRequestOptions();
+        const routeSelectedToolAsAsync = this.shouldRouteSelectedToolMessageToAsync(content, toolIntentOptions);
         this.messageInput.value = '';
         this.autoResize?.reset?.();
         this.updateSendButton();
         uiHelpers.updateCharCounter(this.messageInput, this.charCounter);
         this.clearSelectedDirectTool({ quiet: true });
+
+        if (routeSelectedToolAsAsync) {
+            await this.sendSelectedToolMessageAsAsync(content, toolIntentOptions);
+            return;
+        }
 
         if (this.isCurrentSessionProcessing() || this.getQueuedMessageCount() >= WEB_CHAT_QUEUE_MAX_SIZE) {
             this.enqueueMessage(content, toolIntentOptions);
@@ -7020,12 +7048,13 @@ class ChatApp {
             '## Remote CLI Plan',
             '',
             '1. `/remote agent <task>` or `/remote <task>` - hand a full coding/build/deploy loop to the backend remote CLI agent.',
-            '2. `/remote status` - confirm remote runner health and fallback target.',
-            '3. `/remote tools` - list exact inspect/catalog commands.',
-            '4. `/remote <catalog-id>` - run a catalog entry such as `baseline`, `kubectl-inspect`, `logs`, or `rollout`.',
-            '5. `/remote run <command>` - execute one purposeful raw inspect or verify batch.',
-            '6. Continue normal build/test failures while the next step is still on plan.',
-            '7. Stop for sudo/package installs, secrets, destructive deletes, force push, repeated failures, missing credentials, or unclear recovery.',
+            '2. `/remote async agent <task>` - queue a durable async remote job card with replayable progress.',
+            '3. `/remote status` - confirm remote runner health and fallback target.',
+            '4. `/remote tools` - list exact inspect/catalog commands.',
+            '5. `/remote <catalog-id>` - run a catalog entry such as `baseline`, `kubectl-inspect`, `logs`, or `rollout`.',
+            '6. `/remote run <command>` - execute one purposeful raw inspect or verify batch.',
+            '7. Continue normal build/test failures while the next step is still on plan.',
+            '8. Stop for sudo/package installs, secrets, destructive deletes, force push, repeated failures, missing credentials, or unclear recovery.',
             '',
             'Raw expert access: `/remote run hostname && whoami && uname -m`',
         ].join('\n');
@@ -7225,8 +7254,387 @@ curl -fsSIL --max-time 20 "https://$host"`;
             ...proofSections,
             ...(output
                 ? ['', output]
-                : ['', '```json', JSON.stringify(result, null, 2), '```']),
+            : ['', '```json', JSON.stringify(result, null, 2), '```']),
         ].join('\n');
+    }
+
+    resolveAsyncRemoteCommand(rest = '') {
+        const trimmed = String(rest || '').trim();
+        const [rawMode, ...remainingParts] = trimmed.split(/\s+/).filter(Boolean);
+        const mode = String(rawMode || 'agent').toLowerCase();
+        const remainder = remainingParts.join(' ').trim();
+
+        if (!trimmed || ['help', 'plan', '?'].includes(mode)) {
+            throw new Error('Usage: /remote async [agent|run|verify] <task or command>');
+        }
+
+        if (mode === 'run') {
+            if (!remainder) {
+                throw new Error('Usage: /remote async run <remote command>');
+            }
+            return {
+                adapter: 'remote-command',
+                task: remainder,
+                targetKey: 'primary/main-server',
+                toolParams: {
+                    command: remainder,
+                    profile: 'build',
+                    workflowAction: 'web-chat-async-remote-run',
+                    timeout: 120000,
+                },
+            };
+        }
+
+        if (mode === 'verify') {
+            const command = this.buildRemoteHttpsVerifyCommand(remainder);
+            return {
+                adapter: 'remote-command',
+                task: command,
+                targetKey: 'primary/main-server',
+                toolParams: {
+                    command,
+                    profile: 'inspect',
+                    workflowAction: 'web-chat-async-remote-https-verify',
+                    timeout: 60000,
+                },
+            };
+        }
+
+        const task = mode === 'agent' ? remainder : trimmed;
+        if (!task) {
+            throw new Error('Usage: /remote async agent <coding/build/deploy task>');
+        }
+
+        return {
+            adapter: 'remote-cli-agent',
+            task,
+            targetKey: 'primary/main-server',
+            toolParams: {
+                task,
+                waitMs: 120000,
+                maxTurns: 30,
+                adminMode: true,
+                ...(String(uiHelpers.getCurrentModel?.() || '').trim()
+                    ? { model: String(uiHelpers.getCurrentModel() || '').trim() }
+                    : {}),
+            },
+        };
+    }
+
+    buildAsyncRemoteProgressState(run = null, events = []) {
+        const normalizedEvents = Array.isArray(events) ? events : [];
+        const latestEvent = normalizedEvents[normalizedEvents.length - 1] || {};
+        const payload = latestEvent.payload && typeof latestEvent.payload === 'object' ? latestEvent.payload : {};
+        const runStatus = String(latestEvent.status || run?.status || 'queued').trim().toLowerCase();
+        const terminal = ['completed', 'cancelled', 'failed'].includes(runStatus);
+        const failed = runStatus === 'failed' || latestEvent.type === 'tool_failed';
+        const phase = failed
+            ? 'failed'
+            : (terminal ? runStatus : (latestEvent.type || runStatus || 'queued'));
+        const detail = String(
+            payload.message
+            || payload.result?.error
+            || run?.metadata?.toolResult?.error
+            || (terminal ? 'Async remote job finished.' : 'Async remote job is running.'),
+        ).trim();
+        const eventTypes = new Set(normalizedEvents.map((event) => String(event?.type || '').trim()));
+        const hasLease = eventTypes.has('started') || eventTypes.has('lease_recovered');
+        const hasToolStarted = eventTypes.has('tool_started') || eventTypes.has('tool_message');
+        const hasToolEnded = eventTypes.has('tool_completed') || eventTypes.has('tool_failed') || eventTypes.has('tool_skipped');
+        const stepState = (id) => {
+            if (failed) {
+                if (id === 'complete') return 'failed';
+                if (id === 'queued' && eventTypes.has('queued')) return 'completed';
+                if (id === 'lease' && hasLease) return 'completed';
+                if (id === 'safety' && eventTypes.has('safety')) return 'completed';
+                if (id === 'tool' && hasToolStarted) return 'failed';
+                if (id === 'checkpoint' && eventTypes.has('checkpoint')) {
+                    return 'completed';
+                }
+            }
+            if (id === 'queued') return eventTypes.has('queued') ? 'completed' : 'in_progress';
+            if (id === 'lease') {
+                if (hasLease) return 'completed';
+                return eventTypes.has('queued') ? 'in_progress' : 'pending';
+            }
+            if (id === 'safety') {
+                if (eventTypes.has('safety')) return 'completed';
+                return eventTypes.has('started') ? 'in_progress' : 'pending';
+            }
+            if (id === 'tool') {
+                if (hasToolEnded) return failed ? 'failed' : 'completed';
+                return hasToolStarted ? 'in_progress' : 'pending';
+            }
+            if (id === 'checkpoint') {
+                if (eventTypes.has('checkpoint')) return 'completed';
+                return eventTypes.has('tool_completed') || eventTypes.has('tool_message') ? 'in_progress' : 'pending';
+            }
+            if (id === 'complete') {
+                if (failed) return 'failed';
+                if (runStatus === 'completed') return 'completed';
+                if (runStatus === 'cancelled') return 'failed';
+                return eventTypes.has('checkpoint') ? 'in_progress' : 'pending';
+            }
+            return 'pending';
+        };
+
+        return {
+            phase,
+            detail,
+            summary: failed ? 'Async remote job needs attention.' : (terminal ? 'Async remote job finished.' : 'Async remote job is running.'),
+            terminal,
+            live: !terminal,
+            steps: [
+                { id: 'queued', title: 'Queue async job', status: stepState('queued') },
+                { id: 'lease', title: 'Acquire worker lease', status: stepState('lease') },
+                { id: 'safety', title: 'Check live remote permission', status: stepState('safety') },
+                { id: 'tool', title: 'Run remote adapter', status: stepState('tool') },
+                { id: 'checkpoint', title: 'Persist replay checkpoint', status: stepState('checkpoint') },
+                { id: 'complete', title: 'Finish with durable result', status: stepState('complete') },
+            ],
+        };
+    }
+
+    updateAsyncRemoteJobMessage(sessionId = '', messageId = '', run = null, events = []) {
+        const current = this.getSessionMessage(sessionId, messageId);
+        if (!current) {
+            return null;
+        }
+
+        const allEvents = [
+            ...(Array.isArray(current.metadata?.asyncRuntimeEvents) ? current.metadata.asyncRuntimeEvents : []),
+            ...(Array.isArray(events) ? events : []),
+        ];
+        const seen = new Set();
+        const dedupedEvents = allEvents.filter((event) => {
+            const key = event?.eventId || `${event?.cursor || ''}:${event?.type || ''}`;
+            if (!key || seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        });
+        const progressState = this.buildAsyncRemoteProgressState(run, dedupedEvents);
+        const nextMessage = {
+            ...current,
+            content: '',
+            isStreaming: progressState.terminal !== true,
+            progressState,
+            metadata: {
+                ...(current.metadata || {}),
+                asyncRuntimeRun: run || current.metadata?.asyncRuntimeRun || null,
+                asyncRuntimeEvents: dedupedEvents.slice(-80),
+                progressState,
+                toolResultChip: {
+                    id: run?.adapter || current.metadata?.asyncRuntimeRun?.adapter || 'async-runtime',
+                    name: 'Async job',
+                    icon: progressState.terminal ? 'check-circle-2' : 'loader',
+                    status: run?.status || progressState.phase,
+                },
+            },
+        };
+        const saved = this.upsertSessionMessage(sessionId, nextMessage);
+        if (saved && this.isVisibleSession(sessionId)) {
+            const existingEl = document.getElementById(messageId);
+            if (existingEl && typeof uiHelpers.updateMessageContent === 'function') {
+                uiHelpers.updateMessageContent(messageId, saved, saved.isStreaming === true);
+                uiHelpers.reinitializeIcons(existingEl);
+            } else {
+                this.renderOrReplaceMessage(saved);
+            }
+            uiHelpers.scrollToBottom();
+        }
+        this.persistSessionMessageIfNeeded(sessionId, saved || nextMessage);
+        return saved || nextMessage;
+    }
+
+    connectAsyncRemoteJobEvents(sessionId = '', messageId = '', runId = '', after = 0) {
+        const normalizedRunId = String(runId || '').trim();
+        if (!normalizedRunId || typeof EventSource !== 'function') {
+            return null;
+        }
+        const source = new EventSource(`/api/async-lab/runs/${encodeURIComponent(normalizedRunId)}/events?after=${encodeURIComponent(after)}&stream=true`);
+        const handleEvent = (message) => {
+            try {
+                const event = JSON.parse(message.data);
+                const current = this.getSessionMessage(sessionId, messageId);
+                const currentRun = current?.metadata?.asyncRuntimeRun || { id: normalizedRunId };
+                const nextRun = {
+                    ...currentRun,
+                    status: event.status || currentRun.status || 'running',
+                };
+                this.updateAsyncRemoteJobMessage(sessionId, messageId, nextRun, [event]);
+                if (['completed', 'failed', 'cancelled'].includes(String(event.status || '').trim().toLowerCase())) {
+                    source.close();
+                }
+            } catch (error) {
+                console.warn('Failed to process async remote event:', error);
+            }
+        };
+
+        WEB_CHAT_ASYNC_REMOTE_EVENT_TYPES.forEach((type) => {
+            source.addEventListener(type, handleEvent);
+        });
+        source.onerror = () => {
+            const current = this.getSessionMessage(sessionId, messageId);
+            if (!current?.metadata?.asyncRuntimeRun?.id) {
+                return;
+            }
+            void apiClient.getAsyncRun(current.metadata.asyncRuntimeRun.id, {
+                after: Number(current.metadata.asyncRuntimeEvents?.at?.(-1)?.cursor || 0) || 0,
+            }).then((payload) => {
+                this.updateAsyncRemoteJobMessage(sessionId, messageId, payload.run, payload.events || []);
+            }).catch((error) => {
+                console.warn('Failed to refresh async remote job:', error);
+            });
+        };
+        return source;
+    }
+
+    async createAsyncRemoteJobCard(resolved = {}, sessionId = sessionManager.currentSessionId) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
+            throw new Error('A chat session is required before queueing async remote work.');
+        }
+        const message = {
+            id: uiHelpers.generateMessageId ? uiHelpers.generateMessageId() : `async-remote-${Date.now().toString(36)}`,
+            role: 'assistant',
+            content: '',
+            timestamp: new Date().toISOString(),
+            isStreaming: true,
+            progressState: this.buildAsyncRemoteProgressState({
+                adapter: resolved.adapter,
+                status: 'queued',
+                targetKey: resolved.targetKey,
+            }, []),
+            metadata: {
+                asyncRuntimeJobCard: true,
+                toolResultChip: {
+                    id: resolved.adapter,
+                    name: 'Async job',
+                    icon: 'loader',
+                    status: 'queueing',
+                },
+            },
+        };
+        const savedMessage = sessionManager.addMessage(normalizedSessionId, message);
+        this.messagesContainer.appendChild(uiHelpers.renderMessage(savedMessage, true));
+        uiHelpers.reinitializeIcons(this.messagesContainer);
+        uiHelpers.scrollToBottom();
+        this.persistSessionMessageIfNeeded(normalizedSessionId, savedMessage);
+
+        const payload = await apiClient.createAsyncRun({
+            task: resolved.task,
+            adapter: resolved.adapter,
+            targetKey: resolved.targetKey,
+            liveRemote: true,
+            sessionId: normalizedSessionId,
+            idempotencyKey: `web-chat:${normalizedSessionId}:${savedMessage.id}`,
+            metadata: {
+                source: 'web-chat',
+                toolParams: resolved.toolParams,
+            },
+        });
+        const run = payload.run || null;
+        const events = payload.events || [];
+        this.updateAsyncRemoteJobMessage(normalizedSessionId, savedMessage.id, run, events);
+        if (run?.id) {
+            const lastCursor = Math.max(0, ...events.map((event) => Number(event?.cursor || 0) || 0));
+            this.connectAsyncRemoteJobEvents(normalizedSessionId, savedMessage.id, run.id, lastCursor);
+        }
+        return true;
+    }
+
+    createAsyncRemoteJobCardFromRun(payload = {}, sessionId = sessionManager.currentSessionId) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const run = payload?.run || payload?.asyncRuntime?.run || null;
+        if (!normalizedSessionId || !run?.id) {
+            return null;
+        }
+
+        const events = Array.isArray(payload?.events)
+            ? payload.events
+            : (Array.isArray(payload?.asyncRuntime?.events) ? payload.asyncRuntime.events : []);
+        const progressState = this.buildAsyncRemoteProgressState(run, events);
+        const message = {
+            id: uiHelpers.generateMessageId ? uiHelpers.generateMessageId() : `async-remote-${Date.now().toString(36)}`,
+            role: 'assistant',
+            content: '',
+            timestamp: new Date().toISOString(),
+            isStreaming: progressState.terminal !== true,
+            progressState,
+            metadata: {
+                asyncRuntimeJobCard: true,
+                asyncRuntimeRun: run,
+                asyncRuntimeEvents: events.slice(-80),
+                progressState,
+                toolResultChip: {
+                    id: run.adapter || 'async-runtime',
+                    name: 'Async job',
+                    icon: progressState.terminal ? 'check-circle-2' : 'loader',
+                    status: run.status || progressState.phase,
+                },
+            },
+        };
+        const savedMessage = sessionManager.addMessage(normalizedSessionId, message);
+        this.messagesContainer.appendChild(uiHelpers.renderMessage(savedMessage, savedMessage.isStreaming === true));
+        uiHelpers.reinitializeIcons(this.messagesContainer);
+        uiHelpers.scrollToBottom();
+        this.persistSessionMessageIfNeeded(normalizedSessionId, savedMessage);
+
+        const lastCursor = Math.max(0, ...events.map((event) => Number(event?.cursor || 0) || 0));
+        this.connectAsyncRemoteJobEvents(normalizedSessionId, savedMessage.id, run.id, lastCursor);
+        return savedMessage;
+    }
+
+    async handleAsyncRemoteCommand(rest = '') {
+        const resolved = this.resolveAsyncRemoteCommand(rest);
+        return this.createAsyncRemoteJobCard(resolved, sessionManager.currentSessionId);
+    }
+
+    shouldRouteSelectedToolMessageToAsync(content = '', options = {}) {
+        const normalizedContent = String(content || '').trim();
+        const metadata = options?.metadata && typeof options.metadata === 'object' ? options.metadata : {};
+        const toolId = String(metadata.directToolId || metadata.preferredTool || '').trim();
+        return Boolean(
+            normalizedContent
+            && toolId === 'remote-cli-agent'
+            && metadata.selectedToolSource === 'web-chat-tool-chip'
+            && metadata.asyncRuntimePreferred === true
+        );
+    }
+
+    async sendSelectedToolMessageAsAsync(content = '', options = {}) {
+        const normalizedContent = String(content || '').trim();
+        if (!normalizedContent) {
+            return false;
+        }
+        if (!sessionManager.currentSessionId) {
+            await this.createNewSession();
+        }
+
+        const sessionId = sessionManager.currentSessionId;
+        const metadata = options?.metadata && typeof options.metadata === 'object' ? options.metadata : {};
+        const selectedToolChip = this.normalizeDirectToolSelection(
+            metadata.selectedToolChip || metadata.selectedDirectTool || null,
+        );
+        uiHelpers.hideWelcomeMessage();
+        const userMessage = {
+            role: 'user',
+            content: normalizedContent,
+            timestamp: new Date().toISOString(),
+            ...(selectedToolChip ? { metadata: { selectedToolChip } } : {}),
+        };
+        const savedUserMessage = sessionManager.addMessage(sessionId, userMessage);
+        this.messagesContainer.appendChild(uiHelpers.renderMessage(savedUserMessage));
+        uiHelpers.playAcknowledgementCue?.();
+        uiHelpers.scrollToBottom();
+        this.persistSessionMessageIfNeeded(sessionId, savedUserMessage);
+
+        const resolved = this.resolveAsyncRemoteCommand(`agent ${normalizedContent}`);
+        await this.createAsyncRemoteJobCard(resolved, sessionId);
+        this.updateSessionInfo();
+        return true;
     }
 
     async handleRemoteCommand(argString = '') {
@@ -7255,6 +7663,10 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
             if (subcommand === 'plan' || subcommand === 'help' || subcommand === '?') {
                 assistantContent = this.buildRemotePlanContent();
+            } else if (subcommand === 'async') {
+                await this.handleAsyncRemoteCommand(rest);
+                this.updateSessionInfo();
+                return true;
             } else {
                 const remoteCatalog = await apiClient.getRemoteToolCatalog();
 
@@ -10388,10 +10800,32 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const readyDetail = uiHelpers.isTtsAutoPlayEnabled() && uiHelpers.isTtsAvailable()
             ? 'Ready to speak'
             : 'Reply complete';
+        const existingCompletionProgress = currentMessage?.progressState
+            || currentMessage?.metadata?.progressState
+            || null;
+        const shouldPreserveCompletionProgress = existingCompletionProgress
+            && typeof existingCompletionProgress === 'object'
+            && !Array.isArray(existingCompletionProgress)
+            && uiHelpers.isRemoteCliProgressState?.(existingCompletionProgress) === true;
+        const completedProgressState = shouldPreserveCompletionProgress
+            ? {
+                ...existingCompletionProgress,
+                phase: 'completed',
+                terminal: true,
+                live: false,
+                detail: extractChatDisplayText(
+                    existingCompletionProgress.detail
+                    || existingCompletionProgress.reasoningSummary
+                    || existingCompletionProgress.summary
+                    || readyDetail,
+                    { maxLength: 240 },
+                ) || readyDetail,
+            }
+            : null;
         this.updateLiveResponsePhase('ready', readyDetail);
         const finalizedStreamingMessage = this.updateStreamingMessageState({
             liveState: null,
-            progressState: null,
+            progressState: completedProgressState,
             isStreaming: false,
             reasoningDisplaySource: streamedReasoningSummary ? 'final' : '',
             reasoningDisplayText: streamedReasoningSummary,

@@ -2491,6 +2491,40 @@ class OpenAIAPIClient extends EventTarget {
         };
     }
 
+    async createAsyncRun(payload = {}) {
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/async-lab/runs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload || {}),
+        });
+
+        if (!response.ok) {
+            const error = await this.parseErrorPayload(response);
+            throw new Error(error?.error?.message || error?.message || `Async run failed: HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
+    async getAsyncRun(runId = '', options = {}) {
+        const normalizedRunId = String(runId || '').trim();
+        if (!normalizedRunId) {
+            throw new Error('Async run id is required.');
+        }
+        const after = Number(options.after || 0) || 0;
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/async-lab/runs/${encodeURIComponent(normalizedRunId)}?after=${encodeURIComponent(after)}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+        });
+
+        if (!response.ok) {
+            const error = await this.parseErrorPayload(response);
+            throw new Error(error?.error?.message || error?.message || `Async run lookup failed: HTTP ${response.status}`);
+        }
+
+        return response.json();
+    }
+
     async invokeRemoteCommand(command, options = {}) {
         const normalizedCommand = String(command || '').trim();
         if (!normalizedCommand) {

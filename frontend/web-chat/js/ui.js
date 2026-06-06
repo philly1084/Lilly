@@ -3049,6 +3049,46 @@ class UIHelpers {
         return /based on your survey response|here['’]s what i(?: have|'ve) prepared|would you like|this (?:diagram|wireframe|plan|architecture)/i.test(normalized);
     }
 
+    looksLikeRemoteDeploymentStatusDump(source = '') {
+        const normalized = String(source || '')
+            .replace(/\r\n?/g, '\n')
+            .trim();
+        if (!normalized) {
+            return false;
+        }
+
+        const lower = normalized.toLowerCase();
+        const lineCount = normalized.split('\n').length;
+        const hasRemoteDeploySignal = /\b(remote[-_\s]*cli[-_\s]*agent|remote_code_(?:run|status)|gitlab|k3s|kubectl|ingress|namespace|deployment|rollout|public url|public host)\b/i.test(normalized);
+        const hasStatusDumpSignal = /\bgit status\b|\bon branch\b|\bmodified:\b|\buntracked files\b|\bchanges not staged\b|\bwhat_changed=|\bverify_results=|\bverify_commands=|\bremote_cli_session_id=|\bnamespace\s*:|\bdeployment\s*:|\bingress\s*:|\bcurrent state\s*:/i.test(normalized);
+        const hasToolTelemetry = /\btoolCalls\b|\bsuccessfulToolCalls\b|\bfailedToolCalls\b|\buniqueStepSignatures\b|\brecoverableFailures\b/i.test(normalized);
+
+        if (hasToolTelemetry && hasRemoteDeploySignal) {
+            return true;
+        }
+
+        if (hasRemoteDeploySignal && hasStatusDumpSignal) {
+            return true;
+        }
+
+        return normalized.length > 1200
+            && lineCount > 10
+            && hasRemoteDeploySignal
+            && /\b(status|verify|deployment|git)\b/.test(lower);
+    }
+
+    shouldRenderManagedAppProgressOnly(message = null, content = '', isStreaming = false) {
+        if (!this.hasManagedAppProgressState(message)) {
+            return false;
+        }
+
+        if (isStreaming) {
+            return true;
+        }
+
+        return this.looksLikeRemoteDeploymentStatusDump(content);
+    }
+
     buildAgentBriefSections(markdown = '') {
         const normalized = String(markdown || '').trim();
         const headingMatch = normalized.match(/^#{2,6}\s+(.+)$/m);
@@ -3312,6 +3352,13 @@ class UIHelpers {
         return null;
     }
 
+    hasManagedAppProgressState(message = null) {
+        return Boolean(
+            message?.managedAppProgressState
+            || message?.metadata?.managedAppProgressState,
+        );
+    }
+
     hasMessageReasoning(message = null, isStreaming = false) {
         return Boolean(this.getMessageReasoningDisplayState(message, isStreaming));
     }
@@ -3402,6 +3449,44 @@ class UIHelpers {
         ].filter(Boolean).join(' ').toLowerCase();
 
         return /\b(remote[-_\s]*cli[-_\s]*agent|remote_code_(?:run|status)|rcli_[a-z0-9]+|mcp gateway)\b/i.test(progressText);
+    }
+
+    extractRemoteCliActivityText(rawProgress = null) {
+        if (!this.isRemoteCliProgressState(rawProgress)) {
+            return '';
+        }
+
+        const toolEvents = Array.isArray(rawProgress.toolEvents) ? rawProgress.toolEvents : [];
+        const latestToolEvent = toolEvents[toolEvents.length - 1] || {};
+        const candidates = [
+            latestToolEvent.detail,
+            latestToolEvent.message,
+            latestToolEvent.summary,
+            rawProgress.detail,
+            rawProgress.reasoningSummary,
+            rawProgress.reasoning_summary,
+            rawProgress.summary,
+            rawProgress.message,
+        ];
+
+        for (const candidate of candidates) {
+            const text = this.extractDisplayText(candidate, { maxLength: 180 }).trim();
+            if (!text) {
+                continue;
+            }
+
+            if (/^\s*[{[]/.test(text) && /\b(?:toolCalls|successfulToolCalls|failedToolCalls|uniqueStepSignatures)\b/.test(text)) {
+                return 'Remote runner is checking tool results.';
+            }
+
+            if (/\b(?:toolCalls|successfulToolCalls|failedToolCalls|uniqueStepSignatures)\b/.test(text)) {
+                return 'Remote runner is checking tool results.';
+            }
+
+            return text;
+        }
+
+        return 'Remote runner is still working.';
     }
 
     buildFallbackAssistantProgressSteps(rawProgress = null) {
@@ -3631,6 +3716,10 @@ class UIHelpers {
         const phaseLabel = this.extractDisplayText(rawProgress.phaseLabel, { maxLength: 120 });
         const summary = this.extractDisplayText(rawProgress.summary, { maxLength: 180 }) || 'Managed app status updated.';
         const detail = this.extractDisplayText(rawProgress.detail, { maxLength: 240 });
+        const companionProgress = message?.progressState
+            || message?.metadata?.progressState
+            || null;
+        const activity = this.extractRemoteCliActivityText(companionProgress);
         const nextStep = this.extractDisplayText(rawProgress.nextStep, { maxLength: 180 });
         const expectedHost = this.extractDisplayText(rawProgress.expectedHost, { maxLength: 120 });
         const ingressStatus = this.extractDisplayText(rawProgress.ingressStatus, { maxLength: 120 });
@@ -3684,6 +3773,7 @@ class UIHelpers {
             phaseLabel,
             summary,
             detail,
+            activity,
             nextStep,
             expectedHost,
             ingressStatus,
@@ -3792,6 +3882,9 @@ class UIHelpers {
             : '<span class="assistant-progress-card__badge assistant-progress-card__badge--live"><span class="assistant-progress-card__pulse" aria-hidden="true"></span>Live</span>';
         const phaseMarkup = progressState.phaseLabel
             ? `<div class="assistant-progress-card__status-line"><span class="assistant-progress-card__status-label">Stage</span><span class="assistant-progress-card__status-value">${this.escapeHtml(progressState.phaseLabel)}</span></div>`
+            : '';
+        const activityMarkup = progressState.activity
+            ? `<div class="assistant-progress-card__status-line"><span class="assistant-progress-card__status-label">Activity</span><span class="assistant-progress-card__status-value">${this.escapeHtml(progressState.activity)}</span></div>`
             : '';
         const lastSuccessfulMarkup = lastSuccessfulStep
             ? `<div class="assistant-progress-card__status-line"><span class="assistant-progress-card__status-label">Last Done</span><span class="assistant-progress-card__status-value">${this.escapeHtml(lastSuccessfulStep.title)}</span></div>`
@@ -3932,6 +4025,7 @@ class UIHelpers {
                     </div>
                     ${progressState.detail ? `<div class="assistant-progress-card__detail">${this.escapeHtml(progressState.detail)}</div>` : ''}
                     ${phaseMarkup}
+                    ${activityMarkup}
                     ${lastSuccessfulMarkup}
                     ${expectedHostMarkup}
                     ${ingressStatusMarkup}
@@ -4078,17 +4172,21 @@ class UIHelpers {
             { kind: 'result' },
         );
         const managedAppProgress = this.buildManagedAppProgressMarkup(message, effectiveStreaming);
-        const progressTracker = this.buildProgressTrackerMarkup(message, effectiveStreaming);
+        const progressTracker = managedAppProgress
+            ? ''
+            : this.buildProgressTrackerMarkup(message, effectiveStreaming);
         const reasoningRibbon = progressTracker
             ? ''
-            : this.buildReasoningRibbonMarkup(message, effectiveStreaming);
+            : (managedAppProgress ? '' : this.buildReasoningRibbonMarkup(message, effectiveStreaming));
         const isManagedAppProjectSummary = message?.metadata?.managedAppProjectSummary === true
             || message?.managedAppProjectSummary === true;
+        const renderManagedAppProgressOnly = managedAppProgress
+            && this.shouldRenderManagedAppProgressOnly(message, content, effectiveStreaming);
         const shouldShowStreamingPlaceholder = effectiveStreaming
             && !managedAppProgress
             && !progressTracker
             && !reasoningRibbon;
-        if (isManagedAppProjectSummary && managedAppProgress) {
+        if ((isManagedAppProjectSummary || renderManagedAppProgressOnly) && managedAppProgress) {
             return {
                 html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}`,
                 variant: 'default',

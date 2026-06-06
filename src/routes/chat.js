@@ -1009,6 +1009,56 @@ function writeSseProgressPayload(sse, sessionId, progress = {}) {
     })}\n\n`);
 }
 
+async function maybeQueueWebChatParallelShadow(req, {
+    sessionId = '',
+    ownerId = '',
+    message = '',
+    model = null,
+    clientSurface = '',
+    taskType = '',
+    memoryScope = null,
+    executionProfile = 'default',
+    outputFormat = null,
+    metadata = {},
+} = {}) {
+    if (String(clientSurface || '').trim().toLowerCase() !== 'web-chat') {
+        return null;
+    }
+
+    const asyncService = req.app.locals.asyncLabService;
+    if (!asyncService?.isEnabled?.() || !asyncService?.createRun) {
+        return null;
+    }
+
+    const status = typeof asyncService.getStatus === 'function' ? asyncService.getStatus() : {};
+    if (status?.webChatParallelEnabled !== true) {
+        return null;
+    }
+
+    try {
+        return await asyncService.createRun({
+            adapter: 'web-chat-shadow',
+            task: message,
+            targetKey: `web-chat:${sessionId || 'session'}`,
+            sessionId,
+            requireGeneratedIdempotency: true,
+            metadata: {
+                source: 'web-chat-parallel-shadow',
+                shadowOnly: true,
+                model,
+                taskType,
+                executionProfile,
+                outputFormat,
+                memoryScope,
+                requestMetadata: metadata,
+            },
+        }, ownerId);
+    } catch (error) {
+        console.warn(`[ChatRoute] Failed to queue async web-chat shadow run: ${error.message}`);
+        return null;
+    }
+}
+
 router.post('/:sessionId/messages/:messageId/alignment-feedback', async (req, res, next) => {
     try {
         const sessionId = String(req.params.sessionId || '').trim();
@@ -1224,6 +1274,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
     let streamRequested = false;
     let activeSse = null;
     let activeSessionId = null;
+    let asyncRuntimeShadow = null;
     const startedAt = Date.now();
     try {
         const {
@@ -1531,6 +1582,29 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 }
                 : {}),
         };
+        asyncRuntimeShadow = await maybeQueueWebChatParallelShadow(req, {
+            sessionId,
+            ownerId,
+            message,
+            model,
+            clientSurface,
+            taskType,
+            memoryScope,
+            executionProfile: effectiveExecutionProfile,
+            outputFormat: effectiveOutputFormat,
+            metadata: effectiveRequestMetadata,
+        });
+        if (asyncRuntimeShadow?.run?.id) {
+            effectiveRequestMetadata = {
+                ...effectiveRequestMetadata,
+                asyncRuntimeShadow: {
+                    runId: asyncRuntimeShadow.run.id,
+                    adapter: asyncRuntimeShadow.run.adapter,
+                    targetKey: asyncRuntimeShadow.run.targetKey,
+                    duplicate: asyncRuntimeShadow.duplicate === true,
+                },
+            };
+        }
         const effectiveAgentInput = await buildUserInputWithImageArtifacts({
             sessionId,
             text: effectiveMessage,
@@ -2366,6 +2440,13 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                         type: 'done',
                         sessionId,
                         responseId: event.response.id,
+                        ...(asyncRuntimeShadow?.run ? {
+                            asyncRuntime: {
+                                shadowRun: asyncRuntimeShadow.run,
+                                events: asyncRuntimeShadow.events || [],
+                                duplicate: asyncRuntimeShadow.duplicate === true,
+                            },
+                        } : {}),
                         artifacts,
                         toolEvents,
                         displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
@@ -2563,6 +2644,13 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             sessionId,
             responseId: response.id,
             message: outputText,
+            ...(asyncRuntimeShadow?.run ? {
+                asyncRuntime: {
+                    shadowRun: asyncRuntimeShadow.run,
+                    events: asyncRuntimeShadow.events || [],
+                    duplicate: asyncRuntimeShadow.duplicate === true,
+                },
+            } : {}),
             displayContent: piiPresentation.restorations.length > 0 ? piiPresentation.text : undefined,
             piiRestorations: piiPresentation.restorations,
             artifacts,

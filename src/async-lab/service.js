@@ -7,6 +7,15 @@ const { AsyncLabStore } = require('./store');
 const { ValkeyLiveBus, normalizeText, sleep } = require('./valkey-live-bus');
 
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'failed']);
+const EXECUTABLE_ADAPTERS = new Set([
+    'remote-command',
+    'ssh-execute',
+    'remote-cli-agent',
+    'remote-workbench',
+    'k3s-deploy',
+    'managed-app',
+    'document-workflow',
+]);
 const REMOTE_ADAPTER_PATTERNS = [
     /remote/i,
     /ssh/i,
@@ -61,6 +70,46 @@ function pickText(...values) {
         }
     }
     return '';
+}
+
+function normalizeBuildWebhookStatus(value = '') {
+    return normalizeText(value).toLowerCase().replace(/[_\s]+/g, '-');
+}
+
+function isSuccessfulBuildWebhookStatus(value = '') {
+    return ['success', 'succeeded', 'passed', 'green'].includes(normalizeBuildWebhookStatus(value));
+}
+
+function normalizeWebhookFollowUp(value = '') {
+    const normalized = normalizeText(value).toLowerCase().replace(/[_\s]+/g, '-');
+    if (!normalized || ['0', 'false', 'no', 'off', 'none', 'copy-only'].includes(normalized)) {
+        return '';
+    }
+    if (['managed-app', 'managed-app-verify', 'verify', 'verification'].includes(normalized)) {
+        return 'verify';
+    }
+    if (['managed-app-deploy', 'deploy', 'deployment'].includes(normalized)) {
+        return 'deploy';
+    }
+    return '';
+}
+
+function lastPathSegment(value = '') {
+    return normalizeText(value).split(/[\\/]/).filter(Boolean).pop() || '';
+}
+
+function deriveWebhookAppRef(payload = {}, projectPath = '') {
+    const project = payload.project || payload.repository || {};
+    return pickText(
+        payload.appRef,
+        payload.ref,
+        payload.slug,
+        payload.repoName,
+        payload.repositoryName,
+        typeof payload.repository === 'string' ? payload.repository : '',
+        project.name,
+        lastPathSegment(projectPath),
+    );
 }
 
 function deriveTargetKey(input = {}) {
@@ -142,6 +191,8 @@ class AsyncLabService {
             idempotencyTtlSeconds: this.config.idempotencyTtlSeconds,
             leaseTtlMs: this.config.leaseTtlMs,
         });
+        this.toolManager = options.toolManager || null;
+        this.toolExecutionContext = options.toolExecutionContext || {};
         this.instanceId = options.instanceId || `async-lab-${os.hostname()}-${process.pid}-${randomUUID()}`;
         this.workerTimer = null;
         this.drainPromise = null;
@@ -157,6 +208,19 @@ class AsyncLabService {
 
     isAdminToggleAllowed() {
         return this.config.adminToggleAllowed === true;
+    }
+
+    configureExecutionRuntime({
+        toolManager = this.toolManager,
+        toolExecutionContext = this.toolExecutionContext,
+    } = {}) {
+        this.toolManager = toolManager || null;
+        this.toolExecutionContext = toolExecutionContext && typeof toolExecutionContext === 'object'
+            ? { ...toolExecutionContext }
+            : {};
+        return {
+            toolManagerAttached: Boolean(this.toolManager?.executeTool),
+        };
     }
 
     assertEnabled() {
@@ -601,6 +665,7 @@ class AsyncLabService {
 
     async executeLabRun(run = {}) {
         const plan = this.buildExecutionPlan(run);
+        let toolResult = null;
         for (const step of plan) {
             const current = await this.store.getRun(run.id);
             if (!current || TERMINAL_STATUSES.has(current.status)) {
@@ -641,9 +706,15 @@ class AsyncLabService {
             await sleep(this.config.simulationDelayMs);
         }
 
+        const latest = await this.store.getRun(run.id);
+        if (latest && !TERMINAL_STATUSES.has(latest.status)) {
+            toolResult = await this.maybeExecuteAdapter(latest);
+        }
+
         const completed = await this.store.updateRun(run.id, {
             status: 'completed',
             completedAt: new Date().toISOString(),
+            metadata: toolResult ? { toolResult } : {},
         });
         await this.appendEvent(run.id, {
             type: 'completed',
@@ -653,8 +724,179 @@ class AsyncLabService {
                 message: 'Async lab run completed.',
                 dryRun: completed?.metadata?.dryRun === true,
                 runtimeSurface: this.config.surface,
+                toolExecuted: Boolean(toolResult),
+                toolSuccess: toolResult ? toolResult.success !== false : null,
             },
         });
+    }
+
+    async maybeExecuteAdapter(run = {}) {
+        const adapter = normalizeAdapter(run.adapter);
+        const remoteAdapter = run.metadata?.remoteAdapter === true || isRemoteAdapter(adapter);
+        if (!EXECUTABLE_ADAPTERS.has(adapter) || (remoteAdapter && !run.liveRemoteAllowed)) {
+            return null;
+        }
+
+        if (!this.toolManager?.executeTool) {
+            await this.appendEvent(run.id, {
+                type: 'tool_skipped',
+                source: 'async-lab-worker',
+                status: 'running',
+                payload: {
+                    adapter,
+                    targetKey: run.targetKey,
+                    message: 'Live adapter execution skipped because no tool manager is attached to the async runtime.',
+                },
+            });
+            return null;
+        }
+
+        const params = this.buildToolParams(run);
+        await this.appendEvent(run.id, {
+            type: 'tool_started',
+            source: 'async-lab-worker',
+            status: 'running',
+            payload: {
+                adapter,
+                targetKey: run.targetKey,
+                message: `Executing ${adapter} through the async runtime.`,
+                paramsPreview: this.buildParamsPreview(params),
+            },
+        });
+
+        const startedAt = Date.now();
+        let result;
+        try {
+            result = await this.toolManager.executeTool(adapter, params, this.buildToolContext(run));
+        } catch (error) {
+            result = {
+                success: false,
+                error: error.message,
+                toolId: adapter,
+                duration: Math.max(0, Date.now() - startedAt),
+            };
+        }
+        const summary = this.summarizeToolResult(adapter, result, startedAt);
+        await this.appendEvent(run.id, {
+            type: result?.success === false ? 'tool_failed' : 'tool_completed',
+            source: 'async-lab-worker',
+            status: result?.success === false ? 'failed' : 'running',
+            payload: {
+                adapter,
+                targetKey: run.targetKey,
+                message: result?.success === false
+                    ? `${adapter} returned an error result.`
+                    : `${adapter} returned a structured result.`,
+                result: summary,
+            },
+        });
+
+        if (result?.success === false) {
+            throw createServiceError(result.error || `${adapter} failed.`, 502);
+        }
+
+        return summary;
+    }
+
+    buildToolParams(run = {}) {
+        const metadataParams = run.metadata?.toolParams && typeof run.metadata.toolParams === 'object'
+            ? run.metadata.toolParams
+            : {};
+        if (Object.keys(metadataParams).length > 0) {
+            return { ...metadataParams };
+        }
+
+        const adapter = normalizeAdapter(run.adapter);
+        if (adapter === 'remote-cli-agent') {
+            return {
+                task: run.task,
+                targetId: run.targetKey,
+                adminMode: true,
+                waitMs: 120000,
+            };
+        }
+        if (adapter === 'managed-app') {
+            return {
+                task: run.task,
+                targetKey: run.targetKey,
+            };
+        }
+        if (adapter === 'document-workflow') {
+            return {
+                action: 'generate',
+                prompt: run.task,
+                format: run.metadata?.outputFormat || 'html',
+                documentType: run.metadata?.documentType || 'document',
+                buildMode: run.metadata?.buildMode || 'sandbox',
+            };
+        }
+        if (adapter === 'k3s-deploy') {
+            return {
+                action: 'status',
+                targetId: run.targetKey,
+            };
+        }
+        if (adapter === 'remote-workbench') {
+            return {
+                action: 'inspect',
+                task: run.task,
+                targetId: run.targetKey,
+            };
+        }
+
+        return {
+            command: run.task,
+            targetId: run.targetKey,
+        };
+    }
+
+    buildToolContext(run = {}) {
+        return {
+            ...(this.toolExecutionContext && typeof this.toolExecutionContext === 'object'
+                ? this.toolExecutionContext
+                : {}),
+            sessionId: run.sessionId || this.toolExecutionContext?.sessionId || null,
+            ownerId: run.ownerId || this.toolExecutionContext?.ownerId || null,
+            route: '/api/async-lab',
+            transport: 'async-runtime',
+            executionProfile: 'async-runtime',
+            toolManager: this.toolManager,
+        };
+    }
+
+    buildParamsPreview(params = {}) {
+        const preview = {};
+        for (const [key, value] of Object.entries(params || {})) {
+            if (/password|secret|token|key/i.test(key)) {
+                preview[key] = '[redacted]';
+            } else if (typeof value === 'string') {
+                preview[key] = value.length > 160 ? `${value.slice(0, 157)}...` : value;
+            } else if (value === null || ['number', 'boolean'].includes(typeof value)) {
+                preview[key] = value;
+            } else {
+                preview[key] = Array.isArray(value) ? `[array:${value.length}]` : '[object]';
+            }
+        }
+        return preview;
+    }
+
+    summarizeToolResult(adapter = '', result = {}, startedAt = Date.now()) {
+        const durationMs = Number(result?.duration) || Math.max(0, Date.now() - startedAt);
+        return {
+            adapter: normalizeAdapter(adapter),
+            success: result?.success !== false,
+            toolId: result?.toolId || normalizeAdapter(adapter),
+            durationMs,
+            error: normalizeText(result?.error),
+            status: result?.verification?.status || null,
+            evidence: result?.verification?.evidence || null,
+            data: result?.data && typeof result.data === 'object'
+                ? {
+                    keys: Object.keys(result.data).slice(0, 12),
+                    message: normalizeText(result.data.message || result.data.summary || result.data.output || ''),
+                }
+                : null,
+        };
     }
 
     buildExecutionPlan(run = {}) {
@@ -810,7 +1052,7 @@ class AsyncLabService {
             `build-webhook:${projectPath}:${externalRunId || commitSha || hashPayload(payload)}:${status}`,
         );
 
-        return this.createRun({
+        const copied = await this.createRun({
             adapter: 'build-webhook-copy',
             task: `Process copied build webhook for ${projectPath}`,
             targetKey: `webhook/${projectPath}`,
@@ -827,6 +1069,67 @@ class AsyncLabService {
                 },
             },
         }, options.ownerId || 'async-lab-webhook');
+        const followUp = await this.createBuildWebhookFollowUp(payload, {
+            ...options,
+            projectPath,
+            externalRunId,
+            commitSha,
+            status,
+        });
+        return followUp ? { ...copied, followUp } : copied;
+    }
+
+    async createBuildWebhookFollowUp(payload = {}, context = {}) {
+        const requestedFollowUp = typeof context.followUp === 'object' && context.followUp !== null
+            ? context.followUp
+            : (payload.asyncFollowUp || payload.asyncRuntime?.followUp || context.followUp || '');
+        const action = normalizeWebhookFollowUp(
+            typeof requestedFollowUp === 'object'
+                ? requestedFollowUp.action || requestedFollowUp.type || requestedFollowUp.kind
+                : requestedFollowUp,
+        );
+        if (!action || !isSuccessfulBuildWebhookStatus(context.status)) {
+            return null;
+        }
+
+        const appRef = pickText(
+            typeof requestedFollowUp === 'object' ? requestedFollowUp.appRef || requestedFollowUp.ref || requestedFollowUp.slug : '',
+            deriveWebhookAppRef(payload, context.projectPath),
+        );
+        if (!appRef) {
+            return null;
+        }
+
+        const targetKey = `managed-app:${appRef}`;
+        const idempotencyKey = `build-webhook-follow-up:${action}:${appRef}:${context.externalRunId || context.commitSha || hashPayload(payload)}`;
+        return this.createRun({
+            adapter: 'managed-app',
+            task: `${action === 'deploy' ? 'Deploy' : 'Verify'} managed app ${appRef} after successful build webhook.`,
+            targetKey,
+            sessionId: payload.sessionId || payload.session_id || '',
+            idempotencyKey,
+            liveRemote: true,
+            metadata: {
+                source: 'build-webhook-follow-up',
+                webhook: {
+                    projectPath: context.projectPath,
+                    externalRunId: context.externalRunId,
+                    commitSha: context.commitSha,
+                    status: context.status,
+                    followUpAction: action,
+                    receivedAt: new Date().toISOString(),
+                },
+                toolParams: {
+                    action,
+                    appRef,
+                    requestedAction: action,
+                    deployRequested: action === 'deploy',
+                    ...(payload.imageTag || payload.image_tag ? { imageTag: payload.imageTag || payload.image_tag } : {}),
+                    ...(context.commitSha ? { commitSha: context.commitSha } : {}),
+                    ...(context.externalRunId ? { runId: context.externalRunId } : {}),
+                },
+            },
+        }, context.ownerId || 'async-lab-webhook');
     }
 
     async close() {

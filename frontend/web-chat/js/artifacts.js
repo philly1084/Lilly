@@ -11,6 +11,7 @@
     const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};
     const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
     const REMOTE_BUILD_AUTONOMY_STORAGE_KEY = 'kimibuilt_remote_build_autonomy';
+    const DEFAULT_PUBLIC_WEB_DOMAIN = 'demoserver2.buzz';
 
     function isRemoteBuildAutonomyApproved() {
         try {
@@ -1120,6 +1121,28 @@
         );
     }
 
+    function isDeployableSiteArtifact(artifact) {
+        if (!artifact?.id || !getArtifactPreviewUrl(artifact) || isPdfArtifact(artifact)) {
+            return false;
+        }
+
+        const format = String(artifact?.format || artifact?.extension || '').toLowerCase();
+        const mimeType = String(artifact?.mimeType || '').toLowerCase();
+        const filename = String(artifact?.filename || '').toLowerCase();
+        const metadata = artifact?.metadata && typeof artifact.metadata === 'object' ? artifact.metadata : {};
+        return Boolean(
+            artifact?.bundleDownloadUrl
+            || artifact?.preview?.type === 'site'
+            || metadata.siteBundle
+            || metadata.bundle
+            || metadata.type === 'frontend'
+            || String(metadata.generationStrategy || '').includes('frontend')
+            || ['html', 'htm'].includes(format)
+            || mimeType.includes('text/html')
+            || /\.(?:html?|xhtml)$/.test(filename),
+        );
+    }
+
     function shouldRenderInlineArtifactPreview(artifact) {
         if (!getArtifactPreviewUrl(artifact)) {
             return false;
@@ -1231,7 +1254,7 @@
                 Update
             </button>
         `;
-        const deployActions = artifact?.bundleDownloadUrl
+        const deployActions = isDeployableSiteArtifact(artifact)
             ? `
                 <button onclick="artifactManager.exportSiteToManagedApp('${artifact.id}')">
                     Push to Web
@@ -1927,6 +1950,93 @@
                 startInlineArtifactPreview(wrapper);
             });
     }
+
+    function normalizePublicDomainHost(value = '') {
+        const raw = String(value || '').trim().toLowerCase();
+        if (!raw) return '';
+        let candidate = raw;
+        try {
+            const parsed = new URL(/^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`);
+            candidate = parsed.hostname;
+        } catch (_error) {
+            candidate = candidate
+                .replace(/^https?:\/\//i, '')
+                .split(/[/?#]/)[0];
+        }
+        const normalized = candidate
+            .replace(/^\.+|\.+$/g, '')
+            .replace(/[^a-z0-9.-]+/g, '-')
+            .replace(/\.{2,}/g, '.');
+        const labels = normalized.split('.').filter(Boolean);
+        if (labels.length < 2 || normalized.length > 253) return '';
+        if (labels.some((label) => label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))) {
+            return '';
+        }
+        return labels.join('.');
+    }
+
+    function normalizeDnsLabel(value = '') {
+        const normalized = String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/^https?:\/\//i, '')
+            .split(/[./?#]/)[0]
+            .replace(/[^a-z0-9-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .replace(/-{2,}/g, '-')
+            .slice(0, 63)
+            .replace(/-+$/g, '');
+        return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(normalized) ? normalized : '';
+    }
+
+    function getSuggestedDnsLabel(artifact = null) {
+        const source = String(
+            artifact?.metadata?.title
+            || artifact?.filename
+            || 'demo',
+        )
+            .replace(/\.[a-z0-9]+$/i, '')
+            .trim();
+        return normalizeDnsLabel(source) || 'demo';
+    }
+
+    function resolveRequestedPublicHost(input = '', baseDomain = DEFAULT_PUBLIC_WEB_DOMAIN) {
+        const raw = String(input || '').trim();
+        if (!raw) {
+            return null;
+        }
+        const fullHost = normalizePublicDomainHost(raw);
+        if (fullHost) {
+            const hostLabel = fullHost.split('.')[0] || '';
+            return {
+                dnsName: hostLabel,
+                publicHost: fullHost,
+                slug: normalizeDnsLabel(hostLabel),
+            };
+        }
+        const dnsName = normalizeDnsLabel(raw);
+        if (!dnsName) {
+            return null;
+        }
+        const normalizedBaseDomain = normalizePublicDomainHost(baseDomain) || DEFAULT_PUBLIC_WEB_DOMAIN;
+        return {
+            dnsName,
+            publicHost: `${dnsName}.${normalizedBaseDomain}`,
+            slug: dnsName,
+        };
+    }
+
+    function promptForPublicHost(artifact = null) {
+        const suggested = getSuggestedDnsLabel(artifact);
+        const entered = window.prompt(
+            `Choose the public DNS name for this site. Enter a subdomain like "${suggested}" or a full host like "${suggested}.${DEFAULT_PUBLIC_WEB_DOMAIN}".`,
+            suggested,
+        );
+        if (entered === null) {
+            return null;
+        }
+        return resolveRequestedPublicHost(entered, DEFAULT_PUBLIC_WEB_DOMAIN);
+    }
     
     // Create global artifact manager for external access
     window.artifactManager = {
@@ -1993,9 +2103,16 @@
 
         exportSiteToManagedApp: async (id) => {
             const artifact = findArtifactById(id);
-            if (!artifact?.bundleDownloadUrl) {
+            if (!isDeployableSiteArtifact(artifact)) {
                 if (window.uiHelpers?.showToast) {
-                    uiHelpers.showToast('Only website bundle artifacts can be pushed to the web build lane.', 'warning');
+                    uiHelpers.showToast('Only previewable HTML/site artifacts can be pushed to the web build lane.', 'warning');
+                }
+                return;
+            }
+            const requestedHost = promptForPublicHost(artifact);
+            if (!requestedHost) {
+                if (window.uiHelpers?.showToast) {
+                    uiHelpers.showToast('Enter a valid DNS label like demo or a full host like demo.demoserver2.buzz.', 'warning');
                 }
                 return;
             }
@@ -2003,7 +2120,7 @@
             try {
                 await ensureSession();
                 if (window.uiHelpers?.showToast) {
-                    uiHelpers.showToast('Sending site bundle to the remote build lane...', 'info');
+                    uiHelpers.showToast(`Requesting ${requestedHost.publicHost} through the remote web lane...`, 'info');
                 }
                 const response = await fetch(resolveApiUrl(`/api/artifacts/${encodeURIComponent(id)}/managed-app`, { absolute: true }), {
                     method: 'POST',
@@ -2016,6 +2133,14 @@
                         sessionId: getCurrentSessionId(),
                         requestedAction: 'deploy',
                         deployRequested: true,
+                        dnsName: requestedHost.dnsName,
+                        publicBaseDomain: DEFAULT_PUBLIC_WEB_DOMAIN,
+                        publicHost: requestedHost.publicHost,
+                        slug: requestedHost.slug,
+                        metadata: {
+                            requestedPublicHost: requestedHost.publicHost,
+                            acmeRequestHost: requestedHost.publicHost,
+                        },
                     }),
                 });
                 const data = await response.json().catch(() => ({}));
@@ -2024,7 +2149,11 @@
                 }
                 if (window.uiHelpers?.showToast) {
                     const appName = data.app?.appName || data.app?.slug || 'site';
-                    uiHelpers.showToast(`Queued ${appName} for remote build.`, 'success');
+                    const host = data.publicHost || data.app?.publicHost || requestedHost.publicHost;
+                    uiHelpers.showToast(`Queued ${appName} for https://${host}.`, 'success');
+                }
+                if (data.asyncRuntime?.run?.id && typeof window.chatApp?.createAsyncRemoteJobCardFromRun === 'function') {
+                    window.chatApp.createAsyncRemoteJobCardFromRun(data.asyncRuntime, getCurrentSessionId());
                 }
             } catch (error) {
                 if (window.uiHelpers?.showToast) {
