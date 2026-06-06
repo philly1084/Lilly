@@ -113,6 +113,7 @@ COPY bin/ ./bin/
 COPY scripts/kokoro_g2p_bridge.py ./scripts/kokoro_g2p_bridge.py
 COPY src/ ./src/
 COPY frontend/ ./frontend/
+COPY data/skills/ ./data/skills/
 COPY data/kokoro/voices/manifest.json ./data/kokoro/voices/manifest.json
 COPY data/piper/voices/manifest.json ./data/piper/voices/manifest.json
 COPY package.json ./

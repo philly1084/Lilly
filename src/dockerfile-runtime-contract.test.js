@@ -20,4 +20,12 @@ describe('Docker runtime contract', () => {
     expect(publishedTarget).toBe('media');
     expect(stageBody(publishedTarget)).toContain('openssh-client');
   });
+
+  it('ships registered skills in the runtime image', () => {
+    const dockerignore = fs.readFileSync(path.join(root, '.dockerignore'), 'utf8');
+
+    expect(dockerfile).toContain('COPY data/skills/ ./data/skills/');
+    expect(dockerignore).toContain('!data/skills/');
+    expect(dockerignore).toContain('!data/skills/remote-operations-system/');
+  });
 });
