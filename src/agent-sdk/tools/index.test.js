@@ -152,6 +152,49 @@ describe('ToolManager image tools', () => {
     expect(toolManager.getTool('podcast')).toBeTruthy();
   });
 
+  test('registers modern agent capability map and gap-covering skills', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+
+    expect(toolManager.getTool('modern-agent-capability-map')).toBeTruthy();
+
+    const result = await toolManager.executeTool('modern-agent-capability-map', {}, {});
+    expect(result.success).toBe(true);
+
+    const capabilityIds = result.data.capabilities.map((capability) => capability.id);
+    expect(capabilityIds).toEqual(expect.arrayContaining([
+      'mcp-connector-bridge',
+      'a2a-agent-interoperability',
+      'computer-browser-use',
+      'agent-trace-eval-replay',
+      'daily-work-connectors',
+      'native-office-roundtrip',
+      'agent-tool-security-governance',
+      'skill-authoring-workshop',
+    ]));
+    expect(result.data.capabilities).toHaveLength(8);
+    expect(result.data.capabilities.every((capability) => capability.registered)).toBe(true);
+    expect(result.data.capabilities.find((capability) => capability.id === 'native-office-roundtrip').runtimeBoundary)
+      .toContain('native DOCX');
+  });
+
+  test('skill-context returns structured selected skills for modern agent lanes', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+
+    const result = await toolManager.executeTool('skill-context', {
+      text: 'connect Lilly to a Model Context Protocol server and then replay the agent trace',
+      limit: 4,
+    }, {});
+
+    expect(result.success).toBe(true);
+    expect(result.data.context).toContain('<registered_skills>');
+    expect(result.data.selectedSkills).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'mcp-connector-bridge' }),
+      expect.objectContaining({ id: 'agent-trace-eval-replay' }),
+    ]));
+  });
+
   test('registers remote operation skills with kubectl and k3s trigger coverage', async () => {
     const toolManager = new ToolManager();
     await toolManager.initialize();

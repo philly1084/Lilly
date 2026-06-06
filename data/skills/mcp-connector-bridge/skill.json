@@ -1,0 +1,52 @@
+{
+  "id": "mcp-connector-bridge",
+  "name": "MCP Connector Bridge",
+  "description": "Workflow for discovering, validating, documenting, and safely using Model Context Protocol servers as Lilly connector surfaces.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "web-search",
+    "web-fetch",
+    "tool-doc-read",
+    "remote-cli-agent",
+    "user-checkpoint"
+  ],
+  "triggerPatterns": [
+    "mcp connector",
+    "model context protocol",
+    "connect an mcp server",
+    "mcp server registry",
+    "add external tools",
+    "tool connector bridge",
+    "mcp app integration",
+    "mcp client"
+  ],
+  "chain": [
+    {
+      "step": "Identify the requested external system, data source, or tool server and whether an MCP server already exists.",
+      "tool": "web-search"
+    },
+    {
+      "step": "Fetch official server docs, auth requirements, supported tools/resources/prompts, and install instructions.",
+      "tool": "web-fetch"
+    },
+    {
+      "step": "Classify side effects, credential requirements, data exposure, and approval gates before runtime wiring.",
+      "tool": null
+    },
+    {
+      "step": "Use remote-cli-agent only for scoped installation, config, smoke testing, or deployment work after inventory and approval.",
+      "tool": "remote-cli-agent"
+    },
+    {
+      "step": "Return a connector card with server name, auth, tools, resources, prompts, risks, setup commands, smoke test, and rollback.",
+      "tool": null
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

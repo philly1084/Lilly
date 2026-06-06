@@ -1,0 +1,50 @@
+{
+  "id": "computer-browser-use",
+  "name": "Computer and Browser Use",
+  "description": "Workflow for browser-visible and computer-use tasks that need clicking, typing, screenshots, UI state inspection, approval gates, or rendered proof.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "web-scrape",
+    "code-sandbox",
+    "remote-cli-agent",
+    "user-checkpoint",
+    "tool-doc-read"
+  ],
+  "triggerPatterns": [
+    "computer use",
+    "browser use",
+    "click around",
+    "open the page",
+    "inspect the ui",
+    "screenshot qa",
+    "browser automation",
+    "fill the form",
+    "visual proof",
+    "rendered proof"
+  ],
+  "chain": [
+    {
+      "step": "Resolve the URL, app surface, or preview target and decide whether screenshot inspection is enough or interactive control is required.",
+      "tool": null
+    },
+    {
+      "step": "Use web-scrape with browser:true and captureScreenshot:true for rendered inspection and visual QA.",
+      "tool": "web-scrape"
+    },
+    {
+      "step": "Use user-checkpoint before high-impact UI actions, form submissions, purchases, account changes, deletes, or public deploy actions.",
+      "tool": "user-checkpoint"
+    },
+    {
+      "step": "Use remote-cli-agent for remote Playwright/Chromium automation when the live runner owns the app or proof surface.",
+      "tool": "remote-cli-agent"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2200,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

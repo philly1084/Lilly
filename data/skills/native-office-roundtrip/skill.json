@@ -1,0 +1,55 @@
+{
+  "id": "native-office-roundtrip",
+  "name": "Native Office Round Trip",
+  "description": "Workflow for DOCX, PDF, PPTX, and XLSX creation, import, redline, comment, visual render QA, and export verification.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "document-workflow",
+    "graph-diagram",
+    "file-read",
+    "file-write",
+    "code-sandbox",
+    "web-scrape"
+  ],
+  "triggerPatterns": [
+    "native docx",
+    "word redline",
+    "word comments",
+    "docx round trip",
+    "office document",
+    "pptx deck edit",
+    "xlsx spreadsheet",
+    "pdf visual diff",
+    "render qa",
+    "document export"
+  ],
+  "chain": [
+    {
+      "step": "Resolve requested format, source artifact, target output, and whether native export or HTML normalization is acceptable.",
+      "tool": null
+    },
+    {
+      "step": "Use document-workflow for supported HTML, PDF, PPTX, XLSX, and Markdown generation paths.",
+      "tool": "document-workflow"
+    },
+    {
+      "step": "For DOCX requests, state the current runtime boundary and use an external/native conversion path only when explicitly available.",
+      "tool": null
+    },
+    {
+      "step": "Generate charts or diagrams as durable assets before embedding in documents.",
+      "tool": "graph-diagram"
+    },
+    {
+      "step": "Render or preview in the target medium and verify readability, page breaks, captions, tables, images, and contrast.",
+      "tool": "web-scrape"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

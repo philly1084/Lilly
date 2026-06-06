@@ -5298,6 +5298,131 @@ class ToolManager {
         },
       },
       {
+        id: 'modern-agent-capability-map',
+        name: 'Modern Agent Capability Map',
+        category: 'system',
+        description: 'Report Lilly modern agent capability lanes, registered skill coverage, tool chains, runtime boundaries, and next setup proof for MCP, A2A, browser/computer use, eval replay, connectors, office round-trip, security governance, and skill authoring.',
+        backend: {
+          handler: async (params = {}) => {
+            const requested = String(params.capability || params.id || params.query || '').trim().toLowerCase();
+            const capabilities = [
+              {
+                id: 'mcp-connector-bridge',
+                label: 'MCP connector bridge',
+                status: 'skill_registered',
+                runtimeBoundary: 'Connector installation and use still requires a configured MCP server, auth, and a tool-list or smoke test.',
+                proof: 'Read the skill and verify candidate server docs, auth, tools, resources, prompts, and setup smoke test.',
+              },
+              {
+                id: 'a2a-agent-interoperability',
+                label: 'A2A agent interoperability',
+                status: 'skill_registered',
+                runtimeBoundary: 'Live A2A support requires a reachable agent card endpoint or configured external agent client.',
+                proof: 'Verify agent card discovery plus one task lifecycle smoke test.',
+              },
+              {
+                id: 'computer-browser-use',
+                label: 'Computer and browser use',
+                status: 'skill_registered',
+                runtimeBoundary: 'Lilly has browser-rendered proof through web-scrape; true desktop computer-use depends on an available provider/runner.',
+                proof: 'Capture desktop/mobile screenshots or run remote Playwright/Chromium proof for the target surface.',
+              },
+              {
+                id: 'agent-trace-eval-replay',
+                label: 'Trace eval replay',
+                status: 'skill_registered',
+                runtimeBoundary: 'Replay depends on an available trace, session, fixture, or feedback record.',
+                proof: 'Show expected route/tools versus actual route/tools and run focused tests or eval fixtures after changes.',
+              },
+              {
+                id: 'daily-work-connectors',
+                label: 'Daily work connectors',
+                status: 'skill_registered',
+                runtimeBoundary: 'Gmail, Calendar, Slack, Jira, Linear, Notion, Drive, and repo connectors require installed connector/auth surfaces before actions can run.',
+                proof: 'Produce connector cards with scopes, approvals, setup, smoke test, audit event, and rollback.',
+              },
+              {
+                id: 'native-office-roundtrip',
+                label: 'Native office round trip',
+                status: 'skill_registered',
+                runtimeBoundary: 'HTML, PDF, PPTX, XLSX, and Markdown are supported; native DOCX still needs an explicit external/native export path.',
+                proof: 'Render or preview the target medium and verify page breaks, captions, tables, charts, images, and contrast.',
+              },
+              {
+                id: 'agent-tool-security-governance',
+                label: 'Agent tool security governance',
+                status: 'skill_registered',
+                runtimeBoundary: 'Security findings require the relevant tool docs, prompts, manifests, or code surface to inspect.',
+                proof: 'Report severity-ordered findings with guardrail/test evidence and residual risk.',
+              },
+              {
+                id: 'skill-authoring-workshop',
+                label: 'Skill authoring workshop',
+                status: 'skill_registered',
+                runtimeBoundary: 'Skill creation/update is available through skill tools; effectiveness still needs skill-context matching proof.',
+                proof: 'Run skill-context sample prompts and focused skill-store or routing tests when behavior changes.',
+              },
+            ].map((capability) => {
+              const skill = skillStore.readSkill(capability.id, {
+                includeBody: params.includeBody === true,
+              });
+              return {
+                ...capability,
+                registered: Boolean(skill),
+                skill: skill ? {
+                  id: skill.id,
+                  name: skill.name,
+                  description: skill.description,
+                  tools: skill.tools || [],
+                  triggerPatterns: skill.triggerPatterns || [],
+                  ...(params.includeBody === true ? { body: skill.body || '' } : {}),
+                } : null,
+              };
+            });
+            const filtered = requested
+              ? capabilities.filter((capability) => [
+                capability.id,
+                capability.label,
+                capability.runtimeBoundary,
+                ...(capability.skill?.triggerPatterns || []),
+              ].join(' ').toLowerCase().includes(requested))
+              : capabilities;
+            return {
+              capabilities: filtered,
+              count: filtered.length,
+              registry: skillStore.getSummary(),
+            };
+          },
+          sideEffects: [],
+          timeout: 5000,
+        },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            capability: { type: 'string' },
+            id: { type: 'string' },
+            query: { type: 'string' },
+            includeBody: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+        skill: {
+          triggerPatterns: [
+            'modern agent capability map',
+            'what tools is lilly missing',
+            'modern ai tools',
+            'mcp a2a computer use eval connectors',
+            'capability coverage',
+            'capability gaps',
+          ],
+          requiresConfirmation: false,
+        },
+        frontend: {
+          exposeToFrontend: true,
+          icon: 'map',
+        },
+      },
+      {
         id: 'skill-list',
         name: 'Skill List',
         category: 'system',
@@ -5455,15 +5580,22 @@ class ToolManager {
         category: 'system',
         description: 'Return the compact registered-skills prompt block that matches a request and optional tool ids.',
         backend: {
-          handler: async (params = {}) => ({
-            context: skillStore.buildContextBlock({
+          handler: async (params = {}) => {
+            const context = skillStore.buildContext({
               text: params.text || params.prompt || params.request || '',
               toolIds: params.toolIds || params.tools || [],
               selectedSkillIds: params.skillIds || params.skills || [],
               limit: params.limit,
-            }),
-            registry: skillStore.getSummary(),
-          }),
+              surface: params.surface || params.clientSurface || '',
+              taskType: params.taskType || params.activeMode || '',
+              capabilityNeeds: params.capabilityNeeds || params.capabilities || [],
+            });
+            return {
+              context: context.block,
+              selectedSkills: context.selectedSkills,
+              registry: skillStore.getSummary(),
+            };
+          },
           sideEffects: [],
           timeout: 5000,
         },
@@ -5478,6 +5610,12 @@ class ToolManager {
             skillIds: { type: 'array', items: { type: 'string' } },
             skills: { type: 'array', items: { type: 'string' } },
             limit: { type: 'integer' },
+            surface: { type: 'string' },
+            clientSurface: { type: 'string' },
+            taskType: { type: 'string' },
+            activeMode: { type: 'string' },
+            capabilityNeeds: { type: 'array', items: { type: 'string' } },
+            capabilities: { type: 'array', items: { type: 'string' } },
           },
           additionalProperties: false,
         },

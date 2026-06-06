@@ -1,0 +1,55 @@
+{
+  "id": "agent-tool-security-governance",
+  "name": "Agent Tool Security Governance",
+  "description": "Workflow for prompt-injection defense, tool permission review, secret handling, exfiltration checks, approval gates, and safe agent tool rollout.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "security-scan",
+    "file-search",
+    "file-read",
+    "tool-doc-read",
+    "user-checkpoint",
+    "self-reflection-update"
+  ],
+  "triggerPatterns": [
+    "prompt injection",
+    "tool security",
+    "agent security",
+    "exfiltration",
+    "secret handling",
+    "permission review",
+    "tool approval",
+    "governance",
+    "safe tools",
+    "security gate"
+  ],
+  "chain": [
+    {
+      "step": "Inventory tools, credentials, data classes, side effects, and trust boundaries.",
+      "tool": "tool-doc-read"
+    },
+    {
+      "step": "Scan relevant code, prompts, docs, or manifests for secrets and unsafe tool patterns.",
+      "tool": "security-scan"
+    },
+    {
+      "step": "Classify prompt-injection, exfiltration, confused-deputy, lookalike-tool, overbroad-scope, and missing-approval risks.",
+      "tool": null
+    },
+    {
+      "step": "Patch docs, prompts, skills, validators, or tool policies when concrete issues are found.",
+      "tool": null
+    },
+    {
+      "step": "Use user-checkpoint for high-impact permission or destructive-operation decisions.",
+      "tool": "user-checkpoint"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

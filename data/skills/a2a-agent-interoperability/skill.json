@@ -1,0 +1,53 @@
+{
+  "id": "a2a-agent-interoperability",
+  "name": "A2A Agent Interoperability",
+  "description": "Workflow for exposing or consuming Agent2Agent-compatible agent cards, tasks, streaming updates, and delegated work contracts.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "web-search",
+    "web-fetch",
+    "api-design",
+    "schema-generate",
+    "remote-cli-agent",
+    "user-checkpoint"
+  ],
+  "triggerPatterns": [
+    "a2a",
+    "agent2agent",
+    "agent to agent",
+    "agent card",
+    "agent interoperability",
+    "external agent delegate",
+    "consume another agent",
+    "expose lilly as an agent"
+  ],
+  "chain": [
+    {
+      "step": "Decide whether Lilly is exposing an agent card, consuming another agent, or brokering tasks between agents.",
+      "tool": null
+    },
+    {
+      "step": "Fetch the current protocol or vendor docs when protocol details may have changed.",
+      "tool": "web-fetch"
+    },
+    {
+      "step": "Design agent card, skill declarations, auth, task lifecycle, streaming updates, artifact handling, and cancellation semantics.",
+      "tool": "api-design"
+    },
+    {
+      "step": "Generate or validate schemas for agent card and task payloads.",
+      "tool": "schema-generate"
+    },
+    {
+      "step": "Implement and verify with remote-cli-agent when the user asks to ship an endpoint or client.",
+      "tool": "remote-cli-agent"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

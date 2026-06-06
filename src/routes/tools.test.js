@@ -99,6 +99,25 @@ describe('/api/tools routes', () => {
         ]));
     });
 
+    test('modern capability map details expose the eight agent upgrade lanes', async () => {
+        const app = buildApp();
+
+        const response = await request(app).get('/api/tools/modern-agent-capability-map');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.docAvailable).toBe(true);
+        expect(response.body.data.support.status).toBe('stable');
+        expect(response.body.data.description).toContain('MCP, A2A, browser/computer use');
+        expect(response.body.data.support.notes).toEqual(expect.arrayContaining([
+            expect.stringContaining('MCP connectors'),
+            expect.stringContaining('skill coverage'),
+        ]));
+        expect(response.body.data.skill.triggerPatterns).toEqual(expect.arrayContaining([
+            'modern ai tools',
+            'capability gaps',
+        ]));
+    });
+
     test('remote-command tool details report runner target availability', async () => {
         const app = buildApp();
 

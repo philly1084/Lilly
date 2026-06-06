@@ -1,0 +1,55 @@
+{
+  "id": "skill-authoring-workshop",
+  "name": "Skill Authoring Workshop",
+  "description": "Workflow for turning successful Lilly tool chains into compact registered skills with triggers, chain steps, tests, and proof loops.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "skill-list",
+    "skill-read",
+    "skill-context",
+    "skill-create",
+    "skill-update",
+    "self-reflection-update",
+    "file-search"
+  ],
+  "triggerPatterns": [
+    "create a skill",
+    "make a skill",
+    "skill authoring",
+    "skill workshop",
+    "recursive skills",
+    "turn this workflow into a skill",
+    "improve skill selection",
+    "registered skill",
+    "workflow skill"
+  ],
+  "chain": [
+    {
+      "step": "Search existing skills first and decide whether to update, create, or leave as one-off guidance.",
+      "tool": "skill-list"
+    },
+    {
+      "step": "Extract a reusable trigger, operating model, lane/tool chain, boundaries, proof loop, and failure handling.",
+      "tool": null
+    },
+    {
+      "step": "Create or update one compact skill with exact tool ids and trigger phrases.",
+      "tool": "skill-create"
+    },
+    {
+      "step": "Use skill-context with sample prompts to prove the selector finds the intended skill.",
+      "tool": "skill-context"
+    },
+    {
+      "step": "Run focused tests when skill-store, route behavior, or metadata propagation changes.",
+      "tool": null
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

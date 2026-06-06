@@ -1,0 +1,54 @@
+{
+  "id": "agent-trace-eval-replay",
+  "name": "Agent Trace Eval Replay",
+  "description": "Workflow for replaying agent traces, grading tool decisions, building regression fixtures, and proving prompt/tool improvements.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "file-search",
+    "file-read",
+    "code-execute",
+    "self-reflection-update",
+    "agent-notes-write",
+    "tool-doc-read"
+  ],
+  "triggerPatterns": [
+    "trace replay",
+    "agent eval",
+    "eval replay",
+    "grade traces",
+    "prompt optimization",
+    "tool regression",
+    "alignment regression",
+    "replay this session",
+    "evaluate tool use"
+  ],
+  "chain": [
+    {
+      "step": "Locate the authoritative trace, session, fixture, test, or feedback entry.",
+      "tool": "file-search"
+    },
+    {
+      "step": "Read only the trace windows, metadata, prompts, tool calls, and outputs needed for the evaluation.",
+      "tool": "file-read"
+    },
+    {
+      "step": "Classify routing, tool selection, evidence quality, completion discipline, safety, and user alignment.",
+      "tool": null
+    },
+    {
+      "step": "Create or update a regression fixture when the failure is durable and reproducible.",
+      "tool": "code-execute"
+    },
+    {
+      "step": "Store a bounded lesson only when it is stable and future-useful.",
+      "tool": "self-reflection-update"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

@@ -1,0 +1,58 @@
+{
+  "id": "daily-work-connectors",
+  "name": "Daily Work Connectors",
+  "description": "Workflow for adding or using productivity connectors such as GitHub, GitLab, Gmail, Google Calendar, Slack, Jira, Linear, Notion, Drive, and CRM systems.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "web-search",
+    "web-fetch",
+    "public-source-search",
+    "public-source-add",
+    "api-design",
+    "schema-generate",
+    "user-checkpoint"
+  ],
+  "triggerPatterns": [
+    "gmail",
+    "google calendar",
+    "slack",
+    "jira",
+    "linear",
+    "notion",
+    "google drive",
+    "github connector",
+    "gitlab connector",
+    "work app connector",
+    "daily work tools",
+    "productivity connector"
+  ],
+  "chain": [
+    {
+      "step": "Identify the productivity system, user workflow, account boundary, auth method, and intended actions.",
+      "tool": null
+    },
+    {
+      "step": "Fetch current official API or connector docs when wiring details are not already known.",
+      "tool": "web-fetch"
+    },
+    {
+      "step": "Design least-privilege scopes, approval gates, data retention, and audit logging before writes.",
+      "tool": "api-design"
+    },
+    {
+      "step": "Catalog stable public endpoints or docs for future reuse when appropriate.",
+      "tool": "public-source-add"
+    },
+    {
+      "step": "Ask for user confirmation before sending messages, changing calendars, creating tickets, or modifying repos.",
+      "tool": "user-checkpoint"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

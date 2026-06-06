@@ -302,6 +302,14 @@ const TOOL_SUPPORT = {
       'Applies built-in strategy, background design, evidence, accessibility, and final polish quality passes for AI-backed generation.',
     ],
   },
+  'modern-agent-capability-map': {
+    status: 'stable',
+    notes: [
+      'Read-only catalog of Lilly modern agent capability lanes and their registered skill coverage.',
+      'Reports the honest runtime boundary for MCP connectors, A2A, computer/browser use, trace eval replay, daily-work connectors, office round trip, security governance, and skill authoring.',
+      'Use this to identify the right workflow skill and proof requirement before claiming a connector or protocol is live.',
+    ],
+  },
   'research-bucket-list': { status: 'stable', notes: ['Lists metadata from the shared durable research bucket without loading full file contents.'] },
   'research-bucket-search': { status: 'stable', notes: ['Searches bucket metadata and supported text files with grep-style matching.'] },
   'research-bucket-read': { status: 'stable', notes: ['Reads selected bucket files with byte limits; binary files require explicit base64 mode.'] },
