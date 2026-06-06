@@ -66,4 +66,11 @@ describe('agent user profile', () => {
     expect(instructions).toContain('Hermes-style USER.md');
     expect(instructions).toContain('Phil likes concise evidence');
   });
+
+  test('does not inject the default user profile template as learned runtime memory', () => {
+    const instructions = userProfile.buildUserProfileInstructions();
+
+    expect(userProfile.getEffectiveUserProfileConfig().source).toBe('default');
+    expect(instructions).toBe('');
+  });
 });
