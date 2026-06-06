@@ -1,6 +1,7 @@
 const { sessionStore } = require('./session-store');
 const { memoryService } = require('./memory/memory-service');
 const { createResponse } = require('./openai-client');
+const { extractResponseText } = require('./artifacts/artifact-service');
 const {
     buildContextContinuityFrame,
     resolveTranscriptObjectiveFromSession,
@@ -19,6 +20,10 @@ const {
     loadAgentJournalEntries,
 } = require('./agent-journal');
 const settingsController = require('./routes/admin/settings.controller');
+const {
+    buildAuditSessionPatch,
+    runAfterProcessAudit,
+} = require('./after-process-audit');
 
 const RECENT_TRANSCRIPT_LIMIT = config.memory.recentTranscriptLimit;
 const DEFAULT_EXECUTION_PROFILE = 'default';
@@ -224,6 +229,86 @@ function hasSessionIdentityInstructions(instructions = '') {
 
 function hasAgentJournalInstructions(instructions = '') {
     return /<kimi-agent-journal\b/i.test(String(instructions || ''));
+}
+
+function scheduleDirectAfterProcessAudit({
+    sessionId,
+    ownerId = null,
+    response = null,
+    inputText = '',
+    taskType = '',
+    executionProfile = DEFAULT_EXECUTION_PROFILE,
+    runtimeMode = 'direct',
+    clientSurface = '',
+    memoryScope = '',
+    metadata = {},
+    outputText = '',
+} = {}) {
+    if (process.env.NODE_ENV === 'test' && process.env.KIMIBUILT_AFTER_PROCESS_AUDIT_TEST !== 'true') {
+        return null;
+    }
+    if (!sessionId || !response) {
+        return null;
+    }
+
+    const responseMetadata = response?.metadata && typeof response.metadata === 'object'
+        ? response.metadata
+        : {};
+    const toolEvents = Array.isArray(responseMetadata.toolEvents) ? responseMetadata.toolEvents : [];
+    const orchestrationConfig = typeof settingsController.getEffectiveOrchestrationConfig === 'function'
+        ? settingsController.getEffectiveOrchestrationConfig()
+        : {};
+    const output = String(outputText || '').trim() || extractResponseText(response);
+    const trace = {
+        sessionId,
+        taskType,
+        executionProfile,
+        runtimeMode,
+        clientSurface,
+        memoryScope,
+        selectedSkills: responseMetadata.selectedSkills || [],
+        skillsUsed: responseMetadata.skillsUsed || [],
+        decisionTrace: responseMetadata.decisionTrace || null,
+        verification: responseMetadata.verification || null,
+        toolCount: toolEvents.length,
+        tools: responseMetadata.plannedTools || metadata?.plannedTools || [],
+        timestamp: new Date().toISOString(),
+    };
+
+    const promise = runAfterProcessAudit({
+        sessionId,
+        ownerId,
+        responseId: response.id || null,
+        userText: inputText,
+        objective: inputText,
+        taskType,
+        executionProfile,
+        runtimeMode,
+        toolEvents,
+        output,
+        responseMetadata,
+        trace,
+        clientSurface,
+        orchestrationConfig,
+    })
+        .then(async (result) => {
+            if (!sessionStore?.update || result?.status === 'skipped') {
+                return result;
+            }
+            const currentSession = ownerId && sessionStore?.getOwned
+                ? await sessionStore.getOwned(sessionId, ownerId)
+                : (sessionStore?.get ? await sessionStore.get(sessionId) : null);
+            const patch = buildAuditSessionPatch(currentSession?.metadata || {}, result);
+            if (Object.keys(patch).length > 0) {
+                await sessionStore.update(sessionId, { metadata: patch });
+            }
+            return result;
+        })
+        .catch((error) => {
+            console.warn(`[RuntimeExecution] After-process audit failed: ${error.message}`);
+        });
+
+    return promise;
 }
 
 function compactPiiContextIds(...sources) {
@@ -564,27 +649,43 @@ async function executeConversationRuntime(app, params = {}) {
         })
         : agentDirectedBaseInstructions;
 
+    const response = await createResponse({
+        ...effectiveParams,
+        clientSurface,
+        memoryScope,
+        toolContext: effectiveScopedToolContext,
+        executionProfile,
+        instructions: runtimeInstructions,
+        enableAutomaticToolCalls: useAgentDirectedRuntime || effectiveParams.enableAutomaticToolCalls,
+        previousPromptState: effectiveParams.previousPromptState || effectiveParams.session?.metadata?.promptState || null,
+        contextMessages,
+        recentMessages,
+    });
+    const runtimeMode = useAgentDirectedRuntime ? 'agent-directed' : 'direct';
+    scheduleDirectAfterProcessAudit({
+        sessionId: effectiveParams.sessionId,
+        ownerId: effectiveParams.ownerId || effectiveScopedToolContext.ownerId || null,
+        response,
+        inputText: recallInput,
+        taskType: effectiveParams.taskType || params.taskType || '',
+        executionProfile,
+        runtimeMode,
+        clientSurface,
+        memoryScope,
+        metadata: effectiveParams.metadata || params.metadata || {},
+    });
+
     return {
-        response: await createResponse({
-            ...effectiveParams,
-            clientSurface,
-            memoryScope,
-            toolContext: effectiveScopedToolContext,
-            executionProfile,
-            instructions: runtimeInstructions,
-            enableAutomaticToolCalls: useAgentDirectedRuntime || effectiveParams.enableAutomaticToolCalls,
-            previousPromptState: effectiveParams.previousPromptState || effectiveParams.session?.metadata?.promptState || null,
-            contextMessages,
-            recentMessages,
-        }),
+        response,
         handledPersistence: false,
-        runtimeMode: useAgentDirectedRuntime ? 'agent-directed' : 'direct',
+        runtimeMode,
         pii: piiResult,
     };
 }
 
 module.exports = {
     executeConversationRuntime,
+    scheduleDirectAfterProcessAudit,
     resolveConversationExecutorFlag,
     resolveAgentDirectedRuntimeFlag,
     inferExecutionProfile,

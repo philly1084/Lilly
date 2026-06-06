@@ -131,6 +131,10 @@ const {
     scorePerceivedIntelligence,
 } = require('./perceived-intelligence-harness');
 const {
+    buildAuditSessionPatch,
+    runAfterProcessAudit,
+} = require('./after-process-audit');
+const {
     applyResearchFreshnessDefaults,
     inferDefaultResearchTimeRange,
 } = require('./research-freshness');
@@ -3630,6 +3634,8 @@ function extractRemoteCliAgentControlStateFromToolEvents(toolEvents = []) {
         ...(data.uiCheckReport ? { uiCheckReport: data.uiCheckReport } : {}),
         ...(Array.isArray(data.uiScreenshots) && data.uiScreenshots.length > 0 ? { uiScreenshots: data.uiScreenshots } : {}),
         ...(data.whatChanged ? { whatChanged: data.whatChanged } : {}),
+        ...(data.supportAgentRequest ? { supportAgentRequest: data.supportAgentRequest } : {}),
+        ...(data.supportAgentContext ? { supportAgentContext: data.supportAgentContext } : {}),
         ...(Array.isArray(data.verifyCommands) && data.verifyCommands.length > 0 ? { verifyCommands: data.verifyCommands } : {}),
         ...(Array.isArray(data.verifyResults) && data.verifyResults.length > 0 ? { verifyResults: data.verifyResults } : {}),
         ...(data.blocker ? { blocker: data.blocker } : {}),
@@ -8052,6 +8058,7 @@ function summarizeRemoteCliAgentDataForUser(data = {}) {
     const cwd = String(data?.cwd || '').trim();
     const publicUrl = String(data?.publicUrl || '').trim();
     const blocker = String(data?.blocker || '').trim();
+    const supportAgentRequest = String(data?.supportAgentRequest || '').trim();
     const verifyCommands = Array.isArray(data?.verifyCommands) ? data.verifyCommands.filter(Boolean) : [];
     const verifyResults = Array.isArray(data?.verifyResults) ? data.verifyResults.filter(Boolean) : [];
     const hasMeaningfulValue = (value) => {
@@ -8059,7 +8066,7 @@ function summarizeRemoteCliAgentDataForUser(data = {}) {
         return normalized && !['none', 'not_available', 'not available', 'n/a', 'na', 'null', 'undefined'].includes(normalized);
     };
 
-    if (!whatChanged && verifyResults.length === 0 && !hasMeaningfulValue(publicUrl) && !hasMeaningfulValue(blocker)) {
+    if (!whatChanged && verifyResults.length === 0 && !hasMeaningfulValue(publicUrl) && !hasMeaningfulValue(blocker) && !supportAgentRequest) {
         return '';
     }
 
@@ -8080,6 +8087,9 @@ function summarizeRemoteCliAgentDataForUser(data = {}) {
     }
     if (whatChanged) {
         lines.push(`What changed: ${whatChanged}.`);
+    }
+    if (supportAgentRequest) {
+        lines.push(`Support agent needed: ${supportAgentRequest}.`);
     }
     if (verifyCommands.length > 0) {
         lines.push(`Verification commands: ${verifyCommands.join('; ')}.`);
@@ -14123,6 +14133,62 @@ class ConversationOrchestrator extends EventEmitter {
         };
     }
 
+    scheduleAfterProcessAuditForCompletedTurn(input = {}) {
+        if (process.env.NODE_ENV === 'test' && process.env.KIMIBUILT_AFTER_PROCESS_AUDIT_TEST !== 'true') {
+            return null;
+        }
+
+        const auditPromise = this.runAfterProcessAuditForCompletedTurn(input)
+            .catch((error) => {
+                console.warn(`[ConversationOrchestrator] After-process audit failed: ${error.message}`);
+                this.emit('after-process-audit:failed', {
+                    sessionId: input.sessionId,
+                    error: error.message,
+                    timestamp: Date.now(),
+                });
+            });
+
+        this.emit('after-process-audit:scheduled', {
+            sessionId: input.sessionId,
+            responseId: input.responseId || null,
+            timestamp: Date.now(),
+        });
+
+        return auditPromise;
+    }
+
+    async runAfterProcessAuditForCompletedTurn(input = {}) {
+        const orchestrationConfig = typeof settingsController.getEffectiveOrchestrationConfig === 'function'
+            ? settingsController.getEffectiveOrchestrationConfig()
+            : {};
+        const result = await runAfterProcessAudit({
+            ...input,
+            orchestrationConfig,
+        });
+
+        if (!this.sessionStore?.update || result?.status === 'skipped') {
+            return result;
+        }
+
+        const currentSession = input.ownerId && this.sessionStore?.getOwned
+            ? await this.sessionStore.getOwned(input.sessionId, input.ownerId)
+            : (this.sessionStore?.get ? await this.sessionStore.get(input.sessionId) : null);
+        const metadataPatch = buildAuditSessionPatch(currentSession?.metadata || {}, result);
+        if (Object.keys(metadataPatch).length > 0) {
+            await this.sessionStore.update(input.sessionId, { metadata: metadataPatch });
+        }
+
+        this.emit('after-process-audit:complete', {
+            sessionId: input.sessionId,
+            responseId: input.responseId || null,
+            auditId: result.auditId,
+            decision: result.audit?.auditDecision || null,
+            timestamp: Date.now(),
+        });
+
+        return result;
+    }
+
     async completeConversationRun({
         sessionId,
         ownerId = null,
@@ -14343,6 +14409,24 @@ class ConversationOrchestrator extends EventEmitter {
                 trace,
                 duration: trace.duration,
             },
+        });
+
+        this.scheduleAfterProcessAuditForCompletedTurn({
+            sessionId,
+            ownerId,
+            responseId: tracedResponse.id,
+            userText: userText || objective,
+            objective,
+            taskType,
+            executionProfile,
+            runtimeMode,
+            toolPolicy,
+            toolEvents,
+            output,
+            responseMetadata: tracedResponse?.metadata || null,
+            trace,
+            executionTrace,
+            clientSurface,
         });
 
         if (stream) {

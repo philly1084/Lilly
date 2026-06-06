@@ -1,6 +1,6 @@
 # remote-cli-agent
 
-Purpose: run a server-side remote coding agent through the default gateway `/api/codex-agent/run` plus `/events` SSE contract, with MCP `remote_code_run/status` retained as compatibility fallback.
+Purpose: run a server-side remote coding agent through the default gateway `/api/codex-agent/run` plus `/events` SSE contract, with MCP `remote_code_run/status` retained only for explicit legacy transport requests.
 
 Use this tool when the user asks for backend CLI agents behind the router to work on a remote/server workspace, especially coding/build/deploy tasks where KimiBuilt should stream progress while the remote agent owns the implementation loop.
 
@@ -22,7 +22,8 @@ Outer tool call shape:
   "cwd": "/srv/apps/my-app",
   "transport": "codex-agent",
   "waitMs": 30000,
-  "threadId": "optional prior Codex thread id for codex-agent transport"
+  "threadId": "optional prior Codex thread id for codex-agent transport",
+  "supportAgentResponse": "optional answer from a support agent for a resumed CLI thread"
 }
 ```
 
@@ -64,6 +65,8 @@ Headless Codex operating model:
 - This maps to the current Codex headless guidance better than driving the interactive TUI. One-shot automation can use `codex exec --json`, but multi-turn orchestration should keep a durable conversation handle. In this router contract, that handle is `threadId`.
 - The remote agent should emit short milestone messages during inspect/edit/build/deploy/verify phases so the outer web-chat stream has real progress. Do not leave the user with only a start card and final result.
 - Treat `turn_input_required` as a controlled pause: forward the concise decision to the user, then resume with the same `threadId` when possible.
+- Support-agent back-and-forth is supported without switching transports: when the CLI agent needs a second opinion or decomposition help, it should finish that turn with `SUPPORT_AGENT_REQUIRED=<precise help request>` and `SUPPORT_AGENT_CONTEXT=<facts/files/commands/blocker>`. The outer KimiBuilt agent can run a support agent, then call `remote-cli-agent` again with the same `threadId` plus `supportAgentResponse` to continue the CLI thread.
+- Use `SUPPORT_AGENT_REQUIRED` only for internal agent help. Use `USER_INPUT_REQUIRED` for user choices, credentials, approvals, or product direction.
 
 Codex-agent gateway contract:
 

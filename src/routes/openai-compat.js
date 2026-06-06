@@ -4,7 +4,12 @@ const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { generateImageBatch, listImageModels, listModels } = require('../openai-client');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
-const { executeConversationRuntime, resolveConversationExecutorFlag, inferExecutionProfile } = require('../runtime-execution');
+const {
+    executeConversationRuntime,
+    resolveConversationExecutorFlag,
+    inferExecutionProfile,
+    scheduleDirectAfterProcessAudit,
+} = require('../runtime-execution');
 const {
     buildInstructionsWithArtifacts,
     maybeGenerateOutputArtifact,
@@ -1778,6 +1783,28 @@ router.post('/chat/completions', async (req, res, next) => {
                         route: 'openai-compat-direct-podcast',
                     },
                 });
+                scheduleDirectAfterProcessAudit({
+                    sessionId,
+                    ownerId,
+                    response: {
+                        id: responseId,
+                        model: result.data?.model || model || null,
+                        metadata: {
+                            directPodcast: true,
+                            route: 'openai-compat-direct-podcast',
+                            toolEvents,
+                            artifacts,
+                        },
+                    },
+                    inputText: lastUserText,
+                    outputText: assistantText,
+                    taskType,
+                    executionProfile: podcastParams.includeVideo ? 'podcast-video' : 'podcast',
+                    runtimeMode: 'openai-compat-direct-podcast',
+                    clientSurface,
+                    memoryScope,
+                    metadata: { plannedTools: ['podcast'] },
+                });
 
                 const responsePayload = {
                     id: `chatcmpl-${responseId}`,
@@ -1970,6 +1997,31 @@ router.post('/chat/completions', async (req, res, next) => {
                     ...requestFrameMetadata,
                     ...(generation.metadata || {}),
                 },
+            });
+            scheduleDirectAfterProcessAudit({
+                sessionId,
+                ownerId,
+                response: {
+                    id: generation.responseId,
+                    model: generation.model || model || null,
+                    metadata: {
+                        outputFormat: effectiveOutputFormat,
+                        artifactDirect: true,
+                        route: '/v1/chat/completions',
+                        toolEvents: artifactToolEvents,
+                        artifacts: responseArtifacts,
+                        ...requestFrameMetadata,
+                        ...(generation.metadata || {}),
+                    },
+                },
+                inputText: lastUserText,
+                outputText: generation.assistantMessage,
+                taskType,
+                executionProfile: effectiveExecutionProfile,
+                runtimeMode: 'openai-compat-direct-artifact',
+                clientSurface,
+                memoryScope,
+                metadata: requestFrameMetadata,
             });
 
             const compatUsage = buildCompatUsage(
@@ -3069,6 +3121,31 @@ router.post('/responses', async (req, res, next) => {
                     ...(generation.metadata || {}),
                 },
             });
+            scheduleDirectAfterProcessAudit({
+                sessionId,
+                ownerId,
+                response: {
+                    id: generation.responseId,
+                    model: generation.model || model || null,
+                    metadata: {
+                        outputFormat: effectiveOutputFormat,
+                        artifactDirect: true,
+                        route: '/v1/responses',
+                        toolEvents: artifactToolEvents,
+                        artifacts: responseArtifacts,
+                        ...requestFrameMetadata,
+                        ...(generation.metadata || {}),
+                    },
+                },
+                inputText: userInput,
+                outputText: generation.assistantMessage,
+                taskType,
+                executionProfile: effectiveExecutionProfile,
+                runtimeMode: 'openai-compat-responses-direct-artifact',
+                clientSurface,
+                memoryScope,
+                metadata: requestFrameMetadata,
+            });
 
             if (stream) {
                 res.write(`data: ${JSON.stringify({ type: 'response.output_text.delta', delta: generation.assistantMessage })}\n\n`);
@@ -3747,6 +3824,33 @@ router.post('/images/generations', async (req, res, next) => {
                 metadata: runtimeMetadata,
             });
         }
+        scheduleDirectAfterProcessAudit({
+            sessionId,
+            ownerId,
+            response: {
+                id: responseId,
+                model: normalizedResponse.model || model || 'gateway-default',
+                metadata: {
+                    route: '/v1/images/generations',
+                    imageDirect: true,
+                    artifacts: persistedImages.artifacts || [],
+                    ...runtimeMetadata,
+                },
+            },
+            inputText: promptText,
+            outputText: usableImageCount > 0
+                ? `Generated ${usableImageCount} usable image result(s).`
+                : `Image generation returned no usable image data. ${diagnosticSummary}`,
+            taskType: 'image',
+            executionProfile: 'image',
+            runtimeMode: 'openai-compat-image-generation',
+            clientSurface,
+            metadata: {
+                requestedCount,
+                size,
+                quality,
+            },
+        });
 
         res.json({
             ...normalizedResponse,

@@ -1724,6 +1724,8 @@ function extractSshSessionMetadataFromToolEvents(toolEvents = []) {
                 ...(data.uiCheckReport ? { uiCheckReport: data.uiCheckReport } : {}),
                 ...(Array.isArray(data.uiScreenshots) && data.uiScreenshots.length > 0 ? { uiScreenshots: data.uiScreenshots } : {}),
                 ...(data.whatChanged ? { whatChanged: data.whatChanged } : {}),
+                ...(data.supportAgentRequest ? { supportAgentRequest: data.supportAgentRequest } : {}),
+                ...(data.supportAgentContext ? { supportAgentContext: data.supportAgentContext } : {}),
                 ...(Array.isArray(data.verifyCommands) && data.verifyCommands.length > 0 ? { verifyCommands: data.verifyCommands } : {}),
                 ...(Array.isArray(data.verifyResults) && data.verifyResults.length > 0 ? { verifyResults: data.verifyResults } : {}),
                 ...(data.blocker ? { blocker: data.blocker } : {}),

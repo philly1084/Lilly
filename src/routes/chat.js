@@ -4,7 +4,12 @@ const { validate } = require('../middleware/validate');
 const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { ensureRuntimeToolManager } = require('../runtime-tool-manager');
-const { executeConversationRuntime, inferExecutionProfile, resolveConversationExecutorFlag } = require('../runtime-execution');
+const {
+    executeConversationRuntime,
+    inferExecutionProfile,
+    resolveConversationExecutorFlag,
+    scheduleDirectAfterProcessAudit,
+} = require('../runtime-execution');
 const {
     buildInstructionsWithArtifacts,
     maybeGenerateOutputArtifact,
@@ -1733,6 +1738,30 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
                 },
             });
+            scheduleDirectAfterProcessAudit({
+                sessionId,
+                ownerId,
+                response: {
+                    id: responseId,
+                    model: model || session?.metadata?.model || null,
+                    metadata: {
+                        directPiiRelationshipCalculation: true,
+                        route: '/api/chat',
+                        toolEvents,
+                        artifacts,
+                        ...requestFrameMetadata,
+                        ...(piiMetadata ? { piiCleansing: piiMetadata } : {}),
+                    },
+                },
+                inputText: message,
+                outputText: assistantText,
+                taskType,
+                executionProfile: effectiveExecutionProfile,
+                runtimeMode: 'direct-pii-relationship',
+                clientSurface,
+                memoryScope,
+                metadata: requestFrameMetadata,
+            });
 
             if (stream) {
                 activeSse = openSseStream(req, res, sessionId);
@@ -1899,6 +1928,28 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                         toolEvents,
                         artifacts,
                     },
+                });
+                scheduleDirectAfterProcessAudit({
+                    sessionId,
+                    ownerId,
+                    response: {
+                        id: responseId,
+                        model: result.data?.model || model || session?.metadata?.model || null,
+                        metadata: {
+                            directPodcast: true,
+                            route: '/api/chat',
+                            toolEvents,
+                            artifacts,
+                        },
+                    },
+                    inputText: message,
+                    outputText: assistantText,
+                    taskType,
+                    executionProfile: podcastParams.includeVideo ? 'podcast-video' : 'podcast',
+                    runtimeMode: 'direct-podcast',
+                    clientSurface,
+                    memoryScope,
+                    metadata: { plannedTools: ['podcast'] },
                 });
 
                 if (stream) {
@@ -2099,6 +2150,31 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     ...requestFrameMetadata,
                     ...(generationArtifacts.metadata || {}),
                 },
+            });
+            scheduleDirectAfterProcessAudit({
+                sessionId,
+                ownerId,
+                response: {
+                    id: generationArtifacts.responseId,
+                    model: generationArtifacts.model || model || session?.metadata?.model || null,
+                    metadata: {
+                        outputFormat: effectiveOutputFormat,
+                        artifactDirect: true,
+                        route: '/api/chat',
+                        toolEvents: preparedImages.toolEvents,
+                        artifacts: responseArtifacts,
+                        ...requestFrameMetadata,
+                        ...(generationArtifacts.metadata || {}),
+                    },
+                },
+                inputText: message,
+                outputText: generationArtifacts.assistantMessage,
+                taskType,
+                executionProfile: effectiveExecutionProfile,
+                runtimeMode: 'direct-artifact-generation',
+                clientSurface,
+                memoryScope,
+                metadata: requestFrameMetadata,
             });
 
             if (stream) {

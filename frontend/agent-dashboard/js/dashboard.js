@@ -37,6 +37,11 @@ class Dashboard {
             selfReflectionSupported: null,
             selfReflectionErrorMessage: '',
             applyingSelfReflectionSuggestionId: null,
+            afterProcessAudits: [],
+            afterProcessAuditMeta: {},
+            afterProcessAuditSupported: null,
+            afterProcessAuditErrorMessage: '',
+            applyingAfterProcessRecommendationId: null,
             stats: {
                 totalTasks: 0,
                 successRate: 0,
@@ -165,6 +170,16 @@ class Dashboard {
             }
             this.applySelfReflectionSuggestion(button.dataset.selfReflectionSuggestionId);
         });
+        document.getElementById('refreshAfterProcessAuditsBtn')?.addEventListener('click', () => {
+            this.loadAfterProcessAudits({ force: true });
+        });
+        document.getElementById('afterProcessAuditList')?.addEventListener('click', (event) => {
+            const button = event.target?.closest?.('[data-after-process-recommendation-id]');
+            if (!button) {
+                return;
+            }
+            this.applyAfterProcessFlagRecommendation(button.dataset.afterProcessRecommendationId);
+        });
         document.getElementById('saveWorkloadChangesBtn')?.addEventListener('click', () => {
             this.saveAdminWorkload();
         });
@@ -279,6 +294,12 @@ class Dashboard {
         });
         document.getElementById('orchestrationNeuralWaveResearchMode')?.addEventListener('change', (e) => {
             this.setCheckboxValue('settingsNeuralWaveResearchMode', e.target.value === 'true');
+        });
+        document.getElementById('settingsAfterProcessAuditEnabled')?.addEventListener('change', (e) => {
+            this.setInputValue('orchestrationAfterProcessAuditEnabled', String(e.target.checked));
+        });
+        document.getElementById('orchestrationAfterProcessAuditEnabled')?.addEventListener('change', (e) => {
+            this.setCheckboxValue('settingsAfterProcessAuditEnabled', e.target.value === 'true');
         });
         document.getElementById('settingsAsyncRuntimeEnabled')?.addEventListener('change', (e) => {
             this.setInputValue('orchestrationAsyncRuntimeEnabled', String(e.target.checked));
@@ -1453,6 +1474,233 @@ class Dashboard {
         }
     }
 
+    async loadAfterProcessAudits({ force = false } = {}) {
+        if (this.state.afterProcessAuditSupported === false && !force) {
+            this.renderAfterProcessAudits(
+                [],
+                this.state.afterProcessAuditMeta,
+                this.state.afterProcessAuditErrorMessage
+            );
+            return;
+        }
+
+        try {
+            const response = await apiClient.get('/api/admin/after-process-audits', { limit: 8 });
+            const payload = this.unwrapApiPayload(response, {});
+            const audits = (Array.isArray(payload.audits) ? payload.audits : [])
+                .map((audit, index) => this.normalizeAfterProcessAudit(audit, index))
+                .sort((a, b) => new Date(b.completedAt || b.updatedAt || 0).getTime() - new Date(a.completedAt || a.updatedAt || 0).getTime());
+            this.state.afterProcessAudits = audits;
+            this.state.afterProcessAuditMeta = payload.meta || {};
+            this.state.afterProcessAuditSupported = true;
+            this.state.afterProcessAuditErrorMessage = '';
+            this.renderAfterProcessAudits(audits, this.state.afterProcessAuditMeta, '');
+        } catch (error) {
+            const message = Number(error?.status) === 404
+                ? 'After-process audit route is not available yet.'
+                : (error.userMessage || error.message || 'Failed to load after-process audits.');
+            this.state.afterProcessAudits = [];
+            this.state.afterProcessAuditSupported = Number(error?.status) === 404 ? false : this.state.afterProcessAuditSupported;
+            this.state.afterProcessAuditErrorMessage = message;
+            console.warn('After-process audits unavailable:', error.message || error);
+            this.renderAfterProcessAudits([], this.state.afterProcessAuditMeta, message);
+        }
+    }
+
+    normalizeAfterProcessAudit(audit = {}, index = 0) {
+        const flagRecommendations = Array.isArray(audit.recommendedFlagChanges)
+            ? audit.recommendedFlagChanges.map((recommendation, recommendationIndex) => ({
+                id: String(recommendation.id || `after-flag-${index + 1}-${recommendationIndex + 1}`),
+                flag: this.stringifySelfReflectionInline(recommendation.flag || ''),
+                currentValue: recommendation.currentValue,
+                suggestedValue: recommendation.suggestedValue,
+                reason: this.stringifySelfReflectionInline(recommendation.reason || ''),
+                confidence: recommendation.confidence ?? null,
+                canApply: recommendation.canApply === true,
+                status: String(recommendation.status || (recommendation.canApply ? 'suggested' : 'review_only')).toLowerCase(),
+            }))
+            : [];
+        const toolSkillReview = audit.toolSkillReview && typeof audit.toolSkillReview === 'object'
+            ? audit.toolSkillReview
+            : {};
+        const learningReview = audit.learningReview && typeof audit.learningReview === 'object'
+            ? audit.learningReview
+            : {};
+
+        return {
+            auditId: String(audit.auditId || `after-audit-${index + 1}`),
+            sessionId: this.stringifySelfReflectionInline(audit.sessionId || ''),
+            status: String(audit.status || 'completed').toLowerCase(),
+            model: this.stringifySelfReflectionInline(audit.model || ''),
+            completedAt: audit.completedAt || audit.updatedAt || '',
+            decision: String(audit.decision || 'watch').toLowerCase(),
+            qualityScore: Number.isFinite(Number(audit.qualityScore)) ? Number(audit.qualityScore) : null,
+            summary: this.stringifySelfReflectionInline(audit.summary || ''),
+            toolSkillReview: {
+                selectedSkills: Array.isArray(toolSkillReview.selectedSkills) ? toolSkillReview.selectedSkills : [],
+                actualTools: Array.isArray(toolSkillReview.actualTools) ? toolSkillReview.actualTools : [],
+                missingTools: Array.isArray(toolSkillReview.missingTools) ? toolSkillReview.missingTools : [],
+                misusedTools: Array.isArray(toolSkillReview.misusedTools) ? toolSkillReview.misusedTools : [],
+                skillUpdates: Array.isArray(toolSkillReview.skillUpdates) ? toolSkillReview.skillUpdates : [],
+                toolPolicyUpdates: Array.isArray(toolSkillReview.toolPolicyUpdates) ? toolSkillReview.toolPolicyUpdates : [],
+            },
+            learningReview: {
+                durableLessons: Array.isArray(learningReview.durableLessons) ? learningReview.durableLessons : [],
+                outputQualityRisks: Array.isArray(learningReview.outputQualityRisks) ? learningReview.outputQualityRisks : [],
+            },
+            recommendedFlagChanges: flagRecommendations,
+            followUpActions: Array.isArray(audit.followUpActions) ? audit.followUpActions : [],
+        };
+    }
+
+    async applyAfterProcessFlagRecommendation(id = '') {
+        const recommendationId = String(id || '').trim();
+        if (!recommendationId || this.state.applyingAfterProcessRecommendationId) {
+            return;
+        }
+
+        this.state.applyingAfterProcessRecommendationId = recommendationId;
+        this.renderAfterProcessAudits(
+            this.state.afterProcessAudits,
+            this.state.afterProcessAuditMeta,
+            this.state.afterProcessAuditErrorMessage
+        );
+
+        try {
+            const response = await apiClient.post(`/api/admin/after-process-audits/recommendations/${encodeURIComponent(recommendationId)}/apply`);
+            const payload = this.unwrapApiPayload(response, {});
+            if (payload.settings) {
+                this.applySettings(payload.settings);
+            }
+            const flag = payload.recommendation?.flag || 'flag';
+            this.showToast(`Applied audit recommendation for ${flag}`, 'success');
+            await this.loadAfterProcessAudits({ force: true });
+        } catch (error) {
+            this.showToast(error.userMessage || error.message || 'Failed to apply audit recommendation', 'error');
+        } finally {
+            this.state.applyingAfterProcessRecommendationId = null;
+            this.renderAfterProcessAudits(
+                this.state.afterProcessAudits,
+                this.state.afterProcessAuditMeta,
+                this.state.afterProcessAuditErrorMessage
+            );
+        }
+    }
+
+    renderAfterProcessAudits(audits = [], meta = {}, errorMessage = '') {
+        const container = document.getElementById('afterProcessAuditList');
+        const status = document.getElementById('afterProcessAuditStatus');
+        if (!container) return;
+
+        if (errorMessage) {
+            this.setStatusBadge(status, 'error', 'Unavailable');
+            container.innerHTML = `
+                <div class="self-reflection-empty">
+                    <strong>Unable to load audits</strong>
+                    <span>${this.escapeHtml(errorMessage)}</span>
+                </div>
+            `;
+            return;
+        }
+
+        const pendingCount = (Array.isArray(audits) ? audits : []).reduce((count, audit) => {
+            return count + audit.recommendedFlagChanges.filter((recommendation) => recommendation.canApply).length;
+        }, 0);
+        if (!audits.length) {
+            this.setStatusBadge(status, 'neutral', 'No audits');
+            container.innerHTML = `
+                <div class="self-reflection-empty">
+                    <strong>No after-process audits recorded</strong>
+                    <span>Completed calls will appear here after the audit lane records its first review.</span>
+                </div>
+            `;
+            return;
+        }
+
+        this.setStatusBadge(status, pendingCount ? 'warning' : 'info', pendingCount ? `${pendingCount} flag suggestions` : `${audits.length} recent`);
+        const total = Number(meta.count || audits.length);
+        const needsFollowup = Number(meta.needsFollowupCount || audits.filter((audit) => audit.decision === 'needs_followup').length);
+
+        container.innerHTML = `
+            <div class="self-reflection-meta">
+                <span>${this.escapeHtml(total.toLocaleString())} total audits | ${this.escapeHtml(needsFollowup.toLocaleString())} need follow-up</span>
+            </div>
+            ${audits.map((audit) => this.renderAfterProcessAuditCard(audit)).join('')}
+        `;
+    }
+
+    renderAfterProcessAuditCard(audit = {}) {
+        const score = audit.qualityScore == null
+            ? 'n/a'
+            : `${Math.round(Math.max(0, Math.min(1, audit.qualityScore)) * 100)}%`;
+        const chips = [
+            ...audit.toolSkillReview.missingTools.map((tool) => ({ label: `missing tool: ${tool}`, status: 'warning' })),
+            ...audit.toolSkillReview.misusedTools.map((tool) => ({ label: `misused tool: ${tool}`, status: 'error' })),
+            ...audit.toolSkillReview.skillUpdates.map((entry) => ({ label: `skill: ${entry}`, status: 'suggested' })),
+            ...audit.toolSkillReview.toolPolicyUpdates.map((entry) => ({ label: `tool policy: ${entry}`, status: 'suggested' })),
+            ...audit.learningReview.outputQualityRisks.map((entry) => ({ label: `risk: ${entry}`, status: 'warning' })),
+        ].slice(0, 8);
+        const flagRecommendations = audit.recommendedFlagChanges.filter((recommendation) => recommendation.flag);
+
+        return `
+            <article class="self-reflection-item">
+                <div class="self-reflection-row">
+                    <div class="self-reflection-main">
+                        <div class="self-reflection-title">
+                            <span>${this.escapeHtml(audit.decision)} | score ${this.escapeHtml(score)}</span>
+                            <em>${this.escapeHtml(this.formatDate(audit.completedAt))}</em>
+                        </div>
+                        <div class="self-reflection-trigger">${this.escapeHtml(audit.summary || 'No audit summary recorded.')}</div>
+                    </div>
+                    <code class="self-reflection-log">${this.escapeHtml(audit.model || 'model n/a')}</code>
+                </div>
+                <div class="self-reflection-suggestion-meta">
+                    ${audit.sessionId ? `<span>Session ${this.escapeHtml(this.truncate(audit.sessionId, 30))}</span>` : ''}
+                    <span>Audit ${this.escapeHtml(this.truncate(audit.auditId, 30))}</span>
+                </div>
+                ${chips.length ? `
+                    <div class="self-reflection-actions">
+                        ${chips.map((chip) => `
+                            <span class="reflection-action-chip ${this.getSelfReflectionActionClass(chip.status)}">
+                                <strong>${this.escapeHtml(chip.status)}</strong>
+                                ${this.escapeHtml(this.truncate(chip.label, 130))}
+                            </span>
+                        `).join('')}
+                    </div>
+                ` : ''}
+                ${flagRecommendations.length ? `
+                    <section class="self-reflection-suggestions" aria-label="Audit flag recommendations">
+                        <div class="self-reflection-section-title">
+                            <span>Flag recommendations</span>
+                        </div>
+                        ${flagRecommendations.map((recommendation) => {
+                            const isApplying = this.state.applyingAfterProcessRecommendationId === recommendation.id;
+                            return `
+                                <article class="self-reflection-suggestion">
+                                    <div class="self-reflection-row">
+                                        <div class="self-reflection-main">
+                                            <div class="self-reflection-title">
+                                                <span>${this.escapeHtml(recommendation.flag)}</span>
+                                                <em>${this.escapeHtml(String(recommendation.currentValue))} -> ${this.escapeHtml(String(recommendation.suggestedValue))}</em>
+                                            </div>
+                                            <div class="self-reflection-trigger">${this.escapeHtml(recommendation.reason || 'No reason recorded.')}</div>
+                                        </div>
+                                        <button
+                                            class="btn btn-sm btn-primary"
+                                            type="button"
+                                            data-after-process-recommendation-id="${this.escapeHtml(recommendation.id)}"
+                                            ${recommendation.canApply && !isApplying ? '' : 'disabled'}
+                                        >${isApplying ? 'Applying...' : (recommendation.canApply ? 'Apply flag' : 'Review only')}</button>
+                                    </div>
+                                </article>
+                            `;
+                        }).join('')}
+                    </section>
+                ` : ''}
+            </article>
+        `;
+    }
+
     stringifySelfReflectionInline(value = '') {
         if (value == null || value === '') {
             return '';
@@ -1648,6 +1896,7 @@ class Dashboard {
                 this.renderStorageSettings(this.unwrapApiPayload(storageResponse.value, null));
             }
 
+            await this.loadAfterProcessAudits();
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -1823,6 +2072,9 @@ class Dashboard {
             await this.loadModelUsage();
             if (this.state.currentView === 'overview' && this.state.selfReflectionSupported !== false) {
                 await this.loadSelfReflectionUpdates();
+            }
+            if (this.state.currentView === 'settings' && this.state.afterProcessAuditSupported !== false) {
+                await this.loadAfterProcessAudits();
             }
             if (this.state.currentView === 'skills') {
                 await this.loadSkills();
@@ -3050,6 +3302,7 @@ class Dashboard {
                     applyAlignmentGuidance: document.getElementById('orchestrationApplyAlignmentGuidance').value === 'true',
                     agentDirectedRuntime: document.getElementById('orchestrationAgentDirectedRuntime').value === 'true',
                     neuralWaveResearchMode: document.getElementById('orchestrationNeuralWaveResearchMode').value === 'true',
+                    afterProcessAuditEnabled: document.getElementById('orchestrationAfterProcessAuditEnabled').value === 'true',
                     asyncRuntimeEnabled: document.getElementById('orchestrationAsyncRuntimeEnabled').value === 'true',
                     asyncRuntimeWebChatParallel: document.getElementById('orchestrationAsyncRuntimeWebChatParallel').value === 'true',
                     asyncRuntimeAllowLiveRemote: document.getElementById('orchestrationAsyncRuntimeAllowLiveRemote').value === 'true',
@@ -3073,6 +3326,7 @@ class Dashboard {
                     ...existing,
                     agentDirectedRuntime: document.getElementById('settingsAgentDirectedRuntime').checked,
                     neuralWaveResearchMode: document.getElementById('settingsNeuralWaveResearchMode').checked,
+                    afterProcessAuditEnabled: document.getElementById('settingsAfterProcessAuditEnabled').checked,
                     asyncRuntimeEnabled: document.getElementById('settingsAsyncRuntimeEnabled').checked,
                     asyncRuntimeWebChatParallel: document.getElementById('settingsAsyncRuntimeWebChatParallel').checked,
                     asyncRuntimeAllowLiveRemote: document.getElementById('settingsAsyncRuntimeAllowLiveRemote').checked,
@@ -6044,6 +6298,8 @@ class Dashboard {
         this.setCheckboxValue('settingsAgentDirectedRuntime', orchestration.agentDirectedRuntime === true);
         this.setInputValue('orchestrationNeuralWaveResearchMode', String(orchestration.neuralWaveResearchMode === true));
         this.setCheckboxValue('settingsNeuralWaveResearchMode', orchestration.neuralWaveResearchMode === true);
+        this.setInputValue('orchestrationAfterProcessAuditEnabled', String(orchestration.afterProcessAuditEnabled !== false));
+        this.setCheckboxValue('settingsAfterProcessAuditEnabled', orchestration.afterProcessAuditEnabled !== false);
         this.setInputValue('orchestrationAsyncRuntimeEnabled', String(asyncRuntime.requestedEnabled === true || asyncRuntime.enabled === true));
         this.setCheckboxValue('settingsAsyncRuntimeEnabled', asyncRuntime.requestedEnabled === true || asyncRuntime.enabled === true);
         this.setInputValue('orchestrationAsyncRuntimeWebChatParallel', String(asyncRuntime.webChatParallelEnabled === true));

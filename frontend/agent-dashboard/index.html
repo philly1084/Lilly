@@ -570,6 +570,14 @@
                                         </select>
                                         <p class="text-muted">Use small early agent waves and chunk growth for broad research or document work, then converge through two larger review passes.</p>
                                     </div>
+                                    <div class="form-group">
+                                        <label for="orchestrationAfterProcessAuditEnabled">After-process audit</label>
+                                        <select class="form-control" id="orchestrationAfterProcessAuditEnabled">
+                                            <option value="true">Enabled</option>
+                                            <option value="false">Disabled</option>
+                                        </select>
+                                        <p class="text-muted">Review each completed call for orchestration, tool, skill, verification, and durable-learning quality with the GPT 5.5 audit lane.</p>
+                                    </div>
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
@@ -1592,6 +1600,16 @@
                                             </div>
                                             <div class="feature-item">
                                                 <div class="feature-info">
+                                                    <span class="feature-name">After-process audit</span>
+                                                    <span class="feature-desc">Run the GPT 5.5 post-work review after completed calls so orchestration, tools, skills, and learning suggestions stay in sync.</span>
+                                                </div>
+                                                <label class="toggle">
+                                                    <input type="checkbox" id="settingsAfterProcessAuditEnabled">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
                                                     <span class="feature-name">Async Valkey lane</span>
                                                     <span class="feature-desc" id="settingsAsyncRuntimeStatus">Prepare the side-by-side message runtime without replacing the current chat path.</span>
                                                 </div>
@@ -1624,6 +1642,26 @@
                                                 <button type="submit" class="btn btn-primary">Save Runtime</button>
                                             </div>
                                         </form>
+                                    </div>
+                                </div>
+                                <div class="card mt-4">
+                                    <div class="card-header">
+                                        <div>
+                                            <h3>After-process Audit Review</h3>
+                                            <p class="text-muted">Review completed-call audits, tool and skill findings, and approved flag-change suggestions.</p>
+                                        </div>
+                                        <div class="card-actions">
+                                            <span class="status-badge neutral" id="afterProcessAuditStatus">Loading</span>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="refreshAfterProcessAuditsBtn">Refresh</button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="self-reflection-list" id="afterProcessAuditList">
+                                            <div class="self-reflection-empty">
+                                                <strong>No audits loaded</strong>
+                                                <span>Completed calls will appear here after the after-process audit lane records its first review.</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

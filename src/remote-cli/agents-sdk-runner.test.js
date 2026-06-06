@@ -200,6 +200,30 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test('classifies support-agent requests as resumable blocked remote CLI output', () => {
+    expect(extractRemoteCliRunMetadata([
+      'Need a second opinion before editing.',
+      'REMOTE_CLI_SESSION_ID=thread_support_1',
+      'WORKSPACE=/opt/kimibuilt',
+      'WHAT_CHANGED=Inspected the failing route and narrowed it to transport selection.',
+      'SUPPORT_AGENT_REQUIRED=Review whether auto transport should prefer codex-agent when both routes are configured.',
+      'SUPPORT_AGENT_CONTEXT=Files inspected: src/remote-cli/agents-sdk-runner.js and k8s/configmap.yaml.',
+      'VERIFY_COMMANDS=not_available',
+      'VERIFY_RESULTS=support agent needed',
+      'PUBLIC_URL=not_available',
+      'BLOCKER=support agent needed',
+    ].join('\n'))).toEqual({
+      sessionId: 'thread_support_1',
+      workspace: '/opt/kimibuilt',
+      whatChanged: 'Inspected the failing route and narrowed it to transport selection.',
+      supportAgentRequest: 'Review whether auto transport should prefer codex-agent when both routes are configured.',
+      supportAgentContext: 'Files inspected: src/remote-cli/agents-sdk-runner.js and k8s/configmap.yaml.',
+      verifyResults: ['support agent needed'],
+      blocker: 'support agent needed',
+      completionStatus: 'blocked',
+    });
+  });
+
   test('classifies Codex JSONL turn failures as blockers', () => {
     const output = [
       JSON.stringify({ type: 'thread.started', thread_id: 'thread_failed' }),
@@ -525,7 +549,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         expect(body.prompt).toContain('Fix the remote app and verify it.');
         expect(body.prompt).toContain('/api/codex-agent/run');
         expect(body.prompt).toContain('GET /api/codex-agent/runs/:runId/events streams progress');
-        expect(body.prompt).toContain('MCP remote_code_run/remote_code_status path is only a compatibility fallback');
+        expect(body.prompt).toContain('Do not use MCP, remote_code_run, or remote_code_status inside this Codex-agent run');
         expect(body.prompt).toContain('emit concise milestone messages');
         expect(body.prompt).toContain('REMOTE_CLI_SESSION_ID');
         expect(body.config).toMatchObject({
@@ -616,6 +640,195 @@ describe('RemoteCliAgentsSdkRunner', () => {
       verifyResults: ['passed'],
       completionStatus: 'complete',
       apiMode: 'codex-agent',
+    });
+  });
+
+  test('prefers codex-agent over MCP when auto-detecting from mixed config', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/api/codex-agent/run') {
+        expect(JSON.parse(options.body).workspacePath).toBe('/opt/kimibuilt');
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              ok: true,
+              runId: 'run_auto_codex',
+              threadId: 'thread_auto_codex',
+              turnId: 'turn_auto_codex',
+              status: 'running',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_auto_codex/events') {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(
+                'event: turn_completed\n'
+                + 'data: {"event":"turn_completed","result":{"output_text":"WORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Used Codex-agent auto transport.\\nVERIFY_COMMANDS=not_available\\nVERIFY_RESULTS=passed\\nPUBLIC_URL=not_available\\nBLOCKER=none"}}\n\n',
+              ));
+              controller.close();
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        apiKey: 'legacy-mcp-secret',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'codex-agent-secret',
+        codexAgentWorkspacePath: '/opt/kimibuilt',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      sdkLoader: () => {
+        throw new Error('auto transport should not load the MCP Agents SDK when Codex-agent is configured');
+      },
+      fetchImpl,
+    });
+
+    expect(runner.getPublicConfig()).toMatchObject({
+      requestedTransport: 'auto',
+      transport: 'codex-agent',
+      configured: true,
+      codexAgentConfigured: true,
+    });
+
+    const result = await runner.run({ task: 'Verify remote work without MCP fallback.' });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      transport: 'codex-agent',
+      codexAgentRunId: 'run_auto_codex',
+      cwd: '/opt/kimibuilt',
+      whatChanged: 'Used Codex-agent auto transport.',
+      completionStatus: 'complete',
+    });
+  });
+
+  test('returns support-agent requests and resumes the same codex-agent thread with the support response', async () => {
+    const runPrompts = [];
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/api/codex-agent/run') {
+        const body = JSON.parse(options.body);
+        runPrompts.push(body);
+        if (body.continuation) {
+          expect(body.threadId).toBe('thread_support_1');
+          expect(body.prompt).toContain('Support agent response for this continuation:');
+          expect(body.prompt).toContain('Use auto transport and keep MCP explicit-only.');
+          return {
+            ok: true,
+            status: 200,
+            async text() {
+              return JSON.stringify({
+                ok: true,
+                runId: 'run_support_2',
+                threadId: 'thread_support_1',
+                turnId: 'turn_support_2',
+                status: 'running',
+              });
+            },
+          };
+        }
+        expect(body.prompt).toContain('SUPPORT_AGENT_REQUIRED=<precise question or help request>');
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              ok: true,
+              runId: 'run_support_1',
+              threadId: 'thread_support_1',
+              turnId: 'turn_support_1',
+              status: 'running',
+            });
+          },
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_support_1/events') {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(
+                'event: turn_completed\n'
+                + 'data: {"event":"turn_completed","thread_id":"thread_support_1","turn_id":"turn_support_1","result":{"output_text":"REMOTE_CLI_SESSION_ID=thread_support_1\\nWORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Inspected the transport code.\\nSUPPORT_AGENT_REQUIRED=Should auto prefer codex-agent over MCP?\\nSUPPORT_AGENT_CONTEXT=Both endpoints are configured.\\nVERIFY_COMMANDS=not_available\\nVERIFY_RESULTS=support agent needed\\nPUBLIC_URL=not_available\\nBLOCKER=support agent needed"}}\n\n',
+              ));
+              controller.close();
+            },
+          }),
+        };
+      }
+      if (url === 'https://gateway.example.com/api/codex-agent/runs/run_support_2/events') {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(
+                'event: turn_completed\n'
+                + 'data: {"event":"turn_completed","thread_id":"thread_support_1","turn_id":"turn_support_2","result":{"output_text":"REMOTE_CLI_SESSION_ID=thread_support_1\\nWORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Applied the support answer and finished the fix.\\nVERIFY_COMMANDS=npm test -- src/remote-cli/agents-sdk-runner.test.js\\nVERIFY_RESULTS=passed\\nPUBLIC_URL=not_available\\nBLOCKER=none"}}\n\n',
+              ));
+              controller.close();
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentWorkspacePath: '/opt/kimibuilt',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      sdkLoader: () => {
+        throw new Error('codex-agent transport should not load the Agents SDK MCP client');
+      },
+      fetchImpl,
+    });
+
+    const first = await runner.run({ task: 'Fix the remote CLI transport issue.' });
+    expect(first).toMatchObject({
+      transport: 'codex-agent',
+      codexThreadId: 'thread_support_1',
+      sessionId: 'thread_support_1',
+      supportAgentRequest: 'Should auto prefer codex-agent over MCP?',
+      supportAgentContext: 'Both endpoints are configured.',
+      blocker: 'support agent needed',
+      completionStatus: 'blocked',
+    });
+
+    const second = await runner.run({
+      task: 'Continue after support review and finish the fix.',
+      threadId: first.codexThreadId,
+      supportAgentResponse: 'Use auto transport and keep MCP explicit-only.',
+    });
+
+    expect(runPrompts).toHaveLength(2);
+    expect(second).toMatchObject({
+      transport: 'codex-agent',
+      codexThreadId: 'thread_support_1',
+      sessionId: 'thread_support_1',
+      whatChanged: 'Applied the support answer and finished the fix.',
+      verifyResults: ['passed'],
+      completionStatus: 'complete',
     });
   });
 

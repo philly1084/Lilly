@@ -543,6 +543,15 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
       .filter(Boolean),
   ));
   const whatChanged = normalizeOptionalProofValue(readMarkerLine(text, ['WHAT_CHANGED']));
+  const supportAgentRequest = normalizeOptionalProofValue(readMarkerLine(text, [
+    'SUPPORT_AGENT_REQUIRED',
+    'SUPPORT_AGENT_REQUEST',
+    'SUPPORT_NEEDED',
+  ]));
+  const supportAgentContext = normalizeOptionalProofValue(readMarkerLine(text, [
+    'SUPPORT_AGENT_CONTEXT',
+    'SUPPORT_CONTEXT',
+  ]));
   const verifyCommands = readMarkerLines(text, ['VERIFY_COMMANDS', 'VERIFY_COMMAND'])
     .map((value) => normalizeOptionalProofValue(value))
     .filter(Boolean);
@@ -551,6 +560,7 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     .filter(Boolean);
   const blockerMarker = readMarkerLine(text, ['BLOCKER', 'BLOCKED_BY'])
     || readMarkerLine(text, ['USER_INPUT_REQUIRED'])
+    || supportAgentRequest
     || detectRemoteCliExecutionBlocker(text);
   const blocker = normalizeOptionalProofValue(blockerMarker);
   const completionStatus = resolveCompletionStatus({
@@ -581,6 +591,8 @@ function extractRemoteCliRunMetadata(finalOutput = '') {
     ...(uiCheckReport ? { uiCheckReport } : {}),
     ...(uiScreenshots.length > 0 ? { uiScreenshots } : {}),
     ...(whatChanged ? { whatChanged } : {}),
+    ...(supportAgentRequest ? { supportAgentRequest } : {}),
+    ...(supportAgentContext ? { supportAgentContext } : {}),
     ...(verifyCommands.length > 0 ? { verifyCommands } : {}),
     ...(verifyResults.length > 0 ? { verifyResults } : {}),
     ...(blocker ? { blocker } : {}),
@@ -638,6 +650,12 @@ function buildRemoteCliProofDisplay(source = '', metadata = {}) {
   }
   if (metadata.whatChanged) {
     pushUniqueLine(lines, `WHAT_CHANGED=${metadata.whatChanged}`);
+  }
+  if (metadata.supportAgentRequest) {
+    pushUniqueLine(lines, `SUPPORT_AGENT_REQUIRED=${metadata.supportAgentRequest}`);
+  }
+  if (metadata.supportAgentContext) {
+    pushUniqueLine(lines, `SUPPORT_AGENT_CONTEXT=${metadata.supportAgentContext}`);
   }
   (metadata.verifyCommands || []).forEach((value) => {
     pushUniqueLine(lines, `VERIFY_COMMANDS=${value}`);
@@ -1083,7 +1101,7 @@ function resolveRemoteCliTransport(input = {}, runnerConfig = {}) {
     || input.remoteCliTransport
     || input.remote_cli_transport
     || runnerConfig.transport
-    || 'mcp',
+    || 'auto',
   );
   if (requested === 'auto') {
     return normalizeText(input.codexAgentBaseUrl || runnerConfig.codexAgentBaseUrl)
@@ -1212,11 +1230,12 @@ function buildCodexAgentPrompt({
   priorThreadId = '',
   adminMode = false,
   continuitySummary = '',
+  supportAgentResponse = '',
 } = {}) {
   return [
     'Codex-agent execution contract:',
     '- You are running through the KimiBuilt /api/codex-agent/run gateway contract, which mirrors the router-side Codex app-server bridge: POST /api/codex-agent/run starts a turn and GET /api/codex-agent/runs/:runId/events streams progress.',
-    '- Treat this as the primary stateful remote-agent lane. The older MCP remote_code_run/remote_code_status path is only a compatibility fallback outside this Codex-agent run.',
+    '- Treat this as the primary stateful remote-agent lane. Do not use MCP, remote_code_run, or remote_code_status inside this Codex-agent run.',
     workspacePath ? `- Your process cwd is the checked-out workspace "${workspacePath}".` : '',
     priorThreadId ? `- Continue prior Codex thread "${priorThreadId}" when relevant.` : '',
     priorThreadId ? '- Keep that thread id as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.' : '- If a thread id is available during the run, treat it as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.',
@@ -1227,8 +1246,12 @@ function buildCodexAgentPrompt({
     '- Inspect before editing, keep changes scoped, and verify the exact requested path.',
     '- For long work, emit concise milestone messages as normal assistant output before or after major phases such as inspect, edit, build/test, deploy, and verify. These messages are streamed through /events for the outer agent; do not wait silently until the final answer.',
     '- Do not call outer KimiBuilt tools from inside this run. Do not invent remote_code_run, remote_code_status, command, shell, executable, or args payloads here; use the workspace tools available to this Codex process.',
+    '- If you need a second opinion, research/check help, or decomposition help from a support agent to finish the task, stop with marker lines SUPPORT_AGENT_REQUIRED=<precise question or help request>, SUPPORT_AGENT_CONTEXT=<workspace facts, files, commands, and blocker>, REMOTE_CLI_SESSION_ID=<thread id if known>, WORKSPACE=<path>, WHAT_CHANGED=<current progress>, VERIFY_COMMANDS=not_available, VERIFY_RESULTS=support agent needed, PUBLIC_URL=not_available, BLOCKER=support agent needed.',
+    '- Do not use SUPPORT_AGENT_REQUIRED for decisions only the user can make; use USER_INPUT_REQUIRED for user choices, credentials, approvals, or product direction.',
+    supportAgentResponse ? 'Support agent response for this continuation:' : '',
+    supportAgentResponse,
     '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
-    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>.',
+    '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<thread/session id>, WORKSPACE=<path>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>, SUPPORT_AGENT_REQUIRED=<help request or none>, SUPPORT_AGENT_CONTEXT=<context or none>.',
     continuitySummary ? 'Remote project continuity context:' : '',
     continuitySummary,
     '',
@@ -1519,7 +1542,7 @@ class RemoteCliAgentsSdkRunner {
   }
 
   getPublicConfig() {
-    const requestedTransport = normalizeRemoteCliTransport(this.config.transport || 'mcp');
+    const requestedTransport = normalizeRemoteCliTransport(this.config.transport || 'auto');
     const transport = resolveRemoteCliTransport({}, this.config);
     const codexAgentBaseUrl = resolveCodexAgentBaseUrl({}, this.config);
     const codexAgentApiKey = resolveCodexAgentApiKey({}, this.config);
@@ -1734,6 +1757,7 @@ class RemoteCliAgentsSdkRunner {
         priorThreadId,
         adminMode,
         continuitySummary: continuitySummary || normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context),
+        supportAgentResponse: normalizeText(input.supportAgentResponse || input.support_agent_response || input.supportAgentNotes || input.support_agent_notes),
       }),
       continuation: Boolean(priorThreadId),
       ...(priorThreadId ? { threadId: priorThreadId } : {}),
@@ -1938,6 +1962,8 @@ class RemoteCliAgentsSdkRunner {
         uiCheckReport: runMetadata.uiCheckReport || null,
         uiScreenshots: runMetadata.uiScreenshots || [],
         whatChanged: runMetadata.whatChanged || null,
+        supportAgentRequest: runMetadata.supportAgentRequest || null,
+        supportAgentContext: runMetadata.supportAgentContext || null,
         verifyCommands: runMetadata.verifyCommands || [],
         verifyResults: runMetadata.verifyResults || [],
         blocker: runMetadata.blocker || null,
@@ -2458,6 +2484,8 @@ class RemoteCliAgentsSdkRunner {
         uiCheckReport: runMetadata.uiCheckReport || null,
         uiScreenshots: runMetadata.uiScreenshots || [],
         whatChanged: runMetadata.whatChanged || null,
+        supportAgentRequest: runMetadata.supportAgentRequest || null,
+        supportAgentContext: runMetadata.supportAgentContext || null,
         verifyCommands: runMetadata.verifyCommands || [],
         verifyResults: runMetadata.verifyResults || [],
         blocker: runMetadata.blocker || null,

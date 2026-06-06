@@ -16,6 +16,7 @@ const settingsController = require('./settings.controller');
 const podcastAudioController = require('./podcast-audio.controller');
 const storageController = require('./storage.controller');
 const selfReflectionUpdatesController = require('./self-reflection-updates.controller');
+const afterProcessAuditsController = require('./after-process-audits.controller');
 const DashboardController = require('./dashboard.controller');
 const { setDashboardController } = require('../../admin/runtime-monitor');
 const { buildLillyHistory } = require('../../admin/lilly-history');
@@ -78,6 +79,10 @@ router.get('/logs/export/:format', callController(logsController, 'export'));
 router.get('/self-reflection-updates/suggestions', callController(selfReflectionUpdatesController, 'listSuggestions'));
 router.post('/self-reflection-updates/suggestions/:id/apply', callController(selfReflectionUpdatesController, 'applySuggestion'));
 router.get('/self-reflection-updates', callController(selfReflectionUpdatesController, 'list'));
+
+// After-process audit review
+router.get('/after-process-audits', callController(afterProcessAuditsController, 'list'));
+router.post('/after-process-audits/recommendations/:id/apply', callController(afterProcessAuditsController, 'applyFlagRecommendation'));
 
 // Skills
 router.get('/skills', callController(skillsController, 'getAll'));

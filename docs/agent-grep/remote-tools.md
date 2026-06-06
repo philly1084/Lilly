@@ -28,7 +28,8 @@ Boundary:
 
 Remote completion proof:
 - Require `WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, and `BLOCKER`.
-- Keep continuity markers when known: `REMOTE_CLI_SESSION_ID`, `WORKSPACE`, `GIT_REPO`, `GIT_BRANCH`, `GIT_BASE_COMMIT`, `GIT_COMMIT`, `CHANGED_FILES`, `DEPLOYMENT`, `PUBLIC_HOST`, `UI_CHECK_REPORT`, `UI_SCREENSHOTS`.
+- Keep continuity markers when known: `REMOTE_CLI_SESSION_ID`, `WORKSPACE`, `GIT_REPO`, `GIT_BRANCH`, `GIT_BASE_COMMIT`, `GIT_COMMIT`, `CHANGED_FILES`, `DEPLOYMENT`, `PUBLIC_HOST`, `UI_CHECK_REPORT`, `UI_SCREENSHOTS`, `SUPPORT_AGENT_REQUIRED`, `SUPPORT_AGENT_CONTEXT`.
+- If `SUPPORT_AGENT_REQUIRED=<request>` appears, get bounded support-agent help, then resume `remote-cli-agent` with the same `threadId` and `supportAgentResponse`. This is not a user decision by default.
 - Forward `USER_INPUT_REQUIRED=<question/options>` to the user and continue the same session after the answer.
 - Stop repeated blocked-command loops after two materially identical failures.
 

@@ -318,6 +318,7 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
   applyAlias(params, 'mcpSessionId', params.mcp_session_id, argumentObject?.mcpSessionId, argumentObject?.mcp_session_id);
   applyAlias(params, 'remoteCodeModel', params.remote_code_model, argumentObject?.remoteCodeModel, argumentObject?.remote_code_model, remoteCodeRun?.model);
   applyAlias(params, 'transport', params.remoteCliTransport, params.remote_cli_transport, argumentObject?.transport, argumentObject?.remoteCliTransport, argumentObject?.remote_cli_transport);
+  applyAlias(params, 'supportAgentResponse', params.support_agent_response, params.supportAgentNotes, params.support_agent_notes, argumentObject?.supportAgentResponse, argumentObject?.support_agent_response, argumentObject?.supportAgentNotes, argumentObject?.support_agent_notes);
 
   const priorRemoteCliAgent = applyPriorRemoteCliAgentDefaults(params, context);
   applyAlias(params, 'continuitySummary', params.remoteProjectContext, params.remote_project_context, buildRemoteCliContinuitySummary(
@@ -467,6 +468,10 @@ class RemoteCliAgentTool extends ToolBase {
             type: 'string',
             description: 'Optional additional server-side instructions for the remote coding agent.',
           },
+          supportAgentResponse: {
+            type: 'string',
+            description: 'Answer or analysis from a support agent to feed into a resumed Codex-agent thread after SUPPORT_AGENT_REQUIRED.',
+          },
           continuitySummary: {
             type: 'string',
             description: 'Bounded project continuity context assembled by KimiBuilt from prior verified remote work. Usually populated automatically.',
@@ -498,6 +503,8 @@ class RemoteCliAgentTool extends ToolBase {
           uiCheckReport: { type: 'string' },
           uiScreenshots: { type: 'array' },
           whatChanged: { type: 'string' },
+          supportAgentRequest: { type: 'string' },
+          supportAgentContext: { type: 'string' },
           verifyCommands: { type: 'array' },
           verifyResults: { type: 'array' },
           blocker: { type: 'string' },

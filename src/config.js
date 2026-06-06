@@ -1031,7 +1031,7 @@ const config = {
         enabled: process.env.REMOTE_CLI_MCP_ENABLED !== 'false',
         transport: process.env.REMOTE_CLI_AGENT_TRANSPORT
             || process.env.REMOTE_CLI_TRANSPORT
-            || 'mcp',
+            || 'auto',
         url: process.env.REMOTE_CLI_MCP_URL || (
             process.env.GATEWAY_URL
                 ? `${String(process.env.GATEWAY_URL).replace(/\/+$/, '')}/mcp`

@@ -439,6 +439,9 @@ class SettingsController {
         evaluatorReasoningEffort: 'medium',
         enableAlignmentEvaluator: true,
         applyAlignmentGuidance: true,
+        afterProcessAuditEnabled: true,
+        afterProcessAuditModel: 'gpt-5.5',
+        afterProcessAuditReasoningEffort: 'medium',
         agentDirectedRuntime: false,
       },
       personality: {
@@ -1192,10 +1195,12 @@ class SettingsController {
       'synthesisModel',
       'repairModel',
       'evaluatorModel',
+      'afterProcessAuditModel',
       'plannerReasoningEffort',
       'synthesisReasoningEffort',
       'repairReasoningEffort',
       'evaluatorReasoningEffort',
+      'afterProcessAuditReasoningEffort',
     ].forEach((key) => {
       if (next[key] !== undefined) {
         next[key] = String(next[key] || '').trim();
@@ -1207,6 +1212,9 @@ class SettingsController {
     next.applyAlignmentGuidance = value.applyAlignmentGuidance !== undefined
       ? Boolean(value.applyAlignmentGuidance)
       : current.applyAlignmentGuidance !== false;
+    next.afterProcessAuditEnabled = value.afterProcessAuditEnabled !== undefined
+      ? Boolean(value.afterProcessAuditEnabled)
+      : current.afterProcessAuditEnabled !== false;
     next.agentDirectedRuntime = value.agentDirectedRuntime !== undefined
       ? Boolean(value.agentDirectedRuntime)
       : current.agentDirectedRuntime === true;
@@ -1558,10 +1566,14 @@ class SettingsController {
     const envSynthesis = String(config.runtime?.synthesisModel || '').trim();
     const envRepair = String(config.runtime?.repairModel || '').trim();
     const envEvaluator = String(config.runtime?.evaluatorModel || '').trim();
+    const envAfterProcessAudit = String(config.runtime?.afterProcessAuditModel || '').trim();
     const envPlannerReasoning = String(config.runtime?.plannerReasoningEffort || '').trim();
     const envSynthesisReasoning = String(config.runtime?.synthesisReasoningEffort || '').trim();
     const envRepairReasoning = String(config.runtime?.repairReasoningEffort || '').trim();
     const envEvaluatorReasoning = String(config.runtime?.evaluatorReasoningEffort || '').trim();
+    const envAfterProcessAuditReasoning = String(config.runtime?.afterProcessAuditReasoningEffort || '').trim();
+    const envAfterProcessAuditEnabled = String(process.env.KIMIBUILT_AFTER_PROCESS_AUDIT || '').trim().toLowerCase();
+    const envAfterProcessAuditHasValue = Boolean(envAfterProcessAuditEnabled);
 
     return {
       ...merged,
@@ -1569,12 +1581,17 @@ class SettingsController {
       synthesisModel: envSynthesis || merged.synthesisModel || merged.defaultModel,
       repairModel: envRepair || merged.repairModel || merged.defaultModel,
       evaluatorModel: envEvaluator || merged.evaluatorModel || merged.defaultModel,
+      afterProcessAuditModel: envAfterProcessAudit || merged.afterProcessAuditModel || merged.evaluatorModel || merged.defaultModel || 'gpt-5.5',
       plannerReasoningEffort: envPlannerReasoning || merged.plannerReasoningEffort || 'high',
       synthesisReasoningEffort: envSynthesisReasoning || merged.synthesisReasoningEffort || 'medium',
       repairReasoningEffort: envRepairReasoning || merged.repairReasoningEffort || 'high',
       evaluatorReasoningEffort: envEvaluatorReasoning || merged.evaluatorReasoningEffort || 'medium',
+      afterProcessAuditReasoningEffort: envAfterProcessAuditReasoning || merged.afterProcessAuditReasoningEffort || merged.evaluatorReasoningEffort || 'medium',
       enableAlignmentEvaluator: merged.enableAlignmentEvaluator !== false,
       applyAlignmentGuidance: merged.applyAlignmentGuidance !== false,
+      afterProcessAuditEnabled: envAfterProcessAuditHasValue
+        ? ['1', 'true', 'yes', 'on', 'enabled'].includes(envAfterProcessAuditEnabled)
+        : merged.afterProcessAuditEnabled !== false,
       agentDirectedRuntime: merged.agentDirectedRuntime === true
         || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_AGENT_DIRECTED_RUNTIME || '').trim().toLowerCase()),
       neuralWaveResearchMode: merged.neuralWaveResearchMode === true
@@ -1671,6 +1688,9 @@ class SettingsController {
         evaluatorReasoningEffort: 'medium',
         enableAlignmentEvaluator: true,
         applyAlignmentGuidance: true,
+        afterProcessAuditEnabled: true,
+        afterProcessAuditModel: 'gpt-5.5',
+        afterProcessAuditReasoningEffort: 'medium',
         agentDirectedRuntime: false,
         neuralWaveResearchMode: false,
         asyncRuntimeEnabled: config.asyncRuntime?.enabled === true,
