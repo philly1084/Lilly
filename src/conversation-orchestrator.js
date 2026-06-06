@@ -5762,8 +5762,9 @@ function hasRemoteCliAgentAuthoringIntent(text = '') {
     }
 
     const explicitAssistedCli = hasExplicitRemoteCliAgentIntentText(normalized);
-    const authoringIntent = /\b(create|make|build|generate|implement|develop|write|update|fix|finish|continue|resume|complete|deploy|publish|launch|ship)\b/.test(normalized);
+    const authoringIntent = /\b(create|creating|make|making|build|building|generate|generating|implement|implementing|develop|developing|write|writing|update|updating|fix|fixing|finish|finishing|continue|resume|complete|deploy|publish|launch|ship)\b/.test(normalized);
     const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|visualization|visualisation|viewer|map|globe|world|service)\b/.test(normalized);
+    const documentTarget = /\b(document|doc|docs|report|brief|proposal|guide|manual|workbook|whitepaper|one-pager|summary|synthesis|research|deck|slides|presentation|pptx|pdf|docx|html document|html page)\b/.test(normalized);
     const continuationTarget = /\b(it|that|same|work|project|task)\b/.test(normalized);
     const remoteTarget = /\b(remote|server|host|k3s|k8s|kubernetes|cluster|dns|domain|ingress|traefik|tls|deploy|deployment|live)\b/.test(normalized)
         || /\b[a-z0-9-]+(?:\.[a-z0-9-]+){1,}\b/.test(normalized);
@@ -5772,7 +5773,7 @@ function hasRemoteCliAgentAuthoringIntent(text = '') {
         && !/\b(create|make|build|implement|develop|write|update|fix|deploy|redeploy|publish|launch|ship)\b/.test(normalized);
 
     if (explicitAssistedCli) {
-        return authoringIntent && (softwareTarget || continuationTarget) && (remoteTarget || explicitAssistedCli);
+        return authoringIntent && (softwareTarget || documentTarget || continuationTarget) && (remoteTarget || explicitAssistedCli);
     }
 
     return authoringIntent && softwareTarget && remoteTarget && deploymentIntent && !infraOnly;
@@ -5784,7 +5785,10 @@ function hasExplicitRemoteCliAgentIntentText(text = '') {
         return false;
     }
 
-    return /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli|cli tool)\b/.test(normalized);
+    return /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli|cli tool)\b/.test(normalized)
+        || /\b(?:ask|get|have|use|call)\s+codex\s+(?:for\s+)?help\b/.test(normalized)
+        || /\bcodex\s+help\b/.test(normalized)
+        || /\buse\s+codex\s+for\s+(?:this|that|it|the task|the work)\b/.test(normalized);
 }
 
 function hasExplicitDirectRemoteCliIntent(text = '') {
@@ -6170,7 +6174,10 @@ function shouldUseRemoteCliForManagedAppIteration(text = '', options = {}) {
     const executionProfile = String(options.executionProfile || '').trim();
     const workflowLane = String(options.workflow?.lane || '').trim();
     const hasGitLabSourceCue = /\b(gitlab|gitlab ci|gitlab[-_ ]runner|build events webhook|registry\.gitlab|source[- ]?to[- ]?public|pipeline|pipelines)\b/i.test(normalized);
-    const hasRemoteCliCue = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|backend cli|cli worker|agents sdk remote cli)\b/i.test(normalized);
+    const hasRemoteCliCue = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|backend cli|cli worker|agents sdk remote cli)\b/i.test(normalized)
+        || /\b(?:ask|get|have|use|call)\s+codex\s+(?:for\s+)?help\b/i.test(normalized)
+        || /\bcodex\s+help\b/i.test(normalized)
+        || /\buse\s+codex\s+for\s+(?:this|that|it|the task|the work)\b/i.test(normalized);
     const hasClusterDeployCue = /\b(k3s|k8s|kubernetes|cluster|kubectl|ingress|traefik|tls|dns|rollout|route|public host|public url)\b/i.test(normalized);
     const hasPublicDeployCue = hasClusterDeployCue
         || /\b(online|live|public|hosted|production)\b/i.test(normalized)
@@ -8857,6 +8864,7 @@ function buildPlannerPolicyPacks({
             ? [
                 'Treat "remote CLI", "direct CLI", and "remote command" as aliases for `remote-command`; do not route those phrases to a local shell or code sandbox.',
                 'Treat the explicit phrases "remote cli agent", "remote coding agent", "assisted cli", and `remote_code_run` as `remote-cli-agent` intent when source changes, build, deploy, or verification work should be owned by a remote coding agent.',
+                'Treat "ask Codex for help", "Codex help", and "use Codex for this" as `remote-cli-agent` intent for deeper document creation, synthesis, or build work on the configured main Codex lane. In this project that lane defaults to targetId `k3s-prod` and cwd `/opt/kimibuilt` unless runtime settings say otherwise.',
                 '`remote-cli-agent` is the outer KimiBuilt tool and its params use `task`, `adminMode`, `targetId`, `cwd`, `sessionId`, `mcpSessionId`, and `waitMs`; do not put raw shell fields such as `command`, `args`, `shell`, or `executable` in that tool.',
                 'The default remote-cli-agent transport uses `POST /api/codex-agent/run` plus `/events` SSE; `remote_code_run` and `remote_code_status` remain available only as the MCP compatibility lane.',
                 'For most remote software creation, update, and deployment requests where an app, website, service, dashboard, or frontend must be changed and put live, prefer `remote-cli-agent` with `params.adminMode:true` so the remote coding agent owns authoring, build, deploy, and verification through the configured admin-capable CLI runner lane.',

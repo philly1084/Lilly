@@ -1789,7 +1789,10 @@ function hasExplicitRemoteCliAgentIntent(prompt = '') {
         || /\bremote code run\b/i.test(normalizedPrompt)
         || /\bremote_code_run\b/i.test(normalizedPrompt)
         || /\bagents sdk remote cli\b/i.test(normalizedPrompt)
-        || /\bmcp remote cli\b/i.test(normalizedPrompt);
+        || /\bmcp remote cli\b/i.test(normalizedPrompt)
+        || /\b(?:ask|get|have|use|call)\s+codex\s+(?:for\s+)?help\b/i.test(normalizedPrompt)
+        || /\bcodex\s+help\b/i.test(normalizedPrompt)
+        || /\buse\s+codex\s+for\s+(?:this|that|it|the task|the work)\b/i.test(normalizedPrompt);
 }
 
 function hasExplicitSshTargetCue(prompt = '') {
@@ -4311,6 +4314,7 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
         }
         if (remoteOperationToolIds.has('remote-cli-agent')) {
             guidance.push('- Use `remote-cli-agent` for remote software authoring/build/test/deploy/verify loops that need a coding agent to work in the remote workspace. Its params use `task`, not shell command fields.');
+            guidance.push('- Treat "ask Codex for help", "Codex help", and "use Codex for this" as `remote-cli-agent` intent for deeper document creation, synthesis, or build work on the configured main Codex lane, while plain "remote CLI" or "remote command" remains the direct `remote-command` lane.');
         }
         if (remoteOperationToolIds.has('remote-command')) {
             guidance.push('- Use `remote-command` for one direct remote inspection, logs, kubectl, network, DNS/TLS, one-off repair, or post-deploy verification command.');

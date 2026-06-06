@@ -1,5 +1,8 @@
 const {
+  buildPullRequestUrl,
+  normalizeGitHubRepositoryUrl,
   parseGitLog,
+  parseMergePullRequestSubject,
   summarizeCommits,
 } = require('./lilly-history');
 
@@ -34,10 +37,23 @@ describe('lilly-history', () => {
       'ccc3333\t2026-05-02\tMerge pull request #12 from philly1084/codex/example',
     ].join('\n'));
 
-    const summary = summarizeCommits(commits);
+    const summary = summarizeCommits(commits, {
+      repositoryUrl: 'https://github.com/philly1084/KimiBuilt.git',
+    });
 
     expect(summary.totalPulls).toBe(3);
     expect(summary.mergedPullRequests).toBe(1);
+    expect(summary.recentPullRequests).toEqual([
+      expect.objectContaining({
+        number: 12,
+        source: 'philly1084/codex/example',
+        url: 'https://github.com/philly1084/KimiBuilt/pull/12',
+      }),
+    ]);
+    expect(summary.recent[0].pullRequest).toMatchObject({
+      number: 12,
+      url: 'https://github.com/philly1084/KimiBuilt/pull/12',
+    });
     expect(summary.primaryCategories.reduce((sum, category) => sum + category.count, 0)).toBe(3);
     expect(summary.recentVelocity).toMatchObject({
       latestDate: '2026-05-02',
@@ -56,5 +72,16 @@ describe('lilly-history', () => {
       'notes-admin',
       'live-learning',
     ]);
+  });
+
+  test('extracts and links GitHub pull request merge subjects', () => {
+    expect(parseMergePullRequestSubject('Merge pull request #427 from philly1084/codex/wiki-prs')).toEqual({
+      number: 427,
+      source: 'philly1084/codex/wiki-prs',
+    });
+    expect(parseMergePullRequestSubject('Fix admin dashboard')).toBeNull();
+    expect(normalizeGitHubRepositoryUrl('git@github.com:philly1084/KimiBuilt.git')).toBe('https://github.com/philly1084/KimiBuilt');
+    expect(normalizeGitHubRepositoryUrl('https://github.com/philly1084/KimiBuilt.git')).toBe('https://github.com/philly1084/KimiBuilt');
+    expect(buildPullRequestUrl('git@github.com:philly1084/KimiBuilt.git', 427)).toBe('https://github.com/philly1084/KimiBuilt/pull/427');
   });
 });

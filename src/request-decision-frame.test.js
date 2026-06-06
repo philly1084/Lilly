@@ -62,6 +62,17 @@ describe('request-decision-frame', () => {
         expect(frame.orchestrationHints.mustNotDo).toContain('answer_without_remote_verification');
     });
 
+    test('routes Codex help document requests to the main assisted CLI lane', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Ask Codex for help creating a deeper PDF document and synthesis package.',
+            candidateOutputFormat: 'pdf',
+            executionProfile: 'remote-build',
+        });
+
+        expect(frame.preferredTool).toBe('remote-cli-agent');
+        expect(frame.intent).toBe('remote_inspect_or_operate');
+    });
+
     test('routes managed-app artifact deployments away from preview regeneration', () => {
         const frame = buildRequestDecisionFrame({
             text: 'Update this document (light-it-up-event-holiday-architectural-405gr2.html): lets deploy this to the web, lightitup.demoserver2.buzz on our remote server using the managed app',

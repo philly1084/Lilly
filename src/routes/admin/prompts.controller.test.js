@@ -278,6 +278,8 @@ describe('admin prompts controller', () => {
     expect(prompt.content).toContain('`remote-workbench` for structured remote repo/build/test/log/rollout actions');
     expect(prompt.content).toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for the `remote-command` lane.');
     expect(prompt.content).toContain('explicit phrases "remote cli agent", "remote coding agent", "assisted cli", and remote_code_run');
+    expect(prompt.content).toContain('"ask Codex for help", "Codex help", and "use Codex for this"');
+    expect(prompt.content).toContain('targetId `k3s-prod` and cwd `/opt/kimibuilt`');
     expect(prompt.content).toContain('`remote-cli-agent` is the outer KimiBuilt tool');
     expect(prompt.content).toContain('POST /api/codex-agent/run plus /events SSE');
     expect(prompt.content).toContain('preserve returned threadId/sessionId');

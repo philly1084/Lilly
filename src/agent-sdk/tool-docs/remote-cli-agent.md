@@ -4,6 +4,8 @@ Purpose: run a server-side remote coding agent through the default gateway `/api
 
 Use this tool when the user asks for backend CLI agents behind the router to work on a remote/server workspace, especially coding/build/deploy tasks where KimiBuilt should stream progress while the remote agent owns the implementation loop.
 
+Also use this tool when the user asks to "ask Codex for help", "use Codex for this", or get "Codex help" for deeper document creation, synthesis, or build work. In this project, that phrase means the main Codex-agent lane on the primary KimiBuilt server, using the configured defaults, normally `targetId: "k3s-prod"` and `cwd: "/opt/kimibuilt"`.
+
 For most remote software deployments, prefer `remote-cli-agent` over one-shot `remote-command`: if an app, website, service, dashboard, frontend, or game needs to be created or changed and put live, let the remote CLI agent own the author -> build/test -> deploy -> verify loop.
 
 Layer boundary:

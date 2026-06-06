@@ -2862,6 +2862,34 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
+    test('routes Codex help document requests to remote-cli-agent instead of local document-only flow', () => {
+        const toolManager = createToolManager();
+        const prompt = 'Ask Codex for help creating a deeper PDF document and synthesis package.';
+        const toolContext = {
+            executionProfile: 'remote-build',
+            clientSurface: 'web-chat',
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(
+            toolManager,
+            prompt,
+            { toolContext },
+        );
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(
+            automaticTools,
+            prompt,
+            { toolContext },
+        );
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(__testUtils.hasExplicitRemoteCliAgentIntent(prompt)).toBe(true);
+        expect(selectedIds).toContain('remote-cli-agent');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('remote-cli-agent');
+    });
+
     test('runs required remote-cli-agent deployment requests directly without final model synthesis', async () => {
         const toolManager = createToolManager();
         const prompt = 'Build and deploy a dashboard app on the remote k3s server at app.demoserver2.buzz.';

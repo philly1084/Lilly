@@ -10336,6 +10336,73 @@ describe('ConversationOrchestrator', () => {
         expect(normalizedAction).toEqual(directAction);
     });
 
+    test('routes Codex help document work to the main remote-cli-agent workspace', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '168.119.176.121',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+        settingsController.getEffectiveOpencodeConfig.mockReturnValue({
+            enabled: true,
+            binaryPath: 'opencode',
+            defaultAgent: 'build',
+            defaultModel: 'gpt-4o',
+            allowedWorkspaceRoots: ['C:/Users/phill/KimiBuilt'],
+            remoteDefaultWorkspace: '/opt/kimibuilt',
+            providerEnvAllowlist: ['OPENAI_API_KEY', 'OPENAI_BASE_URL'],
+            remoteAutoInstall: false,
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'document-workflow', 'web-search', 'tool-doc-read']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Ask Codex for help creating a deeper PDF document and synthesis package.';
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session: {
+                metadata: {},
+            },
+            toolPolicy,
+            toolContext: {
+                remoteWorkspacePath: '/opt/kimibuilt',
+            },
+        });
+
+        expect(toolPolicy.workflow).toBeNull();
+        expect(toolPolicy.preferredRemoteToolId).toBe('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds[0]).toBe('remote-cli-agent');
+        expect(directAction).toEqual({
+            tool: 'remote-cli-agent',
+            reason: 'The request asks an assisted remote CLI agent to own the coding, build, deploy, and verification loop.',
+            params: {
+                task: objective,
+                waitMs: 30000,
+                adminMode: true,
+                cwd: '/opt/kimibuilt',
+            },
+        });
+    });
+
     test('routes explicit remote CLI agent weather app deployment requests to remote-cli-agent', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

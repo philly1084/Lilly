@@ -769,15 +769,18 @@ class Dashboard {
             ? history.primaryCategories
             : (history.categories || []);
         const recentPulls = Array.isArray(history.recent) ? history.recent : [];
+        const recentPullRequests = Array.isArray(history.recentPullRequests) ? history.recentPullRequests : [];
         const newestPull = recentPulls[0] || null;
+        const newestPullRequest = recentPullRequests[0] || null;
         const currentPhase = [...(history.phases || [])].reverse().find((phase) => phase.to === '2099-12-31' || phase.to === 'now') || [...(history.phases || [])].reverse()[0] || null;
 
         statsContainer.innerHTML = [
-            { label: 'Repo pulls', value: totalPulls.toLocaleString(), detail: `${this.escapeHtml(history.firstDate || 'start')} to ${this.escapeHtml(history.lastDate || 'now')} | ${activeDays.toLocaleString()} days` },
+            { label: 'Repo commits', value: totalPulls.toLocaleString(), detail: `${this.escapeHtml(history.firstDate || 'start')} to ${this.escapeHtml(history.lastDate || 'now')} | ${activeDays.toLocaleString()} days` },
+            { label: 'GitHub PR merges', value: Number(history.mergedPullRequests || 0).toLocaleString(), detail: newestPullRequest ? `latest #${Number(newestPullRequest.number || 0).toLocaleString()} on ${this.escapeHtml(newestPullRequest.date || '')}` : 'merge commits not visible here' },
             { label: 'Codex sessions', value: codexSessionCount ? codexSessionCount.toLocaleString() : 'optional', detail: history.codexSessions?.available ? `${sessionSize} logs, latest ${latestSessionAt}` : 'session logs not visible here' },
             { label: 'Last 30 days', value: Number(recentVelocity.last30Days || 0).toLocaleString(), detail: `${Number(recentVelocity.last7Days || 0).toLocaleString()} in latest 7 days` },
-            { label: 'Daily build pace', value: averageDailyPulls, detail: 'average repo pulls per active day' },
-            { label: 'Multi-lane pulls', value: multiLanePulls.toLocaleString(), detail: 'commits tagged across multiple work streams' },
+            { label: 'Daily build pace', value: averageDailyPulls, detail: 'average repo commits per active day' },
+            { label: 'Multi-lane commits', value: multiLanePulls.toLocaleString(), detail: 'commits tagged across multiple work streams' },
             { label: 'Tagged / maintenance', value: `${taggedPulls.toLocaleString()} / ${maintenancePulls.toLocaleString()}`, detail: 'classified by subject-line signals' },
         ].map((item) => `
             <div class="lilly-stat">
@@ -790,18 +793,23 @@ class Dashboard {
         pulseContainer.innerHTML = `
             <div class="lilly-pulse-grid">
                 <div class="lilly-pulse-item">
-                    <span>Newest pull</span>
+                    <span>Newest commit</span>
                     <strong>${this.escapeHtml(newestPull?.date || recentVelocity.latestDate || history.lastDate || 'not visible')}</strong>
                     <p>${this.escapeHtml(newestPull?.subject || 'No recent commit subject visible from this runtime.')}</p>
                 </div>
                 <div class="lilly-pulse-item">
+                    <span>Newest GitHub PR</span>
+                    <strong>${newestPullRequest ? `#${Number(newestPullRequest.number || 0).toLocaleString()}` : 'not visible'}</strong>
+                    <p>${this.escapeHtml(newestPullRequest?.source || newestPullRequest?.subject || 'No pull-request merge subject visible from this runtime.')}</p>
+                </div>
+                <div class="lilly-pulse-item">
                     <span>Current chapter</span>
                     <strong>${this.escapeHtml(currentPhase?.label || 'Live history')}</strong>
-                    <p>${Number(currentPhase?.count || 0).toLocaleString()} pulls in this phase | ${Number(currentPhase?.percent || 0)}% of visible history</p>
+                    <p>${Number(currentPhase?.count || 0).toLocaleString()} commits in this phase | ${Number(currentPhase?.percent || 0)}% of visible history</p>
                 </div>
                 <div class="lilly-pulse-item">
                     <span>Velocity</span>
-                    <strong>${Number(recentVelocity.last7Days || 0).toLocaleString()} pulls</strong>
+                    <strong>${Number(recentVelocity.last7Days || 0).toLocaleString()} commits</strong>
                     <p>${Number(recentVelocity.last14Days || 0).toLocaleString()} in 14 days | ${Number(recentVelocity.last30Days || 0).toLocaleString()} in 30 days</p>
                 </div>
                 <div class="lilly-pulse-item">
@@ -811,6 +819,17 @@ class Dashboard {
                 </div>
             </div>
             <div class="lilly-pulse-recent">
+                ${recentPullRequests.slice(0, 6).map((pullRequest) => {
+                    const label = `#${Number(pullRequest.number || 0).toLocaleString()}`;
+                    const body = pullRequest.source || pullRequest.subject || '';
+                    const content = `
+                        <strong>${this.escapeHtml(label)}</strong>
+                        ${this.escapeHtml(body)}
+                    `;
+                    return pullRequest.url
+                        ? `<a class="lilly-pulse-chip lilly-tag-border-${this.escapeHtml(pullRequest.primaryTag || 'maintenance')}" href="${this.escapeHtml(pullRequest.url)}" target="_blank" rel="noopener">${content}</a>`
+                        : `<span class="lilly-pulse-chip lilly-tag-border-${this.escapeHtml(pullRequest.primaryTag || 'maintenance')}">${content}</span>`;
+                }).join('')}
                 ${recentPulls.slice(0, 6).map((commit) => `
                     <span class="lilly-pulse-chip lilly-tag-border-${this.escapeHtml(commit.primaryTag || 'maintenance')}">
                         <strong>${this.escapeHtml(commit.shortHash || '')}</strong>
@@ -836,7 +855,7 @@ class Dashboard {
                 <article class="lilly-phase-card lilly-phase-${this.escapeHtml(phase.id)}">
                     <div class="lilly-phase-topline">
                         <span class="lilly-phase-label">${this.escapeHtml(phase.label)}</span>
-                        <span class="lilly-phase-count">${Number(phase.count || 0).toLocaleString()} pulls | ${Number(phase.percent || 0)}%</span>
+                        <span class="lilly-phase-count">${Number(phase.count || 0).toLocaleString()} commits | ${Number(phase.percent || 0)}%</span>
                     </div>
                     <div class="lilly-phase-range">${this.escapeHtml(phase.from)} to ${phase.to === '2099-12-31' ? 'now' : this.escapeHtml(phase.to)}</div>
                     <p>${this.escapeHtml(phase.summary || '')}</p>
@@ -855,7 +874,7 @@ class Dashboard {
             <div class="lilly-collage-summary">
                 <div>
                     <strong>${totalPulls.toLocaleString()}</strong>
-                    <span>dots, one for each repo pull in local history</span>
+                    <span>dots, one for each repo commit in local history</span>
                 </div>
                 <div class="lilly-data-note">
                     <span>Generated ${this.escapeHtml(generatedAt)}</span>
@@ -879,7 +898,7 @@ class Dashboard {
             </div>
             <div class="lilly-recent-pulls">
                 ${(history.recent || []).slice(0, 12).map((commit) => `
-                    <a class="lilly-recent-pull lilly-tag-border-${this.escapeHtml(commit.primaryTag || 'maintenance')}" href="https://github.com/philly1084/KimiBuilt/commit/${this.escapeHtml(commit.hash || '')}" target="_blank" rel="noopener">
+                    <a class="lilly-recent-pull lilly-tag-border-${this.escapeHtml(commit.primaryTag || 'maintenance')}" href="${this.escapeHtml(history.repositoryUrl || 'https://github.com/philly1084/KimiBuilt')}/commit/${this.escapeHtml(commit.hash || '')}" target="_blank" rel="noopener">
                         <span>${this.escapeHtml(commit.shortHash || '')}</span>
                         <strong>${this.escapeHtml(commit.subject || '')}</strong>
                         <em>${this.escapeHtml(commit.date || '')}</em>
@@ -928,7 +947,7 @@ class Dashboard {
                 <div>
                     <div class="lilly-timeline-heading">
                         <span>${this.escapeHtml(phase.label)}</span>
-                        <span>${Number(phase.count || 0).toLocaleString()} pulls | ${Number(phase.percent || 0)}%</span>
+                        <span>${Number(phase.count || 0).toLocaleString()} commits | ${Number(phase.percent || 0)}%</span>
                     </div>
                     <p>${this.escapeHtml(phase.summary || '')}</p>
                     <div class="lilly-timeline-highlights">
@@ -960,6 +979,7 @@ class Dashboard {
         return {
             generatedAt: new Date().toISOString(),
             source: 'fallback static wiki seed refreshed from local history on 2026-05-20',
+            repositoryUrl: 'https://github.com/philly1084/KimiBuilt',
             totalPulls: 957,
             mergedPullRequests: 12,
             repairPulls: 320,
@@ -1024,6 +1044,9 @@ class Dashboard {
                 { hash: 'b4c3d9cf47a6012dea464a1a791aca2dcb5f839d', shortHash: 'b4c3d9c', date: '2026-05-19', subject: 'Prioritize workbook balance extrema over count wording', phase: 'privacy-trust', primaryTag: 'maintenance' },
                 { hash: '4dad2bb487f22ce85cdfc9bded8b0bf0a36c49ae', shortHash: '4dad2bb', date: '2026-05-19', subject: 'Use trusted workbook metadata for PII calculations', phase: 'privacy-trust', primaryTag: 'privacy' },
                 { hash: '29681faba6052ac0b5921d54013d644206f9ab09', shortHash: '29681fa', date: '2026-05-18', subject: 'Route private XLSX calculations through PII vault', phase: 'privacy-trust', primaryTag: 'privacy' },
+            ],
+            recentPullRequests: [
+                { hash: '', shortHash: '', date: '2026-05-20', subject: 'Merge pull request #12 from philly1084/codex/wiki-history', phase: 'privacy-trust', primaryTag: 'privacy', number: 12, source: 'philly1084/codex/wiki-history', url: 'https://github.com/philly1084/KimiBuilt/pull/12' },
             ],
         };
     }

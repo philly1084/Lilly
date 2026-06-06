@@ -65,7 +65,10 @@ function detectRequestSignals(text = '', {
         ...(Array.isArray(artifactIds) ? artifactIds : []),
     ]);
 
-    const explicitRemoteAgent = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized);
+    const explicitRemoteAgent = /\b(remote[-_\s]+cli[-_\s]+agent|remote clie agent|remote coding agent|remote[-_\s]+code[-_\s]+run|remote_code_run|agents sdk remote cli|assisted cli)\b/.test(normalized)
+        || /\b(?:ask|get|have|use|call)\s+codex\s+(?:for\s+)?help\b/.test(normalized)
+        || /\bcodex\s+help\b/.test(normalized)
+        || /\buse\s+codex\s+for\s+(?:this|that|it|the task|the work)\b/.test(normalized);
     const managedAppTarget = hasAny(normalized, [
         /\b(managed[-_\s]+app|managed app catalog|managed[-_\s]+app catalog|managed control plane|managed platform)\b/,
         /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/,

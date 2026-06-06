@@ -87,6 +87,43 @@ function getTags(subject = '') {
   return tags.length ? tags : ['maintenance'];
 }
 
+function parseMergePullRequestSubject(subject = '') {
+  const match = String(subject || '').trim().match(/^Merge pull request #(\d+)(?:\s+from\s+(.+))?/i);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    number: Number(match[1]),
+    source: String(match[2] || '').trim() || null,
+  };
+}
+
+function normalizeGitHubRepositoryUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return null;
+  }
+
+  const httpsMatch = raw.match(/^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?(?:\/)?$/i);
+  if (httpsMatch) {
+    return `https://github.com/${httpsMatch[1]}/${httpsMatch[2]}`;
+  }
+
+  const sshMatch = raw.match(/^(?:git@github\.com:|ssh:\/\/git@github\.com\/)([^/\s]+)\/([^/\s]+?)(?:\.git)?(?:\/)?$/i);
+  if (sshMatch) {
+    return `https://github.com/${sshMatch[1]}/${sshMatch[2]}`;
+  }
+
+  return null;
+}
+
+function buildPullRequestUrl(repositoryUrl, number) {
+  const repo = normalizeGitHubRepositoryUrl(repositoryUrl);
+  const prNumber = Number(number || 0);
+  return repo && prNumber ? `${repo}/pull/${prNumber}` : null;
+}
+
 function parseGitLog(stdout = '') {
   return String(stdout || '')
     .split(/\r?\n/)
@@ -103,6 +140,7 @@ function parseGitLog(stdout = '') {
         shortHash: String(hash || '').slice(0, 7),
         date,
         subject,
+        pullRequest: parseMergePullRequestSubject(subject),
         phase: phase.id,
         tags,
         primaryTag: tags[0],
@@ -126,11 +164,13 @@ function countSince(commits, latestDate, days) {
   return commits.filter((commit) => commit.date >= cutoffIso && commit.date <= latestDate).length;
 }
 
-function summarizeCommits(commits = []) {
+function summarizeCommits(commits = [], options = {}) {
   const orderedCommits = [...commits].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   const chronologicalCommits = [...commits].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   const totalPulls = commits.length;
-  const mergedPullRequests = commits.filter((commit) => /^Merge pull request #/i.test(commit.subject)).length;
+  const repositoryUrl = normalizeGitHubRepositoryUrl(options.repositoryUrl || '');
+  const pullRequestCommits = orderedCommits.filter((commit) => Number(commit.pullRequest?.number || 0) > 0);
+  const mergedPullRequests = pullRequestCommits.length;
   const repairPulls = commits.filter((commit) => commit.tags.includes('repair')).length;
   const growthPulls = commits.filter((commit) => commit.tags.includes('growth')).length;
   const firstDate = chronologicalCommits[0]?.date || null;
@@ -221,8 +261,28 @@ function summarizeCommits(commits = []) {
       subject: commit.subject,
       phase: commit.phase,
       primaryTag: commit.primaryTag,
+      pullRequest: commit.pullRequest,
     })),
-    recent: orderedCommits.slice(0, 48),
+    recent: orderedCommits.slice(0, 48).map((commit) => ({
+      ...commit,
+      pullRequest: commit.pullRequest
+        ? {
+          ...commit.pullRequest,
+          url: buildPullRequestUrl(repositoryUrl, commit.pullRequest.number),
+        }
+        : null,
+    })),
+    recentPullRequests: pullRequestCommits.slice(0, 24).map((commit) => ({
+      hash: commit.hash,
+      shortHash: commit.shortHash,
+      date: commit.date,
+      subject: commit.subject,
+      phase: commit.phase,
+      primaryTag: commit.primaryTag,
+      number: commit.pullRequest.number,
+      source: commit.pullRequest.source,
+      url: buildPullRequestUrl(repositoryUrl, commit.pullRequest.number),
+    })),
   };
 }
 
@@ -277,13 +337,22 @@ async function buildLillyHistory({ cwd = process.cwd(), maxCount = 5000 } = {}) 
     `--max-count=${maxCount}`,
   ], { cwd, maxBuffer: 1024 * 1024 * 4 });
 
+  let repositoryUrl = null;
+  try {
+    const remote = await execFileAsync('git', ['config', '--get', 'remote.origin.url'], { cwd });
+    repositoryUrl = normalizeGitHubRepositoryUrl(remote.stdout);
+  } catch (_error) {
+    repositoryUrl = null;
+  }
+
   const commits = parseGitLog(stdout);
-  const summary = summarizeCommits(commits);
+  const summary = summarizeCommits(commits, { repositoryUrl });
   const codexSessions = await getCodexSessionSummary();
 
   return {
     generatedAt: new Date().toISOString(),
     source: 'git log --all plus optional Codex session count',
+    repositoryUrl,
     ...summary,
     codexSessions,
   };
@@ -292,8 +361,11 @@ async function buildLillyHistory({ cwd = process.cwd(), maxCount = 5000 } = {}) 
 module.exports = {
   CATEGORY_RULES,
   PHASES,
+  buildPullRequestUrl,
   buildLillyHistory,
   getTags,
+  normalizeGitHubRepositoryUrl,
   parseGitLog,
+  parseMergePullRequestSubject,
   summarizeCommits,
 };

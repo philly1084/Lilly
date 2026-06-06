@@ -9,6 +9,7 @@ Operating model:
 Lane picker:
 - `managed-app`: GitLab-observable control plane for app/source/build/deploy loops. Use `create` for new managed apps, `iterate` for existing app changes, `doctor` or `reconcile` for platform health. For complex CLI work in an existing managed app, call `iterate` with `executor: "remote-cli-agent"`.
 - `remote-cli-agent`: remote software author/build/test/deploy/verify loop when a coding agent should work inside the remote workspace. Params use `task`, usually `adminMode: true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `mcpSessionId`, `waitMs`, and `transport`.
+- Codex help lane: phrases such as "ask Codex for help", "Codex help", or "use Codex for this" mean `remote-cli-agent` for deeper document creation, synthesis, or build work on the configured main Codex-agent workspace, normally `targetId: "k3s-prod"` and `cwd: "/opt/kimibuilt"`.
 - `remote-workbench`: structured remote repo/file/build/test/log/rollout actions when a matching action exists, such as git snapshot, apply patch, file read/write, build, test, logs, rollout, or verify.
 - `remote-command`: one direct non-interactive remote command for baseline, inspection, logs, kubectl, service status, network, DNS/TLS, one-off repair, or post-deploy verification.
 - `k3s-deploy`: standard deploy-only lane for repo sync, manifest apply, image update, and rollout status after the repo/manifests/image/deployment target are known.

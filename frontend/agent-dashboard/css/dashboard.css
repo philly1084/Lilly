@@ -3001,6 +3001,15 @@ select.form-control,
     font-size: var(--text-xs);
 }
 
+a.lilly-pulse-chip {
+    text-decoration: none;
+}
+
+a.lilly-pulse-chip:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+}
+
 .lilly-pulse-chip strong {
     color: var(--text-primary);
     font-family: var(--font-mono);

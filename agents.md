@@ -251,6 +251,8 @@ The common remote operations target for this project is an Ubuntu Linux ARM64 se
 
 When agents are using SSH or remote command tools:
 - Prefer `remote-cli-agent` for most remote software creation, update, and deployment work where an app, website, service, dashboard, or frontend must be changed and put live. Use `adminMode: true` for these scoped deployment loops so the remote agent can use the configured admin-capable CLI runner lane.
+- Treat "ask Codex for help", "Codex help", and "use Codex for this" as the stateful Codex-agent assistance lane for deeper document creation, synthesis, and build work on the main KimiBuilt server. Use `remote-cli-agent` with the configured primary defaults, normally `targetId: "k3s-prod"` and `cwd: "/opt/kimibuilt"`.
+- Keep the plain "remote CLI", "direct CLI", and "remote command" wording on the normal `remote-command` lane unless the user explicitly asks for Codex help or the remote CLI agent.
 - Prefer `k3s-deploy` for standard deploy operations: repo sync, manifest apply, image update, and rollout checks.
 - Prefer `remote-command` for kubectl inspection, logs, service status, network checks, package installs, one-off fixes, and post-deploy verification.
 - Use `remote-workbench` for structured remote repo/file/build/test/log/rollout actions when the action exists; use `remote-command` for expert one-off shell that does not fit a structured action.
