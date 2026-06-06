@@ -5209,6 +5209,7 @@ class ToolManager {
             const service = resolveManagedAppService(context);
             const action = String(params.action || 'inspect').trim().toLowerCase();
             const ownerId = context.ownerId || context.userId || null;
+            const explicitAppRef = params.appRef || params.ref || params.id;
             const input = {
               ...params,
               sessionId: params.sessionId || context.sessionId || null,
@@ -5218,18 +5219,18 @@ class ToolManager {
               case 'create':
                 return service.createApp(input, ownerId, context);
               case 'update':
-                return service.updateApp(params.appRef || params.ref || params.slug || params.id, input, ownerId, context);
+                return service.updateApp(explicitAppRef, input, ownerId, context);
               case 'iterate':
               case 'iteration':
               case 'edit':
               case 'build':
               case 'verify':
-                return service.iterateApp(params.appRef || params.ref || params.slug || params.id, {
+                return service.iterateApp(explicitAppRef, {
                   ...input,
                   action: params.iterationAction || (action === 'iterate' || action === 'iteration' ? (params.requestedAction || 'edit') : action),
                 }, ownerId, context);
               case 'deploy':
-                return service.deployApp(params.appRef || params.ref || params.slug || params.id, input, ownerId, context);
+                return service.deployApp(explicitAppRef, input, ownerId, context);
               case 'inspect':
               case 'status':
                 return service.inspectApp(params.appRef || params.ref || params.slug || params.id, ownerId, context);

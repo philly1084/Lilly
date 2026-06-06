@@ -150,6 +150,13 @@ describe('web-chat project viewport helpers', () => {
             sandboxUrl: '/api/artifacts/minascraft-hook/sandbox',
             artifactPreviewUrl: '/api/artifacts/minascraft-hook',
             publicHost: 'minascraft.demoserver2.buzz',
+            progress: {
+                evidence: {
+                    requiredProof: {
+                        publicVerificationObserved: true,
+                    },
+                },
+            },
         })).toBe('https://minascraft.demoserver2.buzz');
     });
 
@@ -178,6 +185,18 @@ describe('web-chat project viewport helpers', () => {
                 },
             },
         })).toBe('');
+
+        expect(app.buildProjectViewportUrl({
+            type: 'managed-app',
+            phase: 'live',
+            publicHost: 'secondary-site.demoserver2.buzz',
+            publicUrl: 'https://secondary-site.demoserver2.buzz',
+        })).toBe('');
+
+        expect(app.buildProjectViewportUrl({
+            type: 'managed-app',
+            livePublicUrl: 'https://secondary-site.demoserver2.buzz',
+        })).toBe('');
     });
 
     test('uses the deployed managed app URL once public verification is observed', () => {
@@ -188,6 +207,7 @@ describe('web-chat project viewport helpers', () => {
             phase: 'live',
             publicHost: 'requested-site.demoserver2.buzz',
             publicUrl: 'https://requested-site.demoserver2.buzz',
+            publicVerificationObserved: true,
         })).toBe('https://requested-site.demoserver2.buzz');
 
         expect(app.buildProjectViewportUrl({
@@ -223,6 +243,7 @@ describe('web-chat project viewport helpers', () => {
                     appSlug: 'demo-site',
                     phase: 'live',
                     livePublicUrl: 'https://demo-site.demoserver2.buzz',
+                    publicVerificationObserved: true,
                 },
             },
         };
@@ -262,6 +283,7 @@ describe('web-chat project viewport helpers', () => {
         session.metadata.activeProject = {
             ...session.metadata.activeProject,
             livePublicUrl: 'https://demo-site.demoserver2.buzz/',
+            publicVerificationObserved: true,
             updatedAt: '2026-06-03T10:00:01.000Z',
         };
 

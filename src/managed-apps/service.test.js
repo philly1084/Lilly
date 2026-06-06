@@ -461,6 +461,54 @@ describe('ManagedAppService', () => {
         expect(blueprint.publicHost).toBe(`${blueprint.slug}.demoserver2.buzz`);
     });
 
+    test('resolves existing managed-app mutations by public host before an auto-filled task slug', async () => {
+        const tetrisApp = {
+            id: 'app-tetris',
+            ownerId: 'user-1',
+            sessionId: 'session-1',
+            slug: 'tetris-game',
+            appName: 'Tetris Game',
+            repoOwner: 'agent-apps',
+            repoName: 'tetris-game',
+            publicHost: 'awesome.demoserver2.buzz',
+            namespace: 'app-tetris-game',
+            metadata: {},
+            status: 'live',
+        };
+        const store = {
+            listApps: jest.fn(async () => [tetrisApp]),
+            getAppBySlug: jest.fn(async () => null),
+        };
+        const service = new ManagedAppService({ store });
+
+        service.getEffectiveGiteaConfig = () => ({
+            baseURL: 'https://gitea.demoserver2.buzz',
+            org: 'agent-apps',
+            registryHost: 'gitea.demoserver2.buzz',
+        });
+        service.getEffectiveManagedAppsConfig = () => ({
+            appBaseDomain: 'demoserver2.buzz',
+            namespacePrefix: 'app-',
+            defaultBranch: 'main',
+            defaultContainerPort: 80,
+        });
+
+        const resolved = await service.resolveExistingAppForAction('', {
+            slug: 'update-desktop-css-so-start-game',
+            publicHost: 'awesome.demoserver2.buzz',
+            prompt: 'Update the desktop CSS so the existing Tetris game at https://awesome.demoserver2.buzz starts correctly.',
+        }, 'user-1', {
+            sessionId: 'session-1',
+        });
+
+        expect(resolved).toEqual(expect.objectContaining({
+            id: 'app-tetris',
+            slug: 'tetris-game',
+            publicHost: 'awesome.demoserver2.buzz',
+        }));
+        expect(store.getAppBySlug).not.toHaveBeenCalledWith('update-desktop-css-so-start-game', 'user-1');
+    });
+
     test('heals missing repo coordinates on existing apps before creating the repository', async () => {
         const existingApp = {
             id: 'app-1',

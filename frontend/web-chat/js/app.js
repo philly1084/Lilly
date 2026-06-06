@@ -4026,23 +4026,22 @@ class ChatApp {
         return requiredProof.publicVerificationObserved === true
             || project.publicVerificationObserved === true
             || liveDeploy.https === true
-            || phase === 'live'
-            || status === 'live'
             || ['live', 'success', 'succeeded'].includes(verificationStatus);
     }
 
     buildManagedAppLiveProjectUrl(project = {}) {
         const explicitLiveUrl = String(project?.livePublicUrl || project?.deployedUrl || '').trim();
-        if (/^https?:\/\//i.test(explicitLiveUrl)) {
+        const endpointReady = this.isManagedAppPublicEndpointReady(project);
+        if (endpointReady && /^https?:\/\//i.test(explicitLiveUrl)) {
             return explicitLiveUrl;
         }
 
         const liveHost = this.normalizeProjectHost(project?.livePublicHost || project?.deployedHost || '');
-        if (liveHost) {
+        if (endpointReady && liveHost) {
             return `https://${liveHost}`;
         }
 
-        if (!this.isManagedAppPublicEndpointReady(project)) {
+        if (!endpointReady) {
             return '';
         }
 

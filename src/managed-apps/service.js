@@ -1417,9 +1417,7 @@ function hasManagedAppPublicVerification(app = null, buildRun = null, phase = ''
         ? details.deployment
         : {};
 
-    return normalizedPhase === 'live'
-        || appStatus === 'live'
-        || ['live', 'success', 'succeeded'].includes(verificationStatus)
+    return ['live', 'success', 'succeeded'].includes(verificationStatus)
         || liveDeploy.https === true
         || deployment?.verification?.https === true;
 }
@@ -2242,17 +2240,6 @@ class ManagedAppService {
             }
         }
 
-        const explicitSlug = normalizeText(input.slug);
-        if (explicitSlug) {
-            const resolved = await this.resolveApp(explicitSlug, ownerId);
-            if (resolved) {
-                return {
-                    app: resolved,
-                    reason: 'explicit-slug',
-                };
-            }
-        }
-
         const explicitRepoOwner = normalizeText(input.repoOwner);
         const explicitRepoName = normalizeText(input.repoName);
         if (explicitRepoOwner && explicitRepoName && this.store?.getAppByRepo) {
@@ -2275,6 +2262,28 @@ class ManagedAppService {
             }
         }
 
+        const ownerApps = await this.listOwnerApps(ownerId, 50);
+        const byHost = normalizeText(input.publicHost || input.targetPublicHost)
+            ? this.findAppByPublicHost(ownerApps, input.publicHost || input.targetPublicHost || blueprint.publicHost)
+            : null;
+        if (byHost) {
+            return {
+                app: byHost,
+                reason: 'public-host',
+            };
+        }
+
+        const explicitSlug = normalizeText(input.slug);
+        if (explicitSlug) {
+            const resolved = await this.resolveApp(explicitSlug, ownerId);
+            if (resolved) {
+                return {
+                    app: resolved,
+                    reason: 'explicit-slug',
+                };
+            }
+        }
+
         if ((normalizeText(input.slug) || explicitPromptName) && blueprint?.slug && this.store?.getAppBySlug) {
             const byBlueprintSlug = this.normalizeAppRecord(await this.store.getAppBySlug(blueprint.slug, ownerId));
             if (byBlueprintSlug) {
@@ -2283,17 +2292,6 @@ class ManagedAppService {
                     reason: 'derived-slug',
                 };
             }
-        }
-
-        const ownerApps = await this.listOwnerApps(ownerId, 50);
-        const byHost = normalizeText(input.publicHost)
-            ? this.findAppByPublicHost(ownerApps, input.publicHost || blueprint.publicHost)
-            : null;
-        if (byHost) {
-            return {
-                app: byHost,
-                reason: 'public-host',
-            };
         }
 
         const byExactName = hasExplicitIdentity
@@ -2525,6 +2523,21 @@ class ManagedAppService {
             progress: project?.progress || null,
             summary: normalizeText(project?.summary || normalizedApp.metadata?.project?.summary || buildManagedAppStatusSummary(normalizedApp, latestBuildRun, normalizedApp.status || 'updated')),
         };
+    }
+
+    async resolveExistingAppForAction(appRef = '', input = {}, ownerId = null, context = {}) {
+        const explicitRef = normalizeText(appRef || input.appRef || input.app || input.id || input.ref || '');
+        if (explicitRef) {
+            return this.resolveApp(explicitRef, ownerId);
+        }
+
+        const sessionId = normalizeText(context.sessionId || input.sessionId || '') || null;
+        const blueprint = this.buildAppBlueprint(input, ownerId, sessionId, context);
+        const resolved = await this.resolveAppForMutation({
+            ...input,
+            sessionId,
+        }, blueprint, ownerId);
+        return resolved.app || null;
     }
 
     async persistIterationState(app = null, buildRun = null, {
@@ -2826,7 +2839,7 @@ class ManagedAppService {
             throw error;
         }
 
-        const app = await this.resolveApp(appRef, ownerId);
+        const app = await this.resolveExistingAppForAction(appRef, input, ownerId, context);
         if (!app) {
             return null;
         }
@@ -3534,7 +3547,7 @@ class ManagedAppService {
     }
 
     async updateApp(appRef = '', input = {}, ownerId = null, context = {}) {
-        const app = await this.resolveApp(appRef, ownerId);
+        const app = await this.resolveExistingAppForAction(appRef, input, ownerId, context);
         if (!app) {
             return null;
         }
@@ -3552,7 +3565,7 @@ class ManagedAppService {
     }
 
     async deployApp(appRef = '', input = {}, ownerId = null, context = {}) {
-        const app = this.normalizeAppRecord(await this.resolveApp(appRef, ownerId));
+        const app = this.normalizeAppRecord(await this.resolveExistingAppForAction(appRef, input, ownerId, context));
         if (!app) {
             return null;
         }

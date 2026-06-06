@@ -2219,6 +2219,40 @@ describe('ToolManager image tools', () => {
     }));
   });
 
+  test('does not treat auto-filled slug as the managed-app mutation reference when a public host is present', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+
+    const iterateApp = jest.fn(async () => ({
+      app: { id: 'app-tetris', slug: 'tetris-game', publicHost: 'awesome.demoserver2.buzz' },
+      message: 'Queued iteration.',
+    }));
+
+    const result = await toolManager.executeTool('managed-app', {
+      action: 'iterate',
+      slug: 'update-desktop-css-so-start-game',
+      publicHost: 'awesome.demoserver2.buzz',
+      prompt: 'Update the existing Tetris app at https://awesome.demoserver2.buzz.',
+    }, {
+      ownerId: 'user-1',
+      sessionId: 'session-1',
+      managedAppService: {
+        isAvailable: () => true,
+        iterateApp,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(iterateApp).toHaveBeenCalledWith(undefined, expect.objectContaining({
+      slug: 'update-desktop-css-so-start-game',
+      publicHost: 'awesome.demoserver2.buzz',
+      sessionId: 'session-1',
+    }), 'user-1', expect.objectContaining({
+      ownerId: 'user-1',
+      sessionId: 'session-1',
+    }));
+  });
+
   test('routes sub-agent spawning through the workload service with the caller model', async () => {
     const toolManager = new ToolManager();
     await toolManager.initialize();
