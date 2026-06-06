@@ -4,21 +4,23 @@ GREP_HANDLES: AGENT_DOC REMOTE_TOOLS REMOTE_CLI_AGENT REMOTE_COMMAND REMOTE_WORK
 
 Use when:
 - A user asks for remote CLI, remote agents, server work, k3s, deployment, a public URL, or live app/site changes.
-- The planner is about to choose between `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
+- The planner is about to choose between `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
 - An orchestrated agent leaked a transport-specific runner call, stalled polling, or turned a remote blocker into a questionnaire.
 
 Small decision map:
+- Unified remote-access model: treat these as one remote operations system with five lanes. Prefer `managed-app` for GitLab-observable product loops, prefer the stateful Codex-agent SSE lane through `remote-cli-agent` for remote coding/build/deploy work, use direct command/workbench/deploy lanes for narrow operations, and keep MCP `remote_code_*` only as compatibility transport inside `remote-cli-agent`.
 - `managed-app`: GitLab-observable app/source/build/deploy loop. Use `managed-app create` for new managed apps and `managed-app iterate` for existing app changes; when deeper CLI work is needed, pass `executor:"remote-cli-agent"` so remote-cli-agent is a worker inside the managed-app evidence loop.
 - `remote-cli-agent`: remote software author/build/deploy/verify loop. Use for app, website, service, dashboard, frontend, or game changes that must go live. Params use `task`, usually `adminMode:true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `mcpSessionId`, `waitMs`, and `transport`.
 - `remote-command`: one direct remote command for inspect, logs, kubectl, network, DNS/TLS, one-off repair, or post-deploy verification. Params use `command`.
 - `remote-workbench`: structured remote repo/file/build/test/log/rollout actions when a matching action exists.
 - `k3s-deploy`: standard deploy-only lane for repo sync, manifest apply, image update, and rollout status after source/image/manifests already exist.
+- Registered skill: `remote-operations-system` carries this lane picker as a reusable workflow contract. If it is matched, preserve its inventory gate, lane boundaries, and proof loop while choosing concrete tools.
 
 Boundary:
 - Managed-app owns GitLab-backed app/product changes. Do not use standalone `remote-cli-agent`, `remote-command`, or direct k3s edits as the normal product loop when a managed app exists.
 - Before creating a new remote website/app/dashboard/service, GitLab project, namespace, or public host, inventory managed apps, GitLab projects, continuity/project registry facts, and live k3s namespaces/services/ingresses. Reuse/iterate a match, ask on ambiguity, and create only after no match is found or the user explicitly wants a separate new project.
 - The KimiBuilt planner calls `remote-cli-agent`; it does not call transport internals directly.
-- Default transport: KimiBuilt calls `POST /api/codex-agent/run` and streams `GET /api/codex-agent/runs/:runId/events` from the `nuts` gateway when `REMOTE_CLI_AGENT_TRANSPORT=codex-agent`.
+- Default transport: KimiBuilt calls `POST /api/codex-agent/run` and streams `GET /api/codex-agent/runs/:runId/events` from the `nuts` gateway when `REMOTE_CLI_AGENT_TRANSPORT=codex-agent`. That router-side lane starts Codex app-server in the checked-out workspace, keeps `threadId` for continuation, emits `session_started`, `output`, and terminal turn events, and converts interactive approval/input requests into `turn_input_required` so the outer agent never waits silently.
 - MCP compatibility transport: the runner can still call `remote_code_run({ targetId, cwd, task, model?, sessionId?, waitMs? })` through MCP and poll `remote_code_status({ jobId })` with the job id only.
 - Do not put raw shell fields like `command`, `args`, `shell`, or `executable` in `remote-cli-agent`.
 - Do not collapse the explicit phrase "remote cli agent" into `remote-command`.
@@ -35,7 +37,10 @@ Continuity:
 - Same-session `REMOTE_CLI_SESSION_ID`/workspace reuse is for continuation tasks only. If the user names a different domain, repo, or workspace, inspect that project instead of carrying over the old one.
 
 Longer docs:
+- `data/skills/remote-operations-system/SKILL.md`
+- `src/agent-sdk/tool-docs/managed-app.md`
 - `src/agent-sdk/tool-docs/remote-tools.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`
 - `src/agent-sdk/tool-docs/remote-command.md`
+- `src/agent-sdk/tool-docs/remote-workbench.md`
 - `src/agent-sdk/tool-docs/k3s-deploy.md`

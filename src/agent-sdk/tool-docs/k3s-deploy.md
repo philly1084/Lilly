@@ -2,9 +2,9 @@
 
 Purpose: run restricted k3s deployment actions through the remote runner when available, falling back to SSH against the configured server.
 
-Lane boundary: `k3s-deploy` is the deploy-only lane. Use `remote-command` for remote CLI authoring, repo inspection, build/test loops, `kubectl describe`, logs, and HTTPS verification. Use `git-safe` for repository save/push work and `k3s-deploy` only when deployment is the next planned step.
+Lane boundary: `k3s-deploy` is the deploy-only lane in the remote operations system. Use `managed-app` for GitLab-observable app/source/build/deploy loops, `remote-cli-agent` for remote authoring/build/test/deploy/verify loops, `remote-workbench` for structured remote repo/file/build/test/log/rollout actions, and `remote-command` for direct inspection, `kubectl describe`, logs, and HTTPS verification. Use `git-safe` for repository save/push work and `k3s-deploy` only when deployment is the next planned step.
 
-Short picker: read `src/agent-sdk/tool-docs/remote-tools.md` when choosing between `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
+Short picker: read `src/agent-sdk/tool-docs/remote-tools.md` when choosing between `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
 
 Repository sync supports GitHub clone URLs and the configured Git provider host. For generated k3s websites/apps, prefer the configured GitLab repository as the editable source of truth; at minimum, deploy from a git-backed remote workspace and commit changes before running this tool.
 

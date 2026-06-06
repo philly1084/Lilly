@@ -270,13 +270,17 @@ describe('admin prompts controller', () => {
     expect(settingsController.saveSettings).not.toHaveBeenCalled();
   });
 
-  test('planner prompt maps remote CLI language to remote-command', () => {
+  test('planner prompt maps the remote operations system lanes', () => {
     const prompt = promptsController.getSurfaceById('conversation-planner');
 
-    expect(prompt.content).toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for the `remote-command` tool.');
+    expect(prompt.content).toContain('remote operations system with lanes');
+    expect(prompt.content).toContain('`managed-app` for GitLab-observable app/source/build/deploy loops');
+    expect(prompt.content).toContain('`remote-workbench` for structured remote repo/build/test/log/rollout actions');
+    expect(prompt.content).toContain('Treat "remote CLI", "direct CLI", and "remote command" as aliases for the `remote-command` lane.');
     expect(prompt.content).toContain('explicit phrases "remote cli agent", "remote coding agent", "assisted cli", and remote_code_run');
     expect(prompt.content).toContain('`remote-cli-agent` is the outer KimiBuilt tool');
     expect(prompt.content).toContain('POST /api/codex-agent/run plus /events SSE');
+    expect(prompt.content).toContain('preserve returned threadId/sessionId');
     expect(prompt.content).toContain('prefer `remote-cli-agent` so the remote coding agent owns authoring, build, deploy, and verification');
     expect(prompt.content).toContain('pass `params.adminMode:true`');
     expect(prompt.content).toContain('Impressive Frontend Websites standard');

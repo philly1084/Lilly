@@ -19,7 +19,7 @@ Docs:
 - `grep-quickstart.md`: copyable local and remote grep commands.
 - `tool-use-rhythm.md`: how to work the tools in the same careful order Codex uses.
 - `tool-lookup.md`: find live tools, readiness, docs, and matching skills.
-- `remote-tools.md`: pick the right remote lane and avoid `remote-cli-agent`/`remote-command`/`k3s-deploy` call-shape mistakes.
+- `remote-tools.md`: pick the right remote operations lane and avoid `managed-app`/`remote-cli-agent`/`remote-command`/`remote-workbench`/`k3s-deploy` call-shape mistakes.
 - `adding-tools.md`: required docs, registry, profile, and test updates for new tools.
 - `design-research.md`: gather visual/design sources before building artifacts.
 - `skill-authoring.md`: create or update compact file-backed skills.

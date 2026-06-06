@@ -29,6 +29,7 @@ Common tool ids:
 - `image-generate`: generated visuals for HTML, PDFs, documents, slides, and websites.
 - `code-sandbox`: static preview bundles and sandbox execution when available.
 - `document-workflow`: document, deck, PDF, XLSX, Markdown, and bundle generation.
+- `remote-operations-system`: registered skill for the unified `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy` lane picker.
 - `remote-cli-agent`: remote software build/deploy/verify loops.
 - `remote-command`, `remote-workbench`, `k3s-deploy`: remote inspection, structured remote work, and k3s deploy checks.
 - `skill-list`, `skill-read`, `skill-context`, `skill-create`, `skill-update`: registered skill lifecycle.
@@ -43,6 +44,7 @@ Checks before use:
 
 Longer docs:
 - `src/agent-sdk/tool-docs/remote-tools.md`
+- `data/skills/remote-operations-system/SKILL.md`
 - `src/agent-sdk/tool-docs/tool-doc-read.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`
 - `src/agent-sdk/tool-docs/remote-command.md`

@@ -317,6 +317,7 @@ const AUTO_TOOL_ALLOWLIST = new Set([
     USER_CHECKPOINT_TOOL_ID,
     'ssh-execute',
     'remote-command',
+    'remote-workbench',
     'remote-cli-agent',
     'k3s-deploy',
     'managed-app',
@@ -2125,6 +2126,11 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
             || (executionProfile === 'remote-build' && hasUsableSshDefaults());
     }
 
+    if (toolId === 'remote-workbench') {
+        return hasExplicitRemoteWorkbenchIntent(prompt)
+            || (executionProfile === 'remote-build' && hasUsableSshDefaults());
+    }
+
     if (toolId === DOCUMENT_WORKFLOW_TOOL_ID) {
         if (extractPiiRelationshipFormulaPlanRequest(prompt)) {
             return false;
@@ -2187,6 +2193,19 @@ function hasExplicitK3sDeployIntent(prompt = '') {
         || /\b(k3s|k8s|kubernetes|kubectl)\b[\s\S]{0,60}\b(deploy|rollout|apply|set image|manifest|deployment|sync)\b/i.test(text);
 }
 
+function hasExplicitRemoteWorkbenchIntent(prompt = '') {
+    const text = String(prompt || '').trim();
+    if (!text) {
+        return false;
+    }
+
+    return [
+        /\bremote[-_ ]workbench\b/i,
+        /\bremote\b[\s\S]{0,40}\b(repo status|git snapshot|git prepare|git commit|git revert|apply patch|file read|file write|grep|build|test|logs|rollout|verify)\b/i,
+        /\b(structured|workbench)\b[\s\S]{0,40}\b(remote|repo|build|test|logs|rollout|verify)\b/i,
+    ].some((pattern) => pattern.test(text));
+}
+
 function buildK3sDeployPreflightParams(prompt = '') {
     const text = String(prompt || '');
     if (/\b(rollout status|check rollout|verify rollout)\b/i.test(text)) {
@@ -2228,7 +2247,7 @@ function shouldIncludeRemoteContinuityInstructions({
         return false;
     }
 
-    const hasRemoteTool = ['remote-command', 'ssh-execute', 'remote-cli-agent', 'k3s-deploy', 'managed-app']
+    const hasRemoteTool = ['remote-command', 'ssh-execute', 'remote-workbench', 'remote-cli-agent', 'k3s-deploy', 'managed-app']
         .some((toolId) => allowedToolIds.has(toolId));
     if (!hasRemoteTool) {
         return false;
@@ -3608,8 +3627,10 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
     const remoteToolId = availableToolIds.has('remote-command')
         ? 'remote-command'
         : (availableToolIds.has('ssh-execute') ? 'ssh-execute' : null);
+    const remoteWorkbenchToolId = availableToolIds.has('remote-workbench') ? 'remote-workbench' : null;
     const remoteCliAgentToolId = availableToolIds.has('remote-cli-agent') ? 'remote-cli-agent' : null;
     const explicitRemoteCliAgentIntent = hasExplicitRemoteCliAgentIntent(prompt);
+    const explicitRemoteWorkbenchIntent = hasExplicitRemoteWorkbenchIntent(prompt);
     const explicitLocalArtifact = hasExplicitLocalArtifactReference(prompt);
     const remoteWebsiteUpdateIntent = hasRemoteWebsiteUpdateIntent(prompt);
     const remoteSoftwareCreationIntent = executionProfile === 'remote-build'
@@ -3665,6 +3686,10 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
 
     if (hasSubAgentIntent && availableToolIds.has('agent-delegate')) {
         selectedIds.add('agent-delegate');
+    }
+
+    if (remoteWorkbenchToolId && explicitRemoteWorkbenchIntent) {
+        selectedIds.add(remoteWorkbenchToolId);
     }
 
     if (hasPodcastIntent && availableToolIds.has('podcast')) {
@@ -4276,6 +4301,29 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
     const remoteGuidanceToolId = automaticTools.some((entry) => entry.id === 'remote-command')
         ? 'remote-command'
         : (automaticTools.some((entry) => entry.id === 'ssh-execute') ? 'ssh-execute' : null);
+    const remoteOperationToolIds = new Set(automaticTools.map((entry) => entry.id)
+        .filter((toolId) => ['managed-app', 'remote-cli-agent', 'remote-command', 'remote-workbench', 'k3s-deploy'].includes(toolId)));
+
+    if (remoteOperationToolIds.size > 0) {
+        guidance.push('- Treat `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy` as one remote operations system with separate lanes, not competing one-off tools.');
+        if (remoteOperationToolIds.has('managed-app')) {
+            guidance.push('- Use `managed-app` as the GitLab-observable control plane for app/source/build/deploy loops. For complex existing-app CLI work, call managed-app iteration with `executor:"remote-cli-agent"` so remote-cli-agent is the worker inside the managed evidence loop.');
+        }
+        if (remoteOperationToolIds.has('remote-cli-agent')) {
+            guidance.push('- Use `remote-cli-agent` for remote software authoring/build/test/deploy/verify loops that need a coding agent to work in the remote workspace. Its params use `task`, not shell command fields.');
+        }
+        if (remoteOperationToolIds.has('remote-command')) {
+            guidance.push('- Use `remote-command` for one direct remote inspection, logs, kubectl, network, DNS/TLS, one-off repair, or post-deploy verification command.');
+        }
+        if (remoteOperationToolIds.has('remote-workbench')) {
+            guidance.push('- Use `remote-workbench` for structured remote repo/file/build/test/log/rollout actions when a matching workbench action exists, before inventing hand-written shell.');
+        }
+        if (remoteOperationToolIds.has('k3s-deploy')) {
+            guidance.push('- Use `k3s-deploy` only for standard deploy operations once the repo, manifests, image, namespace, and deployment target are known.');
+        }
+        guidance.push('- Before creating a remote app/site/service/repo/namespace/host, inventory managed apps, GitLab projects, continuity registry facts, and live k3s resources; reuse or iterate a match instead of creating duplicates.');
+        guidance.push('- Remote work is incomplete until source/build/deploy proof and public route or verification evidence are returned, or a concrete blocker is reported.');
+    }
 
     if (remoteGuidanceToolId) {
         if (automaticTools.some((entry) => entry.id === 'remote-cli-agent')) {

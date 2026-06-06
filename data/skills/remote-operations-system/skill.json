@@ -1,0 +1,66 @@
+{
+  "id": "remote-operations-system",
+  "name": "Remote Operations System",
+  "description": "Unified lane picker and proof workflow for managed-app, remote-cli-agent, remote-command, remote-workbench, and k3s-deploy.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "managed-app",
+    "remote-cli-agent",
+    "remote-command",
+    "remote-workbench",
+    "k3s-deploy",
+    "web-scrape"
+  ],
+  "triggerPatterns": [
+    "remote operations system",
+    "remote tool family",
+    "remote tools",
+    "remote server work",
+    "remote cli agent",
+    "remote workbench",
+    "remote command",
+    "managed app",
+    "k3s deploy",
+    "deploy live app",
+    "public route proof",
+    "remote build deploy verify",
+    "codex agent remote lane"
+  ],
+  "chain": [
+    {
+      "step": "Classify the remote intent and identify the owner",
+      "tool": "managed-app"
+    },
+    {
+      "step": "Inventory existing apps, repos, registry facts, namespaces, services, ingresses, and hosts before creating anything",
+      "tool": "managed-app"
+    },
+    {
+      "step": "Use remote-cli-agent for remote author/build/test/deploy/verify loops that need a coding agent",
+      "tool": "remote-cli-agent"
+    },
+    {
+      "step": "Use remote-workbench for structured repo/file/build/test/log/rollout actions when an action exists",
+      "tool": "remote-workbench"
+    },
+    {
+      "step": "Use remote-command for direct inspection, logs, kubectl, network, TLS, one-off repair, and post-deploy checks",
+      "tool": "remote-command"
+    },
+    {
+      "step": "Use k3s-deploy for standard repo/manifests/image rollout once the deployment target is known",
+      "tool": "k3s-deploy"
+    },
+    {
+      "step": "Verify rollout, public route, TLS/body reachability, and browser/UI behavior when applicable",
+      "tool": "web-scrape"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 2600,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "updatedAt": "2026-06-06T00:00:00.000Z"
+}

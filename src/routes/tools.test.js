@@ -257,7 +257,7 @@ describe('/api/tools routes', () => {
         expect(k3sDeploy.runtime.k3sFeedback.buildToK3sReady).toBe(true);
     });
 
-    test('remote service tools clear setup warning when live runtime support is ready', async () => {
+    test('runner-backed remote service tools clear setup warning when live runtime support is ready', async () => {
         const app = buildApp();
         remoteCliAgentsSdkRunner.config = {
             ...originalRemoteCliConfig,

@@ -1,10 +1,12 @@
 # remote tools
 
-Purpose: choose the correct remote execution lane without confusing the outer KimiBuilt tools with transport internals.
+Purpose: choose the correct lane in the unified remote operations system without confusing the outer KimiBuilt tools with transport internals.
 
 Use this first when a task mentions remote servers, remote CLI, remote agents, k3s, Kubernetes, deployment, public URLs, or live website/app changes.
 
 ## Remote Tool Decision Map
+
+Think of KimiBuilt remote access as one tool family with five lanes: `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`. The planner should choose the lane by intent, while `remote-cli-agent` itself chooses the transport: Codex-agent `/run` + `/events` first, MCP `remote_code_*` only as compatibility fallback.
 
 | User intent | Use | Do not use |
 |-------------|-----|------------|
@@ -14,6 +16,8 @@ Use this first when a task mentions remote servers, remote CLI, remote agents, k
 | Structured remote repo/file/build/test/log/rollout action exists | `remote-workbench` | hand-written shell that duplicates the structured action |
 | Standard deploy from an existing repo/manifests/image: sync repo, apply manifests, set image, rollout status | `k3s-deploy` | `k3s-deploy` for image builds, authoring new manifests, logs, or HTTPS checks |
 | Local preview or generated artifact before it is deployed | `code-sandbox` or `document-workflow` sandbox mode | remote tools unless the user asks to publish/promote/live-deploy |
+
+Registered skill: `remote-operations-system` is the compact skill-style version of this lane picker. When matched, preserve its inventory gate, lane boundaries, proof loop, and failure handling while selecting concrete tool calls.
 
 ## Pre-Create Inventory Gate
 
@@ -61,6 +65,12 @@ Preferred gateway transport used by `remote-cli-agent`:
 POST /api/codex-agent/run
 GET /api/codex-agent/runs/:runId/events
 ```
+
+Router implementation shape, as used by the `nuts` gateway:
+- `/api/codex-agent/run` validates bearer or API-key auth, validates `workspacePath` against `CODEX_AGENT_ALLOWED_WORKSPACE_ROOTS`, starts `codex app-server --listen stdio://`, and starts a turn in that workspace.
+- `/api/codex-agent/runs/:runId/events` is the live communication channel. It streams `session_started`, `output`, and exactly one terminal event: `turn_completed`, `turn_failed`, `turn_cancelled`, or `turn_input_required`.
+- The returned `threadId` is the durable continuation handle for future Codex-agent turns. Preserve it as `threadId`/`REMOTE_CLI_SESSION_ID` instead of inventing a separate polling session.
+- Approval and user-input prompts are denied and converted into `turn_input_required`, so the outer KimiBuilt agent can ask the user once and continue the same run/thread.
 
 Legacy MCP calls used by `remote-cli-agent` only:
 
@@ -121,6 +131,8 @@ UI_SCREENSHOTS=...
 
 ## Good References
 
+- `data/skills/remote-operations-system/SKILL.md`
+- `src/agent-sdk/tool-docs/managed-app.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`
 - `src/agent-sdk/tool-docs/remote-command.md`
 - `src/agent-sdk/tool-docs/remote-workbench.md`

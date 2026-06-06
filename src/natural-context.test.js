@@ -1,6 +1,7 @@
 const {
     buildNaturalContext,
     buildNaturalContextInstructions,
+    buildRegisteredSkillsContext,
     buildSkillsTreeInstructions,
     buildNaturalContextUpdate,
     _private,
@@ -78,5 +79,16 @@ describe('natural-context', () => {
         expect(_private.extractTargetsFromText('Fix the current hero section and the "CTA button".')).toEqual(
             expect.arrayContaining(['the current hero section', 'CTA button']),
         );
+    });
+
+    test('selects the remote operations system skill for remote lane planning', () => {
+        const context = buildRegisteredSkillsContext({
+            userText: 'Unify remote-cli-agent, k3s-deploy, managed-app, remote-workbench, and remote-command as one remote tool system.',
+            toolIds: ['managed-app', 'remote-cli-agent', 'remote-command', 'remote-workbench', 'k3s-deploy'],
+        });
+
+        expect(context.block).toContain('remote-operations-system');
+        expect(context.block).toContain('Treat `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy` as one remote operations system');
+        expect(context.selectedSkills.map((skill) => skill.id)).toContain('remote-operations-system');
     });
 });

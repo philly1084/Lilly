@@ -371,6 +371,20 @@ function createToolManager() {
                 },
             },
         }],
+        ['remote-workbench', {
+            id: 'remote-workbench',
+            name: 'Remote Workbench',
+            description: 'Run structured remote repo, file, build, test, log, rollout, and verification actions.',
+            inputSchema: {
+                type: 'object',
+                required: ['action'],
+                properties: {
+                    action: { type: 'string' },
+                    workspacePath: { type: 'string' },
+                    command: { type: 'string' },
+                },
+            },
+        }],
         ['remote-cli-agent', {
             id: 'remote-cli-agent',
             name: 'Remote CLI Agent',
@@ -501,6 +515,7 @@ function createToolManager() {
         ['migration-create', { enabled: true, triggerPatterns: ['create migration', 'schema migration'], requiresConfirmation: true }],
         ['ssh-execute', { enabled: true, triggerPatterns: ['ssh', 'remote command'], requiresConfirmation: true }],
         ['remote-command', { enabled: true, triggerPatterns: ['remote command', 'execute remotely'], requiresConfirmation: true }],
+        ['remote-workbench', { enabled: true, triggerPatterns: ['remote workbench', 'remote build', 'remote test', 'remote rollout'], requiresConfirmation: true }],
         ['remote-cli-agent', { enabled: true, triggerPatterns: ['remote cli agent', 'remote software deployment'], requiresConfirmation: true }],
         ['k3s-deploy', { enabled: true, triggerPatterns: ['deploy to k3s', 'kubectl apply', 'rollout status'], requiresConfirmation: true }],
         ['managed-app', { enabled: true, triggerPatterns: ['managed app', 'gitlab managed app'], requiresConfirmation: true }],
@@ -3149,7 +3164,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(automaticTools.some((tool) => tool.id === 'remote-command')).toBe(false);
     });
 
-    test('exposes remote-command to the automatic tool catalog for remote build sessions', () => {
+    test('exposes the remote operations system to the automatic tool catalog for remote build sessions', () => {
         jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
             enabled: true,
             host: '77.42.44.98',
@@ -3167,7 +3182,38 @@ describe('openai-client automatic tool orchestration helpers', () => {
         );
 
         expect(automaticTools.some((tool) => tool.id === 'remote-command')).toBe(true);
+        expect(automaticTools.some((tool) => tool.id === 'remote-workbench')).toBe(true);
+        expect(automaticTools.some((tool) => tool.id === 'remote-cli-agent')).toBe(true);
+        expect(automaticTools.some((tool) => tool.id === 'k3s-deploy')).toBe(true);
+        expect(automaticTools.some((tool) => tool.id === 'managed-app')).toBe(false);
         expect(automaticTools.some((tool) => tool.id === 'ssh-execute')).toBe(false);
+    });
+
+    test('selects remote-workbench for explicit structured remote workbench requests', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '77.42.44.98',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Use remote-workbench to take a remote git snapshot, run the build, and check rollout logs.';
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(
+            toolManager,
+            prompt,
+            { executionProfile: 'remote-build' },
+        );
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(
+            automaticTools,
+            prompt,
+            { toolContext: { executionProfile: 'remote-build' } },
+        );
+
+        expect(automaticTools.map((tool) => tool.id)).toContain('remote-workbench');
+        expect(selectedTools.map((tool) => tool.id)).toContain('remote-workbench');
     });
 
     test('restricts notes sessions to web research tools only', () => {

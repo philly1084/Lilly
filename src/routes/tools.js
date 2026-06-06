@@ -39,6 +39,7 @@ const registry = getUnifiedRegistry();
 const DISABLED_TOOL_IDS = new Set([]);
 const DISABLED_TOOL_MESSAGE = 'Tool is disabled.';
 const REMOTE_SERVICE_TOOL_IDS = new Set([
+  'managed-app',
   'remote-command',
   'remote-workbench',
   'remote-cli-agent',
