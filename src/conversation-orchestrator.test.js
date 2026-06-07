@@ -9837,6 +9837,67 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('routes sampled HTML managed-app publish requests without spawning sub-agents', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['managed-app', 'remote-command', 'remote-cli-agent', 'k3s-deploy', 'git-safe', 'tool-doc-read', 'agent-delegate', 'document-workflow']
+                        .includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const objective = 'Use the managed app portion to publish the sampled HTML document artifact at demo.demoserver2.buzz. It is making sub agents now; do not make sub agents, do the prompt it was asked.';
+        const toolContext = {
+            metadata: {
+                remoteBuildIntent: true,
+                preferManagedApp: true,
+            },
+            workspacePath: '/workspace/sample-site',
+            repositoryPath: '/workspace/sample-site',
+        };
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective,
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+            toolContext,
+            metadata: toolContext.metadata,
+        });
+        const directAction = orchestrator.buildDirectAction({
+            objective,
+            session: {
+                metadata: {},
+            },
+            toolPolicy,
+            toolContext,
+        });
+
+        expect(toolPolicy.candidateToolIds).toContain('managed-app');
+        expect(toolPolicy.candidateToolIds).not.toContain('agent-delegate');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'managed-app',
+            params: expect.objectContaining({
+                executor: 'remote-cli-agent',
+                useRemoteCliAgent: true,
+            }),
+        }));
+    });
+
     test('keeps managed-app owner for sticky remote-cli software deployment follow-ups', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

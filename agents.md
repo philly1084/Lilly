@@ -68,7 +68,9 @@ When an agent or program creates HTML, PDF-oriented HTML, DOCX, slide decks, das
 
 - Decide the delivery format first: editable DOCX, fixed-layout PDF, responsive HTML, Markdown source, PPTX, or a sandbox preview. Do not rename HTML as DOCX/PDF; use the document generator/export path for real office formats.
 - Current KimiBuilt document generation supports HTML, PDF, PPTX, XLSX, and Markdown. DOCX/Word requests currently normalize to HTML unless a separate external/export path is explicitly provided, so do not promise native DOCX as a finished runtime output.
-- Ask for or infer the minimum document context before writing: audience, purpose, format, length, tone, required sections, source material, brand/style constraints, images/data/tables, and delivery deadline. If details are missing, choose conservative professional defaults and state them in the artifact metadata or handoff note.
+- Ask for or infer the minimum document context before writing: audience, purpose, format, length, tone, required sections, source material, brand/style constraints, images/data/tables, and delivery deadline. If missing details would materially change the document or make the draft misleading, stop for a short clarification checkpoint before generating the artifact. If details are not blocking, choose conservative professional defaults and state them in the artifact metadata or handoff note.
+- Build to the subject and the user's situation, not to a generic template slot. Every section, chart, callout, and visual treatment must answer a reader job that follows from the actual topic, audience, and purpose.
+- Do not fill space with boilerplate, placeholder prose, rubric language, or descriptions of what a section should eventually contain. If there is not enough evidence or context for a section, either omit it, ask a checkpoint question, or include a clearly bounded assumption/limit rather than inventing filler.
 - Build from structured content. Use headings, sections, tables, callouts, figures, captions, page breaks, and references as explicit blocks instead of one long prose blob.
 - Treat readability as a release requirement, not polish. Never ship white or near-white text on white, transparent, or pale backgrounds; never ship dark text on dark backgrounds.
 - Define explicit color pairs for each surface: page background, cards, panels, dark bands, image overlays, buttons, links, muted text, tables, callouts, and captions.
@@ -89,11 +91,14 @@ When an agent or program creates HTML, PDF-oriented HTML, DOCX, slide decks, das
 
 When an agent is asked to create or improve a document:
 
-- Start with a compact document brief: `format`, `audience`, `purpose`, `sections`, `tone`, `length`, `inputs`, `visual assets`, `constraints`, and `acceptance checks`.
+- Start with a compact document brief: `format`, `audience`, `purpose`, `sections`, `tone`, `length`, `inputs`, `visual assets`, `constraints`, and `acceptance checks`. Add a quick `checkpoint needed?` decision: ask only when the missing information would materially change the output, but do not proceed into confident-looking filler when the subject is under-specified.
+- Use higher reasoning effort for document creation, revision, and quality review unless the user explicitly asks for a quick/low-effort draft.
+- Before drafting, write a one-sentence purpose lock for the document and use it to reject sections that only exist because a template usually has that slot.
 - Prefer KimiBuilt document templates and services for PDF/PPTX/XLSX/Markdown outputs when available. Use sandbox HTML for fast preview and iteration, but convert through a real export/render path before calling the document finished. Treat DOCX as external conversion work unless native support is added.
 - If using sandbox HTML as the source, make it static-safe: one `index.html` plus local `styles.css`/assets or clearly linked static files, relative paths, no build-only classes left uncompiled, and print CSS for PDF-oriented documents.
 - Make document structure machine-readable enough for follow-up agents: stable section IDs, predictable class names, figure/table numbering, and comments only where they explain non-obvious layout or export decisions.
 - Verify in the target medium, not only in the editor. HTML needs browser QA; PDF needs page render review; PPTX/XLSX should be opened or rendered when tooling is available.
+- During review, search for and remove placeholder signals such as `TODO`, `TBD`, "this section", "should explain", "insert", "overview of", repeated generic headings, and sections that do not contain subject-specific facts, decisions, examples, or implications.
 - Handoff must include what was generated, where the source lives, where the final artifact lives, which checks ran, and any remaining assumptions.
 
 ---

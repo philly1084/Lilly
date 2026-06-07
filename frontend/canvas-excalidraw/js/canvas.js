@@ -13,6 +13,10 @@ class InfiniteCanvas {
         this.scale = 1;
         this.offsetX = 0;
         this.offsetY = 0;
+        this.pixelRatioX = 1;
+        this.pixelRatioY = 1;
+        this.viewportWidth = 0;
+        this.viewportHeight = 0;
         
         // Pan state
         this.isPanning = false;
@@ -45,7 +49,7 @@ class InfiniteCanvas {
     
     init() {
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        this.setupResizeObservers();
         
         // Mouse events
         this.container.addEventListener('mousedown', (e) => this.handleMouseDown(e));
@@ -77,15 +81,75 @@ class InfiniteCanvas {
     
     resize() {
         const rect = this.container.getBoundingClientRect();
-        this.canvas.width = rect.width;
-        this.canvas.height = rect.height;
+        const cssWidth = Math.max(1, rect.width);
+        const cssHeight = Math.max(1, rect.height);
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const backingWidth = Math.max(1, Math.round(cssWidth * dpr));
+        const backingHeight = Math.max(1, Math.round(cssHeight * dpr));
+
+        this.viewportWidth = cssWidth;
+        this.viewportHeight = cssHeight;
+        this.pixelRatioX = backingWidth / cssWidth;
+        this.pixelRatioY = backingHeight / cssHeight;
+
+        this.canvas.style.width = `${cssWidth}px`;
+        this.canvas.style.height = `${cssHeight}px`;
+
+        if (this.canvas.width !== backingWidth || this.canvas.height !== backingHeight) {
+            this.canvas.width = backingWidth;
+            this.canvas.height = backingHeight;
+        }
+
+        this.ctx.setTransform(
+            backingWidth / cssWidth,
+            0,
+            0,
+            backingHeight / cssHeight,
+            0,
+            0
+        );
         this.render();
+    }
+
+    setupResizeObservers() {
+        let resizeFrame = null;
+        const scheduleResize = () => {
+            if (resizeFrame !== null) return;
+            resizeFrame = requestAnimationFrame(() => {
+                resizeFrame = null;
+                this.resize();
+            });
+        };
+
+        window.addEventListener('resize', scheduleResize);
+        window.visualViewport?.addEventListener('resize', scheduleResize);
+        window.visualViewport?.addEventListener('scroll', scheduleResize);
+
+        if (window.ResizeObserver) {
+            this.resizeObserver = new ResizeObserver(scheduleResize);
+            this.resizeObserver.observe(this.container);
+        }
+    }
+
+    getViewportSize() {
+        return {
+            width: this.viewportWidth || this.container.getBoundingClientRect().width,
+            height: this.viewportHeight || this.container.getBoundingClientRect().height,
+        };
+    }
+
+    getViewportCenter() {
+        const size = this.getViewportSize();
+        return {
+            x: size.width / 2,
+            y: size.height / 2,
+        };
     }
     
     centerView() {
-        const rect = this.container.getBoundingClientRect();
-        this.offsetX = rect.width / 2;
-        this.offsetY = rect.height / 2;
+        const center = this.getViewportCenter();
+        this.offsetX = center.x;
+        this.offsetY = center.y;
         this.updateZoomDisplay();
         this.render();
     }
@@ -290,17 +354,13 @@ class InfiniteCanvas {
     }
     
     zoomIn() {
-        const rect = this.container.getBoundingClientRect();
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-        this.zoomAt(centerX, centerY, 1.2);
+        const center = this.getViewportCenter();
+        this.zoomAt(center.x, center.y, 1.2);
     }
     
     zoomOut() {
-        const rect = this.container.getBoundingClientRect();
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-        this.zoomAt(centerX, centerY, 0.833);
+        const center = this.getViewportCenter();
+        this.zoomAt(center.x, center.y, 0.833);
     }
     
     resetZoom() {
@@ -539,7 +599,9 @@ class InfiniteCanvas {
     // Render the canvas
     render() {
         // Clear canvas
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.setTransform(this.pixelRatioX, 0, 0, this.pixelRatioY, 0, 0);
         
         // Save context state
         this.ctx.save();
@@ -633,7 +695,8 @@ class InfiniteCanvas {
         
         // Calculate visible area in world coordinates
         const topLeft = this.screenToWorld(0, 0);
-        const bottomRight = this.screenToWorld(this.canvas.width, this.canvas.height);
+        const size = this.getViewportSize();
+        const bottomRight = this.screenToWorld(size.width, size.height);
         
         const startX = Math.floor(topLeft.x / gridSize) * gridSize;
         const endX = Math.ceil(bottomRight.x / gridSize) * gridSize;
@@ -761,7 +824,8 @@ class InfiniteCanvas {
     // Get canvas bounds
     getBounds() {
         if (this.elements.length === 0) {
-            return { x: 0, y: 0, width: this.canvas.width, height: this.canvas.height };
+            const size = this.getViewportSize();
+            return { x: 0, y: 0, width: size.width, height: size.height };
         }
         
         let minX = Infinity, minY = Infinity;

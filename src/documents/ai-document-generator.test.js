@@ -91,15 +91,62 @@ describe('AIDocumentGenerator', () => {
     expect(prompt).toContain('Pass: Kimi K2.6-style creation loop with context, steps, critique, and proof');
     expect(prompt).toContain('<document_intake>');
     expect(prompt).toContain('brief_scan: extract known format, audience, purpose, source material, constraints, and acceptance checks');
-    expect(prompt).toContain('Ask one or two concise follow-up questions only when missing details would materially change the document');
+    expect(prompt).toContain('checkpoint_or_default: ask one or two concise checkpoint questions only when missing context would materially change the output');
+    expect(prompt).toContain('Never use missing context as a reason to produce boilerplate');
+    expect(prompt).toContain('Build to the subject and user situation, not to a template slot');
     expect(prompt).toContain('<kimi_creation_loop>');
-    expect(prompt).toContain('Intent lock');
+    expect(prompt).toContain('Intent and purpose lock');
     expect(prompt).toContain('<user_alignment_snapshot>');
-    expect(prompt).toContain('metadata.userGoal, assumptions, openQuestions, acceptanceChecks, and verificationNotes');
+    expect(prompt).toContain('metadata.userGoal, purposeLock, assumptions, openQuestions, acceptanceChecks, and verificationNotes');
+    expect(prompt).toContain('"purposeLock": "One sentence naming the subject, audience, and outcome this document is built to support"');
     expect(prompt).toContain('<background_creation>');
     expect(prompt).toContain('Background Art Director');
     expect(prompt).toContain('<multi_agent_design_pass>');
+    expect(prompt).toContain('Use high reasoning effort by default for document creation and quality review');
     expect(prompt).toContain('The user should not need to ask for better design prompts');
+  });
+
+  test('uses high reasoning effort by default for document generation and quality pass', async () => {
+    const createResponse = jest.fn(async () => buildResponse(
+      JSON.stringify({
+        title: 'Launch Brief',
+        sections: [
+          { heading: 'Decision', content: 'Approve the launch once readiness gates pass.', level: 1 },
+          { heading: 'Evidence', content: 'Support tickets and rollout checks are trending in the right direction.', level: 1 },
+        ],
+      }),
+    ));
+    const generator = new AIDocumentGenerator({ createResponse });
+
+    await generator.generate('Create an executive launch brief', {
+      documentType: 'executive-brief',
+    });
+
+    expect(createResponse).toHaveBeenCalledTimes(2);
+    expect(createResponse.mock.calls[0][0].reasoningEffort).toBe('high');
+    expect(createResponse.mock.calls[1][0].reasoningEffort).toBe('high');
+  });
+
+  test('preserves explicit reasoning effort override for document generation', async () => {
+    const createResponse = jest.fn(async () => buildResponse(
+      JSON.stringify({
+        title: 'Quick Brief',
+        sections: [
+          { heading: 'Summary', content: 'Short update.', level: 1 },
+          { heading: 'Next Step', content: 'Review with the team.', level: 1 },
+        ],
+      }),
+    ));
+    const generator = new AIDocumentGenerator({ createResponse });
+
+    await generator.generate('Create a quick brief', {
+      reasoningEffort: 'medium',
+      qualityReasoningEffort: 'low',
+    });
+
+    expect(createResponse).toHaveBeenCalledTimes(2);
+    expect(createResponse.mock.calls[0][0].reasoningEffort).toBe('medium');
+    expect(createResponse.mock.calls[1][0].reasoningEffort).toBe('low');
   });
 
   test('applies the built-in document quality pass after generation', async () => {

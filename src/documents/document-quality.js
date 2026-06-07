@@ -3,13 +3,13 @@ const DOCUMENT_QUALITY_STANDARD_VERSION = 'document-quality-2026-05-k26-creation
 const KIMI_CREATION_LOOP = [
   {
     id: 'intent-lock',
-    label: 'Intent lock',
-    focus: 'Restate the real user job, audience, delivery format, and success condition before choosing structure.',
+    label: 'Intent and purpose lock',
+    focus: 'Restate the real user job, subject, audience, delivery format, and success condition before choosing structure.',
   },
   {
     id: 'context-decisions',
-    label: 'Context decisions',
-    focus: 'Separate known facts, inferred defaults, missing blockers, and optional nice-to-have details.',
+    label: 'Context decisions and checkpoint',
+    focus: 'Separate known facts, inferred defaults, missing blockers, optional nice-to-have details, and whether a short clarification checkpoint is required.',
   },
   {
     id: 'artifact-architecture',
@@ -118,14 +118,17 @@ function buildDocumentQualityPlan({
     format: normalizedFormat,
     modelDefaults: [
       'Use the strongest configured generation model unless the caller explicitly supplies a model.',
+      'Use high reasoning effort by default for document creation and quality review unless the caller explicitly overrides reasoning effort.',
       'Spend reasoning on document architecture, visual composition, evidence boundaries, and final polish before emitting JSON.',
       'Prefer specific, edited content over broad "professional" filler.',
+      'Build to the subject and the user situation; template structure is only useful when it helps the actual reader job.',
     ],
     interactionBrief: {
       stateMachine: [
         'brief_scan: extract known format, audience, purpose, source material, constraints, and acceptance checks.',
         'missing_context: decide whether gaps are blockers or safe defaults.',
-        'question_or_default: ask one or two concise questions only for blockers; otherwise continue with assumptions in metadata or handoff notes.',
+        'checkpoint_or_default: ask one or two concise checkpoint questions only when missing context would materially change the output, make it misleading, or block a credible draft; otherwise continue with assumptions in metadata or handoff notes.',
+        'purpose_lock: state the subject-specific job this document must do for the reader, then reject sections that do not serve it.',
         'architecture: choose the document structure, reader jobs, and evidence path before drafting.',
         'quality_pass: reconcile strategy, design, evidence, accessibility, and final polish into the generated artifact.',
         'medium_check: verify the target medium requirements before calling the document complete.',
@@ -147,12 +150,14 @@ function buildDocumentQualityPlan({
         'Ask one or two concise follow-up questions only when missing details would materially change the document or block a credible draft.',
         'If the user wants speed or the missing detail is not a blocker, continue with explicit assumptions in metadata or handoff notes rather than visible process chatter.',
         'For document requests, never ship a generic filler draft just because the prompt is short; use the brief to choose structure, evidence needs, and reader jobs.',
+        'Never use missing context as a reason to produce boilerplate; checkpoint, assume visibly, or narrow the scope.',
       ],
     },
     userAlignment: {
       label: 'User alignment snapshot',
       fields: [
         'userGoal',
+        'purposeLock',
         'audience',
         'format',
         'purpose',
@@ -163,6 +168,7 @@ function buildDocumentQualityPlan({
       ],
       rules: [
         'Keep a compact alignment snapshot in metadata or handoff notes so follow-up agents can see what was inferred and why.',
+        'The purpose lock should name the actual subject and what the reader needs to do with the document.',
         'Open questions should be empty unless the missing information would materially change the artifact.',
         'Acceptance checks should be concrete and medium-specific, such as readable PDF page breaks, working sandbox preview, cited current facts, or editable source bundle preserved.',
         'Verification notes must distinguish checks already run from checks that still need the target runtime or user review.',
@@ -188,6 +194,8 @@ function buildDocumentQualityPlan({
       'No white-on-white, dark-on-dark, placeholder sections, generic numbered scaffolds, or visible process notes.',
       'Short or underspecified prompts still need a real document brief, safe assumptions, and request-specific structure.',
       'Every section should justify its presence through a reader job: decide, understand, compare, execute, or remember.',
+      'Every visible section must contain subject-specific facts, decisions, examples, implications, or clearly bounded assumptions.',
+      'Do not fill a slot with phrases like "this section should explain", "overview of", "insert", "TBD", or generic template language.',
       'Tables, charts, stats, and callouts need labels and interpretation, not just raw values.',
       'If sources are incomplete, state limits as document content without exposing tool workflow details.',
       'The final handoff must make it clear what was generated, which assumptions shaped it, which checks ran, and what still needs user approval or target-medium verification.',

@@ -10,7 +10,10 @@ Operating model:
 Workflow:
 1. Brief and format lock
    - Capture: title/topic, audience, purpose, tone, length, output formats, image style, source standards, deadline, and acceptance checks.
-   - If details are missing, use conservative professional defaults and record assumptions in the project manifest.
+   - If missing details would materially change the artifact, make the document misleading, or block credible section packets, stop for a short checkpoint before bulk drafting.
+   - If details are missing but not blocking, use conservative professional defaults and record assumptions in the project manifest.
+   - Use higher reasoning effort for document planning, section packets, rebuild packets, and final review unless the user explicitly asks for a quick/low-effort draft.
+   - Write a purpose lock that explains what the document must help the reader understand, decide, execute, compare, or remember.
    - Decide whether the final deliverable is responsive HTML, PDF-oriented HTML, exported PDF, Markdown, or a multi-format suite.
 
 2. Research and source bundle
@@ -61,6 +64,8 @@ Workflow:
    - Search for blockers:
      - missing sections or wrong paths
      - TODO/TBD/placeholders
+     - boilerplate, slot-filling copy, or sentences that describe what the section should say instead of saying it
+     - sections with no subject-specific facts, decisions, examples, or implications
      - unsupported claims or citation drift
      - duplicated headings or repeated paragraphs
      - broken cross-links

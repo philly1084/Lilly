@@ -54,6 +54,7 @@ const {
 } = require('../generated-file-artifacts');
 const MULTI_PASS_DOCUMENT_FORMATS = new Set(['html', 'pdf']);
 const DEFAULT_DOCUMENT_IMAGE_TARGET = 20;
+const DEFAULT_DOCUMENT_REASONING_EFFORT = 'high';
 const COMPOSITION_PLANNING_PATTERNS = [
     /\bpage layout plan\b/i,
     /\bcredits? and source register\b/i,
@@ -2580,6 +2581,8 @@ class ArtifactService {
             'First decide the document title, creative direction, and the major sections required to satisfy the request.',
             'Prefer 4-8 sections for substantial documents unless the request clearly needs fewer.',
             'Each section should have a concrete purpose, a visible layout role, and 2-5 key points that must be covered.',
+            'Before planning sections, lock the subject-specific reader job. Do not add a section merely because a template usually includes it.',
+            'If missing context would materially change the plan or make it misleading, return openQuestions in the plan instead of drafting around the gap.',
             'If verified images are available, plan where real images support the document, but do not invent illustrations.',
             'If the request needs graphs, diagrams, charts, process maps, or architecture visuals, plan where graph-diagram SVG artifacts or inline SVGs should be used. For GPT-5.5 or newer models, prefer direct custom SVG diagrams when the visual requires precision or polish.',
             'Do not mirror placeholder headings or sample copy from provided templates.',
@@ -2604,6 +2607,7 @@ class ArtifactService {
             '    {',
             '      "heading": "Section heading",',
             '      "purpose": "Why this section exists",',
+            '      "readerJob": "What the reader can understand, decide, compare, execute, or remember after this section",',
             '      "keyPoints": ["Point 1", "Point 2"],',
             '      "targetLength": "short|medium|long",',
             '      "layout": "lead|briefing|analysis|proof|comparison|close",',
@@ -2624,6 +2628,8 @@ class ArtifactService {
             'Return JSON only. No markdown fences.',
             'Write polished, business-ready prose for each section.',
             'Keep sections distinct, avoid repetition, and fully cover the requested key points.',
+            'Write to the actual subject, audience, and reader job. Do not fill a section with boilerplate or descriptions of what belongs there.',
+            'If a section cannot be made concrete from the available context, omit it or mark the blocker in metadata instead of padding it.',
             'Use paragraphs and inline bullets within section content when appropriate.',
             'Make the voice feel authored by a thoughtful human, not evenly templated by a machine.',
             'Vary rhythm between sections instead of giving every section the same sentence cadence.',
@@ -2664,6 +2670,7 @@ class ArtifactService {
             'Include one H1 title and then H2/H3 sections as appropriate.',
             'Preserve the section order and cover all requested content.',
             'Use professional formatting suitable for business reports, briefs, plans, and polished notes.',
+            'The visible page must contain finished subject-specific content, not template slot labels or prose about what the page should eventually say.',
             'Keep the layout printer-friendly because the HTML may be rendered to PDF.',
             'Use CSS variables, a deliberate theme, and section-level hierarchy so the result feels designed rather than default.',
             'Create a strong opening hero, visible section chrome, and alternating density across sections.',
@@ -2977,6 +2984,7 @@ class ArtifactService {
         executionProfile = 'default',
     }) {
         const normalizedFormat = normalizeFormat(format);
+        const documentReasoningEffort = reasoningEffort || DEFAULT_DOCUMENT_REASONING_EFFORT;
         const frontendDemoRequest = normalizedFormat === 'html'
             && (isFrontendDemoArtifactRequest(prompt) || shouldUseInteractiveHtmlArtifact({
                 prompt,
@@ -3048,7 +3056,7 @@ class ArtifactService {
                         ),
                     ),
                     model,
-                    reasoningEffort,
+                    reasoningEffort: documentReasoningEffort,
                     previousResponseId: session?.previousResponseId || null,
                     contextMessages,
                     recentMessages,
@@ -3071,7 +3079,7 @@ class ArtifactService {
                 promptContext,
                 existingContent: combinedExistingContent,
                 model,
-                reasoningEffort,
+                reasoningEffort: documentReasoningEffort,
                 imageReferences,
                 imageReferenceContext,
                 creativityPacket,
@@ -3097,7 +3105,7 @@ class ArtifactService {
                     ),
                 ),
                 model,
-                reasoningEffort,
+                reasoningEffort: documentReasoningEffort,
                 previousResponseId: session?.previousResponseId || null,
                 contextMessages,
                 recentMessages,

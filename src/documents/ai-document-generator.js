@@ -16,6 +16,13 @@ const {
   summarizeDocumentQualityPlan,
 } = require('./document-quality');
 
+const DEFAULT_DOCUMENT_REASONING_EFFORT = 'high';
+
+function resolveDocumentReasoningEffort(options = {}, field = 'reasoningEffort') {
+  const explicit = options[field] || (field !== 'reasoningEffort' ? options.reasoningEffort : null);
+  return explicit || DEFAULT_DOCUMENT_REASONING_EFFORT;
+}
+
 const TOOL_PROCESS_TEXT_PATTERNS = [
   /\b(?:web-search|web-fetch|web-scrape|document-workflow|tool call|tool step|function call)\b/i,
   /\bMissing required parameter:\s*[a-z0-9_-]+\b/i,
@@ -477,7 +484,7 @@ class AIDocumentGenerator {
       const content = await this.requestJson({
         messages,
         model: options.model || 'gpt-4o',
-        reasoningEffort: options.reasoningEffort || null,
+        reasoningEffort: resolveDocumentReasoningEffort(options),
       });
       const normalizedContent = this.normalizeDocumentStructure(content);
 
@@ -610,7 +617,7 @@ class AIDocumentGenerator {
           },
         ],
         model: options.qualityModel || options.model || 'gpt-4o',
-        reasoningEffort: options.qualityReasoningEffort || options.reasoningEffort || null,
+        reasoningEffort: resolveDocumentReasoningEffort(options, 'qualityReasoningEffort'),
       });
       const normalized = this.normalizeDocumentStructure(revised);
 
@@ -683,7 +690,7 @@ Output JSON:
       const result = await this.requestJson({
         messages: [{ role: 'user', content: prompt }],
         model: options.model || 'gpt-4o',
-        reasoningEffort: options.reasoningEffort || null,
+        reasoningEffort: resolveDocumentReasoningEffort(options),
       });
 
       return {
@@ -752,7 +759,7 @@ Return only the improved text, no explanations.`;
       return await this.requestText({
         messages: [{ role: 'user', content: prompt }],
         model: options.model || 'gpt-4o',
-        reasoningEffort: options.reasoningEffort || null,
+        reasoningEffort: resolveDocumentReasoningEffort(options),
       });
     } catch (error) {
       console.error('[AIDocumentGenerator] Improvement failed:', error);
@@ -909,6 +916,7 @@ Return JSON:
       '    "keywords": ["keyword1", "keyword2"],',
       `    "qualityStandard": "${qualityPlan.version}",`,
       '    "userGoal": "Compact statement of the user job this document satisfies",',
+      '    "purposeLock": "One sentence naming the subject, audience, and outcome this document is built to support",',
       '    "assumptions": ["Safe assumption used instead of blocking for more input"],',
       '    "openQuestions": [],',
       '    "acceptanceChecks": ["Medium-specific checks the final artifact should satisfy"],',
@@ -918,6 +926,7 @@ Return JSON:
       '</output_contract>',
       '<rules>',
       '- Write the actual content, not placeholders.',
+      '- Build to the subject and user situation, not to a template slot. Every section should earn its place through the specific topic, audience, and purpose.',
       '- Create comprehensive, well-structured content with concrete detail.',
       '- Use paragraphs for explanation and structured fields for scan speed.',
       '- When a section benefits from metrics, tables, or a chart, populate the matching structured field instead of burying everything in prose.',
@@ -925,7 +934,8 @@ Return JSON:
       '- Only include bullets, stats, tables, charts, or callouts when they strengthen the document.',
       '- Convert abstract coverage beats into natural, request-specific headings and prose.',
       '- Do not let the output read like a template, rubric, or plan for a future document.',
-      '- Populate metadata.userGoal, assumptions, openQuestions, acceptanceChecks, and verificationNotes so the artifact carries the creation decisions and final-fit criteria forward.',
+      '- If a planned section lacks enough real context, either omit it, state a bounded assumption/limit in metadata, or put the blocker in metadata.openQuestions rather than filling it with generic prose.',
+      '- Populate metadata.userGoal, purposeLock, assumptions, openQuestions, acceptanceChecks, and verificationNotes so the artifact carries the creation decisions and final-fit criteria forward.',
       '- Keep openQuestions empty unless the missing answer would materially change the document; do not use metadata as visible process chatter.',
       pageTarget ? `- Keep metadata.estimatedPages at or below ${pageTarget}.` : null,
       '- Never mention internal tool names, failed tool calls, exact tool errors, web-search/web-fetch workflow steps, or process notes in visible document text.',
@@ -1324,7 +1334,7 @@ Return JSON:
       const result = await this.requestJson({
         messages: [{ role: 'user', content: prompt }],
         model: options.model || 'gpt-4o',
-        reasoningEffort: options.reasoningEffort || null,
+        reasoningEffort: resolveDocumentReasoningEffort(options),
       });
 
       const normalized = this.normalizePresentationStructure(result, {
@@ -1422,7 +1432,7 @@ Return JSON:
           },
         ],
         model: options.qualityModel || options.model || 'gpt-4o',
-        reasoningEffort: options.qualityReasoningEffort || options.reasoningEffort || null,
+        reasoningEffort: resolveDocumentReasoningEffort(options, 'qualityReasoningEffort'),
       });
 
       const normalized = this.normalizePresentationStructure(revised, {

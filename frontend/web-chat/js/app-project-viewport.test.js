@@ -504,6 +504,63 @@ describe('web-chat project viewport helpers', () => {
         }
     });
 
+    test('renders managed app progress from streamed tool result batches', () => {
+        const context = loadChatAppContext();
+        const { app, messages } = createManagedAppProgressHarness(context);
+        const managedEvent = buildManagedAppEvent({
+            phase: 'updated',
+            summary: 'Moving HTML sample page was pushed to GitLab. Build and deploy are queued.',
+        });
+        const toolEvents = [{
+            toolCall: {
+                function: {
+                    name: 'managed-app',
+                    arguments: JSON.stringify({
+                        action: 'iterate',
+                        appRef: 'demo-site',
+                    }),
+                },
+            },
+            result: {
+                success: true,
+                toolId: 'managed-app',
+                data: {
+                    app: managedEvent.app,
+                    buildRun: { id: 'build-1' },
+                    project: {
+                        type: 'managed-app',
+                        key: 'managed-app:app-1',
+                        title: 'Demo Site',
+                        summary: managedEvent.summary,
+                        phase: managedEvent.phase,
+                        publicHost: 'demo-site.demoserver2.buzz',
+                        progress: managedEvent.progressState,
+                    },
+                    progress: managedEvent.progressState,
+                    message: managedEvent.summary,
+                },
+                timestamp: managedEvent.timestamp,
+            },
+        }];
+
+        expect(app.applyManagedAppProgressFromToolEvents(toolEvents, { sessionId: 'session-1' })).toBe(1);
+        expect(messages.filter((message) => message.id === 'managed-project:app-1')).toHaveLength(1);
+        expect(context.uiHelpers.renderMessage).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'managed-project:app-1',
+            metadata: expect.objectContaining({
+                managedAppProjectSummary: true,
+                managedAppPhase: 'updated',
+            }),
+        }));
+        expect(context.sessionManager.sessions[0].metadata.activeProject).toEqual(expect.objectContaining({
+            type: 'managed-app',
+            appId: 'app-1',
+            appSlug: 'demo-site',
+            summary: managedEvent.summary,
+            targetPublicHost: 'demo-site.demoserver2.buzz',
+        }));
+    });
+
     test('preserves collapsed managed app viewport sizing during hook progress', () => {
         const context = loadChatAppContext();
         const { app } = createManagedAppProgressHarness(context);

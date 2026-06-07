@@ -5149,6 +5149,117 @@ class ChatApp {
         };
     }
 
+    normalizeManagedAppProgressEventFromToolEvent(toolEvent = null, options = {}) {
+        if (!toolEvent || typeof toolEvent !== 'object') {
+            return null;
+        }
+
+        const toolId = String(
+            toolEvent?.toolCall?.function?.name
+            || toolEvent?.result?.toolId
+            || toolEvent?.toolId
+            || toolEvent?.toolName
+            || '',
+        ).trim();
+        if (toolId !== 'managed-app') {
+            return null;
+        }
+
+        const result = toolEvent.result && typeof toolEvent.result === 'object'
+            ? toolEvent.result
+            : {};
+        const data = result.data && typeof result.data === 'object'
+            ? result.data
+            : (toolEvent.data && typeof toolEvent.data === 'object' ? toolEvent.data : {});
+        const args = this.parseToolArguments(toolEvent?.toolCall?.function?.arguments || '{}');
+        const project = data.project && typeof data.project === 'object' ? data.project : {};
+        const rawProgress = data.progress && typeof data.progress === 'object'
+            ? data.progress
+            : (data.progressState && typeof data.progressState === 'object'
+                ? data.progressState
+                : (project.progress && typeof project.progress === 'object' ? project.progress : null));
+        const progressState = rawProgress && Array.isArray(rawProgress.steps) && rawProgress.steps.length > 0
+            ? rawProgress
+            : null;
+        const phase = this.normalizeManagedAppPhase(
+            progressState?.phase
+            || project.phase
+            || project.status
+            || data.iteration?.stage
+            || data.app?.status
+            || (result.success === false ? 'deploy_failed' : ''),
+        );
+        const summary = extractChatDisplayText(
+            data.message
+            || data.summary
+            || project.summary
+            || progressState?.summary
+            || result.error
+            || '',
+            { maxLength: 180 },
+        );
+        if (!summary) {
+            return null;
+        }
+
+        const fallbackRef = String(args.appRef || args.ref || args.id || args.slug || '').trim();
+        const appId = String(data.app?.id || project.appId || project.managedAppId || fallbackRef || '').trim();
+        const appSlug = String(data.app?.slug || project.appSlug || project.managedAppSlug || args.slug || fallbackRef || '').trim();
+        const publicHost = this.normalizeProjectHost(
+            data.app?.publicHost
+            || project.publicHost
+            || project.targetPublicHost
+            || data.iteration?.evidence?.targetPublicHost
+            || data.publicHost
+            || data.publicUrl
+            || '',
+        );
+
+        return {
+            type: 'managed-app',
+            sessionId: data.app?.sessionId || project.sessionId || options.sessionId || toolEvent.sessionId || '',
+            phase,
+            summary,
+            timestamp: result.timestamp || toolEvent.timestamp || new Date().toISOString(),
+            app: {
+                ...(data.app && typeof data.app === 'object' ? data.app : {}),
+                id: appId || appSlug,
+                slug: appSlug || appId,
+                appName: String(data.app?.appName || project.title || appSlug || appId || 'Managed app').trim(),
+                sessionId: data.app?.sessionId || project.sessionId || options.sessionId || toolEvent.sessionId || '',
+                publicHost,
+                publicUrl: publicHost ? `https://${publicHost}` : '',
+                livePublicHost: String(project.livePublicHost || data.iteration?.evidence?.livePublicHost || '').trim(),
+                livePublicUrl: String(project.livePublicUrl || data.iteration?.evidence?.livePublicUrl || '').trim(),
+            },
+            buildRun: data.buildRun || null,
+            progressState,
+        };
+    }
+
+    applyManagedAppProgressFromToolEvent(toolEvent = null, options = {}) {
+        const normalizedSessionId = String(options.sessionId || sessionManager.currentSessionId || '').trim();
+        const event = this.normalizeManagedAppProgressEventFromToolEvent(toolEvent, {
+            ...options,
+            sessionId: normalizedSessionId,
+        });
+        if (!event) {
+            return null;
+        }
+
+        return this.applyManagedAppProgressEvent(event.sessionId || normalizedSessionId, event);
+    }
+
+    applyManagedAppProgressFromToolEvents(toolEvents = [], options = {}) {
+        if (!Array.isArray(toolEvents) || toolEvents.length === 0) {
+            return 0;
+        }
+
+        return toolEvents.reduce((count, toolEvent) => (
+            this.applyManagedAppProgressFromToolEvent(toolEvent, options) ? count + 1 : count
+        ), 0);
+    }
+
     applyManagedAppProgressEvent(sessionId, event = {}) {
         const normalizedSessionId = String(sessionId || '').trim();
         if (!normalizedSessionId) {
@@ -10543,6 +10654,10 @@ curl -fsSIL --max-time 20 "https://$host"`;
         this.updateLiveResponsePhase('checking-tools', detail);
 
         const sessionId = this.getStreamingMessageSessionId();
+        if (this.applyManagedAppProgressFromToolEvent(chunk, { sessionId })) {
+            return;
+        }
+
         const currentMessage = this.getSessionMessage(sessionId, this.currentStreamingMessageId);
         const existingProgress = currentMessage?.progressState
             || currentMessage?.metadata?.progressState
@@ -10883,6 +10998,7 @@ curl -fsSIL --max-time 20 "https://$host"`;
         });
 
         if (Array.isArray(chunk.toolEvents) && chunk.toolEvents.length > 0) {
+            this.applyManagedAppProgressFromToolEvents(chunk.toolEvents, { sessionId });
             this.appendToolSelectionMessages(parentMessageId, chunk.toolEvents, { sessionId });
         }
 

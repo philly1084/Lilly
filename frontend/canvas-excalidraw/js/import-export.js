@@ -1215,8 +1215,13 @@ class ImportExportManager {
         }
         
         // Position
-        const x = position?.x || canvas.screenToWorld(canvas.canvas.width / 2, canvas.canvas.height / 2).x;
-        const y = position?.y || canvas.screenToWorld(canvas.canvas.width / 2, canvas.canvas.height / 2).y;
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const centerWorld = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const x = position?.x || centerWorld.x;
+        const y = position?.y || centerWorld.y;
         
         return {
             id: this.generateId(),

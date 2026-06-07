@@ -429,6 +429,19 @@ function createToolManager() {
                 },
             },
         }],
+        ['agent-delegate', {
+            id: 'agent-delegate',
+            name: 'Agent Delegate',
+            description: 'Spawn bounded helper sub-agents when explicitly requested.',
+            inputSchema: {
+                type: 'object',
+                required: ['action', 'tasks'],
+                properties: {
+                    action: { type: 'string' },
+                    tasks: { type: 'array' },
+                },
+            },
+        }],
         ['code-sandbox', {
             id: 'code-sandbox',
             name: 'Code Sandbox',
@@ -519,6 +532,7 @@ function createToolManager() {
         ['remote-cli-agent', { enabled: true, triggerPatterns: ['remote cli agent', 'remote software deployment'], requiresConfirmation: true }],
         ['k3s-deploy', { enabled: true, triggerPatterns: ['deploy to k3s', 'kubectl apply', 'rollout status'], requiresConfirmation: true }],
         ['managed-app', { enabled: true, triggerPatterns: ['managed app', 'gitlab managed app'], requiresConfirmation: true }],
+        ['agent-delegate', { enabled: true, triggerPatterns: ['sub-agent', 'delegate tasks'], requiresConfirmation: false }],
         ['code-sandbox', { enabled: true, triggerPatterns: ['sandbox', 'run code'], requiresConfirmation: false }],
         ['user-checkpoint', { enabled: true, triggerPatterns: ['ask a checkpoint question'], requiresConfirmation: false }],
         ['document-workflow', { enabled: true, triggerPatterns: ['generate document', 'make slides', 'create brief'], requiresConfirmation: false }],
@@ -3480,6 +3494,41 @@ describe('openai-client automatic tool orchestration helpers', () => {
         const selectedIds = selectedTools.map((tool) => tool.id);
 
         expect(selectedIds).toContain('managed-app');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('managed-app');
+    });
+
+    test('keeps sampled HTML managed-app publish prompts off sub-agents', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Use the managed app portion to publish the sampled HTML document artifact at demo.demoserver2.buzz. Do not make sub agents; make it do the prompt it was asked.';
+        const toolContext = {
+            executionProfile: 'remote-build',
+            workloadService: { isAvailable: () => true },
+            metadata: {
+                remoteBuildIntent: true,
+                preferManagedApp: true,
+            },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(automaticTools.map((tool) => tool.id)).not.toContain('agent-delegate');
+        expect(selectedIds).toContain('managed-app');
+        expect(selectedIds).not.toContain('agent-delegate');
+        expect(selectedIds).not.toContain('document-workflow');
         expect(__testUtils.inferRequiredAutomaticToolId(
             prompt,
             automaticTools.map((tool) => tool.id),

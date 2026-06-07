@@ -2169,7 +2169,9 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
     }
 
     if (toolId === 'agent-delegate') {
-        return subAgentDepth < 1 && Boolean(workloadService?.isAvailable?.());
+        return subAgentDepth < 1
+            && Boolean(workloadService?.isAvailable?.())
+            && hasExplicitSubAgentIntent(prompt);
     }
 
     return true;
@@ -2368,7 +2370,8 @@ function shouldPreferManagedAppForRemoteBuild(prompt = '', options = {}) {
 
     const remoteSoftwareChangeIntent = hasRemoteSoftwareCreationIntent(prompt)
         || hasRemoteSoftwareDeploymentIntent(prompt)
-        || hasRemoteSoftwareAuthoringIntent(prompt);
+        || hasRemoteSoftwareAuthoringIntent(prompt)
+        || hasManagedAppArtifactPublishIntent(prompt);
 
     return promptManagedAppIntent || remoteSoftwareChangeIntent;
 }
@@ -2408,12 +2411,34 @@ function hasExplicitSubAgentIntent(prompt = '') {
         return false;
     }
 
+    const negativeMention = /\b(?:do\s+not|don't|dont|never|no|without|avoid|stop|instead\s+of|rather\s+than|not)\b[\s\S]{0,40}\b(?:sub[- ]agent(?:s)?|delegated?\s+(?:workers?|agents?)|parallel\s+(?:workers?|agents?))\b/i.test(text)
+        || /\b(?:sub[- ]agent(?:s)?|delegated?\s+(?:workers?|agents?)|parallel\s+(?:workers?|agents?))\b[\s\S]{0,40}\b(?:do\s+not|don't|dont|never|no|without|avoid|stop|instead\s+of|rather\s+than|not)\b/i.test(text);
+    if (negativeMention) {
+        return false;
+    }
+
     return [
-        /\bsub[- ]agent(?:s)?\b/i,
+        /\b(?:use|spawn|create|start|run|launch|make|add|ask|need|want)\b[\s\S]{0,40}\bsub[- ]agent(?:s)?\b/i,
+        /\bsub[- ]agent(?:s)?\b[\s\S]{0,40}\b(?:use|spawn|create|start|run|launch|make|add|delegate|parallel)\b/i,
         /\bdelegate\b[\s\S]{0,40}\b(task|tasks|worker|workers|agent|agents|job|jobs)\b/i,
         /\bparallel\b[\s\S]{0,30}\b(task|tasks|worker|workers|agent|agents)\b/i,
         /\bspawn\b[\s\S]{0,30}\b(worker|workers|agent|agents|sub[- ]agent)\b/i,
     ].some((pattern) => pattern.test(text));
+}
+
+function hasManagedAppArtifactPublishIntent(prompt = '') {
+    const normalized = String(prompt || '').trim().toLowerCase();
+    if (!normalized || hasExplicitDirectRemoteCliIntent(normalized)) {
+        return false;
+    }
+
+    const artifactTarget = /\b(?:sampled?|generated|existing|previous|current|this|that)?\s*(?:html\s+(?:artifact|document|doc|file|page|site)|site\s+artifact|website\s+artifact|preview(?:able)?\s+html|artifact)\b/.test(normalized)
+        || hasInternalArtifactReference(normalized);
+    const publishIntent = /\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b[\s\S]{0,50}\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b/.test(normalized)
+        || /\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b[\s\S]{0,50}\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b/.test(normalized)
+        || /\bmanaged[- ]app\b[\s\S]{0,80}\b(?:html|artifact|document|site|page|publish|deploy|export)\b/.test(normalized);
+
+    return artifactTarget && publishIntent;
 }
 
 function hasExplicitQuestionnaireToolTestIntent(prompt = '') {

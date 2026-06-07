@@ -807,8 +807,15 @@ function hasMultiAgentIntentText(text = '') {
         return false;
     }
 
+    const negativeMention = /\b(?:do\s+not|don't|dont|never|no|without|avoid|stop|instead\s+of|rather\s+than|not)\b[\s\S]{0,40}\b(?:sub[- ]agent(?:s)?|delegated?\s+(?:workers?|agents?)|parallel\s+(?:workers?|agents?))\b/i.test(normalized)
+        || /\b(?:sub[- ]agent(?:s)?|delegated?\s+(?:workers?|agents?)|parallel\s+(?:workers?|agents?))\b[\s\S]{0,40}\b(?:do\s+not|don't|dont|never|no|without|avoid|stop|instead\s+of|rather\s+than|not)\b/i.test(normalized);
+    if (negativeMention) {
+        return false;
+    }
+
     return [
-        /\bsub[- ]agent(?:s)?\b/i,
+        /\b(?:use|spawn|create|start|run|launch|make|add|ask|need|want)\b[\s\S]{0,40}\bsub[- ]agent(?:s)?\b/i,
+        /\bsub[- ]agent(?:s)?\b[\s\S]{0,40}\b(?:use|spawn|create|start|run|launch|make|add|delegate|parallel)\b/i,
         /\bmultiple\s+(?:agents|workers|sub[- ]agents)\b/i,
         /\bseveral\s+(?:agents|workers|sub[- ]agents)\b/i,
         /\bmore than one\s+(?:agent|worker|sub[- ]agent)\b/i,
@@ -1868,7 +1875,7 @@ function buildScoredCandidateToolMap({
         adjustCandidateToolScore(scoreMap, 'agent-delegate', 1.2, 'The user explicitly requested delegated or parallel agent work.');
     }
     if (neuralWaveResearchMode) {
-        adjustCandidateToolScore(scoreMap, 'agent-delegate', canUseSubAgents ? 1.0 : 0, 'Neural-wave R&D mode can fan broad work into bounded helper agents before synthesis.');
+        adjustCandidateToolScore(scoreMap, 'agent-delegate', canUseSubAgents && hasSubAgentIntent ? 1.0 : 0, 'Neural-wave R&D mode can fan broad work into bounded helper agents before synthesis when delegation was explicit.');
         adjustCandidateToolScore(scoreMap, 'web-search', hasExplicitWebResearchIntent || classification?.groundingRequirement === 'required' ? 0.9 : 0.25, 'Neural-wave R&D mode benefits from early research fan-out.');
         adjustCandidateToolScore(scoreMap, 'web-fetch', hasUrl || hasExplicitWebResearchIntent || classification?.groundingRequirement === 'required' ? 0.6 : 0.2, 'Neural-wave R&D mode verifies selected source pages before final collection.');
         adjustCandidateToolScore(scoreMap, DOCUMENT_WORKFLOW_TOOL_ID, hasDocumentWorkflowIntent || classification?.taskFamily === 'research-deliverable' ? 0.75 : 0.35, 'Neural-wave R&D mode can collect expanded chunks into a final document or response package.');
@@ -5924,12 +5931,14 @@ function hasManagedAppAuthoringIntent(text = '', options = {}) {
 
     const executionProfile = String(options.executionProfile || '').trim();
     const explicitManagedAppContext = hasManagedAppIntentText(normalized);
+    const managedAppArtifactPublish = hasManagedAppArtifactPublishIntentText(normalized);
     const continuationContext = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
         && (
             isLikelyTranscriptDependentTurn(normalized)
             || /\b(it|that|this|same|current|project|work|task)\b/.test(normalized)
         );
     const appContext = explicitManagedAppContext
+        || managedAppArtifactPublish
         || /\b(app|website|site|frontend|service|game|landing page|web app|web site)\b/.test(normalized)
         || continuationContext;
     const changeIntent = /\b(create|build|deploy|publish|launch|ship|update|fix|edit|modify|rewrite|refactor|patch|develop|make)\b/.test(normalized);
@@ -5940,7 +5949,22 @@ function hasManagedAppAuthoringIntent(text = '', options = {}) {
     return appContext
         && changeIntent
         && remoteContext
-        && (explicitManagedAppContext || executionProfile === REMOTE_BUILD_EXECUTION_PROFILE);
+        && (explicitManagedAppContext || managedAppArtifactPublish || executionProfile === REMOTE_BUILD_EXECUTION_PROFILE);
+}
+
+function hasManagedAppArtifactPublishIntentText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized || hasExplicitDirectRemoteCliIntent(normalized)) {
+        return false;
+    }
+
+    const artifactTarget = /\b(?:sampled?|generated|existing|previous|current|this|that)?\s*(?:html\s+(?:artifact|document|doc|file|page|site)|site\s+artifact|website\s+artifact|preview(?:able)?\s+html|artifact)\b/.test(normalized)
+        || hasInternalArtifactReference(normalized);
+    const publishIntent = /\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b[\s\S]{0,50}\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b/.test(normalized)
+        || /\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b[\s\S]{0,50}\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b/.test(normalized)
+        || /\bmanaged[- ]app\b[\s\S]{0,80}\b(?:html|artifact|document|site|page|publish|deploy|export)\b/.test(normalized);
+
+    return artifactTarget && publishIntent;
 }
 
 function normalizeManagedAppDeployTarget(value = '') {
@@ -11623,7 +11647,7 @@ class ConversationOrchestrator extends EventEmitter {
         if (executionProfile === REMOTE_BUILD_EXECUTION_PROFILE) {
             if (neuralWaveResearchMode) {
                 ['web-search', 'web-fetch', DOCUMENT_WORKFLOW_TOOL_ID].forEach((toolId) => allowedToolIds.includes(toolId) && candidates.add(toolId));
-                if (canUseSubAgents && allowedToolIds.includes('agent-delegate')) {
+                if (canUseSubAgents && hasSubAgentIntent && allowedToolIds.includes('agent-delegate')) {
                     candidates.add('agent-delegate');
                 }
             }
@@ -11778,7 +11802,7 @@ class ConversationOrchestrator extends EventEmitter {
         } else {
             if (neuralWaveResearchMode) {
                 ['web-search', 'web-fetch', DOCUMENT_WORKFLOW_TOOL_ID].forEach((toolId) => allowedToolIds.includes(toolId) && candidates.add(toolId));
-                if (canUseSubAgents && allowedToolIds.includes('agent-delegate')) {
+                if (canUseSubAgents && hasSubAgentIntent && allowedToolIds.includes('agent-delegate')) {
                     candidates.add('agent-delegate');
                 }
             }

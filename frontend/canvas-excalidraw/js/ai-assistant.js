@@ -437,7 +437,11 @@ class AIAssistant {
         }
 
         const topLeft = canvas.screenToWorld(0, 0);
-        const bottomRight = canvas.screenToWorld(canvas.canvas.width, canvas.canvas.height);
+        const viewport = canvas.getViewportSize?.() || {
+            width: canvas.canvas.clientWidth || canvas.canvas.width,
+            height: canvas.canvas.clientHeight || canvas.canvas.height,
+        };
+        const bottomRight = canvas.screenToWorld(viewport.width, viewport.height);
         return {
             x: Math.round(topLeft.x),
             y: Math.round(topLeft.y),
@@ -836,10 +840,11 @@ class AIAssistant {
 
             if (generatedImages.length > 0) {
                 const canvas = window.infiniteCanvas;
-                const center = canvas.screenToWorld(
-                    canvas.canvas.width / 2,
-                    canvas.canvas.height / 2
-                );
+                const viewportCenter = canvas.getViewportCenter?.() || {
+                    x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+                    y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+                };
+                const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
                 const basePosition = this.pendingImagePosition
                     ? { ...this.pendingImagePosition }
                     : center;
@@ -907,10 +912,11 @@ class AIAssistant {
                     this.pendingImagePosition = null;
                 } else {
                     // Use center of current view
-                    const center = canvas.screenToWorld(
-                        canvas.canvas.width / 2,
-                        canvas.canvas.height / 2
-                    );
+                    const viewportCenter = canvas.getViewportCenter?.() || {
+                        x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+                        y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+                    };
+                    const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
                     x = center.x;
                     y = center.y;
                 }
@@ -1370,10 +1376,11 @@ class AIAssistant {
             canvas.deselectAll();
             
             // Center elements on current view
-            const center = canvas.screenToWorld(
-                canvas.canvas.width / 2,
-                canvas.canvas.height / 2
-            );
+            const viewportCenter = canvas.getViewportCenter?.() || {
+                x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+                y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+            };
+            const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
             
             // Calculate bounding box of new elements
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

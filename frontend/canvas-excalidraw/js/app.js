@@ -493,8 +493,12 @@ class App {
         
         // Update viewport indicator
         if (miniMapViewport) {
-            const viewportWidth = canvas.canvas.width / canvas.scale * scale;
-            const viewportHeight = canvas.canvas.height / canvas.scale * scale;
+            const viewport = canvas.getViewportSize?.() || {
+                width: canvas.canvas.clientWidth || canvas.canvas.width,
+                height: canvas.canvas.clientHeight || canvas.canvas.height,
+            };
+            const viewportWidth = viewport.width / canvas.scale * scale;
+            const viewportHeight = viewport.height / canvas.scale * scale;
             miniMapViewport.style.width = `${viewportWidth}px`;
             miniMapViewport.style.height = `${viewportHeight}px`;
             miniMapViewport.style.left = `${miniMapCanvas.width / 2 - viewportWidth / 2}px`;
@@ -806,8 +810,13 @@ class App {
                 }
                 
                 // If no position specified, use center of view
-                const x = pos?.x || canvas.screenToWorld(canvas.canvas.width / 2, canvas.canvas.height / 2).x;
-                const y = pos?.y || canvas.screenToWorld(canvas.canvas.width / 2, canvas.canvas.height / 2).y;
+                const viewportCenter = canvas.getViewportCenter?.() || {
+                    x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+                    y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+                };
+                const centerWorld = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+                const x = pos?.x || centerWorld.x;
+                const y = pos?.y || centerWorld.y;
                 
                 const element = {
                     id: window.toolManager.generateId(),

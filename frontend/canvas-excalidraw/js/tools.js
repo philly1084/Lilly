@@ -1354,10 +1354,11 @@ class ToolManager {
                     x = pos.x;
                     y = pos.y;
                 } else {
-                    const center = canvas.screenToWorld(
-                        canvas.canvas.width / 2,
-                        canvas.canvas.height / 2
-                    );
+                    const viewportCenter = canvas.getViewportCenter?.() || {
+                        x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+                        y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+                    };
+                    const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
                     x = center.x;
                     y = center.y;
                 }

@@ -9142,9 +9142,13 @@ code[class*="language-"] {
         flex-direction: column;
     }
 
-    .app-shell.has-project-viewport .main-shell,
-    .app-shell.has-project-viewport .project-viewport {
+    .app-shell.has-project-viewport .main-shell {
         flex: 1 1 auto;
+        max-width: none;
+        width: 100%;
+    }
+
+    .app-shell.has-project-viewport .project-viewport {
         max-width: none;
         width: 100%;
     }
@@ -9177,9 +9181,10 @@ code[class*="language-"] {
     }
 
     .project-viewport.is-collapsed {
-        flex: 0 0 max(3.4rem, calc(3rem + env(safe-area-inset-bottom, 0px)));
-        min-height: max(3.4rem, calc(3rem + env(safe-area-inset-bottom, 0px)));
-        max-height: max(3.4rem, calc(3rem + env(safe-area-inset-bottom, 0px)));
+        --project-viewport-collapsed-height: max(2.5rem, calc(2.25rem + env(safe-area-inset-bottom, 0px)));
+        flex: 0 0 var(--project-viewport-collapsed-height);
+        min-height: var(--project-viewport-collapsed-height);
+        max-height: var(--project-viewport-collapsed-height);
         width: 100%;
     }
 
@@ -9204,12 +9209,12 @@ code[class*="language-"] {
     }
 
     .project-viewport.is-collapsed .project-viewport__chrome {
-        min-height: 100%;
+        min-height: var(--project-viewport-collapsed-height);
         flex-direction: row;
         justify-content: space-between;
         padding:
-            0.5rem max(0.85rem, env(safe-area-inset-right, 0px))
-            max(0.5rem, env(safe-area-inset-bottom, 0px))
+            0.25rem max(0.85rem, env(safe-area-inset-right, 0px))
+            max(0.25rem, env(safe-area-inset-bottom, 0px))
             max(0.85rem, env(safe-area-inset-left, 0px));
         border-bottom: 0;
     }
