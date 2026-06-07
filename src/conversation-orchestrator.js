@@ -863,8 +863,9 @@ function isBroadNeuralWaveOutputText(text = '') {
 function shouldApplyNeuralWaveResearchMode({
     objective = '',
     toolPolicy = {},
+    orchestrationOverrides = null,
 } = {}) {
-    const orchestrationConfig = getEffectiveOrchestrationConfig();
+    const orchestrationConfig = getEffectiveOrchestrationConfig(orchestrationOverrides || toolPolicy?.orchestrationOverrides || {});
     if (orchestrationConfig?.neuralWaveResearchMode !== true) {
         return false;
     }
@@ -1318,12 +1319,21 @@ function isJudgmentV2Enabled() {
     return config.runtime?.judgmentV2Enabled === true;
 }
 
-function getEffectiveOrchestrationConfig() {
+function getEffectiveOrchestrationConfig(overrides = {}) {
+    const normalizedOverrides = overrides && typeof overrides === 'object' && !Array.isArray(overrides)
+        ? overrides
+        : {};
     if (typeof settingsController?.getEffectiveOrchestrationConfig === 'function') {
-        return settingsController.getEffectiveOrchestrationConfig();
+        return {
+            ...settingsController.getEffectiveOrchestrationConfig(),
+            ...normalizedOverrides,
+        };
     }
 
-    return settingsController?.settings?.orchestration || {};
+    return {
+        ...(settingsController?.settings?.orchestration || {}),
+        ...normalizedOverrides,
+    };
 }
 
 function normalizeConfidence(value = null, fallback = 0.5) {
@@ -11523,6 +11533,15 @@ class ConversationOrchestrator extends EventEmitter {
         const toolMetadata = toolContext?.metadata && typeof toolContext.metadata === 'object'
             ? toolContext.metadata
             : {};
+        const orchestrationOverrides = metadata?.orchestrationOverrides
+            && typeof metadata.orchestrationOverrides === 'object'
+            && !Array.isArray(metadata.orchestrationOverrides)
+            ? metadata.orchestrationOverrides
+            : (toolMetadata.orchestrationOverrides
+                && typeof toolMetadata.orchestrationOverrides === 'object'
+                && !Array.isArray(toolMetadata.orchestrationOverrides)
+                ? toolMetadata.orchestrationOverrides
+                : {});
         const plannedToolIds = [
             ...(Array.isArray(metadata?.plannedTools) ? metadata.plannedTools : []),
             ...(Array.isArray(toolMetadata.plannedTools) ? toolMetadata.plannedTools : []),
@@ -11678,6 +11697,7 @@ class ConversationOrchestrator extends EventEmitter {
         });
         const neuralWaveResearchMode = shouldApplyNeuralWaveResearchMode({
             objective: prompt,
+            orchestrationOverrides,
             toolPolicy: {
                 classification,
                 agencyProfile: effectiveAgencyProfile,
@@ -12166,6 +12186,8 @@ class ConversationOrchestrator extends EventEmitter {
             agencyProfile: effectiveAgencyProfile,
             rolePipeline: effectiveRolePipelineSeed,
             neuralWaveResearchMode,
+            orchestrationOverrides,
+            afterProcessAuditHints: metadata?.afterProcessAuditHints || toolMetadata.afterProcessAuditHints || null,
             workflow: effectiveWorkflowSeed,
             projectPlan: effectiveProjectPlanSeed,
             clusterRegistrySummary,
@@ -14009,7 +14031,7 @@ class ConversationOrchestrator extends EventEmitter {
             }
         }
 
-        if (shouldApplyNeuralWaveResearchMode({ objective, toolPolicy })) {
+        if (toolPolicy?.neuralWaveResearchMode || shouldApplyNeuralWaveResearchMode({ objective, toolPolicy })) {
             parts.push(buildNeuralWaveResearchInstructions());
         }
 
@@ -14445,6 +14467,8 @@ class ConversationOrchestrator extends EventEmitter {
             surfaceFinisher,
             agencyProfile: toolPolicy?.agencyProfile || null,
             rolePipeline: toolPolicy?.rolePipeline || null,
+            afterProcessAuditHints: toolPolicy?.afterProcessAuditHints || metadata?.afterProcessAuditHints || null,
+            orchestrationOverrides: toolPolicy?.orchestrationOverrides || metadata?.orchestrationOverrides || null,
             selectedSkills: toolPolicy?.selectedSkills || [],
             skillsUsed: selectedSkillIds,
             toolReadiness: toolReadinessSummary,

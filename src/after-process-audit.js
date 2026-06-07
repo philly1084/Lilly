@@ -128,6 +128,8 @@ function buildAuditEvidence(input = {}) {
             alignmentGuidanceApplied: orchestrationConfig.applyAlignmentGuidance !== false,
             afterProcessAuditEnabled: orchestrationConfig.afterProcessAuditEnabled !== false,
         },
+        orchestrationOverrides: metadata.orchestrationOverrides || trace.orchestrationOverrides || null,
+        afterProcessAuditHints: metadata.afterProcessAuditHints || trace.afterProcessAuditHints || null,
         modelLanes: {
             defaultModel: orchestrationConfig.defaultModel || '',
             plannerModel: orchestrationConfig.plannerModel || '',

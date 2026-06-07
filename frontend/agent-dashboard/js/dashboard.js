@@ -41,6 +41,7 @@ class Dashboard {
             afterProcessAuditMeta: {},
             afterProcessAuditSupported: null,
             afterProcessAuditErrorMessage: '',
+            clearingAfterProcessAuditId: null,
             applyingAfterProcessRecommendationId: null,
             stats: {
                 totalTasks: 0,
@@ -176,11 +177,15 @@ class Dashboard {
             this.loadAfterProcessAudits({ force: true });
         });
         document.getElementById('afterProcessAuditList')?.addEventListener('click', (event) => {
-            const button = event.target?.closest?.('[data-after-process-recommendation-id]');
-            if (!button) {
+            const recommendationButton = event.target?.closest?.('[data-after-process-recommendation-id]');
+            if (recommendationButton) {
+                this.applyAfterProcessFlagRecommendation(recommendationButton.dataset.afterProcessRecommendationId);
                 return;
             }
-            this.applyAfterProcessFlagRecommendation(button.dataset.afterProcessRecommendationId);
+            const clearButton = event.target?.closest?.('[data-after-process-clear-id]');
+            if (clearButton) {
+                this.clearAfterProcessAudit(clearButton.dataset.afterProcessClearId);
+            }
         });
         document.getElementById('saveWorkloadChangesBtn')?.addEventListener('click', () => {
             this.saveAdminWorkload();
@@ -1563,6 +1568,7 @@ class Dashboard {
                 confidence: recommendation.confidence ?? null,
                 canApply: recommendation.canApply === true,
                 status: String(recommendation.status || (recommendation.canApply ? 'suggested' : 'review_only')).toLowerCase(),
+                hint: recommendation.hint || null,
             }))
             : [];
         const toolSkillReview = audit.toolSkillReview && typeof audit.toolSkillReview === 'object'
@@ -1581,6 +1587,7 @@ class Dashboard {
             decision: String(audit.decision || 'watch').toLowerCase(),
             qualityScore: Number.isFinite(Number(audit.qualityScore)) ? Number(audit.qualityScore) : null,
             summary: this.stringifySelfReflectionInline(audit.summary || ''),
+            cleared: audit.cleared === true,
             toolSkillReview: {
                 selectedSkills: Array.isArray(toolSkillReview.selectedSkills) ? toolSkillReview.selectedSkills : [],
                 actualTools: Array.isArray(toolSkillReview.actualTools) ? toolSkillReview.actualTools : [],
@@ -1614,16 +1621,42 @@ class Dashboard {
         try {
             const response = await apiClient.post(`/api/admin/after-process-audits/recommendations/${encodeURIComponent(recommendationId)}/apply`);
             const payload = this.unwrapApiPayload(response, {});
-            if (payload.settings) {
-                this.applySettings(payload.settings);
-            }
             const flag = payload.recommendation?.flag || 'flag';
-            this.showToast(`Applied audit recommendation for ${flag}`, 'success');
+            this.showToast(`Approved chat-time hint for ${flag}`, 'success');
             await this.loadAfterProcessAudits({ force: true });
         } catch (error) {
             this.showToast(error.userMessage || error.message || 'Failed to apply audit recommendation', 'error');
         } finally {
             this.state.applyingAfterProcessRecommendationId = null;
+            this.renderAfterProcessAudits(
+                this.state.afterProcessAudits,
+                this.state.afterProcessAuditMeta,
+                this.state.afterProcessAuditErrorMessage
+            );
+        }
+    }
+
+    async clearAfterProcessAudit(id = '') {
+        const auditId = String(id || '').trim();
+        if (!auditId || this.state.clearingAfterProcessAuditId) {
+            return;
+        }
+
+        this.state.clearingAfterProcessAuditId = auditId;
+        this.renderAfterProcessAudits(
+            this.state.afterProcessAudits,
+            this.state.afterProcessAuditMeta,
+            this.state.afterProcessAuditErrorMessage
+        );
+
+        try {
+            await apiClient.post(`/api/admin/after-process-audits/${encodeURIComponent(auditId)}/clear`);
+            this.showToast('Cleared after-process audit from the review queue', 'success');
+            await this.loadAfterProcessAudits({ force: true });
+        } catch (error) {
+            this.showToast(error.userMessage || error.message || 'Failed to clear after-process audit', 'error');
+        } finally {
+            this.state.clearingAfterProcessAuditId = null;
             this.renderAfterProcessAudits(
                 this.state.afterProcessAudits,
                 this.state.afterProcessAuditMeta,
@@ -1686,6 +1719,7 @@ class Dashboard {
             ...audit.learningReview.outputQualityRisks.map((entry) => ({ label: `risk: ${entry}`, status: 'warning' })),
         ].slice(0, 8);
         const flagRecommendations = audit.recommendedFlagChanges.filter((recommendation) => recommendation.flag);
+        const isClearing = this.state.clearingAfterProcessAuditId === audit.auditId;
 
         return `
             <article class="self-reflection-item">
@@ -1698,6 +1732,15 @@ class Dashboard {
                         <div class="self-reflection-trigger">${this.escapeHtml(audit.summary || 'No audit summary recorded.')}</div>
                     </div>
                     <code class="self-reflection-log">${this.escapeHtml(audit.model || 'model n/a')}</code>
+                </div>
+                <div class="self-reflection-row">
+                    <div class="self-reflection-main"></div>
+                    <button
+                        class="btn btn-sm btn-secondary"
+                        type="button"
+                        data-after-process-clear-id="${this.escapeHtml(audit.auditId)}"
+                        ${isClearing ? 'disabled' : ''}
+                    >${isClearing ? 'Clearing...' : 'Clear review'}</button>
                 </div>
                 <div class="self-reflection-suggestion-meta">
                     ${audit.sessionId ? `<span>Session ${this.escapeHtml(this.truncate(audit.sessionId, 30))}</span>` : ''}
@@ -1720,6 +1763,7 @@ class Dashboard {
                         </div>
                         ${flagRecommendations.map((recommendation) => {
                             const isApplying = this.state.applyingAfterProcessRecommendationId === recommendation.id;
+                            const isApproved = recommendation.status === 'approved_chat_hint';
                             return `
                                 <article class="self-reflection-suggestion">
                                     <div class="self-reflection-row">
@@ -1735,7 +1779,7 @@ class Dashboard {
                                             type="button"
                                             data-after-process-recommendation-id="${this.escapeHtml(recommendation.id)}"
                                             ${recommendation.canApply && !isApplying ? '' : 'disabled'}
-                                        >${isApplying ? 'Applying...' : (recommendation.canApply ? 'Apply flag' : 'Review only')}</button>
+                                        >${isApplying ? 'Approving...' : (isApproved ? 'Approved' : (recommendation.canApply ? 'Approve hint' : 'Review only'))}</button>
                                     </div>
                                 </article>
                             `;

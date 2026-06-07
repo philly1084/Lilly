@@ -103,8 +103,9 @@ describe('after-process audits admin controller', () => {
     }));
   });
 
-  test('applies an approved boolean orchestration flag recommendation', async () => {
-    const req = buildReqWithSessions([buildAuditSession()]);
+  test('approves a boolean orchestration flag recommendation as a chat-time hint', async () => {
+    const session = buildAuditSession();
+    const req = buildReqWithSessions([session]);
     const listData = await controller.collectAudits(req);
     const recommendationId = listData.audits[0].recommendedFlagChanges[0].id;
     const res = {
@@ -120,21 +121,31 @@ describe('after-process audits admin controller', () => {
     }, res, jest.fn());
 
     expect(res.status).not.toHaveBeenCalled();
-    expect(settingsController.saveSettings).toHaveBeenCalled();
-    expect(settingsController.applyAsyncRuntimeSettingsToRuntime).toHaveBeenCalled();
-    expect(settingsController.settings.orchestration.neuralWaveResearchMode).toBe(true);
+    expect(settingsController.saveSettings).not.toHaveBeenCalled();
+    expect(settingsController.applyAsyncRuntimeSettingsToRuntime).not.toHaveBeenCalled();
+    expect(settingsController.settings.orchestration.neuralWaveResearchMode).toBe(false);
+    expect(req.app.locals.sessionStore.update).toHaveBeenCalledWith('session-a', {
+      metadata: {
+        afterProcessAuditHints: [
+          expect.objectContaining({
+            flag: 'neuralWaveResearchMode',
+            suggestedValue: true,
+            status: 'active',
+          }),
+        ],
+      },
+    });
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
       data: expect.objectContaining({
         recommendation: expect.objectContaining({
           id: recommendationId,
-          status: 'applied',
+          status: 'approved_chat_hint',
           applied: true,
         }),
-        settings: expect.objectContaining({
-          orchestration: expect.objectContaining({
-            neuralWaveResearchMode: true,
-          }),
+        hint: expect.objectContaining({
+          flag: 'neuralWaveResearchMode',
+          suggestedValue: true,
         }),
       }),
     }));
@@ -181,9 +192,39 @@ describe('after-process audits admin controller', () => {
       status: 'review_only',
     }));
   });
+
+  test('clears an audit from the review queue without deleting evidence', async () => {
+    const session = buildAuditSession();
+    const req = buildReqWithSessions([session]);
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    await controller.clearAudit({
+      ...req,
+      params: { id: 'after-audit-a' },
+      body: {},
+      query: {},
+    }, res, jest.fn());
+
+    expect(req.app.locals.sessionStore.update).toHaveBeenCalledWith('session-a', {
+      metadata: {
+        afterProcessAuditClearedIds: ['after-audit-a'],
+      },
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        auditId: 'after-audit-a',
+        cleared: true,
+      }),
+    }));
+  });
 });
 
 function buildReqWithSessions(sessions = []) {
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
   return {
     query: { limit: '10' },
     body: {},
@@ -191,6 +232,17 @@ function buildReqWithSessions(sessions = []) {
       locals: {
         sessionStore: {
           list: jest.fn().mockResolvedValue(sessions),
+          get: jest.fn((id) => Promise.resolve(sessionById.get(id) || null)),
+          update: jest.fn((id, updates = {}) => {
+            const session = sessionById.get(id);
+            if (session) {
+              session.metadata = {
+                ...(session.metadata || {}),
+                ...(updates.metadata || {}),
+              };
+            }
+            return Promise.resolve(session || null);
+          }),
         },
       },
     },

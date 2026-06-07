@@ -1,19 +1,15 @@
 const crypto = require('crypto');
 const { sessionStore: defaultSessionStore } = require('../../session-store');
 const settingsController = require('./settings.controller');
+const {
+  ALLOWED_BOOLEAN_ORCHESTRATION_FLAGS,
+  buildApprovedAfterProcessHint,
+  buildClearedAuditIds,
+  mergeApprovedAfterProcessHint,
+} = require('../../after-process-audit-hints');
 
 const DEFAULT_AUDIT_LIMIT = 20;
 const DEFAULT_SESSION_SCAN_LIMIT = 100;
-const ALLOWED_BOOLEAN_ORCHESTRATION_FLAGS = new Set([
-  'afterProcessAuditEnabled',
-  'agentDirectedRuntime',
-  'neuralWaveResearchMode',
-  'asyncRuntimeEnabled',
-  'asyncRuntimeWebChatParallel',
-  'asyncRuntimeAllowLiveRemote',
-  'enableAlignmentEvaluator',
-  'applyAlignmentGuidance',
-]);
 
 function parseLimit(value, fallback = DEFAULT_AUDIT_LIMIT, max = 200) {
   const parsed = Number(value);
@@ -54,6 +50,11 @@ function buildStableId(prefix, source = {}) {
 
 function getAuditEntriesFromSession(session = {}) {
   const metadata = session?.metadata || {};
+  const clearedIds = new Set(
+    (Array.isArray(metadata.afterProcessAuditClearedIds) ? metadata.afterProcessAuditClearedIds : [])
+      .map((entry) => normalizeInline(entry, 120))
+      .filter(Boolean),
+  );
   const current = metadata.afterProcessAudit && typeof metadata.afterProcessAudit === 'object'
     ? [metadata.afterProcessAudit]
     : [];
@@ -72,10 +73,14 @@ function getAuditEntriesFromSession(session = {}) {
       seen.add(key);
       return true;
     })
-    .map((entry) => normalizeAuditEntry(session, entry));
+    .map((entry) => normalizeAuditEntry(session, entry))
+    .map((entry) => ({
+      ...entry,
+      cleared: clearedIds.has(entry.auditId),
+    }));
 }
 
-function normalizeFlagRecommendation(recommendation = {}, audit = {}, index = 0) {
+function normalizeFlagRecommendation(recommendation = {}, audit = {}, index = 0, approvedRecommendationIds = new Set()) {
   const flag = normalizeInline(recommendation.flag || recommendation.name || '', 120);
   const currentValue = normalizeBoolean(recommendation.currentValue);
   const suggestedValue = normalizeBoolean(recommendation.suggestedValue);
@@ -83,21 +88,23 @@ function normalizeFlagRecommendation(recommendation = {}, audit = {}, index = 0)
     && currentValue !== null
     && suggestedValue !== null
     && currentValue !== suggestedValue;
+  const id = buildStableId('afr', {
+    auditId: audit.auditId || '',
+    flag,
+    index,
+    suggestedValue,
+    reason: recommendation.reason || '',
+  });
+  const approved = approvedRecommendationIds.has(id);
   return {
-    id: buildStableId('afr', {
-      auditId: audit.auditId || '',
-      flag,
-      index,
-      suggestedValue,
-      reason: recommendation.reason || '',
-    }),
+    id,
     flag,
     currentValue,
     suggestedValue,
     reason: normalizeInline(recommendation.reason || '', 400),
     confidence: recommendation.confidence ?? null,
-    canApply,
-    status: canApply ? 'suggested' : 'review_only',
+    canApply: canApply && !approved,
+    status: approved ? 'approved_chat_hint' : (canApply ? 'suggested' : 'review_only'),
   };
 }
 
@@ -106,6 +113,11 @@ function normalizeAuditEntry(session = {}, entry = {}) {
   const recommendationSource = Array.isArray(audit.recommendedFlagChanges)
     ? audit.recommendedFlagChanges
     : [];
+  const approvedRecommendationIds = new Set(
+    (Array.isArray(session?.metadata?.afterProcessAuditHints) ? session.metadata.afterProcessAuditHints : [])
+      .map((hint) => normalizeInline(hint.recommendationId || hint.sourceRecommendationId || '', 120))
+      .filter(Boolean),
+  );
   const auditId = normalizeInline(entry.auditId || '', 120) || buildStableId('after-audit', {
     sessionId: session.id || '',
     completedAt: entry.completedAt || '',
@@ -126,7 +138,7 @@ function normalizeAuditEntry(session = {}, entry = {}) {
     toolSkillReview: audit.toolSkillReview || {},
     learningReview: audit.learningReview || {},
     recommendedFlagChanges: recommendationSource
-      .map((recommendation, index) => normalizeFlagRecommendation(recommendation, { auditId }, index))
+      .map((recommendation, index) => normalizeFlagRecommendation(recommendation, { auditId }, index, approvedRecommendationIds))
       .filter((recommendation) => recommendation.flag),
     followUpActions: Array.isArray(audit.followUpActions) ? audit.followUpActions : [],
   };
@@ -145,12 +157,15 @@ class AfterProcessAuditsController {
       500,
     );
     const decision = normalizeInline(options.decision ?? req.query?.decision ?? '', 80);
+    const includeCleared = options.includeCleared === true
+      || ['1', 'true', 'yes'].includes(String(req.query?.includeCleared || '').trim().toLowerCase());
     const store = this.getSessionStore(req);
     const sessions = typeof store?.list === 'function'
       ? await store.list({ limit: sessionLimit })
       : [];
     let audits = (Array.isArray(sessions) ? sessions : [])
       .flatMap((session) => getAuditEntriesFromSession(session))
+      .filter((audit) => includeCleared || audit.cleared !== true)
       .sort((a, b) => new Date(b.completedAt || b.updatedAt || 0).getTime() - new Date(a.completedAt || a.updatedAt || 0).getTime());
 
     if (decision) {
@@ -171,6 +186,7 @@ class AfterProcessAuditsController {
         returned: Math.min(limit, audits.length),
         needsFollowupCount,
         recommendationCount,
+        includeCleared,
       },
     };
   }
@@ -223,28 +239,87 @@ class AfterProcessAuditsController {
         });
       }
 
-      settingsController.settings = settingsController.deepMerge(settingsController.settings, {
-        orchestration: settingsController.normalizeOrchestrationSettings({
-          ...(settingsController.settings?.orchestration || {}),
-          [recommendation.flag]: recommendation.suggestedValue,
-        }),
+      const store = this.getSessionStore(req);
+      const sourceSession = typeof store?.get === 'function'
+        ? await store.get(sourceAudit.sessionId)
+        : null;
+      if (!sourceSession) {
+        return res.status(404).json({ success: false, error: 'source session not found' });
+      }
+      const hint = buildApprovedAfterProcessHint({ sourceAudit, recommendation });
+      if (!hint) {
+        return res.status(400).json({ success: false, error: 'recommendation could not be converted into a chat-time hint' });
+      }
+      const afterProcessAuditHints = mergeApprovedAfterProcessHint(
+        sourceSession.metadata?.afterProcessAuditHints || [],
+        hint,
+      );
+      await store.update(sourceAudit.sessionId, {
+        metadata: {
+          afterProcessAuditHints,
+        },
       });
-      await settingsController.saveSettings();
-      await settingsController.applyAsyncRuntimeSettingsToRuntime(req);
-
-      const publicSettings = settingsController.getPublicSettings();
       return res.json({
         success: true,
         data: {
           recommendation: {
             ...recommendation,
-            status: 'applied',
+            status: 'approved_chat_hint',
             applied: true,
-            appliedAt: new Date().toISOString(),
+            appliedAt: hint.approvedAt,
           },
           auditId: sourceAudit.auditId,
           sessionId: sourceAudit.sessionId,
-          settings: publicSettings,
+          hint,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async clearAudit(req, res, next) {
+    try {
+      const auditId = normalizeInline(req.params?.id || req.body?.auditId || '', 120);
+      if (!auditId) {
+        return res.status(400).json({ success: false, error: 'audit id is required' });
+      }
+
+      const data = await this.collectAudits(req, {
+        includeCleared: true,
+        limit: 200,
+        sessionLimit: parseLimit(req.body?.sessionLimit ?? req.query?.sessionLimit, DEFAULT_SESSION_SCAN_LIMIT, 500),
+      });
+      const sourceAudit = data.audits.find((audit) => audit.auditId === auditId);
+      if (!sourceAudit) {
+        return res.status(404).json({ success: false, error: 'audit not found' });
+      }
+
+      const store = this.getSessionStore(req);
+      const sourceSession = typeof store?.get === 'function'
+        ? await store.get(sourceAudit.sessionId)
+        : null;
+      if (!sourceSession) {
+        return res.status(404).json({ success: false, error: 'source session not found' });
+      }
+
+      const clearedIds = buildClearedAuditIds(
+        sourceSession.metadata?.afterProcessAuditClearedIds || [],
+        auditId,
+      );
+      await store.update(sourceAudit.sessionId, {
+        metadata: {
+          afterProcessAuditClearedIds: clearedIds,
+        },
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          auditId,
+          sessionId: sourceAudit.sessionId,
+          cleared: true,
+          clearedAt: new Date().toISOString(),
         },
       });
     } catch (error) {

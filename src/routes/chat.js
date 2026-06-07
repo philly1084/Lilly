@@ -43,6 +43,7 @@ const {
 const { extractSaveableDocumentArtifact } = require('../artifacts/saveable-document-extractor');
 const { startRuntimeTask, completeRuntimeTask, failRuntimeTask } = require('../admin/runtime-monitor');
 const settingsController = require('./admin/settings.controller');
+const { resolveChatTimeAfterProcessAuditHints } = require('../after-process-audit-hints');
 const {
     buildContextContinuityFrame,
     resolveTranscriptObjectiveFromSession,
@@ -1299,10 +1300,10 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         streamRequested = stream === true;
         const reasoningEffort = resolveReasoningEffort(req.body);
         const enableConversationExecutor = resolveConversationExecutorFlag(req.body);
-        const orchestrationSettings = settingsController.getEffectiveOrchestrationConfig?.()
+        let orchestrationSettings = settingsController.getEffectiveOrchestrationConfig?.()
             || settingsController.settings?.orchestration
             || {};
-        const useAgentDirectedRuntime = resolveAgentDirectedRuntimeFlag(req.body, orchestrationSettings);
+        let useAgentDirectedRuntime = resolveAgentDirectedRuntimeFlag(req.body, orchestrationSettings);
         let { sessionId } = req.body;
         const memoryKeywords = normalizeMemoryKeywords(
             req.body.memoryKeywords || req.body?.metadata?.memoryKeywords || [],
@@ -1348,6 +1349,26 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             return res.status(404).json({ error: { message: 'Session not found' } });
         }
         let effectiveSession = await persistSessionModel(sessionId, session, model);
+        const auditHintDecision = resolveChatTimeAfterProcessAuditHints({
+            session: effectiveSession,
+            text: message,
+            orchestrationConfig: orchestrationSettings,
+        });
+        if (auditHintDecision.hasOverrides) {
+            orchestrationSettings = {
+                ...orchestrationSettings,
+                ...auditHintDecision.overrides,
+            };
+            useAgentDirectedRuntime = resolveAgentDirectedRuntimeFlag(req.body, orchestrationSettings);
+            effectiveRequestMetadata = {
+                ...effectiveRequestMetadata,
+                afterProcessAuditHints: {
+                    applied: auditHintDecision.matchedHints,
+                    orchestrationOverrides: auditHintDecision.overrides,
+                },
+                orchestrationOverrides: auditHintDecision.overrides,
+            };
+        }
         const clientSurface = resolveClientSurface(req.body || {}, session, requestedTaskType);
         const taskType = resolveConversationTaskType(requestMetadata, session);
         const memoryScope = resolveSessionScope({

@@ -656,6 +656,46 @@ describe('ConversationOrchestrator', () => {
         expect(instructions).toContain('Final collection');
     });
 
+    test('honors after-process audit chat-time orchestration overrides', () => {
+        settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+            enabled: true,
+            neuralWaveResearchMode: false,
+        });
+        const orchestrator = new ConversationOrchestrator({});
+        const toolManager = {
+            getTool: jest.fn((toolId) => ({ id: toolId, description: toolId })),
+        };
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective: 'Build a broad research deliverable with chunks, templates, review, and final collection.',
+            executionProfile: 'default',
+            metadata: {
+                orchestrationOverrides: {
+                    neuralWaveResearchMode: true,
+                },
+                afterProcessAuditHints: {
+                    applied: [{
+                        id: 'aph-a',
+                        flag: 'neuralWaveResearchMode',
+                        suggestedValue: true,
+                    }],
+                },
+            },
+            toolManager,
+        });
+        const instructions = orchestrator.buildRuntimeInstructions({
+            objective: 'Build a broad research deliverable with chunks, templates, review, and final collection.',
+            executionProfile: 'default',
+            allowedToolIds: toolPolicy.allowedToolIds,
+            toolPolicy,
+            clientSurface: 'web-chat',
+        });
+
+        expect(toolPolicy.neuralWaveResearchMode).toBe(true);
+        expect(toolPolicy.afterProcessAuditHints.applied[0].flag).toBe('neuralWaveResearchMode');
+        expect(instructions).toContain('Neural-wave R&D mode is active');
+    });
+
     test('uses a plain model response when no tools are selected', async () => {
         const llmClient = {
             createResponse: jest.fn().mockResolvedValue(buildResponse('Plain answer', 'resp_plain')),

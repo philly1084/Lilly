@@ -82,6 +82,7 @@ router.get('/self-reflection-updates', callController(selfReflectionUpdatesContr
 
 // After-process audit review
 router.get('/after-process-audits', callController(afterProcessAuditsController, 'list'));
+router.post('/after-process-audits/:id/clear', callController(afterProcessAuditsController, 'clearAudit'));
 router.post('/after-process-audits/recommendations/:id/apply', callController(afterProcessAuditsController, 'applyFlagRecommendation'));
 
 // Skills

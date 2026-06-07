@@ -528,7 +528,16 @@ async function executeConversationRuntime(app, params = {}) {
     const orchestrationSettings = settingsController.getEffectiveOrchestrationConfig?.()
         || settingsController.settings?.orchestration
         || {};
-    const useAgentDirectedRuntime = resolveAgentDirectedRuntimeFlag(effectiveParams, orchestrationSettings);
+    const orchestrationOverrides = effectiveParams.metadata?.orchestrationOverrides
+        && typeof effectiveParams.metadata.orchestrationOverrides === 'object'
+        && !Array.isArray(effectiveParams.metadata.orchestrationOverrides)
+        ? effectiveParams.metadata.orchestrationOverrides
+        : {};
+    const effectiveOrchestrationSettings = {
+        ...orchestrationSettings,
+        ...orchestrationOverrides,
+    };
+    const useAgentDirectedRuntime = resolveAgentDirectedRuntimeFlag(effectiveParams, effectiveOrchestrationSettings);
     const callerPiiCleansing = effectiveToolContext.piiCleansing
         || params.metadata?.piiCleansing
         || effectiveParams.metadata?.piiCleansing
