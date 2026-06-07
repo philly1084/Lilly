@@ -40,6 +40,22 @@ describe('session scope memory routing', () => {
     }));
   });
 
+  test('routes web-chat project continuity memory into project-shared namespace despite session isolation', () => {
+    expect(buildScopedMemoryMetadata({
+      ownerId: 'phill',
+      memoryScope: 'acme-platform',
+      sourceSurface: 'web-chat',
+      clientSurface: 'web-chat',
+      memoryClass: 'project_task',
+      sessionIsolation: true,
+    })).toEqual(expect.objectContaining({
+      projectKey: 'acme-platform',
+      memoryNamespace: PROJECT_SHARED_MEMORY_NAMESPACE,
+      shareAcrossSurfaces: true,
+      sessionIsolation: true,
+    }));
+  });
+
   test('routes conversational memory into surface-local namespace inside a project', () => {
     expect(buildScopedMemoryMetadata({
       ownerId: 'phill',

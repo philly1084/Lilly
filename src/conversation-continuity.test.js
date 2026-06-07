@@ -146,4 +146,31 @@ describe('conversation continuity', () => {
         expect(frame).toContain('This-turn routing intent: frontend_design_build via document-workflow.');
         expect(frame).toContain('prefer this frame and the current user turn');
     });
+
+    test('context continuity frame includes lead agent baton state', () => {
+        const frame = buildContextContinuityFrame({
+            currentInput: 'continue',
+            recentMessages: [
+                { role: 'user', content: 'Deploy the document site to prod and verify HTTPS.' },
+                { role: 'assistant', content: 'I fixed the manifest and still need to rerun rollout status.' },
+            ],
+            session: {
+                metadata: {
+                    leadAgentState: {
+                        objective: 'Deploy the document site to prod and verify HTTPS.',
+                        status: 'blocked',
+                        lastVerifiedAction: 'k3s-deploy: applied updated ingress manifest',
+                        nextSensibleStep: 'rerun rollout status and public HTTPS check',
+                        blockers: ['image pull failed on previous rollout'],
+                    },
+                },
+            },
+        });
+
+        expect(frame).toContain('Lead agent baton: Deploy the document site to prod and verify HTTPS.');
+        expect(frame).toContain('status: blocked');
+        expect(frame).toContain('last: k3s-deploy: applied updated ingress manifest');
+        expect(frame).toContain('next: rerun rollout status and public HTTPS check');
+        expect(frame).toContain('blockers: image pull failed on previous rollout');
+    });
 });

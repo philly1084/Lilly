@@ -264,6 +264,23 @@ function summarizeActiveTaskFrame(controlState = {}) {
     ].filter(Boolean).join('; '), 360);
 }
 
+function summarizeLeadAgentState(session = null) {
+    const state = session?.metadata?.leadAgentState && typeof session.metadata.leadAgentState === 'object'
+        ? session.metadata.leadAgentState
+        : null;
+    if (!state) {
+        return '';
+    }
+
+    return normalizeOneLine([
+        state.objective || '',
+        state.status ? `status: ${state.status}` : '',
+        state.lastVerifiedAction ? `last: ${state.lastVerifiedAction}` : '',
+        state.nextSensibleStep ? `next: ${state.nextSensibleStep}` : '',
+        Array.isArray(state.blockers) && state.blockers.length > 0 ? `blockers: ${state.blockers.join('; ')}` : '',
+    ].filter(Boolean).join('; '), 420);
+}
+
 function summarizeProjectMemoryState(session = null) {
     const tasks = Array.isArray(session?.metadata?.projectMemory?.tasks)
         ? session.metadata.projectMemory.tasks
@@ -299,6 +316,7 @@ function buildContextContinuityFrame({
     const workflowState = summarizeWorkflowState(resolvedControlState);
     const projectPlanState = summarizeProjectPlanState(resolvedControlState);
     const projectMemoryState = summarizeProjectMemoryState(session);
+    const leadAgentState = summarizeLeadAgentState(session);
     const isReferential = isLikelyTranscriptDependentTurn(currentTurn);
     const lines = [
         '[Context continuity frame]',
@@ -311,6 +329,7 @@ function buildContextContinuityFrame({
             : '',
         latestAssistantState ? `Most recent assistant state: ${latestAssistantState}` : '',
         activeTaskFrame ? `Active task frame: ${activeTaskFrame}` : '',
+        leadAgentState ? `Lead agent baton: ${leadAgentState}` : '',
         workflowState ? `Workflow state: ${workflowState}` : '',
         projectPlanState ? `Project plan state: ${projectPlanState}` : '',
         projectMemoryState ? `Latest project memory task: ${projectMemoryState}` : '',

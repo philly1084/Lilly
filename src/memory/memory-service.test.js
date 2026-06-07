@@ -448,6 +448,60 @@ describe('MemoryService recall profiles', () => {
         storeSpy.mockRestore();
     });
 
+    test('remember keeps production continuity programming memory as project task memory', async () => {
+        const service = new MemoryService();
+        const storeSpy = jest.spyOn(service.store, 'store').mockResolvedValue('point-1');
+
+        await service.remember(
+            'session-1',
+            'Patched src/routes/chat.js, ran npm test, and deployed the fix live.',
+            'assistant',
+            {
+                ownerId: 'phill',
+                memoryScope: 'acme-platform',
+                projectKey: 'acme-platform',
+                sourceSurface: 'web-chat',
+                executionProfile: 'remote-build',
+                memoryClass: 'conversation',
+            },
+        );
+
+        expect(storeSpy).toHaveBeenCalledWith(
+            'session-1',
+            expect.stringContaining('Patched src/routes/chat.js'),
+            expect.objectContaining({
+                memoryClass: 'project_task',
+                memoryNamespace: PROJECT_SHARED_MEMORY_NAMESPACE,
+                projectKey: 'acme-platform',
+                shareAcrossSurfaces: true,
+            }),
+        );
+        storeSpy.mockRestore();
+    });
+
+    test('process can recall same-project continuity memory across web-chat sessions', async () => {
+        const service = new MemoryService();
+        const recallSpy = jest.spyOn(service, 'recall').mockResolvedValue(['ctx']);
+        jest.spyOn(service, 'remember').mockResolvedValue('point-1');
+
+        await service.process('session-1', 'continue the live deployment', {
+            ownerId: 'phill',
+            memoryScope: 'acme-platform',
+            projectKey: 'acme-platform',
+            sourceSurface: 'web-chat',
+            sessionIsolation: true,
+            executionProfile: 'remote-build',
+            profile: DEFAULT_RECALL_PROFILE,
+        });
+
+        expect(recallSpy).toHaveBeenCalledWith('continue the live deployment', expect.objectContaining({
+            sessionId: null,
+            ownerId: 'phill',
+            projectKey: 'acme-platform',
+            sessionIsolation: false,
+        }));
+    });
+
     test('rememberLearnedSkill skips ongoing programming steps by default', async () => {
         const service = new MemoryService();
         const rememberSpy = jest.spyOn(service, 'remember').mockResolvedValue('skill-point-1');

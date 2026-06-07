@@ -347,10 +347,23 @@ function defaultShareAcrossSurfaces(memoryClass = DEFAULT_MEMORY_CLASS) {
     'reusable_skill',
     'project_fact',
     'project_task',
+    'workflow_summary',
+    'tool_result',
+    'production_context',
     'artifact',
     'artifact_summary',
     'artifact_source',
     'research_note',
+  ].includes(normalizeMemoryClass(memoryClass));
+}
+
+function isProjectContinuityMemoryClass(memoryClass = DEFAULT_MEMORY_CLASS) {
+  return [
+    'project_fact',
+    'project_task',
+    'workflow_summary',
+    'tool_result',
+    'production_context',
   ].includes(normalizeMemoryClass(memoryClass));
 }
 
@@ -383,6 +396,10 @@ function resolveMemoryNamespace(value = {}, session = null, fallback = '') {
 
   if (['user_preference', 'collaboration_preference', 'tool_preference', 'reusable_skill'].includes(memoryClass)) {
     return USER_GLOBAL_MEMORY_NAMESPACE;
+  }
+
+  if (projectKey && shouldShareAcrossSurfaces && isProjectContinuityMemoryClass(memoryClass)) {
+    return PROJECT_SHARED_MEMORY_NAMESPACE;
   }
 
   if (sessionIsolation || !projectKey) {

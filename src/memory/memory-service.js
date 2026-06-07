@@ -32,6 +32,31 @@ const USER_GLOBAL_MEMORY_CLASSES = new Set([
     'tool_preference',
     'reusable_skill',
 ]);
+const PROJECT_CONTINUITY_MEMORY_CLASSES = new Set([
+    'project_fact',
+    'project_task',
+    'workflow_summary',
+    'tool_result',
+    'production_context',
+]);
+const CONTINUITY_EXECUTION_PROFILES = new Set([
+    'remote-build',
+    'remote_builder',
+    'remote-builder',
+    'server-build',
+    'server-builder',
+    'software-builder',
+]);
+const CONTINUITY_SURFACES = new Set([
+    'canvas',
+    'document',
+    'documents',
+    'notation',
+    'notes',
+    'notes-app',
+    'notes-editor',
+    'web-chat',
+]);
 const PROGRAMMING_MEMORY_MARKERS = [
     /\b(?:src|frontend|backend|routes|components|lib|bin|k8s|tests?|__tests__)\/[A-Za-z0-9._/-]+\b/i,
     /\b[A-Za-z]:\\[^\s]+/i,
@@ -39,6 +64,11 @@ const PROGRAMMING_MEMORY_MARKERS = [
     /\b(?:stack trace|uncaught|exception|typeerror|referenceerror|syntaxerror|exit code|stderr|stdout)\b/i,
     /\b(?:implemented|patched|refactored|updated|fixed|debugged|deployed|ran tests?)\b[\s\S]{0,120}\b(?:file|route|module|component|function|test|repo|code|branch|commit)\b/i,
     /```(?:js|javascript|ts|typescript|jsx|tsx|json|bash|sh|powershell|yaml|yml|html|css|python)?\n/i,
+];
+const PRODUCTION_CONTINUITY_MARKERS = [
+    /\b(?:deploy|deployment|production|prod|live|public|publish|published|rollout|ingress|tls|dns|host|domain|server|remote|ssh|k3s|k8s|kubernetes|kubectl|pod|service|container|docker)\b/i,
+    /\b(?:document|doc|pdf|pptx|slides?|deck|report|brief|artifact|html|site|website|managed[- ]app|sandbox|preview|export)\b/i,
+    /\b(?:blocked|blocker|next step|continue|resume|verified|verification|fixed|patched|created|updated|generated|failed|failing|error)\b/i,
 ];
 
 function normalizeMemoryType(value = '') {
@@ -48,6 +78,91 @@ function normalizeMemoryType(value = '') {
     }
 
     return FACT_MEMORY_TYPE;
+}
+
+function normalizeMemoryClassValue(value = '') {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'conversation';
+}
+
+function hasProgrammingMemoryMarkers(text = '') {
+    const normalizedText = stripNullCharacters(text).trim();
+    return PROGRAMMING_MEMORY_MARKERS.some((pattern) => pattern.test(normalizedText));
+}
+
+function hasProductionContinuityMarkers(text = '') {
+    const normalizedText = stripNullCharacters(text).trim();
+    return PRODUCTION_CONTINUITY_MARKERS.some((pattern) => pattern.test(normalizedText));
+}
+
+function normalizeProfileValue(value = '') {
+    return String(value || '').trim().toLowerCase().replace(/_/g, '-');
+}
+
+function hasContinuityMetadataSignal(metadata = {}) {
+    const memoryClass = normalizeMemoryClassValue(metadata?.memoryClass || metadata?.memory_class);
+    const executionProfile = normalizeProfileValue(metadata?.executionProfile || metadata?.execution_profile);
+    const sourceSurface = normalizeSourceSurface(metadata);
+    return Boolean(
+        metadata?.forceDurableMemory === true
+        || metadata?.projectContinuity === true
+        || PROJECT_CONTINUITY_MEMORY_CLASSES.has(memoryClass)
+        || CONTINUITY_EXECUTION_PROFILES.has(executionProfile)
+        || (metadata?.projectKey && CONTINUITY_SURFACES.has(String(sourceSurface || '').toLowerCase()))
+        || (Array.isArray(metadata?.toolIds) && metadata.toolIds.length > 0)
+        || Number(metadata?.toolEventCount || 0) > 0
+        || metadata?.artifactId
+    );
+}
+
+function inferContinuityMemoryClass(role = '', text = '', metadata = {}) {
+    const currentClass = normalizeMemoryClassValue(metadata?.memoryClass || metadata?.memory_class);
+    if (currentClass !== 'conversation') {
+        return currentClass;
+    }
+
+    if (!hasContinuityMetadataSignal(metadata) || !hasProductionContinuityMarkers(text)) {
+        return currentClass;
+    }
+
+    const normalizedRole = String(role || '').trim().toLowerCase();
+    if (normalizedRole === 'tool') {
+        return 'tool_result';
+    }
+
+    return 'project_task';
+}
+
+function withInferredContinuityMemoryClass(role = '', text = '', metadata = {}) {
+    const inferredClass = inferContinuityMemoryClass(role, text, metadata);
+    if (inferredClass === normalizeMemoryClassValue(metadata?.memoryClass || metadata?.memory_class)) {
+        return metadata;
+    }
+
+    return {
+        ...metadata,
+        memoryClass: inferredClass,
+        shareAcrossSurfaces: metadata?.shareAcrossSurfaces ?? true,
+        forceDurableMemory: metadata?.forceDurableMemory ?? true,
+    };
+}
+
+function shouldUseProjectContinuityRecall(options = {}, routing = {}, query = '') {
+    if (!options?.ownerId || !routing?.projectKey) {
+        return false;
+    }
+
+    const memoryClass = normalizeMemoryClassValue(routing?.memoryClass || options?.memoryClass || options?.memory_class);
+    const executionProfile = normalizeProfileValue(options?.executionProfile || options?.execution_profile);
+    return Boolean(
+        options?.projectContinuity === true
+        || PROJECT_CONTINUITY_MEMORY_CLASSES.has(memoryClass)
+        || CONTINUITY_EXECUTION_PROFILES.has(executionProfile)
+        || hasProductionContinuityMarkers(query)
+    );
 }
 
 function normalizeImportance(value = null, fallback = DEFAULT_FACT_IMPORTANCE) {
@@ -305,7 +420,9 @@ function shouldKeepDurableMemory(role = '', text = '', metadata = {}) {
         || memoryType === SKILL_MEMORY_TYPE
         || memoryType === RESEARCH_MEMORY_TYPE
         || USER_GLOBAL_MEMORY_CLASSES.has(memoryClass)
+        || PROJECT_CONTINUITY_MEMORY_CLASSES.has(normalizeMemoryClassValue(memoryClass))
         || metadata?.shareAcrossSurfaces === true
+        || metadata?.forceDurableMemory === true
     ) {
         return true;
     }
@@ -320,7 +437,7 @@ function shouldKeepDurableMemory(role = '', text = '', metadata = {}) {
         return false;
     }
 
-    return !PROGRAMMING_MEMORY_MARKERS.some((pattern) => pattern.test(normalizedText));
+    return !hasProgrammingMemoryMarkers(normalizedText);
 }
 
 function selectMemoryChunks(text = '', {
@@ -416,18 +533,20 @@ class MemoryService {
             return null;
         }
 
-        if (!shouldKeepDurableMemory(role, normalizedMessage, metadata)) {
+        const continuityMetadata = withInferredContinuityMemoryClass(role, normalizedMessage, metadata);
+
+        if (!shouldKeepDurableMemory(role, normalizedMessage, continuityMetadata)) {
             return null;
         }
 
         const chunks = selectMemoryChunks(normalizedMessage);
         if (chunks.length <= 1 && chunks[0] === normalizedMessage) {
-            return this.store.store(sessionId, normalizedMessage, this.normalizeMetadata(role, normalizedMessage, metadata));
+            return this.store.store(sessionId, normalizedMessage, this.normalizeMetadata(role, normalizedMessage, continuityMetadata));
         }
 
         const wasTruncated = chunks.join('').length < normalizedMessage.length || chunkText(normalizedMessage, config.memory.storeChunkChars).length > chunks.length;
         const writes = chunks.map((chunk, index) => this.store.store(sessionId, chunk, this.normalizeMetadata(role, chunk, {
-            ...metadata,
+            ...continuityMetadata,
             chunkIndex: index,
             sourceCharLength: normalizedMessage.length,
             sourceChunkCount: chunks.length,
@@ -1131,9 +1250,12 @@ class MemoryService {
         const routing = buildScopedMemoryMetadata({
             ...(ownerId ? { ownerId } : {}),
             ...(memoryScope ? { memoryScope } : {}),
+            ...(options?.projectKey ? { projectKey: options.projectKey } : {}),
             ...(memoryKeywords.length > 0 ? { memoryKeywords } : {}),
             sourceSurface: options?.sourceSurface || memoryScope || null,
             memoryClass: options?.memoryClass || 'conversation',
+            ...(options?.executionProfile ? { executionProfile: options.executionProfile } : {}),
+            ...(options?.projectContinuity === true ? { projectContinuity: true } : {}),
             ...(sessionIsolation ? { sessionIsolation: true } : {}),
         }, options?.session || null);
         const recallQuery = String(options?.recallQuery || message || '').trim() || String(message || '');
@@ -1142,13 +1264,14 @@ class MemoryService {
         });
 
         try {
-            const shouldLockToCurrentSession = sessionIsolation || !ownerId || !routing.projectKey;
+            const projectContinuityRecall = shouldUseProjectContinuityRecall(options, routing, recallQuery);
+            const shouldLockToCurrentSession = !projectContinuityRecall && (sessionIsolation || !ownerId || !routing.projectKey);
             return await this.recall(recallQuery, {
                 ...options,
                 sessionId: shouldLockToCurrentSession ? sessionId : null,
                 ownerId: shouldLockToCurrentSession ? null : ownerId,
                 memoryScope,
-                sessionIsolation: routing.sessionIsolation === true,
+                sessionIsolation: shouldLockToCurrentSession && routing.sessionIsolation === true,
                 memoryKeywords,
                 sourceSurface: routing.sourceSurface || null,
                 projectKey: routing.projectKey || null,

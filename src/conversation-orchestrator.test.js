@@ -1486,6 +1486,22 @@ describe('ConversationOrchestrator', () => {
                 }),
             }),
         );
+        expect(sessionStore.update).toHaveBeenCalledWith(
+            'session-remote-cli-state',
+            expect.objectContaining({
+                metadata: expect.objectContaining({
+                    leadAgentState: expect.objectContaining({
+                        objective: 'Build the Calan app with remote-cli-agent.',
+                        status: 'blocked',
+                        executionProfile: 'remote-build',
+                        lastVerifiedAction: expect.stringContaining('remote-cli-agent'),
+                        blockers: expect.arrayContaining([
+                            'remote_code_run still running after status polling.',
+                        ]),
+                    }),
+                }),
+            }),
+        );
     });
 
     test('triggers session compaction after persistence with merged workflow and project memory state', async () => {

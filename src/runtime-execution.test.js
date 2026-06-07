@@ -414,6 +414,27 @@ describe('runtime-execution', () => {
         }));
     });
 
+    test('uses a wider recent transcript window for direct remote-build continuity', async () => {
+        await executeConversationRuntime({
+            locals: {},
+        }, {
+            sessionId: 'session-direct-remote',
+            input: 'continue the deployment',
+            memoryInput: 'continue the deployment',
+            executionProfile: 'remote-build',
+        });
+
+        expect(sessionStore.getRecentMessages).toHaveBeenCalledWith('session-direct-remote', 16);
+        expect(memoryService.process).toHaveBeenCalledWith(
+            'session-direct-remote',
+            'continue the deployment',
+            expect.objectContaining({
+                executionProfile: 'remote-build',
+                projectContinuity: true,
+            }),
+        );
+    });
+
     test('accepts legacy and compatibility executor flags', () => {
         expect(resolveConversationExecutorFlag({ useAgentExecutor: true })).toBe(true);
         expect(resolveConversationExecutorFlag({ use_agent_executor: true })).toBe(true);

@@ -108,6 +108,25 @@ function hasActiveRemoteWorkflowState(controlState = {}) {
     return hasWorkflow || hasProjectPlan || (hasContinuationGate && hasRemoteObjective);
 }
 
+function resolveRecentTranscriptLimitForContinuity({
+    executionProfile = DEFAULT_EXECUTION_PROFILE,
+    clientSurface = '',
+    taskType = '',
+    controlState = {},
+} = {}) {
+    const normalizedSurface = String(clientSurface || taskType || '').trim().toLowerCase();
+    const activeWorkflow = hasActiveRemoteWorkflowState(controlState);
+    const documentSurface = ['canvas', 'notation', 'notes', 'notes-app', 'notes-editor'].includes(normalizedSurface);
+    if (executionProfile === REMOTE_BUILD_EXECUTION_PROFILE || activeWorkflow || documentSurface) {
+        return Math.max(
+            RECENT_TRANSCRIPT_LIMIT,
+            Number(config.memory.activeContinuityRecentTranscriptLimit || 0) || RECENT_TRANSCRIPT_LIMIT,
+        );
+    }
+
+    return RECENT_TRANSCRIPT_LIMIT;
+}
+
 function inferRecallProfile(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized) {
@@ -578,7 +597,12 @@ async function executeConversationRuntime(app, params = {}) {
     const recentMessages = effectiveParams.recentMessages || (
         effectiveParams.loadRecentMessages === false
             ? []
-            : await sessionStore.getRecentMessages(effectiveParams.sessionId, RECENT_TRANSCRIPT_LIMIT)
+            : await sessionStore.getRecentMessages(effectiveParams.sessionId, resolveRecentTranscriptLimitForContinuity({
+                executionProfile,
+                clientSurface,
+                taskType: effectiveParams.taskType || params.taskType || '',
+                controlState: sessionControlState,
+            }))
     );
     const recallInput = effectiveParams.memoryInput || extractRuntimeText(effectiveParams.input || '');
     const continuityObjective = resolveTranscriptObjectiveFromSession(recallInput, recentMessages);
@@ -599,6 +623,9 @@ async function executeConversationRuntime(app, params = {}) {
                 ownerId: effectiveParams.ownerId || null,
                 memoryScope,
                 sessionIsolation,
+                executionProfile,
+                projectContinuity: executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+                    || ['canvas', 'document', 'documents', 'notation', 'notes', 'notes-app', 'notes-editor'].includes(String(clientSurface || '').trim().toLowerCase()),
                 memoryKeywords: effectiveParams.metadata?.memoryKeywords || effectiveParams.toolContext?.memoryKeywords || [],
                 sourceSurface: clientSurface || memoryScope || null,
                 projectKey: buildScopedMemoryMetadata({

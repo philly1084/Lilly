@@ -918,6 +918,10 @@ const config = {
             1,
             parseInt(process.env.MEMORY_RECENT_TRANSCRIPT_LIMIT, 10) || 8,
         ),
+        activeContinuityRecentTranscriptLimit: Math.max(
+            1,
+            parseInt(process.env.MEMORY_ACTIVE_CONTINUITY_RECENT_TRANSCRIPT_LIMIT, 10) || 16,
+        ),
         recentMessageCharLimit: parseRecentMessageCharLimit(process.env.MEMORY_RECENT_MESSAGE_CHAR_LIMIT),
         recallTopK: Math.max(
             1,

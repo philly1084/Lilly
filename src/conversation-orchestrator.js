@@ -2259,6 +2259,102 @@ function summarizeRecallTrace(memoryTrace = null) {
     };
 }
 
+function summarizeLeadToolAction(toolEvents = []) {
+    const successful = [...(Array.isArray(toolEvents) ? toolEvents : [])]
+        .reverse()
+        .find((event) => event?.result?.success !== false);
+    const toolId = successful?.toolCall?.function?.name || successful?.result?.toolId || '';
+    const reason = normalizeInlineText(
+        successful?.reason
+        || successful?.result?.data?.finalOutput
+        || successful?.result?.data?.statusMessage
+        || successful?.result?.data?.summary
+        || '',
+        new Set(),
+    );
+    if (!toolId && !reason) {
+        return '';
+    }
+
+    return normalizeInlineText([toolId, reason].filter(Boolean).join(': '), new Set()).slice(0, 220);
+}
+
+function summarizeLeadBlockers(toolEvents = []) {
+    return (Array.isArray(toolEvents) ? toolEvents : [])
+        .filter((event) => {
+            const completionStatus = String(event?.result?.data?.completionStatus || '').trim().toLowerCase();
+            return event?.result?.success === false
+                || Boolean(event?.result?.data?.blocker)
+                || ['blocked', 'user_input_required', 'failed', 'error'].includes(completionStatus);
+        })
+        .map((event) => normalizeInlineText(
+            event?.result?.error
+            || event?.result?.data?.error
+            || event?.result?.data?.blocker
+            || event?.result?.data?.statusMessage
+            || event?.reason
+            || event?.toolCall?.function?.name
+            || '',
+            new Set(),
+        ))
+        .filter(Boolean)
+        .slice(-3);
+}
+
+function buildLeadAgentState({
+    previous = null,
+    objective = '',
+    userText = '',
+    assistantText = '',
+    executionProfile = DEFAULT_EXECUTION_PROFILE,
+    clientSurface = '',
+    projectKey = '',
+    activeTaskFrame = null,
+    toolEvents = [],
+    artifacts = [],
+    projectMemory = null,
+} = {}) {
+    const previousState = previous && typeof previous === 'object' && !Array.isArray(previous)
+        ? previous
+        : {};
+    const blockers = summarizeLeadBlockers(toolEvents);
+    const lastVerifiedAction = summarizeLeadToolAction(toolEvents)
+        || normalizeInlineText(assistantText, new Set()).slice(0, 220)
+        || previousState.lastVerifiedAction
+        || '';
+    const partialTask = Array.isArray(projectMemory?.tasks)
+        ? [...projectMemory.tasks].reverse().find((task) => String(task?.status || '').toLowerCase() === 'partial')
+        : null;
+    const nextSensibleStep = activeTaskFrame?.nextSensibleStep
+        || partialTask?.summary
+        || previousState.nextSensibleStep
+        || '';
+    const artifactIds = (Array.isArray(artifacts) ? artifacts : [])
+        .map((artifact) => String(artifact?.id || '').trim())
+        .filter(Boolean)
+        .slice(-6);
+
+    return {
+        objective: normalizeInlineText(
+            activeTaskFrame?.objective
+            || objective
+            || userText
+            || previousState.objective
+            || '',
+            new Set(),
+        ).slice(0, 320),
+        status: blockers.length > 0 ? 'blocked' : 'active',
+        executionProfile,
+        clientSurface,
+        ...(projectKey ? { projectKey } : {}),
+        ...(lastVerifiedAction ? { lastVerifiedAction } : {}),
+        ...(nextSensibleStep ? { nextSensibleStep: normalizeInlineText(nextSensibleStep, new Set()).slice(0, 220) } : {}),
+        ...(blockers.length > 0 ? { blockers } : {}),
+        ...(artifactIds.length > 0 ? { artifactIds } : {}),
+        updatedAt: new Date().toISOString(),
+    };
+}
+
 function inferFinalizationMode({ runtimeMode = '', toolEvents = [], assistantMetadata = null } = {}) {
     if (assistantMetadata?.finalizationMode) {
         return assistantMetadata.finalizationMode;
@@ -9325,10 +9421,20 @@ class ConversationOrchestrator extends EventEmitter {
             ...(sessionIsolation ? { sessionIsolation: true } : {}),
             ...(Array.isArray(toolContext?.memoryKeywords) ? { memoryKeywords: toolContext.memoryKeywords } : {}),
         };
+        const recentTranscriptLimit = (
+            resolvedProfile === REMOTE_BUILD_EXECUTION_PROFILE
+            || ['canvas', 'notation', 'notes', 'notes-app', 'notes-editor'].includes(String(clientSurface || '').trim().toLowerCase())
+            || Boolean(getSessionControlState(session).activeTaskFrame?.objective)
+        )
+            ? Math.max(
+                RECENT_TRANSCRIPT_LIMIT,
+                Number(config.memory.activeContinuityRecentTranscriptLimit || 0) || RECENT_TRANSCRIPT_LIMIT,
+            )
+            : RECENT_TRANSCRIPT_LIMIT;
         const resolvedRecentMessages = recentMessages.length > 0
             ? recentMessages
             : loadRecentMessages !== false && this.sessionStore?.getRecentMessages
-                ? await this.sessionStore.getRecentMessages(sessionId, RECENT_TRANSCRIPT_LIMIT)
+                ? await this.sessionStore.getRecentMessages(sessionId, recentTranscriptLimit)
                 : [];
         const taskFrameObjective = resolveObjectiveFromActiveTaskFrame(rawObjective, session, clientSurface);
         const preRecallObjectiveSeed = taskFrameObjective.usedTaskFrameContext
@@ -9350,6 +9456,9 @@ class ConversationOrchestrator extends EventEmitter {
                     ownerId,
                     memoryScope,
                     sessionIsolation,
+                    executionProfile: resolvedProfile,
+                    projectContinuity: resolvedProfile === REMOTE_BUILD_EXECUTION_PROFILE
+                        || ['canvas', 'notation', 'notes', 'notes-app', 'notes-editor'].includes(String(clientSurface || '').trim().toLowerCase()),
                     memoryKeywords,
                     sourceSurface: clientSurface || memoryScope || null,
                     projectKey: projectKey || null,
@@ -14327,6 +14436,7 @@ class ConversationOrchestrator extends EventEmitter {
             ...(responseArtifacts.length > 0 ? { artifacts: responseArtifacts } : {}),
             projectKey: toolPolicy?.projectKey || null,
             memoryNamespace: memoryTrace?.routing?.memoryNamespace || memoryWriteTargets.conversation?.memoryNamespace || null,
+            recallSummary: summarizeRecallTrace(memoryTrace),
             memoryReadSetSummary: intelligenceSummary.memoryReadSetSummary,
             memoryWriteTargets,
             crossScopeReuse: intelligenceSummary.crossScopeReuse,
@@ -14377,6 +14487,7 @@ class ConversationOrchestrator extends EventEmitter {
             foregroundTurn,
             clientSurface,
             memoryScope,
+            projectKey: toolPolicy?.projectKey || '',
             memoryKeywords,
             autonomyApproved,
             controlStatePatch: finalControlStatePatch,
@@ -14487,6 +14598,7 @@ class ConversationOrchestrator extends EventEmitter {
         sessionId,
         ownerId = null,
         memoryScope = null,
+        projectKey = '',
         userText,
         objective = '',
         assistantText,
@@ -14519,17 +14631,26 @@ class ConversationOrchestrator extends EventEmitter {
             clientSurface: currentSession?.metadata?.clientSurface || currentSession?.metadata?.client_surface || '',
             memoryScope,
         }, currentSession || null);
-        const scopedMemoryMetadata = buildScopedMemoryMetadata({
-            ...(ownerId ? { ownerId } : {}),
-            ...(resolvedMemoryScope ? { memoryScope: resolvedMemoryScope } : {}),
-            ...(clientSurface ? { sourceSurface: clientSurface } : {}),
-            ...(Array.isArray(memoryKeywords) && memoryKeywords.length > 0 ? { memoryKeywords } : {}),
-        }, currentSession || null);
         const persistedArtifacts = mergeRuntimeArtifacts(
             artifacts,
             assistantMetadata?.artifacts || [],
             extractArtifactsFromToolEvents(toolEvents),
         );
+        const scopedMemoryMetadata = buildScopedMemoryMetadata({
+            ...(ownerId ? { ownerId } : {}),
+            ...(resolvedMemoryScope ? { memoryScope: resolvedMemoryScope } : {}),
+            ...(projectKey ? { projectKey } : {}),
+            ...(clientSurface ? { sourceSurface: clientSurface } : {}),
+            ...(Array.isArray(memoryKeywords) && memoryKeywords.length > 0 ? { memoryKeywords } : {}),
+            executionProfile,
+            projectContinuity: executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+                || persistedArtifacts.length > 0
+                || toolEvents.length > 0,
+            toolEventCount: toolEvents.length,
+            toolIds: Array.from(new Set((Array.isArray(toolEvents) ? toolEvents : [])
+                .map((event) => event?.toolCall?.function?.name || event?.result?.toolId || '')
+                .filter(Boolean))).slice(0, 8),
+        }, currentSession || null);
 
         if (this.sessionStore?.recordResponse) {
             if (promptState) {
@@ -14605,15 +14726,16 @@ class ConversationOrchestrator extends EventEmitter {
             },
             controlStatePatch,
         );
+        const effectiveControlState = mergeControlState(
+            getSessionControlState(currentSession),
+            nextControlState,
+        );
         try {
             clusterStateRegistry.recordToolEvents({
                 sessionId,
                 objective,
                 toolEvents,
-                controlState: mergeControlState(
-                    getSessionControlState(currentSession),
-                    nextControlState,
-                ),
+                controlState: effectiveControlState,
             });
         } catch (error) {
             console.warn(`[ConversationOrchestrator] Failed to update cluster registry: ${error.message}`);
@@ -14633,6 +14755,19 @@ class ConversationOrchestrator extends EventEmitter {
                 artifacts: persistedArtifacts,
             }),
         );
+        const leadAgentState = buildLeadAgentState({
+            previous: currentSession?.metadata?.leadAgentState || null,
+            objective,
+            userText,
+            assistantText,
+            executionProfile,
+            clientSurface,
+            projectKey: projectKey || scopedMemoryMetadata.projectKey || '',
+            activeTaskFrame: effectiveControlState.activeTaskFrame || null,
+            toolEvents,
+            artifacts: persistedArtifacts,
+            projectMemory,
+        });
 
         if (this.sessionStore?.update) {
             await this.sessionStore.update(sessionId, {
@@ -14643,16 +14778,12 @@ class ConversationOrchestrator extends EventEmitter {
                         : {}),
                     ...(naturalContext ? { naturalContext } : {}),
                     projectMemory,
+                    leadAgentState,
                 },
             });
         }
 
         if (this.sessionStore?.maybeCompactSession) {
-            const effectiveControlState = mergeControlState(
-                getSessionControlState(currentSession),
-                nextControlState,
-            );
-
             await this.sessionStore.maybeCompactSession(sessionId, {
                 ownerId,
                 workflow: effectiveControlState.workflow || null,
