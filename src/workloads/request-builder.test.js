@@ -134,6 +134,36 @@ describe('workload request builder', () => {
         expect(canonical).toBeNull();
     });
 
+    test('filters unrelated recent messages from new workload creation context', () => {
+        const canonical = buildCanonicalWorkloadAction({
+            request: 'Set up an hourly workload to make a Halifax weather app with full week and hourly reports.',
+        }, {
+            now: '2026-04-02T09:00:00.000Z',
+            timezone: 'UTC',
+            recentMessages: [
+                { role: 'user', content: 'Just try again to fix the Tetris deployment to awesome.demoserver2.buzz' },
+                { role: 'assistant', content: 'The Tetris host is still serving the wrong app.' },
+                { role: 'user', content: 'Show me todays weather in Halifax NS and include the hourly report.' },
+            ],
+        });
+
+        expect(canonical).toEqual(expect.objectContaining({
+            action: 'create',
+            metadata: expect.objectContaining({
+                creationContext: expect.objectContaining({
+                    recentMessages: [
+                        {
+                            role: 'user',
+                            content: 'Show me todays weather in Halifax NS and include the hourly report.',
+                        },
+                    ],
+                }),
+            }),
+        }));
+        expect(JSON.stringify(canonical.metadata.creationContext)).not.toContain('Tetris');
+        expect(JSON.stringify(canonical.metadata.creationContext)).not.toContain('awesome.demoserver2.buzz');
+    });
+
     test('does not turn vague later or explicit now requests into deferred workloads', () => {
         expect(buildCanonicalWorkloadAction({
             request: 'Run the command later.',

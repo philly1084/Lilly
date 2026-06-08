@@ -446,6 +446,78 @@ function extractHostFromUrl(value = '') {
     }
 }
 
+function normalizePublicHost(value = '') {
+    const normalized = normalizeText(value)
+        .replace(/^https?:\/\//i, '')
+        .split(/[/?#]/, 1)[0]
+        .replace(/:\d+$/g, '')
+        .replace(/\.+$/g, '')
+        .toLowerCase();
+
+    if (!normalized || normalized === 'localhost' || /^[0-9.]+$/.test(normalized)) {
+        return '';
+    }
+
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(normalized)
+        ? normalized
+        : '';
+}
+
+function isControlPlaneHost(value = '') {
+    const host = normalizePublicHost(value);
+    return Boolean(host && /^(?:gitlab|gitea|registry|repo|repos|github|api|admin)\./i.test(host));
+}
+
+function extractPublicHostFromText(value = '', options = {}) {
+    const text = normalizeText(value);
+    if (!text) {
+        return '';
+    }
+
+    const allowedDomains = normalizeStringArray(options.allowedDomains || [], 6)
+        .map((entry) => normalizePublicHost(entry))
+        .filter(Boolean);
+    const matches = [
+        ...Array.from(text.matchAll(/\bhttps?:\/\/([a-z0-9][a-z0-9.-]+\.[a-z]{2,})(?::\d+)?(?:[/?#][^\s"'`]*)?/gi), (match) => match[1]),
+        ...Array.from(text.matchAll(/\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)\b/gi), (match) => match[1]),
+    ];
+
+    for (const match of matches) {
+        const host = normalizePublicHost(match);
+        if (!host || isControlPlaneHost(host)) {
+            continue;
+        }
+        if (allowedDomains.length > 0 && !allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
+            continue;
+        }
+        return host;
+    }
+
+    return '';
+}
+
+function resolveInputPublicHost(input = {}, managedAppsConfig = {}, deployConfig = {}) {
+    const explicit = normalizePublicHost(input.publicHost || input.targetPublicHost);
+    if (explicit) {
+        return explicit;
+    }
+
+    const allowedDomains = normalizeStringArray([
+        managedAppsConfig.appBaseDomain,
+        config.deploy.defaultPublicDomain,
+        deployConfig.defaultPublicDomain,
+    ], 6);
+
+    return extractPublicHostFromText([
+        input.prompt,
+        input.sourcePrompt,
+        input.request,
+        input.description,
+    ].map((entry) => normalizeText(entry)).filter(Boolean).join('\n'), {
+        allowedDomains,
+    });
+}
+
 function normalizeImageRepo(value = '') {
     return normalizeText(value)
         .replace(/^https?:\/\//i, '')
@@ -952,6 +1024,20 @@ function buildManagedAppStatusSummary(app = null, buildRun = null, phase = '', d
     const repoRef = normalizeText(app?.repoOwner) && normalizeText(app?.repoName)
         ? `${normalizeText(app.repoOwner)}/${normalizeText(app.repoName)}`
         : '';
+    const pipelineObserved = Boolean(
+        normalizeText(buildRun?.externalRunUrl)
+        || normalizeText(buildRun?.externalRunId)
+        || buildRun?.metadata?.gitlabPipeline,
+    );
+    const commitSha = normalizeText(buildRun?.commitSha || app?.metadata?.repoState?.lastCommitSha);
+    const sourceStatus = commitSha
+        ? `Source changes were committed${repoRef ? ` in ${repoRef}` : ''}.`
+        : `${appName} ${normalizeText(phase).toLowerCase() === 'created' ? 'was created' : 'was updated'}${repoRef ? ` in ${repoRef}` : ''}.`;
+    const queuedStatus = buildRun
+        ? (pipelineObserved
+            ? `GitLab pipeline is queued or running${buildRun.externalRunUrl ? `: ${buildRun.externalRunUrl}` : ''}.`
+            : 'GitLab pipeline has not been observed yet.')
+        : 'No build run has been recorded yet.';
     const imageRef = normalizeText(app?.metadata?.liveDeploy?.lastImage || app?.metadata?.lastImage || deployment?.image || '');
     const buildError = normalizeText(
         buildRun?.error?.message
@@ -966,9 +1052,8 @@ function buildManagedAppStatusSummary(app = null, buildRun = null, phase = '', d
 
     switch (normalizeText(phase).toLowerCase()) {
         case 'created':
-            return `${appName} was created${repoRef ? ` in ${repoRef}` : ''}. Build and deploy are queued.`;
         case 'updated':
-            return `${appName} was updated${repoRef ? ` in ${repoRef}` : ''}. Build and deploy are queued.`;
+            return `${sourceStatus} ${queuedStatus}`;
         case 'built':
             return `${appName} finished building${imageRef ? ` as \`${imageRef}\`` : ''}.`;
         case 'build_failed':
@@ -1266,6 +1351,11 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
     const iterationMetadata = buildRun?.metadata?.iteration && typeof buildRun.metadata.iteration === 'object'
         ? buildRun.metadata.iteration
         : null;
+    const pipelineObserved = Boolean(
+        normalizeText(buildRun?.externalRunUrl)
+        || normalizeText(buildRun?.externalRunId)
+        || buildRun?.metadata?.gitlabPipeline,
+    );
     const iterationStages = Array.isArray(details.iterationStages)
         ? details.iterationStages
         : (Array.isArray(iterationMetadata?.stages) ? iterationMetadata.stages : []);
@@ -1294,8 +1384,10 @@ function buildManagedAppProgressState(app = null, buildRun = null, phase = '', d
         case 'created':
         case 'updated':
             mark('prepare', 'completed');
-            mark('build', 'in_progress');
-            detail = 'Waiting for the remote GitLab build to publish the image.';
+            mark('build', pipelineObserved ? 'in_progress' : 'pending');
+            detail = pipelineObserved
+                ? 'Waiting for the remote GitLab build to publish the image.'
+                : 'Source changes were committed, but no GitLab pipeline has been observed yet.';
             break;
         case 'built':
             mark('prepare', 'completed');
@@ -1734,8 +1826,8 @@ function deriveNextStepForLifecycle(phase = '', { deployRequested = false, healt
         case 'created':
         case 'updated':
             return deployRequested
-                ? 'Wait for the remote GitLab pipeline to finish, then continue deployment through the managed-app control plane.'
-                : 'Wait for the remote GitLab pipeline to finish, then inspect or deploy the managed app.';
+                ? 'Observe the GitLab pipeline for this commit, then continue deployment through the managed-app control plane.'
+                : 'Observe the GitLab pipeline for this commit before claiming build progress or deploying the managed app.';
         case 'built':
             return 'Deploy the latest built image when you are ready to publish the changes.';
         case 'build_failed':
@@ -1778,8 +1870,8 @@ function deriveOpenItemsForLifecycle(phase = '', {
     }
     if (normalizedPhase === 'created' || normalizedPhase === 'updated') {
         return deployRequested
-            ? ['Remote build is queued.', 'Deployment will continue after the build webhook succeeds.']
-            : ['Remote build is queued.'];
+            ? ['GitLab pipeline evidence is not observed yet.', 'Deployment must wait for a successful build webhook or reconciled pipeline.']
+            : ['GitLab pipeline evidence is not observed yet.'];
     }
     if ((normalizedPhase === 'doctor' || normalizedPhase === 'reconcile') && healthy === false) {
         return normalizeStringArray([summary], 4);
@@ -2230,6 +2322,7 @@ class ManagedAppService {
         const explicitPromptName = extractExplicitAppName(prompt);
         const hasExplicitIdentity = hasExplicitManagedAppIdentityInput(input);
         const explicitNewAppIntent = hasExplicitNewManagedAppIntent(input);
+        const requestedPublicHost = normalizePublicHost(input.publicHost || input.targetPublicHost || blueprint.publicHost);
         if (explicitRef) {
             const resolved = await this.resolveApp(explicitRef, ownerId);
             if (resolved) {
@@ -2263,8 +2356,8 @@ class ManagedAppService {
         }
 
         const ownerApps = await this.listOwnerApps(ownerId, 50);
-        const byHost = normalizeText(input.publicHost || input.targetPublicHost)
-            ? this.findAppByPublicHost(ownerApps, input.publicHost || input.targetPublicHost || blueprint.publicHost)
+        const byHost = requestedPublicHost
+            ? this.findAppByPublicHost(ownerApps, requestedPublicHost)
             : null;
         if (byHost) {
             return {
@@ -3158,6 +3251,7 @@ class ManagedAppService {
     buildAppBlueprint(input = {}, ownerId = null, sessionId = null, context = {}) {
         const giteaConfig = this.getEffectiveGiteaConfig();
         const managedAppsConfig = this.getEffectiveManagedAppsConfig();
+        const deployConfig = this.getEffectiveDeployConfig();
         const explicitPromptName = extractExplicitAppName(input.prompt || input.sourcePrompt || '');
         const rawName = deriveRequestedAppName(input) || buildFallbackRequestedAppName();
         const deploymentTarget = this.resolveDeploymentTarget(input, context, null);
@@ -3191,9 +3285,9 @@ class ManagedAppService {
                 namespacePrefix: managedAppsConfig.namespacePrefix || 'app-',
             },
         );
-        const publicHost = normalizeText(input.publicHost || `${slug}.${managedAppsConfig.appBaseDomain || 'demoserver2.buzz'}`);
+        const publicHost = resolveInputPublicHost(input, managedAppsConfig, deployConfig)
+            || normalizeText(`${slug}.${managedAppsConfig.appBaseDomain || 'demoserver2.buzz'}`);
         const defaultBranch = normalizeText(input.defaultBranch || managedAppsConfig.defaultBranch || 'main');
-        const deployConfig = this.getEffectiveDeployConfig();
         const requestedContainerPort = Number(input.containerPort || managedAppsConfig.defaultContainerPort || 80);
 
         const blueprint = {
@@ -3442,12 +3536,10 @@ class ManagedAppService {
                 input,
                 phase: existing ? 'updated' : 'created',
                 deployRequested,
-                summary: existing
-                    ? (commitSha
-                        ? `${normalizedPersistedApp.appName} was resumed and updated in ${effectiveRepoOwner}/${effectiveRepoName}. Build and deploy are queued.`
-                        : `${normalizedPersistedApp.appName} was resumed without repository changes.`)
-                    : (commitSha
-                        ? `${normalizedPersistedApp.appName} was created in ${effectiveRepoOwner}/${effectiveRepoName}. Build and deploy are queued.`
+                summary: commitSha
+                    ? ''
+                    : (existing
+                        ? `${normalizedPersistedApp.appName} was resumed without repository changes.`
                         : `${normalizedPersistedApp.appName} was created without repository changes.`),
                 repoState: {
                     initialized: true,

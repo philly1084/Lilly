@@ -187,13 +187,45 @@ function collectRecentContextMessages(recentMessages = [], limit = 8, charLimit 
     return collected;
 }
 
+const CONTEXT_KEYWORD_STOPWORDS = new Set([
+    'about', 'again', 'agent', 'also', 'and', 'app', 'build', 'can', 'chat', 'check', 'create', 'data', 'deploy',
+    'display', 'do', 'does', 'for', 'from', 'full', 'get', 'give', 'go', 'has', 'have', 'hourly', 'into', 'it',
+    'make', 'need', 'now', 'on', 'our', 'page', 'please', 'report', 'reports', 'run', 'server', 'site', 'take',
+    'takes', 'that', 'the', 'this', 'to', 'tool', 'tools', 'use', 'using', 'want', 'web', 'website', 'with', 'you',
+]);
+
+function extractContextKeywords(value = '') {
+    return new Set(
+        sanitizeText(value)
+            .toLowerCase()
+            .split(/[^a-z0-9.-]+/)
+            .map((token) => token.trim())
+            .filter((token) => token.length >= 4)
+            .filter((token) => !CONTEXT_KEYWORD_STOPWORDS.has(token)),
+    );
+}
+
+function filterRecentContextMessagesByTopic(recentMessages = [], topicText = '') {
+    const keywords = extractContextKeywords(topicText);
+    if (keywords.size === 0) {
+        return [];
+    }
+
+    return (Array.isArray(recentMessages) ? recentMessages : []).filter((message) => {
+        const content = normalizeMessageText(message?.content).toLowerCase();
+        if (!content) {
+            return false;
+        }
+        return Array.from(keywords).some((keyword) => content.includes(keyword));
+    });
+}
+
 function buildWorkloadCreationContext({
     params = {},
     options = {},
     scenarioSource = '',
     prompt = '',
 } = {}) {
-    const recentMessages = collectRecentContextMessages(options.recentMessages);
     const originalRequest = sanitizeText(
         params.metadata?.originalRequest
         || params.metadata?.scenarioRequest
@@ -203,6 +235,12 @@ function buildWorkloadCreationContext({
         || scenarioSource,
     );
     const resolvedRequest = sanitizeText(scenarioSource || prompt);
+    const includeAllRecentContext = isDeferredContextFollowupPrompt(originalRequest || resolvedRequest);
+    const topicText = [originalRequest, resolvedRequest].filter(Boolean).join('\n');
+    const scopedRecentSource = includeAllRecentContext
+        ? options.recentMessages
+        : filterRecentContextMessagesByTopic(options.recentMessages, topicText);
+    const recentMessages = collectRecentContextMessages(scopedRecentSource);
 
     if (!originalRequest && !resolvedRequest && recentMessages.length === 0) {
         return null;

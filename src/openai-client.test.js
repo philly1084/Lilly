@@ -1225,6 +1225,34 @@ describe('openai-client automatic tool orchestration helpers', () => {
         }]);
     });
 
+    test('does not auto-use user-checkpoint for routine remote repair prompts', () => {
+        expect(__testUtils.shouldAutoUseTool(
+            'user-checkpoint',
+            'Just try again to fix the Tetris deployment to awesome.demoserver2.buzz',
+            null,
+            {
+                userCheckpointPolicy: {
+                    enabled: true,
+                    remaining: 1,
+                    pending: false,
+                },
+            },
+        )).toBe(false);
+
+        expect(__testUtils.shouldAutoUseTool(
+            'user-checkpoint',
+            'Ask me to choose which deployment option to use before changing the live host.',
+            null,
+            {
+                userCheckpointPolicy: {
+                    enabled: true,
+                    remaining: 1,
+                    pending: false,
+                },
+            },
+        )).toBe(true);
+    });
+
     test('research bucket guidance explains callable durable storage', () => {
         const guidance = __testUtils.buildAutomaticToolGuidance([
             { id: 'research-bucket-list' },

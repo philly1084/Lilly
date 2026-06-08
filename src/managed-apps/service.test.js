@@ -1158,6 +1158,123 @@ describe('ManagedAppService', () => {
         expect(result.message).toContain('Resumed Demo App');
     });
 
+    test('createApp reuses an existing app when the target public host only appears in the prompt', async () => {
+        const existingApp = {
+            id: 'app-1',
+            ownerId: 'user-1',
+            sessionId: 'session-1',
+            slug: 'tetris-site',
+            appName: 'Tetris Site',
+            repoOwner: 'agent-apps',
+            repoName: 'tetris-site',
+            repoUrl: 'https://gitea.demoserver2.buzz/agent-apps/tetris-site.git',
+            repoCloneUrl: 'https://gitea.demoserver2.buzz/agent-apps/tetris-site.git',
+            repoSshUrl: 'ssh://git@gitea.demoserver2.buzz/agent-apps/tetris-site.git',
+            defaultBranch: 'main',
+            imageRepo: 'gitea.demoserver2.buzz/agent-apps/tetris-site',
+            namespace: 'app-tetris-site',
+            publicHost: 'awesome.demoserver2.buzz',
+            sourcePrompt: 'Deploy the Tetris site.',
+            status: 'live',
+            metadata: {},
+        };
+        let currentApp = existingApp;
+        const store = {
+            ensureAvailable: jest.fn(async () => {}),
+            isAvailable: jest.fn(() => true),
+            getAppBySlug: jest.fn(async () => null),
+            getAppByRepo: jest.fn(async () => null),
+            listApps: jest.fn(async () => ([existingApp])),
+            updateApp: jest.fn(async (_id, _ownerId, updates) => {
+                currentApp = {
+                    ...currentApp,
+                    ...updates,
+                    metadata: updates.metadata || currentApp.metadata,
+                };
+                return currentApp;
+            }),
+            createApp: jest.fn(),
+            createBuildRun: jest.fn(async () => ({
+                id: 'build-1',
+                appId: 'app-1',
+                commitSha: 'abcdef1234567890',
+                buildStatus: 'queued',
+                deployRequested: true,
+                deployStatus: 'pending',
+                verificationStatus: 'pending',
+                metadata: {},
+            })),
+        };
+        const giteaClient = {
+            isConfigured: jest.fn(() => true),
+            ensureOrganization: jest.fn(async () => ({ created: false })),
+            ensureRepository: jest.fn(async () => ({
+                repository: {
+                    html_url: 'https://gitea.demoserver2.buzz/agent-apps/tetris-site',
+                    clone_url: 'https://gitea.demoserver2.buzz/agent-apps/tetris-site.git',
+                    ssh_url: 'ssh://git@gitea.demoserver2.buzz/agent-apps/tetris-site.git',
+                },
+            })),
+            upsertFiles: jest.fn(async () => ({
+                commitSha: 'abcdef1234567890',
+                committedPaths: ['public/index.html'],
+            })),
+        };
+        const service = new ManagedAppService({
+            store,
+            giteaClient,
+            llmClient: {
+                complete: jest.fn(async () => JSON.stringify({ files: [] })),
+            },
+            kubernetesClient: {
+                isConfigured: () => true,
+            },
+        });
+
+        service.getEffectiveGiteaConfig = () => ({
+            baseURL: 'https://gitea.demoserver2.buzz',
+            org: 'agent-apps',
+            registryHost: 'gitea.demoserver2.buzz',
+        });
+        service.getEffectiveManagedAppsConfig = () => ({
+            appBaseDomain: 'demoserver2.buzz',
+            namespacePrefix: 'app-',
+            defaultBranch: 'main',
+            defaultContainerPort: 80,
+            registryPullSecretName: 'gitea-registry-credentials',
+        });
+
+        const result = await service.createApp({
+            prompt: 'Just try again to fix the Tetris deployment to awesome.demoserver2.buzz',
+            requestedAction: 'deploy',
+        }, 'user-1', {
+            sessionId: 'session-1',
+        });
+
+        expect(result.reusedExistingApp).toBe(true);
+        expect(result.app.id).toBe('app-1');
+        expect(result.app.slug).toBe('tetris-site');
+        expect(result.app.publicHost).toBe('awesome.demoserver2.buzz');
+        expect(store.createApp).not.toHaveBeenCalled();
+        expect(giteaClient.ensureRepository).toHaveBeenCalledWith(expect.objectContaining({
+            owner: 'agent-apps',
+            name: 'tetris-site',
+        }));
+        expect(result.app.metadata.project.summary).toContain('GitLab pipeline has not been observed yet.');
+        expect(result.app.metadata.project.summary).not.toContain('Build and deploy are queued');
+        expect(result.app.metadata.project.openItems).toEqual(expect.arrayContaining([
+            'GitLab pipeline evidence is not observed yet.',
+        ]));
+        const project = service.buildAppProjectView(result.app, result.buildRun);
+        expect(project.progress.steps).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 'build',
+                status: 'pending',
+            }),
+        ]));
+        expect(result.message).toContain('Resumed Tetris Site');
+    });
+
     test('createApp reuses the session-linked managed app for unnamed follow-up prompts', async () => {
         const existingApp = {
             id: 'app-1',

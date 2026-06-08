@@ -2160,6 +2160,9 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
         if (parseUserCheckpointResponseMessage(prompt)) {
             return false;
         }
+        if (hasRoutineRemoteRepairIntent(prompt)) {
+            return false;
+        }
         return checkpointPolicy.enabled === true
             && Number(checkpointPolicy.remaining || 0) > 0
             && !checkpointPolicy.pending;
@@ -2224,6 +2227,19 @@ function hasExplicitRemoteWorkbenchIntent(prompt = '') {
         /\bremote\b[\s\S]{0,40}\b(repo status|git snapshot|git prepare|git commit|git revert|apply patch|file read|file write|grep|build|test|logs|rollout|verify)\b/i,
         /\b(structured|workbench)\b[\s\S]{0,40}\b(remote|repo|build|test|logs|rollout|verify)\b/i,
     ].some((pattern) => pattern.test(text));
+}
+
+function hasRoutineRemoteRepairIntent(prompt = '') {
+    const text = String(prompt || '').trim().toLowerCase();
+    if (!text) {
+        return false;
+    }
+
+    const actionCue = /\b(check|inspect|verify|diagnose|debug|troubleshoot|status|state|health|look at|see what'?s going on|fix|repair|try again|retry|rerun|redeploy|deploy|rollout|build|publish|logs?)\b/.test(text);
+    const remoteCue = /\b(remote|server|host|cluster|k3s|k8s|kubernetes|kubectl|pod|deployment|service|ingress|traefik|tls|dns|gitlab|runner|managed[- ]app|public host|public url|live|deployed|demoserver2\.buzz|secdevsolutions\.help)\b/.test(text);
+    const explicitDecisionCue = /\b(choose|decide|which option|pick one|ask me|confirm before|approval|approve|permission|credential|secret|password|token|delete|destroy|remove namespace|wipe|reset)\b/.test(text);
+
+    return actionCue && remoteCue && !explicitDecisionCue;
 }
 
 function buildK3sDeployPreflightParams(prompt = '') {
