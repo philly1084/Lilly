@@ -53,6 +53,27 @@ describe('AIDocumentGenerator', () => {
     expect(result.metadata.parseRecovery).toBe('plain-text-fallback');
   });
 
+  test('recovers visible document text when the model returns raw html instead of JSON', async () => {
+    const generator = new AIDocumentGenerator({
+      createResponse: jest.fn(async () => buildResponse(
+        '<!doctype html><html><head><title>Cognac Launch Brief</title><style>body{color:white}</style></head><body><main><h1>Cognac Launch Brief</h1><p>Lead with cellar provenance, tasting notes, and buyer confidence.</p><script>window.x=1</script></main></body></html>',
+      )),
+    });
+
+    const result = await generator.generate('Create a Cognac launch brief', {
+      format: 'html',
+      qualityPass: false,
+    });
+
+    expect(result.title).toBe('Cognac Launch Brief');
+    expect(result.sections[0].heading).toBe('Cognac Launch Brief');
+    expect(result.sections[0].content).toContain('Lead with cellar provenance');
+    expect(result.sections[0].content).not.toContain('<!doctype');
+    expect(result.sections[0].content).not.toContain('<main>');
+    expect(result.sections[0].content).not.toContain('window.x');
+    expect(result.metadata.parseRecovery).toBe('html-fallback');
+  });
+
   test('document system prompt includes request-matched format guidance for html docs', () => {
     const generator = new AIDocumentGenerator({
       createResponse: jest.fn(),

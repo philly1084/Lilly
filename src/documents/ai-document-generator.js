@@ -53,6 +53,28 @@ function sanitizeVisibleDocumentText(value = '') {
     .trim();
 }
 
+function decodeBasicHtmlEntities(value = '') {
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function stripHtmlToVisibleText(value = '') {
+  return decodeBasicHtmlEntities(String(value || '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim());
+}
+
 const PRESENTATION_TEMPLATE_CATALOG = [
   {
     id: 'editorial-opener',
@@ -500,8 +522,8 @@ class AIDocumentGenerator {
         documentType: options.documentType || 'document',
       });
     } catch (error) {
-      console.error('[AIDocumentGenerator] Generation failed:', error);
       if (error?.responseText) {
+        console.warn('[AIDocumentGenerator] Recovering from non-JSON AI response:', error.message);
         const fallbackContent = this.normalizeDocumentStructure(
           this.buildFallbackDocumentFromText(error.responseText, prompt, options),
         );
@@ -510,6 +532,7 @@ class AIDocumentGenerator {
           documentType: options.documentType || 'document',
         });
       }
+      console.error('[AIDocumentGenerator] Generation failed:', error);
       throw new Error(`AI generation failed: ${error.message}`);
     }
   }
@@ -1072,10 +1095,29 @@ Return JSON:
   buildFallbackDocumentFromText(text = '', prompt = '', options = {}) {
     const rawText = String(text || '').trim();
     const theme = options.designPlan?.themeSuggestion || options.theme || options.style || 'editorial';
+    const rawHtmlDocument = /^(?:<!doctype\s+html\b|<html\b|<head\b|<body\b)/i.test(rawText);
+    const htmlTitle = rawHtmlDocument
+      ? stripHtmlToVisibleText(rawText.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '')
+      : '';
+    const htmlHeading = rawHtmlDocument
+      ? stripHtmlToVisibleText(rawText.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '')
+      : '';
+    const htmlBodySource = rawHtmlDocument
+      ? (
+        rawText.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1]
+        || rawText.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1]
+        || rawText
+      )
+      : '';
+    const recoveredText = rawHtmlDocument
+      ? stripHtmlToVisibleText(htmlBodySource)
+      : rawText;
     const title = options.designPlan?.titleSuggestion
+      || htmlTitle
+      || htmlHeading
       || this.deriveTitleFromPrompt(prompt)
       || 'Generated Document';
-    const heading = options.designPlan?.outline?.[0]?.heading || 'Overview';
+    const heading = options.designPlan?.outline?.[0]?.heading || htmlHeading || 'Overview';
 
     return {
       title,
@@ -1084,12 +1126,12 @@ Return JSON:
       sections: [
         {
           heading,
-          content: rawText,
+          content: recoveredText || rawText,
           level: 1,
         },
       ],
       metadata: {
-        parseRecovery: 'plain-text-fallback',
+        parseRecovery: rawHtmlDocument ? 'html-fallback' : 'plain-text-fallback',
       },
     };
   }
