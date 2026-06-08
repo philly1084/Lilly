@@ -323,6 +323,11 @@ const AUTO_TOOL_ALLOWLIST = new Set([
     'managed-app',
     'code-sandbox',
     'security-scan',
+    'skill-list',
+    'skill-read',
+    'skill-context',
+    'skill-create',
+    'skill-update',
     ...PROMOTED_LOCAL_TOOL_IDS,
     'tool-doc-read',
 ]);
@@ -2174,6 +2179,16 @@ function shouldAutoUseTool(toolId, prompt = '', skill = null, options = {}) {
             && hasExplicitSubAgentIntent(prompt);
     }
 
+    if ([
+        'skill-list',
+        'skill-read',
+        'skill-context',
+        'skill-create',
+        'skill-update',
+    ].includes(toolId)) {
+        return hasSkillLifecycleIntent(prompt);
+    }
+
     return true;
 }
 
@@ -2423,7 +2438,38 @@ function hasExplicitSubAgentIntent(prompt = '') {
         /\bdelegate\b[\s\S]{0,40}\b(task|tasks|worker|workers|agent|agents|job|jobs)\b/i,
         /\bparallel\b[\s\S]{0,30}\b(task|tasks|worker|workers|agent|agents)\b/i,
         /\bspawn\b[\s\S]{0,30}\b(worker|workers|agent|agents|sub[- ]agent)\b/i,
+        /\bskill[- ]?(?:creator|builder|building|authoring)\s+agent\b/i,
+        /\bagent\b[\s\S]{0,40}\b(?:create|build|author|update|write)\b[\s\S]{0,40}\bskills?\b/i,
+        /\bskills?\b[\s\S]{0,40}\b(?:created|built|authored|updated|written)\b[\s\S]{0,40}\b(?:by|in|inside)\b[\s\S]{0,20}\bagent\b/i,
     ].some((pattern) => pattern.test(text));
+}
+
+function hasSkillLifecycleIntent(prompt = '') {
+    const text = String(prompt || '').trim();
+    if (!text) {
+        return false;
+    }
+
+    return [
+        /\b(?:create|make|build|author|write|register|save|turn)\b[\s\S]{0,50}\bskills?\b/i,
+        /\b(?:update|edit|revise|improve|patch|fix)\b[\s\S]{0,50}\bskills?\b/i,
+        /\bskills?\b[\s\S]{0,50}\b(?:create|make|build|author|write|register|update|edit|revise|improve|patch|chain|combine)\b/i,
+        /\bskill[- ]?(?:creator|builder|building|authoring|workshop)\b/i,
+        /\b(?:chain|combine)\b[\s\S]{0,40}\btools?\b[\s\S]{0,40}\bskills?\b/i,
+        /\bskills?\b[\s\S]{0,40}\b(?:chain|combine)\b[\s\S]{0,40}\btools?\b/i,
+        /\bregistered skills?\b/i,
+        /\bskill[- ]context\b/i,
+    ].some((pattern) => pattern.test(text));
+}
+
+function hasSkillCreateIntent(prompt = '') {
+    return /\b(?:create|make|build|author|write|register|save|turn)\b[\s\S]{0,50}\bskills?\b/i.test(String(prompt || ''))
+        || /\bskill[- ]?(?:creator|builder|building|authoring)\b/i.test(String(prompt || ''));
+}
+
+function hasSkillUpdateIntent(prompt = '') {
+    return /\b(?:update|edit|revise|improve|patch|fix)\b[\s\S]{0,50}\bskills?\b/i.test(String(prompt || ''))
+        || /\bskills?\b[\s\S]{0,50}\b(?:update|edit|revise|improve|patch|fix)\b/i.test(String(prompt || ''));
 }
 
 function hasManagedAppArtifactPublishIntent(prompt = '') {
@@ -3639,6 +3685,9 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
             || /\b(news|headline|headlines|article|articles|coverage|timeline|analysis|newsletter|current events?)\b/i.test(normalizedPrompt)
         );
     const hasSubAgentIntent = hasExplicitSubAgentIntent(prompt);
+    const hasSkillIntent = hasSkillLifecycleIntent(prompt);
+    const wantsSkillCreate = hasSkillCreateIntent(prompt);
+    const wantsSkillUpdate = hasSkillUpdateIntent(prompt);
     const canonicalWorkload = buildCanonicalWorkloadAction({
         request: prompt,
     }, {
@@ -3714,6 +3763,27 @@ function selectAutomaticToolDefinitions(automaticTools = [], prompt = '', option
 
     if (hasSubAgentIntent && availableToolIds.has('agent-delegate')) {
         selectedIds.add('agent-delegate');
+    }
+
+    if (hasSkillIntent) {
+        if (availableToolIds.has('skill-list')) {
+            selectedIds.add('skill-list');
+        }
+        if (availableToolIds.has('skill-context')) {
+            selectedIds.add('skill-context');
+        }
+        if (availableToolIds.has('tool-doc-read')) {
+            selectedIds.add('tool-doc-read');
+        }
+        if (wantsSkillCreate && availableToolIds.has('skill-create')) {
+            selectedIds.add('skill-create');
+        }
+        if (wantsSkillUpdate && availableToolIds.has('skill-update')) {
+            selectedIds.add('skill-update');
+        }
+        if (!wantsSkillCreate && !wantsSkillUpdate && availableToolIds.has('skill-read')) {
+            selectedIds.add('skill-read');
+        }
     }
 
     if (remoteWorkbenchToolId && explicitRemoteWorkbenchIntent) {
@@ -4429,6 +4499,10 @@ function buildAutomaticToolGuidance(automaticTools = [], options = {}) {
 
     if (automaticTools.some((entry) => entry.id === 'tool-doc-read')) {
         guidance.push('- Use `tool-doc-read` when the user asks how a tool works, what parameters it takes, or what its setup/limitations are. Pass the target `toolId`.');
+    }
+
+    if (automaticTools.some((entry) => String(entry.id || '').startsWith('skill-'))) {
+        guidance.push('- Skill lifecycle tools are available. Use `skill-list`/`skill-context` before creating duplicates, inspect exact tool contracts with `tool-doc-read`, then use `skill-create` or `skill-update` for compact registered skills and prove selection with `skill-context` sample prompts.');
     }
 
     guidance.push('Prefer tools over guessing when the user asks for live web data, extraction, or verification.');

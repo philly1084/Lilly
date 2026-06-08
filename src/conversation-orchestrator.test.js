@@ -842,6 +842,49 @@ describe('ConversationOrchestrator', () => {
         expect(toolPolicy.candidateToolIds).toContain('agent-delegate');
     });
 
+    test('routes skill creator agent requests to delegation and skill lifecycle tools', () => {
+        const toolIds = [
+            'agent-delegate',
+            'skill-list',
+            'skill-read',
+            'skill-context',
+            'skill-create',
+            'skill-update',
+            'tool-doc-read',
+        ];
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    toolIds.includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective: 'Use a skill creator agent to chain tools into skills without polluting the requesting chat.',
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
+
+        expect(toolPolicy.agencyProfile).toEqual(expect.objectContaining({
+            level: 'delegate',
+            delegation: 'explicit',
+        }));
+        expect(toolPolicy.candidateToolIds).toEqual(expect.arrayContaining([
+            'agent-delegate',
+            'skill-list',
+            'skill-context',
+            'skill-create',
+            'tool-doc-read',
+        ]));
+    });
+
     test('routes PII XLSX formula-plan prompts through the relationship calculator instead of documents', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {

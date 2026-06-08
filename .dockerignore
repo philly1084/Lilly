@@ -5,8 +5,8 @@ data/
 data/*
 !data/skills/
 data/skills/*
-!data/skills/remote-operations-system/
-!data/skills/remote-operations-system/*
+!data/skills/*/
+!data/skills/*/*
 !data/kokoro/
 data/kokoro/*
 !data/kokoro/voices/

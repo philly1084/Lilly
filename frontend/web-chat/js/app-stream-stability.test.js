@@ -151,6 +151,12 @@ describe('web-chat stream stability', () => {
             'document-workflow',
             'remote-cli-agent',
         ]));
+        expect(options.metadata.userSelectedToolIds).toEqual(expect.arrayContaining([
+            'web-search',
+            'web-fetch',
+            'document-workflow',
+            'remote-cli-agent',
+        ]));
         expect(options.metadata.userToolIntents).toEqual(expect.arrayContaining([
             expect.objectContaining({ id: 'research' }),
             expect.objectContaining({ id: 'documents' }),
@@ -282,7 +288,8 @@ describe('web-chat stream stability', () => {
         }));
         expect(options.metadata.plannedTools).toEqual(['remote-cli-agent']);
         expect(options.metadata.userSelectedToolIds).toEqual(['remote-cli-agent']);
-        expect(options.metadata.toolSelectionInstructions).toContain('selected the Remote CLI Agent tool chip');
+        expect(options.metadata.toolSelectionInstructions).toContain('activated the Remote CLI Agent tool chip');
+        expect(options.metadata.toolSelectionInstructions).toContain('do not require the tool name to appear');
     });
 
     test('infers remote-build context for typed remote tool commands without menu selections', () => {

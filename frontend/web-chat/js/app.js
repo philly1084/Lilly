@@ -1241,8 +1241,8 @@ class ChatApp {
             this.toolMenuBtn.classList.toggle('is-active', selectedCount > 0 || isOpen);
             this.toolMenuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
             this.toolMenuBtn.title = selectedCount > 0
-                ? `Plugins: ${buildToolIntentSelectionSummary(selectedDefinitions)}`
-                : 'Choose plugins';
+                ? `Tools: ${buildToolIntentSelectionSummary(selectedDefinitions)}`
+                : 'Choose tools';
         }
 
         this.toolMenuPanel?.querySelectorAll?.('[data-tool-intent-checkbox]').forEach((checkbox) => {
@@ -1483,6 +1483,7 @@ class ChatApp {
         }
 
         const selectedPlannedToolIds = new Set(this.getSelectedPlannedToolIds());
+        const activeDirectToolId = String(this.selectedDirectTool?.id || '').trim();
         const matchingTools = this.getToolCommandPickerTools();
         const query = String(this.toolCommandSearch?.value || '').trim();
 
@@ -1517,15 +1518,17 @@ class ChatApp {
 
         this.toolCommandList.innerHTML = matchingTools.map((tool) => {
             const isSuggested = selectedPlannedToolIds.has(tool.id);
+            const isActive = activeDirectToolId === tool.id;
             const params = Object.keys(this.getToolCommandStarterParams(tool));
             const metaParts = [
                 tool.category || 'tool',
+                isActive ? 'active next message' : '',
                 isSuggested ? 'selected lane' : '',
                 params.length ? `params: ${params.slice(0, 4).join(', ')}` : 'params: {}',
             ].filter(Boolean);
 
             return `
-                <button type="button" class="tool-command-option ${isSuggested ? 'is-suggested' : ''}" data-tool-command-id="${escapeToolMenuHtmlAttr(tool.id)}" role="option">
+                <button type="button" class="tool-command-option ${isSuggested ? 'is-suggested' : ''} ${isActive ? 'is-active' : ''}" data-tool-command-id="${escapeToolMenuHtmlAttr(tool.id)}" role="option" aria-selected="${isActive ? 'true' : 'false'}">
                     <span class="tool-command-option__icon"><i data-lucide="${escapeToolMenuHtmlAttr(tool.icon)}" class="w-4 h-4" aria-hidden="true"></i></span>
                     <span class="tool-command-option__copy">
                         <span class="tool-command-option__name">${escapeToolMenuHtml(tool.name || tool.id)}</span>
@@ -1624,6 +1627,7 @@ class ChatApp {
             toolSelectionSource: 'web-chat-plugin-menu',
             selectedPluginLanes,
             plannedTools,
+            userSelectedToolIds: plannedTools,
             userToolIntents,
             userToolDecisionTree: decisionTree,
             toolSelectionInstructions: instructionLines.join('\n'),
@@ -1666,7 +1670,7 @@ class ChatApp {
         const executionProfile = selectionOptions.executionProfile
             || (remoteToolRequested ? 'remote-build' : '');
         const existingInstructions = String(selectionMetadata.toolSelectionInstructions || '').trim();
-        const toolInstruction = `The user selected the ${tool.name} tool chip for this message. Treat it as a preferred tool hint while answering the typed chat content.`;
+        const toolInstruction = `The user activated the ${tool.name} tool chip for this message. Use that tool when it can satisfy the typed chat content; do not require the tool name to appear in the user's message.`;
 
         return {
             ...(executionProfile ? { executionProfile } : {}),

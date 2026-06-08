@@ -20,6 +20,7 @@ Primary tools:
 - `skill-context`: return compact matching skill context for a request.
 - `skill-create`: create a file-backed skill.
 - `skill-update`: update an existing skill.
+- `agent-delegate`: isolate bounded creator-agent work when the user asks for a skill creator agent or multi-pass skill building without main-chat clutter.
 - `self-reflection-update`: dry-run and approval-gated skill patches.
 - `tool-doc-read`: inspect tool docs before encoding tool chains.
 
@@ -40,6 +41,11 @@ Quick flow:
 4. If updating, patch the exact sentence or section instead of rewriting the whole skill.
 5. Use `skill-context` with a sample request to confirm the right skill is selected.
 6. Run focused tests when skill-store or route behavior changes.
+
+Creator-agent lane:
+- Use `data/skills/skill-creator-agent/` when the user wants a separate skill-building agent, recursive skill builder, or tool-chain-to-skill workflow.
+- The main chat owns the brief, delegation, review, and compact handoff; the delegated creator task owns inspection, drafting, create/update, and proof notes.
+- Prove the result with `skill-context` sample prompts before treating a new skill as usable.
 
 Acceptance checks:
 - The skill complements tools; it does not duplicate a tool implementation.

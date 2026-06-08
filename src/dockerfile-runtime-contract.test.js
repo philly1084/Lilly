@@ -26,6 +26,7 @@ describe('Docker runtime contract', () => {
 
     expect(dockerfile).toContain('COPY data/skills/ ./data/skills/');
     expect(dockerignore).toContain('!data/skills/');
-    expect(dockerignore).toContain('!data/skills/remote-operations-system/');
+    expect(dockerignore).toContain('!data/skills/*/');
+    expect(dockerignore).toContain('!data/skills/*/*');
   });
 });

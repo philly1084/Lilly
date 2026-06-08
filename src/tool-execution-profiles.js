@@ -55,6 +55,11 @@ const BASE_SHARED_TOOL_IDS = Object.freeze([
     'user-checkpoint',
     'git-safe',
     'tool-doc-read',
+    'skill-list',
+    'skill-read',
+    'skill-context',
+    'skill-create',
+    'skill-update',
     'code-sandbox',
     ...PROMOTED_LOCAL_TOOL_IDS,
 ]);

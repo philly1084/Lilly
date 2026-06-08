@@ -211,6 +211,29 @@ describe('ToolManager image tools', () => {
     expect(result.data.context).toContain('Use immediate bounded `agent-delegate` bursts');
   });
 
+  test('skill-context selects the skill creator agent workflow', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+
+    const prompts = [
+      'use a skill creator agent that can chain tools into skills without polluting the requesting chat',
+      'build a recursive skill builder that combines tools into reusable long form skills',
+    ];
+
+    for (const text of prompts) {
+      const result = await toolManager.executeTool('skill-context', {
+        text,
+        limit: 3,
+      }, {});
+
+      expect(result.success).toBe(true);
+      expect(result.data.selectedSkills).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'skill-creator-agent' }),
+      ]));
+      expect(result.data.context).toContain('Use `agent-delegate` with one bounded creator task');
+    }
+  });
+
   test('registers remote operation skills with kubectl and k3s trigger coverage', async () => {
     const toolManager = new ToolManager();
     await toolManager.initialize();

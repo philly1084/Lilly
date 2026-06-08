@@ -442,6 +442,80 @@ function createToolManager() {
                 },
             },
         }],
+        ['tool-doc-read', {
+            id: 'tool-doc-read',
+            name: 'Tool Doc Read',
+            description: 'Read exact tool documentation and parameter notes.',
+            inputSchema: {
+                type: 'object',
+                required: ['toolId'],
+                properties: {
+                    toolId: { type: 'string' },
+                },
+            },
+        }],
+        ['skill-list', {
+            id: 'skill-list',
+            name: 'Skill List',
+            description: 'List registered reusable skills.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    search: { type: 'string' },
+                },
+            },
+        }],
+        ['skill-read', {
+            id: 'skill-read',
+            name: 'Skill Read',
+            description: 'Read one registered skill.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                properties: {
+                    id: { type: 'string' },
+                },
+            },
+        }],
+        ['skill-context', {
+            id: 'skill-context',
+            name: 'Skill Context',
+            description: 'Return matching registered skill context for a request.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    text: { type: 'string' },
+                    toolIds: { type: 'array', items: { type: 'string' } },
+                },
+            },
+        }],
+        ['skill-create', {
+            id: 'skill-create',
+            name: 'Skill Create',
+            description: 'Create a file-backed registered skill.',
+            inputSchema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    body: { type: 'string' },
+                },
+            },
+        }],
+        ['skill-update', {
+            id: 'skill-update',
+            name: 'Skill Update',
+            description: 'Update an existing registered skill.',
+            inputSchema: {
+                type: 'object',
+                required: ['id'],
+                properties: {
+                    id: { type: 'string' },
+                    body: { type: 'string' },
+                },
+            },
+        }],
         ['code-sandbox', {
             id: 'code-sandbox',
             name: 'Code Sandbox',
@@ -533,6 +607,12 @@ function createToolManager() {
         ['k3s-deploy', { enabled: true, triggerPatterns: ['deploy to k3s', 'kubectl apply', 'rollout status'], requiresConfirmation: true }],
         ['managed-app', { enabled: true, triggerPatterns: ['managed app', 'gitlab managed app'], requiresConfirmation: true }],
         ['agent-delegate', { enabled: true, triggerPatterns: ['sub-agent', 'delegate tasks'], requiresConfirmation: false }],
+        ['tool-doc-read', { enabled: true, triggerPatterns: ['tool docs', 'tool documentation'], requiresConfirmation: false }],
+        ['skill-list', { enabled: true, triggerPatterns: ['list skills', 'registered skills'], requiresConfirmation: false }],
+        ['skill-read', { enabled: true, triggerPatterns: ['read skill', 'skill details'], requiresConfirmation: false }],
+        ['skill-context', { enabled: true, triggerPatterns: ['skill context', 'match skills'], requiresConfirmation: false }],
+        ['skill-create', { enabled: true, triggerPatterns: ['create skill', 'skill creator'], requiresConfirmation: false }],
+        ['skill-update', { enabled: true, triggerPatterns: ['update skill', 'revise skill'], requiresConfirmation: false }],
         ['code-sandbox', { enabled: true, triggerPatterns: ['sandbox', 'run code'], requiresConfirmation: false }],
         ['user-checkpoint', { enabled: true, triggerPatterns: ['ask a checkpoint question'], requiresConfirmation: false }],
         ['document-workflow', { enabled: true, triggerPatterns: ['generate document', 'make slides', 'create brief'], requiresConfirmation: false }],
@@ -1031,6 +1111,34 @@ describe('openai-client automatic tool orchestration helpers', () => {
         expect(guidance).toContain('instead of asking the user which websites to scrape');
         expect(guidance).toContain('approvedDomains` from the chosen result host');
         expect(guidance).toContain('should not stop to ask the user for a public source list');
+    });
+
+    test('selects skill lifecycle and delegation tools for skill creator agent requests', () => {
+        const toolManager = createToolManager();
+        const prompt = 'Use a skill creator agent to chain tools into skills for this goal without polluting the requesting chat.';
+        const toolContext = {
+            workloadService: { isAvailable: () => true },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(selectedIds).toEqual(expect.arrayContaining([
+            'agent-delegate',
+            'skill-list',
+            'skill-context',
+            'skill-create',
+            'tool-doc-read',
+        ]));
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('agent-delegate');
+
+        const guidance = __testUtils.buildAutomaticToolGuidance(selectedTools);
+        expect(guidance).toContain('Skill lifecycle tools are available');
+        expect(guidance).toContain('prove selection with `skill-context` sample prompts');
     });
 
     test('asset search guidance explains how to recover prior files and visuals', () => {

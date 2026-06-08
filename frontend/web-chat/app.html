@@ -861,13 +861,13 @@
                         </div>
                         <div id="composer-shell" class="relative flex items-end gap-2 bg-bg-tertiary rounded-xl border border-border focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 transition-all shadow-sm">
                             <div class="tool-menu-wrap">
-                                <button id="tool-menu-btn" class="tool-menu-btn" type="button" title="Choose plugins" aria-label="Choose plugins" aria-haspopup="menu" aria-expanded="false" aria-controls="tool-menu-panel">
+                                <button id="tool-menu-btn" class="tool-menu-btn" type="button" title="Choose tools" aria-label="Choose tools" aria-haspopup="menu" aria-expanded="false" aria-controls="tool-menu-panel">
                                     <i data-lucide="plus" class="w-5 h-5" aria-hidden="true"></i>
                                     <span id="tool-menu-count" class="tool-menu-count hidden" aria-hidden="true">0</span>
                                 </button>
-                                <div id="tool-menu-panel" class="tool-menu-panel hidden" role="menu" aria-label="Plugin choices">
+                                <div id="tool-menu-panel" class="tool-menu-panel hidden" role="menu" aria-label="Tool choices">
                                     <div class="tool-menu-panel__head">
-                                        <span class="tool-menu-panel__title">Plugins</span>
+                                        <span class="tool-menu-panel__title">Tools</span>
                                         <span id="tool-menu-summary" class="tool-menu-panel__summary">None selected</span>
                                     </div>
                                     <div class="tool-menu-grid">
@@ -942,18 +942,18 @@
                                             <span>Skill</span>
                                         </button>
                                         <button type="button" data-tool-menu-action="command">
-                                            <i data-lucide="square-terminal" class="w-4 h-4" aria-hidden="true"></i>
-                                            <span>Tool</span>
+                                            <i data-lucide="wrench" class="w-4 h-4" aria-hidden="true"></i>
+                                            <span>Use Tool</span>
                                         </button>
                                         <button type="button" data-tool-menu-action="clear">
                                             <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
                                             <span>Clear</span>
                                         </button>
                                     </div>
-                                    <div id="tool-command-picker" class="tool-command-picker hidden" aria-label="Tool picker">
+                                    <div id="tool-command-picker" class="tool-command-picker hidden" aria-label="Activate tool picker">
                                         <div class="tool-command-picker__head">
-                                            <span class="tool-command-picker__title">Tool</span>
-                                            <span id="tool-command-status" class="tool-command-picker__status">Pick a tool</span>
+                                            <span class="tool-command-picker__title">Activate Tool</span>
+                                            <span id="tool-command-status" class="tool-command-picker__status">Pick a tool for the next message</span>
                                         </div>
                                         <div class="tool-command-picker__search">
                                             <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>

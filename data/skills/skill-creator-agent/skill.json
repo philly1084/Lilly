@@ -1,0 +1,65 @@
+{
+  "id": "skill-creator-agent",
+  "name": "Skill Creator Agent",
+  "description": "Workflow for isolating skill-design work in a bounded creator agent that inspects existing tools, creates or updates registered skills, chains multiple tool passes over the same artifact, and returns compact proof to the requesting chat.",
+  "version": "1.0.0",
+  "enabled": true,
+  "tools": [
+    "agent-delegate",
+    "skill-list",
+    "skill-read",
+    "skill-context",
+    "skill-create",
+    "skill-update",
+    "tool-doc-read",
+    "file-search",
+    "self-reflection-update"
+  ],
+  "triggerPatterns": [
+    "skill creator agent",
+    "create skills in another agent",
+    "skill-building agent",
+    "skill builder agent",
+    "agent that creates skills",
+    "skills that chain tools",
+    "chain tools into skills",
+    "combine tools into skills",
+    "multi-step skill creation",
+    "recursive skill builder",
+    "do not pollute the requesting chat",
+    "long form skills",
+    "grow features naturally with agents"
+  ],
+  "chain": [
+    {
+      "step": "Classify the requested goal and decide whether it needs one skill, a small skill bundle, or an update to an existing skill.",
+      "tool": "skill-context"
+    },
+    {
+      "step": "Spawn a bounded skill-creator sub-agent with only the goal, relevant repo paths, existing skill/tool context, write targets, and acceptance checks.",
+      "tool": "agent-delegate"
+    },
+    {
+      "step": "Inside the creator agent, inspect existing skills and exact tool contracts before drafting any workflow.",
+      "tool": "tool-doc-read"
+    },
+    {
+      "step": "Create or update compact registered skills with exact tool ids, trigger phrases, chain steps, proof loops, and failure handling.",
+      "tool": "skill-create"
+    },
+    {
+      "step": "Run a second pass over the same artifact for trigger coverage, context budget, tool-chain accuracy, and duplicate-skill risk.",
+      "tool": "skill-read"
+    },
+    {
+      "step": "Prove the new or updated skill triggers from user-facing sample prompts and report only the summary, files changed, selected skill ids, and verification evidence.",
+      "tool": "skill-context"
+    }
+  ],
+  "contextPolicy": {
+    "maxChars": 4200,
+    "exposeBody": true
+  },
+  "createdAt": "2026-06-07T00:00:00.000Z",
+  "updatedAt": "2026-06-07T00:00:00.000Z"
+}

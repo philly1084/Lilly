@@ -822,7 +822,40 @@ function hasMultiAgentIntentText(text = '') {
         /\bdelegate\b[\s\S]{0,40}\b(task|tasks|worker|workers|agent|agents|job|jobs)\b/i,
         /\bparallel\b[\s\S]{0,30}\b(task|tasks|worker|workers|agent|agents|workstreams?|streams?)\b/i,
         /\bspawn\b[\s\S]{0,30}\b(worker|workers|agent|agents|sub[- ]agent)\b/i,
+        /\bskill[- ]?(?:creator|builder|building|authoring)\s+agent\b/i,
+        /\bagent\b[\s\S]{0,40}\b(?:create|build|author|update|write)\b[\s\S]{0,40}\bskills?\b/i,
+        /\bskills?\b[\s\S]{0,40}\b(?:created|built|authored|updated|written)\b[\s\S]{0,40}\b(?:by|in|inside)\b[\s\S]{0,20}\bagent\b/i,
     ].some((pattern) => pattern.test(normalized));
+}
+
+function hasSkillLifecycleIntentText(text = '') {
+    const normalized = String(text || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    return [
+        /\b(?:create|make|build|author|write|register|save|turn)\b[\s\S]{0,50}\bskills?\b/i,
+        /\b(?:update|edit|revise|improve|patch|fix)\b[\s\S]{0,50}\bskills?\b/i,
+        /\bskills?\b[\s\S]{0,50}\b(?:create|make|build|author|write|register|update|edit|revise|improve|patch|chain|combine)\b/i,
+        /\bskill[- ]?(?:creator|builder|building|authoring|workshop)\b/i,
+        /\b(?:chain|combine)\b[\s\S]{0,40}\btools?\b[\s\S]{0,40}\bskills?\b/i,
+        /\bskills?\b[\s\S]{0,40}\b(?:chain|combine)\b[\s\S]{0,40}\btools?\b/i,
+        /\bregistered skills?\b/i,
+        /\bskill[- ]context\b/i,
+    ].some((pattern) => pattern.test(normalized));
+}
+
+function hasSkillCreateIntentText(text = '') {
+    const normalized = String(text || '');
+    return /\b(?:create|make|build|author|write|register|save|turn)\b[\s\S]{0,50}\bskills?\b/i.test(normalized)
+        || /\bskill[- ]?(?:creator|builder|building|authoring)\b/i.test(normalized);
+}
+
+function hasSkillUpdateIntentText(text = '') {
+    const normalized = String(text || '');
+    return /\b(?:update|edit|revise|improve|patch|fix)\b[\s\S]{0,50}\bskills?\b/i.test(normalized)
+        || /\bskills?\b[\s\S]{0,50}\b(?:update|edit|revise|improve|patch|fix)\b/i.test(normalized);
 }
 
 function hasNeuralWaveResearchIntentText(text = '') {
@@ -1774,6 +1807,9 @@ function buildScoredCandidateToolMap({
     hasManagedAppIntent = false,
     hasRemoteCliAgentAuthoringRequest = false,
     hasExplicitRemoteCliAgentRequest = false,
+    hasSkillLifecycleIntent = false,
+    hasSkillCreateIntent = false,
+    hasSkillUpdateIntent = false,
     explicitGitIntent = false,
     explicitK3sDeployIntent = false,
     hasWorkloadSetupIntent = false,
@@ -1883,6 +1919,14 @@ function buildScoredCandidateToolMap({
 
     if (canUseSubAgents && hasSubAgentIntent) {
         adjustCandidateToolScore(scoreMap, 'agent-delegate', 1.2, 'The user explicitly requested delegated or parallel agent work.');
+    }
+    if (hasSkillLifecycleIntent) {
+        adjustCandidateToolScore(scoreMap, 'skill-list', 0.85, 'Skill-building work should inspect existing registered skills before creating duplicates.');
+        adjustCandidateToolScore(scoreMap, 'skill-context', 1.05, 'Skill-building work must prove matching registered skill context from sample prompts.');
+        adjustCandidateToolScore(scoreMap, 'tool-doc-read', 0.65, 'Skill-building work should inspect exact tool contracts before encoding tool chains.');
+        adjustCandidateToolScore(scoreMap, 'skill-create', hasSkillCreateIntent ? 1.1 : 0, 'The request asks for creating or registering reusable skills.');
+        adjustCandidateToolScore(scoreMap, 'skill-update', hasSkillUpdateIntent ? 0.95 : 0, 'The request asks for updating or refining reusable skills.');
+        adjustCandidateToolScore(scoreMap, 'skill-read', !hasSkillCreateIntent && !hasSkillUpdateIntent ? 0.55 : 0.2, 'Skill-building work may need to inspect a registered skill before deciding how to proceed.');
     }
     if (neuralWaveResearchMode) {
         adjustCandidateToolScore(scoreMap, 'agent-delegate', canUseSubAgents && hasSubAgentIntent ? 1.0 : 0, 'Neural-wave R&D mode can fan broad work into bounded helper agents before synthesis when delegation was explicit.');
@@ -11527,6 +11571,9 @@ class ConversationOrchestrator extends EventEmitter {
         const hasResearchBucketIntent = hasResearchBucketIntentText(prompt);
         const hasPublicSourceIndexIntent = hasPublicSourceIndexIntentText(prompt);
         const hasSubAgentIntent = hasExplicitSubAgentIntentText(prompt);
+        const hasSkillLifecycleIntent = hasSkillLifecycleIntentText(prompt);
+        const hasSkillCreateIntent = hasSkillCreateIntentText(prompt);
+        const hasSkillUpdateIntent = hasSkillUpdateIntentText(prompt);
         const hasManagedAppIntent = hasManagedAppIntentText(prompt);
         const hasManagedAppAuthoringRequest = hasManagedAppAuthoringIntent(prompt, { executionProfile });
         const hasRemoteCliAgentAuthoringRequest = hasRemoteCliAgentAuthoringIntent(objectiveText);
@@ -11752,6 +11799,9 @@ class ConversationOrchestrator extends EventEmitter {
                 hasManagedAppIntent: hasManagedAppIntent || (!hasExplicitDirectRemoteCliRequest && hasManagedAppAuthoringRequest),
                 hasRemoteCliAgentAuthoringRequest,
                 hasExplicitRemoteCliAgentRequest,
+                hasSkillLifecycleIntent,
+                hasSkillCreateIntent,
+                hasSkillUpdateIntent,
                 explicitGitIntent,
                 explicitK3sDeployIntent,
                 hasWorkloadSetupIntent,
@@ -12088,6 +12138,23 @@ class ConversationOrchestrator extends EventEmitter {
                 && !hasPiiWorkbookRelationshipRequest
                 && allowedToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)) {
                 candidates.add(DOCUMENT_WORKFLOW_TOOL_ID);
+            }
+        }
+
+        if (hasSkillLifecycleIntent) {
+            [
+                'skill-list',
+                'skill-context',
+                'tool-doc-read',
+            ].forEach((toolId) => allowedToolIds.includes(toolId) && candidates.add(toolId));
+            if (hasSkillCreateIntent && allowedToolIds.includes('skill-create')) {
+                candidates.add('skill-create');
+            }
+            if (hasSkillUpdateIntent && allowedToolIds.includes('skill-update')) {
+                candidates.add('skill-update');
+            }
+            if (!hasSkillCreateIntent && !hasSkillUpdateIntent && allowedToolIds.includes('skill-read')) {
+                candidates.add('skill-read');
             }
         }
 
