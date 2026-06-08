@@ -356,6 +356,10 @@ describe('PodcastService', () => {
     expect(prompt).toContain('- selected: Documentary Narrative');
     expect(prompt).toContain('User-provided presentation example:');
     expect(prompt).toContain('Do not overuse self-referential process language');
+    expect(prompt).toContain('source-grounded audio overview between two prepared hosts');
+    expect(prompt).toContain('Make the dialogue cumulative');
+    expect(prompt).toContain('subject-appropriate jokes only when they arise naturally');
+    expect(prompt).toContain('Do not over-reflect');
     expect(prompt).toContain('Prefer proper full scripts over short outline-like exchanges');
     expect(result.script.design).toEqual(expect.objectContaining({
       id: 'documentary-narrative',

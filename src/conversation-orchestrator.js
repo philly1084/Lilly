@@ -5508,8 +5508,16 @@ function collectJsonCandidatesFromText(text = '') {
     return candidates;
 }
 
+function normalizeCompactDsmlToolCallMarkup(text = '') {
+    return String(text || '')
+        .replace(/\uFF5C/g, '|')
+        .replace(/<\s*(\/?)\s*dsml[_-]?tool[_-]?calls\b([^>]*)>/gi, '<$1|DSML|tool_calls$2>')
+        .replace(/<\s*(\/?)\s*dsml[_-]?invoke\b([^>]*)>/gi, '<$1|DSML|invoke$2>')
+        .replace(/<\s*(\/?)\s*dsml[_-]?parameter\b([^>]*)>/gi, '<$1|DSML|parameter$2>');
+}
+
 function collectDsmlToolCallCandidatesFromText(text = '') {
-    const source = String(text || '').trim();
+    const source = normalizeCompactDsmlToolCallMarkup(text).trim();
     if (!source || !/<\s*[|｜]\s*(?:DSML\s*[|｜]\s*)?(?:tool_calls|invoke|parameter)\b/i.test(source)) {
         return [];
     }
@@ -14279,9 +14287,10 @@ class ConversationOrchestrator extends EventEmitter {
         if (allowedToolIds.includes('podcast')) {
             parts.push('Use `podcast` when the user wants a researched podcast episode, two-host script, voice synthesis, or final stitched podcast audio.');
             parts.push('When the user asks for a video podcast or podcast video, call `podcast` with `includeVideo: true`, `videoRenderMode: "storyboard"`, `videoImageMode: "mixed"`, and `videoGenerateImages: true` unless the user explicitly asks for waveform-only or no generated imagery. Use waveform-card for plain MP4/audio-visualizer requests.');
-            parts.push('Podcast audio is speaker-only by default. If the user asks to use admin, uploaded, saved, or configured podcast audio sources, set `voiceOnlyAudio:false` and include the requested `includeIntro`, `includeOutro`, and/or `includeMusicBed` flags so the admin Podcast Audio assets are mixed before video rendering.');
+            parts.push('Podcast audio is speaker-only by default. If the user asks to use admin, uploaded, saved, or configured podcast audio sources, set `voiceOnlyAudio:false` and include the requested `includeIntro`, `includeOutro`, and/or `includeMusicBed` flags so the admin Podcast Audio assets are mixed under the finished recording before video rendering.');
             parts.push('When the user asks for a proper, full, longer, detailed, or non-short podcast script, preserve that in the podcast tool parameters with a longer `durationMinutes` and, when appropriate, a `scriptDesign` or `scriptDesignExample`; do not answer with a short single exchange in chat.');
             parts.push('Podcast hosts should not repeatedly explain their own presentation method. Avoid self-referential lines about dissecting, unpacking, cadence, human rhythm, or why they are talking a certain way unless the user explicitly asks for meta commentary.');
+            parts.push('For two-host podcasts, aim for source-grounded back-and-forth: each host should pick up a specific claim, tension, example, or question from the previous turn and move it forward. Use subject-appropriate humor only when it serves the topic, and avoid padded emotional reflection or generic agreement.');
             parts.push('Do not treat podcast generation as plain chat writing. Prefer the `podcast` tool over separate `web-search` plus ad hoc scripting when the user is asking for the actual podcast deliverable.');
         }
 

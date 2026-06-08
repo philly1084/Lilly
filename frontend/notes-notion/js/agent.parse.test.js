@@ -329,6 +329,26 @@ Approved page plan:
         expect(parsed.actions).toEqual([]);
     });
 
+    test('strips compact DSML tool-call markup from visible assistant text', () => {
+        const agent = loadAgent();
+        const responseText = [
+            'I will check that source now.',
+            '<dsmltoolcalls>',
+            '<dsmlinvoke name="web-search">',
+            '<dsmlparameter name="query" string="true">internal query</dsmlparameter>',
+            '</dsmlinvoke>',
+            '</dsmltoolcalls>',
+        ].join(' ');
+
+        const parsed = agent._extractNotesActionPlan(responseText);
+
+        expect(parsed.displayText).toBe('I will check that source now.');
+        expect(parsed.displayText).not.toContain('dsml');
+        expect(parsed.displayText).not.toContain('web-search');
+        expect(parsed.displayText).not.toContain('internal query');
+        expect(parsed.actions).toEqual([]);
+    });
+
     test('suppresses raw notes action JSON instead of exposing block operation markup', () => {
         const agent = loadAgent();
         const responseText = JSON.stringify({

@@ -1300,7 +1300,7 @@ ${isSoloHost
     ? (isTrainingLesson
       ? 'Write as a single instructor speaking directly to the learner. Do not introduce a co-host, second speaker, interview guest, or alternating dialogue.'
       : 'Write as a single host speaking directly to the listener. Do not introduce a co-host, second speaker, interview guest, or alternating dialogue.')
-    : 'Write like a real podcast: light rapport, clean transitions, informative explanations, occasional reactions, but no filler overload.'}
+    : 'Write like a source-grounded audio overview between two prepared hosts: they should listen to the previous turn, answer it, add a sharper angle, challenge a lazy assumption, or hand off a concrete next question. Use light rapport and subject-appropriate jokes only when they arise naturally from the material; never force comedy, banter, or personality bits.'}
 ${isTrainingLesson
     ? 'For the training lesson, do not skip key steps. This is a technical class, not a regular podcast: avoid banter, topical-show chatter, teaser loops, and host personality bits. Teach in the order a skilled instructor would use: what the listener is about to be able to do, prerequisite idea, concrete setup step, demonstration, decision point, common mistake, correction, quick practical check, and recap. Make every check specific to the task, such as what setting to verify, what symptom to look for, or what choice to make next.'
     : ''}
@@ -1312,8 +1312,10 @@ ${videoFormat ? 'Structure the episode like a YouTube information show: cold ope
 Write for speech delivery, not for reading: use contractions, shorter sentences, and natural hand-offs.
 Avoid stacked statistics, semicolons, parenthetical asides, and phrasing that sounds like a report being read aloud.
 Spell out or rephrase awkward abbreviations and symbols so local TTS can read them smoothly.
+${isSoloHost ? '' : 'Make the dialogue cumulative: a host should rarely just agree and restate. Each reply should pick up one specific word, claim, example, or tension from the previous turn and move it forward. Include occasional grounded humor only when it clarifies the subject or releases tension.'}
 Do not overuse self-referential process language. Avoid repeated phrases about dissecting, unpacking, breaking down, zooming out, weaving together, cadence, human rhythm, or why the hosts are talking a certain way.
 Do not make the hosts explain their own conversational design, emotional stress point, or presentation strategy. Let the structure feel natural through the content.
+Do not over-reflect. Avoid padded emotional mirror-talk, repeated "that's interesting" acknowledgments, or commentary about how thoughtful the conversation is.
 Avoid repeating the same framing idea across multiple turns with only slightly different wording. Every turn must add a new fact, implication, question, contrast, or example.
 ${isTrainingLesson
     ? 'Do not fill time by talking about the course, the act of learning, or the structure itself. Avoid repeated classroom filler such as "in this lesson", "in this module", "as we learn", "on this journey", "let us dive in", and "by the end". Prefer a full instructor script over outline-like beats: a 20-30 minute class should usually have 24-45 substantive instructor turns, each adding a concept, setup detail, demonstration step, decision point, common error, correction, practical check, or recap. Vary sentence length: use some short direct sentences, then a medium explanatory sentence; avoid long drawn-out sentences chained with multiple clauses.'

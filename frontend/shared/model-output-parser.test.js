@@ -102,6 +102,22 @@ describe('model-output-parser', () => {
         expect(normalized).not.toContain('clean HTML only');
     });
 
+    test('strips compact DSML tool-call tags from visible output', () => {
+        const normalized = parser.normalizeModelOutputMarkdown([
+            'I will check that now.',
+            '<dsmltoolcalls>',
+            '<dsmlinvoke name="web-search">',
+            '<dsmlparameter name="query" string="true">private tool request</dsmlparameter>',
+            '</dsmlinvoke>',
+            '</dsmltoolcalls>',
+        ].join(' '));
+
+        expect(normalized).toBe('I will check that now.');
+        expect(normalized).not.toContain('dsml');
+        expect(normalized).not.toContain('web-search');
+        expect(normalized).not.toContain('private tool request');
+    });
+
     test('normalizes lightweight presentation markup outside code fences', () => {
         const normalized = parser.normalizeModelOutputMarkdown('This is ==important== and ::warning[check this].\n\n```md\n==literal== ::warning[literal]\n```');
 

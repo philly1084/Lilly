@@ -4001,6 +4001,95 @@ describe('ConversationOrchestrator', () => {
         expect(result.output).toBe('The remote Sophia site inspection ran and returned the current index.html, so the next step is to apply the requested content changes.');
     });
 
+    test('recovers compact DSML remote-command tool calls by executing them', async () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'ubuntu',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const leakedPayload = [
+            'I will inspect the deployment now.',
+            '<dsmltoolcalls>',
+            '<dsmlinvoke name="remote-command">',
+            '<dsmlparameter name="host" string="true">162.55.163.199</dsmlparameter>',
+            '<dsmlparameter name="username" string="true">root</dsmlparameter>',
+            '<dsmlparameter name="command" string="true">kubectl get pods -n web -o wide</dsmlparameter>',
+            '</dsmlinvoke>',
+            '</dsmltoolcalls>',
+        ].join('\n');
+        const llmClient = {
+            createResponse: jest.fn()
+                .mockResolvedValueOnce(buildResponse(leakedPayload, 'resp_invalid_compact_dsml_remote_payload'))
+                .mockResolvedValueOnce(buildResponse(
+                    'The remote pod inspection ran and returned the web namespace pod list.',
+                    'resp_repaired_compact_dsml_remote_payload',
+                )),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({ steps: [] })),
+        };
+        const toolManager = {
+            getTool: jest.fn((toolId) => (
+                ['remote-command', 'web-search', 'web-fetch', 'file-read', 'file-search', 'tool-doc-read']
+                    .includes(toolId)
+                    ? { id: toolId, description: toolId }
+                    : null
+            )),
+            executeTool: jest.fn().mockResolvedValue({
+                success: true,
+                toolId: 'remote-command',
+                data: {
+                    stdout: 'web-site-abc Running',
+                    stderr: '',
+                    host: '162.55.163.199:22',
+                },
+            }),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({ id: 'session-compact-dsml-remote-payload', metadata: {} }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue([]),
+            rememberResponse: jest.fn(),
+        };
+
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager,
+            sessionStore,
+            memoryService,
+        });
+
+        const result = await orchestrator.executeConversation({
+            input: 'SSH into 162.55.163.199 and run the compact leaked DSML command.',
+            sessionId: 'session-compact-dsml-remote-payload',
+            executionProfile: 'remote-build',
+            stream: false,
+        });
+
+        expect(toolManager.executeTool).toHaveBeenCalledTimes(1);
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'remote-command',
+            expect.objectContaining({
+                host: '162.55.163.199',
+                username: 'root',
+                command: 'kubectl get pods -n web -o wide',
+            }),
+            expect.objectContaining({
+                sessionId: 'session-compact-dsml-remote-payload',
+                executionProfile: 'remote-build',
+            }),
+        );
+        expect(llmClient.createResponse).toHaveBeenCalledTimes(2);
+        expect(result.output).toBe('The remote pod inspection ran and returned the web namespace pod list.');
+    });
+
     test('recovers leaked Harmony remote-command tool calls by executing them', async () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

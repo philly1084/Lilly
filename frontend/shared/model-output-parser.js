@@ -140,6 +140,27 @@
         return '';
     }
 
+    function stripInternalToolCallMarkup(value) {
+        let text = String(value || '');
+        if (!text) {
+            return '';
+        }
+
+        text = text.replace(/<\s*dsml[_-]?tool[_-]?calls\b[^>]*>[\s\S]*?<\s*\/\s*dsml[_-]?tool[_-]?calls\s*>/gi, '');
+        text = text.replace(/<\s*dsml[_-]?tool[_-]?calls\b[^>]*>[\s\S]*$/i, '');
+        text = text.replace(/<\s*dsml[_-]?invoke\b[^>]*>[\s\S]*?<\s*\/\s*dsml[_-]?invoke\s*>/gi, '');
+        text = text.replace(/<\s*dsml[_-]?parameter\b[^>]*>[\s\S]*?<\s*\/\s*dsml[_-]?parameter\s*>/gi, '');
+        text = text.replace(/<\s*\/?\s*dsml[_-]?(?:tool[_-]?calls|invoke|parameter)\b[^>]*>/gi, '');
+
+        text = text.replace(/<\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?tool_?calls(?:\s*[|\uFF5C])?\s*>[\s\S]*?<\s*\/\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?tool_?calls(?:\s*[|\uFF5C])?\s*>/gi, '');
+        text = text.replace(/<\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?tool_?calls(?:\s*[|\uFF5C])?\s*>[\s\S]*$/i, '');
+        text = text.replace(/<\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?invoke\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?invoke(?:\s*[|\uFF5C])?\s*>/gi, '');
+        text = text.replace(/<\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?parameter\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?parameter(?:\s*[|\uFF5C])?\s*>/gi, '');
+        text = text.replace(/<\s*\/?\s*(?:[|\uFF5C]\s*)?(?:DSML\s*[|\uFF5C]\s*)?(?:tool_?calls|invoke|parameter)(?:\b[^>]*)?>/gi, '');
+
+        return text.trim();
+    }
+
     function stripXmlLikeModelWrappers(value) {
         let text = String(value || '').trim();
         const finalTags = ['final', 'answer', 'response', 'assistant_response', 'output', 'content'];
@@ -159,7 +180,7 @@
             return String(finalBlockMatch[1] || '').trim();
         }
 
-        return text
+        return stripInternalToolCallMarkup(text)
             .replace(/<(?:analysis|thinking|reasoning)\b[^>]*>[\s\S]*?<\/(?:analysis|thinking|reasoning)>/gi, '')
             .trim();
     }

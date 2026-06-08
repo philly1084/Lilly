@@ -825,6 +825,9 @@ const Agent = (function() {
     }
 
     function hasInternalToolCallMarkup(text = '') {
+        if (/<\s*dsml[_-]?(?:tool[_-]?calls|invoke|parameter)\b[^>]*>/i.test(String(text || ''))) {
+            return true;
+        }
         return /<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?(?:tool_calls|invoke|parameter)(?:\s*[|｜])?\b[^>]*>/i.test(String(text || ''));
     }
 
@@ -839,6 +842,11 @@ const Agent = (function() {
         value = value.replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?invoke\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?invoke(?:\s*[|｜])?\s*>/gi, '');
         value = value.replace(/<\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?parameter\b[^>]*>[\s\S]*?<\s*\/\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?parameter(?:\s*[|｜])?\s*>/gi, '');
         value = value.replace(/<\s*\/?\s*(?:[|｜]\s*)?(?:DSML\s*[|｜]\s*)?(?:tool_calls|invoke|parameter)(?:\b[^>]*)?>/gi, '');
+        value = value.replace(/<\s*dsml[_-]?tool[_-]?calls\b[^>]*>[\s\S]*?<\s*\/\s*dsml[_-]?tool[_-]?calls\s*>/gi, '');
+        value = value.replace(/<\s*dsml[_-]?tool[_-]?calls\b[^>]*>[\s\S]*$/i, '');
+        value = value.replace(/<\s*dsml[_-]?invoke\b[^>]*>[\s\S]*?<\s*\/\s*dsml[_-]?invoke\s*>/gi, '');
+        value = value.replace(/<\s*dsml[_-]?parameter\b[^>]*>[\s\S]*?<\s*\/\s*dsml[_-]?parameter\s*>/gi, '');
+        value = value.replace(/<\s*\/?\s*dsml[_-]?(?:tool[_-]?calls|invoke|parameter)\b[^>]*>/gi, '');
         return value.trim();
     }
 

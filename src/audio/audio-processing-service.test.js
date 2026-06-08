@@ -11,6 +11,14 @@ function createTestWav(bytes = [0, 0, 0, 0]) {
   });
 }
 
+function mockReadyAudioProcessing(service) {
+  jest.spyOn(service, 'getDiagnostics').mockReturnValue({
+    status: 'ready',
+    supportsMp3: true,
+    supportsMixing: true,
+  });
+}
+
 describe('AudioProcessingService', () => {
   test('builds podcast mastering with hiss, click, and clipping repair filters', () => {
     const service = new AudioProcessingService({
@@ -39,6 +47,7 @@ describe('AudioProcessingService', () => {
       ffmpegBinaryPath: 'ffmpeg',
       podcastMasteringEnabled: false,
     });
+    mockReadyAudioProcessing(service);
 
     const runFfmpeg = jest.spyOn(service, 'runFfmpeg').mockImplementation(async (args) => {
       await fs.writeFile(args[args.length - 1], speechWavBuffer);
@@ -53,7 +62,7 @@ describe('AudioProcessingService', () => {
 
     const mixArgs = runFfmpeg.mock.calls
       .map(([args]) => args)
-      .find((args) => args.includes('-filter_complex') && args.join(' ').includes('[bed][speech]'));
+      .find((args) => args.includes('-filter_complex') && args.join(' ').includes('[bed][program]'));
     const filterIndex = mixArgs.indexOf('-filter_complex') + 1;
 
     expect(mixArgs[filterIndex]).toContain('amix=inputs=2:duration=shortest');
@@ -72,6 +81,7 @@ describe('AudioProcessingService', () => {
       ffmpegBinaryPath: 'ffmpeg',
       podcastMasteringEnabled: false,
     });
+    mockReadyAudioProcessing(service);
 
     const runFfmpeg = jest.spyOn(service, 'runFfmpeg').mockImplementation(async (args) => {
       await fs.writeFile(args[args.length - 1], speechWavBuffer);
@@ -92,7 +102,47 @@ describe('AudioProcessingService', () => {
     ]));
     const mixArgs = runFfmpeg.mock.calls[1][0];
     const filterIndex = mixArgs.indexOf('-filter_complex') + 1;
-    expect(mixArgs[filterIndex]).toContain('[bed][speech]amix=inputs=2:duration=shortest');
+    expect(mixArgs[filterIndex]).toContain('[bed][program]amix=inputs=2:duration=shortest');
+  });
+
+  test('lays the music bed under the fully assembled intro, speech, and outro program', async () => {
+    const speechWavBuffer = createTestWav();
+    const service = new AudioProcessingService({
+      enabled: true,
+      ffmpegBinaryPath: 'ffmpeg',
+      podcastMasteringEnabled: false,
+      podcastIntroPath: __filename,
+      podcastOutroPath: __filename,
+      podcastMusicBedPath: __filename,
+    });
+    mockReadyAudioProcessing(service);
+
+    const runFfmpeg = jest.spyOn(service, 'runFfmpeg').mockImplementation(async (args) => {
+      await fs.writeFile(args[args.length - 1], speechWavBuffer);
+    });
+
+    await service.composePodcastAudio({
+      speechWavBuffer,
+      includeIntro: true,
+      includeOutro: true,
+      includeMusicBed: true,
+      enhanceSpeech: false,
+    });
+
+    expect(runFfmpeg).toHaveBeenCalledTimes(2);
+    const concatArgs = runFfmpeg.mock.calls[0][0];
+    const mixArgs = runFfmpeg.mock.calls[1][0];
+    const concatOutputPath = concatArgs[concatArgs.length - 1];
+    const mixFilter = mixArgs[mixArgs.indexOf('-filter_complex') + 1];
+
+    expect(concatArgs).toEqual(expect.arrayContaining([
+      '-filter_complex',
+      expect.stringContaining('concat=n=3:v=0:a=1'),
+    ]));
+    expect(mixArgs).toEqual(expect.arrayContaining(['-i', concatOutputPath]));
+    expect(mixFilter).toContain('[bed][program]amix=inputs=2:duration=shortest');
+    expect(mixFilter).toContain('afade=t=in');
+    expect(mixFilter).toContain('afade=t=out');
   });
 
   test('allows explicit podcast mastering when default mastering is disabled', async () => {
@@ -102,6 +152,7 @@ describe('AudioProcessingService', () => {
       ffmpegBinaryPath: 'ffmpeg',
       podcastMasteringEnabled: false,
     });
+    mockReadyAudioProcessing(service);
 
     const runFfmpeg = jest.spyOn(service, 'runFfmpeg').mockImplementation(async (args) => {
       await fs.writeFile(args[args.length - 1], speechWavBuffer);

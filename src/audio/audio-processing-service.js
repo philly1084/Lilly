@@ -374,73 +374,27 @@ class AudioProcessingService {
       : '';
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kimibuilt-podcast-compose-'));
     const speechPath = path.join(tempDir, 'speech.wav');
-    const mixedSpeechPath = path.join(tempDir, 'speech-mixed.wav');
+    const mixedSpeechPath = path.join(tempDir, 'program-mixed.wav');
     const finalPath = path.join(tempDir, 'podcast-final.wav');
     const masteredPath = path.join(tempDir, 'podcast-mastered.wav');
     const generatedBedPath = path.join(tempDir, 'generated-music-bed.wav');
 
     try {
       await fs.writeFile(speechPath, speechWavBuffer);
-      let currentPath = speechPath;
-      let resolvedBedPath = '';
-      const bytesPerSample = Math.max(1, Math.floor(format.bitsPerSample / 8));
-      const durationSeconds = format.data.length / Math.max(1, sampleRate * format.numChannels * bytesPerSample);
-      if (includeMusicBed || Boolean(String(musicBedPath || '').trim())) {
-        const requestedBedPath = String(musicBedPath || '').trim();
-        const configuredBedPath = String(this.audioProcessingConfig.podcastMusicBedPath || '').trim();
-        resolvedBedPath = requestedBedPath || configuredBedPath
-          ? this.resolveAssetPath(
-            requestedBedPath,
-            configuredBedPath,
-            'Podcast music bed audio',
-          )
-          : '';
-        if (!resolvedBedPath && includeMusicBed) {
-          await this.generateCalmMusicBed({
-            outputPath: generatedBedPath,
-            durationSeconds,
-            sampleRate,
-            channelLayout,
-          });
-          resolvedBedPath = generatedBedPath;
-        }
-      }
-
-      if (resolvedBedPath) {
-        const fadeOutStart = Math.max(0, durationSeconds - 2);
-        const filter = [
-          `[0:a]volume=${escapeFilterValue(bedLevel)},aresample=${sampleRate},aformat=sample_fmts=s16:channel_layouts=${channelLayout},apad,atrim=0:${durationSeconds.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=2[bed]`,
-          `[1:a]volume=${escapeFilterValue(speechLevel)},aresample=${sampleRate},aformat=sample_fmts=s16:channel_layouts=${channelLayout}[speech]`,
-          '[bed][speech]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[mixed]',
-          '[mixed]alimiter=limit=0.95[a]',
-        ].join(';');
-
-        await this.runFfmpeg([
-          '-y',
-          '-i', resolvedBedPath,
-          '-i', speechPath,
-          '-filter_complex', filter,
-          '-map', '[a]',
-          '-c:a', 'pcm_s16le',
-          mixedSpeechPath,
-        ], 'audio_mix_failed', 'ffmpeg failed to mix the podcast music bed.');
-        currentPath = mixedSpeechPath;
-      }
-
       const concatInputs = [];
       const concatLevels = [];
       if (resolvedIntroPath) {
         concatInputs.push(resolvedIntroPath);
         concatLevels.push(introLevel);
       }
-      concatInputs.push(currentPath);
+      concatInputs.push(speechPath);
       concatLevels.push(speechLevel);
       if (resolvedOutroPath) {
         concatInputs.push(resolvedOutroPath);
         concatLevels.push(outroLevel);
       }
 
-      let assembledPath = currentPath;
+      let assembledPath = speechPath;
       if (concatInputs.length > 1) {
         const filterParts = concatInputs.map((_, index) => (
           `[${index}:a]volume=${escapeFilterValue(concatLevels[index])},aresample=${sampleRate},aformat=sample_fmts=s16:channel_layouts=${channelLayout}[a${index}]`
@@ -461,6 +415,59 @@ class AudioProcessingService {
 
         await this.runFfmpeg(args, 'audio_concat_failed', 'ffmpeg failed to assemble the podcast intro/outro.');
         assembledPath = finalPath;
+      }
+
+      let resolvedBedPath = '';
+      if (includeMusicBed || Boolean(String(musicBedPath || '').trim())) {
+        const requestedBedPath = String(musicBedPath || '').trim();
+        const configuredBedPath = String(this.audioProcessingConfig.podcastMusicBedPath || '').trim();
+        resolvedBedPath = requestedBedPath || configuredBedPath
+          ? this.resolveAssetPath(
+            requestedBedPath,
+            configuredBedPath,
+            'Podcast music bed audio',
+          )
+          : '';
+
+        const programBuffer = await fs.readFile(assembledPath);
+        const programFormat = parseWavBuffer(programBuffer);
+        const bytesPerSample = Math.max(1, Math.floor(programFormat.bitsPerSample / 8));
+        const durationSeconds = programFormat.data.length / Math.max(
+          1,
+          programFormat.sampleRate * programFormat.numChannels * bytesPerSample,
+        );
+        const programChannelLayout = channelLayoutFor(programFormat.numChannels);
+        if (!resolvedBedPath && includeMusicBed) {
+          await this.generateCalmMusicBed({
+            outputPath: generatedBedPath,
+            durationSeconds,
+            sampleRate: programFormat.sampleRate,
+            channelLayout: programChannelLayout,
+          });
+          resolvedBedPath = generatedBedPath;
+        }
+
+        if (resolvedBedPath) {
+          const fadeOutStart = Math.max(0, durationSeconds - 2);
+          const programLevel = concatInputs.length > 1 ? 1 : speechLevel;
+          const filter = [
+            `[0:a]volume=${escapeFilterValue(bedLevel)},aresample=${programFormat.sampleRate},aformat=sample_fmts=s16:channel_layouts=${programChannelLayout},apad,atrim=0:${durationSeconds.toFixed(3)},afade=t=in:st=0:d=1,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=2[bed]`,
+            `[1:a]volume=${escapeFilterValue(programLevel)},aresample=${programFormat.sampleRate},aformat=sample_fmts=s16:channel_layouts=${programChannelLayout}[program]`,
+            '[bed][program]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[mixed]',
+            '[mixed]alimiter=limit=0.95[a]',
+          ].join(';');
+
+          await this.runFfmpeg([
+            '-y',
+            '-i', resolvedBedPath,
+            '-i', assembledPath,
+            '-filter_complex', filter,
+            '-map', '[a]',
+            '-c:a', 'pcm_s16le',
+            mixedSpeechPath,
+          ], 'audio_mix_failed', 'ffmpeg failed to mix the podcast music bed.');
+          assembledPath = mixedSpeechPath;
+        }
       }
 
       if (!shouldEnhanceSpeech) {
