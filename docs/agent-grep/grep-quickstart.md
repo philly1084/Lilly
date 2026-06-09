@@ -36,6 +36,12 @@ Exact complaint flow:
 3. Read the smallest matching files.
 4. Only then patch or call tools.
 
+Reusable frontend / IDE loop:
+- Search first: `rg -n "symbol|route|button-id|css-class" frontend src docs`
+- Read the smallest matching files or slices.
+- Patch targeted source instead of regenerating the whole frontend artifact.
+- Verify with focused tests plus browser, `web-scrape`, or `bin/kimibuilt-ui-check.js`.
+
 Agent-doc proof:
 
 ```powershell

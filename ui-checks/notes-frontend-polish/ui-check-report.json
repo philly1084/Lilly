@@ -1,9 +1,9 @@
 {
   "tool": "kimibuilt-ui-check",
-  "url": "http://127.0.0.1:3131/notes-notion/",
-  "originalUrl": "http://127.0.0.1:3131/notes-notion/",
+  "url": "http://localhost:3000/notes-notion/index.html",
+  "originalUrl": "http://localhost:3000/notes-notion/index.html",
   "authenticated": false,
-  "generatedAt": "2026-05-11T22:15:58.163Z",
+  "generatedAt": "2026-06-08T23:59:28.699Z",
   "playwrightModule": "playwright-core",
   "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "checks": [
@@ -14,10 +14,10 @@
         "height": 960
       },
       "ok": true,
-      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\welcome-to-notes-notes-desktop.png",
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\codex-image-reload-qa-notes-desktop.png",
       "metrics": {
-        "title": "Welcome to Notes - Notes",
-        "url": "http://127.0.0.1:3131/notes-notion/",
+        "title": "Codex image reload QA - Notes",
+        "url": "http://localhost:3000/notes-notion/index.html",
         "viewport": {
           "width": 1440,
           "height": 960
@@ -26,17 +26,17 @@
         "scrollHeight": 960,
         "horizontalOverflow": false,
         "overflowingElements": [],
-        "bodyTextLength": 830,
-        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE note Welcome to Notes Outline 1 ▾ H1 Welcome to your new notes app! Trash Settings Dark mode AI Ready on this page Ask AI Ready to work this page › Welcome to Notes GPT-4o note Export Add cover + Welcome to your new notes app! + + This is a Lilly-style block-based editor with AI support. Here's what you can do: + + • Type \"/\" to see available block types including AI Image generation + + • Use markdown shortcuts like #, ##, ### for headings + + • Drag blocks",
+        "bodyTextLength": 281,
+        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE ⭐ Codex image reload QA Outline 0 ▾ Add headings to see an outline. Trash Settings Dark mode AI Ready on this page Ask AI Ready to work this page › Codex image reload QA GPT-4o ⭐ Read Export Add cover + Failed to generate image Try Again + + +",
         "headings": [],
-        "interactiveControls": 133,
+        "interactiveControls": 85,
         "textContrast": {
-          "checked": 98,
+          "checked": 45,
           "lowContrastCount": 0,
           "lowContrast": []
         },
         "images": {
-          "count": 0,
+          "count": 1,
           "broken": [],
           "missingAltCount": 0
         }
@@ -45,26 +45,6 @@
         {
           "type": "error",
           "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
-        },
-        {
-          "type": "error",
-          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
-        },
-        {
-          "type": "warning",
-          "text": "Failed to hydrate shared notes session: Error: Not found\n    at NotesAPIClient.buildRequestError (http://127.0.0.1:3131/notes-notion/js/api-client.js:427:23)\n    at async NotesAPIClient.getSessionState (http://127.0.0.1:3131/notes-notion/js/api-client.js:1037:19)\n    at async hydrateSharedConversationSession (http://127.0.0.1:3131/notes-notion/js/agent.js:656:34)\n    at async http://127.0.0.1:3131/notes-notion/js/agent.js:8508:13"
-        },
-        {
-          "type": "error",
-          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
-        },
-        {
-          "type": "error",
-          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
-        },
-        {
-          "type": "error",
-          "text": "Failed to fetch models: Error: HTTP 404\n    at NotesAPIClient.getModels (http://127.0.0.1:3131/notes-notion/js/api-client.js:883:23)\n    at async refreshModelsFromAPI (http://127.0.0.1:3131/notes-notion/js/agent.js:8546:36)\n    at async http://127.0.0.1:3131/notes-notion/js/agent.js:8513:17"
         }
       ],
       "pageErrors": [],
@@ -79,10 +59,10 @@
         "isMobile": true
       },
       "ok": true,
-      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\welcome-to-notes-notes-mobile.png",
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\codex-image-reload-qa-notes-mobile.png",
       "metrics": {
-        "title": "Welcome to Notes - Notes",
-        "url": "http://127.0.0.1:3131/notes-notion/",
+        "title": "Codex image reload QA - Notes",
+        "url": "http://localhost:3000/notes-notion/index.html",
         "viewport": {
           "width": 390,
           "height": 844
@@ -95,36 +75,36 @@
             "tag": "aside",
             "id": "sidebar",
             "className": "sidebar",
-            "text": "LB LillyBuilt New page Import PRIVATE note Welcome to Notes Outline 1 ▾ H1 Welco",
-            "left": -390,
+            "text": "LB LillyBuilt New page Import PRIVATE ⭐ Codex image reload QA Outline 0 ▾ Add he",
+            "left": -320,
             "right": 0,
-            "width": 390
+            "width": 320
           },
           {
             "tag": "div",
             "id": "",
             "className": "sidebar-header",
             "text": "LB LillyBuilt",
-            "left": -390,
+            "left": -320,
             "right": -1,
-            "width": 389
+            "width": 319
           },
           {
             "tag": "div",
             "id": "",
             "className": "workspace-info",
             "text": "LB LillyBuilt",
-            "left": -374,
+            "left": -304,
             "right": -47,
-            "width": 327
+            "width": 257
           },
           {
             "tag": "div",
             "id": "",
             "className": "workspace-avatar",
             "text": "LB",
-            "left": -360,
-            "right": -340,
+            "left": -290,
+            "right": -270,
             "width": 20
           },
           {
@@ -132,8 +112,8 @@
             "id": "",
             "className": "workspace-name",
             "text": "LillyBuilt",
-            "left": -330,
-            "right": -276,
+            "left": -260,
+            "right": -206,
             "width": 54
           },
           {
@@ -168,26 +148,26 @@
             "id": "",
             "className": "sidebar-actions",
             "text": "New page Import",
-            "left": -390,
+            "left": -320,
             "right": -1,
-            "width": 389
+            "width": 319
           },
           {
             "tag": "button",
             "id": "new-page-btn",
             "className": "new-page-btn",
             "text": "New page",
-            "left": -368,
+            "left": -298,
             "right": -23,
-            "width": 345
+            "width": 275
           },
           {
             "tag": "svg",
             "id": "",
             "className": "[object SVGAnimatedString]",
             "text": "",
-            "left": -356,
-            "right": -340,
+            "left": -286,
+            "right": -270,
             "width": 16
           },
           {
@@ -195,48 +175,27 @@
             "id": "import-btn",
             "className": "new-page-btn import-btn",
             "text": "Import",
-            "left": -368,
+            "left": -298,
             "right": -23,
-            "width": 345
+            "width": 275
           }
         ],
-        "bodyTextLength": 806,
-        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE note Welcome to Notes Outline 1 ▾ H1 Welcome to your new notes app! Trash Settings Dark mode AI Ready on this page Ask AI › Welcome to Notes GPT-4o note Export Add cover + Welcome to your new notes app! + + This is a Lilly-style block-based editor with AI support. Here's what you can do: + + • Type \"/\" to see available block types including AI Image generation + + • Use markdown shortcuts like #, ##, ### for headings + + • Drag blocks using the block handle ",
+        "bodyTextLength": 257,
+        "bodyTextPreview": "LB LillyBuilt New page Import PRIVATE ⭐ Codex image reload QA Outline 0 ▾ Add headings to see an outline. Trash Settings Dark mode AI Ready on this page Ask AI › Codex image reload QA GPT-4o ⭐ Read Export Add cover + Failed to generate image Try Again + + +",
         "headings": [],
-        "interactiveControls": 134,
+        "interactiveControls": 86,
         "textContrast": {
-          "checked": 98,
+          "checked": 46,
           "lowContrastCount": 0,
           "lowContrast": []
         },
         "images": {
-          "count": 0,
+          "count": 1,
           "broken": [],
           "missingAltCount": 0
         }
       },
-      "consoleMessages": [
-        {
-          "type": "error",
-          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
-        },
-        {
-          "type": "error",
-          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
-        },
-        {
-          "type": "warning",
-          "text": "Failed to hydrate shared notes session: Error: Not found\n    at NotesAPIClient.buildRequestError (http://127.0.0.1:3131/notes-notion/js/api-client.js:427:23)\n    at async NotesAPIClient.getSessionState (http://127.0.0.1:3131/notes-notion/js/api-client.js:1037:19)\n    at async hydrateSharedConversationSession (http://127.0.0.1:3131/notes-notion/js/agent.js:656:34)\n    at async http://127.0.0.1:3131/notes-notion/js/agent.js:8508:13"
-        },
-        {
-          "type": "error",
-          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
-        },
-        {
-          "type": "error",
-          "text": "Failed to fetch models: Error: HTTP 404\n    at NotesAPIClient.getModels (http://127.0.0.1:3131/notes-notion/js/api-client.js:883:23)\n    at async refreshModelsFromAPI (http://127.0.0.1:3131/notes-notion/js/agent.js:8546:36)\n    at async http://127.0.0.1:3131/notes-notion/js/agent.js:8513:17"
-        }
-      ],
+      "consoleMessages": [],
       "pageErrors": [],
       "failedRequests": [],
       "issues": []
@@ -246,8 +205,8 @@
     "ok": true,
     "checkedViewports": 2,
     "screenshotPaths": [
-      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\welcome-to-notes-notes-desktop.png",
-      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\welcome-to-notes-notes-mobile.png"
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\codex-image-reload-qa-notes-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\notes-frontend-polish\\codex-image-reload-qa-notes-mobile.png"
     ],
     "issues": []
   }

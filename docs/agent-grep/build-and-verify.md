@@ -18,6 +18,7 @@ Sandbox path:
 - Use `code-sandbox` for static preview bundles or runnable snippets.
 - For browser libraries, prefer `/api/sandbox-libraries/catalog.json` and local `/api/sandbox-libraries/...` routes before CDNs. Use chart/graph/3D libraries for visual experiences and CodeMirror, highlight.js, Marked, PDF.js, Mammoth, or docx.js for code/document viewer sandboxes.
 - Keep preview bundles static-safe: one `index.html`, local CSS/assets, no uncompiled build-only classes.
+- For reusable frontend follow-ups, prefer the IDE loop before rebuilding: `file-search` or grep -> targeted `file-read` -> smallest source edit -> focused syntax/test -> browser or `kimibuilt-ui-check` proof. Do not regenerate a whole HTML/CSS/JS bundle when existing source can be patched.
 
 Remote path:
 - Prefer `remote-cli-agent` for scoped remote software creation, update, deploy, and verification loops. Its params use `task`, not `command`.
@@ -39,5 +40,8 @@ Good grep targets:
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`
 - `src/agent-sdk/tool-docs/remote-command.md`
 - `src/agent-sdk/tool-docs/k3s-deploy.md`
+- `src/agent-sdk/tool-docs/file-search.md`
+- `src/agent-sdk/tool-docs/file-read.md`
+- `src/agent-sdk/tool-docs/file-write.md`
 - `k8s/K3S_RANCHER_PLAYBOOK.md`
 - `bin/kimibuilt-ui-check.js`

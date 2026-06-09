@@ -440,6 +440,12 @@ const ImportExport = (function() {
                 }
         }
 
+        if (Array.isArray(block.children) && block.children.length > 0) {
+            block.children.forEach((child) => {
+                paragraphs.push(...blockToDocxParagraphs(child));
+            });
+        }
+
         return paragraphs;
     }
 
@@ -500,38 +506,41 @@ const ImportExport = (function() {
      * Generate print-friendly HTML for PDF export
      */
     function generatePDFHTML(page) {
-        const blocksHTML = page.blocks.map(block => blockToHTML(block)).join('');
+        const blocksHTML = page.blocks.map(block => blockToHTMLTree(block)).join('');
         
         return `<!DOCTYPE html>
 <html>
 <head>
     <title>${escapeHtml(page.title || 'Untitled')}</title>
     <style>
-        @page { margin: 2cm; }
+        @page { size: 11.33in 14.67in portrait; margin: 0.72in 0.65in 0.68in; }
         * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 11pt;
-            line-height: 1.6;
-            color: #333;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 10.8pt;
+            line-height: 1.58;
+            color: #1f2937;
             max-width: 100%;
             margin: 0;
             padding: 0;
+            background: #ffffff;
         }
-        h1 { font-size: 24pt; margin: 0 0 16pt 0; font-weight: 700; page-break-after: avoid; }
-        h2 { font-size: 18pt; margin: 20pt 0 12pt 0; font-weight: 600; page-break-after: avoid; }
-        h3 { font-size: 14pt; margin: 16pt 0 8pt 0; font-weight: 600; page-break-after: avoid; }
+        h1 { font-size: 25pt; margin: 0 0 10pt 0; font-weight: 750; line-height: 1.15; color: #132238; page-break-after: avoid; }
+        h2 { font-size: 16pt; margin: 20pt 0 8pt 0; font-weight: 700; color: #132238; page-break-after: avoid; }
+        h3 { font-size: 13pt; margin: 15pt 0 7pt 0; font-weight: 700; color: #1d3557; page-break-after: avoid; }
+        h4 { font-size: 11pt; margin: 12pt 0 6pt 0; font-weight: 700; color: #274c77; page-break-after: avoid; }
         p { margin: 0 0 8pt 0; }
         ul, ol { margin: 8pt 0; padding-left: 24pt; }
         li { margin: 4pt 0; }
         blockquote {
-            border-left: 4pt solid #2383e2;
+            border-left: 4pt solid #8fb3d9;
             margin: 12pt 0;
             padding-left: 16pt;
-            color: #666;
+            color: #334155;
         }
         pre {
-            background: #f5f5f5;
+            background: #0f172a;
+            color: #e5eef8;
             padding: 12pt;
             border-radius: 6pt;
             overflow-x: auto;
@@ -543,22 +552,37 @@ const ImportExport = (function() {
         code {
             font-family: "SFMono-Regular", Consolas, monospace;
             font-size: 9pt;
-            background: #f5f5f5;
+            background: #eef2f7;
+            color: #1e293b;
             padding: 2pt 4pt;
             border-radius: 3pt;
         }
         .callout {
-            background: #fff8e1;
+            background: #f8fbff;
+            border: 1pt solid #c7dbf4;
             padding: 12pt;
             border-radius: 6pt;
             margin: 12pt 0;
             page-break-inside: avoid;
         }
+        details {
+            border: 1pt solid #d8e1f0;
+            border-radius: 6pt;
+            padding: 10pt 12pt;
+            margin: 10pt 0;
+            page-break-inside: avoid;
+        }
+        summary { font-weight: 700; color: #132238; }
+        .block-children {
+            margin: 4pt 0 6pt 14pt;
+            padding-left: 12pt;
+            border-left: 1pt solid #d8e1f0;
+        }
         .todo { margin: 4pt 0; }
         .todo-checked { text-decoration: line-through; color: #999; }
         .divider {
             border: none;
-            border-top: 1pt solid #ddd;
+            border-top: 1pt solid #d8e1f0;
             margin: 16pt 0;
         }
         img { max-width: 100%; height: auto; page-break-inside: avoid; }
@@ -569,18 +593,18 @@ const ImportExport = (function() {
             page-break-inside: avoid;
         }
         th, td {
-            border: 1pt solid #ddd;
+            border: 1pt solid #d8e1f0;
             padding: 8pt;
             text-align: left;
         }
-        th { background: #f5f5f5; font-weight: 600; }
+        th { background: #eaf1fb; color: #1e3a5f; font-weight: 700; }
         .page-info {
             margin-bottom: 24pt;
             padding-bottom: 12pt;
-            border-bottom: 1pt solid #eee;
+            border-bottom: 1pt solid #d8e1f0;
         }
         .page-icon { font-size: 32pt; margin-bottom: 8pt; }
-        .properties { margin: 12pt 0; font-size: 10pt; color: #666; }
+        .properties { margin: 12pt 0; font-size: 10pt; color: #516173; }
         .property { margin: 4pt 0; }
         @media print {
             .no-print { display: none; }
@@ -623,7 +647,7 @@ const ImportExport = (function() {
      * Export to HTML
      */
     function exportToHTML(page) {
-        const blocksHTML = page.blocks.map(block => blockToHTML(block)).join('');
+        const blocksHTML = page.blocks.map(block => blockToHTMLTree(block)).join('');
         
         return `<!DOCTYPE html>
 <html lang="en">
@@ -717,6 +741,9 @@ const ImportExport = (function() {
         .bookmark-url { color: #9ca3af; font-size: 12px; }
         .bookmark-image { width: 200px; min-height: 132px; object-fit: cover; background: #f3f4f6; }
         .chart-summary { color: #4b5563; font-size: 14px; margin: -4px 0 10px; }
+        details { border: 1px solid #d8e1f0; border-radius: 8px; padding: 12px 14px; margin: 16px 0; background: #f8fbff; }
+        summary { cursor: pointer; font-weight: 650; color: #132238; }
+        .block-children { margin: 8px 0 4px 18px; padding-left: 14px; border-left: 1px solid #d8e1f0; }
         footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #e3e2e0; color: #9ca3af; font-size: 12px; }
     </style>
 </head>
@@ -744,6 +771,28 @@ const ImportExport = (function() {
             </div>`
         ).join('');
         return `<div class="properties">${props}</div>`;
+    }
+
+    function blockToHTMLTree(block) {
+        if (!block || typeof block !== 'object') return '';
+
+        if (block.type === 'toggle') {
+            const summary = getBlockText(block) || 'Details';
+            const childrenHTML = getChildrenHTML(block);
+            return `<details open><summary>${escapeHtml(summary)}</summary>${childrenHTML}</details>`;
+        }
+
+        const html = blockToHTML(block);
+        const childrenHTML = getChildrenHTML(block);
+        return childrenHTML ? `${html}${childrenHTML}` : html;
+    }
+
+    function getChildrenHTML(block) {
+        if (!Array.isArray(block?.children) || block.children.length === 0) {
+            return '';
+        }
+
+        return `<div class="block-children">${block.children.map(blockToHTMLTree).join('')}</div>`;
     }
 
     /**
@@ -851,6 +900,8 @@ const ImportExport = (function() {
                 return `<p style="text-align: center; font-family: 'Times New Roman', serif; font-style: italic;">${escapeHtml(mathText)}</p>`;
             case 'mermaid':
                 return `<pre class="mermaid">${escapeHtml(content)}</pre>`;
+            case 'toggle':
+                return `<p><strong>${escapeHtml(content || 'Details')}</strong></p>`;
             default:
                 return content ? `<p>${escapeHtml(content)}</p>` : '';
         }

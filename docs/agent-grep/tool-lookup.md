@@ -28,6 +28,7 @@ Common tool ids:
 - `design-resource-search`: safe visual/design source lookup.
 - `image-generate`: generated visuals for HTML, PDFs, documents, slides, and websites.
 - `code-sandbox`: static preview bundles and sandbox execution when available.
+- `file-search`, `file-read`, `file-write`: IDE-style local source discovery, targeted reads, and guarded full-file writes for reusable frontend edits.
 - `document-workflow`: document, deck, PDF, XLSX, Markdown, and bundle generation.
 - `remote-operations-system`: registered skill for the unified `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy` lane picker.
 - `remote-cli-agent`: remote software build/deploy/verify loops.
@@ -48,4 +49,7 @@ Longer docs:
 - `src/agent-sdk/tool-docs/tool-doc-read.md`
 - `src/agent-sdk/tool-docs/remote-cli-agent.md`
 - `src/agent-sdk/tool-docs/remote-command.md`
+- `src/agent-sdk/tool-docs/file-search.md`
+- `src/agent-sdk/tool-docs/file-read.md`
+- `src/agent-sdk/tool-docs/file-write.md`
 - `src/agent-sdk/tool-docs/design-resource-search.md`

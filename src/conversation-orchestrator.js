@@ -11611,6 +11611,17 @@ class ConversationOrchestrator extends EventEmitter {
             preferredMetadataToolId,
         ].map((toolId) => String(toolId || '').trim()).filter(Boolean)))
             .filter((toolId) => allowedToolIds.includes(toolId));
+        const frontendEditMode = metadata?.frontendEditMode === true
+            || metadata?.frontend_edit_mode === true
+            || toolMetadata.frontendEditMode === true
+            || toolMetadata.frontend_edit_mode === true
+            || metadata?.frontendIterationPreferred === true
+            || toolMetadata.frontendIterationPreferred === true
+            || String(metadata?.frontendSourceStrategy || toolMetadata.frontendSourceStrategy || '').trim() === 'search-read-targeted-edit-verify';
+        const toolSelectionGuidance = [
+            metadata?.toolSelectionInstructions,
+            toolMetadata.toolSelectionInstructions,
+        ].map((entry) => String(entry || '').trim()).filter(Boolean).join('\n');
         const hasRemoteCliAgentMetadataPreference = preferredMetadataToolId === 'remote-cli-agent'
             || plannedToolIds.includes('remote-cli-agent');
         const hasExplicitRemoteCliAgentRequest = hasExplicitRemoteCliAgentIntentText(objectiveText);
@@ -12262,6 +12273,8 @@ class ConversationOrchestrator extends EventEmitter {
             rolePipeline: effectiveRolePipelineSeed,
             neuralWaveResearchMode,
             orchestrationOverrides,
+            frontendEditMode,
+            toolSelectionGuidance,
             afterProcessAuditHints: metadata?.afterProcessAuditHints || toolMetadata.afterProcessAuditHints || null,
             workflow: effectiveWorkflowSeed,
             projectPlan: effectiveProjectPlanSeed,
@@ -13202,6 +13215,19 @@ class ConversationOrchestrator extends EventEmitter {
             'If a step is missing required parameters, return a changed plan with those parameters filled instead of executing a malformed call.',
             'If the active surface is notes page editing, stay inside notes-safe research tools rather than switching to file, deploy, or document workflows.',
             'If grounding is required, do not jump straight to `document-workflow generate` unless verified web evidence already exists in this run.',
+            ...(toolPolicy?.toolSelectionGuidance
+                ? [
+                    'Web-chat selected tool guidance:',
+                    toolPolicy.toolSelectionGuidance,
+                ]
+                : []),
+            ...(toolPolicy?.frontendEditMode
+                ? [
+                    'Frontend IDE mode is active. Treat existing frontend source as the baseline: search or list files first, read only targeted files or slices, preserve reusable project structure, and make the smallest edit that advances the requested UI.',
+                    'Do not regenerate an entire HTML/CSS/JS file or sandbox bundle when a targeted source edit, patch, or existing bundle update can satisfy the request. Regenerate only when there is no source to preserve or the user explicitly asks for a full rebuild.',
+                    'After a frontend IDE edit, plan focused syntax/tests and browser, web-scrape, or `kimibuilt-ui-check` proof before claiming the result is ready.',
+                ]
+                : []),
             ...(plannerPolicyPacks.workload.length > 0 ? ['', ...plannerPolicyPacks.workload] : []),
             ...(plannerPolicyPacks.remote.length > 0 ? ['', ...plannerPolicyPacks.remote] : []),
             ...(plannerPolicyPacks.frontend.length > 0 ? ['', ...plannerPolicyPacks.frontend] : []),

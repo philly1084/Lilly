@@ -12386,6 +12386,43 @@ describe('ConversationOrchestrator', () => {
         }
     });
 
+    test('preserves web-chat IDE lane guidance in tool policy', () => {
+        const selectedTools = ['file-search', 'file-read', 'file-write', 'git-safe', 'code-sandbox', 'web-scrape'];
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    selectedTools.includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const policy = orchestrator.buildToolPolicy({
+            objective: 'Perfect the reusable frontend without hallucinating the whole file.',
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+            metadata: {
+                clientSurface: 'web-chat',
+                toolSelectionSource: 'web-chat-plugin-menu',
+                selectedPluginLanes: ['ide'],
+                plannedTools: selectedTools,
+                frontendEditMode: true,
+                frontendSourceStrategy: 'search-read-targeted-edit-verify',
+                toolSelectionInstructions: '- IDE: Search first, read targeted files, patch source, verify.',
+            },
+        });
+
+        expect(policy.frontendEditMode).toBe(true);
+        expect(policy.toolSelectionGuidance).toContain('Search first');
+        expect(policy.candidateToolIds).toEqual(expect.arrayContaining(selectedTools));
+        expect(policy.userSelectedToolIds).toEqual(expect.arrayContaining(selectedTools));
+    });
+
     test('promotes security, design, and database tools into the default execution profile', () => {
         const orchestrator = new ConversationOrchestrator({
             llmClient: {

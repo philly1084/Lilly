@@ -31,6 +31,9 @@ const Editor = (function() {
                     } : {};
                 })()
                 : {}),
+            ...(block.type === 'database' && window.Blocks?.normalizeDatabaseContent
+                ? { content: window.Blocks.normalizeDatabaseContent(block.content || {}) }
+                : {}),
             children: normalizeBlocks(Array.isArray(block.children) ? block.children : []),
             formatting: block.formatting || {},
         }));
@@ -53,8 +56,11 @@ const Editor = (function() {
             if (block.type === 'bookmark') {
                 return block.content.title || block.content.description || block.content.url || '';
             }
-            if (block.type === 'database' && Array.isArray(block.content.rows)) {
-                return block.content.rows.flat().join(' ');
+            if (block.type === 'database') {
+                const database = window.Blocks?.normalizeDatabaseContent
+                    ? window.Blocks.normalizeDatabaseContent(block.content)
+                    : block.content;
+                return Array.isArray(database?.rows) ? database.rows.flat().join(' ') : '';
             }
             if (block.type === 'chart') {
                 if (Array.isArray(block.content.labels) && Array.isArray(block.content.values)) {
@@ -497,12 +503,14 @@ const Editor = (function() {
         outlineEl.innerHTML = '';
         headings.forEach((entry) => {
             const level = parseInt(entry.block.type.split('_')[1] || '1', 10);
+            const headingText = extractBlockText(entry.block) || 'Untitled section';
+            const leadLabel = getOutlineLeadLabel(headingText);
             const button = document.createElement('button');
             button.className = `outline-item outline-item-level-${level}`;
             button.dataset.blockId = entry.block.id;
             button.innerHTML = `
-                <span class="outline-item-badge">H${level}</span>
-                <span class="outline-item-text">${escapeHtml(extractBlockText(entry.block) || 'Untitled section')}</span>
+                <span class="outline-item-badge" aria-hidden="true">${escapeHtml(leadLabel)}</span>
+                <span class="outline-item-text">${escapeHtml(headingText)}</span>
             `;
             button.addEventListener('click', () => {
                 const blockEl = document.querySelector(`.block[data-block-id="${entry.block.id}"]`);
@@ -513,6 +521,24 @@ const Editor = (function() {
             });
             outlineEl.appendChild(button);
         });
+    }
+
+    function getOutlineLeadLabel(text = '') {
+        const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!normalized) return '';
+
+        const explicitLead = normalized.match(/^([A-Za-z0-9][A-Za-z0-9 .]{0,13}?)(?:[:\-–—|])/);
+        if (explicitLead?.[1]) {
+            return explicitLead[1].trim();
+        }
+
+        const numberedLead = normalized.match(/^(\d+(?:\.\d+)*\.?)/);
+        if (numberedLead?.[1]) {
+            return numberedLead[1].replace(/\.$/, '');
+        }
+
+        const firstWord = normalized.split(/\s+/)[0] || '';
+        return firstWord.length > 10 ? firstWord.slice(0, 9) + '.' : firstWord;
     }
 
     function escapeHtml(text) {

@@ -3197,6 +3197,71 @@ describe('openai-client automatic tool orchestration helpers', () => {
         });
     });
 
+    test('suppresses generic direct remote-cli-agent heartbeat while specific runner progress streams', async () => {
+        jest.useFakeTimers();
+        const toolManager = createToolManager();
+        const prompt = 'go ahead and apply the patch';
+        const progressEvents = [];
+        let resolveTool;
+
+        toolManager.executeTool = jest.fn((_id, _params, context = {}) => new Promise((resolve) => {
+            context.onProgress?.({
+                phase: 'executing',
+                reasoningSummary: 'Codex agent inspected the remote workspace.',
+                toolEvents: [{
+                    toolId: 'remote-cli-agent',
+                    stage: 'in_progress',
+                    detail: 'Codex agent inspected the remote workspace.',
+                }],
+            });
+            resolveTool = () => resolve({
+                success: true,
+                toolId: 'remote-cli-agent',
+                data: {
+                    finalOutput: 'Remote app deployed.\nPUBLIC_HOST=app.demoserver2.buzz',
+                    targetId: 'prod',
+                },
+            });
+        }));
+
+        try {
+            const responsePromise = __testUtils.runDirectRequiredToolAction({
+                toolManager,
+                requiredToolId: 'remote-cli-agent',
+                selectedTools: [{ id: 'remote-cli-agent' }],
+                prompt,
+                toolContext: {
+                    executionProfile: 'remote-build',
+                    onProgress: (progress) => progressEvents.push(progress),
+                },
+                model: 'gpt-5.5',
+            });
+
+            await Promise.resolve();
+            const eventsAfterSpecificProgress = progressEvents.length;
+
+            jest.advanceTimersByTime(30000);
+            await Promise.resolve();
+
+            expect(progressEvents).toHaveLength(eventsAfterSpecificProgress);
+            expect(progressEvents.map((event) => event.reasoningSummary)).toContain('Codex agent inspected the remote workspace.');
+
+            resolveTool();
+            const response = await responsePromise;
+
+            expect(response.output[0].content[0].text).toContain('Remote app deployed.');
+            expect(progressEvents[progressEvents.length - 1]).toMatchObject({
+                phase: 'finalizing',
+                toolEvents: [expect.objectContaining({
+                    toolId: 'remote-cli-agent',
+                    stage: 'completed',
+                })],
+            });
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     test('surfaces remote-cli-agent diagnostics directly on connection failure', async () => {
         const toolManager = createToolManager();
         const prompt = 'Build and deploy an app on the remote k3s server, but fail remote cli.';

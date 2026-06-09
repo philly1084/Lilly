@@ -31,4 +31,12 @@ describe('web-chat index redirect', () => {
         expect(parsed.searchParams.get('foo')).toBe('bar');
         expect(parsed.searchParams.has('embedded')).toBe(false);
     });
+
+    test('composer tool menu exposes the IDE source-edit lane', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+
+        expect(html).toContain('data-tool-intent-checkbox value="ide"');
+        expect(html).toContain('<span class="tool-menu-choice__label">IDE</span>');
+        expect(html).toContain('<span class="tool-menu-choice__hint">Patch source</span>');
+    });
 });

@@ -547,7 +547,7 @@ class PdfGenerator {
     const updatedAt = safePage.updatedAt || safePage.lastEditedAt || safePage.lastModifiedAt || Date.now();
 
     const content = [
-      { text: 'LillyBuilt Notes Export', style: 'notesEyebrow' },
+      { text: 'NOTES EXPORT', style: 'notesEyebrow' },
       { text: titleLine, style: 'notesTitle' },
       {
         columns: [
@@ -556,8 +556,8 @@ class PdfGenerator {
             stack: [
               {
                 text: this.safeText(safePage.cover)
-                  ? 'Styled PDF export generated from your Notes page.'
-                  : 'Styled PDF export generated from your Notes page.',
+                  ? 'A clean, print-ready version of your Notes page with nested sections preserved.'
+                  : 'A clean, print-ready version of your Notes page with nested sections preserved.',
                 style: 'notesSubtitle'
               }
             ]
@@ -610,9 +610,17 @@ class PdfGenerator {
     if (outline.length >= 3 && options.includeOutline !== false) {
       content.push({ text: 'Contents', style: 'notesSectionLabel' });
       content.push({
-        ol: outline.map((item) => item.text),
+        table: {
+          widths: ['*'],
+          body: outline.map((item) => ([{
+            text: `${'  '.repeat(Math.min(item.depth || 0, 3))}${item.text}`,
+            color: '#30425A',
+            margin: [8, 3, 8, 3],
+            border: [false, false, false, false]
+          }]))
+        },
+        layout: this.createCardLayout('#D8E1F0'),
         margin: [0, 0, 0, 16],
-        color: '#30425A'
       });
     }
 
@@ -651,43 +659,43 @@ class PdfGenerator {
         notesEyebrow: {
           fontSize: 9,
           bold: true,
-          color: '#5B6F8A',
+          color: '#4D6682',
           characterSpacing: 1.2,
           margin: [0, 0, 0, 6]
         },
         notesTitle: {
-          fontSize: 26,
+          fontSize: 28,
           bold: true,
-          color: '#132238',
+          color: '#101E33',
           margin: [0, 0, 0, 8]
         },
         notesSubtitle: {
           fontSize: 11,
-          color: '#516173',
+          color: '#42556B',
           margin: [0, 2, 0, 0]
         },
         notesSectionLabel: {
           fontSize: 10,
           bold: true,
-          color: '#5B6F8A',
+          color: '#4D6682',
           margin: [0, 12, 0, 8]
         },
         notesHeading1: {
-          fontSize: 19,
+          fontSize: 20,
           bold: true,
-          color: '#132238',
+          color: '#101E33',
           margin: [0, 20, 0, 10]
         },
         notesHeading2: {
-          fontSize: 15,
+          fontSize: 15.5,
           bold: true,
-          color: '#1D3557',
+          color: '#183557',
           margin: [0, 16, 0, 8]
         },
         notesHeading3: {
           fontSize: 12.5,
           bold: true,
-          color: '#274C77',
+          color: '#25527A',
           margin: [0, 12, 0, 6]
         },
         notesParagraph: {

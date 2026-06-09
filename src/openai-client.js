@@ -5687,13 +5687,19 @@ function buildDirectRemoteCliProgress(toolId = 'tool', stage = 'started', starte
     };
 }
 
-function startDirectRemoteCliProgress(toolContext = {}, toolId = 'tool') {
+function startDirectRemoteCliProgress(toolContext = {}, toolId = 'tool', options = {}) {
     const onProgress = typeof toolContext?.onProgress === 'function' ? toolContext.onProgress : null;
     if (!onProgress || toolId !== 'remote-cli-agent') {
         return null;
     }
 
     const startedAt = Date.now();
+    const getLastSpecificProgressAt = typeof options.getLastSpecificProgressAt === 'function'
+        ? options.getLastSpecificProgressAt
+        : null;
+    const heartbeatSilenceMs = Number.isFinite(Number(options.heartbeatSilenceMs))
+        ? Math.max(15000, Number(options.heartbeatSilenceMs))
+        : 45000;
     let stopped = false;
     const emit = (stage = 'started', detail = '') => {
         if (stopped && stage !== 'completed' && stage !== 'failed') {
@@ -5706,6 +5712,10 @@ function startDirectRemoteCliProgress(toolContext = {}, toolId = 'tool') {
         }
     };
     const interval = setInterval(() => {
+        const lastSpecificProgressAt = getLastSpecificProgressAt ? Number(getLastSpecificProgressAt()) || 0 : 0;
+        if (lastSpecificProgressAt > 0 && Date.now() - lastSpecificProgressAt < heartbeatSilenceMs) {
+            return;
+        }
         emit('heartbeat');
     }, 15000);
     if (typeof interval.unref === 'function') {
@@ -5830,10 +5840,22 @@ async function runDirectRequiredToolAction({
     };
 
     console.log(`[OpenAI] Direct required tool execution starting for '${requiredToolId}'`);
-    const progress = startDirectRemoteCliProgress(toolContext, requiredToolId);
+    let lastSpecificRemoteCliProgressAt = 0;
+    const directToolContext = requiredToolId === 'remote-cli-agent' && typeof toolContext?.onProgress === 'function'
+        ? {
+            ...toolContext,
+            onProgress: (progressEvent) => {
+                lastSpecificRemoteCliProgressAt = Date.now();
+                toolContext.onProgress(progressEvent);
+            },
+        }
+        : toolContext;
+    const progress = startDirectRemoteCliProgress(toolContext, requiredToolId, {
+        getLastSpecificProgressAt: () => lastSpecificRemoteCliProgressAt,
+    });
     let result;
     try {
-        result = await executeAutomaticToolCall(toolManager, toolCall, toolContext);
+        result = await executeAutomaticToolCall(toolManager, toolCall, directToolContext);
         progress?.complete();
     } catch (error) {
         progress?.fail(error);

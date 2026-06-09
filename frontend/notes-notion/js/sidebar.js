@@ -1706,6 +1706,24 @@ const Sidebar = (function() {
         return URL.createObjectURL(blob);
     }
 
+    function isDurableExportUrl(value) {
+        const url = String(value || '').trim();
+        if (!url || url.startsWith('blob:')) {
+            return false;
+        }
+
+        if (/^\/api\/artifacts\//.test(url)) {
+            return true;
+        }
+
+        try {
+            const parsed = new URL(url, window.location.origin);
+            return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+        } catch (_error) {
+            return false;
+        }
+    }
+
     function updatePdfExportBlock(downloadUrl, filename) {
         const page = window.Editor?.getCurrentPage?.();
         if (!page || !window.Blocks?.createBlock) {
@@ -1713,6 +1731,14 @@ const Sidebar = (function() {
         }
 
         const existingBlock = (page.blocks || []).find((block) => block?.exportMarker === 'notes-pdf-export-link');
+        if (!isDurableExportUrl(downloadUrl)) {
+            if (existingBlock?.content?.url && existingBlock.content.url.startsWith('blob:')) {
+                URL.revokeObjectURL(existingBlock.content.url);
+                window.Editor.replaceBlockWithBlocks?.(existingBlock.id, []);
+            }
+            return;
+        }
+
         const bookmarkBlock = window.Blocks.createBlock('bookmark', {
             url: downloadUrl,
             title: `Download PDF export: ${filename}`,

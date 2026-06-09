@@ -8453,7 +8453,6 @@ Silently verify the lead cluster, section order, and final polish before returni
             if (focusBlockId) {
                 editor.focusBlock?.(focusBlockId);
             }
-            showActionToast(appliedCount);
 
             // Remove highlights after a delay
             setTimeout(() => {
@@ -8812,10 +8811,11 @@ Silently verify the lead cluster, section order, and final polish before returni
      * @param {string} description - Description of what was done
      */
     function showActionToast(actionCount, description = '') {
-        if (actionCount === 0) return;
-        
-        const message = description || `Applied ${actionCount} change${actionCount === 1 ? '' : 's'}`;
-        showToast(message, 'success');
+        // Page-write completion is already visible through staged highlights and
+        // chat context. Keep this hook quiet so Notes edits do not create a
+        // modal-feeling success/failure popup after every agent write.
+        void actionCount;
+        void description;
     }
     
     /**

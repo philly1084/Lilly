@@ -164,6 +164,40 @@ describe('web-chat stream stability', () => {
         ]));
     });
 
+    test('builds IDE lane metadata for reusable frontend source edits', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.selectedToolIntentIds = new Set(['ide']);
+
+        const options = app.buildToolIntentRequestOptions();
+
+        expect(options.executionProfile).toBeUndefined();
+        expect(options.metadata).toEqual(expect.objectContaining({
+            toolSelectionSource: 'web-chat-plugin-menu',
+            selectedPluginLanes: ['ide'],
+            frontendEditMode: true,
+            frontendSourceStrategy: 'search-read-targeted-edit-verify',
+            frontendIterationPreferred: true,
+        }));
+        expect(options.metadata.plannedTools).toEqual(expect.arrayContaining([
+            'file-search',
+            'file-read',
+            'file-write',
+            'git-safe',
+            'code-sandbox',
+            'web-scrape',
+        ]));
+        expect(options.metadata.toolSelectionInstructions).toContain('IDE');
+        expect(options.metadata.toolSelectionInstructions).toContain('search first');
+        expect(options.metadata.userToolDecisionTree).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 'ide',
+                steps: expect.arrayContaining([
+                    expect.stringContaining('targeted source edits'),
+                ]),
+            }),
+        ]));
+    });
+
     test('builds tool-picker command templates from selected lanes and catalog schemas', () => {
         const app = Object.create(loadChatAppPrototype());
         app.selectedToolIntentIds = new Set(['remote']);

@@ -311,23 +311,65 @@ const Blocks = (function() {
     function normalizeDatabaseContent(content) {
         const source = (content && typeof content === 'object') ? content : {};
         const sourceRows = Array.isArray(source.rows) ? source.rows : [];
+        const hasDeclaredColumns = Array.isArray(source.columns) && source.columns.length > 0;
+        const objectRowKeys = [];
+        sourceRows.forEach((row) => {
+            if (!row || Array.isArray(row) || typeof row !== 'object') return;
+            const rowSource = Array.isArray(row.cells)
+                ? null
+                : (Array.isArray(row.values) ? null : row);
+            if (!rowSource) return;
+            Object.keys(rowSource).forEach((key) => {
+                const label = String(key || '').trim();
+                if (label && !objectRowKeys.includes(label)) {
+                    objectRowKeys.push(label);
+                }
+            });
+        });
         const maxRowWidth = sourceRows.reduce((maxWidth, row) => {
             if (Array.isArray(row)) return Math.max(maxWidth, row.length);
+            if (Array.isArray(row?.cells)) return Math.max(maxWidth, row.cells.length);
+            if (Array.isArray(row?.values)) return Math.max(maxWidth, row.values.length);
+            if (row && typeof row === 'object') {
+                return hasDeclaredColumns
+                    ? maxWidth
+                    : Math.max(maxWidth, objectRowKeys.length || Object.keys(row).length);
+            }
             return Math.max(maxWidth, 1);
         }, 0);
-        const columns = Array.isArray(source.columns) && source.columns.length > 0
+        const columns = hasDeclaredColumns
             ? source.columns.map((column, index) => {
                 const label = String(column || '').trim();
                 return label || `Column ${index + 1}`;
             })
-            : ['Name', 'Status', 'Notes'];
+            : (objectRowKeys.length > 0 ? objectRowKeys : ['Name', 'Status', 'Notes']);
         while (columns.length < maxRowWidth) {
             columns.push(`Column ${columns.length + 1}`);
         }
 
         const rows = sourceRows
             .map((row) => {
-                const cells = Array.isArray(row) ? row.slice() : [row];
+                let cells;
+                if (Array.isArray(row)) {
+                    cells = row.slice();
+                } else if (Array.isArray(row?.cells)) {
+                    cells = row.cells.slice();
+                } else if (Array.isArray(row?.values)) {
+                    cells = row.values.slice();
+                } else if (row && typeof row === 'object') {
+                    const mapped = columns.map((column) => {
+                        if (Object.prototype.hasOwnProperty.call(row, column)) {
+                            return row[column];
+                        }
+                        const matchedKey = Object.keys(row).find((key) => String(key).trim().toLowerCase() === String(column).trim().toLowerCase());
+                        return matchedKey ? row[matchedKey] : undefined;
+                    });
+                    cells = mapped.some((cell) => cell !== undefined)
+                        ? mapped
+                        : Object.keys(row).map((key) => row[key]);
+                } else {
+                    cells = [row];
+                }
                 while (cells.length < columns.length) {
                     cells.push('');
                 }
