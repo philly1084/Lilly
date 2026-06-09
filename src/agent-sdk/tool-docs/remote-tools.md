@@ -10,8 +10,8 @@ Think of KimiBuilt remote access as one tool family with five lanes: `managed-ap
 
 | User intent | Use | Do not use |
 |-------------|-----|------------|
-| Create, edit, build, deploy, or verify a GitLab-backed managed app or public app/site on `demoserver2.buzz` | `managed-app create` or `managed-app iterate`; use `executor: "remote-cli-agent"` only as the worker for complex repo/CLI work | standalone `remote-cli-agent`, `remote-command`, or direct k3s edits as the product loop |
-| "Use the remote cli agent", "remote coding agent", "assisted cli", `remote_code_run`, or a remote app/site/service needs source changes plus build/deploy/verify | `remote-cli-agent` | `remote-command` as the main authoring loop |
+| Explicit managed-app catalog/control-plane work, such as `managed-app create`, `managed-app iterate`, app listing, doctor, reconcile, or build-event repair | `managed-app`; use `executor: "remote-cli-agent"` only when the managed-app action explicitly delegates implementation work | standalone remote tools as a replacement for the requested managed-app control-plane action |
+| "Use the remote cli agent", "remote coding agent", "assisted cli", `remote_code_run`, plain GitLab/repo/pipeline wording, or a remote app/site/service needs source changes plus build/deploy/verify | `remote-cli-agent` | `remote-command` as the main authoring loop, or `managed-app` only because GitLab was mentioned |
 | "Ask Codex for help", "Codex help", or "use Codex for this" for deeper document creation, synthesis, or build work on the main KimiBuilt server | `remote-cli-agent` with the configured Codex-agent defaults, normally `targetId: "k3s-prod"` and `cwd: "/opt/kimibuilt"` | direct `remote-command`, local sandbox-only generation, or the secondary/demo-server lane unless explicitly requested |
 | Quick host or cluster inspection: baseline, `kubectl get/describe/logs`, service status, DNS/TLS check, one-off repair, post-deploy verification | `remote-command` | local shell, code sandbox, raw legacy SSH first |
 | Structured remote repo/file/build/test/log/rollout action exists | `remote-workbench` | hand-written shell that duplicates the structured action |
@@ -83,7 +83,7 @@ remote_code_status({ "jobId": "returned job id only" })
 ```
 
 Important boundary:
-- Managed-app is the owner for GitLab-backed app source/build/deploy loops. When it needs deeper CLI help, call `managed-app iterate` with `executor: "remote-cli-agent"` so GitLab commits, pipeline/image evidence, rollout evidence, and public verification stay attached to the managed-app run.
+- `remote-cli-agent` is the default owner for GitLab-backed source/build/deploy loops. Managed-app owns only explicit managed-app catalog/control-plane actions; do not route to managed-app merely because the user said GitLab, pipeline, registry, or runner.
 - The planner calls `remote-cli-agent`; it does not call transport internals directly.
 - The default runner transport calls `/api/codex-agent/run` and streams `/events` SSE.
 - The MCP compatibility transport calls `remote_code_run` through MCP and then `remote_code_status`.

@@ -6464,9 +6464,12 @@ Silently verify the lead cluster, section order, and final polish before returni
                     image: ''
                 };
             case 'database':
-                if (value && typeof value === 'object' && (Array.isArray(value.columns) || Array.isArray(value.rows))) {
+                if (value && typeof value === 'object' && (Array.isArray(value.columns) || Array.isArray(value.headers) || Array.isArray(value.rows))) {
                     return {
-                        columns: Array.isArray(value.columns) ? value.columns : ['Name', 'Status', 'Notes'],
+                        columns: Array.isArray(value.columns)
+                            ? value.columns
+                            : (Array.isArray(value.headers) ? undefined : ['Name', 'Status', 'Notes']),
+                        headers: Array.isArray(value.headers) ? value.headers : undefined,
                         rows: Array.isArray(value.rows) ? value.rows : [],
                         sortColumn: value.sortColumn || null,
                         sortDirection: value.sortDirection || 'asc'
@@ -6585,12 +6588,13 @@ Silently verify the lead cluster, section order, and final polish before returni
             : (Object.prototype.hasOwnProperty.call(definition, 'text') ? definition.text : '');
 
         if (type === 'database' && definition && typeof definition === 'object'
-            && (Array.isArray(definition.columns) || Array.isArray(definition.rows))) {
+            && (Array.isArray(definition.columns) || Array.isArray(definition.headers) || Array.isArray(definition.rows))) {
             contentInput = {
                 ...(contentInput && typeof contentInput === 'object' && !Array.isArray(contentInput)
                     ? contentInput
                     : {}),
                 columns: definition.columns,
+                headers: definition.headers,
                 rows: definition.rows,
                 sortColumn: definition.sortColumn,
                 sortDirection: definition.sortDirection
@@ -6663,6 +6667,7 @@ Silently verify the lead cluster, section order, and final polish before returni
                 case 'database':
                     contentInput = {
                         columns: definition.columns,
+                        headers: definition.headers,
                         rows: definition.rows,
                         sortColumn: definition.sortColumn,
                         sortDirection: definition.sortDirection
@@ -7865,18 +7870,68 @@ Silently verify the lead cluster, section order, and final polish before returni
         }
 
         const sourceRows = Array.isArray(source.rows) ? source.rows : [];
-        const maxRowWidth = sourceRows.reduce((maxWidth, row) => Math.max(maxWidth, Array.isArray(row) ? row.length : 1), 0);
-        const columns = Array.isArray(source.columns) && source.columns.length > 0
-            ? source.columns.map((column, index) => String(column || '').trim() || `Column ${index + 1}`)
+        const maxRowWidth = sourceRows.reduce((maxWidth, row) => {
+            if (Array.isArray(row)) return Math.max(maxWidth, row.length);
+            if (Array.isArray(row?.cells)) return Math.max(maxWidth, row.cells.length);
+            if (Array.isArray(row?.values)) return Math.max(maxWidth, row.values.length);
+            return Math.max(maxWidth, 1);
+        }, 0);
+        const declaredColumns = Array.isArray(source.columns) && source.columns.length > 0
+            ? source.columns
+            : (Array.isArray(source.headers) ? source.headers : []);
+        const pickColumnLabel = (column, index) => {
+            if (column && typeof column === 'object' && !Array.isArray(column)) {
+                const keys = ['header', 'label', 'name', 'title', 'columnName', 'fieldName', 'field', 'key', 'text', 'value', 'output_text', 'output', 'id'];
+                for (const key of keys) {
+                    const value = String(column[key] || '').trim();
+                    if (value) return value;
+                }
+            }
+            return String(column || '').trim() || `Column ${index + 1}`;
+        };
+        const isGenericColumnLabel = (label = '') => /^(?:output|output_text|output text|content|value|data|text)$/i.test(String(label || '').trim());
+        const columns = declaredColumns.length > 0
+            ? declaredColumns.map(pickColumnLabel)
             : ['Name', 'Status', 'Notes'];
+        const labelCounts = columns.reduce((counts, label) => {
+            const key = String(label || '').trim().toLowerCase();
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        columns.forEach((label, index) => {
+            const key = String(label || '').trim().toLowerCase();
+            if (!label || (labelCounts[key] > 1 && isGenericColumnLabel(label))) {
+                columns[index] = `Column ${index + 1}`;
+            }
+        });
         while (columns.length < maxRowWidth) {
             columns.push(`Column ${columns.length + 1}`);
         }
+        const cellValue = (cell) => {
+            if (cell == null) return '';
+            if (typeof cell === 'object' && !Array.isArray(cell)) {
+                for (const key of ['value', 'text', 'content', 'output_text', 'output', 'result', 'response']) {
+                    const value = cell[key];
+                    if (value != null && String(value).trim()) return String(value);
+                }
+                return '';
+            }
+            return String(cell);
+        };
         const rows = sourceRows.map((row) => {
-            const cells = Array.isArray(row) ? row.slice() : [row];
+            let cells;
+            if (Array.isArray(row)) {
+                cells = row.slice();
+            } else if (Array.isArray(row?.cells)) {
+                cells = row.cells.slice();
+            } else if (Array.isArray(row?.values)) {
+                cells = row.values.slice();
+            } else {
+                cells = [row];
+            }
             while (cells.length < columns.length) cells.push('');
             if (cells.length > columns.length) cells.length = columns.length;
-            return cells.map((cell) => (cell == null ? '' : String(cell)));
+            return cells.map(cellValue);
         });
         return {
             columns,

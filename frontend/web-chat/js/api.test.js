@@ -212,6 +212,32 @@ describe('web-chat remote build metadata', () => {
         expect(body.metadata.preferManagedApp).toBeUndefined();
     });
 
+    test('defaults ordinary remote-build chat requests to remote-cli-agent', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'ok' } }],
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await apiClient.chat([{
+            role: 'user',
+            content: 'Fix the web chat frontend on the remote server and verify it live.',
+        }]);
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.executionProfile).toBe('remote-build');
+        expect(body.metadata).toEqual(expect.objectContaining({
+            remoteBuildAutonomyApproved: true,
+            frontendRemoteBuildAutonomyApproved: true,
+            remoteBuildIntent: true,
+            preferredTool: 'remote-cli-agent',
+            plannedTools: ['remote-cli-agent'],
+        }));
+        expect(body.metadata.preferManagedApp).toBeUndefined();
+    });
+
     test('sends execution profile and metadata on direct tool invokes', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,
@@ -250,7 +276,7 @@ describe('web-chat remote build metadata', () => {
         }));
     });
 
-    test('prefers managed-app only for explicit managed or GitLab chat requests', async () => {
+    test('prefers managed-app only for explicit managed-app chat requests', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,
             json: async () => ({
@@ -267,6 +293,29 @@ describe('web-chat remote build metadata', () => {
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
         expect(body.executionProfile).toBe('remote-build');
         expect(body.metadata.preferManagedApp).toBe(true);
+    });
+
+    test('keeps plain GitLab remote-build requests on remote-cli-agent', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: 'ok' } }],
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        await apiClient.chat([{
+            role: 'user',
+            content: 'Use GitLab to commit the frontend fix, build the image, deploy it to k3s, and verify the public site.',
+        }]);
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.executionProfile).toBe('remote-build');
+        expect(body.metadata).toEqual(expect.objectContaining({
+            preferredTool: 'remote-cli-agent',
+            plannedTools: ['remote-cli-agent'],
+        }));
+        expect(body.metadata.preferManagedApp).toBeUndefined();
     });
 
     test('marks selected-document managed-app deploy follow-ups as remote-build', async () => {

@@ -1,12 +1,12 @@
 # managed-app
 
-Creates, updates, and deploys agent-owned applications through the external GitLab control plane and the remote runner or SSH/k3s deployment lane.
+Creates, updates, and deploys explicitly managed applications through the managed-app control plane and the remote runner or SSH/k3s deployment lane.
 
 Managed-app deployment should use the configured remote runner when it is online, with SSH retained as a break-glass fallback. It should deploy through the configured remote host and remote k3s cluster, not through the backend pod's local Kubernetes service account.
 
-Use this tool as the control-plane entry point when the remote GitLab instance, BuildKit runner, and deploy cluster all live on the same remote server or k3s environment.
+Use this tool only as the managed-app control-plane entry point when the user explicitly asks for managed-app create, iterate, inspect, doctor, reconcile, or deploy behavior. Plain GitLab, pipeline, registry, or repo wording belongs to `remote-cli-agent` by default.
 
-Lane boundary: `managed-app` is the GitLab-observable control plane. Use `managed-app create` for new GitLab-backed app repos, `managed-app iterate` for existing app edits/builds/deploys, and `managed-app doctor` / `managed-app reconcile` for platform health. When an existing managed app needs complex CLI work, call `managed-app iterate` with `executor: "remote-cli-agent"` so the remote CLI agent is a worker inside the managed loop instead of an opaque parallel deployment path.
+Lane boundary: `managed-app` is the explicit managed-app control plane. Use `managed-app create` for new managed app records, `managed-app iterate` for existing managed app edits/builds/deploys, and `managed-app doctor` / `managed-app reconcile` for platform health. When an existing managed app needs complex CLI work, call `managed-app iterate` with `executor: "remote-cli-agent"` so the remote CLI agent is a worker inside the managed loop instead of an opaque parallel deployment path.
 
 Pre-create inventory gate: before `create`, list/inspect managed apps and check the configured GitLab group, continuity/project registry facts, and live k3s namespaces/services/ingresses for matching name, slug, repo, namespace, domain, or purpose. Reuse `iterate` for a match, ask on ambiguous matches, and create only after the inventory shows no matching project or the user explicitly asked for a separate new app.
 

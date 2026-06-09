@@ -7,8 +7,8 @@ Operating model:
 - Before creating a remote app, site, service, dashboard, GitLab project, namespace, or host, inventory managed-app records, GitLab projects, continuity registry facts, and live k3s resources. Reuse or iterate a match unless the user explicitly wants a separate new project.
 
 Lane picker:
-- `managed-app`: GitLab-observable control plane for app/source/build/deploy loops. Use `create` for new managed apps, `iterate` for existing app changes, `doctor` or `reconcile` for platform health. For complex CLI work in an existing managed app, call `iterate` with `executor: "remote-cli-agent"`.
-- `remote-cli-agent`: remote software author/build/test/deploy/verify loop when a coding agent should work inside the remote workspace. Params use `task`, usually `adminMode: true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `mcpSessionId`, `waitMs`, and `transport`.
+- `managed-app`: explicit managed-app catalog/control-plane lane. Use `create`, `iterate`, `doctor`, or `reconcile` only when the user asks for managed-app operations. For complex CLI work inside an explicitly selected managed app, call `iterate` with `executor: "remote-cli-agent"`.
+- `remote-cli-agent`: remote software author/build/test/deploy/verify loop when a coding agent should work inside the remote workspace. This is also the default owner for GitLab repo, pipeline, registry, app/site/service, frontend, and live deploy work unless the user explicitly asks for managed-app control-plane operations. Params use `task`, usually `adminMode: true`, plus optional `targetId`, `cwd` or `workspacePath`, `sessionId` or `threadId`, `mcpSessionId`, `waitMs`, and `transport`.
 - Codex help lane: phrases such as "ask Codex for help", "Codex help", or "use Codex for this" mean `remote-cli-agent` for deeper document creation, synthesis, or build work on the configured main Codex-agent workspace, normally `targetId: "k3s-prod"` and `cwd: "/opt/kimibuilt"`.
 - `remote-workbench`: structured remote repo/file/build/test/log/rollout actions when a matching action exists, such as git snapshot, apply patch, file read/write, build, test, logs, rollout, or verify.
 - `remote-command`: one direct non-interactive remote command for baseline, inspection, logs, kubectl, service status, network, DNS/TLS, one-off repair, or post-deploy verification.
@@ -18,7 +18,7 @@ Boundaries:
 - Do not put `command`, `args`, `shell`, or `executable` in `remote-cli-agent` params.
 - Do not use `remote-command` as the main authoring loop for app/site/service changes that need source edits plus build/deploy/verify.
 - Do not use `k3s-deploy` to author new manifests, build images, inspect logs, or create HTTPS routes; use the appropriate remote lane first.
-- Do not use standalone remote tools as the normal product loop when a matching managed app exists. Use managed-app iteration and, when needed, remote-cli-agent as its worker.
+- Do not route to managed-app merely because GitLab, pipeline, registry, or runner is mentioned. Use managed-app only for explicit managed-app control-plane work; otherwise let remote-cli-agent use GitLab as part of its source/build/deploy loop.
 
 Proof loop:
 1. Resolve the owning app/repo/workspace/domain/namespace from session state, managed-app catalog, artifact metadata, cluster registry, or explicit user text.

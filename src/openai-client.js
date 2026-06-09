@@ -2316,7 +2316,7 @@ function hasManagedAppIntent(prompt = '') {
         /\bmanaged[- ]app\b/i,
         /\bmanaged\b[\s\S]{0,20}\b(app|apps|catalog|control plane|platform)\b/i,
         /\b(app|apps)\b[\s\S]{0,20}\b(managed catalog|managed-app|control plane)\b/i,
-        /\b(gitlab|gitlab[-_ ]runner|gitlab ci|gitea|act[-_ ]runner|gitea actions?|managed app catalog|managed-app catalog|build events webhook)\b/i,
+        /\b(managed app catalog|managed-app catalog|build events webhook)\b/i,
         /\b(managed-app|managed app)\b[\s\S]{0,40}\b(create|build|deploy|publish|launch|ship|update|redeploy|inspect|list|doctor|reconcile|repair)\b/i,
     ].some((pattern) => pattern.test(text));
 }
@@ -2387,6 +2387,9 @@ function shouldPreferManagedAppForRemoteBuild(prompt = '', options = {}) {
     const metadata = getToolContextMetadata(options);
     const promptManagedAppIntent = hasManagedAppIntent(prompt);
     const explicitRemoteCliAgentIntent = hasExplicitRemoteCliAgentIntent(prompt);
+    const metadataRemoteCliAgentPreference = String(metadata.preferredTool || '').trim() === 'remote-cli-agent'
+        || String(metadata.directToolId || '').trim() === 'remote-cli-agent'
+        || (Array.isArray(metadata.plannedTools) && metadata.plannedTools.includes('remote-cli-agent'));
     const remoteCliContinuation = (
         metadata.stickyRemoteContext === true
         || metadata.remoteBuildContinuation === true
@@ -2395,6 +2398,7 @@ function shouldPreferManagedAppForRemoteBuild(prompt = '', options = {}) {
 
     if (metadata.preferManagedApp === false
         || (explicitRemoteCliAgentIntent && !promptManagedAppIntent)
+        || (metadataRemoteCliAgentPreference && !promptManagedAppIntent)
         || (remoteCliContinuation && !promptManagedAppIntent)) {
         return false;
     }
@@ -2494,13 +2498,14 @@ function hasManagedAppArtifactPublishIntent(prompt = '') {
         return false;
     }
 
+    const managedCue = /\b(managed[- ]app|managed app|managed app catalog|managed-app catalog|managed control plane)\b/.test(normalized);
     const artifactTarget = /\b(?:sampled?|generated|existing|previous|current|this|that)?\s*(?:html\s+(?:artifact|document|doc|file|page|site)|site\s+artifact|website\s+artifact|preview(?:able)?\s+html|artifact)\b/.test(normalized)
         || hasInternalArtifactReference(normalized);
     const publishIntent = /\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b[\s\S]{0,50}\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b/.test(normalized)
         || /\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b[\s\S]{0,50}\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b/.test(normalized)
         || /\bmanaged[- ]app\b[\s\S]{0,80}\b(?:html|artifact|document|site|page|publish|deploy|export)\b/.test(normalized);
 
-    return artifactTarget && publishIntent;
+    return managedCue && artifactTarget && publishIntent;
 }
 
 function hasExplicitQuestionnaireToolTestIntent(prompt = '') {

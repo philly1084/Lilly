@@ -60,4 +60,37 @@ describe('Notes Blocks database normalization', () => {
             ['Walk', '', 'Waterfront'],
         ]);
     });
+
+    test('uses structured table headers and cell values for extracted databases', () => {
+        const Blocks = loadBlocks();
+
+        const database = Blocks.normalizeDatabaseContent({
+            headers: [
+                { id: 'c1', header: 'Patient Key', columnIndex: 0 },
+                { id: 'c2', header: 'Patient Balance', columnIndex: 1 },
+            ],
+            rows: [{
+                id: 'r1',
+                cells: [
+                    { columnId: 'c1', columnIndex: 0, header: 'Patient Key', value: 'P001' },
+                    { columnId: 'c2', columnIndex: 1, header: 'Patient Balance', value: '250' },
+                ],
+            }],
+        });
+
+        expect(database.columns).toEqual(['Patient Key', 'Patient Balance']);
+        expect(database.rows).toEqual([['P001', '250']]);
+    });
+
+    test('replaces duplicated generic output headers with readable column labels', () => {
+        const Blocks = loadBlocks();
+
+        const database = Blocks.normalizeDatabaseContent({
+            columns: [{ output: 'Output' }, { output: 'Output' }],
+            rows: [['Main body still works', 'Second value']],
+        });
+
+        expect(database.columns).toEqual(['Column 1', 'Column 2']);
+        expect(database.rows).toEqual([['Main body still works', 'Second value']]);
+    });
 });

@@ -2118,7 +2118,7 @@ function shouldAllowManagedAppPlan({ objective = '', executionProfile = DEFAULT_
     }
     const normalized = String(objective || '').trim().toLowerCase();
     return executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
-        || /\b(managed app|managed-app|gitlab|gitlab ci|gitlab runner|build events webhook)\b/.test(normalized);
+        || /\b(managed app|managed-app|build events webhook)\b/.test(normalized);
 }
 
 function extractStrictPreviewUrlFromToolEvent(event = {}) {
@@ -6076,7 +6076,7 @@ function hasManagedAppIntentText(text = '') {
         /\bmanaged[- ]app\b/i,
         /\bmanaged\b[\s\S]{0,20}\b(app|apps|catalog|control plane|platform)\b/i,
         /\b(app|apps)\b[\s\S]{0,20}\b(managed catalog|managed-app|control plane)\b/i,
-        /\b(gitlab|gitlab[-_ ]runner|gitlab ci|gitea|act[-_ ]runner|gitea actions?|managed app catalog|managed-app catalog|build events webhook)\b/i,
+        /\b(managed app catalog|managed-app catalog|build events webhook)\b/i,
         /\b(managed-app|managed app)\b[\s\S]{0,40}\b(create|build|deploy|publish|launch|ship|update|redeploy|inspect|check|verify|diagnose|debug|troubleshoot|status|show|list|doctor|reconcile|repair)\b/i,
     ].some((pattern) => pattern.test(normalized));
 }
@@ -6107,7 +6107,7 @@ function hasManagedAppAuthoringIntent(text = '', options = {}) {
     return appContext
         && changeIntent
         && remoteContext
-        && (explicitManagedAppContext || managedAppArtifactPublish || executionProfile === REMOTE_BUILD_EXECUTION_PROFILE);
+        && (explicitManagedAppContext || managedAppArtifactPublish);
 }
 
 function hasManagedAppArtifactPublishIntentText(text = '') {
@@ -6116,13 +6116,14 @@ function hasManagedAppArtifactPublishIntentText(text = '') {
         return false;
     }
 
+    const managedCue = /\b(managed[- ]app|managed app|managed app catalog|managed-app catalog|managed control plane)\b/.test(normalized);
     const artifactTarget = /\b(?:sampled?|generated|existing|previous|current|this|that)?\s*(?:html\s+(?:artifact|document|doc|file|page|site)|site\s+artifact|website\s+artifact|preview(?:able)?\s+html|artifact)\b/.test(normalized)
         || hasInternalArtifactReference(normalized);
     const publishIntent = /\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b[\s\S]{0,50}\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b/.test(normalized)
         || /\b(?:web|online|live|public|remote|managed[- ]app|managed app|gitlab|k3s|dns|host|domain)\b[\s\S]{0,50}\b(?:publish|deploy|push|put|send|export|ship|launch|make|build)\b/.test(normalized)
         || /\bmanaged[- ]app\b[\s\S]{0,80}\b(?:html|artifact|document|site|page|publish|deploy|export)\b/.test(normalized);
 
-    return artifactTarget && publishIntent;
+    return managedCue && artifactTarget && publishIntent;
 }
 
 function normalizeManagedAppDeployTarget(value = '') {
@@ -11623,6 +11624,7 @@ class ConversationOrchestrator extends EventEmitter {
             toolMetadata.toolSelectionInstructions,
         ].map((entry) => String(entry || '').trim()).filter(Boolean).join('\n');
         const hasRemoteCliAgentMetadataPreference = preferredMetadataToolId === 'remote-cli-agent'
+            || String(metadata?.directToolId || toolMetadata.directToolId || '').trim() === 'remote-cli-agent'
             || plannedToolIds.includes('remote-cli-agent');
         const hasExplicitRemoteCliAgentRequest = hasExplicitRemoteCliAgentIntentText(objectiveText);
         const hasExplicitDirectRemoteCliRequest = hasExplicitDirectRemoteCliIntent(objectiveText);
@@ -11639,6 +11641,7 @@ class ConversationOrchestrator extends EventEmitter {
         const explicitRemoteCliAgentWithoutManagedApp = hasExplicitRemoteCliAgentRequest && !hasManagedAppIntent;
         const prefersManagedAppForRemoteBuild = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
             && allowedToolIds.includes('managed-app')
+            && !hasRemoteCliAgentMetadataPreference
             && !metadataDisablesManagedApp
             && !hasExplicitDirectRemoteCliRequest
             && !explicitRemoteCliAgentWithoutManagedApp
@@ -11650,13 +11653,13 @@ class ConversationOrchestrator extends EventEmitter {
                 metadataPrefersManagedApp
                 || hasManagedAppIntent
                 || hasManagedAppAuthoringRequest
-                || hasRemoteCliAgentAuthoringRequest
             );
         const shouldForceRemoteCliAgent = allowedToolIds.includes('remote-cli-agent')
             && !prefersManagedAppForRemoteBuild
             && !metadataPrefersManagedApp
             && (
                 hasRemoteCliAgentMetadataPreference
+                || hasRemoteCliAgentContinuationPreference
                 || (
                     (hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest)
                     && !hasManagedAppIntent
@@ -11886,7 +11889,7 @@ class ConversationOrchestrator extends EventEmitter {
             if ((explicitGitIntent || workflowNeedsDeployLane) && allowedToolIds.includes('git-safe')) {
                 candidates.add('git-safe');
             }
-            if ((hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest) && allowedToolIds.includes('remote-cli-agent')) {
+            if ((hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest || hasRemoteCliAgentContinuationPreference) && allowedToolIds.includes('remote-cli-agent')) {
                 candidates.add('remote-cli-agent');
             }
             if ((hasManagedAppIntent || (!hasExplicitDirectRemoteCliRequest && hasManagedAppAuthoringRequest) || hasManagedAppContinuationRecovery || prefersManagedAppForRemoteBuild)
@@ -12101,7 +12104,7 @@ class ConversationOrchestrator extends EventEmitter {
             if (allowedToolIds.includes(SELF_REFLECTION_UPDATE_TOOL_ID) && hasSelfReflectionUpdateIntentText(prompt)) {
                 candidates.add(SELF_REFLECTION_UPDATE_TOOL_ID);
             }
-            if ((hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest) && allowedToolIds.includes('remote-cli-agent')) {
+            if ((hasRemoteCliAgentAuthoringRequest || hasExplicitRemoteCliAgentRequest || hasRemoteCliAgentContinuationPreference) && allowedToolIds.includes('remote-cli-agent')) {
                 candidates.add('remote-cli-agent');
             }
             if (effectiveRolePipelineSeed?.requiresDesign && allowedToolIds.includes('design-resource-search')) {
@@ -12230,7 +12233,6 @@ class ConversationOrchestrator extends EventEmitter {
                 hasManagedAppAuthoringRequest
                 || hasManagedAppContinuationRecovery
                 || prefersManagedAppForRemoteBuild
-                || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(prompt)
             ))
         );
 
@@ -12496,7 +12498,6 @@ class ConversationOrchestrator extends EventEmitter {
                     && hasRemoteCliAgentAuthoringIntent(objective)
                     && !hasExplicitDirectRemoteCliIntent(objective)
                 )
-                || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/i.test(objective)
                 || inferManagedAppRecoveryActionFromRecentMessages(recentMessages) === 'create')) {
             return finalizeAction(buildManagedAppDirectAction(objective, {
                 executionProfile: toolPolicy.executionProfile,

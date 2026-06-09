@@ -308,10 +308,200 @@ const Blocks = (function() {
         return null;
     }
 
+    function isGenericDatabaseColumnLabel(label = '') {
+        return /^(?:output|output text|output_text|content|value|data|text|result|response)$/i.test(String(label || '').trim());
+    }
+
+    function normalizeDatabaseLabelText(value = '') {
+        const text = String(value == null ? '' : value).trim();
+        if (!text) return '';
+        return text
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s{2,}/g, ' ');
+    }
+
+    function extractDatabaseObjectText(value, keys = []) {
+        if (value == null) return '';
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            return String(value).trim();
+        }
+        if (Array.isArray(value)) {
+            return value.map((entry) => extractDatabaseObjectText(entry, keys)).filter(Boolean).join(' ').trim();
+        }
+        if (typeof value !== 'object') return '';
+
+        const keyList = keys.length ? keys : [
+            'header',
+            'label',
+            'name',
+            'title',
+            'displayName',
+            'display_name',
+            'columnName',
+            'column_name',
+            'column',
+            'fieldName',
+            'field_name',
+            'field',
+            'key',
+            'id',
+            'text',
+            'value',
+            'content',
+            'output_text',
+            'output',
+            'result',
+            'response',
+        ];
+        for (const key of keyList) {
+            const candidate = Object.prototype.hasOwnProperty.call(value, key)
+                ? extractDatabaseObjectText(value[key], [])
+                : '';
+            if (candidate) {
+                return candidate;
+            }
+        }
+        return '';
+    }
+
+    function normalizeDatabaseCellValue(cell) {
+        if (cell == null) return '';
+        if (typeof cell === 'string' || typeof cell === 'number' || typeof cell === 'boolean') {
+            return String(cell);
+        }
+        if (Array.isArray(cell)) {
+            return cell.map(normalizeDatabaseCellValue).filter(Boolean).join(' ');
+        }
+        if (typeof cell === 'object') {
+            return extractDatabaseObjectText(cell, [
+                'value',
+                'text',
+                'content',
+                'output_text',
+                'output',
+                'result',
+                'response',
+                'label',
+                'name',
+                'title',
+            ]);
+        }
+        return String(cell);
+    }
+
+    function normalizeDatabaseColumnDescriptors(source = {}, objectRowKeys = []) {
+        const columnSource = Array.isArray(source.columns) && source.columns.length > 0
+            ? source.columns
+            : (Array.isArray(source.headers) ? source.headers : []);
+
+        const descriptors = columnSource.map((column, index) => {
+            const rowKeys = [];
+            let label = '';
+
+            if (column && typeof column === 'object' && !Array.isArray(column)) {
+                [
+                    'id',
+                    'key',
+                    'field',
+                    'fieldName',
+                    'field_name',
+                    'columnId',
+                    'column_id',
+                    'column',
+                    'header',
+                    'label',
+                    'name',
+                    'title',
+                    'text',
+                    'value',
+                    'output_text',
+                    'output',
+                ].forEach((key) => {
+                    const value = Object.prototype.hasOwnProperty.call(column, key)
+                        ? extractDatabaseObjectText(column[key], [])
+                        : '';
+                    if (value && !rowKeys.includes(value)) {
+                        rowKeys.push(value);
+                    }
+                });
+                if (Number.isInteger(column.columnIndex)) {
+                    rowKeys.push(String(column.columnIndex));
+                }
+
+                const preferredKeys = [
+                    'header',
+                    'label',
+                    'name',
+                    'title',
+                    'displayName',
+                    'display_name',
+                    'columnName',
+                    'column_name',
+                    'fieldName',
+                    'field_name',
+                    'column',
+                    'field',
+                    'key',
+                    'text',
+                    'value',
+                    'output_text',
+                    'output',
+                    'id',
+                ];
+                for (const key of preferredKeys) {
+                    const candidate = Object.prototype.hasOwnProperty.call(column, key)
+                        ? extractDatabaseObjectText(column[key], [])
+                        : '';
+                    if (!candidate) continue;
+                    if (!label || (isGenericDatabaseColumnLabel(label) && !isGenericDatabaseColumnLabel(candidate))) {
+                        label = candidate;
+                    }
+                    if (label && !isGenericDatabaseColumnLabel(label)) break;
+                }
+            } else {
+                label = extractDatabaseObjectText(column, []);
+                if (label) rowKeys.push(label);
+            }
+
+            if (isGenericDatabaseColumnLabel(label) && objectRowKeys[index] && !isGenericDatabaseColumnLabel(objectRowKeys[index])) {
+                label = objectRowKeys[index];
+            }
+
+            return {
+                label: String(label || '').trim(),
+                keys: rowKeys,
+            };
+        });
+
+        const labelCounts = descriptors.reduce((counts, descriptor) => {
+            const key = descriptor.label.trim().toLowerCase();
+            if (key) counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+
+        descriptors.forEach((descriptor, index) => {
+            const labelKey = descriptor.label.trim().toLowerCase();
+            const duplicated = labelKey && labelCounts[labelKey] > 1;
+            if (!descriptor.label || (duplicated && isGenericDatabaseColumnLabel(descriptor.label))) {
+                descriptor.label = objectRowKeys[index] && !isGenericDatabaseColumnLabel(objectRowKeys[index])
+                    ? objectRowKeys[index]
+                    : `Column ${index + 1}`;
+            } else {
+                descriptor.label = normalizeDatabaseLabelText(descriptor.label);
+            }
+            if (!descriptor.keys.includes(descriptor.label)) {
+                descriptor.keys.push(descriptor.label);
+            }
+        });
+
+        return descriptors;
+    }
+
     function normalizeDatabaseContent(content) {
         const source = (content && typeof content === 'object') ? content : {};
         const sourceRows = Array.isArray(source.rows) ? source.rows : [];
-        const hasDeclaredColumns = Array.isArray(source.columns) && source.columns.length > 0;
+        const hasDeclaredColumns = (Array.isArray(source.columns) && source.columns.length > 0)
+            || (Array.isArray(source.headers) && source.headers.length > 0);
         const objectRowKeys = [];
         sourceRows.forEach((row) => {
             if (!row || Array.isArray(row) || typeof row !== 'object') return;
@@ -337,14 +527,18 @@ const Blocks = (function() {
             }
             return Math.max(maxWidth, 1);
         }, 0);
-        const columns = hasDeclaredColumns
-            ? source.columns.map((column, index) => {
-                const label = String(column || '').trim();
-                return label || `Column ${index + 1}`;
-            })
-            : (objectRowKeys.length > 0 ? objectRowKeys : ['Name', 'Status', 'Notes']);
+        const columnDescriptors = hasDeclaredColumns
+            ? normalizeDatabaseColumnDescriptors(source, objectRowKeys)
+            : (objectRowKeys.length > 0
+                ? objectRowKeys.map((key) => ({ label: key, keys: [key] }))
+                : ['Name', 'Status', 'Notes'].map((key) => ({ label: key, keys: [key] })));
+        const columns = columnDescriptors.map((descriptor, index) => descriptor.label || `Column ${index + 1}`);
         while (columns.length < maxRowWidth) {
             columns.push(`Column ${columns.length + 1}`);
+            columnDescriptors.push({
+                label: columns[columns.length - 1],
+                keys: [columns[columns.length - 1]],
+            });
         }
 
         const rows = sourceRows
@@ -353,15 +547,23 @@ const Blocks = (function() {
                 if (Array.isArray(row)) {
                     cells = row.slice();
                 } else if (Array.isArray(row?.cells)) {
-                    cells = row.cells.slice();
+                    cells = row.cells.map(normalizeDatabaseCellValue);
                 } else if (Array.isArray(row?.values)) {
-                    cells = row.values.slice();
+                    cells = row.values.map(normalizeDatabaseCellValue);
                 } else if (row && typeof row === 'object') {
-                    const mapped = columns.map((column) => {
-                        if (Object.prototype.hasOwnProperty.call(row, column)) {
-                            return row[column];
+                    const mapped = columnDescriptors.map((descriptor) => {
+                        const candidateKeys = Array.from(new Set([
+                            ...(descriptor.keys || []),
+                            descriptor.label,
+                        ].filter(Boolean)));
+                        for (const key of candidateKeys) {
+                            if (Object.prototype.hasOwnProperty.call(row, key)) {
+                                return row[key];
+                            }
                         }
-                        const matchedKey = Object.keys(row).find((key) => String(key).trim().toLowerCase() === String(column).trim().toLowerCase());
+                        const matchedKey = Object.keys(row).find((key) => candidateKeys.some((candidate) =>
+                            String(key).trim().toLowerCase() === String(candidate).trim().toLowerCase()
+                        ));
                         return matchedKey ? row[matchedKey] : undefined;
                     });
                     cells = mapped.some((cell) => cell !== undefined)
@@ -376,7 +578,7 @@ const Blocks = (function() {
                 if (cells.length > columns.length) {
                     cells.length = columns.length;
                 }
-                return cells.map((cell) => (cell == null ? '' : String(cell)));
+                return cells.map(normalizeDatabaseCellValue);
             });
 
         return {

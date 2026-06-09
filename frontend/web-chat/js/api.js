@@ -228,8 +228,7 @@ function hasManagedAppPreferenceText(text = '') {
         return false;
     }
 
-    const managedAppCue = /\b(managed[- ]app|managed app|managed app catalog|managed-app catalog|managed control plane)\b/.test(normalized)
-        || /\b(gitlab|gitlab ci|gitlab runner|build events webhook)\b/.test(normalized);
+    const managedAppCue = /\b(managed[- ]app|managed app|managed app catalog|managed-app catalog|managed control plane)\b/.test(normalized);
     const negativeManagedAppCue = /\b(?:without|bypass|skip|do not use|don't use|not)\s+(?:the\s+)?(?:managed[- ]app|managed app|gitlab)\b/.test(normalized);
 
     return managedAppCue && !negativeManagedAppCue && !hasExplicitRemoteCliAgentIntentText(normalized);
@@ -268,6 +267,9 @@ function applyRemoteBuildMetadata(params, messages = []) {
         params.metadata.preferManagedApp = true;
     } else if (hasExplicitRemoteCliAgentIntentText(lastUserText)) {
         params.metadata.preferredTool = 'remote-cli-agent';
+        params.metadata.plannedTools = mergeUniqueStringList(params.metadata.plannedTools, ['remote-cli-agent']);
+    } else {
+        params.metadata.preferredTool = params.metadata.preferredTool || 'remote-cli-agent';
         params.metadata.plannedTools = mergeUniqueStringList(params.metadata.plannedTools, ['remote-cli-agent']);
     }
 }

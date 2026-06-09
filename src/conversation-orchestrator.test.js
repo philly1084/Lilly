@@ -6913,7 +6913,7 @@ describe('ConversationOrchestrator', () => {
         });
     });
 
-    test('routes GitLab-observable remote-build authoring through managed-app', () => {
+    test('routes GitLab-backed remote-build authoring through remote-cli-agent', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
             host: '10.0.0.5',
@@ -6930,7 +6930,7 @@ describe('ConversationOrchestrator', () => {
             },
             toolManager: {
                 getTool: jest.fn((toolId) => (
-                    ['managed-app', 'remote-command', 'git-safe', 'k3s-deploy', 'tool-doc-read']
+                    ['managed-app', 'remote-command', 'remote-cli-agent', 'git-safe', 'k3s-deploy', 'tool-doc-read']
                         .includes(toolId)
                         ? { id: toolId, description: toolId }
                         : null
@@ -6949,21 +6949,16 @@ describe('ConversationOrchestrator', () => {
             toolPolicy,
         });
 
-        expect(toolPolicy.candidateToolIds).toContain('managed-app');
-        expect(directAction).toEqual({
-            tool: 'managed-app',
-            reason: 'Managed app creation and deployment requests should use the dedicated control-plane tool.',
-            params: {
-                action: 'create',
-                prompt: objective,
-                sourcePrompt: objective,
-                requestedAction: 'deploy',
-                slug: 'hello-stack',
-                deployTarget: 'runner',
-                executor: 'remote-cli-agent',
-                useRemoteCliAgent: true,
-            },
-        });
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('managed-app');
+        expect(directAction).toEqual(expect.objectContaining({
+            tool: 'remote-cli-agent',
+            params: expect.objectContaining({
+                task: objective,
+                waitMs: 30000,
+                adminMode: true,
+            }),
+        }));
     });
 
     test('routes managed app GitLab/k3s iterations through remote-cli-agent as a controlled worker', () => {
@@ -9965,7 +9960,7 @@ describe('ConversationOrchestrator', () => {
         expect(directAction?.tool || null).not.toBe('managed-app');
     });
 
-    test('routes remote-build live website builds through managed-app while preserving remote CLI execution', () => {
+    test('routes remote-build live website builds through remote-cli-agent', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
             host: '162.55.163.199',
@@ -10015,12 +10010,14 @@ describe('ConversationOrchestrator', () => {
             toolContext,
         });
 
-        expect(toolPolicy.candidateToolIds).toContain('managed-app');
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('managed-app');
         expect(directAction).toEqual(expect.objectContaining({
-            tool: 'managed-app',
+            tool: 'remote-cli-agent',
             params: expect.objectContaining({
-                executor: 'remote-cli-agent',
-                useRemoteCliAgent: true,
+                task: objective,
+                waitMs: 30000,
+                adminMode: true,
             }),
         }));
     });
@@ -10086,7 +10083,7 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
-    test('keeps managed-app owner for sticky remote-cli software deployment follow-ups', () => {
+    test('keeps sticky remote-cli software deployment follow-ups on remote-cli-agent', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,
             host: '162.55.163.199',
@@ -10153,16 +10150,17 @@ describe('ConversationOrchestrator', () => {
             toolContext,
         });
 
-        expect(toolPolicy.prefersManagedAppForRemoteBuild).toBe(true);
-        expect(toolPolicy.candidateToolIds).toContain('managed-app');
+        expect(toolPolicy.prefersManagedAppForRemoteBuild).toBe(false);
+        expect(toolPolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(toolPolicy.candidateToolIds).not.toContain('managed-app');
         expect(directAction).toEqual(expect.objectContaining({
-            tool: 'managed-app',
+            tool: 'remote-cli-agent',
             params: expect.objectContaining({
-                action: 'create',
-                requestedAction: 'deploy',
-                deployTarget: 'runner',
-                executor: 'remote-cli-agent',
-                useRemoteCliAgent: true,
+                waitMs: 30000,
+                adminMode: true,
+                cwd: '/opt/kimibuilt',
+                sessionId: 'remote-session-1',
+                mcpSessionId: 'mcp-session-1',
             }),
         }));
     });

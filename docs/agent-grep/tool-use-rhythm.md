@@ -25,8 +25,8 @@ Tool habits:
 - Use `tool-doc-read` before calling an unfamiliar tool.
 - Use `design-resource-search` before design-sensitive artifacts.
 - Use `skill-context` before inventing new instructions.
-- Use `managed-app` for GitLab-observable app/source/build/deploy loops.
-- Use `remote-cli-agent` for remote build/deploy loops, not ad hoc local guesses.
+- Use `remote-cli-agent` for GitLab-backed source/build/deploy loops and remote build/deploy loops, not ad hoc local guesses.
+- Use `managed-app` only for explicit managed-app catalog/control-plane actions.
 - Use `remote-command` for one-off remote status, logs, kubectl, and network checks.
 - Use `docs/agent-grep/remote-tools.md` before mixing `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
 - Use `self-reflection-update` only for bounded durable updates and dry-run first when unsure.

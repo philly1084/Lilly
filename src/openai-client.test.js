@@ -3702,6 +3702,80 @@ describe('openai-client automatic tool orchestration helpers', () => {
         )).toBe('managed-app');
     });
 
+    test('honors web-chat remote-agent metadata for ordinary remote frontend fixes', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Fix the web chat frontend on the remote server and verify it live.';
+        const toolContext = {
+            executionProfile: 'remote-build',
+            metadata: {
+                remoteBuildIntent: true,
+                frontendRemoteBuildAutonomyApproved: true,
+                preferredTool: 'remote-cli-agent',
+                plannedTools: ['remote-cli-agent'],
+            },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(selectedIds).toContain('remote-cli-agent');
+        expect(selectedIds).not.toContain('managed-app');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('remote-cli-agent');
+        expect(__testUtils.buildAutomaticToolChoice(selectedTools, 'chat', { prompt, toolContext })).toEqual({
+            type: 'function',
+            function: {
+                name: 'remote-cli-agent',
+            },
+        });
+    });
+
+    test('routes web-chat GitLab source/build wording through remote-cli-agent', () => {
+        jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
+            enabled: true,
+            host: '162.55.163.199',
+            port: 22,
+            username: 'root',
+            password: 'secret',
+            privateKeyPath: '',
+        });
+
+        const toolManager = createToolManager();
+        const prompt = 'Use GitLab to commit the frontend fix, build the image, deploy it to k3s, and verify the public site.';
+        const toolContext = {
+            executionProfile: 'remote-build',
+            metadata: {
+                remoteBuildIntent: true,
+                frontendRemoteBuildAutonomyApproved: true,
+                preferredTool: 'remote-cli-agent',
+                plannedTools: ['remote-cli-agent'],
+            },
+        };
+        const automaticTools = __testUtils.buildAutomaticToolDefinitions(toolManager, prompt, toolContext);
+        const selectedTools = __testUtils.selectAutomaticToolDefinitions(automaticTools, prompt, { toolContext });
+        const selectedIds = selectedTools.map((tool) => tool.id);
+
+        expect(selectedIds).toContain('remote-cli-agent');
+        expect(selectedIds).not.toContain('managed-app');
+        expect(__testUtils.inferRequiredAutomaticToolId(
+            prompt,
+            automaticTools.map((tool) => tool.id),
+            { toolContext },
+        )).toBe('remote-cli-agent');
+    });
+
     test('keeps sampled HTML managed-app publish prompts off sub-agents', () => {
         jest.spyOn(settingsController, 'getEffectiveSshConfig').mockReturnValue({
             enabled: true,

@@ -2,7 +2,7 @@
 
 Purpose: run restricted k3s deployment actions through the remote runner when available, falling back to SSH against the configured server.
 
-Lane boundary: `k3s-deploy` is the deploy-only lane in the remote operations system. Use `managed-app` for GitLab-observable app/source/build/deploy loops, `remote-cli-agent` for remote authoring/build/test/deploy/verify loops, `remote-workbench` for structured remote repo/file/build/test/log/rollout actions, and `remote-command` for direct inspection, `kubectl describe`, logs, and HTTPS verification. Use `git-safe` for repository save/push work and `k3s-deploy` only when deployment is the next planned step.
+Lane boundary: `k3s-deploy` is the deploy-only lane in the remote operations system. Use `remote-cli-agent` for GitLab-backed source/build/deploy loops and remote authoring/build/test/deploy/verify loops, `managed-app` only for explicit managed-app control-plane actions, `remote-workbench` for structured remote repo/file/build/test/log/rollout actions, and `remote-command` for direct inspection, `kubectl describe`, logs, and HTTPS verification. Use `git-safe` for repository save/push work and `k3s-deploy` only when deployment is the next planned step.
 
 Short picker: read `src/agent-sdk/tool-docs/remote-tools.md` when choosing between `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy`.
 
