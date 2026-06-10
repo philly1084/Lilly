@@ -35,8 +35,8 @@ const AgentUI = (function() {
     let referencePopoverOpen = false;
     let referenceSearchQuery = '';
     const MAX_SELECTED_REFERENCES = 6;
-    const MAX_REFERENCE_RESULTS = 8;
-    const MAX_REFERENCE_SEARCH_HITS = 10;
+    const MAX_REFERENCE_RESULTS = 12;
+    const MAX_REFERENCE_SEARCH_HITS = 16;
 
     function cacheElements() {
         const widgetBtn = document.getElementById('agent-widget-btn');
@@ -76,6 +76,7 @@ const AgentUI = (function() {
             modalContent: document.querySelector('.agent-chat-container'),
             closeBtn: document.querySelector('.agent-chat-close'),
             messagesContainer: document.getElementById('agent-chat-messages'),
+            inputArea: document.querySelector('.agent-chat-input-area'),
             input: document.getElementById('agent-chat-input'),
             sendBtn: document.getElementById('agent-chat-send'),
             modelSelectorDropdown: document.getElementById('model-selector-dropdown'),
@@ -212,6 +213,15 @@ const AgentUI = (function() {
                 }
 
                 addPageReference(button.dataset.pageId);
+            });
+
+            elements.referenceResults.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                const result = event.target.closest('.agent-reference-result[data-page-id]');
+                if (!result) return;
+
+                event.preventDefault();
+                addPageReference(result.dataset.pageId);
             });
         }
 
@@ -520,6 +530,45 @@ const AgentUI = (function() {
             .slice(0, 6);
     }
 
+    function getPageProjectLabel(page = null, notesData = null) {
+        const data = notesData || window.Storage?.loadAll?.() || {};
+        const spaceId = page?.spaceId || data.currentSpaceId || 'private';
+        const space = Array.isArray(data.spaces)
+            ? data.spaces.find((candidate) => candidate?.id === spaceId)
+            : null;
+        const parent = page?.parentId && Array.isArray(data.pages)
+            ? data.pages.find((candidate) => candidate?.id === page.parentId)
+            : null;
+        const spaceName = space?.name || getCurrentSpaceName(data) || 'Private';
+        const parentTitle = parent?.title && parent.title !== page?.title ? parent.title : '';
+
+        return parentTitle ? `${spaceName} / ${parentTitle}` : spaceName;
+    }
+
+    function collectReferencePages(data = null) {
+        const notesData = data || window.Storage?.loadAll?.() || {};
+        const pageMap = new Map();
+        const addPage = (page) => {
+            if (page?.id && !pageMap.has(page.id)) {
+                pageMap.set(page.id, page);
+            }
+        };
+
+        if (Array.isArray(notesData.pages)) {
+            notesData.pages.forEach(addPage);
+        }
+        if (window.Storage?.getPages) {
+            window.Storage.getPages().forEach(addPage);
+        }
+
+        const currentPage = window.Editor?.getCurrentPage?.();
+        if (currentPage?.id) {
+            pageMap.set(currentPage.id, currentPage);
+        }
+
+        return Array.from(pageMap.values());
+    }
+
     function buildPageReferenceRecord(page = null, options = {}) {
         if (!page?.id) return null;
 
@@ -527,9 +576,16 @@ const AgentUI = (function() {
         const currentPage = window.Editor?.getCurrentPage?.();
         const effectivePage = currentPage?.id === page.id ? currentPage : page;
         const text = getPageText(effectivePage);
-        const space = Array.isArray(notesData.spaces)
-            ? notesData.spaces.find((candidate) => candidate?.id === (effectivePage.spaceId || notesData.currentSpaceId || 'private'))
-            : null;
+        const outline = getPageOutline(effectivePage);
+        const spaceName = getPageProjectLabel(effectivePage, notesData);
+        const title = effectivePage.title || 'Untitled';
+        const searchText = normalizeText([
+            title,
+            effectivePage.icon || '',
+            spaceName,
+            outline.join(' '),
+            text,
+        ].join(' '));
         const blockCount = window.NotesQuery?.buildIndex
             ? (() => {
                 try {
@@ -542,12 +598,14 @@ const AgentUI = (function() {
 
         return {
             pageId: effectivePage.id,
-            title: effectivePage.title || 'Untitled',
+            title,
             icon: effectivePage.icon || 'Page',
             spaceId: effectivePage.spaceId || notesData.currentSpaceId || 'private',
-            spaceName: space?.name || getCurrentSpaceName(notesData),
-            preview: text.slice(0, 220),
-            outline: getPageOutline(effectivePage),
+            spaceName,
+            preview: findSnippet(searchText, tokenizeSearch(title), 320) || text.slice(0, 320),
+            contentPreview: text.slice(0, 520),
+            outline,
+            searchText,
             blockCount,
             updatedAt: effectivePage.updatedAt || null,
         };
@@ -555,16 +613,7 @@ const AgentUI = (function() {
 
     function getAllReferenceRecords() {
         const data = window.Storage?.loadAll?.() || {};
-        const currentPage = window.Editor?.getCurrentPage?.();
-        const pages = Array.isArray(data.pages) ? data.pages : (window.Storage?.getPages?.() || []);
-        const pageMap = new Map();
-
-        pages.forEach((page) => {
-            if (page?.id) pageMap.set(page.id, page);
-        });
-        if (currentPage?.id) pageMap.set(currentPage.id, currentPage);
-
-        return Array.from(pageMap.values())
+        return collectReferencePages(data)
             .map((page) => buildPageReferenceRecord(page, { data }))
             .filter(Boolean);
     }
@@ -579,21 +628,26 @@ const AgentUI = (function() {
             .toLowerCase()
             .replace(/[^a-z0-9\s-]/g, ' ')
             .split(/\s+/)
-            .filter((word) => word.length >= 3 && !stopWords.has(word))
+            .filter((word) => word.length >= 2 && !stopWords.has(word))
             .slice(0, 12);
     }
 
     function scoreReferenceRecord(record, terms = []) {
         const title = normalizeText(record.title).toLowerCase();
-        const haystack = `${title} ${record.spaceName || ''} ${record.outline?.join(' ') || ''} ${record.preview || ''}`.toLowerCase();
+        const spaceName = normalizeText(record.spaceName).toLowerCase();
+        const outline = normalizeText((record.outline || []).join(' ')).toLowerCase();
+        const haystack = normalizeText(record.searchText || `${title} ${spaceName} ${outline} ${record.preview || ''}`).toLowerCase();
         if (terms.length === 0) {
             return record.pageId === window.Editor?.getCurrentPage?.()?.id ? 20 : 1;
         }
 
         return terms.reduce((score, term) => {
             if (!term) return score;
-            if (title.includes(term)) return score + 8;
-            if ((record.outline || []).join(' ').toLowerCase().includes(term)) return score + 5;
+            if (title === term) return score + 30;
+            if (title.startsWith(term)) return score + 18;
+            if (title.includes(term)) return score + 12;
+            if (spaceName.includes(term)) return score + 8;
+            if (outline.includes(term)) return score + 6;
             if (haystack.includes(term)) return score + 2;
             return score;
         }, 0);
@@ -622,6 +676,9 @@ const AgentUI = (function() {
             .map((record) => ({
                 ...record,
                 score: scoreReferenceRecord(record, terms),
+                matchedPreview: terms.length > 0
+                    ? findSnippet(record.searchText || record.contentPreview || record.preview || '', terms, 360)
+                    : (record.contentPreview || record.preview || ''),
             }))
             .filter((record) => includeSelected || !selectedIds.has(record.pageId))
             .filter((record) => terms.length === 0 || record.score > 0)
@@ -633,20 +690,10 @@ const AgentUI = (function() {
         const terms = tokenizeSearch(promptText);
         const selectedIds = new Set((pageReferences || []).map((reference) => reference.pageId));
         const data = window.Storage?.loadAll?.() || {};
-        const pages = Array.isArray(data.pages) ? data.pages : (window.Storage?.getPages?.() || []);
-        const currentPage = window.Editor?.getCurrentPage?.();
-        const pageMap = new Map();
-
-        pages.forEach((page) => {
-            if (page?.id) pageMap.set(page.id, page);
-        });
-        if (currentPage?.id) pageMap.set(currentPage.id, currentPage);
-
-        const hits = Array.from(pageMap.values())
+        const hits = collectReferencePages(data)
             .map((page) => {
                 const record = buildPageReferenceRecord(page, { data });
                 if (!record) return null;
-                const text = getPageText(page);
                 const score = selectedIds.has(record.pageId)
                     ? scoreReferenceRecord(record, terms) + 6
                     : scoreReferenceRecord(record, terms);
@@ -657,7 +704,7 @@ const AgentUI = (function() {
                     icon: record.icon,
                     spaceName: record.spaceName,
                     outline: record.outline,
-                    snippet: findSnippet(text, terms),
+                    snippet: findSnippet(record.searchText || record.contentPreview || record.preview || '', terms, 360),
                     score,
                     selected: selectedIds.has(record.pageId),
                 };
@@ -683,6 +730,9 @@ const AgentUI = (function() {
         }
         if (elements.referencePopover) {
             elements.referencePopover.hidden = !referencePopoverOpen;
+        }
+        if (elements.inputArea) {
+            elements.inputArea.classList.toggle('is-reference-open', referencePopoverOpen);
         }
     }
 
@@ -731,8 +781,8 @@ const AgentUI = (function() {
                 <span class="agent-reference-result-icon">${escapeHtml(record.icon || 'Page')}</span>
                 <span class="agent-reference-result-body">
                     <span class="agent-reference-result-title">${escapeHtml(record.title || 'Untitled')}</span>
-                    <span class="agent-reference-result-meta">${escapeHtml(record.spaceName || 'Private')} - ${record.blockCount || 0} blocks</span>
-                    <span class="agent-reference-result-preview">${escapeHtml(record.preview || 'No text content yet')}</span>
+                    <span class="agent-reference-result-meta">${escapeHtml(record.spaceName || 'Private')} - ${record.blockCount || 0} blocks${record.outline?.length ? ` - ${escapeHtml(record.outline.slice(0, 2).join(' / '))}` : ''}</span>
+                    <span class="agent-reference-result-preview">${escapeHtml(record.matchedPreview || record.preview || 'No text content yet')}</span>
                 </span>
                 <button type="button" class="agent-reference-open" data-page-id="${escapeHtmlAttr(record.pageId)}" title="Open page">Open</button>
             </div>
