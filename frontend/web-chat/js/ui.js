@@ -2610,6 +2610,302 @@ class UIHelpers {
         return rendered;
     }
 
+    buildChatPresentationRenderPlan(markdown = '') {
+        const source = String(markdown || '').replace(/\r\n?/g, '\n');
+        const blocks = [];
+        const presentationFencePattern = /```([A-Za-z][\w-]*)([^\n`]*)\n([\s\S]*?)```/g;
+        const normalizedMarkdown = source.replace(presentationFencePattern, (match, language, options, body) => {
+            const normalizedLanguage = String(language || '').trim().toLowerCase();
+            if (!this.isChatPresentationLanguage(normalizedLanguage)) {
+                return match;
+            }
+
+            const token = `%%KIMIBUILT_CHAT_PRESENTATION_${blocks.length}%%`;
+            blocks.push({
+                token,
+                html: this.renderChatPresentationBlock(normalizedLanguage, options, body),
+            });
+            return `\n\n${token}\n\n`;
+        });
+
+        return {
+            markdown: normalizedMarkdown,
+            blocks,
+        };
+    }
+
+    isChatPresentationLanguage(language = '') {
+        const normalized = String(language || '').trim().toLowerCase();
+        return /^chat-(?:brief|panel|card|note|info|success|warning|danger|metrics|steps|quote)$/.test(normalized)
+            || /^kb-(?:brief|panel|card|note|info|success|warning|danger|metrics|steps|quote)$/.test(normalized);
+    }
+
+    replaceChatPresentationTokens(html = '', blocks = []) {
+        let rendered = String(html || '');
+
+        (Array.isArray(blocks) ? blocks : []).forEach((block) => {
+            const token = String(block?.token || '').trim();
+            const blockHtml = String(block?.html || '').trim();
+            if (!token || !blockHtml) {
+                return;
+            }
+
+            const escapedToken = this.escapeRegExp(token);
+            rendered = rendered
+                .replace(new RegExp(`<p>\\s*${escapedToken}\\s*</p>`, 'g'), blockHtml)
+                .replace(new RegExp(escapedToken, 'g'), blockHtml);
+        });
+
+        return rendered;
+    }
+
+    parseChatPresentationOptions(rawOptions = '') {
+        const source = String(rawOptions || '').trim();
+        const options = {};
+        if (!source) {
+            return options;
+        }
+
+        let remainder = source;
+        const attrPattern = /([A-Za-z][\w-]*)=(?:"([^"]*)"|'([^']*)'|([^\s]+))/g;
+        let match;
+        while ((match = attrPattern.exec(source)) !== null) {
+            const key = String(match[1] || '').trim().toLowerCase();
+            const value = String(match[2] ?? match[3] ?? match[4] ?? '').trim();
+            if (key && value) {
+                options[key] = value;
+            }
+            remainder = remainder.replace(match[0], ' ');
+        }
+
+        const positionalTitle = remainder.trim().replace(/^[-:]\s*/, '');
+        if (positionalTitle && !options.title) {
+            options.title = positionalTitle;
+        }
+
+        return options;
+    }
+
+    normalizeChatPresentationType(language = '') {
+        return String(language || '')
+            .trim()
+            .toLowerCase()
+            .replace(/^kb-/, 'chat-')
+            .replace(/^chat-/, '');
+    }
+
+    normalizeChatPresentationTone(type = '', options = {}) {
+        const requested = String(options.tone || type || '').trim().toLowerCase();
+        if (['success', 'warning', 'danger', 'info', 'note', 'neutral'].includes(requested)) {
+            return requested === 'note' ? 'info' : requested;
+        }
+        if (type === 'success' || type === 'warning' || type === 'danger' || type === 'info') {
+            return type;
+        }
+        return 'neutral';
+    }
+
+    getChatPresentationIcon(type = '', tone = '', options = {}) {
+        const requested = String(options.icon || '').trim().toLowerCase();
+        const safeIcon = /^[a-z0-9-]{2,40}$/.test(requested) ? requested : '';
+        if (safeIcon) {
+            return safeIcon;
+        }
+
+        const iconByType = {
+            brief: 'list-checks',
+            panel: 'panel-top',
+            card: 'sparkles',
+            metrics: 'bar-chart-3',
+            steps: 'list-todo',
+            quote: 'quote',
+            success: 'check-circle-2',
+            warning: 'triangle-alert',
+            danger: 'octagon-alert',
+            info: 'info',
+            note: 'notebook-text',
+        };
+        const iconByTone = {
+            success: 'check-circle-2',
+            warning: 'triangle-alert',
+            danger: 'octagon-alert',
+            info: 'info',
+            neutral: 'sparkles',
+        };
+        return iconByType[type] || iconByTone[tone] || 'sparkles';
+    }
+
+    renderChatPresentationMarkdown(body = '') {
+        const markdown = this.normalizeHumanReadableMarkdownSegment(String(body || '').trim());
+        if (!markdown) {
+            return '';
+        }
+
+        return this.enhancePresentationCallouts(this.sanitizeAssistantHtml(marked.parse(markdown)));
+    }
+
+    parseChatPresentationMetricRows(body = '') {
+        return String(body || '')
+            .replace(/\r\n?/g, '\n')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter((line) => !/^\|?\s*:?-{2,}/.test(line))
+            .map((line) => {
+                const cleaned = line
+                    .replace(/^\s*[-*]\s+/, '')
+                    .replace(/^\|/, '')
+                    .replace(/\|$/, '')
+                    .trim();
+                const parts = cleaned.includes('|')
+                    ? cleaned.split('|').map((part) => part.trim()).filter(Boolean)
+                    : cleaned.split(/\s*:\s*/);
+                if (parts.length < 2) {
+                    return null;
+                }
+                return {
+                    label: this.clipDisplayTextAtBoundary(parts[0], 42),
+                    value: this.clipDisplayTextAtBoundary(parts.slice(1).join(': '), 92),
+                };
+            })
+            .filter((row) => row?.label && row?.value)
+            .slice(0, 8);
+    }
+
+    parseChatPresentationSteps(body = '') {
+        return String(body || '')
+            .replace(/\r\n?/g, '\n')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+                const match = line.match(/^(?:[-*]|\d+\.)\s+(?:\[(x|~|!| )\]\s*)?(.+)$/i);
+                if (!match) {
+                    return null;
+                }
+                const marker = String(match[1] || '').trim().toLowerCase();
+                const status = marker === 'x'
+                    ? 'done'
+                    : (marker === '~' ? 'active' : (marker === '!' ? 'blocked' : 'pending'));
+                return {
+                    status,
+                    text: this.clipDisplayTextAtBoundary(match[2], 160),
+                };
+            })
+            .filter((step) => step?.text)
+            .slice(0, 8);
+    }
+
+    renderChatPresentationBlock(language = '', rawOptions = '', body = '') {
+        const type = this.normalizeChatPresentationType(language);
+        const options = this.parseChatPresentationOptions(rawOptions);
+        const tone = this.normalizeChatPresentationTone(type, options);
+        const title = this.clipDisplayTextAtBoundary(
+            options.title || options.label || this.getChatPresentationDefaultTitle(type, tone),
+            84,
+        );
+        const label = this.clipDisplayTextAtBoundary(options.eyebrow || options.kicker || '', 36);
+        const icon = this.getChatPresentationIcon(type, tone, options);
+        const size = ['compact', 'wide'].includes(String(options.size || '').toLowerCase())
+            ? String(options.size || '').toLowerCase()
+            : 'default';
+        const kind = ['metrics', 'steps', 'quote'].includes(type) ? type : 'panel';
+        const className = [
+            'chat-presentation',
+            `chat-presentation--${kind}`,
+            `chat-presentation--${tone}`,
+            size !== 'default' ? `chat-presentation--${size}` : '',
+        ].filter(Boolean).join(' ');
+
+        if (type === 'metrics') {
+            const rows = this.parseChatPresentationMetricRows(body);
+            const rowsHtml = rows.length > 0
+                ? rows.map((row) => `
+                    <div class="chat-presentation__metric">
+                        <span class="chat-presentation__metric-label">${this.escapeHtml(row.label)}</span>
+                        <span class="chat-presentation__metric-value">${this.escapeHtml(row.value)}</span>
+                    </div>
+                `).join('')
+                : `<div class="chat-presentation__body">${this.renderChatPresentationMarkdown(body)}</div>`;
+            return `
+                <section class="${className}" aria-label="${this.escapeHtmlAttr(title)}">
+                    ${this.renderChatPresentationHeader(title, label, icon)}
+                    <div class="chat-presentation__metrics">${rowsHtml}</div>
+                </section>
+            `;
+        }
+
+        if (type === 'steps') {
+            const steps = this.parseChatPresentationSteps(body);
+            const stepsHtml = steps.length > 0
+                ? `<ol class="chat-presentation__steps">${
+                    steps.map((step) => `
+                        <li class="chat-presentation__step chat-presentation__step--${step.status}">
+                            <span class="chat-presentation__step-marker" aria-hidden="true"></span>
+                            <span class="chat-presentation__step-text">${this.escapeHtml(step.text)}</span>
+                        </li>
+                    `).join('')
+                }</ol>`
+                : `<div class="chat-presentation__body">${this.renderChatPresentationMarkdown(body)}</div>`;
+            return `
+                <section class="${className}" aria-label="${this.escapeHtmlAttr(title)}">
+                    ${this.renderChatPresentationHeader(title, label, icon)}
+                    ${stepsHtml}
+                </section>
+            `;
+        }
+
+        if (type === 'quote') {
+            const bodyHtml = this.renderChatPresentationMarkdown(body);
+            const cite = this.clipDisplayTextAtBoundary(options.cite || options.source || '', 88);
+            return `
+                <figure class="${className}" aria-label="${this.escapeHtmlAttr(title)}">
+                    ${this.renderChatPresentationHeader(title, label, icon)}
+                    <blockquote class="chat-presentation__quote">${bodyHtml}</blockquote>
+                    ${cite ? `<figcaption class="chat-presentation__cite">${this.escapeHtml(cite)}</figcaption>` : ''}
+                </figure>
+            `;
+        }
+
+        return `
+            <section class="${className}" aria-label="${this.escapeHtmlAttr(title)}">
+                ${this.renderChatPresentationHeader(title, label, icon)}
+                <div class="chat-presentation__body">${this.renderChatPresentationMarkdown(body)}</div>
+            </section>
+        `;
+    }
+
+    getChatPresentationDefaultTitle(type = '', tone = '') {
+        const titles = {
+            brief: 'Brief',
+            panel: 'Note',
+            card: 'Snapshot',
+            metrics: 'Signals',
+            steps: 'Next Steps',
+            quote: 'Quoted Context',
+            note: 'Note',
+            info: 'Info',
+            success: 'Complete',
+            warning: 'Watch Item',
+            danger: 'Needs Attention',
+        };
+        return titles[type] || titles[tone] || 'Note';
+    }
+
+    renderChatPresentationHeader(title = '', label = '', icon = 'sparkles') {
+        return `
+            <div class="chat-presentation__header">
+                <span class="chat-presentation__icon" aria-hidden="true">
+                    <i data-lucide="${this.escapeHtmlAttr(icon)}" class="w-3.5 h-3.5"></i>
+                </span>
+                <span class="chat-presentation__heading">
+                    ${label ? `<span class="chat-presentation__eyebrow">${this.escapeHtml(label)}</span>` : ''}
+                    <span class="chat-presentation__title">${this.escapeHtml(title)}</span>
+                </span>
+            </div>
+        `;
+    }
+
     sanitizeAssistantHtml(html = '') {
         return DOMPurify.sanitize(html, {
             ALLOWED_TAGS: [
@@ -2620,7 +2916,7 @@ class UIHelpers {
                 'code', 'pre',
                 'a', 'img',
                 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-                'div', 'span', 'button', 'i',
+                'div', 'span', 'button', 'i', 'section', 'figure', 'figcaption',
                 'input', 'textarea', 'label'
             ],
             ALLOWED_ATTR: [
@@ -4339,7 +4635,11 @@ class UIHelpers {
             const introHtml = sections.intro
                 ? this.sanitizeAssistantHtml(marked.parse(sections.intro))
                 : '';
-            const bodyHtml = this.enhancePresentationCallouts(this.sanitizeAssistantHtml(marked.parse(sections.bodyMarkdown)));
+            const bodyPresentationPlan = this.buildChatPresentationRenderPlan(sections.bodyMarkdown);
+            const bodyHtml = this.replaceChatPresentationTokens(
+                this.enhancePresentationCallouts(this.sanitizeAssistantHtml(marked.parse(bodyPresentationPlan.markdown))),
+                bodyPresentationPlan.blocks,
+            );
             const footerHtml = sections.footer
                 ? `<div class="agent-brief-card__footer">
                         <div class="agent-brief-card__hint">Next move</div>
@@ -4373,8 +4673,10 @@ class UIHelpers {
             };
         }
 
-        let html = this.enhancePresentationCallouts(this.sanitizeAssistantHtml(marked.parse(normalizedMarkdown)));
+        const presentationRenderPlan = this.buildChatPresentationRenderPlan(normalizedMarkdown);
+        let html = this.enhancePresentationCallouts(this.sanitizeAssistantHtml(marked.parse(presentationRenderPlan.markdown)));
         html = this.replaceSurveyRenderTokens(html, surveyRenderPlan.surveys);
+        html = this.replaceChatPresentationTokens(html, presentationRenderPlan.blocks);
 
         if (effectiveStreaming) {
             html += '<span class="streaming-cursor" aria-hidden="true"></span>';

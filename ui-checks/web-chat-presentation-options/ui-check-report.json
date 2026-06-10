@@ -1,0 +1,99 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://127.0.0.1:4177/preview",
+  "originalUrl": "http://127.0.0.1:4177/preview",
+  "authenticated": false,
+  "generatedAt": "2026-06-10T00:06:39.004Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-presentation-options\\web-chat-presentation-preview-desktop.png",
+      "metrics": {
+        "title": "Web Chat Presentation Preview",
+        "url": "http://127.0.0.1:4177/preview",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 551,
+        "bodyTextPreview": "Here is the concise readout, with a few presentation shapes that still feel like chat. STATUS Deployment Readout The rollout is healthy and the public route is responding. Keep the proof short, visible, and easy to scan. Proof Signals HEALTH 200 OK ROLLOUT 1/1 ready OVERFLOW none Next Steps Render compact status panels inside assistant replies. Verify desktop and mobile widths stay readable. Use the format only when it helps the conversation. Normal markdown remains normal, so the agent can mix ",
+        "headings": [],
+        "interactiveControls": 0,
+        "textContrast": {
+          "checked": 16,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-presentation-options\\web-chat-presentation-preview-mobile.png",
+      "metrics": {
+        "title": "Web Chat Presentation Preview",
+        "url": "http://127.0.0.1:4177/preview",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 920,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 551,
+        "bodyTextPreview": "Here is the concise readout, with a few presentation shapes that still feel like chat. STATUS Deployment Readout The rollout is healthy and the public route is responding. Keep the proof short, visible, and easy to scan. Proof Signals HEALTH 200 OK ROLLOUT 1/1 ready OVERFLOW none Next Steps Render compact status panels inside assistant replies. Verify desktop and mobile widths stay readable. Use the format only when it helps the conversation. Normal markdown remains normal, so the agent can mix ",
+        "headings": [],
+        "interactiveControls": 0,
+        "textContrast": {
+          "checked": 16,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-presentation-options\\web-chat-presentation-preview-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\web-chat-presentation-options\\web-chat-presentation-preview-mobile.png"
+    ],
+    "issues": []
+  }
+}

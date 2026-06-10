@@ -331,6 +331,56 @@ Variations | Variation | What changes | |-----------|--------------| | Spicy | A
         expect(html).toContain('Review the deployment target.');
     });
 
+    test('renders chat presentation panels from lightweight fenced blocks', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAssistantRenderPlan({
+            role: 'assistant',
+            content: `Here is the current read.
+
+\`\`\`chat-panel title="Deployment Readout" tone="success" eyebrow="Status"
+The rollout is healthy and the public route is responding.
+\`\`\`
+
+Next I will keep the verification note short.`,
+        }, false).html;
+
+        expect(html).toContain('chat-presentation chat-presentation--panel chat-presentation--success');
+        expect(html).toContain('Deployment Readout');
+        expect(html).toContain('Status');
+        expect(html).toContain('The rollout is healthy and the public route is responding.');
+        expect(html).toContain('Next I will keep the verification note short.');
+        expect(html).not.toContain('```chat-panel');
+    });
+
+    test('renders chat presentation metric rows without exposing raw fence syntax', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAssistantRenderPlan({
+            role: 'assistant',
+            content: `\`\`\`chat-metrics title="Proof"
+Health: 200 OK
+Rollout: 1/1 ready
+Overflow: none
+\`\`\``,
+        }, false).html;
+
+        expect(html).toContain('chat-presentation--metrics');
+        expect(html).toContain('Proof');
+        expect(html).toContain('chat-presentation__metric-label">Health');
+        expect(html).toContain('chat-presentation__metric-value">200 OK');
+        expect(html).toContain('Rollout');
+        expect(html).toContain('1/1 ready');
+        expect(html).not.toContain('```chat-metrics');
+    });
+
+    test('leaves ordinary code fences untouched by chat presentation rendering', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const plan = helper.buildChatPresentationRenderPlan('```js\nconsole.log("ok");\n```');
+
+        expect(plan.blocks).toEqual([]);
+        expect(plan.markdown).toContain('```js');
+        expect(plan.markdown).toContain('console.log("ok");');
+    });
+
     test('does not infer a survey card from long news briefs with watchlists', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const content = `Here is the in-depth news brief for Sunday, May 3.

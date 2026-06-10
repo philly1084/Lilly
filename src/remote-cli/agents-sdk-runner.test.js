@@ -551,6 +551,9 @@ describe('RemoteCliAgentsSdkRunner', () => {
         expect(body.prompt).toContain('GET /api/codex-agent/runs/:runId/events streams progress');
         expect(body.prompt).toContain('Do not use MCP, remote_code_run, or remote_code_status inside this Codex-agent run');
         expect(body.prompt).toContain('emit concise milestone messages');
+        expect(body.prompt).toContain('Configured Git provider: gitlab at https://gitlab.demoserver2.buzz (group/org: agent-apps).');
+        expect(body.prompt).toContain('A server-side Git provider token is configured for this workflow.');
+        expect(body.prompt).not.toContain('gitlab-secret');
         expect(body.prompt).toContain('REMOTE_CLI_SESSION_ID');
         expect(body.config).toMatchObject({
           approvalPolicy: 'never',
@@ -604,6 +607,12 @@ describe('RemoteCliAgentsSdkRunner', () => {
         codexAgentApprovalPolicy: 'never',
         codexAgentThreadSandbox: 'workspace-write',
         codexAgentModel: 'codex-latest',
+        gitlab: {
+          enabled: true,
+          baseURL: 'https://gitlab.demoserver2.buzz',
+          token: 'gitlab-secret',
+          org: 'agent-apps',
+        },
         agentModel: 'gpt-5.4',
         defaultTargetId: 'k3s-prod',
         defaultCwd: '/srv/apps/my-app',

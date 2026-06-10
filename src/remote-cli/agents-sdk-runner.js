@@ -1231,7 +1231,18 @@ function buildCodexAgentPrompt({
   adminMode = false,
   continuitySummary = '',
   supportAgentResponse = '',
+  gitProvider = resolveConfiguredGitProviderContext(),
 } = {}) {
+  const gitProviderLines = gitProvider?.configured ? [
+    `- Configured Git provider: ${gitProvider.provider} at ${gitProvider.baseURL} (group/org: ${gitProvider.org}).`,
+    gitProvider.hasToken
+      ? '- A server-side Git provider token is configured for this workflow. Prefer non-interactive HTTPS auth using existing environment variables, an installed credential helper, or a repo-local askpass helper; do not ask the user for a GitLab token before checking those paths.'
+      : '- No server-side Git provider token is visible to this workflow. If GitLab push/repo creation is required, commit locally and report the exact missing Git credential/API capability.',
+    '- When GitLab is the configured provider, prefer HTTPS remotes on that host over SSH prompts for automated saves and pushes.',
+  ] : [
+    '- No configured Git provider is visible to this workflow. Keep source changes committed locally and report the missing Git provider configuration if a push is required.',
+  ];
+
   return [
     'Codex-agent execution contract:',
     '- You are running through the KimiBuilt /api/codex-agent/run gateway contract, which mirrors the router-side Codex app-server bridge: POST /api/codex-agent/run starts a turn and GET /api/codex-agent/runs/:runId/events streams progress.',
@@ -1243,6 +1254,8 @@ function buildCodexAgentPrompt({
     '- Work in the current workspace. Do not ask for SSH details unless the task explicitly needs a separate server not represented by this workspace.',
     '- You are executing inside the remote Codex-agent gateway/container, not on the user desktop. Treat localhost and 127.0.0.1 as this runner container only; they are not the public app, the user local server, or proof of the live remote site.',
     '- For live remote verification, prefer the explicit public URL, Kubernetes service DNS, or kubectl in the target namespace. Use localhost only when the user explicitly asks for a local dev-server check or when you clearly label it as runner-local diagnostics.',
+    'Git provider/source-control contract:',
+    ...gitProviderLines,
     '- Inspect before editing, keep changes scoped, and verify the exact requested path.',
     '- For long work, emit concise milestone messages as normal assistant output before or after major phases such as inspect, edit, build/test, deploy, and verify. These messages are streamed through /events for the outer agent; do not wait silently until the final answer.',
     '- Do not call outer KimiBuilt tools from inside this run. Do not invent remote_code_run, remote_code_status, command, shell, executable, or args payloads here; use the workspace tools available to this Codex process.',
@@ -1362,23 +1375,27 @@ function createRemoteCliAgentError(message, diagnostics = {}, cause = null) {
   return error;
 }
 
-function resolveConfiguredGitProviderContext() {
-  const gitProvider = typeof settingsController.getEffectiveGitProviderConfig === 'function'
+function resolveConfiguredGitProviderContext(runnerConfig = {}) {
+  const explicitGitProvider = runnerConfig.gitProvider
+    || runnerConfig.gitlab
+    || runnerConfig.gitea
+    || null;
+  const gitProvider = explicitGitProvider || (typeof settingsController.getEffectiveGitProviderConfig === 'function'
     ? settingsController.getEffectiveGitProviderConfig()
     : (typeof settingsController.getEffectiveGitLabConfig === 'function'
       ? settingsController.getEffectiveGitLabConfig()
-      : (config.gitlab || config.gitea || {}));
+      : (config.gitlab || config.gitea || {})));
 
-  const provider = normalizeText(gitProvider.provider || 'gitlab') || 'gitlab';
-  const baseURL = normalizeText(gitProvider.baseURL);
-  const org = normalizeText(gitProvider.org) || 'agent-apps';
+  const provider = normalizeText(gitProvider.provider || (explicitGitProvider === runnerConfig.gitea ? 'gitea' : 'gitlab')) || 'gitlab';
+  const baseURL = normalizeText(gitProvider.baseURL || gitProvider.baseUrl);
+  const org = normalizeText(gitProvider.org || gitProvider.group) || 'agent-apps';
   return {
     provider,
     configured: Boolean(gitProvider.enabled !== false && baseURL),
     baseURL,
     org,
     registryHost: normalizeText(gitProvider.registryHost),
-    hasToken: Boolean(normalizeText(gitProvider.token || process.env.GITLAB_TOKEN || process.env.GITEA_TOKEN)),
+    hasToken: Boolean(normalizeText(gitProvider.token || gitProvider.apiKey || process.env.GITLAB_TOKEN || process.env.GITEA_TOKEN)),
   };
 }
 
@@ -1756,6 +1773,7 @@ class RemoteCliAgentsSdkRunner {
         workspacePath,
         priorThreadId,
         adminMode,
+        gitProvider: resolveConfiguredGitProviderContext(this.config),
         continuitySummary: continuitySummary || normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context),
         supportAgentResponse: normalizeText(input.supportAgentResponse || input.support_agent_response || input.supportAgentNotes || input.support_agent_notes),
       }),
