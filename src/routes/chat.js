@@ -1354,7 +1354,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             text: message,
             orchestrationConfig: orchestrationSettings,
         });
-        if (auditHintDecision.hasOverrides) {
+        if (auditHintDecision.hasOverrides || auditHintDecision.hasToolRecoveryHints) {
             orchestrationSettings = {
                 ...orchestrationSettings,
                 ...auditHintDecision.overrides,
@@ -1364,6 +1364,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 ...effectiveRequestMetadata,
                 afterProcessAuditHints: {
                     applied: auditHintDecision.matchedHints,
+                    toolRecoveryHints: auditHintDecision.matchedToolFailureHints,
                     orchestrationOverrides: auditHintDecision.overrides,
                 },
                 orchestrationOverrides: auditHintDecision.overrides,

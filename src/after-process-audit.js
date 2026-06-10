@@ -2,6 +2,8 @@ const { randomUUID } = require('crypto');
 const { createResponse } = require('./openai-client');
 const { extractResponseText } = require('./artifacts/artifact-service');
 const { parseLenientJson } = require('./utils/lenient-json');
+const { classifyToolEventFailure } = require('./orchestration/recovery-policy');
+const { SELF_REFLECTION_UPDATE_TOOL_ID } = require('./self-reflection-updater');
 const settingsController = require('./routes/admin/settings.controller');
 
 const AUDIT_HISTORY_LIMIT = 12;
@@ -94,6 +96,88 @@ function summarizeToolEvents(toolEvents = []) {
     }).filter((entry) => entry.toolId);
 }
 
+function getToolEventId(event = {}) {
+    return String(event?.toolCall?.function?.name || event?.result?.toolId || event?.tool || '').trim();
+}
+
+function getToolEventErrorText(event = {}, limit = 260) {
+    const result = event?.result && typeof event.result === 'object' ? event.result : {};
+    return trimText([
+        result.error,
+        result.errorCode,
+        result.message,
+        result.diagnostics && typeof result.diagnostics === 'object' ? JSON.stringify(result.diagnostics) : result.diagnostics,
+    ].filter(Boolean).join(' | '), limit);
+}
+
+function summarizeFailedToolEvents(toolEvents = []) {
+    const failedEvents = (Array.isArray(toolEvents) ? toolEvents : [])
+        .filter((event) => event?.result?.success === false)
+        .slice(-8);
+    const signatureCounts = new Map();
+    const failedToolCalls = failedEvents.map((event) => {
+        const policy = classifyToolEventFailure(event);
+        const toolId = policy.toolId || getToolEventId(event);
+        const failureKind = policy.failureKind || 'tool_failure';
+        const signature = `${toolId || 'unknown'}:${failureKind}`;
+        signatureCounts.set(signature, (signatureCounts.get(signature) || 0) + 1);
+        return {
+            toolId,
+            failureKind,
+            retryable: policy.retryable !== false,
+            maxAttempts: policy.maxAttempts ?? null,
+            nextAction: policy.nextAction || 'replan_with_smaller_candidate_set',
+            recoveryHint: trimText(policy.hint || '', 220),
+            error: getToolEventErrorText(event),
+            signature,
+        };
+    });
+
+    return {
+        failedToolCount: failedToolCalls.length,
+        failedToolCalls,
+        repeatedFailureSignatures: Array.from(signatureCounts.entries())
+            .filter(([, count]) => count > 1)
+            .map(([signature, count]) => ({ signature, count }))
+            .slice(0, 6),
+    };
+}
+
+function buildToolFailureLearningSuggestions(toolFailureReview = {}) {
+    const failedToolCalls = Array.isArray(toolFailureReview.failedToolCalls)
+        ? toolFailureReview.failedToolCalls
+        : [];
+    return failedToolCalls.slice(0, 2).map((failure) => {
+        const toolId = trimText(failure.toolId || 'unknown-tool', 80);
+        const failureKind = trimText(failure.failureKind || 'tool_failure', 80);
+        const nextAction = trimText(failure.nextAction || 'replan_with_smaller_candidate_set', 140);
+        const recoveryHint = trimText(failure.recoveryHint || 'Avoid repeating the same failed tool signature without changed inputs.', 220);
+        const errorText = failure.error ? ` Error: ${trimText(failure.error, 180)}` : '';
+        const content = trimText(
+            `Tool failure learning: ${toolId} failed with ${failureKind}; future runs should ${nextAction}. ${recoveryHint}${errorText}`,
+            900,
+        );
+        return {
+            toolId: SELF_REFLECTION_UPDATE_TOOL_ID,
+            status: 'suggested',
+            appliesAutomatically: false,
+            generatedFromAfterProcessAudit: true,
+            input: {
+                source: 'after-process-audit',
+                trigger: `Failed tool call after completed work: ${toolId}`,
+                reflection: `The after-process audit found a reusable recovery lesson for ${toolId}.`,
+                dryRun: true,
+                apply: false,
+                actions: [{
+                    type: 'model_card_note',
+                    content,
+                    reason: 'Record a bounded model-card note so later tool routing can learn from this failure pattern.',
+                }],
+            },
+        };
+    });
+}
+
 function summarizeSelectedSkills(selectedSkills = []) {
     return (Array.isArray(selectedSkills) ? selectedSkills : []).slice(0, 12).map((skill) => ({
         id: String(skill?.id || skill?.skillId || '').trim(),
@@ -109,6 +193,8 @@ function buildAuditEvidence(input = {}) {
     const orchestrationConfig = input.orchestrationConfig && typeof input.orchestrationConfig === 'object'
         ? input.orchestrationConfig
         : {};
+
+    const toolFailureReview = summarizeFailedToolEvents(input.toolEvents || []);
 
     return {
         sessionId: input.sessionId || '',
@@ -148,6 +234,7 @@ function buildAuditEvidence(input = {}) {
         toolReadiness: normalizeArray(metadata.toolReadiness || trace.toolReadiness || [], 12, 200),
         candidateTools: normalizeArray(trace.tools || [], 16, 80),
         toolEvents: summarizeToolEvents(input.toolEvents || []),
+        toolFailureReview,
         failureTags: normalizeArray(metadata.failureTags || trace.failureTags || [], 10, 120),
         perceivedIntelligenceScores: metadata.perceivedIntelligenceScores || trace.perceivedIntelligenceScores || null,
         memoryReadSetSummary: metadata.memoryReadSetSummary || trace.memoryReadSetSummary || null,
@@ -176,12 +263,16 @@ function buildAfterProcessAuditPrompt(input = {}) {
         'Pay special attention to whether the active orchestration flags made sense together: agent-directed runtime, neural-wave R&D, async Valkey lanes, alignment guidance, and this after-process audit flag.',
         'Review selected skills against actual tool events, tool readiness, verification depth, route decisions, model lanes, and durable-learning opportunities.',
         'Allowed auditDecision values: pass, watch, needs_followup.',
-        'Return JSON keys: auditDecision, qualityScore, summary, orchestrationReview, toolSkillReview, learningReview, recommendedFlagChanges, followUpActions.',
+        'Return JSON keys: auditDecision, qualityScore, summary, orchestrationReview, toolSkillReview, toolFailureReview, learningReview, recommendedFlagChanges, followUpActions.',
         'orchestrationReview must include flagsConsidered, interactionFindings, routingFindings, and modelLaneFindings arrays.',
         'toolSkillReview must include selectedSkills, actualTools, missingTools, misusedTools, skillUpdates, and toolPolicyUpdates arrays.',
+        'toolFailureReview must include failedToolCalls, repeatedFailureSignatures, recoveryPolicyUpdates, and noRepeatRules arrays when tool calls failed.',
         'learningReview must include durableLessons, selfReflectionUpdateSuggestions, regressionFixtureCandidates, and outputQualityRisks arrays.',
         'recommendedFlagChanges must be suggestions only with flag, currentValue, suggestedValue, reason, and confidence. Never say a flag was changed.',
-        'selfReflectionUpdateSuggestions must be dry-run suggestion metadata only; do not include secrets, logs, transcripts, code dumps, or broad rewrites.',
+        '`selfReflectionUpdateSuggestions` may suggest `self-reflection-update` dry-run inputs for stable failed-tool lessons, model-card notes, small agent_notes_append lessons, or exact skill_patch actions.',
+        'Each self-reflection suggestion must be review-gated: { toolId: "self-reflection-update", status: "suggested", appliesAutomatically: false, input: { source, trigger, reflection, dryRun: true, apply: false, actions: [...] } }.',
+        'For failed tool calls, classify the failure, name the recovery policy, recommend a changed next attempt, and avoid repeating the same command/schema/source shape without changed inputs.',
+        'Do not include secrets, raw logs, full transcripts, code dumps, or broad rewrites in self-reflection suggestions.',
         'Prefer a small set of high-signal findings over generic praise.',
         '',
         `[Audit evidence]\n${JSON.stringify(evidence)}`,
@@ -203,6 +294,9 @@ function normalizeAuditResult(raw = {}, fallback = {}) {
     const learningReview = source.learningReview && typeof source.learningReview === 'object'
         ? source.learningReview
         : {};
+    const toolFailureReview = source.toolFailureReview && typeof source.toolFailureReview === 'object'
+        ? source.toolFailureReview
+        : {};
 
     return {
         auditDecision: decision,
@@ -222,6 +316,12 @@ function normalizeAuditResult(raw = {}, fallback = {}) {
             skillUpdates: normalizeArray(toolSkillReview.skillUpdates, 6, 220),
             toolPolicyUpdates: normalizeArray(toolSkillReview.toolPolicyUpdates, 6, 220),
         },
+        toolFailureReview: {
+            failedToolCalls: normalizeArray(toolFailureReview.failedToolCalls, 8, 260),
+            repeatedFailureSignatures: normalizeArray(toolFailureReview.repeatedFailureSignatures, 6, 180),
+            recoveryPolicyUpdates: normalizeArray(toolFailureReview.recoveryPolicyUpdates, 6, 240),
+            noRepeatRules: normalizeArray(toolFailureReview.noRepeatRules, 6, 220),
+        },
         learningReview: {
             durableLessons: normalizeArray(learningReview.durableLessons, 6, 220),
             selfReflectionUpdateSuggestions: normalizeArray(learningReview.selfReflectionUpdateSuggestions, 2, 400),
@@ -236,9 +336,11 @@ function normalizeAuditResult(raw = {}, fallback = {}) {
 function buildFallbackAudit(input = {}) {
     const evidence = buildAuditEvidence(input);
     const failedTools = evidence.toolEvents.filter((event) => event.success === false);
+    const toolFailureReview = evidence.toolFailureReview || {};
     const hasVerification = evidence.verification?.verifiedEvidence > 0
         || evidence.toolEvents.some((event) => event.verificationStatus === 'observed');
     const needsFollowup = failedTools.length > 0 || evidence.failureTags.length > 0;
+    const failedToolLearningSuggestions = buildToolFailureLearningSuggestions(toolFailureReview);
     return normalizeAuditResult({
         auditDecision: needsFollowup ? 'needs_followup' : 'watch',
         qualityScore: needsFollowup ? 0.45 : 0.7,
@@ -257,11 +359,28 @@ function buildFallbackAudit(input = {}) {
             missingTools: [],
             misusedTools: failedTools.map((event) => event.toolId),
             skillUpdates: [],
-            toolPolicyUpdates: [],
+            toolPolicyUpdates: (toolFailureReview.failedToolCalls || []).map((failure) => {
+                return `${failure.toolId || 'tool'}: ${failure.nextAction || 'replan_with_smaller_candidate_set'}`;
+            }),
+        },
+        toolFailureReview: {
+            failedToolCalls: toolFailureReview.failedToolCalls || [],
+            repeatedFailureSignatures: toolFailureReview.repeatedFailureSignatures || [],
+            recoveryPolicyUpdates: (toolFailureReview.failedToolCalls || []).map((failure) => ({
+                toolId: failure.toolId,
+                failureKind: failure.failureKind,
+                nextAction: failure.nextAction,
+                hint: failure.recoveryHint,
+            })),
+            noRepeatRules: (toolFailureReview.failedToolCalls || []).map((failure) => {
+                return `Do not retry ${failure.toolId || 'the failed tool'} after ${failure.failureKind || 'a failure'} without ${failure.nextAction || 'a materially changed plan'}.`;
+            }),
         },
         learningReview: {
-            durableLessons: [],
-            selfReflectionUpdateSuggestions: [],
+            durableLessons: (toolFailureReview.failedToolCalls || []).map((failure) => {
+                return `${failure.toolId || 'Tool'} failures of type ${failure.failureKind || 'tool_failure'} should recover with ${failure.nextAction || 'a changed plan'}.`;
+            }),
+            selfReflectionUpdateSuggestions: failedToolLearningSuggestions,
             regressionFixtureCandidates: [],
             outputQualityRisks: hasVerification ? [] : ['Verification evidence is absent or indirect.'],
         },

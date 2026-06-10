@@ -136,6 +136,7 @@ function normalizeAuditEntry(session = {}, entry = {}) {
     summary: normalizeInline(audit.summary || '', 500),
     orchestrationReview: audit.orchestrationReview || {},
     toolSkillReview: audit.toolSkillReview || {},
+    toolFailureReview: audit.toolFailureReview || {},
     learningReview: audit.learningReview || {},
     recommendedFlagChanges: recommendationSource
       .map((recommendation, index) => normalizeFlagRecommendation(recommendation, { auditId }, index, approvedRecommendationIds))

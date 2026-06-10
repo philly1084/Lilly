@@ -1667,6 +1667,92 @@ function applyRecoveryPoliciesToCandidateScores(scoreMap = {}, toolEvents = []) 
     });
 }
 
+function trimPolicyText(value = '', limit = 220) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length > limit ? `${text.slice(0, Math.max(0, limit - 3)).trimEnd()}...` : text;
+}
+
+function getAfterProcessToolRecoveryHints(afterProcessAuditHints = null) {
+    const source = afterProcessAuditHints && typeof afterProcessAuditHints === 'object'
+        ? afterProcessAuditHints
+        : {};
+    return (Array.isArray(source.toolRecoveryHints) ? source.toolRecoveryHints : [])
+        .map((hint) => ({
+            id: String(hint?.id || '').trim(),
+            auditId: String(hint?.auditId || '').trim(),
+            suggestionId: String(hint?.suggestionId || '').trim(),
+            toolId: String(hint?.toolId || '').trim(),
+            failureKind: String(hint?.failureKind || 'tool_failure').trim() || 'tool_failure',
+            nextAction: String(hint?.nextAction || 'replan_with_smaller_candidate_set').trim() || 'replan_with_smaller_candidate_set',
+            reason: trimPolicyText(hint?.reason || '', 220),
+            score: Number.isFinite(Number(hint?.score)) ? Number(hint.score) : null,
+            scoreAdjustment: hint?.scoreAdjustment !== null && hint?.scoreAdjustment !== undefined && hint?.scoreAdjustment !== '' && Number.isFinite(Number(hint.scoreAdjustment))
+                ? Number(hint.scoreAdjustment)
+                : null,
+        }))
+        .filter((hint) => hint.toolId)
+        .slice(0, 6);
+}
+
+function getAfterProcessToolRecoveryAdjustment(hint = {}) {
+    if (Number.isFinite(Number(hint.scoreAdjustment))) {
+        return Math.max(-3, Math.min(1, Number(hint.scoreAdjustment)));
+    }
+    switch (hint.failureKind) {
+    case 'unavailable_tool':
+        return -1.4;
+    case 'auth_or_secret':
+        return -1.2;
+    case 'bad_schema_or_missing_params':
+        return -0.35;
+    case 'network_or_transient':
+        return -0.25;
+    case 'empty_or_missing_artifact':
+        return -0.3;
+    default:
+        return -0.45;
+    }
+}
+
+function ensureCandidateScoreEntry(scoreMap = {}, policy = {}, toolId = '') {
+    if (!toolId || Object.prototype.hasOwnProperty.call(scoreMap, toolId)) {
+        return;
+    }
+    const isAllowed = (Array.isArray(policy.allowedToolIds) && policy.allowedToolIds.includes(toolId))
+        || (Array.isArray(policy.candidateToolIds) && policy.candidateToolIds.includes(toolId));
+    if (!isAllowed) {
+        return;
+    }
+    scoreMap[toolId] = {
+        score: 0,
+        reasons: [],
+    };
+}
+
+function applyAfterProcessToolRecoveryHintsToCandidateScores(scoreMap = {}, policy = {}) {
+    const hints = getAfterProcessToolRecoveryHints(policy.afterProcessAuditHints);
+    hints.forEach((hint) => {
+        const delta = getAfterProcessToolRecoveryAdjustment(hint);
+        ensureCandidateScoreEntry(scoreMap, policy, hint.toolId);
+        adjustCandidateToolScore(
+            scoreMap,
+            hint.toolId,
+            delta,
+            `After-process audit recovery hint: ${hint.failureKind}; next action ${hint.nextAction}.`,
+        );
+        getRecoveryAlternateToolIds(hint.toolId, hint.failureKind).forEach((alternateToolId) => {
+            ensureCandidateScoreEntry(scoreMap, policy, alternateToolId);
+            adjustCandidateToolScore(
+                scoreMap,
+                alternateToolId,
+                Math.min(0.6, Math.abs(delta) / 2),
+                `After-process audit alternate after ${hint.toolId} ${hint.failureKind}.`,
+            );
+        });
+    });
+    return hints;
+}
+
 function isReadyExecutableContract(contract = null) {
     const readiness = contract?.readiness || null;
     if (!readiness) {
@@ -1701,6 +1787,7 @@ function buildToolDecisionTrace(policy = {}, { toolEvents = [] } = {}) {
         selectedSkills: Array.isArray(policy?.selectedSkills) ? policy.selectedSkills : [],
         readinessFiltered: Array.isArray(policy?.readinessFiltered) ? policy.readinessFiltered : [],
         recoveryPolicies: summarizeRecoveryPoliciesForToolEvents(toolEvents).slice(-6),
+        afterProcessToolRecoveryHints: getAfterProcessToolRecoveryHints(policy?.afterProcessAuditHints),
     };
 }
 
@@ -1708,6 +1795,7 @@ function applyRuntimeToolPolicySignals(policy = {}, { toolEvents = [] } = {}) {
     const candidateToolScores = policy.candidateToolScores || {};
     const contracts = policy.toolContracts || {};
     applyRecoveryPoliciesToCandidateScores(candidateToolScores, toolEvents);
+    const afterProcessToolRecoveryHints = applyAfterProcessToolRecoveryHintsToCandidateScores(candidateToolScores, policy);
 
     const readinessFiltered = [];
     const readinessFilteredToolIds = new Set();
@@ -1765,6 +1853,7 @@ function applyRuntimeToolPolicySignals(policy = {}, { toolEvents = [] } = {}) {
         ...policy,
         candidateToolIds,
         candidateToolScores,
+        afterProcessToolRecoveryHints,
         readinessFiltered,
     };
     nextPolicy.decisionTrace = buildToolDecisionTrace(nextPolicy, { toolEvents });

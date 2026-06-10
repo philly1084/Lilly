@@ -168,6 +168,56 @@ describe('self-reflection updates admin controller', () => {
     }));
   });
 
+  test('returns after-process audit self-reflection suggestions from failed tool-call reviews', async () => {
+    const res = {
+      json: jest.fn(),
+    };
+    const req = {
+      query: { limit: '5' },
+      app: {
+        locals: {
+          sessionStore: {
+            list: jest.fn().mockResolvedValue([
+              buildSessionWithAfterProcessSuggestion(),
+            ]),
+          },
+        },
+      },
+    };
+
+    await controller.listSuggestions(req, res, jest.fn());
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        suggestions: [
+          expect.objectContaining({
+            id: expect.stringMatching(/^srs-audit-/),
+            status: 'suggested',
+            applied: false,
+            canApply: true,
+            toolId: 'self-reflection-update',
+            sourceType: 'after-process-audit',
+            sessionId: 'session-c',
+            feedbackId: 'after-audit-c',
+            auditId: 'after-audit-c',
+            input: expect.objectContaining({
+              source: 'after-process-audit',
+              dryRun: true,
+              apply: false,
+              actions: [
+                expect.objectContaining({
+                  type: 'model_card_note',
+                  content: expect.stringContaining('remote-cli-agent failed with bad_schema_or_missing_params'),
+                }),
+              ],
+            }),
+          }),
+        ],
+      }),
+    }));
+  });
+
   test('applies an approved evaluator suggestion and marks it applied in the audit view', async () => {
     const session = buildSessionWithSuggestion();
     const req = {
@@ -222,6 +272,69 @@ describe('self-reflection updates admin controller', () => {
       canApply: false,
     }));
   });
+
+  test('applying an after-process audit suggestion stores a tool recovery hint', async () => {
+    const session = buildSessionWithAfterProcessSuggestion();
+    const sessionById = new Map([[session.id, session]]);
+    const req = {
+      query: { limit: '5' },
+      app: {
+        locals: {
+          sessionStore: {
+            list: jest.fn().mockResolvedValue([session]),
+            get: jest.fn((id) => Promise.resolve(sessionById.get(id) || null)),
+            update: jest.fn((id, updates = {}) => {
+              const target = sessionById.get(id);
+              if (target) {
+                target.metadata = {
+                  ...(target.metadata || {}),
+                  ...(updates.metadata || {}),
+                };
+              }
+              return Promise.resolve(target || null);
+            }),
+          },
+        },
+      },
+    };
+    const listRes = { json: jest.fn() };
+    await controller.listSuggestions(req, listRes, jest.fn());
+    const suggestionId = listRes.json.mock.calls[0][0].data.suggestions[0].id;
+
+    const applyRes = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+    await controller.applySuggestion({
+      ...req,
+      params: { id: suggestionId },
+    }, applyRes, jest.fn());
+
+    expect(applyRes.status).not.toHaveBeenCalled();
+    expect(req.app.locals.sessionStore.update).toHaveBeenCalledWith('session-c', {
+      metadata: {
+        afterProcessAuditToolHints: [
+          expect.objectContaining({
+            auditId: 'after-audit-c',
+            suggestionId,
+            toolId: 'remote-cli-agent',
+            failureKind: 'bad_schema_or_missing_params',
+            nextAction: 'replan_with_validated_params',
+            status: 'active',
+          }),
+        ],
+      },
+    });
+    expect(applyRes.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        toolFailureHint: expect.objectContaining({
+          toolId: 'remote-cli-agent',
+          nextAction: 'replan_with_validated_params',
+        }),
+      }),
+    }));
+  });
 });
 
 function buildSessionWithSuggestion() {
@@ -260,6 +373,51 @@ function buildSessionWithSuggestion() {
                 },
               },
             ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+function buildSessionWithAfterProcessSuggestion() {
+  return {
+    id: 'session-c',
+    updatedAt: '2026-06-09T12:00:00.000Z',
+    metadata: {
+      afterProcessAuditHistory: [
+        {
+          auditId: 'after-audit-c',
+          status: 'completed',
+          model: 'gpt-5.5',
+          completedAt: '2026-06-09T12:00:00.000Z',
+          audit: {
+            auditDecision: 'needs_followup',
+            qualityScore: 0.31,
+            summary: 'Remote tool failed because the task parameter was missing.',
+            learningReview: {
+              durableLessons: ['Remote tool failures need validated task params before retry.'],
+              selfReflectionUpdateSuggestions: [
+                {
+                  toolId: 'self-reflection-update',
+                  status: 'suggested',
+                  input: {
+                    source: 'after-process-audit',
+                    trigger: 'Failed tool call after completed work: remote-cli-agent',
+                    reflection: 'The audit found a reusable recovery lesson for remote-cli-agent.',
+                    dryRun: true,
+                    apply: false,
+                    actions: [
+                      {
+                        type: 'model_card_note',
+                        content: 'Tool failure learning: remote-cli-agent failed with bad_schema_or_missing_params; future runs should replan_with_validated_params.',
+                        reason: 'Record a bounded model-card note for this failed tool pattern.',
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
           },
         },
       ],

@@ -5,6 +5,11 @@ const {
   readSelfReflectionUpdates,
 } = require('../../self-reflection-updater');
 const { sessionStore: defaultSessionStore } = require('../../session-store');
+const afterProcessAuditsController = require('./after-process-audits.controller');
+const {
+  buildApprovedAfterProcessToolFailureHint,
+  mergeApprovedAfterProcessToolFailureHint,
+} = require('../../after-process-audit-hints');
 
 const DEFAULT_SUGGESTION_LIMIT = 10;
 const DEFAULT_SESSION_SCAN_LIMIT = 100;
@@ -135,6 +140,58 @@ function buildSuggestionId({ session = {}, entry = {}, suggestion = {}, index = 
   return `srs-${hash}`;
 }
 
+function buildAfterProcessAuditSuggestionId({ session = {}, audit = {}, suggestion = {}, index = 0 }) {
+  const stableSource = JSON.stringify({
+    sessionId: session.id || '',
+    auditId: audit.auditId || '',
+    completedAt: audit.completedAt || '',
+    index,
+    input: suggestion.input || {},
+  });
+  const hash = crypto.createHash('sha1').update(stableSource).digest('hex').slice(0, 14);
+  return `srs-audit-${hash}`;
+}
+
+function normalizeAfterProcessAuditSuggestionInput(suggestion = {}, audit = {}) {
+  const source = suggestion && typeof suggestion === 'object' && !Array.isArray(suggestion)
+    ? suggestion
+    : {};
+  const input = source.input && typeof source.input === 'object' && !Array.isArray(source.input)
+    ? source.input
+    : source;
+  const actions = Array.isArray(input.actions)
+    ? input.actions
+    : (source.action || source.note || source.content
+      ? [{
+        type: source.action === 'agent_notes_append' ? 'agent_notes_append' : 'model_card_note',
+        content: normalizeInline(source.note || source.content || source.reflection || source.reason || '', 900),
+        reason: normalizeInline(source.reason || 'After-process audit suggested a bounded durable lesson.', 300),
+      }]
+      : []);
+
+  return {
+    ...input,
+    source: normalizeInline(input.source || 'after-process-audit', 120),
+    trigger: normalizeInline(
+      input.trigger
+        || source.trigger
+        || `after-process audit ${audit.auditId || ''}`,
+      500,
+    ),
+    reflection: normalizeInline(
+      input.reflection
+        || source.reflection
+        || source.reason
+        || audit.summary
+        || 'After-process audit suggested a durable tool-learning update.',
+      1200,
+    ),
+    dryRun: true,
+    apply: false,
+    actions,
+  };
+}
+
 function extractAppliedSuggestionIds() {
   const appliedIds = new Set();
   const data = readSelfReflectionUpdates({ limit: 200 });
@@ -175,7 +232,7 @@ function collectSuggestionsFromSession(session = {}, appliedIds = new Set()) {
     return true;
   });
 
-  return entries.flatMap((entry = {}) => {
+  const evaluatorSuggestions = entries.flatMap((entry = {}) => {
     const explicitSuggestions = Array.isArray(entry?.evaluation?.selfReflectionUpdateSuggestions)
       ? entry.evaluation.selfReflectionUpdateSuggestions
       : [];
@@ -214,6 +271,69 @@ function collectSuggestionsFromSession(session = {}, appliedIds = new Set()) {
         };
       });
   });
+
+  return [
+    ...evaluatorSuggestions,
+    ...collectAfterProcessAuditSuggestionsFromSession(session, appliedIds),
+  ];
+}
+
+function collectAfterProcessAuditSuggestionsFromSession(session = {}, appliedIds = new Set()) {
+  const getAuditEntriesFromSession = afterProcessAuditsController?._private?.getAuditEntriesFromSession;
+  if (typeof getAuditEntriesFromSession !== 'function') {
+    return [];
+  }
+
+  return getAuditEntriesFromSession(session)
+    .filter((audit) => audit?.cleared !== true)
+    .flatMap((audit = {}) => {
+      const learningReview = audit.learningReview && typeof audit.learningReview === 'object'
+        ? audit.learningReview
+        : {};
+      const explicitSuggestions = Array.isArray(learningReview.selfReflectionUpdateSuggestions)
+        ? learningReview.selfReflectionUpdateSuggestions
+        : [];
+
+      return explicitSuggestions
+        .filter((suggestion) => {
+          return !suggestion?.toolId || suggestion.toolId === SELF_REFLECTION_UPDATE_TOOL_ID;
+        })
+        .map((suggestion, index) => {
+          const input = normalizeAfterProcessAuditSuggestionInput(suggestion, audit);
+          const id = buildAfterProcessAuditSuggestionId({ session, audit, suggestion: { ...suggestion, input }, index });
+          const applied = appliedIds.has(id);
+          return {
+            id,
+            status: applied ? 'applied' : normalizeInline(suggestion.status || 'suggested', 80),
+            applied,
+            canApply: !applied && input.actions.length > 0,
+            toolId: SELF_REFLECTION_UPDATE_TOOL_ID,
+            sourceType: 'after-process-audit',
+            sessionId: session.id || audit.sessionId || '',
+            messageId: '',
+            feedbackId: audit.auditId || '',
+            auditId: audit.auditId || '',
+            sourceAudit: {
+              auditId: audit.auditId || '',
+              summary: normalizeInline(audit.summary || '', 500),
+              toolFailureReview: audit.toolFailureReview || {},
+              learningReview,
+            },
+            rating: '',
+            reason: normalizeInline(audit.summary || '', 500),
+            updatedAt: audit.completedAt || audit.updatedAt || session.updatedAt || '',
+            evaluation: {
+              lesson: normalizeInline(
+                input.reflection
+                  || (Array.isArray(learningReview.durableLessons) ? learningReview.durableLessons[0] : ''),
+                1200,
+              ),
+              confidence: null,
+            },
+            input,
+          };
+        });
+    });
 }
 
 class SelfReflectionUpdatesController {
@@ -300,6 +420,30 @@ class SelfReflectionUpdatesController {
         dryRun: false,
         apply: true,
       });
+      let toolFailureHint = null;
+      if (suggestion.sourceType === 'after-process-audit' && result?.applied === true) {
+        toolFailureHint = buildApprovedAfterProcessToolFailureHint({
+          sourceAudit: suggestion.sourceAudit || {
+            auditId: suggestion.auditId || '',
+            summary: suggestion.reason || '',
+          },
+          suggestion,
+        });
+        const store = this.getSessionStore(req);
+        if (toolFailureHint && typeof store?.get === 'function' && typeof store?.update === 'function') {
+          const sourceSession = await store.get(suggestion.sessionId);
+          if (sourceSession) {
+            await store.update(suggestion.sessionId, {
+              metadata: {
+                afterProcessAuditToolHints: mergeApprovedAfterProcessToolFailureHint(
+                  sourceSession.metadata?.afterProcessAuditToolHints || [],
+                  toolFailureHint,
+                ),
+              },
+            });
+          }
+        }
+      }
 
       res.json({
         success: true,
@@ -311,6 +455,7 @@ class SelfReflectionUpdatesController {
             canApply: false,
           },
           result,
+          ...(toolFailureHint ? { toolFailureHint } : {}),
         },
       });
     } catch (error) {

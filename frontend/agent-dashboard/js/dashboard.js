@@ -1574,6 +1574,9 @@ class Dashboard {
         const toolSkillReview = audit.toolSkillReview && typeof audit.toolSkillReview === 'object'
             ? audit.toolSkillReview
             : {};
+        const toolFailureReview = audit.toolFailureReview && typeof audit.toolFailureReview === 'object'
+            ? audit.toolFailureReview
+            : {};
         const learningReview = audit.learningReview && typeof audit.learningReview === 'object'
             ? audit.learningReview
             : {};
@@ -1595,6 +1598,12 @@ class Dashboard {
                 misusedTools: Array.isArray(toolSkillReview.misusedTools) ? toolSkillReview.misusedTools : [],
                 skillUpdates: Array.isArray(toolSkillReview.skillUpdates) ? toolSkillReview.skillUpdates : [],
                 toolPolicyUpdates: Array.isArray(toolSkillReview.toolPolicyUpdates) ? toolSkillReview.toolPolicyUpdates : [],
+            },
+            toolFailureReview: {
+                failedToolCalls: Array.isArray(toolFailureReview.failedToolCalls) ? toolFailureReview.failedToolCalls : [],
+                repeatedFailureSignatures: Array.isArray(toolFailureReview.repeatedFailureSignatures) ? toolFailureReview.repeatedFailureSignatures : [],
+                recoveryPolicyUpdates: Array.isArray(toolFailureReview.recoveryPolicyUpdates) ? toolFailureReview.recoveryPolicyUpdates : [],
+                noRepeatRules: Array.isArray(toolFailureReview.noRepeatRules) ? toolFailureReview.noRepeatRules : [],
             },
             learningReview: {
                 durableLessons: Array.isArray(learningReview.durableLessons) ? learningReview.durableLessons : [],
@@ -1716,6 +1725,11 @@ class Dashboard {
             ...audit.toolSkillReview.misusedTools.map((tool) => ({ label: `misused tool: ${tool}`, status: 'error' })),
             ...audit.toolSkillReview.skillUpdates.map((entry) => ({ label: `skill: ${entry}`, status: 'suggested' })),
             ...audit.toolSkillReview.toolPolicyUpdates.map((entry) => ({ label: `tool policy: ${entry}`, status: 'suggested' })),
+            ...audit.toolFailureReview.failedToolCalls.map((entry) => ({
+                label: `failure: ${this.stringifySelfReflectionInline(entry.toolId || 'tool')} -> ${this.stringifySelfReflectionInline(entry.nextAction || entry.failureKind || 'review')}`,
+                status: 'error',
+            })),
+            ...audit.toolFailureReview.noRepeatRules.map((entry) => ({ label: `no repeat: ${entry}`, status: 'warning' })),
             ...audit.learningReview.outputQualityRisks.map((entry) => ({ label: `risk: ${entry}`, status: 'warning' })),
         ].slice(0, 8);
         const flagRecommendations = audit.recommendedFlagChanges.filter((recommendation) => recommendation.flag);

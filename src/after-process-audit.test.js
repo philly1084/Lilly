@@ -69,7 +69,8 @@ describe('after-process audit', () => {
                 toolCall: { function: { name: 'remote-cli-agent' } },
                 result: {
                     toolId: 'remote-cli-agent',
-                    success: true,
+                    success: false,
+                    error: 'missing required parameter: task',
                     verification: { status: 'observed' },
                     data: { finalOutput: 'Rolled out and verified.' },
                 },
@@ -87,8 +88,13 @@ describe('after-process audit', () => {
         expect(evidence.selectedSkills[0].id).toBe('agent-trace-eval-replay');
         expect(evidence.toolEvents[0]).toEqual(expect.objectContaining({
             toolId: 'remote-cli-agent',
-            success: true,
+            success: false,
             verificationStatus: 'observed',
+        }));
+        expect(evidence.toolFailureReview.failedToolCalls[0]).toEqual(expect.objectContaining({
+            toolId: 'remote-cli-agent',
+            failureKind: 'bad_schema_or_missing_params',
+            nextAction: 'replan_with_validated_params',
         }));
     });
 
@@ -144,6 +150,42 @@ describe('after-process audit', () => {
         expect(result.status).toBe('completed');
         expect(result.audit.auditDecision).toBe('needs_followup');
         expect(result.audit.toolSkillReview.missingTools).toEqual(['skill-context']);
+    });
+
+    test('fallback audit turns failed tool calls into review-gated learning suggestions', () => {
+        const fallback = require('./after-process-audit').buildFallbackAudit({
+            objective: 'Run the remote repair.',
+            output: 'The tool failed.',
+            toolEvents: [{
+                toolCall: { function: { name: 'remote-cli-agent' } },
+                result: {
+                    toolId: 'remote-cli-agent',
+                    success: false,
+                    error: 'missing required parameter: task',
+                },
+            }],
+        });
+
+        expect(fallback.auditDecision).toBe('needs_followup');
+        expect(fallback.toolFailureReview.failedToolCalls[0]).toEqual(expect.objectContaining({
+            toolId: 'remote-cli-agent',
+            failureKind: 'bad_schema_or_missing_params',
+            nextAction: 'replan_with_validated_params',
+        }));
+        expect(fallback.learningReview.selfReflectionUpdateSuggestions[0]).toEqual(expect.objectContaining({
+            toolId: 'self-reflection-update',
+            appliesAutomatically: false,
+            input: expect.objectContaining({
+                dryRun: true,
+                apply: false,
+                actions: [
+                    expect.objectContaining({
+                        type: 'model_card_note',
+                        content: expect.stringContaining('remote-cli-agent failed with bad_schema_or_missing_params'),
+                    }),
+                ],
+            }),
+        }));
     });
 
     test('builds bounded session metadata history', () => {

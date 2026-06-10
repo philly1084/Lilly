@@ -696,6 +696,50 @@ describe('ConversationOrchestrator', () => {
         expect(instructions).toContain('Neural-wave R&D mode is active');
     });
 
+    test('applies approved after-process failed-tool recovery hints to tool policy scoring', () => {
+        settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+            enabled: true,
+            neuralWaveResearchMode: false,
+        });
+        const orchestrator = new ConversationOrchestrator({});
+        const toolManager = {
+            getTool: jest.fn((toolId) => ({ id: toolId, description: toolId })),
+        };
+
+        const toolPolicy = orchestrator.buildToolPolicy({
+            objective: 'Search the web for current provider documentation and verify it with sources.',
+            executionProfile: 'default',
+            metadata: {
+                afterProcessAuditHints: {
+                    toolRecoveryHints: [{
+                        id: 'apth-a',
+                        auditId: 'after-audit-a',
+                        suggestionId: 'srs-audit-a',
+                        toolId: 'web-search',
+                        failureKind: 'network_or_transient',
+                        nextAction: 'retry_once_then_alternate_source',
+                        reason: 'Retry once with a smaller request, then use an alternate source.',
+                        score: 0.7,
+                    }],
+                },
+            },
+            toolManager,
+        });
+
+        expect(toolPolicy.afterProcessToolRecoveryHints[0]).toEqual(expect.objectContaining({
+            toolId: 'web-search',
+            failureKind: 'network_or_transient',
+            nextAction: 'retry_once_then_alternate_source',
+        }));
+        expect(toolPolicy.decisionTrace.afterProcessToolRecoveryHints[0]).toEqual(expect.objectContaining({
+            id: 'apth-a',
+            auditId: 'after-audit-a',
+        }));
+        expect(toolPolicy.candidateToolScores['web-search'].reasons).toEqual(expect.arrayContaining([
+            expect.stringContaining('After-process audit recovery hint'),
+        ]));
+    });
+
     test('uses a plain model response when no tools are selected', async () => {
         const llmClient = {
             createResponse: jest.fn().mockResolvedValue(buildResponse('Plain answer', 'resp_plain')),

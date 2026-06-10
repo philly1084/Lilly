@@ -84,6 +84,14 @@ describe('after-process audits admin controller', () => {
               missingTools: ['skill-context'],
               skillUpdates: ['Patch remote ops skill with proof checklist.'],
             }),
+            toolFailureReview: expect.objectContaining({
+              failedToolCalls: [
+                expect.objectContaining({
+                  toolId: 'remote-cli-agent',
+                  nextAction: 'replan_with_validated_params',
+                }),
+              ],
+            }),
             recommendedFlagChanges: [
               expect.objectContaining({
                 flag: 'neuralWaveResearchMode',
@@ -274,6 +282,17 @@ function buildAuditSession(overrides = {}) {
             misusedTools: [],
             skillUpdates: ['Patch remote ops skill with proof checklist.'],
             toolPolicyUpdates: ['Nudge skill-context before remote handoff.'],
+          },
+          toolFailureReview: {
+            failedToolCalls: [{
+              toolId: 'remote-cli-agent',
+              failureKind: 'bad_schema_or_missing_params',
+              nextAction: 'replan_with_validated_params',
+              recoveryHint: 'Fill required params before retry.',
+            }],
+            repeatedFailureSignatures: [],
+            recoveryPolicyUpdates: ['remote-cli-agent: replan_with_validated_params'],
+            noRepeatRules: ['Do not retry remote-cli-agent without validated params.'],
           },
           learningReview: {
             durableLessons: ['Remote deploy completion needs route plus runtime proof.'],
