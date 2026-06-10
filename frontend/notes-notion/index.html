@@ -712,6 +712,37 @@
                 <div class="agent-chat-context">
                     <span class="context-indicator">📄 Can see current page</span>
                 </div>
+                <div id="agent-reference-panel" class="agent-reference-panel">
+                    <div class="agent-reference-toolbar">
+                        <button
+                            id="agent-reference-btn"
+                            class="agent-reference-btn"
+                            type="button"
+                            aria-haspopup="dialog"
+                            aria-expanded="false"
+                            aria-controls="agent-reference-popover"
+                        >
+                            + Reference
+                        </button>
+                        <div id="agent-reference-chips" class="agent-reference-chips" aria-live="polite"></div>
+                    </div>
+                    <div
+                        id="agent-reference-popover"
+                        class="agent-reference-popover"
+                        role="dialog"
+                        aria-label="Reference notes pages"
+                        hidden
+                    >
+                        <input
+                            id="agent-reference-search"
+                            class="agent-reference-search"
+                            type="search"
+                            placeholder="Search pages"
+                            autocomplete="off"
+                        >
+                        <div id="agent-reference-results" class="agent-reference-results"></div>
+                    </div>
+                </div>
                 <div class="agent-chat-input-wrapper">
                     <textarea 
                         id="agent-chat-input" 

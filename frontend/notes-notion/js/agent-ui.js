@@ -31,6 +31,12 @@ const AgentUI = (function() {
         reasoning: '',
         error: null
     };
+    let selectedPageReferences = [];
+    let referencePopoverOpen = false;
+    let referenceSearchQuery = '';
+    const MAX_SELECTED_REFERENCES = 6;
+    const MAX_REFERENCE_RESULTS = 8;
+    const MAX_REFERENCE_SEARCH_HITS = 10;
 
     function cacheElements() {
         const widgetBtn = document.getElementById('agent-widget-btn');
@@ -78,6 +84,12 @@ const AgentUI = (function() {
             modelList: document.getElementById('model-list'),
             chatModelName: document.getElementById('agent-chat-model-name'),
             contextIndicator,
+            referencePanel: document.getElementById('agent-reference-panel'),
+            referenceBtn: document.getElementById('agent-reference-btn'),
+            referencePopover: document.getElementById('agent-reference-popover'),
+            referenceSearch: document.getElementById('agent-reference-search'),
+            referenceResults: document.getElementById('agent-reference-results'),
+            referenceChips: document.getElementById('agent-reference-chips'),
             profilePicker: document.getElementById('agent-profile-picker'),
             understandingCard,
             composerDesignTray,
@@ -100,6 +112,7 @@ const AgentUI = (function() {
         updateModelUI();
         renderProfilePicker();
         updateContextIndicator();
+        renderReferencePicker();
         renderMessages();
         renderComposerDesignOptions();
         syncProcessingUI();
@@ -160,6 +173,63 @@ const AgentUI = (function() {
             });
         }
 
+        if (elements.referenceBtn) {
+            elements.referenceBtn.addEventListener('click', () => {
+                toggleReferencePopover();
+            });
+        }
+
+        if (elements.referenceSearch) {
+            elements.referenceSearch.addEventListener('input', () => {
+                referenceSearchQuery = elements.referenceSearch.value || '';
+                renderReferenceResults();
+            });
+
+            elements.referenceSearch.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeReferencePopover();
+                }
+                if (event.key === 'Enter') {
+                    const firstResult = elements.referenceResults?.querySelector('.agent-reference-result[data-page-id]');
+                    if (firstResult) {
+                        event.preventDefault();
+                        addPageReference(firstResult.dataset.pageId);
+                    }
+                }
+            });
+        }
+
+        if (elements.referenceResults) {
+            elements.referenceResults.addEventListener('click', (event) => {
+                const button = event.target.closest('.agent-reference-result[data-page-id], .agent-reference-open[data-page-id]');
+                if (!button) return;
+
+                if (button.classList.contains('agent-reference-open')) {
+                    openReferencedPage(button.dataset.pageId);
+                    closeReferencePopover();
+                    return;
+                }
+
+                addPageReference(button.dataset.pageId);
+            });
+        }
+
+        if (elements.referenceChips) {
+            elements.referenceChips.addEventListener('click', (event) => {
+                const removeButton = event.target.closest('.agent-reference-chip-remove[data-page-id]');
+                if (removeButton) {
+                    removePageReference(removeButton.dataset.pageId);
+                    return;
+                }
+
+                const openButton = event.target.closest('.agent-reference-chip[data-page-id]');
+                if (openButton) {
+                    openReferencedPage(openButton.dataset.pageId);
+                }
+            });
+        }
+
         if (elements.profilePicker) {
             elements.profilePicker.addEventListener('click', (event) => {
                 const button = event.target.closest('.agent-profile-option[data-profile-id]');
@@ -185,6 +255,11 @@ const AgentUI = (function() {
                 }
                 // Close chat if open
                 if (elements.modal?.style.display === 'flex') {
+                    if (referencePopoverOpen) {
+                        event.preventDefault();
+                        closeReferencePopover();
+                        return;
+                    }
                     event.preventDefault();
                     closeChat();
                     return;
@@ -200,6 +275,13 @@ const AgentUI = (function() {
 
             if (!clickedInsideDropdown && !clickedOnButton) {
                 closeModelSelector();
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!referencePopoverOpen || !elements.referencePanel) return;
+            if (!elements.referencePanel.contains(event.target)) {
+                closeReferencePopover();
             }
         });
 
@@ -238,6 +320,7 @@ const AgentUI = (function() {
         });
 
         updateContextIndicator();
+        renderReferencePicker();
         renderRequestUnderstanding();
         renderMessages();
         renderComposerDesignOptions();
@@ -281,11 +364,16 @@ const AgentUI = (function() {
 
         const text = elements.input.value.trim();
         if (!text) return;
+        const pageReferences = getSelectedPageReferencesForPrompt();
+        const referenceSearch = buildReferenceSearchPayload(text, pageReferences);
 
         elements.input.value = '';
         elements.input.style.height = 'auto';
+        selectedPageReferences = [];
+        closeReferencePopover();
+        renderReferencePicker();
 
-        await runPrompt(text);
+        await runPrompt(text, { pageReferences, referenceSearch });
     }
 
     async function quickAction(action) {
@@ -375,6 +463,339 @@ const AgentUI = (function() {
             });
             renderMessages();
         }
+    }
+
+    function normalizeText(value = '') {
+        return String(value || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getCurrentSpaceName(data = null) {
+        const notesData = data || window.Storage?.loadAll?.() || {};
+        const spaceId = notesData.currentSpaceId || 'private';
+        const space = Array.isArray(notesData.spaces)
+            ? notesData.spaces.find((candidate) => candidate?.id === spaceId)
+            : null;
+        return space?.name || 'Private';
+    }
+
+    function getPageText(page = null) {
+        const parts = [];
+        const visit = (blocks = []) => {
+            blocks.forEach((block) => {
+                if (!block) return;
+                if (window.NotesQuery?.extractText) {
+                    parts.push(window.NotesQuery.extractText(block));
+                } else if (typeof block.content === 'string') {
+                    parts.push(block.content);
+                } else if (block.content && typeof block.content === 'object') {
+                    parts.push(block.content.text || block.content.title || block.content.description || block.content.prompt || block.content.result || '');
+                }
+
+                if (Array.isArray(block.children) && block.children.length > 0) {
+                    visit(block.children);
+                }
+            });
+        };
+
+        visit(page?.blocks || []);
+        return normalizeText(parts.join(' '));
+    }
+
+    function getPageOutline(page = null) {
+        if (window.NotesQuery?.buildIndex) {
+            try {
+                return window.NotesQuery.buildIndex(page).outline
+                    .slice(0, 6)
+                    .map((entry) => entry.text)
+                    .filter(Boolean);
+            } catch (error) {
+                console.warn('AgentUI: failed to build reference outline', error);
+            }
+        }
+
+        return (page?.blocks || [])
+            .filter((block) => /^heading_/.test(String(block?.type || '')))
+            .map((block) => normalizeText(typeof block.content === 'string' ? block.content : block.content?.text || ''))
+            .filter(Boolean)
+            .slice(0, 6);
+    }
+
+    function buildPageReferenceRecord(page = null, options = {}) {
+        if (!page?.id) return null;
+
+        const notesData = options.data || window.Storage?.loadAll?.() || {};
+        const currentPage = window.Editor?.getCurrentPage?.();
+        const effectivePage = currentPage?.id === page.id ? currentPage : page;
+        const text = getPageText(effectivePage);
+        const space = Array.isArray(notesData.spaces)
+            ? notesData.spaces.find((candidate) => candidate?.id === (effectivePage.spaceId || notesData.currentSpaceId || 'private'))
+            : null;
+        const blockCount = window.NotesQuery?.buildIndex
+            ? (() => {
+                try {
+                    return window.NotesQuery.buildIndex(effectivePage).blockCount || 0;
+                } catch (_error) {
+                    return Array.isArray(effectivePage.blocks) ? effectivePage.blocks.length : 0;
+                }
+            })()
+            : (Array.isArray(effectivePage.blocks) ? effectivePage.blocks.length : 0);
+
+        return {
+            pageId: effectivePage.id,
+            title: effectivePage.title || 'Untitled',
+            icon: effectivePage.icon || 'Page',
+            spaceId: effectivePage.spaceId || notesData.currentSpaceId || 'private',
+            spaceName: space?.name || getCurrentSpaceName(notesData),
+            preview: text.slice(0, 220),
+            outline: getPageOutline(effectivePage),
+            blockCount,
+            updatedAt: effectivePage.updatedAt || null,
+        };
+    }
+
+    function getAllReferenceRecords() {
+        const data = window.Storage?.loadAll?.() || {};
+        const currentPage = window.Editor?.getCurrentPage?.();
+        const pages = Array.isArray(data.pages) ? data.pages : (window.Storage?.getPages?.() || []);
+        const pageMap = new Map();
+
+        pages.forEach((page) => {
+            if (page?.id) pageMap.set(page.id, page);
+        });
+        if (currentPage?.id) pageMap.set(currentPage.id, currentPage);
+
+        return Array.from(pageMap.values())
+            .map((page) => buildPageReferenceRecord(page, { data }))
+            .filter(Boolean);
+    }
+
+    function tokenizeSearch(value = '') {
+        const stopWords = new Set([
+            'about', 'after', 'again', 'also', 'and', 'are', 'but', 'can', 'could', 'does',
+            'for', 'from', 'have', 'help', 'how', 'into', 'make', 'need', 'notes', 'page',
+            'pages', 'that', 'the', 'this', 'what', 'when', 'where', 'with', 'would', 'you',
+        ]);
+        return normalizeText(value)
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, ' ')
+            .split(/\s+/)
+            .filter((word) => word.length >= 3 && !stopWords.has(word))
+            .slice(0, 12);
+    }
+
+    function scoreReferenceRecord(record, terms = []) {
+        const title = normalizeText(record.title).toLowerCase();
+        const haystack = `${title} ${record.spaceName || ''} ${record.outline?.join(' ') || ''} ${record.preview || ''}`.toLowerCase();
+        if (terms.length === 0) {
+            return record.pageId === window.Editor?.getCurrentPage?.()?.id ? 20 : 1;
+        }
+
+        return terms.reduce((score, term) => {
+            if (!term) return score;
+            if (title.includes(term)) return score + 8;
+            if ((record.outline || []).join(' ').toLowerCase().includes(term)) return score + 5;
+            if (haystack.includes(term)) return score + 2;
+            return score;
+        }, 0);
+    }
+
+    function findSnippet(text = '', terms = [], limit = 220) {
+        const source = normalizeText(text);
+        if (!source) return '';
+        const lower = source.toLowerCase();
+        const firstIndex = terms
+            .map((term) => lower.indexOf(term))
+            .filter((index) => index >= 0)
+            .sort((left, right) => left - right)[0];
+        const start = firstIndex >= 0 ? Math.max(0, firstIndex - 70) : 0;
+        const snippet = source.slice(start, start + limit).trim();
+        return `${start > 0 ? '...' : ''}${snippet}${start + limit < source.length ? '...' : ''}`;
+    }
+
+    function searchReferenceRecords(query = '', options = {}) {
+        const terms = tokenizeSearch(query);
+        const records = getAllReferenceRecords();
+        const selectedIds = new Set(selectedPageReferences.map((reference) => reference.pageId));
+        const includeSelected = options.includeSelected !== false;
+
+        return records
+            .map((record) => ({
+                ...record,
+                score: scoreReferenceRecord(record, terms),
+            }))
+            .filter((record) => includeSelected || !selectedIds.has(record.pageId))
+            .filter((record) => terms.length === 0 || record.score > 0)
+            .sort((left, right) => right.score - left.score || String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')))
+            .slice(0, options.limit || MAX_REFERENCE_RESULTS);
+    }
+
+    function buildReferenceSearchPayload(promptText = '', pageReferences = []) {
+        const terms = tokenizeSearch(promptText);
+        const selectedIds = new Set((pageReferences || []).map((reference) => reference.pageId));
+        const data = window.Storage?.loadAll?.() || {};
+        const pages = Array.isArray(data.pages) ? data.pages : (window.Storage?.getPages?.() || []);
+        const currentPage = window.Editor?.getCurrentPage?.();
+        const pageMap = new Map();
+
+        pages.forEach((page) => {
+            if (page?.id) pageMap.set(page.id, page);
+        });
+        if (currentPage?.id) pageMap.set(currentPage.id, currentPage);
+
+        const hits = Array.from(pageMap.values())
+            .map((page) => {
+                const record = buildPageReferenceRecord(page, { data });
+                if (!record) return null;
+                const text = getPageText(page);
+                const score = selectedIds.has(record.pageId)
+                    ? scoreReferenceRecord(record, terms) + 6
+                    : scoreReferenceRecord(record, terms);
+
+                return {
+                    pageId: record.pageId,
+                    title: record.title,
+                    icon: record.icon,
+                    spaceName: record.spaceName,
+                    outline: record.outline,
+                    snippet: findSnippet(text, terms),
+                    score,
+                    selected: selectedIds.has(record.pageId),
+                };
+            })
+            .filter((hit) => hit && (terms.length === 0 ? hit.selected : hit.score > 0))
+            .sort((left, right) => right.score - left.score)
+            .slice(0, MAX_REFERENCE_SEARCH_HITS);
+
+        return {
+            query: terms.join(' '),
+            policy: 'snippet_search_only',
+            hits,
+        };
+    }
+
+    function renderReferencePicker() {
+        if (!elements.referencePanel) return;
+
+        renderReferenceChips();
+        renderReferenceResults();
+        if (elements.referenceBtn) {
+            elements.referenceBtn.setAttribute('aria-expanded', String(referencePopoverOpen));
+        }
+        if (elements.referencePopover) {
+            elements.referencePopover.hidden = !referencePopoverOpen;
+        }
+    }
+
+    function renderReferenceChips() {
+        if (!elements.referenceChips) return;
+
+        if (selectedPageReferences.length === 0) {
+            elements.referenceChips.innerHTML = '';
+            return;
+        }
+
+        elements.referenceChips.innerHTML = selectedPageReferences.map((reference) => `
+            <span class="agent-reference-chip" data-page-id="${escapeHtmlAttr(reference.pageId)}" title="${escapeHtmlAttr(reference.title)}">
+                <span class="agent-reference-chip-icon">${escapeHtml(reference.icon || 'Page')}</span>
+                <span class="agent-reference-chip-title">${escapeHtml(reference.title || 'Untitled')}</span>
+                <button
+                    type="button"
+                    class="agent-reference-chip-remove"
+                    data-page-id="${escapeHtmlAttr(reference.pageId)}"
+                    aria-label="Remove ${escapeHtmlAttr(reference.title || 'page')} reference"
+                >x</button>
+            </span>
+        `).join('');
+    }
+
+    function renderReferenceResults() {
+        if (!elements.referenceResults) return;
+
+        const results = searchReferenceRecords(referenceSearchQuery, {
+            includeSelected: false,
+            limit: MAX_REFERENCE_RESULTS,
+        });
+
+        if (selectedPageReferences.length >= MAX_SELECTED_REFERENCES) {
+            elements.referenceResults.innerHTML = '<div class="agent-reference-empty">Reference limit reached</div>';
+            return;
+        }
+
+        if (results.length === 0) {
+            elements.referenceResults.innerHTML = '<div class="agent-reference-empty">No matching pages</div>';
+            return;
+        }
+
+        elements.referenceResults.innerHTML = results.map((record) => `
+            <div class="agent-reference-result" data-page-id="${escapeHtmlAttr(record.pageId)}" role="button" tabindex="0">
+                <span class="agent-reference-result-icon">${escapeHtml(record.icon || 'Page')}</span>
+                <span class="agent-reference-result-body">
+                    <span class="agent-reference-result-title">${escapeHtml(record.title || 'Untitled')}</span>
+                    <span class="agent-reference-result-meta">${escapeHtml(record.spaceName || 'Private')} - ${record.blockCount || 0} blocks</span>
+                    <span class="agent-reference-result-preview">${escapeHtml(record.preview || 'No text content yet')}</span>
+                </span>
+                <button type="button" class="agent-reference-open" data-page-id="${escapeHtmlAttr(record.pageId)}" title="Open page">Open</button>
+            </div>
+        `).join('');
+    }
+
+    function toggleReferencePopover() {
+        if (referencePopoverOpen) {
+            closeReferencePopover();
+            return;
+        }
+
+        referencePopoverOpen = true;
+        renderReferencePicker();
+        setTimeout(() => elements.referenceSearch?.focus(), 0);
+    }
+
+    function closeReferencePopover() {
+        referencePopoverOpen = false;
+        renderReferencePicker();
+    }
+
+    function addPageReference(pageId = '') {
+        const normalizedPageId = String(pageId || '').trim();
+        if (!normalizedPageId || selectedPageReferences.some((reference) => reference.pageId === normalizedPageId)) return;
+        if (selectedPageReferences.length >= MAX_SELECTED_REFERENCES) return;
+
+        const page = window.Storage?.getPage?.(normalizedPageId)
+            || (window.Editor?.getCurrentPage?.()?.id === normalizedPageId ? window.Editor.getCurrentPage() : null);
+        const reference = buildPageReferenceRecord(page);
+        if (!reference) return;
+
+        selectedPageReferences = [...selectedPageReferences, reference];
+        referenceSearchQuery = '';
+        if (elements.referenceSearch) {
+            elements.referenceSearch.value = '';
+        }
+        renderReferencePicker();
+    }
+
+    function removePageReference(pageId = '') {
+        selectedPageReferences = selectedPageReferences.filter((reference) => reference.pageId !== pageId);
+        renderReferencePicker();
+    }
+
+    function getSelectedPageReferencesForPrompt() {
+        return selectedPageReferences.map((reference) => ({
+            pageId: reference.pageId,
+            title: reference.title,
+            icon: reference.icon,
+            spaceId: reference.spaceId,
+            spaceName: reference.spaceName,
+            preview: reference.preview,
+            outline: reference.outline,
+            blockCount: reference.blockCount,
+            updatedAt: reference.updatedAt,
+        }));
+    }
+
+    function openReferencedPage(pageId = '') {
+        const normalizedPageId = String(pageId || '').trim();
+        if (!normalizedPageId) return;
+        window.Sidebar?.loadPage?.(normalizedPageId);
     }
 
     async function openWithPrompt(promptText, options = {}) {
@@ -782,8 +1203,9 @@ const AgentUI = (function() {
         const displayContent = normalizeMessageContentForDisplay(message);
         const reasoningSummary = !isUser ? extractReasoningSummary(message) : '';
         const requestUnderstanding = !isUser ? extractRequestUnderstanding(message) : null;
+        const pageReferences = extractPageReferences(message);
 
-        if (!displayContent && !reasoningSummary && !requestUnderstanding) {
+        if (!displayContent && !reasoningSummary && !requestUnderstanding && pageReferences.length === 0) {
             return null;
         }
 
@@ -811,16 +1233,22 @@ const AgentUI = (function() {
                 ${requestUnderstanding.layout?.name ? `<span>#${escapeHtml(requestUnderstanding.layout.index)} ${escapeHtml(requestUnderstanding.layout.name)}</span>` : ''}
             </div>
         ` : '';
+        const pageReferenceMarkup = renderMessagePageReferences(pageReferences);
 
         div.innerHTML = `
             <div class="agent-message-avatar">${avatar}</div>
             <div class="agent-message-content">
                 ${understandingMarkup}
                 ${reasoningMarkup}
+                ${pageReferenceMarkup}
                 ${displayContent ? `<div class="agent-message-text">${markdownToHtml(displayContent)}</div>` : ''}
                 ${timestamp ? `<div class="agent-message-time">${timestamp}</div>` : ''}
             </div>
         `;
+
+        div.querySelectorAll('.agent-message-reference-link[data-page-id]').forEach((button) => {
+            button.addEventListener('click', () => openReferencedPage(button.dataset.pageId));
+        });
 
         return div;
     }
@@ -910,6 +1338,54 @@ const AgentUI = (function() {
             || null;
 
         return value && typeof value === 'object' ? value : null;
+    }
+
+    function extractPageReferences(message = {}) {
+        const value = message.pageReferences
+            || message.page_references
+            || message.assistantMetadata?.pageReferences
+            || message.assistant_metadata?.pageReferences
+            || message.metadata?.pageReferences
+            || [];
+
+        if (!Array.isArray(value)) return [];
+
+        const seen = new Set();
+        return value
+            .map((reference) => {
+                if (!reference || typeof reference !== 'object') return null;
+                const pageId = String(reference.pageId || reference.id || '').trim();
+                if (!pageId || seen.has(pageId)) return null;
+                seen.add(pageId);
+                return {
+                    pageId,
+                    title: String(reference.title || 'Untitled').trim() || 'Untitled',
+                    icon: String(reference.icon || 'Page').trim() || 'Page',
+                    spaceName: String(reference.spaceName || 'Private').trim() || 'Private',
+                };
+            })
+            .filter(Boolean)
+            .slice(0, MAX_SELECTED_REFERENCES);
+    }
+
+    function renderMessagePageReferences(pageReferences = []) {
+        if (!pageReferences.length) return '';
+
+        return `
+            <div class="agent-message-references" aria-label="Referenced notes pages">
+                ${pageReferences.map((reference) => `
+                    <button
+                        type="button"
+                        class="agent-message-reference-link"
+                        data-page-id="${escapeHtmlAttr(reference.pageId)}"
+                        title="${escapeHtmlAttr(`Open ${reference.title}`)}"
+                    >
+                        <span>${escapeHtml(reference.icon || 'Page')}</span>
+                        <span>${escapeHtml(reference.title || 'Untitled')}</span>
+                    </button>
+                `).join('')}
+            </div>
+        `;
     }
 
     function truncateText(value = '', maxLength = 96) {

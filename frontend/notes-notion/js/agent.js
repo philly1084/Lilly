@@ -813,6 +813,10 @@ const Agent = (function() {
         return `${normalized.slice(0, maxLength - 3)}...`;
     }
 
+    function normalizeInlineText(value = '') {
+        return String(value || '').replace(/\s+/g, ' ').trim();
+    }
+
     function formatTimestamp(timestamp) {
         if (!timestamp) return 'unknown';
         const date = new Date(timestamp);
@@ -3024,11 +3028,195 @@ const Agent = (function() {
         return lines.join('\n');
     }
 
+    function normalizePageReferences(references = []) {
+        if (!Array.isArray(references)) return [];
+        const seen = new Set();
+
+        return references
+            .map((reference) => {
+                if (!reference || typeof reference !== 'object') return null;
+                const pageId = String(reference.pageId || reference.id || '').trim();
+                if (!pageId || seen.has(pageId)) return null;
+                seen.add(pageId);
+
+                return {
+                    pageId,
+                    title: normalizeInlineText(reference.title || 'Untitled') || 'Untitled',
+                    icon: normalizeInlineText(reference.icon || 'Page') || 'Page',
+                    spaceId: normalizeInlineText(reference.spaceId || ''),
+                    spaceName: normalizeInlineText(reference.spaceName || 'Private') || 'Private',
+                    preview: truncateText(reference.preview || '', 320),
+                    outline: Array.isArray(reference.outline)
+                        ? reference.outline.map((item) => normalizeInlineText(item)).filter(Boolean).slice(0, 8)
+                        : [],
+                    blockCount: Number(reference.blockCount || 0) || 0,
+                    updatedAt: normalizeInlineText(reference.updatedAt || ''),
+                };
+            })
+            .filter(Boolean)
+            .slice(0, 6);
+    }
+
+    function normalizeReferenceSearchPayload(payload = null) {
+        if (!payload || typeof payload !== 'object') {
+            return { query: '', policy: 'snippet_search_only', hits: [] };
+        }
+
+        const hits = Array.isArray(payload.hits)
+            ? payload.hits
+                .map((hit) => {
+                    if (!hit || typeof hit !== 'object') return null;
+                    const pageId = String(hit.pageId || hit.id || '').trim();
+                    if (!pageId) return null;
+
+                    return {
+                        pageId,
+                        title: normalizeInlineText(hit.title || 'Untitled') || 'Untitled',
+                        icon: normalizeInlineText(hit.icon || 'Page') || 'Page',
+                        spaceName: normalizeInlineText(hit.spaceName || 'Private') || 'Private',
+                        outline: Array.isArray(hit.outline)
+                            ? hit.outline.map((item) => normalizeInlineText(item)).filter(Boolean).slice(0, 6)
+                            : [],
+                        snippet: truncateText(hit.snippet || '', 360),
+                        score: Number(hit.score || 0) || 0,
+                        selected: Boolean(hit.selected),
+                    };
+                })
+                .filter(Boolean)
+                .slice(0, 10)
+            : [];
+
+        return {
+            query: normalizeInlineText(payload.query || ''),
+            policy: normalizeInlineText(payload.policy || 'snippet_search_only') || 'snippet_search_only',
+            hits,
+        };
+    }
+
+    function getReferencedPageById(pageId = '') {
+        const normalizedPageId = String(pageId || '').trim();
+        if (!normalizedPageId) return null;
+
+        const currentPage = window.Editor?.getCurrentPage?.();
+        if (currentPage?.id === normalizedPageId) {
+            return currentPage;
+        }
+
+        return window.Storage?.getPage?.(normalizedPageId) || null;
+    }
+
+    function shouldExpandReferenceContext(question = '', references = [], referenceSearch = null) {
+        if (!references.length) return false;
+        const normalized = normalizeInlineText(question).toLowerCase();
+        if (!normalized) return false;
+
+        const deepUseIntent = /\b(compare|contrast|summari[sz]e|synthesi[sz]e|extract|audit|review|rewrite|revise|merge|combine|connect|cross[-\s]?reference|pull|full context|whole page|entire page|all context|details from)\b/.test(normalized)
+            || /\b(?:use|based on|from)\s+(?:the\s+)?(?:attached|referenced|reference|linked)\b/.test(normalized);
+        if (deepUseIntent) return true;
+
+        const selectedHits = (referenceSearch?.hits || []).filter((hit) => hit.selected && hit.score >= 8);
+        return selectedHits.length > 0
+            && /\b(reference|referenced|attached|linked|that page|those pages|this page|the page|that note|those notes|the plan)\b/.test(normalized);
+    }
+
+    function buildReferencedPagePromptSection(question = '', references = [], referenceSearch = null) {
+        const normalizedReferences = normalizePageReferences(references);
+        const normalizedSearch = normalizeReferenceSearchPayload(referenceSearch);
+        if (!normalizedReferences.length && !normalizedSearch.hits.length) {
+            return 'No additional referenced notes pages were attached. Use only the current page context.';
+        }
+
+        const lines = [
+            'Reference policy:',
+            '- Cross-page context starts as snippets and outlines only, so unrelated private page content is not exposed by default.',
+            '- If EXPANDED REFERENCED PAGE CONTEXT appears below, it was included because the current request needs deeper context from an attached/relevant page.',
+            '- Do not claim you reviewed a full referenced page unless it appears in EXPANDED REFERENCED PAGE CONTEXT.',
+            '- When useful, cite referenced pages by title and pageId, and keep current-page edits scoped to the active page unless the user asks to navigate or rewrite another page.',
+        ];
+
+        if (normalizedReferences.length) {
+            lines.push('', 'Attached page references:');
+            normalizedReferences.forEach((reference, index) => {
+                lines.push(`${index + 1}. ${reference.icon} ${reference.title} [pageId=${reference.pageId}]`);
+                lines.push(`   Space: ${reference.spaceName}; blocks: ${reference.blockCount}; updated: ${reference.updatedAt || 'unknown'}`);
+                if (reference.outline.length) {
+                    lines.push(`   Outline: ${reference.outline.join(' > ')}`);
+                }
+                if (reference.preview) {
+                    lines.push(`   Preview: ${reference.preview}`);
+                }
+            });
+        }
+
+        if (normalizedSearch.hits.length) {
+            lines.push('', `Workspace/page search hits (${normalizedSearch.policy}; query="${normalizedSearch.query || 'prompt terms'}"):`);
+            normalizedSearch.hits.forEach((hit, index) => {
+                lines.push(`${index + 1}. ${hit.icon} ${hit.title} [pageId=${hit.pageId}]${hit.selected ? ' [attached]' : ''}`);
+                lines.push(`   Space: ${hit.spaceName}; score: ${hit.score}`);
+                if (hit.outline.length) {
+                    lines.push(`   Outline: ${hit.outline.join(' > ')}`);
+                }
+                if (hit.snippet) {
+                    lines.push(`   Snippet: ${hit.snippet}`);
+                }
+            });
+        }
+
+        if (shouldExpandReferenceContext(question, normalizedReferences, normalizedSearch)) {
+            const selectedIds = new Set(normalizedReferences.map((reference) => reference.pageId));
+            const hitIds = normalizedSearch.hits
+                .filter((hit) => hit.selected || hit.score >= 10)
+                .map((hit) => hit.pageId);
+            const expandIds = Array.from(new Set([...selectedIds, ...hitIds])).slice(0, 2);
+
+            const expanded = expandIds
+                .map((pageId) => {
+                    const page = getReferencedPageById(pageId);
+                    if (!page) return null;
+                    const context = window.NotesQuery?.buildPageContext
+                        ? window.NotesQuery.buildPageContext(page, {
+                            maxReferences: 28,
+                            maxClusters: 8,
+                            maxSentences: 36,
+                        })
+                        : null;
+                    const content = context
+                        ? buildFullPageContentFromContext(context)
+                        : window.Storage?.exportToMarkdown?.(pageId);
+                    const outline = context?.outline?.length
+                        ? context.outline.map((entry) => `- [${entry.id}] ${entry.content}`).join('\n')
+                        : '- No headings found';
+
+                    return [
+                        `Page: ${page.title || 'Untitled'} [pageId=${page.id}]`,
+                        `Stats: ${context?.blockCount || page.blocks?.length || 0} blocks, ${context?.wordCount || 0} words`,
+                        'Outline:',
+                        outline,
+                        'Content excerpt:',
+                        String(content || '').slice(0, 5000),
+                    ].join('\n');
+                })
+                .filter(Boolean);
+
+            if (expanded.length) {
+                lines.push('', 'EXPANDED REFERENCED PAGE CONTEXT:');
+                lines.push(expanded.join('\n\n---\n\n'));
+            }
+        }
+
+        return lines.join('\n');
+    }
+
     // Build system prompt with page context
     function buildSystemPrompt(pageContext, requestContext = {}) {
         const question = String(requestContext?.question || '').trim();
         const agentProfile = requestContext?.agentProfile || getSelectedAgentProfile();
         const agentProfileGuidance = buildAgentProfilePromptGuidance(agentProfile);
+        const referencedPages = buildReferencedPagePromptSection(
+            question,
+            requestContext?.pageReferences || [],
+            requestContext?.referenceSearch || null,
+        );
         const templateMatches = selectNotesPageTemplates(question, pageContext, { limit: 2 });
         const pageSetup = buildPageSetupSummary(pageContext);
         const blockMap = buildPageContentSnapshot(pageContext);
@@ -3122,6 +3310,9 @@ ${outline}
 
 CURRENT PAGE CONTENT (excerpt):
 ${pageContent || '(page is empty)'}
+
+REFERENCED NOTES PAGES:
+${referencedPages}
 
 PAGE STATS:
 ${pageSetup}
@@ -10365,7 +10556,9 @@ Silently verify the lead cluster, section order, and final polish before returni
             onComplete,
             onError,
             hiddenUserMessage = false,
-            hiddenAssistantMessage = false
+            hiddenAssistantMessage = false,
+            pageReferences = [],
+            referenceSearch = null
         } = options;
         
         // Validate
@@ -10376,9 +10569,13 @@ Silently verify the lead cluster, section order, and final polish before returni
         }
 
         syncConversationWithCurrentPage({ emitEvent: false });
+        const normalizedPageReferences = normalizePageReferences(pageReferences);
+        const normalizedReferenceSearch = normalizeReferenceSearchPayload(referenceSearch);
         
         if (!hiddenUserMessage) {
-            addMessage('user', question);
+            addMessage('user', question, {
+                ...(normalizedPageReferences.length ? { pageReferences: normalizedPageReferences } : {}),
+            });
         }
 
         // Set processing state
@@ -10407,7 +10604,9 @@ Silently verify the lead cluster, section order, and final polish before returni
                         onStreamComplete,
                         onComplete,
                         onError,
-                        hiddenAssistantMessage
+                        hiddenAssistantMessage,
+                        pageReferences: normalizedPageReferences,
+                        referenceSearch: normalizedReferenceSearch
                     });
                     return responseText;
                 } catch (apiError) {
@@ -10428,7 +10627,9 @@ Silently verify the lead cluster, section order, and final polish before returni
                 onStreamComplete,
                 onComplete,
                 onError,
-                hiddenAssistantMessage
+                hiddenAssistantMessage,
+                pageReferences: normalizedPageReferences,
+                referenceSearch: normalizedReferenceSearch
             });
 
         } catch (error) {
@@ -10447,7 +10648,16 @@ Silently verify the lead cluster, section order, and final polish before returni
     
     // Call the real API with streaming support
     async function askWithAPI(question, context, options) {
-        const { onChunk, onReasoning, onStreamComplete, onComplete, onError, hiddenAssistantMessage = false } = options;
+        const {
+            onChunk,
+            onReasoning,
+            onStreamComplete,
+            onComplete,
+            onError,
+            hiddenAssistantMessage = false,
+            pageReferences = [],
+            referenceSearch = null
+        } = options;
         const apiClient = getAPIClient();
         syncAPIClientSession(apiClient, context);
         const explicitPageEditIntent = isExplicitPageEditIntent(question);
@@ -10456,12 +10666,16 @@ Silently verify the lead cluster, section order, and final polish before returni
             requestedArtifactFormat = null;
         }
         const agentProfile = getSelectedAgentProfile();
+        const normalizedPageReferences = normalizePageReferences(pageReferences);
+        const normalizedReferenceSearch = normalizeReferenceSearchPayload(referenceSearch);
         const requestOptions = {
             ...(requestedArtifactFormat ? { outputFormat: requestedArtifactFormat } : {}),
             reasoningEffort: 'medium',
             metadata: {
                 notesAgentProfile: buildAgentProfileMetadata(agentProfile),
                 notesAgentProfileId: agentProfile.id,
+                ...(normalizedPageReferences.length ? { notesPageReferences: normalizedPageReferences } : {}),
+                ...(normalizedReferenceSearch.hits.length ? { notesReferenceSearch: normalizedReferenceSearch } : {}),
             },
         };
         const requestUnderstanding = buildRequestUnderstanding(question, context, requestOptions);
@@ -10474,7 +10688,9 @@ Silently verify the lead cluster, section order, and final polish before returni
             outline: []
         }, {
             question,
-            agentProfile
+            agentProfile,
+            pageReferences: normalizedPageReferences,
+            referenceSearch: normalizedReferenceSearch
         });
 
         const attemptedModels = [];
@@ -10735,6 +10951,7 @@ Silently verify the lead cluster, section order, and final polish before returni
                             model,
                             tokensUsed: estimateTokens(question + visibleResponse),
                             source: 'api',
+                            ...(normalizedPageReferences.length ? { pageReferences: normalizedPageReferences } : {}),
                             requestUnderstanding,
                             appliedCount: (preparedResponse.appliedCount || 0)
                                 + (mermaidArtifactApplyResult.appliedCount || 0)
@@ -10784,7 +11001,15 @@ Silently verify the lead cluster, section order, and final polish before returni
     
     // Stub mode for offline/no API
     async function askWithStub(question, context, options) {
-        const { onChunk, onStreamComplete, onComplete, onError, hiddenAssistantMessage = false } = options;
+        const {
+            onChunk,
+            onStreamComplete,
+            onComplete,
+            onError,
+            hiddenAssistantMessage = false,
+            pageReferences = []
+        } = options;
+        const normalizedPageReferences = normalizePageReferences(pageReferences);
         const requestUnderstanding = buildRequestUnderstanding(question, context, {});
         const generatedToolEvents = [];
         
@@ -10842,6 +11067,7 @@ Silently verify the lead cluster, section order, and final polish before returni
                     model: state.selectedModel,
                     tokensUsed: estimateTokens(question + visibleResponse),
                     source: 'stub',
+                    ...(normalizedPageReferences.length ? { pageReferences: normalizedPageReferences } : {}),
                     requestUnderstanding,
                     appliedCount: preparedResponse.appliedCount || 0
                 });
