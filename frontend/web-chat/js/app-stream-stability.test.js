@@ -67,6 +67,49 @@ function loadChatAppPrototype() {
     return context.ChatApp.prototype;
 }
 
+function loadChatAppContext() {
+    const sourcePath = path.join(__dirname, 'app.js');
+    const source = fs.readFileSync(sourcePath, 'utf8')
+        .replace(/\/\/ Initialize app when DOM is ready[\s\S]*$/, 'globalThis.ChatApp = ChatApp;');
+
+    const context = {
+        window: {
+            location: { origin: 'https://chat.example.test' },
+            KimiBuiltWebChatWorkspace: null,
+            KimiBuiltWebChatWorkspaceEmbed: null,
+            setTimeout,
+            clearTimeout,
+        },
+        document: {
+            getElementById: () => null,
+            addEventListener: () => {},
+        },
+        setTimeout,
+        clearTimeout,
+        URL,
+        console,
+        uiHelpers: {},
+    };
+
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    return context;
+}
+
+function createDeferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((innerResolve, innerReject) => {
+        resolve = innerResolve;
+        reject = innerReject;
+    });
+    return { promise, resolve, reject };
+}
+
+function flushAsync() {
+    return new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('web-chat stream stability', () => {
     test('keeps accepted interrupted streams in resync mode instead of retry fallback', () => {
         const app = Object.create(loadChatAppPrototype());
@@ -342,5 +385,62 @@ describe('web-chat stream stability', () => {
             remoteBuildIntent: true,
         }));
         expect(options.metadata.plannedTools).toEqual(['remote-command']);
+    });
+
+    test('queues TTS autoplay across agent pass messages instead of interrupting active speech', async () => {
+        const context = loadChatAppContext();
+        const firstSpeech = createDeferred();
+        const secondSpeech = createDeferred();
+        const speechRequests = [];
+
+        context.uiHelpers = {
+            isTtsAutoPlayEnabled: jest.fn(() => true),
+            isTtsAvailable: jest.fn(() => true),
+            buildSpeakableMessageText: jest.fn((message) => String(message?.content || '').trim()),
+            ttsManager: {
+                speakMessage: jest.fn((request) => {
+                    speechRequests.push(request);
+                    return speechRequests.length === 1 ? firstSpeech.promise : secondSpeech.promise;
+                }),
+            },
+        };
+
+        const app = Object.create(context.ChatApp.prototype);
+        app.ttsAutoPlayQueue = [];
+        app.ttsAutoPlayQueuedIds = new Set();
+        app.ttsAutoPlayActive = false;
+
+        expect(await app.maybeSpeakAssistantMessage({
+            id: 'assistant-pass-1',
+            role: 'assistant',
+            content: 'First pass is ready.',
+        })).toBe(true);
+        expect(await app.maybeSpeakAssistantMessage({
+            id: 'assistant-pass-2',
+            role: 'assistant',
+            content: 'Second pass is ready.',
+        })).toBe(true);
+
+        await Promise.resolve();
+        expect(context.uiHelpers.ttsManager.speakMessage).toHaveBeenCalledTimes(1);
+        expect(speechRequests[0]).toEqual({
+            messageId: 'assistant-pass-1',
+            text: 'First pass is ready.',
+        });
+
+        firstSpeech.resolve(true);
+        await Promise.resolve();
+        await flushAsync();
+
+        expect(context.uiHelpers.ttsManager.speakMessage).toHaveBeenCalledTimes(2);
+        expect(speechRequests[1]).toEqual({
+            messageId: 'assistant-pass-2',
+            text: 'Second pass is ready.',
+        });
+
+        secondSpeech.resolve(true);
+        await Promise.resolve();
+        await flushAsync();
+        expect(app.ttsAutoPlayActive).toBe(false);
     });
 });

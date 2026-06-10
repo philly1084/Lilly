@@ -742,6 +742,9 @@ class ChatApp {
         this.pendingManagedAppProgressRenders = new Map();
         this.projectPreviewTokenCache = null;
         this.projectViewportRequestId = 0;
+        this.ttsAutoPlayQueue = [];
+        this.ttsAutoPlayQueuedIds = new Set();
+        this.ttsAutoPlayActive = false;
         
         this.init();
     }
@@ -2395,6 +2398,7 @@ class ChatApp {
 
     async createNewSession() {
         try {
+            this.clearTtsAutoPlayQueue();
             uiHelpers.stopSpeechPlayback();
             await sessionManager.createSession('chat');
             uiHelpers.hideWelcomeMessage();
@@ -2413,6 +2417,7 @@ class ChatApp {
             return [];
         }
 
+        this.clearTtsAutoPlayQueue();
         uiHelpers.stopSpeechPlayback();
         const shouldReconcileVisible = options.reconcileVisible === true && this.isVisibleSession(normalizedSessionId);
         const previousVisibleMessages = shouldReconcileVisible
@@ -2699,6 +2704,7 @@ class ChatApp {
         if (!sessionManager.currentSessionId) return;
         
         if (confirm('Clear all messages in this conversation? This cannot be undone.')) {
+            this.clearTtsAutoPlayQueue();
             uiHelpers.stopSpeechPlayback();
             sessionManager.clearSessionMessages(sessionManager.currentSessionId);
             uiHelpers.showToast('Messages cleared', 'success');
@@ -9621,15 +9627,58 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return false;
         }
 
-        try {
-            await uiHelpers.ttsManager?.speakMessage?.({
-                messageId: message.id || '',
-                text: speakableText,
-            });
-            return true;
-        } catch (error) {
-            console.warn('Voice autoplay failed:', error);
+        const messageId = String(message.id || '').trim();
+        const queueKey = messageId || `${message.timestamp || Date.now()}:${speakableText.slice(0, 96)}`;
+        if (this.ttsAutoPlayQueuedIds.has(queueKey)) {
             return false;
+        }
+
+        this.ttsAutoPlayQueuedIds.add(queueKey);
+        this.ttsAutoPlayQueue.push({
+            key: queueKey,
+            messageId,
+            text: speakableText,
+        });
+        void this.drainTtsAutoPlayQueue();
+        return true;
+    }
+
+    clearTtsAutoPlayQueue() {
+        this.ttsAutoPlayQueue = [];
+        this.ttsAutoPlayQueuedIds?.clear?.();
+        this.ttsAutoPlayActive = false;
+    }
+
+    async drainTtsAutoPlayQueue() {
+        if (this.ttsAutoPlayActive) {
+            return;
+        }
+
+        this.ttsAutoPlayActive = true;
+        try {
+            while (this.ttsAutoPlayQueue.length > 0) {
+                const nextItem = this.ttsAutoPlayQueue.shift();
+                if (!nextItem) {
+                    continue;
+                }
+
+                this.ttsAutoPlayQueuedIds.delete(nextItem.key);
+                if (!uiHelpers.isTtsAutoPlayEnabled() || !uiHelpers.isTtsAvailable()) {
+                    this.clearTtsAutoPlayQueue();
+                    break;
+                }
+
+                try {
+                    await uiHelpers.ttsManager?.speakMessage?.({
+                        messageId: nextItem.messageId,
+                        text: nextItem.text,
+                    });
+                } catch (error) {
+                    console.warn('Voice autoplay failed:', error);
+                }
+            }
+        } finally {
+            this.ttsAutoPlayActive = false;
         }
     }
 
