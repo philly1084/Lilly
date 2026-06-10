@@ -15,6 +15,7 @@ const {
   renderDocumentQualityPromptContext,
   summarizeDocumentQualityPlan,
 } = require('./document-quality');
+const { parseLenientJson } = require('../utils/lenient-json');
 
 const DEFAULT_DOCUMENT_REASONING_EFFORT = 'high';
 
@@ -1019,7 +1020,10 @@ Return JSON:
       try {
         return JSON.parse(candidate);
       } catch (_error) {
-        // Try the next candidate.
+        const repaired = parseLenientJson(candidate);
+        if (repaired !== null) {
+          return repaired;
+        }
       }
     }
 

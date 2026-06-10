@@ -221,6 +221,45 @@ describe('AIDocumentGenerator', () => {
     }));
   });
 
+  test('recovers JSON-like quality pass responses for HTML and CSS repair drafts', async () => {
+    const createResponse = jest.fn()
+      .mockResolvedValueOnce(buildResponse(JSON.stringify({
+        title: 'Solar Literacy Draft',
+        sections: [
+          {
+            heading: 'Repair the reading surface',
+            content: 'The draft needs readable panels, explicit CSS color pairs, and responsive layout checks.',
+          },
+        ],
+      })))
+      .mockResolvedValueOnce(buildResponse([
+        'Quality repair object:',
+        '{',
+        '  title: “Solar Literacy Repair: HTML Structure Fix with Visual Treatments”,',
+        '  theme: "editorial",',
+        '  sections: [',
+        '    { heading: "CSS failures fixed", content: "Root-relative stylesheet links and weak contrast notes are repaired before preview.", level: 1, },',
+        '  ],',
+        '  metadata: { qualityNotes: ["Recovered JSON-like HTML/CSS quality response."], },',
+        '}',
+      ].join('\n')));
+    const generator = new AIDocumentGenerator({ createResponse });
+
+    const result = await generator.generate('Create an HTML solar literacy document and fix CSS failures', {
+      documentType: 'document',
+      format: 'html',
+      retryOnScaffold: false,
+    });
+
+    expect(result.title).toBe('Solar Literacy Repair: HTML Structure Fix with Visual Treatments');
+    expect(result.sections[0]).toEqual(expect.objectContaining({
+      heading: 'CSS failures fixed',
+      content: expect.stringContaining('Root-relative stylesheet links'),
+    }));
+    expect(result.metadata.qualityPassApplied).toBe(true);
+    expect(result.metadata.qualityPassError).toBeUndefined();
+  });
+
   test('scrubs tool diagnostics from visible document sections', async () => {
     const generator = new AIDocumentGenerator({
       createResponse: jest.fn(async () => buildResponse(JSON.stringify({
