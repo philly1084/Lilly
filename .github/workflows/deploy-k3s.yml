@@ -289,6 +289,47 @@ jobs:
               --ignore-not-found=true
           }
 
+          cleanup_stale_notes_index_hotfix_mount() {
+            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # Earlier Notes TTS live repairs mounted an old index.html over the
+            # deployed Notes frontend. Remove that override so the reference
+            # picker and other current HTML ship from the verified image.
+            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
+              --type=strategic \
+              -p='{
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "name": "backend",
+                          "volumeMounts": [
+                            {
+                              "name": "notes-tts-index-hotfix",
+                              "mountPath": "/app/frontend/notes-notion/index.html",
+                              "$patch": "delete"
+                            }
+                          ]
+                        }
+                      ],
+                      "volumes": [
+                        {
+                          "name": "notes-tts-index-hotfix",
+                          "$patch": "delete"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }' >/dev/null 2>&1 || true
+            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
+              notes-tts-index-hotfix \
+              --ignore-not-found=true
+          }
+
           # Apply namespace first
           kubectl apply -f k8s/namespace.yaml
           
@@ -350,6 +391,7 @@ jobs:
           
           # Apply backend with updated image
           kubectl apply -f k8s/backend-deployment.yaml
+          cleanup_stale_notes_index_hotfix_mount
           cleanup_stale_webchat_tts_manager_hotfix_mount
           
           # Apply production ingress for the Rancher/k3s domain
