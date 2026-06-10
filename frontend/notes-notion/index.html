@@ -733,13 +733,22 @@
                         aria-label="Reference notes pages and chats"
                         hidden
                     >
-                        <input
-                            id="agent-reference-search"
-                            class="agent-reference-search"
-                            type="search"
-                            placeholder="Search pages, chats, projects, titles, or content"
-                            autocomplete="off"
-                        >
+                        <div class="agent-reference-search-row">
+                            <input
+                                id="agent-reference-search"
+                                class="agent-reference-search"
+                                type="search"
+                                placeholder="Search pages, chats, projects, titles, or content"
+                                autocomplete="off"
+                            >
+                            <button
+                                id="agent-reference-close"
+                                class="agent-reference-close"
+                                type="button"
+                                aria-label="Close reference search"
+                                title="Close"
+                            >×</button>
+                        </div>
                         <div id="agent-reference-results" class="agent-reference-results"></div>
                     </div>
                 </div>

@@ -95,6 +95,7 @@ const AgentUI = (function() {
             referenceBtn: document.getElementById('agent-reference-btn'),
             referencePopover: document.getElementById('agent-reference-popover'),
             referenceSearch: document.getElementById('agent-reference-search'),
+            referenceClose: document.getElementById('agent-reference-close'),
             referenceResults: document.getElementById('agent-reference-results'),
             referenceChips: document.getElementById('agent-reference-chips'),
             profilePicker: document.getElementById('agent-profile-picker'),
@@ -195,7 +196,7 @@ const AgentUI = (function() {
             elements.referenceSearch.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape') {
                     event.preventDefault();
-                    closeReferencePopover();
+                    closeReferencePopover({ focusInput: true });
                 }
                 if (event.key === 'Enter') {
                     const firstResult = elements.referenceResults?.querySelector('.agent-reference-result[data-page-id]');
@@ -246,6 +247,12 @@ const AgentUI = (function() {
             });
         }
 
+        if (elements.referenceClose) {
+            elements.referenceClose.addEventListener('click', () => {
+                closeReferencePopover({ focusInput: true });
+            });
+        }
+
         if (elements.profilePicker) {
             elements.profilePicker.addEventListener('click', (event) => {
                 const button = event.target.closest('.agent-profile-option[data-profile-id]');
@@ -273,7 +280,7 @@ const AgentUI = (function() {
                 if (elements.modal?.style.display === 'flex') {
                     if (referencePopoverOpen) {
                         event.preventDefault();
-                        closeReferencePopover();
+                        closeReferencePopover({ focusInput: true });
                         return;
                     }
                     event.preventDefault();
@@ -386,7 +393,7 @@ const AgentUI = (function() {
         elements.input.value = '';
         elements.input.style.height = 'auto';
         selectedPageReferences = [];
-        closeReferencePopover();
+        closeReferencePopover({ clearSearch: true });
         renderReferencePicker();
 
         await runPrompt(text, { pageReferences, referenceSearch });
@@ -676,8 +683,10 @@ const AgentUI = (function() {
         const notesData = options.data || window.Storage?.loadAll?.() || {};
         const sourcePageId = String(entry.pageId || '').trim();
         const sourcePage = getPageById(sourcePageId, notesData);
-        const titleBase = sourcePage?.title || (sourcePageId ? 'Untitled page' : 'Current chat');
-        const spaceName = sourcePage ? getPageProjectLabel(sourcePage, notesData) : getCurrentSpaceName(notesData);
+        if (!sourcePageId || !sourcePage) return null;
+
+        const titleBase = sourcePage.title || 'Untitled';
+        const spaceName = getPageProjectLabel(sourcePage, notesData);
         const title = `Chat: ${titleBase}`;
         const updatedAt = messages
             .map((message) => Number(message?.timestamp || message?.updatedAt || 0) || 0)
@@ -695,7 +704,7 @@ const AgentUI = (function() {
             type: REFERENCE_TYPE_CHAT,
             title,
             icon: REFERENCE_ICON_CHAT,
-            spaceId: sourcePage?.spaceId || notesData.currentSpaceId || 'private',
+            spaceId: sourcePage.spaceId || notesData.currentSpaceId || 'private',
             spaceName: `${spaceName} / Chat`,
             preview: findSnippet(searchText, tokenizeSearch(titleBase), 320) || messageText.slice(0, 320),
             contentPreview: messageText.slice(0, 520),
@@ -731,9 +740,65 @@ const AgentUI = (function() {
             entries.set(currentPage.id, { pageId: currentPage.id, messages: liveMessages });
         }
 
+        if (entries.has('legacy')) {
+            const legacyEntry = entries.get('legacy');
+            if (currentPage?.id && !entries.has(currentPage.id)) {
+                entries.set(currentPage.id, { pageId: currentPage.id, messages: legacyEntry.messages });
+            }
+            entries.delete('legacy');
+        }
+
         return Array.from(entries.values())
             .map((entry) => buildChatReferenceRecord(entry, { data: notesData }))
             .filter(Boolean);
+    }
+
+    function mergeChatRecordsIntoPages(pageRecords = [], chatRecords = []) {
+        const pageRecordMap = new Map(pageRecords.map((record) => [record.pageId, record]));
+        const merged = pageRecords.map((record) => ({ ...record }));
+        const mergedMap = new Map(merged.map((record) => [record.pageId, record]));
+        const standaloneChats = [];
+
+        chatRecords.forEach((chatRecord) => {
+            const sourcePageId = String(chatRecord.sourcePageId || '').trim();
+            const pageRecord = sourcePageId ? mergedMap.get(sourcePageId) : null;
+
+            if (!pageRecord) {
+                standaloneChats.push(chatRecord);
+                return;
+            }
+
+            pageRecord.hasChat = true;
+            pageRecord.chatPageId = chatRecord.pageId;
+            pageRecord.chatSourcePageId = sourcePageId;
+            pageRecord.chatPreview = chatRecord.preview || '';
+            pageRecord.chatContentPreview = chatRecord.contentPreview || '';
+            pageRecord.chatMessageCount = chatRecord.blockCount || 0;
+            pageRecord.chatUpdatedAt = chatRecord.updatedAt || null;
+            pageRecord.chatOutline = chatRecord.outline || [];
+            pageRecord.searchText = normalizeText([
+                pageRecord.searchText,
+                'attached chat agent conversation messages',
+                chatRecord.searchText,
+            ].join(' '));
+            pageRecord.contentPreview = normalizeText([
+                pageRecord.contentPreview,
+                chatRecord.contentPreview ? `Chat: ${chatRecord.contentPreview}` : '',
+            ].join(' ')).slice(0, 760);
+
+            if (!pageRecord.preview && chatRecord.preview) {
+                pageRecord.preview = chatRecord.preview;
+            }
+
+            if (chatRecord.updatedAt && (!pageRecord.updatedAt || String(chatRecord.updatedAt).localeCompare(String(pageRecord.updatedAt)) > 0)) {
+                pageRecord.updatedAt = chatRecord.updatedAt;
+            }
+        });
+
+        return [
+            ...merged.filter((record) => pageRecordMap.has(record.pageId)),
+            ...standaloneChats,
+        ];
     }
 
     function getAllReferenceRecords() {
@@ -741,10 +806,7 @@ const AgentUI = (function() {
         const pageRecords = collectReferencePages(data)
             .map((page) => buildPageReferenceRecord(page, { data }))
             .filter(Boolean);
-        return [
-            ...pageRecords,
-            ...collectChatReferenceRecords(data),
-        ];
+        return mergeChatRecordsIntoPages(pageRecords, collectChatReferenceRecords(data));
     }
 
     function tokenizeSearch(value = '') {
@@ -828,6 +890,11 @@ const AgentUI = (function() {
                     pageId: record.pageId,
                     sourcePageId: record.sourcePageId || '',
                     type: record.type || REFERENCE_TYPE_PAGE,
+                    hasChat: Boolean(record.hasChat),
+                    chatPageId: record.chatPageId || '',
+                    chatSourcePageId: record.chatSourcePageId || '',
+                    chatSnippet: record.chatPreview || '',
+                    chatMessageCount: record.chatMessageCount || 0,
                     title: record.title,
                     icon: record.icon,
                     spaceName: record.spaceName,
@@ -907,13 +974,18 @@ const AgentUI = (function() {
         elements.referenceResults.innerHTML = results.map((record) => {
             const isChat = record.type === REFERENCE_TYPE_CHAT;
             const typeLabel = isChat ? 'Chat' : 'Page';
-            const countLabel = isChat ? `${record.blockCount || 0} messages` : `${record.blockCount || 0} blocks`;
+            const countLabel = isChat
+                ? `${record.blockCount || 0} messages`
+                : `${record.blockCount || 0} blocks${record.hasChat ? ` + ${record.chatMessageCount || 0} chat messages` : ''}`;
             const openLabel = isChat ? 'Open page' : 'Open';
+            const chatLabel = !isChat && record.hasChat
+                ? '<span class="agent-reference-result-badge">Chat context</span>'
+                : '';
             return `
             <div class="agent-reference-result" data-page-id="${escapeHtmlAttr(record.pageId)}" role="button" tabindex="0">
                 <span class="agent-reference-result-icon">${escapeHtml(normalizeReferenceIcon(record.icon, record.type))}</span>
                 <span class="agent-reference-result-body">
-                    <span class="agent-reference-result-title">${escapeHtml(record.title || 'Untitled')}</span>
+                    <span class="agent-reference-result-title">${escapeHtml(record.title || 'Untitled')}${chatLabel}</span>
                     <span class="agent-reference-result-meta">${escapeHtml(record.spaceName || 'Private')} - ${typeLabel} - ${countLabel}${record.outline?.length ? ` - ${escapeHtml(record.outline.slice(0, 2).join(' / '))}` : ''}</span>
                     <span class="agent-reference-result-preview">${escapeHtml(record.matchedPreview || record.preview || 'No text content yet')}</span>
                 </span>
@@ -934,9 +1006,19 @@ const AgentUI = (function() {
         setTimeout(() => elements.referenceSearch?.focus(), 0);
     }
 
-    function closeReferencePopover() {
+    function closeReferencePopover(options = {}) {
+        const { clearSearch = true, focusInput = false } = options;
         referencePopoverOpen = false;
+        if (clearSearch) {
+            referenceSearchQuery = '';
+            if (elements.referenceSearch) {
+                elements.referenceSearch.value = '';
+            }
+        }
         renderReferencePicker();
+        if (focusInput) {
+            setTimeout(() => elements.input?.focus(), 0);
+        }
     }
 
     function addPageReference(pageId = '') {
@@ -949,11 +1031,7 @@ const AgentUI = (function() {
         if (!reference) return;
 
         selectedPageReferences = [...selectedPageReferences, reference];
-        referenceSearchQuery = '';
-        if (elements.referenceSearch) {
-            elements.referenceSearch.value = '';
-        }
-        renderReferencePicker();
+        closeReferencePopover({ clearSearch: true, focusInput: true });
     }
 
     function removePageReference(pageId = '') {
@@ -966,6 +1044,11 @@ const AgentUI = (function() {
             pageId: reference.pageId,
             sourcePageId: reference.sourcePageId || '',
             type: reference.type || REFERENCE_TYPE_PAGE,
+            chatPageId: reference.chatPageId || '',
+            chatSourcePageId: reference.chatSourcePageId || '',
+            chatPreview: reference.chatPreview || '',
+            chatMessageCount: reference.chatMessageCount || 0,
+            hasChat: Boolean(reference.hasChat),
             title: reference.title,
             icon: normalizeReferenceIcon(reference.icon, reference.type),
             spaceId: reference.spaceId,

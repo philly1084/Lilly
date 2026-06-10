@@ -1568,6 +1568,13 @@ button:focus-visible,
     gap: 8px;
 }
 
+.agent-reference-search-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 8px;
+    align-items: center;
+}
+
 .agent-reference-search {
     width: 100%;
     min-height: 36px;
@@ -1581,9 +1588,32 @@ button:focus-visible,
     outline: none;
 }
 
+.agent-reference-close {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--panel-surface);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
 .agent-reference-search:focus {
     border-color: var(--agent-accent-start);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--agent-accent-start) 22%, transparent);
+}
+
+.agent-reference-close:hover,
+.agent-reference-close:focus-visible {
+    border-color: var(--agent-accent-start);
+    background: color-mix(in srgb, var(--agent-accent-start) 10%, var(--panel-surface));
+    color: var(--text-primary);
+    outline: none;
 }
 
 .agent-reference-results {
@@ -1634,8 +1664,27 @@ button:focus-visible,
 }
 
 .agent-reference-result-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
     font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-reference-result-badge {
+    flex: 0 0 auto;
+    max-width: 92px;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--agent-accent-start) 28%, var(--border-color));
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--agent-accent-start) 8%, var(--panel-surface));
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 1.1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

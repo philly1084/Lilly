@@ -3044,6 +3044,11 @@ const Agent = (function() {
                     pageId,
                     sourcePageId: normalizeInlineText(reference.sourcePageId || ''),
                     type,
+                    hasChat: Boolean(reference.hasChat || reference.chatPreview || reference.chatPageId || reference.chatSourcePageId),
+                    chatPageId: normalizeInlineText(reference.chatPageId || ''),
+                    chatSourcePageId: normalizeInlineText(reference.chatSourcePageId || ''),
+                    chatPreview: truncateText(reference.chatPreview || '', 420),
+                    chatMessageCount: Number(reference.chatMessageCount || 0) || 0,
                     title: normalizeInlineText(reference.title || 'Untitled') || 'Untitled',
                     icon: normalizeInlineText(reference.icon || (type === 'chat' ? 'Chat' : 'Page')) || (type === 'chat' ? 'Chat' : 'Page'),
                     spaceId: normalizeInlineText(reference.spaceId || ''),
@@ -3077,6 +3082,11 @@ const Agent = (function() {
                         pageId,
                         sourcePageId: normalizeInlineText(hit.sourcePageId || ''),
                         type,
+                        hasChat: Boolean(hit.hasChat || hit.chatSnippet || hit.chatPageId || hit.chatSourcePageId),
+                        chatPageId: normalizeInlineText(hit.chatPageId || ''),
+                        chatSourcePageId: normalizeInlineText(hit.chatSourcePageId || ''),
+                        chatSnippet: truncateText(hit.chatSnippet || '', 420),
+                        chatMessageCount: Number(hit.chatMessageCount || 0) || 0,
                         title: normalizeInlineText(hit.title || 'Untitled') || 'Untitled',
                         icon: normalizeInlineText(hit.icon || (type === 'chat' ? 'Chat' : 'Page')) || (type === 'chat' ? 'Chat' : 'Page'),
                         spaceName: normalizeInlineText(hit.spaceName || 'Private') || 'Private',
@@ -3112,14 +3122,22 @@ const Agent = (function() {
     }
 
     function getReferencedChatSourcePageId(reference = {}) {
-        const sourcePageId = String(reference.sourcePageId || '').trim();
+        const sourcePageId = String(reference.chatSourcePageId || reference.sourcePageId || '').trim();
         if (sourcePageId) return sourcePageId;
+
+        const chatPageId = String(reference.chatPageId || '').trim();
+        if (chatPageId.startsWith('chat:')) {
+            const stripped = chatPageId.slice(5).trim();
+            return stripped === 'legacy' ? '' : stripped;
+        }
 
         const pageId = String(reference.pageId || '').trim();
         if (pageId.startsWith('chat:')) {
             const stripped = pageId.slice(5).trim();
             return stripped === 'legacy' ? '' : stripped;
         }
+
+        if (reference.hasChat && pageId) return pageId;
 
         return '';
     }
@@ -3198,6 +3216,9 @@ const Agent = (function() {
                 if (reference.preview) {
                     lines.push(`   Preview: ${reference.preview}`);
                 }
+                if (reference.hasChat && reference.chatPreview) {
+                    lines.push(`   Attached chat preview (${reference.chatMessageCount || 'unknown'} messages): ${reference.chatPreview}`);
+                }
             });
         }
 
@@ -3215,6 +3236,9 @@ const Agent = (function() {
                 }
                 if (hit.snippet) {
                     lines.push(`   Snippet: ${hit.snippet}`);
+                }
+                if (hit.hasChat && hit.chatSnippet) {
+                    lines.push(`   Attached chat snippet (${hit.chatMessageCount || 'unknown'} messages): ${hit.chatSnippet}`);
                 }
             });
         }
@@ -3263,7 +3287,7 @@ const Agent = (function() {
             }
 
             const expandedChats = normalizedReferences
-                .filter((reference) => reference.type === 'chat')
+                .filter((reference) => reference.type === 'chat' || reference.hasChat)
                 .slice(0, 2)
                 .map(buildExpandedChatContext)
                 .filter(Boolean);
