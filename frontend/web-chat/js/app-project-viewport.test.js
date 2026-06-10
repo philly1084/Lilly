@@ -561,6 +561,85 @@ describe('web-chat project viewport helpers', () => {
         }));
     });
 
+    test('updates the website preview to the live URL reported by the remote build agent', () => {
+        const context = loadChatAppContext();
+        const { app } = createManagedAppProgressHarness(context);
+        const session = context.sessionManager.sessions[0];
+        const projectViewport = createFakeElement('project-viewport');
+        const appShell = createFakeElement('app');
+        const frame = createFakeElement('project-viewport-frame');
+        const label = createFakeElement('project-viewport-label');
+        const link = createFakeElement('project-viewport-link');
+        projectViewport.querySelectorAll = () => [];
+
+        context.document.getElementById = (id) => ({
+            app: appShell,
+        }[id] || null);
+
+        app.projectViewport = projectViewport;
+        app.projectViewportFrame = frame;
+        app.projectViewportLabel = label;
+        app.projectViewportLink = link;
+        app.projectViewportRequestId = 0;
+        session.metadata.activeProject = {
+            type: 'managed-app',
+            appId: 'app-1',
+            appSlug: 'demo-site',
+            title: 'Demo Site',
+            publicHost: 'question-derived-slug.demoserver2.buzz',
+            targetPublicHost: 'question-derived-slug.demoserver2.buzz',
+            viewportSize: 'wide',
+        };
+
+        const toolEvents = [{
+            toolCall: {
+                function: {
+                    name: 'managed-app',
+                    arguments: JSON.stringify({ action: 'iterate', appRef: 'demo-site' }),
+                },
+            },
+            result: {
+                success: true,
+                toolId: 'managed-app',
+                data: {
+                    app: {
+                        id: 'app-1',
+                        slug: 'demo-site',
+                        appName: 'Demo Site',
+                        publicHost: 'question-derived-slug.demoserver2.buzz',
+                    },
+                    project: {
+                        type: 'managed-app',
+                        appId: 'app-1',
+                        appSlug: 'demo-site',
+                        title: 'Demo Site',
+                        phase: 'live',
+                        publicHost: 'question-derived-slug.demoserver2.buzz',
+                        livePublicHost: 'actual-web-address.demoserver2.buzz',
+                        livePublicUrl: 'https://actual-web-address.demoserver2.buzz',
+                    },
+                    progress: {
+                        phase: 'live',
+                        steps: [{ id: 'verify', title: 'Verify public endpoint', status: 'completed' }],
+                    },
+                    message: 'Demo Site is live at the verified public route.',
+                },
+            },
+        }];
+
+        expect(app.applyManagedAppProgressFromToolEvents(toolEvents, { sessionId: 'session-1' })).toBe(1);
+
+        expect(session.metadata.activeProject).toEqual(expect.objectContaining({
+            publicUrl: 'https://actual-web-address.demoserver2.buzz',
+            livePublicHost: 'actual-web-address.demoserver2.buzz',
+            livePublicUrl: 'https://actual-web-address.demoserver2.buzz',
+            targetPublicHost: 'question-derived-slug.demoserver2.buzz',
+        }));
+        expect(link.textContent).toBe('actual-web-address.demoserver2.buzz');
+        expect(link.href).toBe('https://actual-web-address.demoserver2.buzz');
+        expect(frame.dataset.rawProjectUrl).toBe('https://actual-web-address.demoserver2.buzz');
+    });
+
     test('preserves collapsed managed app viewport sizing during hook progress', () => {
         const context = loadChatAppContext();
         const { app } = createManagedAppProgressHarness(context);

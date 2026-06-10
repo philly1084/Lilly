@@ -492,14 +492,14 @@ const normalizedTtsRealtimePrimaryTimeoutMs = Math.max(
     3000,
     Math.min(
         normalizedKokoroTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 24000,
+        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 8000,
     ),
 );
 const normalizedTtsRealtimeFallbackTimeoutMs = Math.max(
     2000,
     Math.min(
         normalizedPiperTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 24000,
+        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 7000,
     ),
 );
 const normalizedTtsRealtimeHedgeDelayMs = Math.max(
@@ -513,7 +513,7 @@ const normalizedTtsRealtimeChunkStallMs = Math.max(
     350,
     Math.min(
         30000,
-        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 9000,
+        parseInt(process.env.TTS_REALTIME_CHUNK_STALL_MS, 10) || 2500,
     ),
 );
 const normalizedPodcastVideoSegmentTimeoutMs = Math.max(

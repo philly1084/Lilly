@@ -339,6 +339,9 @@ describe('splitTextIntoSpeechChunks', () => {
         const manager = new WebChatTtsManager();
 
         expect(manager.realtimePolicy.chunkTargetChars).toBe(360);
+        expect(manager.realtimePolicy.primaryTimeoutMs).toBe(8000);
+        expect(manager.realtimePolicy.fallbackTimeoutMs).toBe(7000);
+        expect(manager.realtimePolicy.chunkStallMs).toBe(2500);
     });
 
     test('trims end-of-sentence silence while preserving a final speech tail pad', () => {

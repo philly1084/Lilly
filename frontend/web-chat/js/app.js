@@ -5231,13 +5231,28 @@ class ChatApp {
         const fallbackRef = String(args.appRef || args.ref || args.id || args.slug || '').trim();
         const appId = String(data.app?.id || project.appId || project.managedAppId || fallbackRef || '').trim();
         const appSlug = String(data.app?.slug || project.appSlug || project.managedAppSlug || args.slug || fallbackRef || '').trim();
+        const livePublicUrl = String(
+            project.livePublicUrl
+            || project.deployedUrl
+            || data.iteration?.evidence?.livePublicUrl
+            || data.iteration?.evidence?.publicUrl
+            || data.publicUrl
+            || data.public_url
+            || '',
+        ).trim();
+        const livePublicHost = this.normalizeProjectHost(
+            project.livePublicHost
+            || project.deployedHost
+            || data.iteration?.evidence?.livePublicHost
+            || livePublicUrl
+            || '',
+        );
         const publicHost = this.normalizeProjectHost(
             data.app?.publicHost
             || project.publicHost
             || project.targetPublicHost
             || data.iteration?.evidence?.targetPublicHost
             || data.publicHost
-            || data.publicUrl
             || '',
         );
 
@@ -5255,8 +5270,8 @@ class ChatApp {
                 sessionId: data.app?.sessionId || project.sessionId || options.sessionId || toolEvent.sessionId || '',
                 publicHost,
                 publicUrl: publicHost ? `https://${publicHost}` : '',
-                livePublicHost: String(project.livePublicHost || data.iteration?.evidence?.livePublicHost || '').trim(),
-                livePublicUrl: String(project.livePublicUrl || data.iteration?.evidence?.livePublicUrl || '').trim(),
+                livePublicHost,
+                livePublicUrl,
             },
             buildRun: data.buildRun || null,
             progressState,
@@ -5381,6 +5396,10 @@ class ChatApp {
         const verifiedEventPublicUrl = eventRequiredProof.publicVerificationObserved === true
             ? String(eventEvidence.publicUrl || '').trim()
             : '';
+        const eventLivePublicUrl = String(event?.app?.livePublicUrl || '').trim();
+        const eventLivePublicHost = String(event?.app?.livePublicHost || '').trim();
+        const publicVerificationObserved = eventRequiredProof.publicVerificationObserved === true
+            || Boolean(eventLivePublicUrl || eventLivePublicHost);
         const livePublicUrl = this.buildManagedAppLiveProjectUrl({
             ...(existingProject || {}),
             type: 'managed-app',
@@ -5388,8 +5407,9 @@ class ChatApp {
             status: phase,
             publicHost: targetPublicHost,
             publicUrl: String(event?.app?.publicUrl || existingProject?.publicUrl || '').trim(),
-            livePublicHost: String(event?.app?.livePublicHost || existingProject?.livePublicHost || '').trim(),
-            livePublicUrl: String(event?.app?.livePublicUrl || verifiedEventPublicUrl || existingProject?.livePublicUrl || '').trim(),
+            livePublicHost: String(eventLivePublicHost || existingProject?.livePublicHost || '').trim(),
+            livePublicUrl: String(eventLivePublicUrl || verifiedEventPublicUrl || existingProject?.livePublicUrl || '').trim(),
+            publicVerificationObserved,
             progress: nextState.progressState,
         });
         const livePublicHost = livePublicUrl ? this.normalizeProjectHost(livePublicUrl) : '';
@@ -5408,6 +5428,7 @@ class ChatApp {
             targetPublicUrl,
             livePublicHost,
             livePublicUrl,
+            publicVerificationObserved,
             nextStep: String(nextState.progressState?.nextStep || '').trim(),
             openItems: Array.isArray(nextState.progressState?.openItems) ? nextState.progressState.openItems : [],
             updatedAt: event?.timestamp || new Date().toISOString(),

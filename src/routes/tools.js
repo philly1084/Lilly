@@ -834,6 +834,96 @@ function unwrapToolResultPayload(result = {}) {
   return envelope.data || envelope.result || envelope;
 }
 
+function normalizeToolText(value = '') {
+  return String(value || '').trim();
+}
+
+function normalizeToolHost(value = '') {
+  const normalized = normalizeToolText(value);
+  if (!normalized) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(normalized) ? normalized : `https://${normalized}`);
+    return parsed.host.replace(/\/+$/g, '');
+  } catch (_error) {
+    return normalized
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/.*$/g, '')
+      .replace(/\/+$/g, '');
+  }
+}
+
+function normalizeToolPublicUrl(value = '', fallbackHost = '') {
+  const normalized = normalizeToolText(value);
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  const host = normalizeToolHost(fallbackHost || normalized);
+  return host ? `https://${host}` : '';
+}
+
+function buildRemoteCliActiveProjectPatch(session = null, payload = {}, params = {}) {
+  const explicitPublicUrl = normalizeToolPublicUrl(payload?.publicUrl || payload?.livePublicUrl || payload?.deployedUrl || '');
+  const publicHost = normalizeToolHost(explicitPublicUrl || payload?.publicHost || payload?.livePublicHost || payload?.deployedHost || '');
+  const publicUrl = explicitPublicUrl || normalizeToolPublicUrl('', publicHost);
+  if (!publicUrl && !publicHost) {
+    return null;
+  }
+
+  const currentMetadata = session?.metadata && typeof session.metadata === 'object'
+    ? session.metadata
+    : {};
+  const existingProject = currentMetadata.activeProject && typeof currentMetadata.activeProject === 'object' && !Array.isArray(currentMetadata.activeProject)
+    ? currentMetadata.activeProject
+    : {};
+  const existingType = normalizeToolText(existingProject.type).toLowerCase();
+  const title = normalizeToolText(
+    existingProject.title
+    || existingProject.appName
+    || existingProject.appSlug
+    || payload?.deployment
+    || publicHost
+    || params?.task
+    || 'Live project',
+  );
+  const now = new Date().toISOString();
+
+  return {
+    ...existingProject,
+    type: existingType || 'remote-project',
+    title,
+    publicHost,
+    publicUrl,
+    targetPublicHost: publicHost,
+    targetPublicUrl: publicUrl,
+    livePublicHost: publicHost,
+    livePublicUrl: publicUrl,
+    deployedHost: publicHost,
+    deployedUrl: publicUrl,
+    publicVerificationObserved: true,
+    verificationStatus: 'live',
+    phase: normalizeToolText(existingProject.phase || existingProject.status || 'live'),
+    status: normalizeToolText(existingProject.status || 'live'),
+    summary: normalizeToolText(payload?.whatChanged || existingProject.summary || ''),
+    remoteCliAgent: {
+      ...(existingProject.remoteCliAgent && typeof existingProject.remoteCliAgent === 'object' ? existingProject.remoteCliAgent : {}),
+      ...(payload?.sessionId ? { sessionId: payload.sessionId } : {}),
+      ...(payload?.mcpSessionId ? { mcpSessionId: payload.mcpSessionId } : {}),
+      ...(payload?.targetId ? { targetId: payload.targetId } : {}),
+      ...(payload?.cwd || params?.cwd ? { cwd: payload?.cwd || params.cwd } : {}),
+      ...(payload?.gitRepo ? { gitRepo: payload.gitRepo } : {}),
+      ...(payload?.gitCommit ? { gitCommit: payload.gitCommit } : {}),
+      ...(payload?.deployment ? { deployment: payload.deployment } : {}),
+      ...(payload?.uiCheckReport ? { uiCheckReport: payload.uiCheckReport } : {}),
+      updatedAt: now,
+    },
+    updatedAt: now,
+  };
+}
+
 async function recordRemoteToolRegistryEvent(sessionId, session = null, toolId = '', params = {}, result = {}) {
   if (!REMOTE_SERVICE_TOOL_IDS.has(toolId)) {
     return;
@@ -869,6 +959,10 @@ async function updateSessionToolMetadata(sessionId, toolId, params = {}, result 
 
   if (toolId === 'remote-cli-agent') {
     const payload = unwrapToolResultPayload(result);
+    const session = typeof sessionStore.get === 'function'
+      ? await sessionStore.get(sessionId).catch(() => null)
+      : null;
+    const activeProject = buildRemoteCliActiveProjectPatch(session, payload, params);
     const task = String(params.task || params.prompt || params.message || '').trim();
     const remoteCliPatch = {
       lastTask: task || null,
@@ -909,6 +1003,7 @@ async function updateSessionToolMetadata(sessionId, toolId, params = {}, result 
     await sessionStore.update(sessionId, {
       metadata: {
         ...controlPatch,
+        ...(activeProject ? { activeProject } : {}),
       },
     });
     return;
