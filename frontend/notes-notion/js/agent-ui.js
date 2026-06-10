@@ -37,6 +37,12 @@ const AgentUI = (function() {
     const MAX_SELECTED_REFERENCES = 6;
     const MAX_REFERENCE_RESULTS = 12;
     const MAX_REFERENCE_SEARCH_HITS = 16;
+    const REFERENCE_TYPE_PAGE = 'page';
+    const REFERENCE_TYPE_CHAT = 'chat';
+    const REFERENCE_ICON_PAGE = '📄';
+    const REFERENCE_ICON_CHAT = '💬';
+    const LEGACY_MESSAGES_STORAGE_KEY = 'notes_agent_messages';
+    const PAGE_MESSAGES_STORAGE_PREFIX = 'notes_agent_messages:';
 
     function cacheElements() {
         const widgetBtn = document.getElementById('agent-widget-btn');
@@ -479,6 +485,15 @@ const AgentUI = (function() {
         return String(value || '').replace(/\s+/g, ' ').trim();
     }
 
+    function normalizeReferenceIcon(value = '', type = REFERENCE_TYPE_PAGE) {
+        const fallback = type === REFERENCE_TYPE_CHAT ? REFERENCE_ICON_CHAT : REFERENCE_ICON_PAGE;
+        const normalized = normalizeText(value);
+        if (!normalized || normalized.toLowerCase() === 'page' || normalized.toLowerCase() === 'chat') {
+            return fallback;
+        }
+        return normalized.length > 2 ? fallback : normalized;
+    }
+
     function getCurrentSpaceName(data = null) {
         const notesData = data || window.Storage?.loadAll?.() || {};
         const spaceId = notesData.currentSpaceId || 'private';
@@ -545,6 +560,24 @@ const AgentUI = (function() {
         return parentTitle ? `${spaceName} / ${parentTitle}` : spaceName;
     }
 
+    function getPageById(pageId = '', notesData = null) {
+        const normalizedPageId = String(pageId || '').trim();
+        if (!normalizedPageId) return null;
+
+        const currentPage = window.Editor?.getCurrentPage?.();
+        if (currentPage?.id === normalizedPageId) {
+            return currentPage;
+        }
+
+        const data = notesData || window.Storage?.loadAll?.() || {};
+        if (Array.isArray(data.pages)) {
+            const page = data.pages.find((candidate) => candidate?.id === normalizedPageId);
+            if (page) return page;
+        }
+
+        return window.Storage?.getPage?.(normalizedPageId) || null;
+    }
+
     function collectReferencePages(data = null) {
         const notesData = data || window.Storage?.loadAll?.() || {};
         const pageMap = new Map();
@@ -599,7 +632,8 @@ const AgentUI = (function() {
         return {
             pageId: effectivePage.id,
             title,
-            icon: effectivePage.icon || 'Page',
+            type: REFERENCE_TYPE_PAGE,
+            icon: normalizeReferenceIcon(effectivePage.icon, REFERENCE_TYPE_PAGE),
             spaceId: effectivePage.spaceId || notesData.currentSpaceId || 'private',
             spaceName,
             preview: findSnippet(searchText, tokenizeSearch(title), 320) || text.slice(0, 320),
@@ -611,11 +645,106 @@ const AgentUI = (function() {
         };
     }
 
+    function readStoredMessagesForReference(key = '') {
+        if (!key) return [];
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (_error) {
+            return [];
+        }
+    }
+
+    function getMessageReferenceText(message = null) {
+        if (!message || typeof message !== 'object') return '';
+        const role = String(message.role || '').trim();
+        const content = normalizeText(message.content || message.text || message.message || '');
+        const reasoning = normalizeText(message.reasoningSummary || message.reasoning || '');
+        return normalizeText([role, content, reasoning].filter(Boolean).join(': '));
+    }
+
+    function buildChatReferenceRecord(entry = {}, options = {}) {
+        const messages = Array.isArray(entry.messages) ? entry.messages : [];
+        const messageText = messages
+            .map(getMessageReferenceText)
+            .filter(Boolean)
+            .join(' ');
+        if (!messageText) return null;
+
+        const notesData = options.data || window.Storage?.loadAll?.() || {};
+        const sourcePageId = String(entry.pageId || '').trim();
+        const sourcePage = getPageById(sourcePageId, notesData);
+        const titleBase = sourcePage?.title || (sourcePageId ? 'Untitled page' : 'Current chat');
+        const spaceName = sourcePage ? getPageProjectLabel(sourcePage, notesData) : getCurrentSpaceName(notesData);
+        const title = `Chat: ${titleBase}`;
+        const updatedAt = messages
+            .map((message) => Number(message?.timestamp || message?.updatedAt || 0) || 0)
+            .sort((left, right) => right - left)[0] || null;
+        const searchText = normalizeText([
+            title,
+            'chat conversation agent messages assistant user',
+            spaceName,
+            messageText,
+        ].join(' '));
+
+        return {
+            pageId: `chat:${sourcePageId || 'legacy'}`,
+            sourcePageId,
+            type: REFERENCE_TYPE_CHAT,
+            title,
+            icon: REFERENCE_ICON_CHAT,
+            spaceId: sourcePage?.spaceId || notesData.currentSpaceId || 'private',
+            spaceName: `${spaceName} / Chat`,
+            preview: findSnippet(searchText, tokenizeSearch(titleBase), 320) || messageText.slice(0, 320),
+            contentPreview: messageText.slice(0, 520),
+            outline: ['Agent chat history'],
+            searchText,
+            blockCount: messages.length,
+            updatedAt,
+        };
+    }
+
+    function collectChatReferenceRecords(data = null) {
+        const notesData = data || window.Storage?.loadAll?.() || {};
+        const entries = new Map();
+
+        try {
+            for (let index = 0; index < localStorage.length; index += 1) {
+                const key = localStorage.key(index);
+                if (!key) continue;
+                if (key === LEGACY_MESSAGES_STORAGE_KEY) {
+                    entries.set('legacy', { pageId: '', messages: readStoredMessagesForReference(key) });
+                } else if (key.startsWith(PAGE_MESSAGES_STORAGE_PREFIX)) {
+                    const pageId = key.slice(PAGE_MESSAGES_STORAGE_PREFIX.length);
+                    entries.set(pageId || 'legacy', { pageId, messages: readStoredMessagesForReference(key) });
+                }
+            }
+        } catch (_error) {
+            // Some privacy modes block localStorage enumeration; the current Agent API still covers the open chat.
+        }
+
+        const currentPage = window.Editor?.getCurrentPage?.();
+        const liveMessages = window.Agent?.getMessages?.();
+        if (currentPage?.id && Array.isArray(liveMessages) && liveMessages.length) {
+            entries.set(currentPage.id, { pageId: currentPage.id, messages: liveMessages });
+        }
+
+        return Array.from(entries.values())
+            .map((entry) => buildChatReferenceRecord(entry, { data: notesData }))
+            .filter(Boolean);
+    }
+
     function getAllReferenceRecords() {
         const data = window.Storage?.loadAll?.() || {};
-        return collectReferencePages(data)
+        const pageRecords = collectReferencePages(data)
             .map((page) => buildPageReferenceRecord(page, { data }))
             .filter(Boolean);
+        return [
+            ...pageRecords,
+            ...collectChatReferenceRecords(data),
+        ];
     }
 
     function tokenizeSearch(value = '') {
@@ -689,17 +818,16 @@ const AgentUI = (function() {
     function buildReferenceSearchPayload(promptText = '', pageReferences = []) {
         const terms = tokenizeSearch(promptText);
         const selectedIds = new Set((pageReferences || []).map((reference) => reference.pageId));
-        const data = window.Storage?.loadAll?.() || {};
-        const hits = collectReferencePages(data)
-            .map((page) => {
-                const record = buildPageReferenceRecord(page, { data });
-                if (!record) return null;
+        const hits = getAllReferenceRecords()
+            .map((record) => {
                 const score = selectedIds.has(record.pageId)
                     ? scoreReferenceRecord(record, terms) + 6
                     : scoreReferenceRecord(record, terms);
 
                 return {
                     pageId: record.pageId,
+                    sourcePageId: record.sourcePageId || '',
+                    type: record.type || REFERENCE_TYPE_PAGE,
                     title: record.title,
                     icon: record.icon,
                     spaceName: record.spaceName,
@@ -746,7 +874,7 @@ const AgentUI = (function() {
 
         elements.referenceChips.innerHTML = selectedPageReferences.map((reference) => `
             <span class="agent-reference-chip" data-page-id="${escapeHtmlAttr(reference.pageId)}" title="${escapeHtmlAttr(reference.title)}">
-                <span class="agent-reference-chip-icon">${escapeHtml(reference.icon || 'Page')}</span>
+                <span class="agent-reference-chip-icon">${escapeHtml(normalizeReferenceIcon(reference.icon, reference.type))}</span>
                 <span class="agent-reference-chip-title">${escapeHtml(reference.title || 'Untitled')}</span>
                 <button
                     type="button"
@@ -772,21 +900,27 @@ const AgentUI = (function() {
         }
 
         if (results.length === 0) {
-            elements.referenceResults.innerHTML = '<div class="agent-reference-empty">No matching pages</div>';
+            elements.referenceResults.innerHTML = '<div class="agent-reference-empty">No matching pages or chats</div>';
             return;
         }
 
-        elements.referenceResults.innerHTML = results.map((record) => `
+        elements.referenceResults.innerHTML = results.map((record) => {
+            const isChat = record.type === REFERENCE_TYPE_CHAT;
+            const typeLabel = isChat ? 'Chat' : 'Page';
+            const countLabel = isChat ? `${record.blockCount || 0} messages` : `${record.blockCount || 0} blocks`;
+            const openLabel = isChat ? 'Open page' : 'Open';
+            return `
             <div class="agent-reference-result" data-page-id="${escapeHtmlAttr(record.pageId)}" role="button" tabindex="0">
-                <span class="agent-reference-result-icon">${escapeHtml(record.icon || 'Page')}</span>
+                <span class="agent-reference-result-icon">${escapeHtml(normalizeReferenceIcon(record.icon, record.type))}</span>
                 <span class="agent-reference-result-body">
                     <span class="agent-reference-result-title">${escapeHtml(record.title || 'Untitled')}</span>
-                    <span class="agent-reference-result-meta">${escapeHtml(record.spaceName || 'Private')} - ${record.blockCount || 0} blocks${record.outline?.length ? ` - ${escapeHtml(record.outline.slice(0, 2).join(' / '))}` : ''}</span>
+                    <span class="agent-reference-result-meta">${escapeHtml(record.spaceName || 'Private')} - ${typeLabel} - ${countLabel}${record.outline?.length ? ` - ${escapeHtml(record.outline.slice(0, 2).join(' / '))}` : ''}</span>
                     <span class="agent-reference-result-preview">${escapeHtml(record.matchedPreview || record.preview || 'No text content yet')}</span>
                 </span>
-                <button type="button" class="agent-reference-open" data-page-id="${escapeHtmlAttr(record.pageId)}" title="Open page">Open</button>
+                <button type="button" class="agent-reference-open" data-page-id="${escapeHtmlAttr(record.pageId)}" title="${escapeHtmlAttr(openLabel)}">${escapeHtml(openLabel)}</button>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     function toggleReferencePopover() {
@@ -810,9 +944,8 @@ const AgentUI = (function() {
         if (!normalizedPageId || selectedPageReferences.some((reference) => reference.pageId === normalizedPageId)) return;
         if (selectedPageReferences.length >= MAX_SELECTED_REFERENCES) return;
 
-        const page = window.Storage?.getPage?.(normalizedPageId)
-            || (window.Editor?.getCurrentPage?.()?.id === normalizedPageId ? window.Editor.getCurrentPage() : null);
-        const reference = buildPageReferenceRecord(page);
+        const reference = getAllReferenceRecords().find((record) => record.pageId === normalizedPageId)
+            || buildPageReferenceRecord(getPageById(normalizedPageId));
         if (!reference) return;
 
         selectedPageReferences = [...selectedPageReferences, reference];
@@ -831,8 +964,10 @@ const AgentUI = (function() {
     function getSelectedPageReferencesForPrompt() {
         return selectedPageReferences.map((reference) => ({
             pageId: reference.pageId,
+            sourcePageId: reference.sourcePageId || '',
+            type: reference.type || REFERENCE_TYPE_PAGE,
             title: reference.title,
-            icon: reference.icon,
+            icon: normalizeReferenceIcon(reference.icon, reference.type),
             spaceId: reference.spaceId,
             spaceName: reference.spaceName,
             preview: reference.preview,
@@ -845,7 +980,12 @@ const AgentUI = (function() {
     function openReferencedPage(pageId = '') {
         const normalizedPageId = String(pageId || '').trim();
         if (!normalizedPageId) return;
-        window.Sidebar?.loadPage?.(normalizedPageId);
+        const record = selectedPageReferences.find((reference) => reference.pageId === normalizedPageId)
+            || getAllReferenceRecords().find((reference) => reference.pageId === normalizedPageId);
+        const targetPageId = record?.sourcePageId || (normalizedPageId.startsWith('chat:') ? normalizedPageId.slice(5) : normalizedPageId);
+        if (targetPageId && targetPageId !== 'legacy') {
+            window.Sidebar?.loadPage?.(targetPageId);
+        }
     }
 
     async function openWithPrompt(promptText, options = {}) {
@@ -1410,7 +1550,9 @@ const AgentUI = (function() {
                 return {
                     pageId,
                     title: String(reference.title || 'Untitled').trim() || 'Untitled',
-                    icon: String(reference.icon || 'Page').trim() || 'Page',
+                    sourcePageId: String(reference.sourcePageId || '').trim(),
+                    type: reference.type === REFERENCE_TYPE_CHAT ? REFERENCE_TYPE_CHAT : REFERENCE_TYPE_PAGE,
+                    icon: normalizeReferenceIcon(reference.icon, reference.type),
                     spaceName: String(reference.spaceName || 'Private').trim() || 'Private',
                 };
             })
@@ -1422,7 +1564,7 @@ const AgentUI = (function() {
         if (!pageReferences.length) return '';
 
         return `
-            <div class="agent-message-references" aria-label="Referenced notes pages">
+            <div class="agent-message-references" aria-label="Referenced notes pages and chats">
                 ${pageReferences.map((reference) => `
                     <button
                         type="button"
@@ -1430,7 +1572,7 @@ const AgentUI = (function() {
                         data-page-id="${escapeHtmlAttr(reference.pageId)}"
                         title="${escapeHtmlAttr(`Open ${reference.title}`)}"
                     >
-                        <span>${escapeHtml(reference.icon || 'Page')}</span>
+                        <span>${escapeHtml(normalizeReferenceIcon(reference.icon, reference.type))}</span>
                         <span>${escapeHtml(reference.title || 'Untitled')}</span>
                     </button>
                 `).join('')}

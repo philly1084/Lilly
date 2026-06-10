@@ -3038,11 +3038,14 @@ const Agent = (function() {
                 const pageId = String(reference.pageId || reference.id || '').trim();
                 if (!pageId || seen.has(pageId)) return null;
                 seen.add(pageId);
+                const type = reference.type === 'chat' ? 'chat' : 'page';
 
                 return {
                     pageId,
+                    sourcePageId: normalizeInlineText(reference.sourcePageId || ''),
+                    type,
                     title: normalizeInlineText(reference.title || 'Untitled') || 'Untitled',
-                    icon: normalizeInlineText(reference.icon || 'Page') || 'Page',
+                    icon: normalizeInlineText(reference.icon || (type === 'chat' ? 'Chat' : 'Page')) || (type === 'chat' ? 'Chat' : 'Page'),
                     spaceId: normalizeInlineText(reference.spaceId || ''),
                     spaceName: normalizeInlineText(reference.spaceName || 'Private') || 'Private',
                     preview: truncateText(reference.preview || '', 320),
@@ -3068,11 +3071,14 @@ const Agent = (function() {
                     if (!hit || typeof hit !== 'object') return null;
                     const pageId = String(hit.pageId || hit.id || '').trim();
                     if (!pageId) return null;
+                    const type = hit.type === 'chat' ? 'chat' : 'page';
 
                     return {
                         pageId,
+                        sourcePageId: normalizeInlineText(hit.sourcePageId || ''),
+                        type,
                         title: normalizeInlineText(hit.title || 'Untitled') || 'Untitled',
-                        icon: normalizeInlineText(hit.icon || 'Page') || 'Page',
+                        icon: normalizeInlineText(hit.icon || (type === 'chat' ? 'Chat' : 'Page')) || (type === 'chat' ? 'Chat' : 'Page'),
                         spaceName: normalizeInlineText(hit.spaceName || 'Private') || 'Private',
                         outline: Array.isArray(hit.outline)
                             ? hit.outline.map((item) => normalizeInlineText(item)).filter(Boolean).slice(0, 6)
@@ -3105,6 +3111,48 @@ const Agent = (function() {
         return window.Storage?.getPage?.(normalizedPageId) || null;
     }
 
+    function getReferencedChatSourcePageId(reference = {}) {
+        const sourcePageId = String(reference.sourcePageId || '').trim();
+        if (sourcePageId) return sourcePageId;
+
+        const pageId = String(reference.pageId || '').trim();
+        if (pageId.startsWith('chat:')) {
+            const stripped = pageId.slice(5).trim();
+            return stripped === 'legacy' ? '' : stripped;
+        }
+
+        return '';
+    }
+
+    function buildExpandedChatContext(reference = {}) {
+        const sourcePageId = getReferencedChatSourcePageId(reference);
+        const messages = readStoredMessages(sourcePageId || null)
+            .map((message) => {
+                if (!message || typeof message !== 'object') return null;
+                const role = normalizeInlineText(message.role || 'message') || 'message';
+                const content = truncateText(
+                    message.content || message.text || message.message || message.reasoningSummary || '',
+                    900,
+                );
+                if (!content) return null;
+                return { role, content };
+            })
+            .filter(Boolean)
+            .slice(-40);
+
+        if (!messages.length) return null;
+
+        const lines = [
+            `Chat: ${reference.title || 'Referenced chat'} [pageId=${reference.pageId || 'chat:legacy'}]`,
+            `Source pageId: ${sourcePageId || 'legacy chat'}`,
+            `Messages included: ${messages.length}`,
+            'Conversation excerpt:',
+            ...messages.map((message, index) => `${index + 1}. ${message.role}: ${message.content}`),
+        ];
+
+        return lines.join('\n').slice(0, 6000);
+    }
+
     function shouldExpandReferenceContext(question = '', references = [], referenceSearch = null) {
         if (!references.length) return false;
         const normalized = normalizeInlineText(question).toLowerCase();
@@ -3128,17 +3176,22 @@ const Agent = (function() {
 
         const lines = [
             'Reference policy:',
-            '- Cross-page context starts as snippets and outlines only, so unrelated private page content is not exposed by default.',
+            '- Cross-page and chat context starts as snippets and outlines only, so unrelated private page content or full chat histories are not exposed by default.',
             '- If EXPANDED REFERENCED PAGE CONTEXT appears below, it was included because the current request needs deeper context from an attached/relevant page.',
-            '- Do not claim you reviewed a full referenced page unless it appears in EXPANDED REFERENCED PAGE CONTEXT.',
-            '- When useful, cite referenced pages by title and pageId, and keep current-page edits scoped to the active page unless the user asks to navigate or rewrite another page.',
+            '- Do not claim you reviewed a full referenced page or full chat history unless that full context explicitly appears below.',
+            '- When useful, cite referenced pages or chats by title and pageId, and keep current-page edits scoped to the active page unless the user asks to navigate or rewrite another page.',
         ];
 
         if (normalizedReferences.length) {
-            lines.push('', 'Attached page references:');
+            lines.push('', 'Attached note/chat references:');
             normalizedReferences.forEach((reference, index) => {
-                lines.push(`${index + 1}. ${reference.icon} ${reference.title} [pageId=${reference.pageId}]`);
-                lines.push(`   Space: ${reference.spaceName}; blocks: ${reference.blockCount}; updated: ${reference.updatedAt || 'unknown'}`);
+                const kind = reference.type === 'chat' ? 'chat snippet' : 'page';
+                const countLabel = reference.type === 'chat' ? 'messages' : 'blocks';
+                lines.push(`${index + 1}. ${reference.icon} ${reference.title} [pageId=${reference.pageId}] [type=${kind}]`);
+                lines.push(`   Space: ${reference.spaceName}; ${countLabel}: ${reference.blockCount}; updated: ${reference.updatedAt || 'unknown'}`);
+                if (reference.sourcePageId) {
+                    lines.push(`   Source pageId: ${reference.sourcePageId}`);
+                }
                 if (reference.outline.length) {
                     lines.push(`   Outline: ${reference.outline.join(' > ')}`);
                 }
@@ -3149,10 +3202,14 @@ const Agent = (function() {
         }
 
         if (normalizedSearch.hits.length) {
-            lines.push('', `Workspace/page search hits (${normalizedSearch.policy}; query="${normalizedSearch.query || 'prompt terms'}"):`);
+            lines.push('', `Workspace note/chat search hits (${normalizedSearch.policy}; query="${normalizedSearch.query || 'prompt terms'}"):`);
             normalizedSearch.hits.forEach((hit, index) => {
-                lines.push(`${index + 1}. ${hit.icon} ${hit.title} [pageId=${hit.pageId}]${hit.selected ? ' [attached]' : ''}`);
+                const kind = hit.type === 'chat' ? 'chat snippet' : 'page';
+                lines.push(`${index + 1}. ${hit.icon} ${hit.title} [pageId=${hit.pageId}] [type=${kind}]${hit.selected ? ' [attached]' : ''}`);
                 lines.push(`   Space: ${hit.spaceName}; score: ${hit.score}`);
+                if (hit.sourcePageId) {
+                    lines.push(`   Source pageId: ${hit.sourcePageId}`);
+                }
                 if (hit.outline.length) {
                     lines.push(`   Outline: ${hit.outline.join(' > ')}`);
                 }
@@ -3163,9 +3220,11 @@ const Agent = (function() {
         }
 
         if (shouldExpandReferenceContext(question, normalizedReferences, normalizedSearch)) {
-            const selectedIds = new Set(normalizedReferences.map((reference) => reference.pageId));
+            const selectedIds = new Set(normalizedReferences
+                .filter((reference) => reference.type !== 'chat')
+                .map((reference) => reference.pageId));
             const hitIds = normalizedSearch.hits
-                .filter((hit) => hit.selected || hit.score >= 10)
+                .filter((hit) => hit.type !== 'chat' && (hit.selected || hit.score >= 10))
                 .map((hit) => hit.pageId);
             const expandIds = Array.from(new Set([...selectedIds, ...hitIds])).slice(0, 2);
 
@@ -3201,6 +3260,17 @@ const Agent = (function() {
             if (expanded.length) {
                 lines.push('', 'EXPANDED REFERENCED PAGE CONTEXT:');
                 lines.push(expanded.join('\n\n---\n\n'));
+            }
+
+            const expandedChats = normalizedReferences
+                .filter((reference) => reference.type === 'chat')
+                .slice(0, 2)
+                .map(buildExpandedChatContext)
+                .filter(Boolean);
+
+            if (expandedChats.length) {
+                lines.push('', 'EXPANDED REFERENCED CHAT CONTEXT:');
+                lines.push(expandedChats.join('\n\n---\n\n'));
             }
         }
 
