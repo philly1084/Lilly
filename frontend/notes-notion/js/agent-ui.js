@@ -501,8 +501,25 @@ const AgentUI = (function() {
         return normalized.length > 2 ? fallback : normalized;
     }
 
+    function getNotesStorage() {
+        if (window.NotesStorage?.loadAll) {
+            return window.NotesStorage;
+        }
+
+        try {
+            if (typeof Storage !== 'undefined' && Storage?.loadAll) {
+                return Storage;
+            }
+        } catch (_error) {
+            // The browser-native window.Storage object is not the notes database.
+        }
+
+        return window.Storage?.loadAll ? window.Storage : null;
+    }
+
     function getCurrentSpaceName(data = null) {
-        const notesData = data || window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const notesData = data || notesStorage?.loadAll?.() || {};
         const spaceId = notesData.currentSpaceId || 'private';
         const space = Array.isArray(notesData.spaces)
             ? notesData.spaces.find((candidate) => candidate?.id === spaceId)
@@ -553,7 +570,8 @@ const AgentUI = (function() {
     }
 
     function getPageProjectLabel(page = null, notesData = null) {
-        const data = notesData || window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const data = notesData || notesStorage?.loadAll?.() || {};
         const spaceId = page?.spaceId || data.currentSpaceId || 'private';
         const space = Array.isArray(data.spaces)
             ? data.spaces.find((candidate) => candidate?.id === spaceId)
@@ -576,17 +594,19 @@ const AgentUI = (function() {
             return currentPage;
         }
 
-        const data = notesData || window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const data = notesData || notesStorage?.loadAll?.() || {};
         if (Array.isArray(data.pages)) {
             const page = data.pages.find((candidate) => candidate?.id === normalizedPageId);
             if (page) return page;
         }
 
-        return window.Storage?.getPage?.(normalizedPageId) || null;
+        return notesStorage?.getPage?.(normalizedPageId) || null;
     }
 
     function collectReferencePages(data = null) {
-        const notesData = data || window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const notesData = data || notesStorage?.loadAll?.() || {};
         const pageMap = new Map();
         const addPage = (page) => {
             if (page?.id && !pageMap.has(page.id)) {
@@ -597,8 +617,8 @@ const AgentUI = (function() {
         if (Array.isArray(notesData.pages)) {
             notesData.pages.forEach(addPage);
         }
-        if (window.Storage?.getPages) {
-            window.Storage.getPages().forEach(addPage);
+        if (notesStorage?.getPages) {
+            notesStorage.getPages().forEach(addPage);
         }
 
         const currentPage = window.Editor?.getCurrentPage?.();
@@ -612,7 +632,8 @@ const AgentUI = (function() {
     function buildPageReferenceRecord(page = null, options = {}) {
         if (!page?.id) return null;
 
-        const notesData = options.data || window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const notesData = options.data || notesStorage?.loadAll?.() || {};
         const currentPage = window.Editor?.getCurrentPage?.();
         const effectivePage = currentPage?.id === page.id ? currentPage : page;
         const text = getPageText(effectivePage);
@@ -680,7 +701,8 @@ const AgentUI = (function() {
             .join(' ');
         if (!messageText) return null;
 
-        const notesData = options.data || window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const notesData = options.data || notesStorage?.loadAll?.() || {};
         const sourcePageId = String(entry.pageId || '').trim();
         const sourcePage = getPageById(sourcePageId, notesData);
         if (!sourcePageId || !sourcePage) return null;
@@ -716,7 +738,8 @@ const AgentUI = (function() {
     }
 
     function collectChatReferenceRecords(data = null) {
-        const notesData = data || window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const notesData = data || notesStorage?.loadAll?.() || {};
         const entries = new Map();
 
         try {
@@ -736,7 +759,13 @@ const AgentUI = (function() {
 
         const currentPage = window.Editor?.getCurrentPage?.();
         const liveMessages = window.Agent?.getMessages?.();
-        if (currentPage?.id && Array.isArray(liveMessages) && liveMessages.length) {
+        const agentState = window.Agent?.state || {};
+        const activeConversationId = String(agentState.activePageId || '').trim();
+        const sharedSessionId = String(agentState.sharedSessionId || '').trim();
+        const liveConversationIsPageScoped = currentPage?.id
+            && activeConversationId === currentPage.id
+            && (!sharedSessionId || sharedSessionId === currentPage.id);
+        if (liveConversationIsPageScoped && Array.isArray(liveMessages) && liveMessages.length) {
             entries.set(currentPage.id, { pageId: currentPage.id, messages: liveMessages });
         }
 
@@ -802,7 +831,8 @@ const AgentUI = (function() {
     }
 
     function getAllReferenceRecords() {
-        const data = window.Storage?.loadAll?.() || {};
+        const notesStorage = getNotesStorage();
+        const data = notesStorage?.loadAll?.() || {};
         const pageRecords = collectReferencePages(data)
             .map((page) => buildPageReferenceRecord(page, { data }))
             .filter(Boolean);

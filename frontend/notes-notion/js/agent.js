@@ -3109,6 +3109,22 @@ const Agent = (function() {
         };
     }
 
+    function getNotesStorageModule() {
+        if (window.NotesStorage?.loadAll) {
+            return window.NotesStorage;
+        }
+
+        try {
+            if (typeof Storage !== 'undefined' && Storage?.loadAll) {
+                return Storage;
+            }
+        } catch (_error) {
+            // The browser-native window.Storage object is not the notes database.
+        }
+
+        return window.Storage?.loadAll ? window.Storage : null;
+    }
+
     function getReferencedPageById(pageId = '') {
         const normalizedPageId = String(pageId || '').trim();
         if (!normalizedPageId) return null;
@@ -3118,7 +3134,7 @@ const Agent = (function() {
             return currentPage;
         }
 
-        return window.Storage?.getPage?.(normalizedPageId) || null;
+        return getNotesStorageModule()?.getPage?.(normalizedPageId) || null;
     }
 
     function getReferencedChatSourcePageId(reference = {}) {
@@ -3265,7 +3281,7 @@ const Agent = (function() {
                         : null;
                     const content = context
                         ? buildFullPageContentFromContext(context)
-                        : window.Storage?.exportToMarkdown?.(pageId);
+                        : getNotesStorageModule()?.exportToMarkdown?.(pageId);
                     const outline = context?.outline?.length
                         ? context.outline.map((entry) => `- [${entry.id}] ${entry.content}`).join('\n')
                         : '- No headings found';

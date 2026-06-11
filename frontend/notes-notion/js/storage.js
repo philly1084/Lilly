@@ -1132,4 +1132,8 @@ const Storage = (function() {
     };
 })();
 
+if (typeof window !== 'undefined') {
+    window.NotesStorage = Storage;
+}
+
 
