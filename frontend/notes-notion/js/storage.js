@@ -525,6 +525,28 @@ const Storage = (function() {
         }, REMOTE_SYNC_DELAY_MS);
     }
 
+    function getPageCount(data) {
+        return Array.isArray(data?.pages) ? data.pages.length : 0;
+    }
+
+    function isDefaultWelcomeWorkspace(data) {
+        const pages = Array.isArray(data?.pages) ? data.pages : [];
+        return pages.length === 1 && String(pages[0]?.id || '') === 'welcome';
+    }
+
+    function shouldPreserveLocalNotes(localData, remoteData) {
+        const localPageCount = getPageCount(localData);
+        const remotePageCount = getPageCount(remoteData);
+        if (localPageCount <= remotePageCount) {
+            return false;
+        }
+        if (isDefaultWelcomeWorkspace(localData)) {
+            return false;
+        }
+
+        return remotePageCount <= 1;
+    }
+
     async function saveRemoteData(data, extra = {}) {
         if (!remoteAvailable && remoteInitialized) {
             return false;
@@ -601,15 +623,21 @@ const Storage = (function() {
 
                 if (payload?.data && !remoteDirty) {
                     const { data } = normalizeLoadedData(payload.data);
-                    suppressRemoteSave = true;
-                    saveAllLocally(data);
-                    suppressRemoteSave = false;
+                    const localData = loadAll();
+                    if (shouldPreserveLocalNotes(localData, data)) {
+                        console.warn('Remote notes payload is smaller than local notes; preserving local workspace and resyncing it.');
+                        await saveRemoteData(localData);
+                    } else {
+                        suppressRemoteSave = true;
+                        saveAllLocally(data);
+                        suppressRemoteSave = false;
 
-                    if (payload.currentPageId) {
-                        setCurrentPageId(payload.currentPageId, { skipRemote: true });
-                    }
-                    if (payload.globalModel) {
-                        setGlobalDefaultModel(payload.globalModel, { skipRemote: true });
+                        if (payload.currentPageId) {
+                            setCurrentPageId(payload.currentPageId, { skipRemote: true });
+                        }
+                        if (payload.globalModel) {
+                            setGlobalDefaultModel(payload.globalModel, { skipRemote: true });
+                        }
                     }
                 } else {
                     const localData = loadAll();
