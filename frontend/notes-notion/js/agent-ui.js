@@ -35,8 +35,8 @@ const AgentUI = (function() {
     let referencePopoverOpen = false;
     let referenceSearchQuery = '';
     const MAX_SELECTED_REFERENCES = 6;
-    const MAX_REFERENCE_RESULTS = 12;
-    const MAX_REFERENCE_SEARCH_HITS = 16;
+    const MAX_REFERENCE_RESULTS = 5;
+    const MAX_REFERENCE_SEARCH_HITS = 12;
     const REFERENCE_TYPE_PAGE = 'page';
     const REFERENCE_TYPE_CHAT = 'chat';
     const REFERENCE_ICON_PAGE = '📄';
@@ -57,21 +57,28 @@ const AgentUI = (function() {
         }
 
         const contextIndicator = document.querySelector('.context-indicator');
+        const composerInsights = document.getElementById('agent-composer-insights')
+            || document.querySelector('.agent-composer-panel')
+            || contextIndicator?.parentElement;
         let understandingCard = document.getElementById('agent-request-understanding');
-        if (!understandingCard && contextIndicator?.parentElement) {
+        if (!understandingCard && composerInsights) {
             understandingCard = document.createElement('div');
             understandingCard.id = 'agent-request-understanding';
             understandingCard.className = 'agent-request-understanding';
-            contextIndicator.parentElement.appendChild(understandingCard);
+            composerInsights.appendChild(understandingCard);
+        } else if (understandingCard && composerInsights && understandingCard.parentElement !== composerInsights) {
+            composerInsights.appendChild(understandingCard);
         }
 
         let composerDesignTray = document.getElementById('agent-chat-design-tray');
-        if (!composerDesignTray && contextIndicator?.parentElement) {
+        if (!composerDesignTray && composerInsights) {
             composerDesignTray = document.createElement('div');
             composerDesignTray.id = 'agent-chat-design-tray';
             composerDesignTray.className = 'agent-composer-design-tray';
             composerDesignTray.hidden = true;
-            contextIndicator.parentElement.appendChild(composerDesignTray);
+            composerInsights.appendChild(composerDesignTray);
+        } else if (composerDesignTray && composerInsights && composerDesignTray.parentElement !== composerInsights) {
+            composerInsights.appendChild(composerDesignTray);
         }
 
         elements = {
@@ -986,6 +993,14 @@ const AgentUI = (function() {
     function renderReferenceResults() {
         if (!elements.referenceResults) return;
 
+        const hasQuery = tokenizeSearch(referenceSearchQuery).length > 0;
+        if (!hasQuery) {
+            elements.referenceResults.hidden = true;
+            elements.referenceResults.innerHTML = '';
+            return;
+        }
+
+        elements.referenceResults.hidden = false;
         const results = searchReferenceRecords(referenceSearchQuery, {
             includeSelected: false,
             limit: MAX_REFERENCE_RESULTS,
@@ -997,7 +1012,7 @@ const AgentUI = (function() {
         }
 
         if (results.length === 0) {
-            elements.referenceResults.innerHTML = '<div class="agent-reference-empty">No matching pages or chats</div>';
+            elements.referenceResults.innerHTML = '<div class="agent-reference-empty">No matches</div>';
             return;
         }
 
@@ -1011,12 +1026,17 @@ const AgentUI = (function() {
             const chatLabel = !isChat && record.hasChat
                 ? '<span class="agent-reference-result-badge">Chat context</span>'
                 : '';
+            const metaParts = [
+                record.spaceName || 'Private',
+                typeLabel,
+                countLabel,
+            ].filter(Boolean);
             return `
             <div class="agent-reference-result" data-page-id="${escapeHtmlAttr(record.pageId)}" role="button" tabindex="0">
                 <span class="agent-reference-result-icon">${escapeHtml(normalizeReferenceIcon(record.icon, record.type))}</span>
                 <span class="agent-reference-result-body">
                     <span class="agent-reference-result-title">${escapeHtml(record.title || 'Untitled')}${chatLabel}</span>
-                    <span class="agent-reference-result-meta">${escapeHtml(record.spaceName || 'Private')} - ${typeLabel} - ${countLabel}${record.outline?.length ? ` - ${escapeHtml(record.outline.slice(0, 2).join(' / '))}` : ''}</span>
+                    <span class="agent-reference-result-meta">${escapeHtml(metaParts.join(' - '))}</span>
                     <span class="agent-reference-result-preview">${escapeHtml(record.matchedPreview || record.preview || 'No text content yet')}</span>
                 </span>
                 <button type="button" class="agent-reference-open" data-page-id="${escapeHtmlAttr(record.pageId)}" title="${escapeHtmlAttr(openLabel)}">${escapeHtml(openLabel)}</button>
@@ -1448,18 +1468,12 @@ const AgentUI = (function() {
 
         if (messages.length === 0 && !streamState.active && !streamState.error) {
             elements.messagesContainer.innerHTML = `
-                <div class="agent-empty-state">
+                <div class="agent-empty-state agent-empty-state-compact">
                     <div class="agent-empty-icon">AI</div>
-                    <p>Ask me anything about your notes</p>
-                    <p class="agent-empty-hint">I can plan the page, work section by section, pick live block patterns, polish the layout, or turn rough notes into a stronger block flow.</p>
-                    <div class="agent-quick-actions">
-                        ${renderStarterButtons()}
-                    </div>
-                    ${renderLiveDesignOptionButtons()}
+                    <p>Ready on this page</p>
                 </div>
             `;
 
-            bindEmptyStateActions();
             renderComposerDesignOptions();
             return;
         }

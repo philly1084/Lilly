@@ -709,8 +709,10 @@
             </div>
             <div class="agent-chat-input-area">
                 <div id="agent-profile-picker" class="agent-profile-picker" role="group" aria-label="Choose AI buddy profile"></div>
+                <div class="agent-composer-panel">
+                    <div class="agent-composer-context-row">
                 <div class="agent-chat-context">
-                    <span class="context-indicator">📄 Can see current page</span>
+                    <span class="context-indicator">Current page</span>
                 </div>
                 <div id="agent-reference-panel" class="agent-reference-panel">
                     <div class="agent-reference-toolbar">
@@ -738,7 +740,7 @@
                                 id="agent-reference-search"
                                 class="agent-reference-search"
                                 type="search"
-                                placeholder="Search pages, chats, projects, titles, or content"
+                                placeholder="Search pages or chats"
                                 autocomplete="off"
                             >
                             <button
@@ -749,14 +751,15 @@
                                 title="Close"
                             >×</button>
                         </div>
-                        <div id="agent-reference-results" class="agent-reference-results"></div>
+                        <div id="agent-reference-results" class="agent-reference-results" hidden></div>
                     </div>
                 </div>
+                    </div>
                 <div class="agent-chat-input-wrapper">
                     <textarea 
                         id="agent-chat-input" 
                         class="agent-chat-input" 
-                        placeholder="Ask about this page or request edits..."
+                        placeholder="Ask or edit this page..."
                         rows="1"
                     ></textarea>
                     <button id="agent-chat-send" class="agent-chat-send" onclick="AgentUI.sendMessage()">
@@ -765,6 +768,8 @@
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                         </svg>
                     </button>
+                </div>
+                    <div id="agent-composer-insights" class="agent-composer-insights"></div>
                 </div>
                 <div class="agent-chat-actions">
                     <button class="agent-action-btn" onclick="AgentUI.quickAction('summarize')">Summarize</button>
