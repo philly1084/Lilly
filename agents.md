@@ -52,7 +52,7 @@ Clients (CLI / Web Chat / Canvas / Notation)
 
 ## Agent Grep Docs
 
-When an agent needs a small workflow doc instead of the full project instructions, start with `docs/agent-grep/`.
+When an agent needs a small workflow doc instead of the full project instructions, start with `docs/agent-grep/`. Treat this file as the top-level map; use compact docs such as `docs/agent-grep/tool-use-rhythm.md`, `docs/agent-grep/remote-tools.md`, and `docs/agent-grep/build-and-verify.md` for the active workflow before loading longer runbooks.
 
 ```bash
 rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|REMOTE_TOOLS|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY" docs/agent-grep src/agent-sdk/tool-docs data/skills

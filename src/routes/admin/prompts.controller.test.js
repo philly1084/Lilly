@@ -285,7 +285,12 @@ describe('admin prompts controller', () => {
     expect(prompt.content).toContain('preserve returned threadId/sessionId');
     expect(prompt.content).toContain('prefer `remote-cli-agent` so the remote coding agent owns authoring, build, deploy, and verification');
     expect(prompt.content).toContain('pass `params.adminMode:true`');
+    expect(prompt.content).toContain('KimiBuilt Remote Ops baseline');
+    expect(prompt.content).toContain('-Server primary');
+    expect(prompt.content).toContain('-Server secondary');
     expect(prompt.content).toContain('Impressive Frontend Websites standard');
+    expect(prompt.content).toContain('managed-app previews');
+    expect(prompt.content).toContain('kimibuilt-ui-check');
     expect(prompt.content).toContain('use GitLab as the normal source-control layer');
     expect(prompt.content).toContain('USER_INPUT_REQUIRED');
     expect(prompt.content).toContain('avoid indentation-sensitive inline Python or YAML heredocs');

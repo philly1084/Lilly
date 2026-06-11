@@ -16,6 +16,11 @@ Small decision map:
 - `k3s-deploy`: standard deploy-only lane for repo sync, manifest apply, image update, and rollout status after source/image/manifests already exist.
 - Registered skill: `remote-operations-system` carries this lane picker as a reusable workflow contract. If it is matched, preserve its inventory gate, lane boundaries, and proof loop while choosing concrete tools.
 
+Baseline-first:
+- From Codex Desktop, use the KimiBuilt Remote Ops tunnel workflow before changing a remote server: `powershell -ExecutionPolicy Bypass -File scripts/codex-remote-tunnel.ps1 -Action baseline`, scoped with `-Server primary` or `-Server secondary` when only one server matters.
+- Keep `primary` and `secondary` evidence separate. Re-baseline when switching targets, label the server/namespace/deployment/public host in notes, and never use proof from one server as proof for the other.
+- After a change, verify through the public host or a named KimiBuilt tunnel endpoint, not only through pod readiness or runner-local `localhost`.
+
 Boundary:
 - `remote-cli-agent` owns GitLab-backed app/product changes by default. Do not route to `managed-app` merely because the user mentioned GitLab, pipeline, registry, or runner; use `managed-app` only for explicit managed-app catalog/control-plane work.
 - Before creating a new remote website/app/dashboard/service, GitLab project, namespace, or public host, inventory managed apps, GitLab projects, continuity/project registry facts, and live k3s namespaces/services/ingresses. Reuse/iterate a match, ask on ambiguity, and create only after no match is found or the user explicitly wants a separate new project.
@@ -29,6 +34,7 @@ Boundary:
 Remote completion proof:
 - Require `WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, and `BLOCKER`.
 - Keep continuity markers when known: `REMOTE_CLI_SESSION_ID`, `WORKSPACE`, `GIT_REPO`, `GIT_BRANCH`, `GIT_BASE_COMMIT`, `GIT_COMMIT`, `CHANGED_FILES`, `DEPLOYMENT`, `PUBLIC_HOST`, `UI_CHECK_REPORT`, `UI_SCREENSHOTS`, `SUPPORT_AGENT_REQUIRED`, `SUPPORT_AGENT_CONTEXT`.
+- If the work touches web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, websites, dashboards, or frontend UI, success requires browser/Playwright proof or `kimibuilt-ui-check` evidence. If the proof cannot run, mark that as the blocker instead of claiming ready.
 - If `SUPPORT_AGENT_REQUIRED=<request>` appears, get bounded support-agent help, then resume `remote-cli-agent` with the same `threadId` and `supportAgentResponse`. This is not a user decision by default.
 - Forward `USER_INPUT_REQUIRED=<question/options>` to the user and continue the same session after the answer.
 - Stop repeated blocked-command loops after two materially identical failures.

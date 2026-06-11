@@ -4,6 +4,8 @@ Operating model:
 - Treat `managed-app`, `remote-cli-agent`, `remote-command`, `remote-workbench`, and `k3s-deploy` as one remote operations system with lanes.
 - Choose the lane by the task shape, then call only the concrete tool needed for the next effect.
 - Keep transport internals hidden from the outer planner: the planner calls `remote-cli-agent`; `remote-cli-agent` chooses Codex-agent `/run` + `/events` or MCP `remote_code_run` / `remote_code_status` compatibility.
+- From Codex Desktop, run the KimiBuilt Remote Ops tunnel baseline before mutating remote state: `powershell -ExecutionPolicy Bypass -File scripts/codex-remote-tunnel.ps1 -Action baseline`, scoped with `-Server primary` or `-Server secondary` when only one server matters.
+- Keep primary and secondary server evidence separate. Re-baseline when switching targets, label the server/namespace/deployment/public host, and never use proof from one server as proof for the other.
 - Before creating a remote app, site, service, dashboard, GitLab project, namespace, or host, inventory managed-app records, GitLab projects, continuity registry facts, and live k3s resources. Reuse or iterate a match unless the user explicitly wants a separate new project.
 
 Lane picker:
@@ -25,8 +27,9 @@ Proof loop:
 2. Inspect before mutating. Confirm what already exists and what source of truth owns it.
 3. Apply changes in the source repo/workspace whenever possible, not only the live cluster.
 4. Build/test/deploy through the selected lane.
-5. Verify rollout, public host, TLS trust or route reachability, and browser/UI behavior for frontend work.
+5. Verify rollout, public host or KimiBuilt tunnel endpoint, TLS trust or route reachability, and browser/UI behavior for frontend work.
 6. Return proof markers: `WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, and `BLOCKER`. Preserve continuity markers such as `REMOTE_CLI_SESSION_ID`, `WORKSPACE`, `GIT_REPO`, `GIT_COMMIT`, `CHANGED_FILES`, `DEPLOYMENT`, `PUBLIC_HOST`, `UI_CHECK_REPORT`, and `UI_SCREENSHOTS` when known.
+7. If the work touches web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, websites, dashboards, or frontend UI, require browser/Playwright proof or `kimibuilt-ui-check` evidence before claiming success. If that proof cannot run, report it as `BLOCKER`.
 
 Failure handling:
 - If `remote-cli-agent` returns `USER_INPUT_REQUIRED`, forward the concise choice to the user and continue the same remote session after the answer.

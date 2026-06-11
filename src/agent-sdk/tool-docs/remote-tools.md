@@ -20,6 +20,25 @@ Think of KimiBuilt remote access as one tool family with five lanes: `managed-ap
 
 Registered skill: `remote-operations-system` is the compact skill-style version of this lane picker. When matched, preserve its inventory gate, lane boundaries, proof loop, and failure handling while selecting concrete tool calls.
 
+## Baseline-First Remote Ops
+
+From Codex Desktop, run the KimiBuilt Remote Ops tunnel baseline before mutating remote state:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-remote-tunnel.ps1 -Action baseline
+```
+
+Scope it when only one server matters:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-remote-tunnel.ps1 -Action baseline -Server primary
+powershell -ExecutionPolicy Bypass -File scripts/codex-remote-tunnel.ps1 -Action baseline -Server secondary
+```
+
+Keep `primary` and `secondary` separate. Re-baseline when switching targets, label the server/namespace/deployment/public host in notes, and never use proof from one server as proof for the other.
+
+After a change, verify through the public host or a named KimiBuilt tunnel endpoint, not only through pod readiness or runner-local `localhost`.
+
 ## Pre-Create Inventory Gate
 
 Before creating a remote website, app, dashboard, service, GitLab project, namespace, or public host, check whether it already exists. Inspect managed-app records, configured GitLab projects, continuity/project registry facts, and live k3s namespaces/services/ingresses for matching name, slug, repo, namespace, domain, or purpose.
@@ -109,6 +128,8 @@ VERIFY_RESULTS=<pass/fail/blocked result>
 PUBLIC_URL=<https URL or not_available>
 BLOCKER=<none or exact blocker>
 ```
+
+For web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, websites, dashboards, and frontend UI, completion also requires browser/Playwright proof or `kimibuilt-ui-check` evidence. If that proof cannot run, report the exact missing proof as `BLOCKER`.
 
 Continuity markers should be included when known:
 

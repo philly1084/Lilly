@@ -44,8 +44,11 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(instructions).toContain('GitLab-backed source-control skill');
     expect(instructions).toContain('direct BuildKit/kubectl runner path');
     expect(instructions).toContain('git user.name');
+    expect(instructions).toContain('Baseline-first remote ops rule');
+    expect(instructions).toContain('Keep primary and secondary remote targets separate');
     expect(instructions).toContain('Playwright/Chromium screenshots');
     expect(instructions).toContain('kimibuilt-ui-check');
+    expect(instructions).toContain('KimiBuilt tunnel endpoint');
     expect(instructions).toContain('UI_CHECK_REPORT');
     expect(instructions).toContain('WHAT_CHANGED');
     expect(instructions).toContain('VERIFY_COMMANDS');
@@ -551,6 +554,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
         expect(body.prompt).toContain('GET /api/codex-agent/runs/:runId/events streams progress');
         expect(body.prompt).toContain('Do not use MCP, remote_code_run, or remote_code_status inside this Codex-agent run');
         expect(body.prompt).toContain('emit concise milestone messages');
+        expect(body.prompt).toContain('Remote Ops baseline-first rule');
+        expect(body.prompt).toContain('Keep primary and secondary servers separate');
+        expect(body.prompt).toContain('managed-app previews');
+        expect(body.prompt).toContain('UI_CHECK_REPORT');
         expect(body.prompt).toContain('Configured Git provider: gitlab at https://gitlab.demoserver2.buzz (group/org: agent-apps).');
         expect(body.prompt).toContain('A server-side Git provider token is configured for this workflow.');
         expect(body.prompt).not.toContain('gitlab-secret');
@@ -1803,7 +1810,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
 
     const result = await runner.run({
-      task: 'Build the frontend remotely and verify the live route.',
+      task: 'Build the backend remotely and verify the health route.',
       waitMs: 30000,
       maxStatusPolls: 2,
       statusPollIntervalMs: 0,
@@ -1817,9 +1824,8 @@ describe('RemoteCliAgentsSdkRunner', () => {
         args: {
           targetId: 'prod',
           cwd: '/srv/apps/my-app',
-          task: expect.stringContaining('Build the frontend remotely and verify the live route.'),
+          task: expect.stringContaining('Build the backend remotely and verify the health route.'),
           model: 'gpt-5.4',
-          adminMode: true,
           waitMs: 30000,
         },
       },
@@ -1837,7 +1843,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
-  test('polls an observed remote_code_run job when the inner agent returns no proof markers', async () => {
+  test('polls an observed remote_code_run job and blocks UI tasks without visual proof', async () => {
     const calls = {
       toolCalls: [],
       progress: [],
@@ -1960,8 +1966,12 @@ describe('RemoteCliAgentsSdkRunner', () => {
       remoteCodeJobId: 'rcli_observed',
       sessionId: 'remote-session-observed',
       whatChanged: 'Polled the remote job the inner agent started.',
-      verifyResults: ['Observed remote job completed.'],
-      completionStatus: 'complete',
+      verifyResults: [
+        'Observed remote job completed.',
+        'Missing browser/Playwright or kimibuilt-ui-check evidence for a UI-affecting remote task.',
+      ],
+      blocker: 'Missing browser/Playwright or kimibuilt-ui-check evidence for a UI-affecting remote task.',
+      completionStatus: 'blocked',
     });
   });
 

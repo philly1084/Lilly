@@ -392,6 +392,14 @@
             <div class="resize-handle sw"></div>
             <div class="resize-handle w"></div>
         </div>
+        <div class="selection-action-bar" id="aiSelectionBar" aria-label="Selected object actions" hidden>
+            <span class="selection-action-summary" id="aiSelectionBarSummary">0 selected</span>
+            <button type="button" data-ai-selection-action="ask">Ask</button>
+            <button type="button" data-ai-selection-action="polish">Polish</button>
+            <button type="button" data-ai-selection-action="tidy">Tidy</button>
+            <button type="button" data-ai-selection-action="connect">Connect</button>
+            <button type="button" data-ai-selection-action="frame">Frame</button>
+        </div>
         <!-- Inline Text Editor -->
         <textarea class="text-editor" id="textEditor" style="display: none;"></textarea>
         <!-- AI Image Prompt Tooltip -->
@@ -1253,7 +1261,75 @@
                 <div class="ai-grounding-actions">
                     <button type="button" class="ai-context-btn" data-ai-context-prompt="What is selected and what should I improve first?">Inspect selection</button>
                     <button type="button" class="ai-context-btn" data-ai-local-action="tidy-selection">Tidy layout</button>
+                    <button type="button" class="ai-context-btn" data-ai-local-action="connect-selection">Connect</button>
                     <button type="button" class="ai-context-btn" data-ai-local-action="frame-selection">Frame</button>
+                </div>
+            </div>
+
+            <div class="ai-board-health" id="aiBoardHealth">
+                <div class="ai-board-health-header">
+                    <div>
+                        <span class="ai-grounding-kicker">Board Intelligence</span>
+                        <strong id="aiHealthSummary">No board audit yet</strong>
+                    </div>
+                    <span class="ai-health-score" id="aiHealthScore">--</span>
+                </div>
+                <div class="ai-health-list" id="aiHealthList">
+                    <div class="ai-health-empty">Select objects or build a board to see structure signals.</div>
+                </div>
+                <div class="ai-fix-plan" id="aiFixPlan">
+                    <div class="ai-fix-plan-header">
+                        <span class="ai-grounding-kicker">Suggested Fixes</span>
+                        <strong id="aiFixSummary">No fixes queued</strong>
+                    </div>
+                    <div class="ai-fix-list" id="aiFixList">
+                        <div class="ai-health-empty">Board audit suggestions will appear here.</div>
+                    </div>
+                    <div class="ai-health-actions">
+                        <button type="button" class="ai-context-btn" data-ai-fix-action="preview">Preview plan</button>
+                        <button type="button" class="ai-context-btn" data-ai-fix-action="apply">Apply fixes</button>
+                    </div>
+                </div>
+                <div class="ai-health-actions">
+                    <button type="button" class="ai-context-btn" data-ai-health-action="refresh">Refresh audit</button>
+                    <button type="button" class="ai-context-btn" data-ai-health-action="note">Add QA note</button>
+                </div>
+            </div>
+
+            <div class="ai-command-deck" id="aiCommandDeck">
+                <div class="ai-command-header">
+                    <span class="ai-grounding-kicker">Command Deck</span>
+                    <strong>Ask, inspect, build</strong>
+                </div>
+                <div class="ai-command-grid">
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Use boardHealth and relationships to improve the selected objects into a cleaner composition with better spacing, labels, and connections. Use update_many/add_many actions only.">Polish selection</button>
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Use boardHealth to fix the highest-priority board gaps. Add missing labels, connectors, frames, and one concise risk note as editable canvas objects.">Board QA pass</button>
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="chat" data-ai-command-prompt="Summarize the current board using boardHealth, name the weakest structural issue, and suggest the next three editable object actions.">Critique</button>
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Turn the visible area into a structured system map with grouped frames, arrows, and concise labels.">Map viewport</button>
+                </div>
+            </div>
+
+            <div class="ai-template-deck" id="aiTemplateDeck">
+                <div class="ai-template-header">
+                    <span class="ai-grounding-kicker">Smart Starts</span>
+                    <strong id="aiTemplateSummary">Editable boards</strong>
+                </div>
+                <div class="ai-template-grid">
+                    <button type="button" class="ai-template-btn" data-ai-template="decision-flow">Decision flow</button>
+                    <button type="button" class="ai-template-btn" data-ai-template="journey-map">Journey map</button>
+                    <button type="button" class="ai-template-btn" data-ai-template="wireframe">Wireframe</button>
+                    <button type="button" class="ai-template-btn" data-ai-template="retro">Retro board</button>
+                </div>
+            </div>
+
+            <div class="ai-organizer-deck" id="aiOrganizerDeck">
+                <div class="ai-organizer-header">
+                    <span class="ai-grounding-kicker">AI Organizer</span>
+                    <strong id="aiOrganizerSummary">Selection or board</strong>
+                </div>
+                <div class="ai-organizer-grid">
+                    <button type="button" class="ai-organizer-btn" data-ai-organizer-action="cluster-notes">Cluster notes</button>
+                    <button type="button" class="ai-organizer-btn" data-ai-organizer-action="extract-actions">Extract tasks</button>
                 </div>
             </div>
 
@@ -1304,6 +1380,30 @@
                         <span class="ai-plan-dot"></span>
                         <span>Apply</span>
                     </div>
+                </div>
+            </div>
+
+            <div class="ai-action-ledger" id="aiActionLedger">
+                <div class="ai-action-ledger-header">
+                    <span class="ai-grounding-kicker">Action Ledger</span>
+                    <strong id="aiLedgerSummary">No actions yet</strong>
+                </div>
+                <div class="ai-action-list" id="aiActionList">
+                    <div class="ai-action-empty">Applied edits, local moves, and skipped actions will appear here.</div>
+                </div>
+            </div>
+
+            <div class="ai-change-sets" id="aiChangeSets">
+                <div class="ai-change-set-header">
+                    <span class="ai-grounding-kicker">Change Sets</span>
+                    <strong id="aiChangeSetSummary">No reversible edits yet</strong>
+                </div>
+                <div class="ai-change-set-list" id="aiChangeSetList">
+                    <div class="ai-action-empty">AI and board-fix edits will appear here.</div>
+                </div>
+                <div class="ai-change-set-actions">
+                    <button type="button" class="ai-context-btn" data-ai-change-action="select">Select changed</button>
+                    <button type="button" class="ai-context-btn" data-ai-change-action="undo">Undo last</button>
                 </div>
             </div>
 

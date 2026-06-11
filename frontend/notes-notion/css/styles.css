@@ -3045,11 +3045,17 @@ body {
 
 /* ===== Database Block ===== */
 .block[data-type="database"] .block-content {
+    max-width: 100%;
     width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scrollbar-gutter: stable;
 }
 
 .database-table {
     width: 100%;
+    min-width: max(100%, var(--database-table-min-width, 480px));
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     overflow: hidden;
@@ -3079,9 +3085,9 @@ body {
 .database-header-label {
     flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
     border-radius: var(--radius-sm);
     padding: 2px 4px;
 }
@@ -3133,13 +3139,15 @@ body {
 }
 
 .database-cell {
-    flex: 1;
+    flex: 1 0 var(--database-column-width, 160px);
     padding: 10px 12px;
     font-size: 13px;
     font-weight: 600;
     color: var(--text-secondary);
     border-right: 1px solid var(--border-color);
-    min-width: 100px;
+    min-width: var(--database-column-width, 160px);
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .database-cell:focus {

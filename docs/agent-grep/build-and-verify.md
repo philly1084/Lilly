@@ -25,13 +25,15 @@ Remote path:
 - Prefer `remote-command` for one-off kubectl, logs, service checks, network checks, and status inspection. Its params use `command`.
 - Prefer `k3s-deploy` for standard repo sync, manifest apply, image update, and rollout checks after source/image/manifests already exist.
 - Read `docs/agent-grep/remote-tools.md` when the remote lane is not obvious.
-- Start remote reconnects with the baseline from `agents.md`.
+- Start remote reconnects with the KimiBuilt Remote Ops baseline: `powershell -ExecutionPolicy Bypass -File scripts/codex-remote-tunnel.ps1 -Action baseline`, scoped with `-Server primary` or `-Server secondary` when appropriate.
+- Keep primary and secondary server evidence separate, and re-baseline when switching targets.
+- Verify deployed UI through the public URL or a named KimiBuilt tunnel endpoint.
 - Remote agents should report `WHAT_CHANGED`, `VERIFY_COMMANDS`, `VERIFY_RESULTS`, `PUBLIC_URL`, and `BLOCKER` when relevant.
 
 Proof checklist:
 - Code changed in the intended files only.
 - Focused tests or syntax checks passed.
-- UI/browser checks ran when the result is visual.
+- UI/browser checks ran when the result touches web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, or any frontend/website surface.
 - Remote rollout, ingress, TLS, and public URL were checked for deployed work.
 - Any blocker is reported plainly with the next distinct recovery path.
 

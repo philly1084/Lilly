@@ -595,6 +595,17 @@ const Blocks = (function() {
         return newContent;
     }
 
+    function estimateDatabaseColumnWidth(data, columnIndex) {
+        const headerLength = String(data.columns?.[columnIndex] || '').trim().length;
+        const maxCellLength = (Array.isArray(data.rows) ? data.rows : []).reduce((maxLength, row) => {
+            const value = Array.isArray(row) ? row[columnIndex] : '';
+            return Math.max(maxLength, String(value || '').trim().length);
+        }, 0);
+        const contentLength = Math.max(headerLength, maxCellLength);
+        const preferredWidth = 132 + (contentLength * 4);
+        return Math.max(160, Math.min(360, preferredWidth));
+    }
+
     function parseChartNumber(value) {
         if (typeof value === 'number' && Number.isFinite(value)) {
             return value;
@@ -2591,6 +2602,9 @@ const Blocks = (function() {
         
         const table = document.createElement('div');
         table.className = 'database-table';
+        const columnWidths = data.columns.map((_, index) => estimateDatabaseColumnWidth(data, index));
+        const totalColumnWidth = columnWidths.reduce((total, width) => total + width, isEditable ? 36 : 0);
+        table.style.setProperty('--database-table-min-width', `${Math.max(totalColumnWidth, 480)}px`);
         
         // Header with editable labels and sorting
         const header = document.createElement('div');
@@ -2598,6 +2612,7 @@ const Blocks = (function() {
         data.columns.forEach((col, index) => {
             const cell = document.createElement('div');
             cell.className = 'database-cell database-header-cell';
+            cell.style.setProperty('--database-column-width', `${columnWidths[index]}px`);
 
             const label = document.createElement('span');
             label.className = 'database-header-label';
@@ -2710,6 +2725,7 @@ const Blocks = (function() {
             row.forEach((cellData, colIndex) => {
                 const cellEl = document.createElement('div');
                 cellEl.className = 'database-cell';
+                cellEl.style.setProperty('--database-column-width', `${columnWidths[colIndex] || 160}px`);
                 
                 if (isEditable) {
                     cellEl.contentEditable = true;

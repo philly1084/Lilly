@@ -2784,8 +2784,9 @@ button:focus-visible,
 
 .database-table {
   width: 100%;
+  min-width: max(100%, var(--database-table-min-width, 480px));
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .database-table thead th {
@@ -2823,6 +2824,16 @@ button:focus-visible,
   cursor: pointer;
   min-height: 36px;
   border-right: 1px solid var(--nb-border-soft);
+  min-width: var(--database-column-width, 160px);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.database-action-cell {
+  flex: 0 0 30px;
+  min-width: 30px;
+  max-width: 30px;
+  white-space: nowrap;
 }
 
 .database-cell:last-child {
@@ -2844,6 +2855,7 @@ button:focus-visible,
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1 0 var(--database-column-width, 160px);
 }
 
 .database-empty {

@@ -57,9 +57,25 @@ class AIAssistant {
         this.toolPlanSummary = document.getElementById('aiToolPlanSummary');
         this.toolPlanPill = document.getElementById('aiToolPlanPill');
         this.planSteps = document.getElementById('aiPlanSteps');
+        this.templateSummary = document.getElementById('aiTemplateSummary');
+        this.organizerSummary = document.getElementById('aiOrganizerSummary');
+        this.ledgerSummary = document.getElementById('aiLedgerSummary');
+        this.actionList = document.getElementById('aiActionList');
+        this.changeSetSummary = document.getElementById('aiChangeSetSummary');
+        this.changeSetList = document.getElementById('aiChangeSetList');
+        this.selectionBar = document.getElementById('aiSelectionBar');
+        this.selectionBarSummary = document.getElementById('aiSelectionBarSummary');
+        this.healthSummary = document.getElementById('aiHealthSummary');
+        this.healthScore = document.getElementById('aiHealthScore');
+        this.healthList = document.getElementById('aiHealthList');
+        this.fixSummary = document.getElementById('aiFixSummary');
+        this.fixList = document.getElementById('aiFixList');
         this.isGenerating = false;
         this.scope = 'auto';
         this.toolLaneIds = this.loadToolLaneSelection();
+        this.actionLedger = [];
+        this.changeSets = [];
+        this.pendingFixPlan = { fixes: [], actions: [] };
         
         // Mode: 'chat' | 'diagram' | 'image'
         this.mode = 'chat';
@@ -138,6 +154,56 @@ class AIAssistant {
                 }
             });
         });
+
+        document.querySelectorAll('[data-ai-command-prompt]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.runCommandPrompt(btn.dataset.aiCommandPrompt || '', btn.dataset.aiCommandMode || 'chat');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-template]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleTemplateAction(btn.dataset.aiTemplate || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-organizer-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleOrganizerAction(btn.dataset.aiOrganizerAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-health-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleHealthAction(btn.dataset.aiHealthAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-fix-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleFixAction(btn.dataset.aiFixAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-change-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleChangeSetAction(btn.dataset.aiChangeAction || '');
+            });
+        });
+
+        ['pointerdown', 'mousedown', 'touchstart'].forEach((eventName) => {
+            this.selectionBar?.addEventListener(eventName, (event) => {
+                event.stopPropagation();
+            }, { passive: eventName === 'touchstart' });
+        });
+        this.selectionBar?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const button = event.target?.closest?.('[data-ai-selection-action]');
+            if (!button || button.disabled) {
+                return;
+            }
+            this.handleSelectionAction(button.dataset.aiSelectionAction || '');
+        });
         
         // Fetch models on init
         this.fetchModels();
@@ -145,6 +211,9 @@ class AIAssistant {
         this.restoreSharedConversation();
         this.updateGroundingPanel();
         this.renderToolPlan();
+        this.renderActionLedger();
+        this.renderChangeSets();
+        this.updateSelectionActionBar();
         this.setAgentPlanStep();
     }
 
@@ -252,8 +321,929 @@ class AIAssistant {
         if (this.stateSummary) {
             const elementCount = window.infiniteCanvas?.elements?.length || 0;
             const lastRun = this.lastAgentRunAt ? `run ${new Date(this.lastAgentRunAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'ready';
-            this.stateSummary.textContent = `${elementCount} objects, ${lastRun}`;
+            const actionText = this.lastAppliedActionCount > 0 ? `, ${this.lastAppliedActionCount} edits` : '';
+            this.stateSummary.textContent = `${elementCount} objects, ${lastRun}${actionText}`;
         }
+    }
+
+    recordActionLedger(text, status = 'success', meta = '') {
+        const entry = {
+            text: String(text || '').trim() || 'Canvas action',
+            status,
+            meta: String(meta || '').trim(),
+            createdAt: Date.now(),
+        };
+        this.actionLedger.unshift(entry);
+        this.actionLedger = this.actionLedger.slice(0, 8);
+        this.renderActionLedger();
+    }
+
+    renderActionLedger() {
+        if (this.ledgerSummary) {
+            const appliedCount = this.actionLedger.filter((entry) => entry.status === 'success').length;
+            this.ledgerSummary.textContent = this.actionLedger.length > 0
+                ? `${appliedCount}/${this.actionLedger.length} clean`
+                : 'No actions yet';
+        }
+
+        if (!this.actionList) {
+            return;
+        }
+
+        if (this.actionLedger.length === 0) {
+            this.actionList.innerHTML = '<div class="ai-action-empty">Applied edits, local moves, and skipped actions will appear here.</div>';
+            return;
+        }
+
+        this.actionList.innerHTML = this.actionLedger.map((entry) => {
+            const time = new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const status = ['success', 'warning', 'error'].includes(entry.status) ? entry.status : 'success';
+            return `
+                <div class="ai-action-item ${status}" title="${this.escapeHtml(entry.text)}">
+                    <span class="ai-action-dot"></span>
+                    <span class="ai-action-text">${this.escapeHtml(entry.text)}</span>
+                    <span class="ai-action-meta">${this.escapeHtml(entry.meta || time)}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    cloneElementForChangeSet(element) {
+        if (!element || typeof element !== 'object') {
+            return element;
+        }
+
+        const clone = {};
+        Object.entries(element).forEach(([key, value]) => {
+            if (key === 'imageElement') {
+                return;
+            }
+
+            if (Array.isArray(value)) {
+                clone[key] = value.map((entry) => {
+                    if (entry && typeof entry === 'object') {
+                        return { ...entry };
+                    }
+                    return entry;
+                });
+                return;
+            }
+
+            if (value && typeof value === 'object') {
+                clone[key] = { ...value };
+                return;
+            }
+
+            clone[key] = value;
+        });
+
+        if (element.imageElement) {
+            clone.imageElement = element.imageElement;
+        }
+
+        return clone;
+    }
+
+    cloneElementsForChangeSet(elements = []) {
+        return (Array.isArray(elements) ? elements : []).map((element) => this.cloneElementForChangeSet(element));
+    }
+
+    sortSerializableValue(value) {
+        if (Array.isArray(value)) {
+            return value.map((entry) => this.sortSerializableValue(entry));
+        }
+
+        if (value && typeof value === 'object') {
+            return Object.keys(value)
+                .filter((key) => key !== 'imageElement')
+                .sort()
+                .reduce((acc, key) => {
+                    acc[key] = this.sortSerializableValue(value[key]);
+                    return acc;
+                }, {});
+        }
+
+        return value;
+    }
+
+    getElementsSignature(elements = []) {
+        const serializable = (Array.isArray(elements) ? elements : []).map((element) => this.sortSerializableValue(element));
+        return JSON.stringify(serializable);
+    }
+
+    computeChangedElementIds(beforeElements = [], afterElements = []) {
+        const beforeById = new Map(beforeElements.map((element) => [element.id, this.getElementsSignature([element])]));
+        const afterById = new Map(afterElements.map((element) => [element.id, this.getElementsSignature([element])]));
+        const changedIds = new Set();
+
+        afterById.forEach((signature, id) => {
+            if (!beforeById.has(id) || beforeById.get(id) !== signature) {
+                changedIds.add(id);
+            }
+        });
+        beforeById.forEach((signature, id) => {
+            if (!afterById.has(id)) {
+                changedIds.add(id);
+            }
+        });
+
+        return Array.from(changedIds);
+    }
+
+    recordChangeSet(label, source, beforeElements, afterElements, explicitChangedIds = []) {
+        const before = this.cloneElementsForChangeSet(beforeElements);
+        const after = this.cloneElementsForChangeSet(afterElements);
+        const changedIds = explicitChangedIds.length > 0
+            ? Array.from(new Set(explicitChangedIds))
+            : this.computeChangedElementIds(before, after);
+
+        if (changedIds.length === 0 && before.length === after.length) {
+            return null;
+        }
+
+        const changeSet = {
+            id: `change-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            label: String(label || 'Canvas change').trim(),
+            source: String(source || 'agent').trim(),
+            changedIds,
+            before,
+            after,
+            afterSignature: this.getElementsSignature(after),
+            createdAt: Date.now(),
+        };
+
+        this.changeSets.unshift(changeSet);
+        this.changeSets = this.changeSets.slice(0, 6);
+        this.renderChangeSets();
+        return changeSet;
+    }
+
+    renderChangeSets() {
+        if (this.changeSetSummary) {
+            const latest = this.changeSets[0];
+            this.changeSetSummary.textContent = latest
+                ? `${latest.changedIds.length} changed, ${latest.source}`
+                : 'No reversible edits yet';
+        }
+
+        if (!this.changeSetList) {
+            return;
+        }
+
+        if (this.changeSets.length === 0) {
+            this.changeSetList.innerHTML = '<div class="ai-action-empty">AI and board-fix edits will appear here.</div>';
+            return;
+        }
+
+        const currentSignature = this.getElementsSignature(window.infiniteCanvas?.elements || []);
+        this.changeSetList.innerHTML = this.changeSets.map((entry, index) => {
+            const time = new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const isLatest = index === 0;
+            const canUndo = isLatest && currentSignature === entry.afterSignature;
+            const statusClass = isLatest && !canUndo ? 'blocked' : '';
+            const meta = canUndo ? `${entry.changedIds.length} objects` : (isLatest ? 'changed since' : time);
+            return `
+                <div class="ai-change-set-item ${statusClass}" title="${this.escapeHtml(entry.label)}">
+                    <span class="ai-change-set-dot"></span>
+                    <span class="ai-change-set-text">${this.escapeHtml(entry.label)}</span>
+                    <span class="ai-change-set-meta">${this.escapeHtml(meta)}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    handleChangeSetAction(action) {
+        if (action === 'undo') {
+            this.undoLastChangeSet();
+            return;
+        }
+
+        if (action === 'select') {
+            this.selectLastChangeSet();
+        }
+    }
+
+    undoLastChangeSet() {
+        const canvas = window.infiniteCanvas;
+        const changeSet = this.changeSets[0];
+        if (!canvas || !changeSet) {
+            this.recordActionLedger('No change set to undo', 'warning', 'change');
+            this.showStatus('No reversible change set is available.', 'error');
+            return;
+        }
+
+        const currentSignature = this.getElementsSignature(canvas.elements || []);
+        if (currentSignature !== changeSet.afterSignature) {
+            this.renderChangeSets();
+            this.recordActionLedger('Skipped undo because the board changed', 'warning', 'change');
+            this.showStatus('The board changed after that edit. Use the normal history controls instead.', 'error');
+            return;
+        }
+
+        canvas.elements = this.cloneElementsForChangeSet(changeSet.before);
+        canvas.deselectAll();
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.changeSets.shift();
+        this.renderChangeSets();
+        this.updateGroundingPanel();
+        this.recordActionLedger(`Undid ${changeSet.label}`, 'success', 'change');
+        this.showStatus('Undid the last AI change set.', 'success');
+    }
+
+    selectLastChangeSet() {
+        const canvas = window.infiniteCanvas;
+        const changeSet = this.changeSets[0];
+        if (!canvas || !changeSet) {
+            this.recordActionLedger('No change set to select', 'warning', 'change');
+            this.showStatus('No change set is available to select.', 'error');
+            return;
+        }
+
+        const changed = (canvas.elements || []).filter((element) => changeSet.changedIds.includes(element.id));
+        if (changed.length === 0) {
+            this.recordActionLedger('Change set objects are no longer present', 'warning', 'change');
+            this.showStatus('Those changed objects are no longer on the board.', 'error');
+            return;
+        }
+
+        canvas.selectElements(changed);
+        this.updateGroundingPanel();
+        this.recordActionLedger(`Selected ${changed.length} changed objects`, 'success', 'change');
+        this.showStatus(`Selected ${changed.length} changed object${changed.length === 1 ? '' : 's'}.`, 'success');
+    }
+
+    renderBoardHealth(health = null) {
+        if (!health) {
+            health = this.analyzeCanvasHealth(window.infiniteCanvas?.elements || []);
+        }
+
+        if (this.healthSummary) {
+            this.healthSummary.textContent = health.objectCount > 0
+                ? `${health.objectCount} objects, ${health.connectorCount} connectors`
+                : 'No board audit yet';
+        }
+
+        if (this.healthScore) {
+            this.healthScore.textContent = health.objectCount > 0 ? `${health.score}` : '--';
+            this.healthScore.classList.toggle('warning', health.objectCount > 0 && health.score < 76 && health.score >= 50);
+            this.healthScore.classList.toggle('error', health.objectCount > 0 && health.score < 50);
+        }
+
+        if (!this.healthList) {
+            return;
+        }
+
+        if (!Array.isArray(health.issues) || health.issues.length === 0) {
+            this.healthList.innerHTML = '<div class="ai-health-empty">Select objects or build a board to see structure signals.</div>';
+            return;
+        }
+
+        this.healthList.innerHTML = health.issues.map((issue) => {
+            const severity = ['good', 'warning', 'error'].includes(issue.severity) ? issue.severity : 'warning';
+            return `<div class="ai-health-item ${severity}"><span>${this.escapeHtml(issue.text)}</span></div>`;
+        }).join('');
+
+        this.renderFixPlan(this.buildHealthFixPlan(health, window.infiniteCanvas?.elements || []));
+    }
+
+    buildHealthFixPlan(health = null, elements = []) {
+        const canvas = window.infiniteCanvas;
+        const objects = Array.isArray(elements) ? elements : [];
+        const ignoredHealthRoles = new Set(['annotation', 'connector', 'container', 'layout', 'note']);
+        const nodes = objects.filter((element) => element
+            && !element.qaGenerated
+            && !ignoredHealthRoles.has(element.healthRole)
+            && !['line', 'arrow', 'freedraw', 'frame'].includes(element.type));
+        const fixes = [];
+        const actions = [];
+
+        if (!health) {
+            health = this.analyzeCanvasHealth(objects);
+        }
+
+        const unlabeled = nodes.filter((element) => health.unlabeledIds?.includes(element.id));
+        if (unlabeled.length > 0) {
+            fixes.push({
+                id: 'label-unlabeled',
+                title: `Label ${unlabeled.length} object${unlabeled.length === 1 ? '' : 's'}`,
+                count: unlabeled.length,
+                targetIds: unlabeled.map((element) => element.id),
+            });
+            actions.push({
+                type: 'update_many',
+                patches: unlabeled.map((element, index) => ({
+                    id: element.id,
+                    patch: {
+                        text: this.suggestLabelForElement(element, index),
+                        fontSize: element.fontSize || 18,
+                    },
+                })),
+            });
+        }
+
+        const disconnected = nodes
+            .filter((element) => health.disconnectedIds?.includes(element.id))
+            .sort((a, b) => (Number(a.x) || 0) - (Number(b.x) || 0) || (Number(a.y) || 0) - (Number(b.y) || 0));
+        if (disconnected.length > 1) {
+            const arrows = [];
+            for (let index = 0; index < disconnected.length - 1; index += 1) {
+                arrows.push(this.buildArrowBetweenElements(disconnected[index], disconnected[index + 1]));
+            }
+            fixes.push({
+                id: 'connect-disconnected',
+                title: `Connect ${disconnected.length} objects`,
+                count: arrows.length,
+                targetIds: disconnected.map((element) => element.id),
+            });
+            actions.push({ type: 'add_many', elements: arrows });
+        }
+
+        if (nodes.length > 4 && health.frameCount === 0 && canvas) {
+            const frame = this.buildFrameForElements(nodes, 'Main flow');
+            if (frame) {
+                fixes.push({
+                    id: 'frame-board',
+                    title: 'Frame main flow',
+                    count: nodes.length,
+                    targetIds: nodes.map((element) => element.id),
+                });
+                actions.push({ type: 'add', element: frame });
+            }
+        }
+
+        return { fixes, actions };
+    }
+
+    renderFixPlan(plan = { fixes: [], actions: [] }) {
+        this.pendingFixPlan = plan;
+        const fixes = Array.isArray(plan.fixes) ? plan.fixes : [];
+
+        if (this.fixSummary) {
+            this.fixSummary.textContent = fixes.length > 0
+                ? `${fixes.length} fix${fixes.length === 1 ? '' : 'es'} ready`
+                : 'No fixes queued';
+        }
+
+        if (!this.fixList) {
+            return;
+        }
+
+        if (fixes.length === 0) {
+            this.fixList.innerHTML = '<div class="ai-health-empty">Board audit suggestions will appear here.</div>';
+            return;
+        }
+
+        this.fixList.innerHTML = fixes.map((fix) => `
+            <div class="ai-fix-item" title="${this.escapeHtml(fix.targetIds?.join(', ') || '')}">
+                <span class="ai-fix-title">${this.escapeHtml(fix.title)}</span>
+                <span class="ai-fix-count">${this.escapeHtml(String(fix.count || 0))}</span>
+            </div>
+        `).join('');
+    }
+
+    suggestLabelForElement(element = {}, index = 0) {
+        const type = String(element.type || 'object');
+        const labels = {
+            rectangle: 'Step',
+            diamond: 'Decision',
+            ellipse: 'Start / End',
+            sticky: 'Note',
+            text: 'Label',
+            image: 'Image',
+        };
+        const base = labels[type] || type.charAt(0).toUpperCase() + type.slice(1);
+        return `${base} ${index + 1}`;
+    }
+
+    buildArrowBetweenElements(from = {}, to = {}) {
+        const fromBounds = this.getElementBounds(from);
+        const toBounds = this.getElementBounds(to);
+        const horizontal = Math.abs((Number(to.x) || 0) - (Number(from.x) || 0)) >= Math.abs((Number(to.y) || 0) - (Number(from.y) || 0));
+        const start = horizontal
+            ? { x: fromBounds.right + 8, y: (fromBounds.top + fromBounds.bottom) / 2 }
+            : { x: (fromBounds.left + fromBounds.right) / 2, y: fromBounds.bottom + 8 };
+        const end = horizontal
+            ? { x: toBounds.left - 8, y: (toBounds.top + toBounds.bottom) / 2 }
+            : { x: (toBounds.left + toBounds.right) / 2, y: toBounds.top - 8 };
+
+        return {
+            type: 'arrow',
+            points: [start, end],
+            strokeColor: window.toolManager?.defaultProperties?.strokeColor || '#1e1e1e',
+            backgroundColor: 'transparent',
+            strokeWidth: Math.max(2, window.toolManager?.defaultProperties?.strokeWidth || 2),
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+        };
+    }
+
+    buildFrameForElements(elements = [], label = 'Frame') {
+        if (!Array.isArray(elements) || elements.length === 0) {
+            return null;
+        }
+
+        const bounds = elements.map((element) => this.getElementBounds(element));
+        const minLeft = Math.min(...bounds.map((entry) => entry.left));
+        const maxRight = Math.max(...bounds.map((entry) => entry.right));
+        const minTop = Math.min(...bounds.map((entry) => entry.top));
+        const maxBottom = Math.max(...bounds.map((entry) => entry.bottom));
+        const padding = 44;
+
+        return {
+            type: 'frame',
+            x: (minLeft + maxRight) / 2,
+            y: (minTop + maxBottom) / 2,
+            width: Math.max(180, maxRight - minLeft + padding * 2),
+            height: Math.max(140, maxBottom - minTop + padding * 2),
+            text: label,
+            strokeColor: '#0f766e',
+            backgroundColor: 'transparent',
+            strokeWidth: 2,
+            strokeStyle: 'dashed',
+            roughness: 1,
+            opacity: 1,
+        };
+    }
+
+    getTemplateCenter() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return { x: 0, y: 0 };
+        }
+
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas?.clientWidth || canvas.canvas?.width || 900) / 2,
+            y: (canvas.canvas?.clientHeight || canvas.canvas?.height || 600) / 2,
+        };
+        return canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+    }
+
+    buildTemplateElement(type, x, y, width, height, text = '', options = {}) {
+        return {
+            type,
+            x,
+            y,
+            width,
+            height,
+            text,
+            strokeColor: options.strokeColor || '#1e293b',
+            backgroundColor: options.backgroundColor || '#ffffff',
+            strokeWidth: options.strokeWidth || 2,
+            strokeStyle: options.strokeStyle || 'solid',
+            roughness: options.roughness ?? 1,
+            opacity: options.opacity ?? 1,
+            fontSize: options.fontSize || 18,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Virgil, cursive',
+            smartTemplate: options.smartTemplate || true,
+            healthRole: options.healthRole || '',
+        };
+    }
+
+    buildTemplateArrow(start, end, options = {}) {
+        return {
+            type: 'arrow',
+            points: [start, end],
+            strokeColor: options.strokeColor || '#334155',
+            backgroundColor: 'transparent',
+            strokeWidth: options.strokeWidth || 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            smartTemplate: true,
+            healthRole: 'connector',
+        };
+    }
+
+    buildSmartTemplate(templateId = '') {
+        const center = this.getTemplateCenter();
+        const x = center.x;
+        const y = center.y;
+        const labelBase = {
+            'decision-flow': 'Decision flow',
+            'journey-map': 'Journey map',
+            wireframe: 'Wireframe',
+            retro: 'Retro board',
+        }[templateId] || '';
+
+        if (!labelBase) {
+            return null;
+        }
+
+        const frameOptions = {
+            strokeColor: '#0f766e',
+            backgroundColor: 'transparent',
+            strokeStyle: 'dashed',
+            fontSize: 20,
+            healthRole: 'container',
+        };
+        const nodeOptions = {
+            strokeColor: '#1d4ed8',
+            backgroundColor: '#eff6ff',
+            healthRole: 'node',
+        };
+        const accentOptions = {
+            strokeColor: '#7c2d12',
+            backgroundColor: '#fff7ed',
+            healthRole: 'node',
+        };
+        const noteOptions = {
+            strokeColor: '#854d0e',
+            backgroundColor: '#fef3c7',
+            fontSize: 16,
+            healthRole: 'note',
+        };
+        const elements = [];
+
+        if (templateId === 'decision-flow') {
+            elements.push(
+                this.buildTemplateElement('frame', x, y, 850, 330, 'Decision Flow', frameOptions),
+                this.buildTemplateElement('ellipse', x - 320, y, 130, 76, 'Start', { strokeColor: '#166534', backgroundColor: '#ecfdf3' }),
+                this.buildTemplateElement('rectangle', x - 120, y, 150, 82, 'Gather context', nodeOptions),
+                this.buildTemplateElement('diamond', x + 100, y, 138, 104, 'Decision', accentOptions),
+                this.buildTemplateElement('rectangle', x + 320, y - 70, 150, 82, 'Path A', nodeOptions),
+                this.buildTemplateElement('rectangle', x + 320, y + 70, 150, 82, 'Path B', nodeOptions),
+                this.buildTemplateElement('sticky', x + 95, y + 145, 210, 86, 'AI note\nDefine the decision criteria.', noteOptions),
+                this.buildTemplateArrow({ x: x - 250, y }, { x: x - 195, y }),
+                this.buildTemplateArrow({ x: x - 45, y }, { x: x + 30, y }),
+                this.buildTemplateArrow({ x: x + 168, y: y - 24 }, { x: x + 245, y: y - 70 }),
+                this.buildTemplateArrow({ x: x + 168, y: y + 24 }, { x: x + 245, y: y + 70 }),
+            );
+        }
+
+        if (templateId === 'journey-map') {
+            const stages = ['Discover', 'Compare', 'Try', 'Decide', 'Return'];
+            elements.push(this.buildTemplateElement('frame', x, y, 980, 430, 'Journey Map', frameOptions));
+            stages.forEach((stage, index) => {
+                const sx = x - 380 + index * 190;
+                elements.push(
+                    this.buildTemplateElement('rectangle', sx, y - 80, 142, 76, stage, nodeOptions),
+                    this.buildTemplateElement('sticky', sx, y + 70, 150, 96, `Signal\n${index + 1}. Replace with evidence`, noteOptions),
+                );
+                if (index < stages.length - 1) {
+                    elements.push(this.buildTemplateArrow({ x: sx + 75, y: y - 80 }, { x: sx + 115, y: y - 80 }));
+                }
+            });
+            elements.push(this.buildTemplateElement('text', x, y + 180, 520, 52, 'AI pass: ask for pain points, opportunities, and missing evidence.', { strokeColor: '#334155', backgroundColor: 'transparent', fontSize: 18, healthRole: 'note' }));
+        }
+
+        if (templateId === 'wireframe') {
+            const layoutOptions = { strokeColor: '#334155', backgroundColor: '#f8fafc', healthRole: 'layout' };
+            elements.push(
+                this.buildTemplateElement('frame', x, y, 900, 520, 'Product Wireframe', frameOptions),
+                this.buildTemplateElement('rectangle', x, y - 185, 720, 58, 'Header / navigation', layoutOptions),
+                this.buildTemplateElement('rectangle', x - 145, y - 20, 420, 250, 'Primary workspace', { ...nodeOptions, healthRole: 'layout' }),
+                this.buildTemplateElement('rectangle', x + 260, y - 20, 260, 250, 'AI panel', { strokeColor: '#7c3aed', backgroundColor: '#f5f3ff', healthRole: 'layout' }),
+                this.buildTemplateElement('rectangle', x - 145, y + 150, 420, 56, 'Contextual toolbar', { strokeColor: '#166534', backgroundColor: '#ecfdf3', healthRole: 'layout' }),
+                this.buildTemplateElement('sticky', x + 260, y + 150, 260, 86, 'Agent hooks\n- Inspect selection\n- Apply object actions\n- Undo change set', noteOptions),
+            );
+        }
+
+        if (templateId === 'retro') {
+            const columns = [
+                ['Worked', '#ecfdf3', '#166534'],
+                ['Stuck', '#fef2f2', '#991b1b'],
+                ['Try next', '#eff6ff', '#1d4ed8'],
+                ['Questions', '#fef3c7', '#854d0e'],
+            ];
+            elements.push(this.buildTemplateElement('frame', x, y, 920, 410, 'Retro Board', frameOptions));
+            columns.forEach(([title, backgroundColor, strokeColor], index) => {
+                const sx = x - 330 + index * 220;
+                elements.push(
+                    this.buildTemplateElement('rectangle', sx, y - 110, 180, 52, title, { strokeColor, backgroundColor, fontSize: 20, healthRole: 'layout' }),
+                    this.buildTemplateElement('sticky', sx, y - 20, 170, 92, 'Add note', { strokeColor, backgroundColor, fontSize: 17, healthRole: 'note' }),
+                    this.buildTemplateElement('sticky', sx, y + 90, 170, 92, 'Ask AI to cluster', { strokeColor, backgroundColor, fontSize: 17, healthRole: 'note' }),
+                );
+            });
+        }
+
+        return {
+            id: templateId,
+            label: labelBase,
+            elements,
+        };
+    }
+
+    handleTemplateAction(templateId = '') {
+        const template = this.buildSmartTemplate(templateId);
+        if (!template || !Array.isArray(template.elements) || template.elements.length === 0) {
+            this.recordActionLedger('Unknown smart start requested', 'warning', 'template');
+            this.showStatus('That smart start is not available.', 'error');
+            return;
+        }
+
+        const applied = this.applyCanvasActions(
+            {
+                message: `Inserted ${template.label}.`,
+                actions: [{ type: 'add_many', elements: template.elements }],
+            },
+            {
+                label: `Smart start: ${template.label}`,
+                source: 'template',
+            },
+        );
+
+        if (applied > 0) {
+            this.scope = 'selection';
+            if (this.templateSummary) {
+                this.templateSummary.textContent = template.label;
+            }
+            this.recordActionLedger(`Inserted ${template.label}`, 'success', 'template');
+            this.showStatus(`Inserted ${template.label} as editable canvas objects.`, 'success');
+            this.updateGroundingPanel();
+        } else {
+            this.recordActionLedger(`Skipped ${template.label}`, 'warning', 'template');
+            this.showStatus('No template objects were inserted.', 'error');
+        }
+    }
+
+    getOrganizerCandidates() {
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        const source = selected.length >= 2 ? selected : (canvas?.elements || []);
+        const allowedTypes = new Set(['sticky', 'text', 'rectangle', 'diamond', 'ellipse']);
+
+        return source
+            .filter((element) => element
+                && allowedTypes.has(element.type)
+                && !['layout', 'container', 'connector'].includes(element.healthRole)
+                && String(element.text || element.name || '').trim().length > 0)
+            .slice(0, 24);
+    }
+
+    categorizeOrganizerText(text = '') {
+        const normalized = String(text || '').toLowerCase();
+        const groups = [
+            {
+                id: 'customer',
+                label: 'Customer',
+                color: ['#eff6ff', '#1d4ed8'],
+                keywords: ['customer', 'user', 'client', 'buyer', 'feedback', 'support', 'persona', 'journey'],
+            },
+            {
+                id: 'risk',
+                label: 'Risks',
+                color: ['#fef2f2', '#991b1b'],
+                keywords: ['risk', 'blocked', 'blocker', 'issue', 'bug', 'fail', 'problem', 'concern', 'security'],
+            },
+            {
+                id: 'action',
+                label: 'Actions',
+                color: ['#ecfdf3', '#166534'],
+                keywords: ['todo', 'task', 'action', 'next', 'ship', 'build', 'fix', 'launch', 'follow up'],
+            },
+            {
+                id: 'idea',
+                label: 'Ideas',
+                color: ['#f5f3ff', '#6d28d9'],
+                keywords: ['idea', 'maybe', 'could', 'experiment', 'concept', 'option', 'brainstorm'],
+            },
+            {
+                id: 'question',
+                label: 'Questions',
+                color: ['#fef3c7', '#854d0e'],
+                keywords: ['?', 'question', 'why', 'how', 'what', 'unclear', 'unknown', 'decide'],
+            },
+        ];
+
+        const found = groups.find((group) => group.keywords.some((keyword) => normalized.includes(keyword)));
+        return found || {
+            id: 'theme',
+            label: 'Theme',
+            color: ['#f8fafc', '#334155'],
+            keywords: [],
+        };
+    }
+
+    buildOrganizerClusters(candidates = []) {
+        const byId = new Map();
+        candidates.forEach((element) => {
+            const category = this.categorizeOrganizerText(element.text || element.name || '');
+            const key = category.id;
+            if (!byId.has(key)) {
+                byId.set(key, {
+                    id: key,
+                    label: category.label,
+                    backgroundColor: category.color[0],
+                    strokeColor: category.color[1],
+                    items: [],
+                });
+            }
+            byId.get(key).items.push(element);
+        });
+
+        const sorted = Array.from(byId.values())
+            .sort((a, b) => b.items.length - a.items.length || a.label.localeCompare(b.label));
+
+        if (sorted.length <= 4) {
+            return sorted;
+        }
+
+        const kept = sorted.slice(0, 3);
+        const merged = sorted.slice(3).reduce((acc, cluster) => {
+            acc.items.push(...cluster.items);
+            return acc;
+        }, {
+            id: 'other',
+            label: 'Other',
+            backgroundColor: '#f8fafc',
+            strokeColor: '#334155',
+            items: [],
+        });
+
+        return [...kept, merged];
+    }
+
+    buildClusterActions(clusters = []) {
+        const center = this.getTemplateCenter();
+        const columnWidth = 220;
+        const columnGap = 42;
+        const rowGap = 118;
+        const startX = center.x - ((clusters.length - 1) * (columnWidth + columnGap)) / 2;
+        const startY = center.y - 180;
+        const actions = [];
+        const added = [];
+        const patches = [];
+
+        clusters.forEach((cluster, clusterIndex) => {
+            const columnX = startX + clusterIndex * (columnWidth + columnGap);
+            const itemCount = cluster.items.length;
+            const frameHeight = Math.max(250, 120 + itemCount * rowGap);
+            added.push(
+                this.buildTemplateElement('frame', columnX, startY + frameHeight / 2 - 18, columnWidth + 44, frameHeight, cluster.label, {
+                    strokeColor: cluster.strokeColor,
+                    backgroundColor: 'transparent',
+                    strokeStyle: 'dashed',
+                    healthRole: 'container',
+                    fontSize: 18,
+                }),
+                this.buildTemplateElement('rectangle', columnX, startY - 42, columnWidth, 50, `${cluster.label} (${itemCount})`, {
+                    strokeColor: cluster.strokeColor,
+                    backgroundColor: cluster.backgroundColor,
+                    healthRole: 'layout',
+                    fontSize: 18,
+                }),
+            );
+
+            cluster.items.forEach((element, itemIndex) => {
+                patches.push({
+                    id: element.id,
+                    patch: {
+                        x: columnX,
+                        y: startY + 52 + itemIndex * rowGap,
+                        width: Math.max(160, Math.min(190, Number(element.width) || 170)),
+                        height: Math.max(78, Math.min(110, Number(element.height) || 92)),
+                        backgroundColor: cluster.backgroundColor,
+                        strokeColor: cluster.strokeColor,
+                        healthRole: 'note',
+                        smartTemplate: false,
+                    },
+                });
+            });
+
+            const preview = cluster.items
+                .slice(0, 3)
+                .map((element) => String(element.text || element.name || '').split('\n')[0].slice(0, 34))
+                .filter(Boolean);
+            added.push(this.buildTemplateElement('sticky', columnX, startY + frameHeight - 18, columnWidth, 88, `AI summary\n${preview.join('\n') || 'Review this cluster.'}`, {
+                strokeColor: cluster.strokeColor,
+                backgroundColor: cluster.backgroundColor,
+                healthRole: 'note',
+                fontSize: 15,
+            }));
+        });
+
+        if (patches.length > 0) {
+            actions.push({ type: 'update_many', patches });
+        }
+        if (added.length > 0) {
+            actions.push({ type: 'add_many', elements: added });
+        }
+
+        return actions;
+    }
+
+    organizeNoteClusters() {
+        const candidates = this.getOrganizerCandidates();
+        if (candidates.length < 2) {
+            this.recordActionLedger('Organizer needs at least two text notes', 'warning', 'organizer');
+            this.showStatus('Select two or more notes, or add text notes to the board first.', 'error');
+            return;
+        }
+
+        const clusters = this.buildOrganizerClusters(candidates);
+        const actions = this.buildClusterActions(clusters);
+        const applied = this.applyCanvasActions(
+            {
+                message: `Organized ${candidates.length} notes into ${clusters.length} cluster${clusters.length === 1 ? '' : 's'}.`,
+                actions,
+            },
+            {
+                label: `Clustered ${candidates.length} notes`,
+                source: 'organizer',
+            },
+        );
+
+        if (applied > 0) {
+            if (this.organizerSummary) {
+                this.organizerSummary.textContent = `${clusters.length} clusters`;
+            }
+            this.scope = 'selection';
+            this.recordActionLedger(`Clustered ${candidates.length} notes`, 'success', 'organizer');
+            this.showStatus(`Clustered ${candidates.length} notes into editable groups.`, 'success');
+            this.updateGroundingPanel();
+        }
+    }
+
+    extractOrganizerActions() {
+        const candidates = this.getOrganizerCandidates();
+        if (candidates.length === 0) {
+            this.recordActionLedger('No note text for task extraction', 'warning', 'organizer');
+            this.showStatus('Add or select notes with text before extracting tasks.', 'error');
+            return;
+        }
+
+        const center = this.getTemplateCenter();
+        const x = center.x + 340;
+        const y = center.y - 50;
+        const taskTexts = candidates.slice(0, 6).map((element, index) => {
+            const text = String(element.text || element.name || '').replace(/\s+/g, ' ').trim();
+            return `${index + 1}. ${text.slice(0, 72)}${text.length > 72 ? '...' : ''}`;
+        });
+        const elements = [
+            this.buildTemplateElement('frame', x, y + 95, 330, 330, 'Action Plan', {
+                strokeColor: '#166534',
+                backgroundColor: 'transparent',
+                strokeStyle: 'dashed',
+                healthRole: 'container',
+                fontSize: 20,
+            }),
+            this.buildTemplateElement('sticky', x, y - 35, 280, 116, `Next actions\n${taskTexts.slice(0, 3).join('\n')}`, {
+                strokeColor: '#166534',
+                backgroundColor: '#ecfdf3',
+                healthRole: 'note',
+                fontSize: 15,
+            }),
+            this.buildTemplateElement('sticky', x, y + 105, 280, 116, `Follow-up\n${taskTexts.slice(3).join('\n') || 'Ask AI to assign owners and dates.'}`, {
+                strokeColor: '#854d0e',
+                backgroundColor: '#fef3c7',
+                healthRole: 'note',
+                fontSize: 15,
+            }),
+            this.buildTemplateElement('rectangle', x, y + 230, 280, 52, 'Ask: assign owners, dates, and risks', {
+                strokeColor: '#1d4ed8',
+                backgroundColor: '#eff6ff',
+                healthRole: 'layout',
+                fontSize: 16,
+            }),
+        ];
+
+        const applied = this.applyCanvasActions(
+            {
+                message: `Extracted tasks from ${candidates.length} notes.`,
+                actions: [{ type: 'add_many', elements }],
+            },
+            {
+                label: `Extracted ${Math.min(candidates.length, 6)} tasks`,
+                source: 'organizer',
+            },
+        );
+
+        if (applied > 0) {
+            if (this.organizerSummary) {
+                this.organizerSummary.textContent = `${Math.min(candidates.length, 6)} tasks`;
+            }
+            this.scope = 'selection';
+            this.recordActionLedger(`Extracted tasks from ${candidates.length} notes`, 'success', 'organizer');
+            this.showStatus('Created an editable action plan from the notes.', 'success');
+            this.updateGroundingPanel();
+        }
+    }
+
+    handleOrganizerAction(action = '') {
+        if (action === 'cluster-notes') {
+            this.organizeNoteClusters();
+            return;
+        }
+
+        if (action === 'extract-actions') {
+            this.extractOrganizerActions();
+            return;
+        }
+
+        this.recordActionLedger('Unknown organizer action requested', 'warning', 'organizer');
+        this.showStatus('That organizer action is not available.', 'error');
+    }
+
+    escapeHtml(value = '') {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     setAgentPlanStep(activeStep = '', doneSteps = [], errorStep = '') {
@@ -386,6 +1376,8 @@ class AIAssistant {
             opacity: element.opacity,
             fontSize: element.fontSize,
             fontFamily: element.fontFamily,
+            smartTemplate: Boolean(element.smartTemplate),
+            healthRole: element.healthRole || '',
         };
 
         if (Array.isArray(element.points)) {
@@ -466,7 +1458,169 @@ class AIAssistant {
                 && elementBounds.left <= right
                 && elementBounds.bottom >= bounds.y
                 && elementBounds.top <= bottom;
+            });
+    }
+
+    findNearestElementAtPoint(point = {}, candidates = [], maxDistance = 80) {
+        let best = null;
+        let bestDistance = maxDistance;
+        const pointX = Number(point.x) || 0;
+        const pointY = Number(point.y) || 0;
+
+        candidates.forEach((element) => {
+            if (!element || ['line', 'arrow', 'freedraw'].includes(element.type)) {
+                return;
+            }
+            const bounds = this.getElementBounds(element);
+            const clampedX = Math.max(bounds.left, Math.min(pointX, bounds.right));
+            const clampedY = Math.max(bounds.top, Math.min(pointY, bounds.bottom));
+            const distance = Math.hypot(pointX - clampedX, pointY - clampedY);
+            if (distance < bestDistance) {
+                best = element;
+                bestDistance = distance;
+            }
         });
+
+        return best;
+    }
+
+    buildCanvasRelationships(elements = []) {
+        const nodes = elements.filter((element) => !['line', 'arrow', 'freedraw', 'frame'].includes(element.type));
+        const connectors = elements.filter((element) => ['line', 'arrow'].includes(element.type) && Array.isArray(element.points) && element.points.length >= 2);
+        const frames = elements.filter((element) => element.type === 'frame');
+        const relationships = [];
+
+        connectors.slice(-40).forEach((connector) => {
+            const first = connector.points[0];
+            const last = connector.points[connector.points.length - 1];
+            const from = this.findNearestElementAtPoint(first, nodes);
+            const to = this.findNearestElementAtPoint(last, nodes);
+            if (from && to && from.id !== to.id) {
+                relationships.push({
+                    type: connector.type,
+                    connectorId: connector.id,
+                    fromId: from.id,
+                    toId: to.id,
+                    label: connector.text || '',
+                });
+            }
+        });
+
+        frames.slice(-20).forEach((frame) => {
+            const frameBounds = this.getElementBounds(frame);
+            const contains = nodes
+                .filter((element) => element.id !== frame.id)
+                .filter((element) => {
+                    const bounds = this.getElementBounds(element);
+                    const centerX = (bounds.left + bounds.right) / 2;
+                    const centerY = (bounds.top + bounds.bottom) / 2;
+                    return centerX >= frameBounds.left
+                        && centerX <= frameBounds.right
+                        && centerY >= frameBounds.top
+                        && centerY <= frameBounds.bottom;
+                })
+                .map((element) => element.id)
+                .slice(0, 30);
+            if (contains.length > 0) {
+                relationships.push({
+                    type: 'frame_contains',
+                    frameId: frame.id,
+                    elementIds: contains,
+                    label: frame.text || frame.name || '',
+                });
+            }
+        });
+
+        return relationships.slice(0, 60);
+    }
+
+    analyzeCanvasHealth(elements = []) {
+        const objects = elements.filter((element) => element && typeof element === 'object');
+        const ignoredHealthRoles = new Set(['annotation', 'connector', 'container', 'layout', 'note']);
+        const nodes = objects.filter((element) => !element.qaGenerated
+            && !ignoredHealthRoles.has(element.healthRole)
+            && !['line', 'arrow', 'freedraw', 'frame'].includes(element.type));
+        const relationships = this.buildCanvasRelationships(objects);
+        const connectedIds = new Set();
+        relationships.forEach((relationship) => {
+            if (relationship.fromId) connectedIds.add(relationship.fromId);
+            if (relationship.toId) connectedIds.add(relationship.toId);
+        });
+
+        const frames = objects.filter((element) => element.type === 'frame');
+        const framedIds = new Set();
+        relationships
+            .filter((relationship) => relationship.type === 'frame_contains')
+            .forEach((relationship) => {
+                relationship.elementIds?.forEach((id) => framedIds.add(id));
+            });
+
+        const unlabeled = nodes.filter((element) => {
+            const text = String(element.text || element.name || '').trim();
+            return !text && !['image'].includes(element.type);
+        });
+        const disconnected = nodes.filter((element) => !connectedIds.has(element.id));
+        const unframed = nodes.filter((element) => !framedIds.has(element.id));
+        const connectorCount = objects.filter((element) => ['line', 'arrow'].includes(element.type)).length;
+        const labelledCount = Math.max(0, nodes.length - unlabeled.length);
+        const connectionRatio = nodes.length > 1 ? (nodes.length - disconnected.length) / nodes.length : 1;
+        const labelRatio = nodes.length > 0 ? labelledCount / nodes.length : 1;
+        const frameRatio = nodes.length > 2 ? (nodes.length - unframed.length) / nodes.length : 1;
+        const score = Math.round(Math.max(0, Math.min(100, (
+            connectionRatio * 42
+            + labelRatio * 34
+            + frameRatio * 14
+            + (connectorCount > 0 || nodes.length < 2 ? 10 : 0)
+        ))));
+
+        const issues = [];
+        if (objects.length === 0) {
+            issues.push({
+                severity: 'warning',
+                text: 'Empty board. Start with editable shapes or ask the agent to build a map.',
+            });
+        }
+        if (unlabeled.length > 0) {
+            issues.push({
+                severity: unlabeled.length > 3 ? 'error' : 'warning',
+                text: `${unlabeled.length} object${unlabeled.length === 1 ? ' needs' : 's need'} labels.`,
+            });
+        }
+        if (nodes.length > 1 && disconnected.length > 0) {
+            issues.push({
+                severity: disconnected.length > 2 ? 'error' : 'warning',
+                text: `${disconnected.length} object${disconnected.length === 1 ? '' : 's'} are disconnected.`,
+            });
+        }
+        if (nodes.length > 4 && frames.length === 0) {
+            issues.push({
+                severity: 'warning',
+                text: 'No frames yet. Grouping would make the board easier to scan.',
+            });
+        }
+        if (issues.length === 0 && objects.length > 0) {
+            issues.push({
+                severity: 'good',
+                text: 'Board structure looks ready for a deeper AI pass.',
+            });
+        }
+
+        return {
+            score,
+            objectCount: objects.length,
+            nodeCount: nodes.length,
+            connectorCount,
+            frameCount: frames.length,
+            labelledCount,
+            unlabeledIds: unlabeled.map((element) => element.id).slice(0, 12),
+            disconnectedIds: disconnected.map((element) => element.id).slice(0, 12),
+            unframedIds: unframed.map((element) => element.id).slice(0, 12),
+            issues: issues.slice(0, 5),
+            nextActions: issues
+                .filter((issue) => issue.severity !== 'good')
+                .map((issue) => issue.text)
+                .slice(0, 4),
+        };
     }
 
     buildCanvasContext() {
@@ -477,6 +1631,9 @@ class AIAssistant {
         const scopedElements = scope === 'selection'
             ? selected
             : (scope === 'viewport' ? this.getElementsInViewport() : elements);
+        const relationships = this.buildCanvasRelationships(scopedElements);
+        const boardHealth = this.analyzeCanvasHealth(elements);
+        const scopedHealth = this.analyzeCanvasHealth(scopedElements);
 
         return {
             surface: 'canvas-excalidraw',
@@ -496,9 +1653,12 @@ class AIAssistant {
                 ...this.cloneElementForAI(element),
                 bounds: this.getElementBounds(element),
             })),
+            relationships,
+            boardHealth,
+            scopedHealth,
             toolPlan: this.buildToolPlan(),
             allowedActions: ['add', 'add_many', 'update', 'update_many', 'delete', 'select'],
-            instruction: 'Ground your answer in selected objects when scope is selection. Preserve element ids for updates. Use editable object actions for canvas edits. Do not create raster snapshots unless the user explicitly switches to image asset mode.',
+            instruction: 'Ground your answer in selected objects when scope is selection. Preserve element ids for updates. Use editable object actions for canvas edits. Use relationships and boardHealth to preserve connector intent, label gaps, disconnected objects, and frame membership. Do not create raster snapshots unless the user explicitly switches to image asset mode.',
         };
     }
 
@@ -532,6 +1692,156 @@ class AIAssistant {
             this.applySummary.textContent = scope === 'selection' ? 'Backend + selected objects' : (scope === 'viewport' ? 'Backend + visible objects' : 'Backend + board');
         }
         this.renderToolPlan();
+        this.renderBoardHealth(context.boardHealth);
+        this.renderChangeSets();
+        this.updateSelectionActionBar(context);
+    }
+
+    handleHealthAction(action) {
+        if (action === 'refresh') {
+            const health = this.analyzeCanvasHealth(window.infiniteCanvas?.elements || []);
+            this.renderBoardHealth(health);
+            this.recordActionLedger(`Board audit score ${health.objectCount > 0 ? health.score : '--'}`, 'success', 'audit');
+            this.showStatus('Board audit refreshed.', 'success');
+            return;
+        }
+
+        if (action === 'note') {
+            this.addBoardQaNote();
+        }
+    }
+
+    handleFixAction(action) {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+
+        const health = this.analyzeCanvasHealth(canvas.elements || []);
+        const plan = this.buildHealthFixPlan(health, canvas.elements || []);
+        this.renderFixPlan(plan);
+
+        if (action === 'preview') {
+            const targetIds = Array.from(new Set((plan.fixes || []).flatMap((fix) => fix.targetIds || [])));
+            const targets = canvas.elements.filter((element) => targetIds.includes(element.id));
+            if (targets.length > 0) {
+                canvas.selectElements(targets);
+            }
+            this.recordActionLedger(
+                plan.fixes.length > 0 ? `Previewing ${plan.fixes.length} suggested fixes` : 'No suggested fixes to preview',
+                plan.fixes.length > 0 ? 'success' : 'warning',
+                'plan',
+            );
+            this.showStatus(plan.fixes.length > 0 ? 'Suggested fixes are selected on the board.' : 'No suggested fixes available.', plan.fixes.length > 0 ? 'success' : 'error');
+            return;
+        }
+
+        if (action === 'apply') {
+            if (!Array.isArray(plan.actions) || plan.actions.length === 0) {
+                this.recordActionLedger('No suggested fixes to apply', 'warning', 'plan');
+                this.showStatus('No suggested fixes available.', 'error');
+                return;
+            }
+
+            const applied = this.applyCanvasActions(
+                { message: 'Applied board-intelligence fixes.', actions: plan.actions },
+                { label: 'Board intelligence fixes', source: 'plan' },
+            );
+            this.recordActionLedger(`Applied ${applied} board fix action${applied === 1 ? '' : 's'}`, applied > 0 ? 'success' : 'warning', 'plan');
+            this.showStatus(applied > 0 ? `Applied ${applied} suggested fix action${applied === 1 ? '' : 's'}.` : 'No suggested fixes were applied.', applied > 0 ? 'success' : 'error');
+            this.updateGroundingPanel();
+        }
+    }
+
+    addBoardQaNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+
+        const health = this.analyzeCanvasHealth(canvas.elements || []);
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const issueLines = health.issues
+            .filter((issue) => issue.severity !== 'good')
+            .map((issue) => issue.text)
+            .slice(0, 4);
+        const text = issueLines.length > 0
+            ? ['Board QA', ...issueLines.map((line) => `- ${line}`)].join('\n')
+            : 'Board QA\n- Structure looks ready for a deeper AI pass.';
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `qa-note-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 240,
+            y: center.y - 120,
+            width: 230,
+            height: 150,
+            text,
+            backgroundColor: '#ffec99',
+            strokeColor: '#b7791f',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 16,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Virgil, cursive',
+            qaGenerated: true,
+        };
+
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Board QA note', 'audit', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable board QA note', 'success', 'audit');
+        this.showStatus('Added a board QA note to the canvas.', 'success');
+    }
+
+    updateSelectionActionBar(context = this.buildCanvasContext()) {
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        if (!this.selectionBar || !canvas || selected.length === 0) {
+            if (this.selectionBar) {
+                this.selectionBar.hidden = true;
+            }
+            return;
+        }
+
+        const bounds = selected.map((element) => this.getElementBounds(element));
+        const minLeft = Math.min(...bounds.map((entry) => entry.left));
+        const maxRight = Math.max(...bounds.map((entry) => entry.right));
+        const minTop = Math.min(...bounds.map((entry) => entry.top));
+        const centerX = (minLeft + maxRight) / 2;
+        const screen = canvas.worldToScreen(centerX, minTop);
+        const containerRect = canvas.container.getBoundingClientRect();
+        const barWidth = Math.min(620, Math.max(280, this.selectionBar.offsetWidth || 360));
+        const left = Math.min(
+            Math.max(16 + barWidth / 2, screen.x),
+            Math.max(16 + barWidth / 2, containerRect.width - 16 - barWidth / 2),
+        );
+        const top = Math.max(12, Math.min(containerRect.height - 54, screen.y - 48));
+
+        this.selectionBar.hidden = false;
+        this.selectionBar.style.left = `${left}px`;
+        this.selectionBar.style.top = `${top}px`;
+        this.selectionBar.style.transform = 'translateX(-50%)';
+
+        const summary = context?.selection?.typeCounts || `${selected.length} object${selected.length === 1 ? '' : 's'}`;
+        if (this.selectionBarSummary) {
+            this.selectionBarSummary.textContent = selected.length === 1 ? summary : `${selected.length} selected`;
+            this.selectionBarSummary.title = selected.map((element) => element.id).join(', ');
+        }
+
+        this.selectionBar.querySelectorAll('[data-ai-selection-action]').forEach((button) => {
+            const action = button.dataset.aiSelectionAction;
+            button.disabled = (action === 'connect' || action === 'tidy') && selected.length < 2;
+        });
     }
 
     handleLocalAction(action) {
@@ -539,18 +1849,76 @@ class AIAssistant {
             this.tidySelection();
         } else if (action === 'frame-selection') {
             this.frameSelection();
+        } else if (action === 'connect-selection') {
+            this.connectSelection();
         }
+    }
+
+    handleSelectionAction(action) {
+        if (this.isGenerating) {
+            return;
+        }
+
+        if (action === 'ask') {
+            this.showPanel();
+            this.setMode('chat');
+            if (this.input) {
+                this.input.value = 'What should I improve about the selected objects?';
+                this.input.focus();
+            }
+            this.recordActionLedger('Loaded selected-object question', 'success', 'selection');
+            return;
+        }
+
+        if (action === 'polish') {
+            this.runCommandPrompt(
+                'Polish the selected objects: improve spacing, add concise labels where needed, preserve existing ids with update_many, and add only editable arrows or notes.',
+                'diagram',
+            );
+            return;
+        }
+
+        if (action === 'tidy') {
+            this.tidySelection();
+            return;
+        }
+
+        if (action === 'connect') {
+            this.connectSelection();
+            return;
+        }
+
+        if (action === 'frame') {
+            this.frameSelection();
+        }
+    }
+
+    runCommandPrompt(prompt, mode = 'chat') {
+        const trimmed = String(prompt || '').trim();
+        if (!trimmed || this.isGenerating) {
+            return;
+        }
+
+        this.setMode(mode === 'diagram' ? 'diagram' : 'chat');
+        this.showPanel();
+        if (this.input) {
+            this.input.value = trimmed;
+        }
+        this.generate();
     }
 
     tidySelection() {
         const canvas = window.infiniteCanvas;
         const selected = canvas?.selectedElements || [];
         if (!canvas || selected.length < 2) {
+            this.recordActionLedger('Tidy needs at least two selected objects', 'warning', 'local');
             this.showStatus('Select two or more objects to tidy the layout.', 'error');
             return;
         }
 
         const bounds = selected.map((element) => this.getElementBounds(element));
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const selectedIds = selected.map((element) => element.id);
         const minLeft = Math.min(...bounds.map((entry) => entry.left));
         const maxRight = Math.max(...bounds.map((entry) => entry.right));
         const minTop = Math.min(...bounds.map((entry) => entry.top));
@@ -592,20 +1960,86 @@ class AIAssistant {
 
         window.historyManager?.pushState(canvas.elements);
         canvas.render();
+        this.recordChangeSet(`Tidied ${selected.length} selected objects`, 'local', beforeElements, canvas.elements || [], selectedIds);
         this.updateGroundingPanel();
         window.app?.showToast?.('Tidied selected objects');
+        this.recordActionLedger(`Tidied ${selected.length} selected objects`, 'success', 'local');
         this.showStatus('Tidied selected objects locally. Ask the agent for labels or deeper restructuring.', 'success');
+    }
+
+    connectSelection() {
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        if (!canvas || selected.length < 2) {
+            this.recordActionLedger('Connect needs at least two selected objects', 'warning', 'local');
+            this.showStatus('Select two or more objects to connect.', 'error');
+            return;
+        }
+
+        const bounds = selected.map((element) => this.getElementBounds(element));
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const selectedIds = selected.map((element) => element.id);
+        const spreadX = Math.max(...bounds.map((entry) => entry.right)) - Math.min(...bounds.map((entry) => entry.left));
+        const spreadY = Math.max(...bounds.map((entry) => entry.bottom)) - Math.min(...bounds.map((entry) => entry.top));
+        const horizontal = spreadX >= spreadY;
+        const sorted = [...selected].sort((a, b) => horizontal ? a.x - b.x : a.y - b.y);
+        const arrows = [];
+
+        for (let index = 0; index < sorted.length - 1; index += 1) {
+            const from = sorted[index];
+            const to = sorted[index + 1];
+            const fromBounds = this.getElementBounds(from);
+            const toBounds = this.getElementBounds(to);
+            const start = horizontal
+                ? { x: fromBounds.right + 8, y: (fromBounds.top + fromBounds.bottom) / 2 }
+                : { x: (fromBounds.left + fromBounds.right) / 2, y: fromBounds.bottom + 8 };
+            const end = horizontal
+                ? { x: toBounds.left - 8, y: (toBounds.top + toBounds.bottom) / 2 }
+                : { x: (toBounds.left + toBounds.right) / 2, y: toBounds.top - 8 };
+            const arrow = {
+                id: window.toolManager?.generateId?.() || `arrow-${Date.now()}-${index}`,
+                type: 'arrow',
+                points: [start, end],
+                strokeColor: window.toolManager?.defaultProperties?.strokeColor || '#1e1e1e',
+                backgroundColor: 'transparent',
+                strokeWidth: Math.max(2, window.toolManager?.defaultProperties?.strokeWidth || 2),
+                strokeStyle: 'solid',
+                roughness: 1,
+                opacity: 1,
+            };
+
+            canvas.addElement(arrow);
+            arrows.push(arrow);
+        }
+
+        canvas.selectElements([...selected, ...arrows]);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet(
+            `Connected ${selected.length} selected objects`,
+            'local',
+            beforeElements,
+            canvas.elements || [],
+            [...selectedIds, ...arrows.map((arrow) => arrow.id)],
+        );
+        this.updateGroundingPanel();
+        this.recordActionLedger(`Connected ${selected.length} objects with ${arrows.length} arrows`, 'success', 'local');
+        this.showStatus(`Connected ${selected.length} objects locally.`, 'success');
     }
 
     frameSelection() {
         const canvas = window.infiniteCanvas;
         const selected = canvas?.selectedElements || [];
         if (!canvas || selected.length === 0) {
+            this.recordActionLedger('Frame needs a selection', 'warning', 'local');
             this.showStatus('Select one or more objects to frame.', 'error');
             return;
         }
 
         const bounds = selected.map((element) => this.getElementBounds(element));
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const selectedIds = selected.map((element) => element.id);
         const minLeft = Math.min(...bounds.map((entry) => entry.left));
         const maxRight = Math.max(...bounds.map((entry) => entry.right));
         const minTop = Math.min(...bounds.map((entry) => entry.top));
@@ -632,7 +2066,15 @@ class AIAssistant {
         window.historyManager?.pushState(canvas.elements);
         window.app?.saveCanvasToStorage?.();
         canvas.render();
+        this.recordChangeSet(
+            `Framed ${selected.length} selected objects`,
+            'local',
+            beforeElements,
+            canvas.elements || [],
+            [frame.id, ...selectedIds],
+        );
         this.updateGroundingPanel();
+        this.recordActionLedger(`Framed ${selected.length} selected objects`, 'success', 'local');
         this.showStatus('Framed selected objects locally.', 'success');
     }
     
@@ -741,19 +2183,28 @@ class AIAssistant {
             }
             const content = response.content || 'No response received.';
             const structured = this.parseStructuredCanvasResponse(content);
-            const applied = this.applyCanvasActions(structured);
+            const applied = this.applyCanvasActions(structured, {
+                label: structured.message || 'Agent canvas actions',
+                source: 'agent',
+            });
             this.lastAppliedActionCount = applied;
             this.setAgentPlanStep('', ['read', 'tool', 'apply']);
             const assistantText = structured?.message || content;
             this.chatHistory.push({ role: 'assistant', content: assistantText });
             this.trimChatHistory();
             this.addConversationMessage('assistant', assistantText);
+            if (applied > 0) {
+                this.recordActionLedger(`Agent applied ${applied} editable action${applied === 1 ? '' : 's'}`, 'success', 'agent');
+            } else if ((structured.actions?.length || 0) > 0 || (structured.elements?.length || 0) > 0) {
+                this.recordActionLedger('Agent returned actions but none matched this board', 'warning', 'agent');
+            }
             this.showStatus(applied > 0 ? `Applied ${applied} canvas action${applied === 1 ? '' : 's'}.` : 'Agent response ready.', 'success');
             this.input.value = '';
         } catch (error) {
             console.error('Agent chat error:', error);
             this.setAgentPlanStep('', ['read'], 'tool');
             this.addConversationMessage('assistant', `Error: ${error.message}`);
+            this.recordActionLedger(error.message || 'Agent request failed', 'error', 'agent');
             this.showStatus('Error talking to agent.', 'error');
         } finally {
             this.isGenerating = false;
@@ -797,17 +2248,26 @@ class AIAssistant {
             if (response.content) {
                 const applied = this.processGeneratedContent(response);
                 this.lastAppliedActionCount = applied || 0;
-                this.setAgentPlanStep('', ['read', 'tool', 'apply']);
-                this.addConversationMessage('assistant', 'Applied editable object actions to the canvas.');
-                this.showStatus('Canvas objects updated.', 'success');
-                this.input.value = '';
+                if (applied > 0) {
+                    this.setAgentPlanStep('', ['read', 'tool', 'apply']);
+                    this.addConversationMessage('assistant', `Applied ${applied} editable object action${applied === 1 ? '' : 's'} to the canvas.`);
+                    this.recordActionLedger(`Agent applied ${applied} editable action${applied === 1 ? '' : 's'}`, 'success', 'agent');
+                    this.showStatus('Canvas objects updated.', 'success');
+                    this.input.value = '';
+                } else {
+                    this.setAgentPlanStep('', ['read', 'tool'], 'apply');
+                    this.recordActionLedger('Agent returned no editable object actions', 'warning', 'agent');
+                    this.showStatus('No object actions returned. Try a different prompt.', 'error');
+                }
             } else {
                 this.setAgentPlanStep('', ['read', 'tool'], 'apply');
+                this.recordActionLedger('Agent returned no content', 'warning', 'agent');
                 this.showStatus('No object actions returned. Try a different prompt.', 'error');
             }
         } catch (error) {
             console.error('Generation error:', error);
             this.setAgentPlanStep('', ['read'], 'tool');
+            this.recordActionLedger(error.message || 'Object build failed', 'error', 'agent');
             this.showStatus('Error building objects. Please try again.', 'error');
         } finally {
             this.isGenerating = false;
@@ -870,6 +2330,7 @@ class AIAssistant {
 
                 const noun = generatedImages.length === 1 ? 'image' : 'images';
                 this.addConversationMessage('assistant', `Generated ${generatedImages.length} ${noun} and placed them on the canvas.`);
+                this.recordActionLedger(`Generated ${generatedImages.length} raster ${noun}`, 'success', 'image');
                 this.showStatus(`Generated ${generatedImages.length} ${noun} successfully!`, 'success');
                 this.input.value = '';
                 
@@ -878,10 +2339,12 @@ class AIAssistant {
                     console.log('Revised prompt:', generatedImages[0].revised_prompt);
                 }
             } else {
+                this.recordActionLedger('Image model returned no usable image', 'warning', 'image');
                 this.showStatus('No image generated. Try a different prompt.', 'error');
             }
         } catch (error) {
             console.error('Image generation error:', error);
+            this.recordActionLedger(error.message || 'Image generation failed', 'error', 'image');
             this.showStatus(`Error: ${error.message}`, 'error');
         } finally {
             this.isGenerating = false;
@@ -892,6 +2355,7 @@ class AIAssistant {
     
     async addImageToCanvas(imageData, position = null) {
         const canvas = window.infiniteCanvas;
+        const beforeElements = this.cloneElementsForChangeSet(canvas?.elements || []);
         
         // Create image element
         const img = new Image();
@@ -952,6 +2416,7 @@ class AIAssistant {
                 canvas.addElement(element);
                 canvas.selectElement(element);
                 window.historyManager?.pushState(canvas.elements);
+                this.recordChangeSet('Generated image asset', 'image', beforeElements, canvas.elements || [], [element.id]);
                 
                 resolve(element);
             };
@@ -1181,6 +2646,8 @@ class AIAssistant {
             'fontSize',
             'fontFamily',
             'points',
+            'healthRole',
+            'smartTemplate',
         ]);
         const safePatch = {};
 
@@ -1215,7 +2682,7 @@ class AIAssistant {
         return safePatch;
     }
 
-    applyCanvasActions(structured = {}) {
+    applyCanvasActions(structured = {}, options = {}) {
         const canvas = window.infiniteCanvas;
         if (!canvas) {
             return 0;
@@ -1223,7 +2690,9 @@ class AIAssistant {
 
         const actions = Array.isArray(structured.actions) ? structured.actions : [];
         const elements = Array.isArray(structured.elements) ? structured.elements : [];
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
         let applied = 0;
+        let mutated = false;
         const nextSelectionIds = new Set();
 
         actions.forEach((action) => {
@@ -1241,6 +2710,7 @@ class AIAssistant {
                     canvas.addElement(element);
                     nextSelectionIds.add(element.id);
                     applied += 1;
+                    mutated = true;
                 });
                 return;
             }
@@ -1250,6 +2720,7 @@ class AIAssistant {
                 canvas.addElement(element);
                 nextSelectionIds.add(element.id);
                 applied += 1;
+                mutated = true;
                 return;
             }
 
@@ -1266,6 +2737,7 @@ class AIAssistant {
                     Object.assign(element, safePatch);
                     nextSelectionIds.add(element.id);
                     applied += 1;
+                    mutated = true;
                 });
                 return;
             }
@@ -1279,6 +2751,7 @@ class AIAssistant {
                 Object.assign(element, safePatch);
                 nextSelectionIds.add(element.id);
                 applied += 1;
+                mutated = true;
                 return;
             }
 
@@ -1287,6 +2760,7 @@ class AIAssistant {
                 canvas.removeElement(action.id);
                 if (canvas.elements.length !== before) {
                     applied += 1;
+                    mutated = true;
                 }
                 return;
             }
@@ -1305,6 +2779,7 @@ class AIAssistant {
             canvas.addElement(normalized);
             nextSelectionIds.add(normalized.id);
             applied += 1;
+            mutated = true;
         });
 
         if (nextSelectionIds.size > 0) {
@@ -1318,6 +2793,15 @@ class AIAssistant {
             window.historyManager?.pushState(canvas.elements);
             window.app?.saveCanvasToStorage?.();
             canvas.render();
+            if (mutated) {
+                this.recordChangeSet(
+                    options.label || structured.message || 'Applied canvas actions',
+                    options.source || 'agent',
+                    beforeElements,
+                    canvas.elements || [],
+                    Array.from(nextSelectionIds),
+                );
+            }
             this.updateGroundingPanel();
         }
 
@@ -1327,7 +2811,10 @@ class AIAssistant {
     processGeneratedContent(response) {
         const canvas = window.infiniteCanvas;
         const structured = this.parseStructuredCanvasResponse(response.content || '');
-        const actionCount = this.applyCanvasActions(structured);
+        const actionCount = this.applyCanvasActions(structured, {
+            label: structured.message || 'AI object actions',
+            source: 'agent',
+        });
         if (actionCount > 0) {
             if (structured.message) {
                 this.addConversationMessage('assistant', structured.message);
@@ -1372,6 +2859,7 @@ class AIAssistant {
         
         // Add elements to canvas
         if (elements.length > 0) {
+            const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
             // Clear current selection
             canvas.deselectAll();
             
@@ -1455,6 +2943,13 @@ class AIAssistant {
             if (addedCount > 0) {
                 window.historyManager?.pushState(canvas.elements);
                 window.app?.saveCanvasToStorage?.();
+                this.recordChangeSet(
+                    `Added ${addedCount} generated diagram objects`,
+                    'agent',
+                    beforeElements,
+                    canvas.elements || [],
+                    canvas.selectedElements.map((element) => element.id),
+                );
                 this.showStatus(`Added ${addedCount} elements to canvas`, 'success');
                 return addedCount;
             }

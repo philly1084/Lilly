@@ -54,6 +54,8 @@ It stays within KimiBuilt's AI workbench and operations scope.
 
 KimiBuilt exposes `self-reflection-update` for small, auditable learning steps after a user correction, model-card finding, or completed workflow reveals a durable improvement.
 
+Keep the rolling work journal and durable learning separate. The runtime should record a compact journal entry for completed turns so future agents can orient themselves, but `self-reflection-update` and `agent-notes-write` are only for stable reusable lessons, user/profile adaptations, skill improvements, or model-card notes.
+
 At the end of completed work, make one quiet durable-learning decision: apply `self-reflection-update` only when there is a stable reusable lesson, user/profile adaptation, skill improvement, or model-card audit note worth preserving. If there is no durable lesson, skip the write rather than adding filler.
 
 Use it when one reflection should update more than one durable surface, such as:

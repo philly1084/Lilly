@@ -132,6 +132,11 @@ describe('RemoteCliAgentTool', () => {
             gitCommit: 'abc1234',
             changedFiles: ['src/app.js'],
             publicHost: 'calan.demoserver2.buzz',
+            publicUrl: 'https://calan.demoserver2.buzz',
+            uiCheckReport: '/srv/apps/calan-calendar/ui-checks/report.json',
+            uiScreenshots: ['/srv/apps/calan-calendar/ui-checks/desktop.png'],
+            verifyCommands: ['node /app/bin/kimibuilt-ui-check.js https://calan.demoserver2.buzz --out ui-checks'],
+            verifyResults: ['UI check passed.'],
             whatChanged: 'Updated the calendar UI.',
             completionStatus: 'complete',
           },
@@ -148,6 +153,10 @@ describe('RemoteCliAgentTool', () => {
       continuitySummary: expect.stringContaining('Current conversation remote-cli-agent state'),
     }));
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('calan.demoserver2.buzz');
+    expect(runner.run.mock.calls[0][0].continuitySummary).toContain('https://calan.demoserver2.buzz');
+    expect(runner.run.mock.calls[0][0].continuitySummary).toContain('/srv/apps/calan-calendar/ui-checks/report.json');
+    expect(runner.run.mock.calls[0][0].continuitySummary).toContain('/srv/apps/calan-calendar/ui-checks/desktop.png');
+    expect(runner.run.mock.calls[0][0].continuitySummary).toContain('UI check passed.');
     expect(runner.run.mock.calls[0][0].continuitySummary).toContain('Updated the calendar UI.');
   });
 

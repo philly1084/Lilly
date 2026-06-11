@@ -16,7 +16,7 @@ Default rhythm:
 6. Edit with `apply_patch` for manual code/docs changes.
 7. Run focused checks tied to the changed surface.
 8. For visual work, run browser or `kimibuilt-ui-check` proof.
-9. For remote/deployed work, prove rollout, runtime logs, public URL, and UI when relevant.
+9. For remote/deployed work, baseline the active KimiBuilt server first, keep primary/secondary evidence separate, then prove rollout, runtime logs, public URL or tunnel, and UI when relevant.
 10. Finish with changed files, checks run, and any real blocker.
 
 Tool habits:

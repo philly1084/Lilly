@@ -504,6 +504,48 @@ function resolveCompletionStatus({ remoteAgentResult = '', blocker = '', blocker
   return 'unknown';
 }
 
+function hasUiProofRequiredIntent(text = '') {
+  const normalized = normalizeText(text).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return /\b(web[-\s]?chat|managed[-\s]?app(?:\s+preview)?|html artifact|generated html|tts|text[-\s]?to[-\s]?speech|document rendering|website|dashboard|frontend|front[-\s]?end|ui|user interface)\b/.test(normalized);
+}
+
+function hasUiProofEvidence(metadata = {}) {
+  const evidenceText = [
+    metadata.uiCheckReport,
+    ...(Array.isArray(metadata.uiScreenshots) ? metadata.uiScreenshots : []),
+    ...(Array.isArray(metadata.verifyCommands) ? metadata.verifyCommands : []),
+    ...(Array.isArray(metadata.verifyResults) ? metadata.verifyResults : []),
+  ].map((value) => normalizeText(value)).filter(Boolean).join('\n');
+
+  return Boolean(metadata.uiCheckReport)
+    || (Array.isArray(metadata.uiScreenshots) && metadata.uiScreenshots.length > 0)
+    || /\b(?:kimibuilt-ui-check|playwright|chromium|browser|screenshot|captureScreenshot|ui check|visual qa|visual verification)\b/i.test(evidenceText);
+}
+
+function applyUiProofRequirement(metadata = {}, task = '') {
+  const completionStatus = normalizeText(metadata.completionStatus);
+  if (!hasUiProofRequiredIntent(task)
+    || hasUiProofEvidence(metadata)
+    || completionStatus === 'blocked'
+    || completionStatus === 'running') {
+    return metadata;
+  }
+
+  const blocker = 'Missing browser/Playwright or kimibuilt-ui-check evidence for a UI-affecting remote task.';
+  const verifyResults = Array.isArray(metadata.verifyResults) ? metadata.verifyResults : [];
+  return {
+    ...metadata,
+    verifyResults: verifyResults.some((value) => /missing browser\/playwright|missing .*ui.*proof|kimibuilt-ui-check evidence/i.test(String(value || '')))
+      ? verifyResults
+      : [...verifyResults, blocker],
+    blocker: metadata.blocker || blocker,
+    completionStatus: 'blocked',
+  };
+}
+
 function hasTerminalRemoteCliProof(metadata = {}) {
   return metadata?.completionStatus === 'complete' || metadata?.completionStatus === 'blocked';
 }
@@ -1252,12 +1294,15 @@ function buildCodexAgentPrompt({
     priorThreadId ? '- Keep that thread id as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.' : '- If a thread id is available during the run, treat it as the durable continuation handle and report it as REMOTE_CLI_SESSION_ID when the run finishes.',
     adminMode ? '- Admin runner mode was requested. Keep privilege use scoped to the task and stop on repeated blocked commands.' : '',
     '- Work in the current workspace. Do not ask for SSH details unless the task explicitly needs a separate server not represented by this workspace.',
+    '- Remote Ops baseline-first rule: before mutating files, cluster resources, services, deploys, or public routes, run a read-only baseline for the active target or workspace. Capture host/workspace identity, user, architecture, OS release, uptime, git status, and k3s/kubectl readiness when relevant.',
+    '- Keep primary and secondary servers separate. Label which target, workspace, namespace, deployment, and public host you are using, re-baseline when switching targets, and never use proof from one server as proof for the other.',
     '- You are executing inside the remote Codex-agent gateway/container, not on the user desktop. Treat localhost and 127.0.0.1 as this runner container only; they are not the public app, the user local server, or proof of the live remote site.',
-    '- For live remote verification, prefer the explicit public URL, Kubernetes service DNS, or kubectl in the target namespace. Use localhost only when the user explicitly asks for a local dev-server check or when you clearly label it as runner-local diagnostics.',
+    '- For live remote verification, prefer the explicit public URL, Kubernetes service DNS, kubectl in the target namespace, or a clearly identified KimiBuilt tunnel endpoint. Use localhost only when the user explicitly asks for a local dev-server check or when you clearly label it as runner-local diagnostics.',
     'Git provider/source-control contract:',
     ...gitProviderLines,
     '- Inspect before editing, keep changes scoped, and verify the exact requested path.',
     '- For long work, emit concise milestone messages as normal assistant output before or after major phases such as inspect, edit, build/test, deploy, and verify. These messages are streamed through /events for the outer agent; do not wait silently until the final answer.',
+    '- If the work touches web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, websites, dashboards, or frontend UI, do not claim success from code or pod health alone. Run browser/Playwright evidence or `node /app/bin/kimibuilt-ui-check.js <url> --out ui-checks` when available, and report UI_CHECK_REPORT/UI_SCREENSHOTS. If UI proof cannot run, BLOCKER must say exactly why.',
     '- Do not call outer KimiBuilt tools from inside this run. Do not invent remote_code_run, remote_code_status, command, shell, executable, or args payloads here; use the workspace tools available to this Codex process.',
     '- If you need a second opinion, research/check help, or decomposition help from a support agent to finish the task, stop with marker lines SUPPORT_AGENT_REQUIRED=<precise question or help request>, SUPPORT_AGENT_CONTEXT=<workspace facts, files, commands, and blocker>, REMOTE_CLI_SESSION_ID=<thread id if known>, WORKSPACE=<path>, WHAT_CHANGED=<current progress>, VERIFY_COMMANDS=not_available, VERIFY_RESULTS=support agent needed, PUBLIC_URL=not_available, BLOCKER=support agent needed.',
     '- Do not use SUPPORT_AGENT_REQUIRED for decisions only the user can make; use USER_INPUT_REQUIRED for user choices, credentials, approvals, or product direction.',
@@ -1462,6 +1507,8 @@ function buildRemoteCliInstructions({
     'Treat the target as a persistent private workbench for the user: create project files, inspect state, build, test, deploy, and verify from the remote workspace when the task calls for it.',
     'Keep autonomy bounded by the task and existing safety rules. Do not mutate secrets, perform destructive deletes, force-push, install privileged packages, or leave the approved workspace without a clear user request.',
     'Start with compact discovery before edits: repo-map, changed-files, k8s-manifest-summary, and targeted-grep style commands are preferred over reading the whole codebase.',
+    'Baseline-first remote ops rule: before mutating files, cluster resources, services, deploys, or public routes, run a read-only baseline for the active target/workspace. Capture host/workspace identity, user, architecture, OS release, uptime, git status, and k3s/kubectl readiness when relevant.',
+    'Keep primary and secondary remote targets separate. Label which target, workspace, namespace, deployment, and public host you are using, re-baseline when switching targets, and never use proof from one server as proof for the other.',
     'For maintenance work, inspect only changed files, package scripts, manifests, rollout state, logs, and targeted symbols relevant to the task.',
     'For k3s delivery, use an inspect -> focused edit -> focused test/build -> image/deploy -> deploy-verify loop.',
     'For any k3s website/app create or edit, use a git-backed workspace as the source of truth before touching the live cluster.',
@@ -1479,7 +1526,7 @@ function buildRemoteCliInstructions({
     adminMode ? 'If a command is blocked by runner policy, sudo policy, missing credentials, or missing admin capability, do not retry the same blocked command. Switch to a non-privileged supported path when one exists; otherwise stop and report the exact approval, capability, credential, or sudoers change needed.' : '',
     'Track repeated errors. If the same command shape or root error fails twice without a materially different fix, stop that loop, summarize the blocker, and name the next distinct recovery option instead of wasting time retrying.',
     'If you need a user decision to finish the work, emit a concise marker line USER_INPUT_REQUIRED=<question/options> and stop; the KimiBuilt-side agent will forward that request and can steer a follow-up remote-cli-agent run with the user choice.',
-    'For website, dashboard, or frontend work, include visual QA in the build package: run Playwright/Chromium screenshots for desktop and mobile states when the target exposes a local preview or public URL.',
+    'For web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, website, dashboard, or frontend work, include visual QA in the build package: run Playwright/Chromium screenshots or `node /app/bin/kimibuilt-ui-check.js <url> --out ui-checks` for desktop and mobile states when the target exposes a local preview, public URL, or KimiBuilt tunnel endpoint.',
     'For website, dashboard, app, landing-page, and frontend mockup work, apply the Impressive Frontend Websites standard: infer a compact brief, make the first viewport specific to the product or workflow, build the usable experience instead of a generic placeholder, include real controls/states/interactions, and use assets that reveal the actual product, place, audience, workflow, or state.',
     'Design with restraint and specificity: avoid one-note palettes, oversized rounded/nested cards, decorative blobs, clipped text, horizontal overflow, broken image paths, and unreadable dropdown/menu/popover/dialog/tooltip states.',
     'After the first working screenshot, make at least one refinement pass for non-trivial frontend builds; fix layout, contrast, asset, interaction, and responsive issues before deploying or calling the UI ready.',
@@ -1540,7 +1587,10 @@ function buildDirectRemoteCodeTask({
     '- Treat references to "remote", "server", "site", or "remote into the server" as instructions to work inside this current gateway target and workspace.',
     '- Do not say that you cannot access the remote server. Do not ask the user for SSH details. Do not provide SSH instructions as the answer.',
     '- Use the local shell/tools available in this remote execution environment to inspect, edit, build, deploy, and verify as the task requires.',
+    '- Baseline first: before mutating files, cluster resources, services, deploys, or public routes, run a read-only baseline for the active target/workspace. Capture host/workspace identity, user, architecture, OS release, uptime, git status, and k3s/kubectl readiness when relevant.',
+    '- Keep primary and secondary targets separate. Re-baseline when switching targets and never use proof from one server as proof for the other.',
     '- Keep changes scoped to the requested workspace and task. Avoid destructive operations and secret changes unless explicitly requested.',
+    '- If the work touches web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, websites, dashboards, or frontend UI, require browser/Playwright or `kimibuilt-ui-check` evidence before claiming success; otherwise report the missing UI proof as BLOCKER.',
     '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
     '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<session id>, WORKSPACE=<path>, REMOTE_CLI_JOB_ID=<job id if known>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>, and any requested REMOTE_AGENT_RESULT=<value>.',
     continuitySummary ? 'Remote project continuity context:' : '',
@@ -1960,7 +2010,7 @@ class RemoteCliAgentsSdkRunner {
         transportLabel: 'codex-agent',
         transportDescription: '/api/codex-agent run/events contract',
       });
-      const runMetadata = extractRemoteCliRunMetadata(finalOutput);
+      const runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
       return {
         finalOutput,
         transport: 'codex-agent',
@@ -2477,6 +2527,8 @@ class RemoteCliAgentsSdkRunner {
           runMetadata = extractRemoteCliRunMetadata(finalOutput);
         }
       }
+
+      runMetadata = applyUiProofRequirement(runMetadata, task);
 
       const expandedFinalOutput = expandRemoteCliProofText(finalOutput);
       const staleRemoteJobIds = readMarkerLines(expandedFinalOutput, ['STALE_REMOTE_CLI_JOB_ID']);
