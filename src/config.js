@@ -443,21 +443,21 @@ const normalizedTtsRealtimeSynthesisLanes = Math.max(
     1,
     Math.min(
         8,
-        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LANES, 10) || 4,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LANES, 10) || 6,
     ),
 );
 const normalizedTtsRealtimeSynthesisLookahead = Math.max(
     normalizedTtsRealtimeSynthesisLanes,
     Math.min(
         12,
-        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LOOKAHEAD, 10) || 6,
+        parseInt(process.env.TTS_REALTIME_SYNTHESIS_LOOKAHEAD, 10) || 10,
     ),
 );
 const normalizedTtsRealtimeChunkTargetChars = Math.max(
     60,
     Math.min(
         normalizedKokoroMaxTextChars,
-        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 360,
+        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 280,
     ),
 );
 const normalizedTtsRealtimeInitialBufferChunks = Math.max(
@@ -660,10 +660,10 @@ const config = {
             synthesisLookahead: normalizedTtsRealtimeSynthesisLookahead,
             chunkTargetChars: normalizedTtsRealtimeChunkTargetChars,
             initialBufferChunks: normalizedTtsRealtimeInitialBufferChunks,
-            initialBufferSeconds: parseOptionalFloat(process.env.TTS_REALTIME_INITIAL_BUFFER_SECONDS) ?? 2.2,
+            initialBufferSeconds: parseOptionalFloat(process.env.TTS_REALTIME_INITIAL_BUFFER_SECONDS) ?? 1.4,
             initialBufferMaxWaitMs: Math.max(
                 0,
-                Math.min(2000, parseInt(process.env.TTS_REALTIME_INITIAL_BUFFER_MAX_WAIT_MS, 10) || 650),
+                Math.min(2000, parseInt(process.env.TTS_REALTIME_INITIAL_BUFFER_MAX_WAIT_MS, 10) || 450),
             ),
             firstChunkMaxSentences: normalizedTtsRealtimeFirstChunkSentences,
             secondChunkMaxSentences: normalizedTtsRealtimeSecondChunkSentences,

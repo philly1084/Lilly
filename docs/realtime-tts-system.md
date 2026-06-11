@@ -43,7 +43,7 @@ KimiBuilt web-chat, web-cli, and Notes TTS share a layered realtime path rather 
 7. k3s capacity
    - Keep `KOKORO_TTS_SYNTHESIS_CONCURRENCY=1` on ARM64 because in-process Kokoro fanout has previously crashed onnxruntime.
    - Scale `kokoro-tts` replicas for real parallelism.
-   - Current manifests request four Kokoro replicas and four browser scheduler lanes.
+   - Current manifests request six Kokoro replicas and six browser scheduler lanes.
    - The frontend scheduler keeps enough Kokoro chunks prepared that a slow second sentence does not wait for the full primary-provider timeout.
 
 ## Primary Knobs
@@ -62,4 +62,4 @@ KimiBuilt web-chat, web-cli, and Notes TTS share a layered realtime path rather 
 - `TTS_REALTIME_SKIP_STALLED_CHUNKS`
 - `TTS_REALTIME_EMERGENCY_PROVIDER`
 
-For quality, raise chunk target, initial-buffer, and stall budgets. For speed, lower chunk target and per-chunk timeouts, then add Kokoro replicas instead of increasing in-process Kokoro concurrency. If sentence two pauses, verify the live ConfigMap still has four lanes, six chunks of lookahead, a `TTS_REALTIME_CHUNK_TARGET_CHARS` value near `360`, `TTS_REALTIME_EMERGENCY_PROVIDER=kokoro`, chunk skipping disabled, and four ready `kokoro-tts` pods.
+For quality, raise chunk target, initial-buffer, and stall budgets. For speed, lower chunk target and per-chunk timeouts, then add Kokoro replicas instead of increasing in-process Kokoro concurrency. If sentence two pauses, verify the live ConfigMap still has six lanes, ten chunks of lookahead, a `TTS_REALTIME_CHUNK_TARGET_CHARS` value near `280`, `TTS_REALTIME_EMERGENCY_PROVIDER=kokoro`, chunk skipping disabled, and six ready `kokoro-tts` pods.

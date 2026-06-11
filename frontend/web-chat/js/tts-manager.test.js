@@ -338,7 +338,11 @@ describe('splitTextIntoSpeechChunks', () => {
     test('defaults realtime Kokoro chunks to a natural pacing size', () => {
         const manager = new WebChatTtsManager();
 
-        expect(manager.realtimePolicy.chunkTargetChars).toBe(360);
+        expect(manager.realtimePolicy.synthesisLanes).toBe(6);
+        expect(manager.realtimePolicy.synthesisLookahead).toBe(10);
+        expect(manager.realtimePolicy.chunkTargetChars).toBe(280);
+        expect(manager.realtimePolicy.initialBufferSeconds).toBe(1.4);
+        expect(manager.realtimePolicy.initialBufferMaxWaitMs).toBe(450);
         expect(manager.realtimePolicy.primaryTimeoutMs).toBe(8000);
         expect(manager.realtimePolicy.fallbackTimeoutMs).toBe(7000);
         expect(manager.realtimePolicy.chunkStallMs).toBe(2500);
