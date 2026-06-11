@@ -8027,6 +8027,129 @@ describe('ConversationOrchestrator', () => {
         }));
     });
 
+    test('judgment v2 keeps Notes research page builds to one verified follow-up before synthesis', async () => {
+        config.config.runtime.judgmentV2Enabled = true;
+
+        const llmClient = {
+            createResponse: jest.fn().mockResolvedValue(buildResponse('{"assistant_reply":"Added a concise research brief.","actions":[]}', 'resp_notes_research_v2')),
+            complete: jest.fn(),
+        };
+        const toolManager = {
+            getTool: jest.fn((toolId) => (
+                ['web-search', 'web-fetch', 'web-scrape'].includes(toolId)
+                    ? { id: toolId, description: toolId }
+                    : null
+            )),
+            executeTool: jest.fn(async (toolId) => {
+                if (toolId === 'web-search') {
+                    return {
+                        success: true,
+                        toolId,
+                        data: {
+                            query: 'penguin sources',
+                            results: [
+                                { title: 'Penguin facts', url: 'https://example.com/penguins', snippet: 'Penguin habitat overview.' },
+                                { title: 'Penguin conservation', url: 'https://example.com/conservation', snippet: 'Conservation notes.' },
+                            ],
+                        },
+                    };
+                }
+
+                return {
+                    success: true,
+                    toolId,
+                    data: {
+                        url: 'https://example.com/penguins',
+                        body: '<html><body><main>Penguins are flightless seabirds adapted to ocean life.</main></body></html>',
+                    },
+                };
+            }),
+        };
+        const sessionStore = {
+            get: jest.fn().mockResolvedValue({
+                id: 'notes-research-session',
+                metadata: {
+                    taskType: 'notes',
+                    clientSurface: 'notes',
+                },
+            }),
+            getRecentMessages: jest.fn().mockResolvedValue([]),
+            recordResponse: jest.fn().mockResolvedValue(undefined),
+            appendMessages: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        };
+        const memoryService = {
+            process: jest.fn().mockResolvedValue({ contextMessages: [], trace: null }),
+            rememberResponse: jest.fn(),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager,
+            sessionStore,
+            memoryService,
+        });
+
+        await orchestrator.executeConversation({
+            input: 'Create a research brief about penguins with sources and key findings.',
+            sessionId: 'notes-research-session',
+            taskType: 'notes',
+            clientSurface: 'notes',
+            metadata: {
+                taskType: 'notes',
+                clientSurface: 'notes',
+            },
+            stream: false,
+        });
+
+        const executedTools = toolManager.executeTool.mock.calls.map((call) => call[0]);
+        expect(executedTools).toEqual(['web-search']);
+    });
+
+    test('judgment v2 limits planner-proposed Notes research batches to one search step', async () => {
+        config.config.runtime.judgmentV2Enabled = true;
+
+        const llmClient = {
+            createResponse: jest.fn(),
+            complete: jest.fn().mockResolvedValue(JSON.stringify({
+                steps: [
+                    { tool: 'web-fetch', reason: 'Fetch source one.', params: { url: 'https://example.com/one' } },
+                    { tool: 'web-search', reason: 'Search for the topic.', params: { query: 'penguins' } },
+                    { tool: 'web-scrape', reason: 'Scrape source two.', params: { url: 'https://example.com/two', browser: true } },
+                ],
+            })),
+        };
+        const orchestrator = new ConversationOrchestrator({
+            llmClient,
+            toolManager: null,
+            sessionStore: null,
+            memoryService: null,
+        });
+
+        const plan = await orchestrator.planToolUse({
+            objective: 'Create a research brief about penguins with sources and key findings.',
+            executionProfile: 'notes',
+            toolPolicy: {
+                executionProfile: 'notes',
+                allowedToolIds: ['web-search', 'web-fetch', 'web-scrape'],
+                candidateToolIds: ['web-search', 'web-fetch', 'web-scrape'],
+                toolContracts: {},
+                classification: {
+                    taskFamily: 'notes-edit',
+                    surfaceMode: 'notes-page',
+                    groundingRequirement: 'not-needed',
+                    preferredExecutionPath: 'plan-first',
+                    confidence: 0.9,
+                },
+            },
+            taskType: 'notes',
+            clientSurface: 'notes',
+        });
+
+        expect(plan).toEqual([
+            expect.objectContaining({ tool: 'web-search' }),
+        ]);
+    });
+
     test('judgment v2 uses the active task frame for abbreviated follow-ups and traces isolation failures', async () => {
         config.config.runtime.judgmentV2Enabled = true;
 

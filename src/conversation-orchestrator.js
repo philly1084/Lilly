@@ -4745,6 +4745,46 @@ function limitRemoteCliAgentStepsPerPlan(plan = []) {
     });
 }
 
+function isNotesResearchLimitedPolicy(toolPolicy = {}) {
+    return toolPolicy?.classification?.surfaceMode === 'notes-page'
+        || toolPolicy?.classification?.taskFamily === 'notes-edit'
+        || toolPolicy?.executionProfile === NOTES_EXECUTION_PROFILE;
+}
+
+function isResearchSupportToolId(toolId = '') {
+    return ['web-search', 'web-fetch', 'web-scrape'].includes(String(toolId || '').trim());
+}
+
+function limitNotesResearchStepsPerPlan(plan = [], toolPolicy = {}, toolEvents = []) {
+    const normalizedPlan = Array.isArray(plan) ? plan : [];
+    if (normalizedPlan.length < 2 || !isNotesResearchLimitedPolicy(toolPolicy)) {
+        return normalizedPlan;
+    }
+
+    if (hasGroundedResearchToolResult(toolEvents)) {
+        return normalizedPlan.filter((step) => !isResearchSupportToolId(step?.tool));
+    }
+
+    const preferredSearchIndex = normalizedPlan.findIndex((step) => String(step?.tool || '').trim() === 'web-search');
+    let keptFallbackResearchStep = false;
+    return normalizedPlan.filter((step, index) => {
+        if (!isResearchSupportToolId(step?.tool)) {
+            return true;
+        }
+
+        if (preferredSearchIndex >= 0) {
+            return index === preferredSearchIndex;
+        }
+
+        if (!keptFallbackResearchStep) {
+            keptFallbackResearchStep = true;
+            return true;
+        }
+
+        return false;
+    });
+}
+
 function parseToolCallArguments(rawArguments = '{}') {
     if (!rawArguments) {
         return {};
@@ -5391,6 +5431,13 @@ function buildResearchFollowupPlanFromToolEvents({ objective = '', toolPolicy = 
         return [];
     }
 
+    const notesPageEdit = toolPolicy?.classification?.surfaceMode === 'notes-page'
+        || toolPolicy?.classification?.taskFamily === 'notes-edit'
+        || toolPolicy?.executionProfile === NOTES_EXECUTION_PROFILE;
+    if (notesPageEdit && hasGroundedResearchToolResult(toolEvents)) {
+        return [];
+    }
+
     const lastSearchEvent = getLastSuccessfulToolEvent(toolEvents, 'web-search');
     const searchResults = Array.isArray(lastSearchEvent?.result?.data?.results)
         ? lastSearchEvent.result.data.results
@@ -5399,7 +5446,9 @@ function buildResearchFollowupPlanFromToolEvents({ objective = '', toolPolicy = 
         return [];
     }
 
-    const maxPages = hasDocumentWorkflowIntentText(objective)
+    const maxPages = notesPageEdit
+        ? 1
+        : hasDocumentWorkflowIntentText(objective)
         ? Math.min(2, normalizeResearchFollowupPageCount())
         : normalizeResearchFollowupPageCount();
     const followupCandidates = [];
@@ -5422,7 +5471,7 @@ function buildResearchFollowupPlanFromToolEvents({ objective = '', toolPolicy = 
         return [];
     }
 
-    const preferRenderedFollowups = hasCurrentInfoIntentText(objective);
+    const preferRenderedFollowups = !notesPageEdit && hasCurrentInfoIntentText(objective);
     if (preferRenderedFollowups && toolPolicy.candidateToolIds.includes('web-scrape')) {
         return followupCandidates.map((url) => ({
             tool: 'web-scrape',
@@ -10428,6 +10477,19 @@ class ConversationOrchestrator extends EventEmitter {
 
                 const repeatedPlanReport = filterRepeatedPlanStepsWithReport(nextPlan, executedStepSignatures, executedStepSignatureCounts);
                 nextPlan = repeatedPlanReport.accepted;
+                const notesResearchLimitedPlan = limitNotesResearchStepsPerPlan(nextPlan, toolPolicy, toolEvents);
+                if (notesResearchLimitedPlan.length !== nextPlan.length) {
+                    executionTrace.push(createExecutionTraceEntry({
+                        type: 'planning',
+                        name: `Notes research steps limited in round ${round}`,
+                        details: {
+                            round,
+                            removed: nextPlan.length - notesResearchLimitedPlan.length,
+                            reason: 'Notes page edits use lightweight supporting research and synthesize after the first grounded result.',
+                        },
+                    }));
+                    nextPlan = notesResearchLimitedPlan;
+                }
                 const remoteCliLimitedPlan = limitRemoteCliAgentStepsPerPlan(nextPlan);
                 if (remoteCliLimitedPlan.length !== nextPlan.length) {
                     executionTrace.push(createExecutionTraceEntry({
@@ -13515,7 +13577,7 @@ class ConversationOrchestrator extends EventEmitter {
                 })));
             }
             if (validated.steps.length > 0 && !hasRejectedDirectSandboxBuild(validated)) {
-                return validated.steps;
+                return limitNotesResearchStepsPerPlan(validated.steps, toolPolicy, toolEvents);
             }
         }
 
@@ -13529,11 +13591,12 @@ class ConversationOrchestrator extends EventEmitter {
                 toolPolicy,
                 toolEvents,
             }).slice(0, MAX_PLAN_STEPS);
-            return validatePlan(fallbackPlan, {
+            const validatedFallback = validatePlan(fallbackPlan, {
                 candidateToolIds: toolPolicy.candidateToolIds,
                 contracts: toolPolicy.toolContracts || {},
                 allowUnsupportedManagedApp: shouldAllowManagedAppPlan({ objective, executionProfile, toolPolicy }),
             }).steps;
+            return limitNotesResearchStepsPerPlan(validatedFallback, toolPolicy, toolEvents);
         };
 
         if (plannerReturnedSteps && Array.isArray(parsed?.steps) && parsed.steps.length === 0) {
