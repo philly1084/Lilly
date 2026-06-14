@@ -25,6 +25,7 @@ data/piper/voices/*
 # Logs
 *.log
 npm-debug.log*
+ui-checks/
 
 # OS
 .DS_Store
