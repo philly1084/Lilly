@@ -25,6 +25,7 @@
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <link rel="stylesheet" href="css/voxel.css?v=20260531a">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
+    <link rel="stylesheet" href="css/enterprise.css?v=20260614a">
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -1485,7 +1486,7 @@
         }
     </style>
 </head>
-<body data-theme="voxel" data-ui-surface="web-cli">
+<body data-theme="dark" data-chat-theme="command-center" data-ui-surface="web-cli">
     <div class="app-container">
         <!-- Header -->
         <header class="header">
@@ -1519,8 +1520,8 @@
                 <button id="ttsToggleButton" class="btn btn-sm" data-short="TTS" onclick="app.toggleTtsAutoPlayFromToolbar()" title="Read replies aloud" aria-label="Read replies aloud" disabled>
                     <span>Voice</span>
                 </button>
-                <button class="btn btn-sm" data-short="Bud" onclick="app.focusVoxelCreator()" title="Voxel buddy" aria-label="Focus voxel buddy">
-                    <span>Buddy</span>
+                <button class="btn btn-sm voxel-only" data-short="Agent" onclick="app.focusVoxelCreator()" title="Agent companion console" aria-label="Open agent companion console">
+                    <span>Agent</span>
                 </button>
                 <button class="btn btn-sm" onclick="app.showShortcuts()" title="Help (F1)" aria-label="Show keyboard shortcuts">?</button>
                 <a href="/" class="btn btn-sm" aria-label="Go to home">Home</a>
@@ -1536,7 +1537,7 @@
                 <!-- Input Area -->
                 <div class="input-container">
                     <div class="input-wrapper">
-                        <button id="voxelPetButton" class="voxel-prompt-pet" type="button" onclick="app.focusVoxelCreator({ source: 'prompt' })" title="Open voxel companion" aria-label="Open voxel companion creator">
+                        <button id="voxelPetButton" class="voxel-prompt-pet" type="button" onclick="app.focusVoxelCreator({ source: 'prompt' })" title="Open agent companion" aria-label="Open agent companion creator">
                             <span id="voxelPetMini" class="voxel-prompt-pet-stage" aria-hidden="true"></span>
                         </button>
                         <span class="input-prompt">[##]</span>
@@ -1544,15 +1545,15 @@
                             type="text" 
                             id="commandInput" 
                             name="cli-command"
-                            placeholder="Ask Lilly, open /files, list /tools, or type /help..."
+                            placeholder="Ask KimiBuilt, open /files, list /tools, or type /help..."
                             autocomplete="new-password"
                             autocorrect="off"
                             autocapitalize="off"
                             spellcheck="false"
                         >
                     </div>
-                    <div id="voxelToolbelt" class="voxel-toolbelt" aria-label="Voxel coding toolbelt">
-                        <button type="button" class="voxel-tool-chip active" data-tool="chat" onclick="app.useVoxelQuickTool('chat')" title="Chat with the coding buddy">
+                    <div id="voxelToolbelt" class="voxel-toolbelt" aria-label="Agent quick tools">
+                        <button type="button" class="voxel-tool-chip active" data-tool="chat" onclick="app.useVoxelQuickTool('chat')" title="Chat with the agent">
                             <span class="voxel-tool-icon" aria-hidden="true"></span>
                             <span>Chat</span>
                         </button>
@@ -1569,7 +1570,7 @@
                         <span id="sessionInfo">Session: none</span>
                         <span>•</span>
                         <span id="cliStatus" class="cli-status ready">Ready</span>
-                        <span id="voxelPetStatus" class="voxel-pet-status">Voxel companion ready</span>
+                        <span id="voxelPetStatus" class="voxel-pet-status">Agent companion available</span>
                         <span id="queueIndicator" class="queue-indicator hidden" title="Commands queued"></span>
                         <span id="commandAssist" class="command-assist is-ready">Type /help for the command menu, or / for autocomplete.</span>
                         <span class="shortcut-hint">Ctrl+L=Clear | ↑↓=History | F1=Help</span>
@@ -1582,11 +1583,11 @@
             </div>
 
             <!-- Voxel Creator Modal -->
-            <aside id="voxelDock" class="voxel-creator-modal hidden" role="dialog" aria-modal="true" aria-labelledby="voxelCreatorTitle" aria-label="Voxel buddy console">
+            <aside id="voxelDock" class="voxel-creator-modal hidden" role="dialog" aria-modal="true" aria-labelledby="voxelCreatorTitle" aria-label="Agent companion console">
                 <div class="voxel-creator-scrim" onclick="app.closeVoxelCreator()" aria-hidden="true"></div>
                 <section class="voxel-panel voxel-creator-panel">
                     <div class="voxel-panel-head">
-                        <span id="voxelCreatorTitle" class="voxel-panel-title">Voxel Coding Buddy</span>
+                        <span id="voxelCreatorTitle" class="voxel-panel-title">Agent Companion Console</span>
                         <div class="voxel-panel-actions">
                             <button class="voxel-icon-btn" onclick="app.handlePetAction('jump')" title="Jump" aria-label="Jump">J</button>
                             <button class="voxel-icon-btn" onclick="app.generateRandomVoxelPet()" title="Random voxel character" aria-label="Random voxel character">R</button>
@@ -1635,7 +1636,7 @@
                         <div class="voxel-agent-toolbox">
                             <button class="voxel-tool-card" onclick="app.useVoxelQuickTool('chat')">
                                 <strong>Chat</strong>
-                                <span>Ask Lilly directly</span>
+                            <span>Ask KimiBuilt directly</span>
                             </button>
                             <button class="voxel-tool-card" onclick="app.useVoxelQuickTool('tools')">
                                 <strong>Tools</strong>
@@ -1646,9 +1647,9 @@
                                 <span>Open generated session files</span>
                             </button>
                         </div>
-                        <div class="voxel-creator-label">AI voxel buddy request</div>
+                        <div class="voxel-creator-label">Agent companion request</div>
                         <div class="voxel-prompt-row">
-                            <input id="voxelPetPrompt" type="text" placeholder="AI voxel coding buddy prompt..." autocomplete="off" spellcheck="false">
+                            <input id="voxelPetPrompt" type="text" placeholder="Agent companion prompt..." autocomplete="off" spellcheck="false">
                             <button class="btn btn-sm" onclick="app.generateVoxelPetFromInput()">Spawn</button>
                             <button class="btn btn-sm btn-primary" onclick="app.generateAIVoxelPetFromInput()">AI</button>
                         </div>

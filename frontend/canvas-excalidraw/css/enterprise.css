@@ -1,0 +1,27 @@
+body.canvas-core-mode {
+    --radius-lg: 8px;
+}
+
+body.canvas-core-mode .properties-panel,
+body.canvas-core-mode .toolbar,
+body.canvas-core-mode .canvas-actions,
+body.canvas-core-mode .model-selector,
+body.canvas-core-mode .dropdown-menu,
+body.canvas-core-mode .modal-content,
+body.canvas-core-mode .ai-panel,
+body.canvas-core-mode .layers-panel {
+    border-radius: 8px;
+}
+
+body.canvas-core-mode .menu-btn,
+body.canvas-core-mode .canvas-actions button,
+body.canvas-core-mode .top-bar-right button,
+body.canvas-core-mode .tool-btn,
+body.canvas-core-mode .action-btn,
+body.canvas-core-mode .ai-context-btn,
+body.canvas-core-mode .ai-generate-btn,
+body.canvas-core-mode select,
+body.canvas-core-mode input,
+body.canvas-core-mode textarea {
+    border-radius: 6px;
+}

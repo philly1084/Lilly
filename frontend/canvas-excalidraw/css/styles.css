@@ -1,4 +1,4 @@
-/* Lilly sketch-inspired Canvas Styles */
+/* Lilly Canvas enterprise workspace styles */
 
 :root {
     --bg-primary: #ffffff;
@@ -32,24 +32,27 @@
 }
 
 body.canvas-core-mode {
-    --bg-primary: #f4efe6;
-    --bg-secondary: #fcfaf6;
-    --bg-tertiary: #e3dacd;
-    --text-primary: #1f2b2a;
-    --text-secondary: #67706a;
-    --border-color: #d7cebf;
-    --accent-color: #0f766e;
-    --accent-hover: #115e59;
-    --selection-color: #0f766e;
-    --selection-bg: rgba(15, 118, 110, 0.12);
-    --toolbar-bg: rgba(252, 250, 246, 0.92);
-    --panel-bg: rgba(252, 250, 246, 0.96);
-    --canvas-bg: #efe7da;
-    --grid-color: #d4c6b2;
-    --grid-opacity: 0.38;
-    --shadow-sm: 0 10px 24px rgba(58, 47, 34, 0.08);
-    --shadow-md: 0 16px 40px rgba(58, 47, 34, 0.12);
-    --shadow-lg: 0 24px 64px rgba(58, 47, 34, 0.18);
+    --bg-primary: #0f141a;
+    --bg-secondary: #171e26;
+    --bg-tertiary: #202832;
+    --text-primary: #edf2f7;
+    --text-secondary: #aab8c7;
+    --border-color: rgba(167, 180, 194, 0.18);
+    --accent-color: #5fb3a9;
+    --accent-hover: #72c3ba;
+    --selection-color: #5fb3a9;
+    --selection-bg: rgba(95, 179, 169, 0.14);
+    --toolbar-bg: rgba(18, 24, 31, 0.98);
+    --panel-bg: #151c23;
+    --canvas-bg: #0f141a;
+    --grid-color: #28323d;
+    --grid-opacity: 0.42;
+    --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.04);
+    --shadow-md: 0 14px 34px rgba(0, 0, 0, 0.24);
+    --shadow-lg: 0 22px 54px rgba(0, 0, 0, 0.34);
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
 }
 
 .canvas-core-mode .core-hidden {
@@ -60,11 +63,12 @@ body.canvas-core-mode {
     top: 12px;
     left: 12px;
     right: 12px;
-    height: 56px;
-    border: 1px solid rgba(215, 206, 191, 0.9);
-    border-radius: 20px;
+    height: 54px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
     background: var(--toolbar-bg);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow-sm);
 }
 
 .canvas-core-mode .logo {
@@ -73,13 +77,15 @@ body.canvas-core-mode {
 }
 
 .canvas-core-mode .toolbar {
-    top: 84px;
-    left: 16px;
-    padding: 10px;
-    gap: 8px;
-    border: 1px solid rgba(215, 206, 191, 0.92);
+    top: 78px;
+    left: 12px;
+    padding: 8px;
+    gap: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
     background: var(--toolbar-bg);
     backdrop-filter: blur(12px);
+    box-shadow: var(--shadow-md);
 }
 
 .canvas-core-mode .tool-category-content {
@@ -94,30 +100,33 @@ body.canvas-core-mode {
 .canvas-core-mode .tool-btn {
     width: 42px;
     height: 42px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
 }
 
 .canvas-core-mode .canvas-container {
-    top: 84px;
+    top: 78px;
     left: 0;
-    right: 344px;
+    right: 340px;
     bottom: 0;
 }
 
 .canvas-core-mode .properties-panel {
-    top: 84px;
-    right: 16px;
-    bottom: 16px;
+    top: 78px;
+    right: 12px;
+    bottom: 12px;
     width: 320px;
-    border: 1px solid rgba(215, 206, 191, 0.92);
-    border-radius: 24px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
     background: var(--panel-bg);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
 }
 
 .canvas-core-mode .panel-header {
-    padding: 18px 20px 14px;
-    background: linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0));
+    padding: 16px 18px 14px;
+    background: #18212a;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .canvas-core-mode .panel-content {
@@ -127,14 +136,15 @@ body.canvas-core-mode {
 
 .canvas-core-mode .canvas-actions,
 .canvas-core-mode .model-selector {
-    border: 1px solid rgba(215, 206, 191, 0.9);
-    background: rgba(255, 255, 255, 0.56);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: #0f151b;
 }
 
 .canvas-core-mode .bottom-controls {
-    left: 132px;
-    right: 360px;
-    bottom: 16px;
+    left: 124px;
+    right: 352px;
+    bottom: 12px;
 }
 
 .canvas-core-mode #strokeColorSection .color-tabs,
@@ -151,7 +161,7 @@ body.canvas-core-mode {
 }
 
 .canvas-core-mode .color-section {
-    border-color: rgba(215, 206, 191, 0.92);
+    border-color: var(--border-color);
 }
 
 .canvas-core-mode .color-picker,
@@ -165,6 +175,73 @@ body.canvas-core-mode {
     justify-content: flex-start;
     padding: 12px 14px;
     font-weight: 600;
+}
+
+.canvas-core-mode .menu-btn,
+.canvas-core-mode .canvas-actions button,
+.canvas-core-mode .top-bar-right button,
+.canvas-core-mode .tool-btn,
+.canvas-core-mode .action-btn,
+.canvas-core-mode .ai-context-btn,
+.canvas-core-mode .ai-generate-btn,
+.canvas-core-mode select,
+.canvas-core-mode input,
+.canvas-core-mode textarea {
+    border-radius: var(--radius-md);
+}
+
+.canvas-core-mode .tool-btn:hover,
+.canvas-core-mode .tool-btn:focus-visible,
+.canvas-core-mode .canvas-actions button:hover,
+.canvas-core-mode .top-bar-right button:hover {
+    background: #23303a;
+    border-color: rgba(114, 195, 186, 0.42);
+    color: var(--text-primary);
+    outline: none;
+}
+
+.canvas-core-mode .tool-btn.active,
+.canvas-core-mode .tool-btn.active:hover {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #061412;
+    box-shadow: none;
+}
+
+.canvas-core-mode .tool-btn .key-hint,
+.canvas-core-mode .tool-category-header {
+    color: var(--text-secondary);
+}
+
+.canvas-core-mode .tool-btn.active .key-hint {
+    color: #061412;
+}
+
+.theme-token {
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 5px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.canvas-core-mode .theme-picker .dropdown-item span[style] {
+    display: none;
+}
+
+.canvas-core-mode .tool-btn[data-tool="sticky"] .key-hint {
+    font-size: 0;
+}
+
+.canvas-core-mode .tool-btn[data-tool="sticky"] .key-hint::after {
+    content: "S";
+    font-size: 10px;
 }
 
 [data-theme="dark"] {
@@ -3680,4 +3757,50 @@ body.drag-over::after {
 
 .tooltip.visible {
     opacity: 1;
+}
+
+/* Enterprise-mode accessibility overrides intentionally sit last. */
+.canvas-core-mode .properties-panel,
+.canvas-core-mode .toolbar,
+.canvas-core-mode .canvas-actions,
+.canvas-core-mode .model-selector {
+    border-radius: var(--radius-lg);
+}
+
+.canvas-core-mode .custom-color-input,
+.canvas-core-mode .opacity-slider,
+.canvas-core-mode input[type="checkbox"] {
+    color: var(--text-primary);
+    background-color: var(--bg-secondary);
+    accent-color: var(--accent-color);
+}
+
+.canvas-core-mode .stroke-btn,
+.canvas-core-mode .stroke-style-btn,
+.canvas-core-mode .roughness-btn,
+.canvas-core-mode .edge-btn,
+.canvas-core-mode .font-size-btn {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.canvas-core-mode .stroke-btn.active,
+.canvas-core-mode .stroke-style-btn.active,
+.canvas-core-mode .roughness-btn.active,
+.canvas-core-mode .edge-btn.active,
+.canvas-core-mode .font-size-btn.active,
+.canvas-core-mode .action-btn.active {
+    color: #061412;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+.canvas-core-mode .action-btn.danger {
+    color: #ff8a80;
+}
+
+.canvas-core-mode .action-btn.danger:hover {
+    color: #ffd4cf;
+    background: rgba(255, 138, 128, 0.14);
 }

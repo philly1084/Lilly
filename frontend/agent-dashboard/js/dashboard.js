@@ -306,6 +306,12 @@ class Dashboard {
         document.getElementById('orchestrationNeuralWaveResearchMode')?.addEventListener('change', (e) => {
             this.setCheckboxValue('settingsNeuralWaveResearchMode', e.target.value === 'true');
         });
+        document.getElementById('settingsPerplexityResearchLevel')?.addEventListener('change', (e) => {
+            this.setInputValue('orchestrationPerplexityResearchLevel', e.target.value || 'auto');
+        });
+        document.getElementById('orchestrationPerplexityResearchLevel')?.addEventListener('change', (e) => {
+            this.setInputValue('settingsPerplexityResearchLevel', e.target.value || 'auto');
+        });
         document.getElementById('settingsAfterProcessAuditEnabled')?.addEventListener('change', (e) => {
             this.setInputValue('orchestrationAfterProcessAuditEnabled', String(e.target.checked));
         });
@@ -3429,6 +3435,7 @@ class Dashboard {
                     applyAlignmentGuidance: document.getElementById('orchestrationApplyAlignmentGuidance').value === 'true',
                     agentDirectedRuntime: document.getElementById('orchestrationAgentDirectedRuntime').value === 'true',
                     neuralWaveResearchMode: document.getElementById('orchestrationNeuralWaveResearchMode').value === 'true',
+                    perplexityResearchLevel: document.getElementById('orchestrationPerplexityResearchLevel').value || 'auto',
                     afterProcessAuditEnabled: document.getElementById('orchestrationAfterProcessAuditEnabled').value === 'true',
                     asyncRuntimeEnabled: document.getElementById('orchestrationAsyncRuntimeEnabled').value === 'true',
                     asyncRuntimeWebChatParallel: document.getElementById('orchestrationAsyncRuntimeWebChatParallel').value === 'true',
@@ -3453,6 +3460,7 @@ class Dashboard {
                     ...existing,
                     agentDirectedRuntime: document.getElementById('settingsAgentDirectedRuntime').checked,
                     neuralWaveResearchMode: document.getElementById('settingsNeuralWaveResearchMode').checked,
+                    perplexityResearchLevel: document.getElementById('settingsPerplexityResearchLevel').value || 'auto',
                     afterProcessAuditEnabled: document.getElementById('settingsAfterProcessAuditEnabled').checked,
                     asyncRuntimeEnabled: document.getElementById('settingsAsyncRuntimeEnabled').checked,
                     asyncRuntimeWebChatParallel: document.getElementById('settingsAsyncRuntimeWebChatParallel').checked,
@@ -6429,6 +6437,8 @@ class Dashboard {
         this.setCheckboxValue('settingsAgentDirectedRuntime', orchestration.agentDirectedRuntime === true);
         this.setInputValue('orchestrationNeuralWaveResearchMode', String(orchestration.neuralWaveResearchMode === true));
         this.setCheckboxValue('settingsNeuralWaveResearchMode', orchestration.neuralWaveResearchMode === true);
+        this.setInputValue('orchestrationPerplexityResearchLevel', orchestration.perplexityResearchLevel || 'auto');
+        this.setInputValue('settingsPerplexityResearchLevel', orchestration.perplexityResearchLevel || 'auto');
         this.setInputValue('orchestrationAfterProcessAuditEnabled', String(orchestration.afterProcessAuditEnabled !== false));
         this.setCheckboxValue('settingsAfterProcessAuditEnabled', orchestration.afterProcessAuditEnabled !== false);
         this.setInputValue('orchestrationAsyncRuntimeEnabled', String(asyncRuntime.requestedEnabled === true || asyncRuntime.enabled === true));

@@ -12,7 +12,14 @@ jest.mock('../../../../config', () => ({
   },
 }));
 
+jest.mock('../../../../routes/admin/settings.controller', () => ({
+  getEffectiveOrchestrationConfig: jest.fn(() => ({
+    perplexityResearchLevel: 'auto',
+  })),
+}));
+
 const { WebSearchTool } = require('./WebSearchTool');
+const settingsController = require('../../../../routes/admin/settings.controller');
 
 describe('WebSearchTool', () => {
   let originalFetch;
@@ -20,6 +27,9 @@ describe('WebSearchTool', () => {
   beforeEach(() => {
     originalFetch = global.fetch;
     global.fetch = jest.fn();
+    settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+      perplexityResearchLevel: 'auto',
+    });
   });
 
   afterEach(() => {
@@ -237,6 +247,76 @@ describe('WebSearchTool', () => {
         url: 'https://example.com/postgres',
       }),
     ]);
+  });
+
+  test('admin regular research level caps explicit research at raw Perplexity search', async () => {
+    settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+      perplexityResearchLevel: 'regular',
+    });
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'search-regular-policy',
+        results: [],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const tracker = {
+      recordNetworkCall: jest.fn(),
+    };
+
+    const result = await tool.handler({
+      query: 'managed Postgres providers for startups',
+      prompt: 'Please do research on managed Postgres providers for startups.',
+      researchMode: 'search',
+    }, {}, tracker);
+
+    const [endpoint, request] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+
+    expect(endpoint).toBe('https://api.perplexity.ai/search');
+    expect(payload.query).toBe('managed Postgres providers for startups modern');
+    expect(result.researchMode).toBe('search');
+  });
+
+  test('admin deep research level escalates explicit research to Sonar Deep Research', async () => {
+    settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
+      perplexityResearchLevel: 'deep',
+    });
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'sonar-deep-policy',
+        model: 'sonar-deep-research',
+        choices: [{
+          message: {
+            content: 'Deep research synthesis.',
+          },
+        }],
+        search_results: [],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const tracker = {
+      recordNetworkCall: jest.fn(),
+    };
+
+    const result = await tool.handler({
+      query: 'managed Postgres providers for startups',
+      prompt: 'Please research managed Postgres providers for startups.',
+      researchMode: 'search',
+    }, {}, tracker);
+
+    const [endpoint, request] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+
+    expect(endpoint).toBe('https://api.perplexity.ai/v1/sonar');
+    expect(payload.model).toBe('sonar-deep-research');
+    expect(result.researchMode).toBe('sonar-deep-research');
   });
 
   test('uses Sonar for grounded answers and image URL hotlisting', async () => {

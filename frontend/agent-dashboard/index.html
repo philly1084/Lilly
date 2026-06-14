@@ -571,6 +571,18 @@
                                         <p class="text-muted">Use small early agent waves and chunk growth for broad research or document work, then converge through two larger review passes.</p>
                                     </div>
                                     <div class="form-group">
+                                        <label for="orchestrationPerplexityResearchLevel">Perplexity research level</label>
+                                        <select class="form-control" id="orchestrationPerplexityResearchLevel">
+                                            <option value="auto">Auto</option>
+                                            <option value="regular">Regular search</option>
+                                            <option value="pro">Pro research</option>
+                                            <option value="deep">Deep research</option>
+                                        </select>
+                                        <p class="text-muted">Controls whether agents use raw Search, Agent pro-search, or Sonar Deep Research for Perplexity-backed research.</p>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
                                         <label for="orchestrationAfterProcessAuditEnabled">After-process audit</label>
                                         <select class="form-control" id="orchestrationAfterProcessAuditEnabled">
                                             <option value="true">Enabled</option>
@@ -1597,6 +1609,18 @@
                                                     <input type="checkbox" id="settingsNeuralWaveResearchMode">
                                                     <span class="toggle-slider"></span>
                                                 </label>
+                                            </div>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
+                                                    <span class="feature-name">Perplexity research level</span>
+                                                    <span class="feature-desc">Choose how aggressively agents use Perplexity raw Search, pro-search, or Sonar Deep Research.</span>
+                                                </div>
+                                                <select class="form-control feature-select" id="settingsPerplexityResearchLevel">
+                                                    <option value="auto">Auto</option>
+                                                    <option value="regular">Regular search</option>
+                                                    <option value="pro">Pro research</option>
+                                                    <option value="deep">Deep research</option>
+                                                </select>
                                             </div>
                                             <div class="feature-item">
                                                 <div class="feature-info">

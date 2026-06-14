@@ -1,0 +1,117 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://localhost:3000/web-cli/",
+  "originalUrl": "http://localhost:3000/web-cli/",
+  "authenticated": false,
+  "generatedAt": "2026-06-14T02:36:15.466Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-web-cli\\kimibuilt-web-cli-desktop.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://localhost:3000/web-cli/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 727,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Connected auto auto gpt-image-2 gpt-image-1.5 gpt-image-1 gpt-image-1-mini New Chat Sessions Clear Export Theme Voice ? Home KimiBuilt Web CLI 6/13/2026, 11:36:12 PM AGENT COMMAND SURFACE Operate chat, tools, files, and remote agents from one browser console. Use plain language or slash commands. Responses stream through the same backend session contract as the API. TRANSPORT /api/chat SSE MODEL auto SESSION pending Ask Start a normal request /tools Inspect available actions /f",
+        "headings": [
+          "Operate chat, tools, files, and remote agents from one browser console."
+        ],
+        "interactiveControls": 38,
+        "textContrast": {
+          "checked": 49,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-web-cli\\kimibuilt-web-cli-mobile.png",
+      "metrics": {
+        "title": "KimiBuilt Web CLI",
+        "url": "http://localhost:3000/web-cli/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 677,
+        "bodyTextPreview": "KIMIBUILT WEB CLI Connected auto auto gpt-image-2 gpt-image-1.5 gpt-image-1 gpt-image-1-mini KimiBuilt Web CLI 6/13/2026, 11:36:14 PM AGENT COMMAND SURFACE Operate chat, tools, files, and remote agents from one browser console. Use plain language or slash commands. Responses stream through the same backend session contract as the API. TRANSPORT /api/chat SSE MODEL auto SESSION pending Ask Start a normal request /tools Inspect available actions /files Review generated artifacts /remote status Che",
+        "headings": [
+          "Operate chat, tools, files, and remote agents from one browser console."
+        ],
+        "interactiveControls": 38,
+        "textContrast": {
+          "checked": 41,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "warning",
+          "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-web-cli\\kimibuilt-web-cli-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-web-cli\\kimibuilt-web-cli-mobile.png"
+    ],
+    "issues": []
+  }
+}

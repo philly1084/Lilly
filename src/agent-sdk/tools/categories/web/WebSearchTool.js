@@ -4,8 +4,10 @@
 
 const { ToolBase } = require('../../ToolBase');
 const { config } = require('../../../../config');
+const settingsController = require('../../../../routes/admin/settings.controller');
 const { normalizeDomainList } = require('./research-site-policy');
 const {
+  applyPerplexityResearchLevel,
   applyResearchFreshnessDefaults,
   inferPerplexityResearchMode,
 } = require('../../../../research-freshness');
@@ -557,7 +559,14 @@ class WebSearchTool extends ToolBase {
       instructions,
       researchMode,
     });
-    const resolvedResearchMode = this.resolveResearchMode(inferredResearchMode, { returnImages, returnVideos });
+    const policyResearchMode = applyPerplexityResearchLevel({
+      researchMode: inferredResearchMode,
+      researchLevel: this.resolveAdminResearchLevel(context),
+      text: [prompt, Array.isArray(resolvedQuery) ? resolvedQuery.join(' ') : resolvedQuery, instructions]
+        .filter(Boolean)
+        .join(' '),
+    });
+    const resolvedResearchMode = this.resolveResearchMode(policyResearchMode, { returnImages, returnVideos });
     const startTime = Date.now();
     const result = resolvedResearchMode === 'search'
       ? await this.searchPerplexity({
@@ -1084,6 +1093,23 @@ class WebSearchTool extends ToolBase {
       : String(query || '').trim();
     const source = [prompt, queryText, instructions].filter(Boolean).join(' ');
     return inferPerplexityResearchMode(source, requestedMode);
+  }
+
+  resolveAdminResearchLevel(context = {}) {
+    const fromContext = String(
+      context?.orchestrationConfig?.perplexityResearchLevel
+        || context?.settings?.orchestration?.perplexityResearchLevel
+        || '',
+    ).trim();
+    if (fromContext) {
+      return fromContext;
+    }
+
+    try {
+      return settingsController.getEffectiveOrchestrationConfig?.().perplexityResearchLevel || 'auto';
+    } catch (_error) {
+      return 'auto';
+    }
   }
 
   normalizeMaxOutputTokens(maxOutputTokens = null, researchMode = 'sonar') {

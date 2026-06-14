@@ -21,6 +21,20 @@ const WEB_CHAT_THEME_GROUP_LABELS = Object.freeze({
 });
 const WEB_CHAT_THEME_PRESETS = Object.freeze([
     {
+        id: 'command-center',
+        name: 'Command Center',
+        mode: 'dark',
+        description: 'Enterprise operations console with graphite panels, steel borders, and restrained teal focus states.',
+        metaColor: '#0f141a',
+        preview: {
+            background: 'linear-gradient(180deg, #0e1318 0%, #111820 100%)',
+            surface: 'linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)), #171e26',
+            userBubble: 'linear-gradient(135deg, #256f75, #1f5f68)',
+            assistantBubble: 'linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)), #151c23',
+            accent: '#5fb3a9',
+        },
+    },
+    {
         id: 'obsidian',
         name: 'Obsidian',
         mode: 'dark',

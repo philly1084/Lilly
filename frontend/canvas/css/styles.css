@@ -1965,6 +1965,304 @@ body {
    Agent SDK Trace Panel
    ============================================ */
 
+/* ============================================
+   Enterprise Interface Override
+   ============================================ */
+
+:root {
+    --bg-primary: #10151b;
+    --bg-secondary: #171e26;
+    --bg-tertiary: #202832;
+    --bg-hover: #28323d;
+    --bg-active: #2b3743;
+    --bg-input: #0f151b;
+    --bg-sidebar: #151c23;
+    --bg-statusbar: #141b22;
+    --bg-panel: #111820;
+    --text-primary: #edf2f7;
+    --text-secondary: #b9c4d0;
+    --text-muted: #8290a0;
+    --text-active: #ffffff;
+    --text-link: #7bc8be;
+    --border-color: rgba(167, 180, 194, 0.18);
+    --border-light: rgba(167, 180, 194, 0.32);
+    --accent-primary: #5fb3a9;
+    --accent-primary-hover: #72c3ba;
+    --accent-secondary: #1f5f68;
+    --accent-success: #74d0a8;
+    --accent-warning: #d2a64a;
+    --accent-error: #ff7b72;
+    --accent-info: #8ab4f8;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 12px 28px rgba(0, 0, 0, 0.24);
+    --shadow-lg: 0 22px 54px rgba(0, 0, 0, 0.32);
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --header-height: 52px;
+    --statusbar-height: 28px;
+    --tabs-height: 38px;
+}
+
+[data-theme="light"] {
+    --bg-primary: #f6f8fb;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #eef2f6;
+    --bg-hover: #e6ebf0;
+    --bg-active: #dfe6ed;
+    --bg-input: #ffffff;
+    --bg-sidebar: #f8fafc;
+    --bg-statusbar: #ffffff;
+    --bg-panel: #ffffff;
+    --text-primary: #172033;
+    --text-secondary: #3e4c5f;
+    --text-muted: #66758a;
+    --text-active: #0f172a;
+    --text-link: #256f75;
+    --border-color: rgba(15, 23, 42, 0.13);
+    --border-light: rgba(15, 23, 42, 0.25);
+    --accent-primary: #256f75;
+    --accent-primary-hover: #1f5f68;
+    --accent-secondary: #dceeed;
+    --accent-success: #16734f;
+    --accent-warning: #94650a;
+    --accent-error: #c2413a;
+    --accent-info: #2563eb;
+}
+
+body {
+    background: var(--bg-primary);
+}
+
+.app-header {
+    padding: 0 14px;
+    background: rgba(23, 30, 38, 0.98);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+[data-theme="light"] .app-header {
+    background: rgba(255, 255, 255, 0.98);
+}
+
+.logo {
+    font-size: 14px;
+    letter-spacing: 0.01em;
+}
+
+.logo svg {
+    color: var(--accent-primary);
+}
+
+.canvas-type-selector {
+    padding: 3px;
+    background: var(--bg-input);
+    border-color: var(--border-color);
+    border-radius: 8px;
+}
+
+.type-btn {
+    min-height: 32px;
+    border-radius: 6px;
+    transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.type-btn.active {
+    color: var(--text-active);
+    background: #1f5f68;
+}
+
+[data-theme="light"] .type-btn.active {
+    color: #12343a;
+    background: #dceeed;
+}
+
+.type-btn.active::after {
+    display: none;
+}
+
+.icon-btn,
+.model-select,
+.reasoning-select,
+.apply-target-select,
+.mini-btn,
+.btn,
+.status-btn {
+    border-radius: 6px;
+}
+
+.model-select,
+.reasoning-select,
+.apply-target-select {
+    min-height: 34px;
+    background-color: var(--bg-input);
+}
+
+.sidebar {
+    background: var(--bg-sidebar);
+}
+
+.sidebar-content {
+    padding: 14px;
+    gap: 14px;
+}
+
+.session-info,
+.grounding-panel,
+.ai-response-section,
+.response-inspector-item,
+.response-inspector-summary,
+.frontend-preview-meta,
+.frontend-preview-meta-block,
+.frontend-preview-stage {
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+.grounding-panel {
+    background: var(--bg-panel);
+    border-color: rgba(95, 179, 169, 0.32);
+}
+
+.grounding-pill {
+    border-radius: 6px;
+    background: rgba(95, 179, 169, 0.12);
+    color: var(--accent-primary);
+}
+
+.category-badge,
+.template-chip .chip-icon {
+    border-radius: 4px;
+}
+
+.template-chip {
+    min-height: 32px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+}
+
+.template-chip:hover {
+    border-color: rgba(123, 200, 190, 0.5);
+}
+
+.prompt-textarea,
+.context-textarea,
+.response-preview {
+    border-radius: 8px;
+    background: var(--bg-input);
+}
+
+.prompt-textarea:focus,
+.context-textarea:focus,
+.model-select:focus,
+.reasoning-select:focus,
+.apply-target-select:focus {
+    border-color: rgba(123, 200, 190, 0.72);
+    box-shadow: 0 0 0 3px rgba(95, 179, 169, 0.12);
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    color: #071513;
+    font-weight: 700;
+}
+
+.btn-primary:hover {
+    background: var(--accent-primary-hover);
+}
+
+.btn-secondary {
+    background: var(--bg-tertiary);
+}
+
+.btn-accent {
+    color: #071513;
+    background: var(--accent-success);
+}
+
+.tabs-bar {
+    background: var(--bg-secondary);
+    padding: 0 10px;
+}
+
+.tab {
+    height: 30px;
+    border-radius: 6px;
+    border-bottom: 1px solid var(--border-color);
+    background: transparent;
+}
+
+.tab.active {
+    border-top: 1px solid rgba(123, 200, 190, 0.56);
+    border-color: rgba(123, 200, 190, 0.42);
+    background: var(--bg-panel);
+}
+
+.editor-container,
+.canvas-panel {
+    background: var(--bg-primary);
+}
+
+.CodeMirror,
+.CodeMirror-gutters {
+    background: var(--bg-panel);
+}
+
+.CodeMirror-gutters {
+    border-right-color: var(--border-color);
+}
+
+.CodeMirror-linenumber {
+    color: var(--text-muted);
+}
+
+.CodeMirror-cursor {
+    border-left-color: var(--accent-primary);
+}
+
+.CodeMirror-selected {
+    background: rgba(95, 179, 169, 0.22);
+}
+
+.CodeMirror-activeline-background {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.preview-wrapper,
+.diagram-wrapper,
+.diagram-controls,
+.suggestions-panel {
+    background: var(--bg-primary);
+}
+
+.suggestion-chip {
+    border-radius: 6px;
+}
+
+.suggestion-chip:hover {
+    background: #1f5f68;
+    border-color: var(--accent-primary);
+}
+
+.status-bar {
+    background: var(--bg-statusbar);
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+}
+
+.status-badge {
+    background: rgba(95, 179, 169, 0.13);
+    color: var(--accent-primary);
+}
+
+.status-btn {
+    color: var(--text-secondary);
+}
+
+.status-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
 .agent-trace-panel {
   position: fixed;
   bottom: 24px;

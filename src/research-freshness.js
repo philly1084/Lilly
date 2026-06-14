@@ -14,6 +14,7 @@ const DEEP_RESEARCH_RE = /\b(?:deep research|in-depth research|comprehensive res
 const GATHERED_RESEARCH_RE = /\b(?:pro search|agentic research|autonomous research|multi-tool research|plan\s*\+\s*search\s*\+\s*fetch|one-call research|one call research|daily news|news roundup|news digest|briefing|newsletter|article roundup|articles?|coverage|current events?|gather(?:ed|ing)? sources?|collect(?:ed|ing)? sources?|research data|source-backed|source backed|citations?|sources?)\b/i;
 const GROUNDED_ANSWER_RE = /\b(?:grounded answer|answer with citations|one-shot answer|one shot answer|with citations)\b/i;
 const EXPLICIT_RESEARCH_RE = /\b(?:research|researched|investigate|investigation|look into|analysis|analyze|analyse|compare|comparison|landscape|survey|review)\b/i;
+const PERPLEXITY_RESEARCH_LEVELS = Object.freeze(['auto', 'regular', 'pro', 'deep']);
 
 function normalizeTimeRange(timeRange = DEFAULT_TIME_RANGE) {
   const normalized = String(timeRange || DEFAULT_TIME_RANGE).trim().toLowerCase();
@@ -179,6 +180,11 @@ function inferPerplexityResearchMode(text = '', fallback = 'search') {
   return fallback;
 }
 
+function normalizePerplexityResearchLevel(value = 'auto') {
+  const normalized = String(value || 'auto').trim().toLowerCase();
+  return PERPLEXITY_RESEARCH_LEVELS.includes(normalized) ? normalized : 'auto';
+}
+
 function needsExpandedResearchEvidence(text = '') {
   const source = String(text || '').trim();
   if (!source) {
@@ -196,12 +202,44 @@ function needsDeepResearchEvidence(text = '') {
   return Boolean(source) && (DEEP_RESEARCH_RE.test(source) || ADVANCED_DEEP_RESEARCH_RE.test(source));
 }
 
+function applyPerplexityResearchLevel({
+  researchMode = 'search',
+  researchLevel = 'auto',
+  text = '',
+} = {}) {
+  const mode = String(researchMode || 'search').trim();
+  const level = normalizePerplexityResearchLevel(researchLevel);
+  const source = String(text || '').trim();
+  const isDiscoveryOnly = RAW_DISCOVERY_RE.test(source);
+  const isResearchLike = needsExpandedResearchEvidence(source) || mode !== 'search';
+
+  if (level === 'auto' || isDiscoveryOnly) {
+    return mode || 'search';
+  }
+
+  if (level === 'regular') {
+    return 'search';
+  }
+
+  if (!isResearchLike) {
+    return mode || 'search';
+  }
+
+  if (level === 'deep') {
+    return 'sonar-deep-research';
+  }
+
+  return 'pro-search';
+}
+
 module.exports = {
+  applyPerplexityResearchLevel,
   applyResearchFreshnessDefaults,
   hasExplicitResearchTimeframeCue,
   hasNewsOrTechnologyResearchCue,
   inferDefaultResearchTimeRange,
   inferPerplexityResearchMode,
+  normalizePerplexityResearchLevel,
   needsDeepResearchEvidence,
   needsExpandedResearchEvidence,
 };

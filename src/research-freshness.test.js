@@ -1,4 +1,5 @@
 const {
+  applyPerplexityResearchLevel,
   applyResearchFreshnessDefaults,
   inferDefaultResearchTimeRange,
   inferPerplexityResearchMode,
@@ -45,5 +46,28 @@ describe('research freshness defaults', () => {
     expect(inferPerplexityResearchMode('Do deep research on managed Postgres providers')).toBe('sonar-deep-research');
     expect(inferPerplexityResearchMode('Find URLs for managed Postgres pricing pages')).toBe('search');
     expect(needsExpandedResearchEvidence('Please research managed Postgres providers')).toBe(true);
+  });
+
+  test('applies admin Perplexity research levels without escalating URL discovery', () => {
+    expect(applyPerplexityResearchLevel({
+      researchMode: 'pro-search',
+      researchLevel: 'regular',
+      text: 'Please research managed Postgres providers',
+    })).toBe('search');
+    expect(applyPerplexityResearchLevel({
+      researchMode: 'search',
+      researchLevel: 'pro',
+      text: 'Please research managed Postgres providers',
+    })).toBe('pro-search');
+    expect(applyPerplexityResearchLevel({
+      researchMode: 'pro-search',
+      researchLevel: 'deep',
+      text: 'Please research managed Postgres providers',
+    })).toBe('sonar-deep-research');
+    expect(applyPerplexityResearchLevel({
+      researchMode: 'search',
+      researchLevel: 'deep',
+      text: 'Find URLs for managed Postgres pricing pages',
+    })).toBe('search');
   });
 });

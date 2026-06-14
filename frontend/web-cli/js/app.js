@@ -39,6 +39,7 @@ const WEB_CLI_CURRENT_HELP_COMMAND_IDS = new Set([
     'shortcuts',
     'health',
 ]);
+const WEB_CLI_DEFAULT_THEME = 'command-center';
 
 class CodeCLIApp {
     constructor() {
@@ -50,8 +51,8 @@ class CodeCLIApp {
         this.theme = this.normalizeThemeId(
             localStorage.getItem('codecli-theme')
             || localStorage.getItem(this.themeCatalog?.storageKeys?.preset || 'kimibuilt_theme_preset')
-            || 'voxel'
-        ) || 'voxel';
+            || WEB_CLI_DEFAULT_THEME
+        ) || WEB_CLI_DEFAULT_THEME;
         this.commandHistory = JSON.parse(localStorage.getItem('codecli-cmd-history') || '[]');
         this.autocompleteIndex = -1;
         this.autocompleteMatches = [];
@@ -773,13 +774,13 @@ class CodeCLIApp {
             },
             {
                 id: 'buddy',
-                command: '/buddy',
-                aliases: ['/toolbelt'],
-                label: 'Buddy',
-                icon: 'BD',
-                category: 'Voxel',
-                description: 'Open the coding buddy panel and toolbelt.',
-                template: '/buddy',
+                command: '/agent-tools',
+                aliases: ['/buddy', '/toolbelt'],
+                label: 'Agent Tools',
+                icon: 'AT',
+                category: 'Agent',
+                description: 'Open the agent companion panel and toolbelt.',
+                template: '/agent-tools',
             },
         ];
     }
@@ -1015,6 +1016,7 @@ class CodeCLIApp {
             return;
         }
 
+        const isVoxelTheme = this.theme === 'voxel';
         this.setVoxelPalette();
         if (this.voxelPetStage) {
             this.voxelPetStage.replaceChildren(this.voxel.renderElement(this.voxelPet, { action, variant: 'full' }));
@@ -1059,16 +1061,18 @@ class CodeCLIApp {
             const mood = this.voxel.MOODS[this.voxelPet.mood] || this.voxelPet.mood;
             const bond = Math.round(this.voxelPersonality?.bond || 0);
             this.voxelPetStatus.textContent = this.voxelPetHidden
-                ? 'Voxel companion hidden'
-                : `${this.voxelPet.name} | ${mood} | bond ${bond}%`;
+                ? 'Agent companion hidden'
+                : isVoxelTheme
+                    ? `${this.voxelPet.name} | ${mood} | bond ${bond}%`
+                    : 'Agent companion available from the toolbar';
             this.voxelPetStatus.title = `${this.voxelPet.trait} ${this.voxelPet.species} - ${this.voxelPet.prompt} - ${this.voxelPet.energy}% energy`;
         }
         this.renderVoxelAgentStats();
         if (this.voxelPetButton) {
-            this.voxelPetButton.classList.toggle('is-hidden', this.voxelPetHidden);
+            this.voxelPetButton.classList.toggle('is-hidden', this.voxelPetHidden || !isVoxelTheme);
         }
         if (this.voxelRoamer) {
-            this.voxelRoamer.classList.toggle('hidden', this.voxelPetHidden);
+            this.voxelRoamer.classList.toggle('hidden', this.voxelPetHidden || !isVoxelTheme);
         }
 
         if (action !== 'idle') {
@@ -1106,7 +1110,7 @@ class CodeCLIApp {
         window.clearTimeout(this.voxelAmbientTimer);
         const delay = 4200 + Math.floor(Math.random() * 6200);
         this.voxelAmbientTimer = window.setTimeout(() => {
-            if (!this.voxelPetHidden && !this.isProcessing && document.hasFocus()) {
+            if (this.theme === 'voxel' && !this.voxelPetHidden && !this.isProcessing && document.hasFocus()) {
                 const actions = ['idle', 'scout', 'guard', 'sleep', 'dance'];
                 const action = actions[Math.floor(Math.random() * actions.length)];
                 const thought = this.getVoxelAmbientThought(action);
@@ -1167,7 +1171,7 @@ class CodeCLIApp {
     }
 
     roamVoxelPet(placement = 'prompt', action = 'scout', duration = 1200, options = {}) {
-        if (this.voxelPetHidden || !this.voxelRoamer || !this.voxelRoamerStage || !this.voxel || !this.voxelPet) {
+        if (this.theme !== 'voxel' || this.voxelPetHidden || !this.voxelRoamer || !this.voxelRoamerStage || !this.voxel || !this.voxelPet) {
             return;
         }
 
@@ -1208,7 +1212,7 @@ class CodeCLIApp {
     }
 
     queueVoxelTypingReaction() {
-        if (this.voxelPetHidden || !this.commandInput?.value.trim()) {
+        if (this.theme !== 'voxel' || this.voxelPetHidden || !this.commandInput?.value.trim()) {
             return;
         }
 
@@ -1293,9 +1297,9 @@ class CodeCLIApp {
         const actions = {
             chat: () => {
                 this.commandInput.value = '';
-                this.commandInput.placeholder = 'Ask Lilly for help, open /files, or list /tools...';
+                this.commandInput.placeholder = 'Ask KimiBuilt for help, open /files, or list /tools...';
                 this.commandInput.focus();
-                this.roamVoxelPet('prompt', 'scout', 1000, { thought: 'buddy link' });
+                this.roamVoxelPet('prompt', 'scout', 1000, { thought: 'agent link' });
             },
             sandbox: () => {
                 this.commandInput.value = '/sandbox javascript console.log("hello from the voxel sandbox")';
@@ -1643,7 +1647,7 @@ class CodeCLIApp {
         }, 0);
 
         if (!options.silent) {
-            this.printSystem('Voxel buddy opened. Use Chat, Tools, or Files, or type a buddy idea and press Enter for AI fill.');
+            this.printSystem('Agent companion opened. Use Chat, Tools, or Files, or type an agent idea and press Enter for fill.');
         }
     }
 
@@ -1752,7 +1756,7 @@ Use this exact shape:
             this.printPetCard('AI-filled');
             this.setStatus('ready');
         } catch (error) {
-            this.printError(`AI voxel agent failed: ${error.message}`);
+            this.printError(`Agent companion failed: ${error.message}`);
             this.handlePetAction('guard', { silent: true });
             this.setStatus('error');
         } finally {
@@ -2028,6 +2032,7 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
                 break;
             case 'buddy':
             case 'toolbelt':
+            case 'agent-tools':
                 this.focusVoxelCreator();
                 this.printToolbeltCard();
                 break;
@@ -3970,9 +3975,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         if (this.theme === 'voxel') {
             this.printVoxelBoot();
         } else {
-            this.printSystem('Welcome to Lilly Code CLI v3.0');
-            this.printSystem('Type /help for available commands');
-            this.printSystem(`Session started: ${new Date().toLocaleString()}`);
+            this.printCommandCenterBoot();
         }
         this.terminalOutput.appendChild(document.createElement('div')).style.height = '8px';
         if (this.theme === 'voxel') {
@@ -4063,6 +4066,53 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             petSlot.appendChild(this.voxel.renderElement(this.voxelPet, { action: 'idle', variant: 'peek', decorative: true }));
         }
 
+        this.scrollToBottom();
+    }
+
+    printCommandCenterBoot() {
+        const line = document.createElement('div');
+        line.className = 'line line-output ai command-center-boot-line';
+        const currentModel = this.escapeHtml(api.currentModel || 'loading');
+        const sessionLabel = this.escapeHtml(api.sessionId ? api.sessionId.slice(0, 8) : 'pending');
+        line.innerHTML = `
+            <div class="cli-response-head command-center-boot-head">
+                <span class="cli-response-title">KimiBuilt Web CLI</span>
+                <span class="command-center-boot-meta">${this.escapeHtml(new Date().toLocaleString())}</span>
+            </div>
+            <div class="cli-response-body command-center-boot">
+                <section class="command-center-brief" aria-label="Web CLI overview">
+                    <div>
+                        <div class="command-center-kicker">Agent command surface</div>
+                        <h1>Operate chat, tools, files, and remote agents from one browser console.</h1>
+                        <p>Use plain language or slash commands. Responses stream through the same backend session contract as the API.</p>
+                    </div>
+                    <div class="command-center-contract" aria-label="Live contract">
+                        <div><span>Transport</span><strong>/api/chat SSE</strong></div>
+                        <div><span>Model</span><strong>${currentModel}</strong></div>
+                        <div><span>Session</span><strong>${sessionLabel}</strong></div>
+                    </div>
+                </section>
+                <section class="command-center-actions" aria-label="Suggested commands">
+                    <button type="button" onclick="app.commandInput?.focus()">
+                        <strong>Ask</strong>
+                        <span>Start a normal request</span>
+                    </button>
+                    <button type="button" onclick="app.useCommandSuggestion('/tools', { submit: true })">
+                        <strong>/tools</strong>
+                        <span>Inspect available actions</span>
+                    </button>
+                    <button type="button" onclick="app.useCommandSuggestion('/files', { submit: true })">
+                        <strong>/files</strong>
+                        <span>Review generated artifacts</span>
+                    </button>
+                    <button type="button" onclick="app.useCommandSuggestion('/remote status', { submit: true })">
+                        <strong>/remote status</strong>
+                        <span>Check remote readiness</span>
+                    </button>
+                </section>
+            </div>
+        `;
+        this.terminalOutput.appendChild(line);
         this.scrollToBottom();
     }
     
@@ -4195,16 +4245,16 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
 
     printToolbeltCard() {
         const personality = this.voxelPersonality || {};
-        this.printAI(`## Lilly Coding Toolbelt
+        this.printAI(`## Agent Toolbelt
 
-Your buddy is focused on the three primary actions in the prompt bar.
+The companion panel is focused on the three primary actions in the prompt bar.
 
-- Chat starts a normal Lilly conversation.
+- Chat starts a normal KimiBuilt conversation.
 - \`/tools [category]\`, \`/tool-help <id>\`, and \`/tool <id> {...}\` inspect or invoke the live backend tool catalog.
 - \`/skills\` and \`/skill <id>\` inspect registered low-context chains.
 - \`/files\` and \`/open\` manage generated session files.
 
-Buddy stats: bond ${Math.round(personality.bond || 0)}%, guided runs ${personality.buildRuns || 0}, tool runs ${personality.toolRuns || 0}.`);
+Agent stats: bond ${Math.round(personality.bond || 0)}%, guided runs ${personality.buildRuns || 0}, tool runs ${personality.toolRuns || 0}.`);
     }
 
     printBuildDeck() {
@@ -6935,7 +6985,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
 
     getThemeCycleIds() {
         const presetIds = this.getThemePresets().map((preset) => preset.id);
-        return presetIds.length > 0 ? ['voxel', ...presetIds] : ['voxel', 'dark', 'light'];
+        return presetIds.length > 0 ? [...presetIds, 'voxel'] : [WEB_CLI_DEFAULT_THEME, 'dark', 'light', 'voxel'];
     }
 
     getThemeLabel(theme = this.theme) {
@@ -6977,7 +7027,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         }, {});
 
         const labels = this.themeCatalog?.groupLabels || {};
-        const lines = ['## Themes', '', '- `voxel` - Voxel CLI companion theme'];
+        const lines = ['## Themes'];
         Object.keys(grouped).forEach((group) => {
             lines.push('', `### ${labels[group] || group}`);
             grouped[group].forEach((preset) => {
@@ -6985,6 +7035,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 lines.push(`- \`${preset.id}\` - ${preset.name}, ${preset.mode}${marker}`);
             });
         });
+        lines.push('', '### Companion theme', '- `voxel` - Voxel CLI companion theme');
 
         this.printAI(lines.join('\n'));
     }
@@ -7014,7 +7065,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     }
     
     applyTheme(theme) {
-        const normalizedTheme = this.normalizeThemeId(theme) || 'voxel';
+        const normalizedTheme = this.normalizeThemeId(theme) || WEB_CLI_DEFAULT_THEME;
         const preset = this.getThemePreset(normalizedTheme);
         if (normalizedTheme === 'voxel') {
             document.body.setAttribute('data-theme', 'voxel');
@@ -7084,7 +7135,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 border: 'rgba(148, 163, 184, 0.16)',
                 textPrimary: '#e5edf5',
                 textSecondary: '#a7b4c4',
-                textMuted: '#778397',
+                textMuted: '#95a4b5',
                 overlay: 'rgba(2, 6, 12, 0.72)',
                 panelShadow: '0 20px 54px rgba(0, 0, 0, 0.34)',
                 controlShadow: '0 10px 24px rgba(0, 0, 0, 0.18)',

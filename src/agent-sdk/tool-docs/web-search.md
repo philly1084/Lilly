@@ -42,6 +42,7 @@ Notes:
 - `researchMode: "search"` uses Perplexity's raw `/search` endpoint for ranked results.
 - `researchMode: "sonar" | "sonar-pro" | "sonar-reasoning-pro" | "sonar-deep-research"` uses Perplexity Sonar `/v1/sonar` for grounded answers, citations, search results, and optional media.
 - `researchMode: "fast-search" | "pro-search" | "deep-research" | "advanced-deep-research"` uses Perplexity's `/v1/agent` presets for autonomous searched answers plus source results.
+- Admin `orchestration.perplexityResearchLevel` can override automatic mode selection: `regular` caps research at raw Search, `pro` uses Agent `pro-search` for explicit research, and `deep` escalates explicit research to Sonar Deep Research while leaving URL hotlists on raw Search.
 - Use `search` for URL hotlisting, scraping prep, Playwright candidate pages, and link discovery when the local agent only needs candidate pages.
 - Use `sonar` or `sonar-pro` for one-shot grounded answers. Use `sonar-pro` for complex comparisons.
 - Use `returnImages: true` with optional `imageDomains` and `imageFormats` for image URL hotlisting. Use `returnVideos: true` only when video sources materially help.

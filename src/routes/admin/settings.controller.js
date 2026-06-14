@@ -28,6 +28,7 @@ const {
 } = require('../../agent-user-profile');
 const { detectPii, normalizeDetectorId } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
+const { normalizePerplexityResearchLevel } = require('../../research-freshness');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
   defaultsVersion: 6,
   enabled: false,
@@ -1221,6 +1222,11 @@ class SettingsController {
     next.neuralWaveResearchMode = value.neuralWaveResearchMode !== undefined
       ? Boolean(value.neuralWaveResearchMode)
       : current.neuralWaveResearchMode === true;
+    next.perplexityResearchLevel = normalizePerplexityResearchLevel(
+      value.perplexityResearchLevel !== undefined
+        ? value.perplexityResearchLevel
+        : current.perplexityResearchLevel,
+    );
     next.asyncRuntimeEnabled = value.asyncRuntimeEnabled !== undefined
       ? Boolean(value.asyncRuntimeEnabled)
       : current.asyncRuntimeEnabled === true;
@@ -1574,6 +1580,7 @@ class SettingsController {
     const envAfterProcessAuditReasoning = String(config.runtime?.afterProcessAuditReasoningEffort || '').trim();
     const envAfterProcessAuditEnabled = String(process.env.KIMIBUILT_AFTER_PROCESS_AUDIT || '').trim().toLowerCase();
     const envAfterProcessAuditHasValue = Boolean(envAfterProcessAuditEnabled);
+    const envPerplexityResearchLevel = normalizePerplexityResearchLevel(process.env.KIMIBUILT_PERPLEXITY_RESEARCH_LEVEL || '');
 
     return {
       ...merged,
@@ -1596,6 +1603,9 @@ class SettingsController {
         || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_AGENT_DIRECTED_RUNTIME || '').trim().toLowerCase()),
       neuralWaveResearchMode: merged.neuralWaveResearchMode === true
         || ['1', 'true', 'yes', 'on'].includes(String(process.env.KIMIBUILT_NEURAL_WAVE_RESEARCH_MODE || '').trim().toLowerCase()),
+      perplexityResearchLevel: envPerplexityResearchLevel !== 'auto'
+        ? envPerplexityResearchLevel
+        : normalizePerplexityResearchLevel(merged.perplexityResearchLevel),
       asyncRuntimeEnabled: merged.asyncRuntimeEnabled === true,
       asyncRuntimeWebChatParallel: merged.asyncRuntimeWebChatParallel === true,
       asyncRuntimeAllowLiveRemote: merged.asyncRuntimeAllowLiveRemote === true,
@@ -1693,6 +1703,7 @@ class SettingsController {
         afterProcessAuditReasoningEffort: 'medium',
         agentDirectedRuntime: false,
         neuralWaveResearchMode: false,
+        perplexityResearchLevel: 'auto',
         asyncRuntimeEnabled: config.asyncRuntime?.enabled === true,
         asyncRuntimeWebChatParallel: false,
         asyncRuntimeAllowLiveRemote: false,

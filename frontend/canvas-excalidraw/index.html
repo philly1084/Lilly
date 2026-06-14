@@ -6,6 +6,7 @@
     <title>Lilly Canvas</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
+    <link rel="stylesheet" href="css/enterprise.css?v=20260614a">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;700&family=Roboto+Mono:wght@400;500&family=Fira+Code:wght@400;500&family=Merriweather:wght@400;700&family=Poppins:wght@400;600&family=Bebas+Neue&family=Lobster&family=Pacifico&family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet">
     <script src="/api/sandbox-libraries/rough/rough.js"></script>
@@ -35,7 +36,7 @@
                     </svg>
                     <span id="zoomLevel">100%</span>
                 </button>
-                <button id="zoomOutBtn" title="Zoom Out (Ctrl+-)">−</button>
+                <button id="zoomOutBtn" title="Zoom Out (Ctrl+-)">-</button>
                 <button id="zoomInBtn" title="Zoom In (Ctrl++)">+</button>
             </div>
             <!-- Model Selector Dropdown -->
@@ -72,22 +73,22 @@
                 <div class="dropdown-menu">
                     <div class="dropdown-header">Select Theme</div>
                     <button class="dropdown-item" data-theme="light">
-                        <span style="font-size: 16px;">☀️</span> Light
+                        <span class="theme-token">L</span> Light
                     </button>
                     <button class="dropdown-item" data-theme="dark">
-                        <span style="font-size: 16px;">🌙</span> Dark
+                        <span class="theme-token">D</span> Dark
                     </button>
                     <button class="dropdown-item" data-theme="sepia">
-                        <span style="font-size: 16px;">📜</span> Sepia
+                        <span class="theme-token">S</span> Sepia
                     </button>
                     <button class="dropdown-item" data-theme="ocean">
-                        <span style="font-size: 16px;">🌊</span> Ocean
+                        <span class="theme-token">O</span> Ocean
                     </button>
                     <button class="dropdown-item" data-theme="forest">
-                        <span style="font-size: 16px;">🌲</span> Forest
+                        <span class="theme-token">F</span> Forest
                     </button>
                     <button class="dropdown-item" data-theme="contrast">
-                        <span style="font-size: 16px;">⚡</span> High Contrast
+                        <span class="theme-token">HC</span> High Contrast
                     </button>
                 </div>
             </div>
@@ -199,7 +200,7 @@
                     <svg viewBox="0 0 24 24" width="20" height="20">
                         <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h9l5-5V5c0-1.1-.9-2-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/>
                     </svg>
-                    <span class="key-hint">📌</span>
+                    <span class="key-hint">S</span>
                 </button>
             </div>
         </div>
@@ -345,16 +346,16 @@
         </div>
         <div class="tool-separator"></div>
 
-        <!-- AI Tools - Top Level -->
+        <!-- Agent tools -->
         <div class="tool-category ai-tools-top">
             <div class="tool-category-header" onclick="this.parentElement.classList.toggle('collapsed')">
-                <span>AI ✨</span>
+                <span>Agent</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
                     <path fill="currentColor" d="M7 10l5 5 5-5z"/>
                 </svg>
             </div>
             <div class="tool-category-content">
-                <button class="tool-btn ai-btn" data-tool="ai-image" data-key="g" title="AI Image Asset (G)">
+                <button class="tool-btn ai-btn" data-tool="ai-image" data-key="g" title="Generated Image Asset (G)">
                     <svg viewBox="0 0 24 24" width="20" height="20">
                         <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
                         <circle cx="18" cy="6" r="3" fill="#ff6b6b"/>
@@ -402,10 +403,10 @@
         </div>
         <!-- Inline Text Editor -->
         <textarea class="text-editor" id="textEditor" style="display: none;"></textarea>
-        <!-- AI Image Prompt Tooltip -->
+        <!-- Generated Image Prompt Tooltip -->
         <div class="ai-image-tooltip" id="aiImageTooltip" style="display: none;">
-            Click on canvas to place AI-generated image
-            <button class="ai-tooltip-close" id="aiTooltipClose">×</button>
+            Click on canvas to place generated image
+            <button class="ai-tooltip-close" id="aiTooltipClose">&times;</button>
         </div>
         <!-- Toast Container -->
         <div id="toastContainer" class="toast-container"></div>
@@ -433,9 +434,9 @@
             <!-- Layer items populated by JS -->
         </div>
         <div class="layer-controls">
-            <button id="duplicateLayerBtn" title="Duplicate Layer">📋</button>
-            <button id="deleteLayerBtn" title="Delete Layer">🗑️</button>
-            <button id="mergeLayerBtn" title="Merge Down">⬇️</button>
+            <button id="duplicateLayerBtn" title="Duplicate Layer">Copy</button>
+            <button id="deleteLayerBtn" title="Delete Layer">Del</button>
+            <button id="mergeLayerBtn" title="Merge Down">Merge</button>
         </div>
     </aside>
 
@@ -1636,7 +1637,7 @@
                     </div>
                     <div class="shortcut-item">
                         <span class="key">G</span>
-                        <span>AI Image Asset</span>
+                        <span>Agent</span>
                     </div>
                     <div class="shortcut-item">
                         <span class="key">Z</span>

@@ -1,0 +1,126 @@
+{
+  "tool": "kimibuilt-ui-check",
+  "url": "http://localhost:3000/canvas/",
+  "originalUrl": "http://localhost:3000/canvas/",
+  "authenticated": false,
+  "generatedAt": "2026-06-14T02:37:32.133Z",
+  "playwrightModule": "playwright-core",
+  "browserExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "checks": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 960
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-canvas\\lilly-canvas-desktop.png",
+      "metrics": {
+        "title": "Lilly Canvas",
+        "url": "http://localhost:3000/canvas/",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "scrollWidth": 1440,
+        "scrollHeight": 960,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 487,
+        "bodyTextPreview": "Lilly Canvas 100% - + V BASIC R O D S LINES L A DRAW P E CONTENT X F I AGENT G Z PROPERTIES Snap to Grid STROKE Choose Stroke Color ✓ ✓ ✓ ✓ ✓ ✓ Custom Color BACKGROUND Choose Fill Style ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ ✓ Custom Color STROKE WIDTH STROKE STYLE OPACITY 100% FONT SIZE S M L XL FONT Sans Serif Mono Display Script TEXT ALIGN TEXT STYLE TEXT TRANSFORM Aa AA aa Aa LETTER SPACING 0PX LINE HEIGHT 1.4 TEXT SHADOW Delete Duplicate Bring to Front Send to Back",
+        "headings": [
+          "Layers",
+          "PROPERTIES",
+          "Stickers & Icons",
+          "Templates",
+          "Canvas Agent",
+          "Export",
+          "Import",
+          "Exporting...",
+          "Keyboard Shortcuts",
+          "Drop files to import"
+        ],
+        "interactiveControls": 308,
+        "textContrast": {
+          "checked": 108,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+        }
+      ],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844,
+        "isMobile": true
+      },
+      "ok": true,
+      "screenshotPath": "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-canvas\\lilly-canvas-mobile.png",
+      "metrics": {
+        "title": "Lilly Canvas",
+        "url": "http://localhost:3000/canvas/",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "overflowingElements": [],
+        "bodyTextLength": 49,
+        "bodyTextPreview": "Lilly Canvas 100% - + V R O D S L A P E X F I G Z",
+        "headings": [
+          "Layers",
+          "Properties",
+          "Stickers & Icons",
+          "Templates",
+          "Canvas Agent",
+          "Export",
+          "Import",
+          "Exporting...",
+          "Keyboard Shortcuts",
+          "Drop files to import"
+        ],
+        "interactiveControls": 308,
+        "textContrast": {
+          "checked": 40,
+          "lowContrastCount": 0,
+          "lowContrast": []
+        },
+        "images": {
+          "count": 0,
+          "broken": [],
+          "missingAltCount": 0
+        }
+      },
+      "consoleMessages": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "issues": []
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "checkedViewports": 2,
+    "screenshotPaths": [
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-canvas\\lilly-canvas-desktop.png",
+      "C:\\Users\\phill\\KimiBuilt\\ui-checks\\enterprise-canvas\\lilly-canvas-mobile.png"
+    ],
+    "issues": []
+  }
+}
