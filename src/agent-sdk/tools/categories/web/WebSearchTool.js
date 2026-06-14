@@ -5,7 +5,10 @@
 const { ToolBase } = require('../../ToolBase');
 const { config } = require('../../../../config');
 const { normalizeDomainList } = require('./research-site-policy');
-const { applyResearchFreshnessDefaults } = require('../../../../research-freshness');
+const {
+  applyResearchFreshnessDefaults,
+  inferPerplexityResearchMode,
+} = require('../../../../research-freshness');
 
 const DEFAULT_SEARCH_LIMIT = Math.min(config.search.defaultLimit, config.search.maxLimit);
 const DEFAULT_MAX_TOKENS = Math.max(10000, Number(config.search.defaultMaxTokens) || 50000);
@@ -504,7 +507,6 @@ class WebSearchTool extends ToolBase {
       throw new Error(`Research mode '${researchMode}' is not supported by this backend`);
     }
 
-    const resolvedResearchMode = this.resolveResearchMode(researchMode, { returnImages, returnVideos });
     const resolvedImageDomains = [
       ...[].concat(imageDomains || []),
       ...[].concat(imageDomainFilter || []),
@@ -549,6 +551,13 @@ class WebSearchTool extends ToolBase {
     });
     const resolvedQuery = freshnessDefaults.query;
     const resolvedTimeRange = freshnessDefaults.timeRange;
+    const inferredResearchMode = this.inferResearchMode({
+      query: resolvedQuery,
+      prompt,
+      instructions,
+      researchMode,
+    });
+    const resolvedResearchMode = this.resolveResearchMode(inferredResearchMode, { returnImages, returnVideos });
     const startTime = Date.now();
     const result = resolvedResearchMode === 'search'
       ? await this.searchPerplexity({
@@ -1057,6 +1066,24 @@ class WebSearchTool extends ToolBase {
     }
 
     return 'sonar';
+  }
+
+  inferResearchMode({
+    query = '',
+    prompt = '',
+    instructions = '',
+    researchMode = 'search',
+  } = {}) {
+    const requestedMode = RESEARCH_MODES.includes(researchMode) ? researchMode : 'search';
+    if (requestedMode !== 'search') {
+      return requestedMode;
+    }
+
+    const queryText = Array.isArray(query)
+      ? query.map((entry) => String(entry || '').trim()).filter(Boolean).join(' ')
+      : String(query || '').trim();
+    const source = [prompt, queryText, instructions].filter(Boolean).join(' ');
+    return inferPerplexityResearchMode(source, requestedMode);
   }
 
   normalizeMaxOutputTokens(maxOutputTokens = null, researchMode = 'sonar') {

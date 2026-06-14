@@ -8,6 +8,12 @@ const YEAR_TIMEFRAME_RE = /\b(?:this year|annual(?:ly)?|past year|last year|last
 const HISTORICAL_RE = /\b(?:history|historical|archive|archives|archived|retrospective|ancient|medieval|legacy|from\s+(?:19|20)\d{2}|between\s+(?:19|20)\d{2}\s+and\s+(?:19|20)\d{2}|before\s+(?:19|20)\d{2})\b/i;
 const NEWS_OR_TECH_RE = /\b(?:news|headlines?|current events?|breaking|article roundup|coverage|technology|tech|software|ai|artificial intelligence|machine learning|cybersecurity|cloud|saas|api|apis|sdk|framework|library|javascript|typescript|node\.?js|react|next\.?js|openai|llm|llms|gpu|gpus|chip|chips|semiconductor|hardware|gadgets?|developer|programming|release notes?|version)\b/i;
 const MODERN_RESEARCH_RE = /\b(?:best practices?|providers?|vendors?|tools?|options?|alternatives?|trends?|landscape|state of|recommendations?|examples?|patterns?|guide|strategy|strategies|market|pricing|costs?|platforms?)\b/i;
+const RAW_DISCOVERY_RE = /\b(?:url hotlist|hotlist urls?|candidate urls?|candidate pages?|find urls?|find pages?|find links?|list links?|search results?|scraping prep|scrape candidates?|playwright candidates?|page discovery|site:\S+)\b/i;
+const ADVANCED_DEEP_RESEARCH_RE = /\b(?:advanced deep research|institutional(?:-|\s)grade research|maximum depth research|maximum-depth research)\b/i;
+const DEEP_RESEARCH_RE = /\b(?:deep research|in-depth research|comprehensive research|exhaustive research|thorough research)\b/i;
+const GATHERED_RESEARCH_RE = /\b(?:pro search|agentic research|autonomous research|multi-tool research|plan\s*\+\s*search\s*\+\s*fetch|one-call research|one call research|daily news|news roundup|news digest|briefing|newsletter|article roundup|articles?|coverage|current events?|gather(?:ed|ing)? sources?|collect(?:ed|ing)? sources?|research data|source-backed|source backed|citations?|sources?)\b/i;
+const GROUNDED_ANSWER_RE = /\b(?:grounded answer|answer with citations|one-shot answer|one shot answer|with citations)\b/i;
+const EXPLICIT_RESEARCH_RE = /\b(?:research|researched|investigate|investigation|look into|analysis|analyze|analyse|compare|comparison|landscape|survey|review)\b/i;
 
 function normalizeTimeRange(timeRange = DEFAULT_TIME_RANGE) {
   const normalized = String(timeRange || DEFAULT_TIME_RANGE).trim().toLowerCase();
@@ -140,9 +146,62 @@ function applyResearchFreshnessDefaults({
   };
 }
 
+function inferPerplexityResearchMode(text = '', fallback = 'search') {
+  const source = String(text || '').trim();
+  if (!source) {
+    return fallback;
+  }
+
+  if (RAW_DISCOVERY_RE.test(source)) {
+    return 'search';
+  }
+
+  if (ADVANCED_DEEP_RESEARCH_RE.test(source)) {
+    return 'advanced-deep-research';
+  }
+
+  if (DEEP_RESEARCH_RE.test(source)) {
+    return 'sonar-deep-research';
+  }
+
+  if (GATHERED_RESEARCH_RE.test(source)) {
+    return 'pro-search';
+  }
+
+  if (GROUNDED_ANSWER_RE.test(source)) {
+    return 'sonar-pro';
+  }
+
+  if (EXPLICIT_RESEARCH_RE.test(source)) {
+    return 'pro-search';
+  }
+
+  return fallback;
+}
+
+function needsExpandedResearchEvidence(text = '') {
+  const source = String(text || '').trim();
+  if (!source) {
+    return false;
+  }
+
+  return GATHERED_RESEARCH_RE.test(source)
+    || EXPLICIT_RESEARCH_RE.test(source)
+    || DEEP_RESEARCH_RE.test(source)
+    || ADVANCED_DEEP_RESEARCH_RE.test(source);
+}
+
+function needsDeepResearchEvidence(text = '') {
+  const source = String(text || '').trim();
+  return Boolean(source) && (DEEP_RESEARCH_RE.test(source) || ADVANCED_DEEP_RESEARCH_RE.test(source));
+}
+
 module.exports = {
   applyResearchFreshnessDefaults,
   hasExplicitResearchTimeframeCue,
   hasNewsOrTechnologyResearchCue,
   inferDefaultResearchTimeRange,
+  inferPerplexityResearchMode,
+  needsDeepResearchEvidence,
+  needsExpandedResearchEvidence,
 };

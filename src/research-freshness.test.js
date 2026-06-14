@@ -1,6 +1,8 @@
 const {
   applyResearchFreshnessDefaults,
   inferDefaultResearchTimeRange,
+  inferPerplexityResearchMode,
+  needsExpandedResearchEvidence,
 } = require('./research-freshness');
 
 describe('research freshness defaults', () => {
@@ -35,5 +37,13 @@ describe('research freshness defaults', () => {
     expect(inferDefaultResearchTimeRange('latest GPU prices')).toBe('day');
     expect(inferDefaultResearchTimeRange('modern provider comparison')).toBe('all');
     expect(inferDefaultResearchTimeRange('AI tools', { publishedAfter: '05/01/2026' })).toBe('all');
+  });
+
+  test('routes explicit research to richer Perplexity modes while preserving raw discovery', () => {
+    expect(inferPerplexityResearchMode('Please research managed Postgres providers')).toBe('pro-search');
+    expect(inferPerplexityResearchMode('Gather article sources for Canadian AI regulation')).toBe('pro-search');
+    expect(inferPerplexityResearchMode('Do deep research on managed Postgres providers')).toBe('sonar-deep-research');
+    expect(inferPerplexityResearchMode('Find URLs for managed Postgres pricing pages')).toBe('search');
+    expect(needsExpandedResearchEvidence('Please research managed Postgres providers')).toBe(true);
   });
 });

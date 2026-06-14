@@ -1106,9 +1106,9 @@ describe('openai-client automatic tool orchestration helpers', () => {
             { id: 'deep-research-presentation' },
         ]);
 
-        expect(guidance).toContain('use Perplexity-backed `web-search` to discover candidate source URLs yourself');
+        expect(guidance).toContain('use Perplexity-backed `web-search` in the richer research mode that fits the request');
         expect(guidance).toContain('verify them with `web-fetch` first');
-        expect(guidance).toContain('instead of asking the user which websites to scrape');
+        expect(guidance).toContain('do not stop at search snippets');
         expect(guidance).toContain('approvedDomains` from the chosen result host');
         expect(guidance).toContain('should not stop to ask the user for a public source list');
     });
@@ -1493,6 +1493,7 @@ describe('openai-client automatic tool orchestration helpers', () => {
                 toolId: 'web-search',
                 params: expect.objectContaining({
                     query: 'AI chip startups recent this month',
+                    researchMode: 'pro-search',
                     timeRange: 'month',
                 }),
             },

@@ -6567,7 +6567,7 @@ describe('ConversationOrchestrator', () => {
             params: expect.objectContaining({
                 engine: 'perplexity',
                 query: 'managed Postgres providers for startups modern',
-                researchMode: 'search',
+                researchMode: 'pro-search',
                 region: 'ca-en',
                 timeRange: 'all',
                 userLocation: {
@@ -8930,7 +8930,7 @@ describe('ConversationOrchestrator', () => {
                 params: expect.objectContaining({
                     engine: 'perplexity',
                     query: expect.stringContaining('managed Postgres providers for startups'),
-                    researchMode: 'search',
+                    researchMode: 'pro-search',
                 }),
             }),
         ]);

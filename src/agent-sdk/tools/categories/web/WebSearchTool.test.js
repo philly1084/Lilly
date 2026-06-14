@@ -166,6 +166,79 @@ describe('WebSearchTool', () => {
     expect(result.searchQueries).toEqual(['AI chip startups recent this month']);
   });
 
+  test('upgrades explicit research requests from raw search to Perplexity pro-search', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'agent-pro-search-123',
+        model: 'openai/gpt-5.2',
+        output: [
+          {
+            type: 'search_results',
+            queries: ['managed Postgres providers startups'],
+            results: [{
+              title: 'Managed Postgres comparison',
+              url: 'https://example.com/postgres',
+              snippet: 'Provider comparison with pricing and backup details.',
+            }],
+          },
+          {
+            type: 'fetch_url_results',
+            contents: [{
+              title: 'Managed Postgres comparison',
+              url: 'https://example.com/postgres',
+              snippet: 'Fetched provider comparison details.',
+            }],
+          },
+          {
+            type: 'message',
+            content: [{
+              type: 'output_text',
+              text: 'Neon and Crunchy Bridge differ on pricing, backups, and operational control.',
+            }],
+          },
+        ],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const tracker = {
+      recordNetworkCall: jest.fn(),
+    };
+
+    const result = await tool.handler({
+      query: 'managed Postgres providers for startups',
+      prompt: 'Please do research on managed Postgres providers for startups.',
+      researchMode: 'search',
+    }, {}, tracker);
+
+    const [endpoint, request] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+
+    expect(endpoint).toBe('https://api.perplexity.ai/v1/agent');
+    expect(payload).toEqual(expect.objectContaining({
+      preset: 'pro-search',
+      input: 'managed Postgres providers for startups modern',
+    }));
+    expect(payload.tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'web_search',
+      }),
+      expect.objectContaining({
+        type: 'fetch_url',
+      }),
+    ]));
+    expect(result.researchMode).toBe('pro-search');
+    expect(result.answer).toContain('Neon and Crunchy Bridge differ');
+    expect(result.verifiedPages).toEqual([
+      expect.objectContaining({
+        title: 'Managed Postgres comparison',
+        url: 'https://example.com/postgres',
+      }),
+    ]);
+  });
+
   test('uses Sonar for grounded answers and image URL hotlisting', async () => {
     global.fetch.mockResolvedValue({
       ok: true,

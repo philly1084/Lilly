@@ -42,7 +42,7 @@ Clients (CLI / Web Chat / Canvas / Notation)
 
 ## Research Defaults
 
-- For routine public web research, start with Perplexity-backed `web-search`
+- For routine public web research, start with Perplexity-backed `web-search`; use raw search for candidate URL discovery and `pro-search` for researched synthesis when snippets/headlines would be too thin
 - If the user gives no timeframe, make searches freshness-aware instead of generic: use "modern" for broad provider/tool/best-practice research, and for news or technology topics use "recent" or "this month" with a month-level time range unless a different period is requested
 - For daily news, article roundups, source-backed briefings, and gathered research data, use Perplexity `pro-search` or expanded `web-search` extraction budgets so source context is not reduced to headlines/snippets
 - Keep user intake minimal; unless the user explicitly constrains the source list, the agent should choose candidate sites and domains itself

@@ -137,6 +137,9 @@ const {
 const {
     applyResearchFreshnessDefaults,
     inferDefaultResearchTimeRange,
+    inferPerplexityResearchMode,
+    needsDeepResearchEvidence,
+    needsExpandedResearchEvidence,
 } = require('./research-freshness');
 const SYNTHETIC_STREAM_CHUNK_SIZE = 120;
 const MAX_PLAN_STEPS = 4;
@@ -2767,32 +2770,7 @@ function inferResearchTimeRangeFromText(text = '') {
 }
 
 function inferPerplexityResearchModeFromText(text = '') {
-    const normalized = String(text || '').trim().toLowerCase();
-    if (!normalized) {
-        return 'search';
-    }
-
-    if (/\b(advanced deep research|institutional(?:-|\s)grade research|maximum depth research|maximum-depth research)\b/.test(normalized)) {
-        return 'advanced-deep-research';
-    }
-
-    if (/\b(deep research|in-depth research|comprehensive research|exhaustive research|thorough research)\b/.test(normalized)) {
-        return 'sonar-deep-research';
-    }
-
-    if (/\b(pro search|agentic research|autonomous research|multi-tool research|plan\s*\+\s*search\s*\+\s*fetch|one-call research|one call research)\b/.test(normalized)) {
-        return 'pro-search';
-    }
-
-    if (/\b(daily news|news roundup|news digest|briefing|newsletter|article roundup|articles?|coverage|current events?|gather(?:ed|ing)? sources?|collect(?:ed|ing)? sources?|research data|source-backed)\b/.test(normalized)) {
-        return 'pro-search';
-    }
-
-    if (/\b(grounded answer|answer with citations|one-shot answer|one shot answer|with citations)\b/.test(normalized)) {
-        return 'sonar-pro';
-    }
-
-    return 'search';
+    return inferPerplexityResearchMode(text, 'search');
 }
 
 function inferExpandedResearchParamsFromText(text = '') {
@@ -2806,8 +2784,8 @@ function inferExpandedResearchParamsFromText(text = '') {
         return base;
     }
 
-    const needsGatheredResearch = /\b(daily news|news roundup|news digest|briefing|newsletter|articles?|coverage|current events?|gather(?:ed|ing)?|collect(?:ed|ing)?|source-backed|citations?|sources?|research data)\b/.test(normalized);
-    const needsDeepResearch = /\b(deep research|in-depth research|comprehensive research|exhaustive research|thorough research|advanced deep research|institutional(?:-|\s)grade research)\b/.test(normalized);
+    const needsGatheredResearch = needsExpandedResearchEvidence(normalized);
+    const needsDeepResearch = needsDeepResearchEvidence(normalized);
 
     return {
         ...base,
@@ -13420,7 +13398,7 @@ class ConversationOrchestrator extends EventEmitter {
             'Do not turn `user-checkpoint` into a long questionnaire, a page of questions, or more than 6 steps.',
             'When the latest user turn starts with `Survey response (`, treat that as the resolved answer to the prior checkpoint and continue the work instead of planning another survey.',
             'For research, web-search, web-fetch, or web-scrape work, avoid long scrape surveys and example-heavy intake. If clarification is truly needed, use one short choice hotlist with 2 to 4 concrete options, then continue after the answer.',
-            'For routine public research and research-backed slides or documents, do not stop to ask which websites to scrape. Use Perplexity-backed `web-search` to discover candidate URLs, choose the strongest public sources yourself, verify them with `web-fetch` first, and use `web-scrape` only when a page needs rendered or structured extraction unless the user explicitly wants a constrained source list.',
+            'For routine public research and research-backed slides or documents, do not stop to ask which websites to scrape. Use Perplexity-backed `web-search` with `pro-search` for researched synthesis when snippets would be too thin; use raw search only for candidate URL discovery. Choose the strongest public sources yourself, verify them with `web-fetch` first, and use `web-scrape` only when a page needs rendered or structured extraction unless the user explicitly wants a constrained source list.',
             'When a research search has no timeframe, keep the query freshness-aware: use "modern" for broad provider/tool/best-practice searches, and use "recent" or "this month" plus `timeRange: "month"` for news or technology topics.',
             'Every `document-workflow` step must include `params.action` set to `recommend`, `plan`, `generate`, `assemble`, or `generate-suite`.',
             'Use `document-workflow generate` for final briefs, reports, documents, HTML pages, and slide decks. For slides, slide decks, presentations, and PowerPoint requests, default the final deliverable to PPTX unless the user explicitly asks for interactive or HTML output.',
@@ -14454,7 +14432,7 @@ class ConversationOrchestrator extends EventEmitter {
 
         if (allowedToolIds.includes(DOCUMENT_WORKFLOW_TOOL_ID)) {
             parts.push('Use `document-workflow` to recommend, plan, and generate reports, briefs, HTML documents, and slide decks.');
-            parts.push('For routine public research behind those deliverables, discover candidate source URLs through Perplexity-backed `web-search`, choose the strongest sites yourself, verify them with `web-fetch` first, and use `web-scrape` only when deeper extraction is needed instead of asking the user which websites to scrape.');
+            parts.push('For routine public research behind those deliverables, use Perplexity-backed `web-search` with `pro-search` for researched synthesis when snippets would be too thin; use raw search only for candidate URL discovery. Choose the strongest sites yourself, verify them with `web-fetch` first, and use `web-scrape` only when deeper extraction is needed instead of asking the user which websites to scrape.');
             parts.push('When a search has no user-provided timeframe, make it freshness-aware: use "modern" for broad provider/tool/best-practice searches, and use "recent" or "this month" plus `timeRange: "month"` for news or technology topics.');
             parts.push('For research-backed deliverables, gather verified facts with `web-search` and `web-fetch` first, then use `web-scrape` only when a page needs rendered or structured extraction before calling `document-workflow generate` with grounded `sources` built from those verified results.');
             parts.push('For previewable website/dashboard/front-end/game/Vite artifacts, use `document-workflow generate-suite` with `formats:["html"]`, `buildMode:"sandbox"`, and `useSandbox:true` so the workflow can create a sandbox bundle.');

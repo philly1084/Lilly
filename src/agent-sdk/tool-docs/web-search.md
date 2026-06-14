@@ -42,10 +42,10 @@ Notes:
 - `researchMode: "search"` uses Perplexity's raw `/search` endpoint for ranked results.
 - `researchMode: "sonar" | "sonar-pro" | "sonar-reasoning-pro" | "sonar-deep-research"` uses Perplexity Sonar `/v1/sonar` for grounded answers, citations, search results, and optional media.
 - `researchMode: "fast-search" | "pro-search" | "deep-research" | "advanced-deep-research"` uses Perplexity's `/v1/agent` presets for autonomous searched answers plus source results.
-- Use `search` for URL hotlisting, scraping prep, Playwright candidate pages, and routine public research when the local agent can fetch/verify pages itself.
+- Use `search` for URL hotlisting, scraping prep, Playwright candidate pages, and link discovery when the local agent only needs candidate pages.
 - Use `sonar` or `sonar-pro` for one-shot grounded answers. Use `sonar-pro` for complex comparisons.
 - Use `returnImages: true` with optional `imageDomains` and `imageFormats` for image URL hotlisting. Use `returnVideos: true` only when video sources materially help.
-- Use `pro-search` when a single Perplexity call should plan, search, and fetch autonomously. Prefer it for daily news, article roundups, source-backed briefings, and research collection where headlines/snippets alone would be too thin but full deep research is not justified.
+- Use `pro-search` when a single Perplexity call should plan, search, and fetch autonomously. Prefer it for explicit research requests, daily news, article roundups, source-backed briefings, and research collection where headlines/snippets alone would be too thin but full deep research is not justified.
 - Use `sonar-deep-research` only when the user explicitly asks for deep, comprehensive, or long-form research that justifies higher cost.
 - Use `domains` to bias Perplexity toward official docs, publishers, or an approved source family.
 - For Canadian current-info requests, use authoritative Canadian domains when obvious, such as `weather.gc.ca` for weather.
