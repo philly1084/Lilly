@@ -34,10 +34,10 @@ describe('after-process audit', () => {
         delete process.env.KIMIBUILT_AFTER_PROCESS_AUDIT;
     });
 
-    test('uses the GPT 5.5 audit lane by default', () => {
+    test('uses the codex-latest audit lane by default', () => {
         expect(resolveAfterProcessAuditConfig()).toEqual(expect.objectContaining({
             enabled: true,
-            model: 'gpt-5.5',
+            model: 'codex-latest',
             reasoningEffort: 'medium',
         }));
     });
@@ -50,7 +50,7 @@ describe('after-process audit', () => {
                 enabled: true,
                 defaultModel: 'gpt-5.5',
                 evaluatorModel: 'gpt-5.5',
-                afterProcessAuditModel: 'gpt-5.5',
+                afterProcessAuditModel: 'codex-latest',
                 afterProcessAuditEnabled: true,
                 agentDirectedRuntime: true,
                 neuralWaveResearchMode: true,
@@ -84,7 +84,7 @@ describe('after-process audit', () => {
             asyncRuntimeWebChatParallel: true,
             afterProcessAuditEnabled: true,
         }));
-        expect(evidence.modelLanes.afterProcessAuditModel).toBe('gpt-5.5');
+        expect(evidence.modelLanes.afterProcessAuditModel).toBe('codex-latest');
         expect(evidence.selectedSkills[0].id).toBe('agent-trace-eval-replay');
         expect(evidence.toolEvents[0]).toEqual(expect.objectContaining({
             toolId: 'remote-cli-agent',
@@ -100,7 +100,7 @@ describe('after-process audit', () => {
 
     test('runs model audit and normalizes review output', async () => {
         createResponse.mockResolvedValue({
-            model: 'gpt-5.5',
+            model: 'codex-latest',
             output_text: JSON.stringify({
                 auditDecision: 'needs_followup',
                 qualityScore: 0.42,
@@ -141,7 +141,7 @@ describe('after-process audit', () => {
         });
 
         expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
-            model: 'gpt-5.5',
+            model: 'codex-latest',
             reasoningEffort: 'medium',
             stream: false,
         }));
@@ -194,7 +194,7 @@ describe('after-process audit', () => {
         }, {
             auditId: 'after-audit-new',
             status: 'completed',
-            model: 'gpt-5.5',
+            model: 'codex-latest',
             completedAt: '2026-06-06T00:00:00.000Z',
             audit: {
                 auditDecision: 'pass',

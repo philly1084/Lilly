@@ -312,7 +312,7 @@ describe('settings.controller personality support', () => {
       plannerModel: 'gpt-5.5',
       fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
       afterProcessAuditEnabled: true,
-      afterProcessAuditModel: 'gpt-5.5',
+      afterProcessAuditModel: 'codex-latest',
       neuralWaveResearchMode: false,
       perplexityResearchLevel: 'auto',
       asyncRuntimeEnabled: false,
