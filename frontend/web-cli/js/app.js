@@ -5,6 +5,8 @@
 
 const WEB_CLI_LONG_AGENT_ENABLED_KEY = 'codecli-long-agent-enabled';
 const WEB_CLI_TTS_MESSAGE_PREFIX = 'web-cli-tts';
+const WEB_CLI_PINNED_COMMANDS_KEY = 'codecli-pinned-commands';
+const WEB_CLI_DENSITY_KEY = 'codecli-density';
 const WEB_CLI_CURRENT_HELP_COMMAND_IDS = new Set([
     'help',
     'clear',
@@ -16,6 +18,22 @@ const WEB_CLI_CURRENT_HELP_COMMAND_IDS = new Set([
     'model',
     'tts',
     'theme',
+    'density',
+    'enterprise',
+    'status',
+    'brief',
+    'next',
+    'audit',
+    'packet',
+    'register',
+    'gates',
+    'ops',
+    'evidence',
+    'review',
+    'find',
+    'pins',
+    'pin',
+    'unpin',
     'tools',
     'tool',
     'tool-help',
@@ -33,7 +51,10 @@ const WEB_CLI_CURRENT_HELP_COMMAND_IDS = new Set([
     'sandbox',
     'sandbox-help',
     'build',
+    'canvas',
     'long-agent',
+    'workflows',
+    'export',
     'history',
     'artifacts',
     'shortcuts',
@@ -53,6 +74,7 @@ class CodeCLIApp {
             || localStorage.getItem(this.themeCatalog?.storageKeys?.preset || 'kimibuilt_theme_preset')
             || WEB_CLI_DEFAULT_THEME
         ) || WEB_CLI_DEFAULT_THEME;
+        this.density = this.normalizeDensity(localStorage.getItem(WEB_CLI_DENSITY_KEY)) || 'comfortable';
         this.commandHistory = JSON.parse(localStorage.getItem('codecli-cmd-history') || '[]');
         this.autocompleteIndex = -1;
         this.autocompleteMatches = [];
@@ -101,6 +123,7 @@ class CodeCLIApp {
         this.commands = this.commandCatalog
             .flatMap((command) => [command.command, ...(command.aliases || [])])
             .filter(Boolean);
+        this.pinnedCommands = this.loadPinnedCommands();
         
         this.init();
     }
@@ -142,6 +165,8 @@ class CodeCLIApp {
         this.commandInput = document.getElementById('commandInput');
         this.modelSelect = document.getElementById('modelSelect');
         this.themeButton = document.getElementById('themeButton');
+        this.densityButton = document.getElementById('densityButton');
+        this.enterpriseButton = document.getElementById('enterpriseButton');
         this.ttsToggleButton = document.getElementById('ttsToggleButton');
         this.statusDot = document.getElementById('statusDot');
         this.statusText = document.getElementById('statusText');
@@ -178,6 +203,7 @@ class CodeCLIApp {
         
         this.setupEventListeners();
         this.applyTheme(this.theme);
+        this.applyDensity(this.density);
         this.initializeTts();
         this.renderVoxelPet();
         this.initMermaid();
@@ -318,6 +344,183 @@ class CodeCLIApp {
                 description: 'Set voxel or a shared web-chat theme.',
                 template: '/theme ',
                 arguments: 'theme name or list',
+            },
+            {
+                id: 'density',
+                command: '/density',
+                aliases: ['/compact'],
+                label: 'Density',
+                icon: 'DN',
+                category: 'General',
+                description: 'Switch between comfortable and compact enterprise layouts.',
+                template: '/density compact',
+                arguments: 'compact or comfortable',
+            },
+            {
+                id: 'enterprise',
+                command: '/enterprise',
+                aliases: ['/workmode', '/professional'],
+                label: 'Enterprise Mode',
+                icon: 'EM',
+                category: 'General',
+                description: 'Apply compact, command-center defaults and hide companion UI chrome.',
+                template: '/enterprise',
+                featured: true,
+            },
+            {
+                id: 'status',
+                command: '/status',
+                label: 'Status',
+                icon: 'ST',
+                category: 'System',
+                description: 'Show one operational card for session, files, model, theme, and runtime state.',
+                template: '/status',
+                featured: true,
+            },
+            {
+                id: 'brief',
+                command: '/brief',
+                aliases: ['/handoff', '/summary'],
+                label: 'Brief',
+                icon: 'BR',
+                category: 'Session',
+                description: 'Build a concise local handoff brief from transcript, files, and runtime state.',
+                template: '/brief',
+                featured: true,
+            },
+            {
+                id: 'next',
+                command: '/next',
+                aliases: ['/next-actions', '/todo'],
+                label: 'Next Actions',
+                icon: 'NA',
+                category: 'Session',
+                description: 'Show a prioritized local action plan for the current session state.',
+                template: '/next',
+                featured: true,
+            },
+            {
+                id: 'audit',
+                command: '/audit',
+                aliases: ['/activity', '/trail'],
+                label: 'Audit Trail',
+                icon: 'AT',
+                category: 'Session',
+                description: 'Show a local audit trail for messages, files, commands, and runtime state.',
+                template: '/audit',
+                featured: true,
+            },
+            {
+                id: 'packet',
+                command: '/packet',
+                aliases: ['/handoff-packet', '/continue'],
+                label: 'Packet',
+                icon: 'PK',
+                category: 'Session',
+                description: 'Build one continuation packet from status, brief, audit trail, pins, and recent context.',
+                template: '/packet',
+                featured: true,
+            },
+            {
+                id: 'register',
+                command: '/register',
+                aliases: ['/decisions', '/risks'],
+                label: 'Register',
+                icon: 'RG',
+                category: 'Session',
+                description: 'Extract a local decision, risk, and action register from the current transcript.',
+                template: '/register',
+                featured: true,
+            },
+            {
+                id: 'gates',
+                command: '/gates',
+                aliases: ['/quality', '/readiness'],
+                label: 'Quality Gates',
+                icon: 'QG',
+                category: 'Session',
+                description: 'Show pass/warn/fail readiness gates for the current CLI session.',
+                template: '/gates',
+                featured: true,
+            },
+            {
+                id: 'ops',
+                command: '/ops',
+                aliases: ['/dashboard', '/snapshot'],
+                label: 'Ops Snapshot',
+                icon: 'OS',
+                category: 'Session',
+                description: 'Show one operating snapshot across status, gates, register, pins, and handoff readiness.',
+                template: '/ops',
+                featured: true,
+            },
+            {
+                id: 'evidence',
+                command: '/evidence',
+                aliases: ['/proof', '/receipts'],
+                label: 'Evidence Pack',
+                icon: 'EV',
+                category: 'Session',
+                description: 'Package session proof from status, gates, register, audit, files, and recent commands.',
+                template: '/evidence',
+                featured: true,
+            },
+            {
+                id: 'review',
+                command: '/review',
+                aliases: ['/queue', '/triage', '/issue-queue'],
+                label: 'Review Queue',
+                icon: 'RQ',
+                category: 'Session',
+                description: 'Prioritize open risks, warnings, and next actions for fast handoff.',
+                template: '/review',
+                featured: true,
+            },
+            {
+                id: 'find',
+                command: '/find',
+                aliases: ['/search'],
+                label: 'Find',
+                icon: 'FN',
+                category: 'Session',
+                description: 'Search the current transcript and generated session files locally.',
+                template: '/find ',
+                featured: true,
+                requiresInput: true,
+                arguments: 'query text',
+            },
+            {
+                id: 'pins',
+                command: '/pins',
+                aliases: ['/pinboard'],
+                label: 'Pinboard',
+                icon: 'PB',
+                category: 'Session',
+                description: 'Open pinned commands and recent launchers for this browser.',
+                template: '/pins',
+                featured: true,
+            },
+            {
+                id: 'pin',
+                command: '/pin',
+                label: 'Pin Command',
+                icon: 'P+',
+                category: 'Session',
+                description: 'Add a command or prompt starter to the local pinboard.',
+                template: '/pin ',
+                requiresInput: true,
+                arguments: 'command text',
+            },
+            {
+                id: 'unpin',
+                command: '/unpin',
+                label: 'Unpin Command',
+                icon: 'P-',
+                category: 'Session',
+                description: 'Remove a pinned command by number or exact command text.',
+                template: '/unpin ',
+                requiresInput: true,
+                arguments: 'pin number or command text',
             },
             {
                 id: 'voxel',
@@ -550,6 +753,18 @@ class CodeCLIApp {
                 featured: true,
             },
             {
+                id: 'canvas',
+                command: '/canvas',
+                label: 'Canvas',
+                icon: 'CV',
+                category: 'Build',
+                description: 'Generate structured Canvas content from the CLI.',
+                template: '/canvas document ',
+                featured: true,
+                requiresInput: true,
+                arguments: 'code, document, or diagram plus prompt',
+            },
+            {
                 id: 'long-agent',
                 command: '/long-agent',
                 aliases: ['/long'],
@@ -560,6 +775,18 @@ class CodeCLIApp {
                 template: '/long-agent ',
                 requiresInput: true,
                 arguments: 'on, off, status, or goal',
+            },
+            {
+                id: 'workflows',
+                command: '/workflows',
+                aliases: ['/workflow', '/playbook', '/wf'],
+                label: 'Workflows',
+                icon: 'WF',
+                category: 'Build',
+                description: 'Open reusable enterprise task starters for common CLI work.',
+                template: '/workflows',
+                featured: true,
+                arguments: 'optional search term',
             },
             {
                 id: 'image',
@@ -717,8 +944,9 @@ class CodeCLIApp {
                 label: 'Export',
                 icon: 'EX',
                 category: 'Session',
-                description: 'Export the session to a JSON file.',
-                template: '/export',
+                description: 'Export the transcript as Markdown, text, HTML, or JSON.',
+                template: '/export md',
+                arguments: 'md, txt, html, or json',
             },
             {
                 id: 'copy',
@@ -785,6 +1013,2070 @@ class CodeCLIApp {
         ];
     }
 
+    getWorkflowLibrary() {
+        return [
+            {
+                id: 'triage-failure',
+                title: 'Triage A Failure',
+                lane: 'Operate',
+                description: 'Collect symptoms, recent changes, logs, and a tight next-action plan.',
+                prompt: 'Triage this failure like an incident. Start by asking for missing evidence only if needed, then produce: symptoms, likely causes, evidence to gather, fastest safe fix, and verification steps.',
+                tags: ['debug', 'incident', 'logs'],
+            },
+            {
+                id: 'ship-change',
+                title: 'Ship A Change',
+                lane: 'Build',
+                description: 'Turn a request into scoped implementation, checks, and handoff notes.',
+                prompt: 'Help me ship this change end to end. Identify the smallest correct implementation plan, edit the relevant files, run focused checks, and summarize changed files plus any remaining risk.',
+                tags: ['implement', 'verify', 'handoff'],
+            },
+            {
+                id: 'remote-release',
+                title: 'Remote Release Check',
+                lane: 'Deploy',
+                description: 'Stage a cautious remote deploy or production verification lane.',
+                prompt: '/remote plan',
+                tags: ['remote', 'k3s', 'deploy'],
+            },
+            {
+                id: 'review-diff',
+                title: 'Review Current Diff',
+                lane: 'Review',
+                description: 'Prioritize bugs, regressions, risks, and missing tests in the current worktree.',
+                prompt: 'Review the current diff like a senior code reviewer. Lead with findings by severity, include file and line references, call out missing tests, and keep the summary secondary.',
+                tags: ['review', 'risk', 'tests'],
+            },
+            {
+                id: 'artifact-brief',
+                title: 'Create Artifact Brief',
+                lane: 'Artifacts',
+                description: 'Convert a rough ask into a usable document, dashboard, or preview brief.',
+                prompt: 'Create a compact artifact brief for this request. Include format, audience, purpose, required sections, data/assets needed, design constraints, acceptance checks, and the first implementation step.',
+                tags: ['docs', 'dashboard', 'brief'],
+            },
+            {
+                id: 'canvas-sync',
+                title: 'Canvas Planning Hand-off',
+                lane: 'Canvas',
+                description: 'Prepare a structured prompt for the Canvas agent and editable object actions.',
+                prompt: 'Prepare a Canvas agent hand-off. Summarize the goal, desired board objects, relationships, labels, frames, and the exact editable object actions the canvas should apply.',
+                tags: ['canvas', 'diagram', 'planning'],
+            },
+        ];
+    }
+
+    findWorkflow(id = '') {
+        const normalized = String(id || '').trim().toLowerCase();
+        return this.getWorkflowLibrary().find((workflow) => workflow.id === normalized) || null;
+    }
+
+    useWorkflowButton(button = null) {
+        const workflow = this.findWorkflow(button?.dataset?.workflowId || '');
+        if (!workflow) {
+            this.printWarning('Workflow was not found.');
+            return;
+        }
+
+        this.setCommandInputValue(workflow.prompt);
+        this.updateCommandAssist(this.getCommandEntry(workflow.prompt), { activated: true });
+        this.printSystem(`Workflow staged: ${workflow.title}`);
+    }
+
+    renderWorkflowLauncher(query = '') {
+        const normalizedQuery = String(query || '').trim().toLowerCase();
+        const workflows = this.getWorkflowLibrary()
+            .filter((workflow) => {
+                if (!normalizedQuery) {
+                    return true;
+                }
+                const haystack = [
+                    workflow.title,
+                    workflow.lane,
+                    workflow.description,
+                    workflow.prompt,
+                    ...(workflow.tags || []),
+                ].join(' ').toLowerCase();
+                return haystack.includes(normalizedQuery);
+            });
+
+        const cards = workflows.map((workflow) => `
+            <button
+                type="button"
+                class="cli-workflow-card"
+                data-workflow-id="${this.escapeHtmlAttr(workflow.id)}"
+                onclick="app.useWorkflowButton(this)"
+                title="Stage ${this.escapeHtmlAttr(workflow.title)}"
+            >
+                <span class="cli-workflow-card__lane">${this.escapeHtml(workflow.lane)}</span>
+                <strong>${this.escapeHtml(workflow.title)}</strong>
+                <span>${this.escapeHtml(workflow.description)}</span>
+                <small>${(workflow.tags || []).map((tag) => `#${this.escapeHtml(tag)}`).join(' ')}</small>
+            </button>
+        `).join('');
+
+        return `
+            <div class="cli-workflow-library">
+                <div class="cli-workflow-library__intro">
+                    <strong>Workflow Library</strong>
+                    <span>Stage a reusable task prompt or command, then edit it before running.</span>
+                </div>
+                ${workflows.length > 0
+                    ? `<div class="cli-workflow-grid">${cards}</div>`
+                    : `<div class="cli-workflow-empty">No workflows matched "${this.escapeHtml(normalizedQuery)}". Try /workflows debug, deploy, review, canvas, or brief.</div>`}
+            </div>
+        `;
+    }
+
+    printWorkflows(args = []) {
+        const query = args.join(' ').trim();
+        const line = document.createElement('div');
+        line.className = 'line line-output ai';
+        const body = this.renderWorkflowLauncher(query);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Workflow Library</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">task starters</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Workflow Library</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    getOperationalStatusData() {
+        const transcriptCount = this.getTranscriptEntries?.().length || 0;
+        const fileBytes = this.sessionFiles.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+        const uptimeMs = Math.max(0, Date.now() - (Number(this.sessionStartTime) || Date.now()));
+        const uptimeMinutes = Math.floor(uptimeMs / 60000);
+        const uptime = uptimeMinutes < 1
+            ? '<1 min'
+            : `${uptimeMinutes} min`;
+        const ttsStatus = typeof this.getTtsStatus === 'function' ? this.getTtsStatus() : 'unavailable';
+
+        return {
+            transport: '/api/chat SSE',
+            connection: this.statusText?.textContent || 'Unknown',
+            session: api.sessionId || 'new',
+            model: api.currentModel || 'auto',
+            theme: this.getThemeLabel(this.theme),
+            density: this.getDensityLabel(this.density),
+            mode: this.isEnterpriseModeActive() ? 'Enterprise' : 'Custom',
+            runtime: this.isProcessing ? 'busy' : 'ready',
+            queue: this.commandQueue.length,
+            files: this.sessionFiles.length,
+            fileBytes,
+            transcriptCount,
+            history: this.history.length,
+            uptime,
+            exportFormats: 'md, txt, html, json',
+            voice: ttsStatus,
+        };
+    }
+
+    renderOperationalStatusCard() {
+        const status = this.getOperationalStatusData();
+        const healthLabel = status.connection.toLowerCase().includes('connected') ? 'online' : 'check';
+        const queueLabel = status.queue > 0 ? `${status.queue} queued` : 'clear';
+        const fileLabel = `${status.files} file${status.files === 1 ? '' : 's'}`;
+        const bytesLabel = this.formatFileSize(status.fileBytes || 0);
+
+        return `
+            <div class="cli-status-card" aria-label="Operational status">
+                <div class="cli-status-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Runtime Status</span>
+                        <strong>${this.escapeHtml(status.runtime === 'busy' ? 'Request in progress' : 'Ready for work')}</strong>
+                    </div>
+                    <span class="cli-status-card__badge ${this.escapeHtmlAttr(healthLabel)}">${this.escapeHtml(status.connection)}</span>
+                </div>
+                <div class="cli-status-card__grid">
+                    <div><span>Session</span><strong>${this.escapeHtml(status.session)}</strong></div>
+                    <div><span>Model</span><strong>${this.escapeHtml(status.model)}</strong></div>
+                    <div><span>Theme</span><strong>${this.escapeHtml(status.theme)}</strong></div>
+                    <div><span>Density</span><strong>${this.escapeHtml(status.density)}</strong></div>
+                    <div><span>Mode</span><strong>${this.escapeHtml(status.mode)}</strong></div>
+                    <div><span>Transport</span><strong>${this.escapeHtml(status.transport)}</strong></div>
+                    <div><span>Transcript</span><strong>${this.escapeHtml(String(status.transcriptCount))} entries</strong></div>
+                    <div><span>Files</span><strong>${this.escapeHtml(fileLabel)} - ${this.escapeHtml(bytesLabel)}</strong></div>
+                    <div><span>Queue</span><strong>${this.escapeHtml(queueLabel)}</strong></div>
+                    <div><span>Voice</span><strong>${this.escapeHtml(status.voice)}</strong></div>
+                    <div><span>Input History</span><strong>${this.escapeHtml(String(status.history))} commands</strong></div>
+                    <div><span>Open Time</span><strong>${this.escapeHtml(status.uptime)}</strong></div>
+                    <div><span>Exports</span><strong>${this.escapeHtml(status.exportFormats)}</strong></div>
+                    <div><span>Next</span><strong>/help - /workflows - /canvas</strong></div>
+                </div>
+                <div class="cli-status-card__actions">
+                    <button type="button" onclick="app.useCommandSuggestion('/health', { submit: true })">Check health</button>
+                    <button type="button" onclick="app.useCommandSuggestion('/sessions', { submit: true })">Sessions</button>
+                    <button type="button" onclick="app.useCommandSuggestion('/files', { submit: true })">Files</button>
+                    <button type="button" onclick="app.useCommandSuggestion('/export md', { submit: false })">Prep export</button>
+                </div>
+            </div>
+        `;
+    }
+
+    printOperationalStatus() {
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-status-card-line';
+        const body = this.renderOperationalStatusCard();
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Status</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">runtime</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Status</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    buildSessionReadiness(status = this.getOperationalStatusData(), transcript = [], files = []) {
+        const isConnected = String(status.connection || '').toLowerCase() === 'connected';
+        const hasTranscript = transcript.length > 0;
+        const hasAssistantOutput = transcript.some((entry) => entry.role === 'assistant');
+        const hasFiles = files.length > 0;
+        const isReady = String(status.runtime || '').toLowerCase() === 'ready';
+
+        return [
+            {
+                label: 'Backend connection',
+                state: isConnected ? 'ready' : 'attention',
+                detail: isConnected ? 'Connected to the chat transport' : `Connection is ${status.connection || 'unknown'}`,
+            },
+            {
+                label: 'Session context',
+                state: hasTranscript ? 'ready' : 'missing',
+                detail: hasTranscript ? `${transcript.length} transcript entries available` : 'Send or load a session before handoff',
+            },
+            {
+                label: 'Assistant output',
+                state: hasAssistantOutput ? 'ready' : 'missing',
+                detail: hasAssistantOutput ? 'Latest response can be summarized' : 'No assistant response captured yet',
+            },
+            {
+                label: 'Artifacts',
+                state: hasFiles ? 'ready' : 'optional',
+                detail: hasFiles ? `${files.length} generated file${files.length === 1 ? '' : 's'} attached` : 'No files attached to this session',
+            },
+            {
+                label: 'Export path',
+                state: hasTranscript ? 'ready' : 'attention',
+                detail: hasTranscript ? 'Markdown, text, HTML, and JSON export are available' : 'Transcript export needs at least one entry',
+            },
+            {
+                label: 'Runtime',
+                state: isReady ? 'ready' : 'attention',
+                detail: isReady ? 'No request is currently streaming' : 'A request is still in progress',
+            },
+        ];
+    }
+
+    buildSessionNextActions(status = this.getOperationalStatusData(), transcript = [], files = []) {
+        const actions = [];
+        const isConnected = String(status.connection || '').toLowerCase() === 'connected';
+        const hasTranscript = transcript.length > 0;
+        const hasAssistantOutput = transcript.some((entry) => entry.role === 'assistant');
+        const hasFiles = files.length > 0;
+        const isReady = String(status.runtime || '').toLowerCase() === 'ready';
+
+        if (!isConnected) {
+            actions.push({
+                label: 'Check backend health',
+                detail: 'Confirm the API and stream transport before continuing.',
+                command: '/health',
+                submit: true,
+                priority: 'high',
+            });
+        }
+        if (!hasTranscript) {
+            actions.push({
+                label: 'Start a session thread',
+                detail: 'Send a first request or switch to a saved session.',
+                command: '/sessions',
+                submit: true,
+                priority: 'high',
+            });
+        }
+        if (hasTranscript && !hasAssistantOutput) {
+            actions.push({
+                label: 'Get an assistant response',
+                detail: 'The brief needs at least one assistant pass to summarize.',
+                command: '',
+                submit: false,
+                priority: 'high',
+            });
+        }
+        if (hasAssistantOutput) {
+            actions.push({
+                label: 'Export the transcript',
+                detail: 'Create a markdown handoff from the current session.',
+                command: '/export md',
+                submit: false,
+                priority: 'medium',
+            });
+        }
+        if (hasFiles) {
+            actions.push({
+                label: 'Review generated files',
+                detail: `${files.length} artifact${files.length === 1 ? '' : 's'} are attached to this session.`,
+                command: '/files',
+                submit: true,
+                priority: 'medium',
+            });
+        }
+        if (!isReady) {
+            actions.push({
+                label: 'Wait for streaming to finish',
+                detail: 'A request is still in progress; export after it settles.',
+                command: '/status',
+                submit: true,
+                priority: 'medium',
+            });
+        }
+        actions.push({
+            label: 'Open workflow starters',
+            detail: 'Stage a deploy, review, debug, canvas, or artifact workflow.',
+            command: '/workflows',
+            submit: true,
+            priority: 'low',
+        });
+        actions.push({
+            label: 'Refresh this brief',
+            detail: 'Regenerate readiness and next actions after the next change.',
+            command: '/brief',
+            submit: true,
+            priority: 'low',
+        });
+
+        return actions.slice(0, 6);
+    }
+
+    getSessionBriefData() {
+        const transcript = this.getTranscriptEntries?.() || [];
+        const userEntries = transcript.filter((entry) => entry.role === 'user');
+        const assistantEntries = transcript.filter((entry) => entry.role === 'assistant');
+        const lastUser = userEntries[userEntries.length - 1]?.text || '';
+        const lastAssistant = assistantEntries[assistantEntries.length - 1]?.text || '';
+        const status = this.getOperationalStatusData();
+        const commandHints = [];
+        if (this.sessionFiles.length > 0) {
+            commandHints.push('/files');
+        }
+        if (transcript.length > 0) {
+            commandHints.push('/export md');
+        }
+        commandHints.push('/workflows');
+
+        return {
+            createdAt: new Date().toISOString(),
+            status,
+            transcriptCount: transcript.length,
+            lastUser,
+            lastAssistant,
+            files: this.sessionFiles.map((file) => ({
+                id: file.id,
+                filename: file.filename,
+                type: file.type || 'file',
+                size: file.size || 0,
+            })),
+            commands: Array.from(new Set(commandHints)),
+            readiness: this.buildSessionReadiness(status, transcript, this.sessionFiles),
+            nextActions: this.buildSessionNextActions(status, transcript, this.sessionFiles),
+        };
+    }
+
+    buildSessionBriefText(data = this.getSessionBriefData()) {
+        const lines = [
+            'KimiBuilt Web CLI Brief',
+            `Created: ${data.createdAt}`,
+            `Session: ${data.status.session}`,
+            `Model: ${data.status.model}`,
+            `Theme: ${data.status.theme}`,
+            `Transcript entries: ${data.transcriptCount}`,
+            `Files: ${data.files.length}`,
+            '',
+            'Latest user input:',
+            data.lastUser ? data.lastUser.slice(0, 900) : 'None captured yet.',
+            '',
+            'Latest assistant output:',
+            data.lastAssistant ? data.lastAssistant.slice(0, 1200) : 'None captured yet.',
+            '',
+            'Session files:',
+            ...(data.files.length > 0
+                ? data.files.map((file) => `- ${file.id}. ${file.filename} (${this.formatFileSize(file.size)}, ${file.type})`)
+                : ['- None']),
+            '',
+            'Readiness:',
+            ...(data.readiness || []).map((item) => `- [${item.state}] ${item.label}: ${item.detail}`),
+            '',
+            'Next actions:',
+            ...(data.nextActions || []).map((item) => `- [${item.priority}] ${item.label}: ${item.detail}${item.command ? ` (${item.command})` : ''}`),
+            '',
+            'Suggested next commands:',
+            ...data.commands.map((command) => `- ${command}`),
+        ];
+        return lines.join('\n');
+    }
+
+    renderSessionBriefCard(data = this.getSessionBriefData()) {
+        const latestUser = data.lastUser
+            ? data.lastUser.replace(/\s+/g, ' ').trim().slice(0, 180)
+            : 'No user message captured yet.';
+        const latestAssistant = data.lastAssistant
+            ? data.lastAssistant.replace(/\s+/g, ' ').trim().slice(0, 220)
+            : 'No assistant output captured yet.';
+        const files = data.files.length > 0
+            ? data.files.slice(0, 5).map((file) => `
+                <li><strong>${this.escapeHtml(file.filename)}</strong><span>${this.escapeHtml(file.type)} - ${this.escapeHtml(this.formatFileSize(file.size))}</span></li>
+            `).join('')
+            : '<li><strong>No files yet</strong><span>Generated artifacts will appear here.</span></li>';
+        const commands = data.commands.map((command) => `
+            <button type="button" onclick="app.useCommandSuggestion('${this.escapeHtmlAttr(command)}', { submit: ${command === '/files'} })">${this.escapeHtml(command)}</button>
+        `).join('');
+        const readiness = (data.readiness || []).map((item) => `
+            <div class="cli-brief-card__readiness-item ${this.escapeHtmlAttr(item.state)}">
+                <strong>${this.escapeHtml(item.label)}</strong>
+                <span>${this.escapeHtml(item.detail)}</span>
+            </div>
+        `).join('');
+        const nextActions = (data.nextActions || []).map((item) => {
+            const hasCommand = Boolean(item.command);
+            const onclick = hasCommand
+                ? ` onclick="app.useCommandSuggestion('${this.escapeHtmlAttr(item.command)}', { submit: ${item.submit ? 'true' : 'false'} })"`
+                : '';
+            return `
+                <button type="button" class="cli-brief-card__next-action ${this.escapeHtmlAttr(item.priority)}"${onclick}${hasCommand ? '' : ' disabled'}>
+                    <strong>${this.escapeHtml(item.label)}</strong>
+                    <span>${this.escapeHtml(item.detail)}</span>
+                </button>
+            `;
+        }).join('');
+
+        return `
+            <div class="cli-brief-card" aria-label="Session brief">
+                <div class="cli-brief-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Session Brief</span>
+                        <strong>${this.escapeHtml(data.status.session === 'new' ? 'Local draft session' : data.status.session)}</strong>
+                    </div>
+                    <button type="button" onclick="app.copySessionBrief()">Copy brief</button>
+                </div>
+                <div class="cli-brief-card__grid">
+                    <div><span>Runtime</span><strong>${this.escapeHtml(data.status.runtime)}</strong></div>
+                    <div><span>Transcript</span><strong>${this.escapeHtml(String(data.transcriptCount))} entries</strong></div>
+                    <div><span>Files</span><strong>${this.escapeHtml(String(data.files.length))}</strong></div>
+                    <div><span>Exports</span><strong>${this.escapeHtml(data.status.exportFormats)}</strong></div>
+                </div>
+                <div class="cli-brief-card__section">
+                    <span>Latest user input</span>
+                    <p>${this.escapeHtml(latestUser)}</p>
+                </div>
+                <div class="cli-brief-card__section">
+                    <span>Latest assistant output</span>
+                    <p>${this.escapeHtml(latestAssistant)}</p>
+                </div>
+                <ul class="cli-brief-card__files">${files}</ul>
+                <div class="cli-brief-card__readiness" aria-label="Session readiness checklist">${readiness}</div>
+                <div class="cli-brief-card__next" aria-label="Suggested next actions">${nextActions}</div>
+                <div class="cli-brief-card__actions">${commands}</div>
+            </div>
+        `;
+    }
+
+    renderSessionNextActionsCard(data = this.getSessionBriefData()) {
+        const actions = (data.nextActions || []).map((item, index) => {
+            const hasCommand = Boolean(item.command);
+            const onclick = hasCommand
+                ? ` onclick="app.useCommandSuggestion('${this.escapeHtmlAttr(item.command)}', { submit: ${item.submit ? 'true' : 'false'} })"`
+                : '';
+            return `
+                <button type="button" class="cli-next-card__item ${this.escapeHtmlAttr(item.priority)}"${onclick}${hasCommand ? '' : ' disabled'}>
+                    <span>${this.escapeHtml(String(index + 1).padStart(2, '0'))}</span>
+                    <strong>${this.escapeHtml(item.label)}</strong>
+                    <small>${this.escapeHtml(item.detail)}</small>
+                </button>
+            `;
+        }).join('');
+
+        return `
+            <div class="cli-next-card" aria-label="Session next actions">
+                <div class="cli-next-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Next Actions</span>
+                        <strong>${this.escapeHtml(data.status.runtime === 'busy' ? 'Finish active work first' : 'Ready to continue')}</strong>
+                    </div>
+                    <button type="button" onclick="app.useCommandSuggestion('/brief', { submit: true })">Open brief</button>
+                </div>
+                <div class="cli-next-card__list">${actions}</div>
+            </div>
+        `;
+    }
+
+    printSessionNextActions() {
+        const data = this.getSessionBriefData();
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-next-card-line';
+        const body = this.renderSessionNextActionsCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Next Actions</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">plan</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Next Actions</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    buildSessionAuditData() {
+        const transcript = this.getTranscriptEntries?.() || [];
+        const status = this.getOperationalStatusData();
+        const events = [];
+
+        events.push({
+            type: 'runtime',
+            label: 'Session opened',
+            detail: `${status.session} - ${status.model} - ${status.theme}`,
+            time: new Date(this.sessionStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            state: status.connection === 'Connected' ? 'ready' : 'attention',
+        });
+
+        transcript.slice(-8).forEach((entry, index) => {
+            const role = entry.role === 'assistant' ? 'Assistant output' : (entry.role === 'user' ? 'User input' : entry.role);
+            events.push({
+                type: entry.role,
+                label: role,
+                detail: entry.text.replace(/\s+/g, ' ').trim().slice(0, 180),
+                time: `T-${String(transcript.length - index).padStart(2, '0')}`,
+                state: entry.role === 'error' ? 'error' : 'ready',
+            });
+        });
+
+        this.sessionFiles.slice(-5).forEach((file) => {
+            events.push({
+                type: 'file',
+                label: `File #${file.id}`,
+                detail: `${file.filename} - ${this.formatFileSize(file.size || 0)}`,
+                time: file.createdAt ? new Date(file.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'file',
+                state: 'ready',
+            });
+        });
+
+        this.commandHistory.slice(-5).forEach((command) => {
+            events.push({
+                type: 'command',
+                label: 'Command history',
+                detail: String(command || '').slice(0, 180),
+                time: 'cmd',
+                state: 'muted',
+            });
+        });
+
+        return {
+            createdAt: new Date().toISOString(),
+            status,
+            transcriptCount: transcript.length,
+            fileCount: this.sessionFiles.length,
+            commandCount: this.commandHistory.length,
+            events: events.slice(-18).reverse(),
+        };
+    }
+
+    buildSessionAuditText(data = this.buildSessionAuditData()) {
+        return [
+            'KimiBuilt Web CLI Audit Trail',
+            `Created: ${data.createdAt}`,
+            `Session: ${data.status.session}`,
+            `Runtime: ${data.status.runtime}`,
+            `Connection: ${data.status.connection}`,
+            `Messages: ${data.transcriptCount}`,
+            `Files: ${data.fileCount}`,
+            `Commands: ${data.commandCount}`,
+            '',
+            'Events:',
+            ...(data.events.length > 0
+                ? data.events.map((event) => `- [${event.state}] ${event.time} ${event.label}: ${event.detail}`)
+                : ['- No events captured yet.']),
+        ].join('\n');
+    }
+
+    renderSessionAuditCard(data = this.buildSessionAuditData()) {
+        const events = data.events.length > 0
+            ? data.events.map((event) => `
+                <div class="cli-audit-card__event ${this.escapeHtmlAttr(event.state)}">
+                    <span>${this.escapeHtml(event.time)}</span>
+                    <strong>${this.escapeHtml(event.label)}</strong>
+                    <small>${this.escapeHtml(event.detail)}</small>
+                </div>
+            `).join('')
+            : '<div class="cli-audit-card__empty">No events captured yet.</div>';
+
+        return `
+            <div class="cli-audit-card" aria-label="Session audit trail">
+                <div class="cli-audit-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Audit Trail</span>
+                        <strong>${this.escapeHtml(data.events.length > 0 ? `${data.events.length} recent events` : 'No events yet')}</strong>
+                    </div>
+                    <button type="button" onclick="app.copySessionAudit()">Copy audit</button>
+                </div>
+                <div class="cli-audit-card__metrics">
+                    <div><span>Messages</span><strong>${this.escapeHtml(String(data.transcriptCount))}</strong></div>
+                    <div><span>Files</span><strong>${this.escapeHtml(String(data.fileCount))}</strong></div>
+                    <div><span>Commands</span><strong>${this.escapeHtml(String(data.commandCount))}</strong></div>
+                    <div><span>Runtime</span><strong>${this.escapeHtml(data.status.runtime)}</strong></div>
+                </div>
+                <div class="cli-audit-card__timeline">${events}</div>
+            </div>
+        `;
+    }
+
+    printSessionAudit() {
+        const data = this.buildSessionAuditData();
+        this.lastSessionAuditText = this.buildSessionAuditText(data);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-audit-card-line';
+        const body = this.renderSessionAuditCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Audit Trail</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">activity</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Audit Trail</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    getSearchSnippet(text = '', query = '', maxLength = 180) {
+        const normalizedText = String(text || '').replace(/\s+/g, ' ').trim();
+        const normalizedQuery = String(query || '').trim().toLowerCase();
+        if (!normalizedText) {
+            return '';
+        }
+        const index = normalizedQuery ? normalizedText.toLowerCase().indexOf(normalizedQuery) : -1;
+        if (index < 0) {
+            return normalizedText.slice(0, maxLength);
+        }
+        const start = Math.max(0, index - Math.floor(maxLength / 3));
+        const end = Math.min(normalizedText.length, start + maxLength);
+        return `${start > 0 ? '...' : ''}${normalizedText.slice(start, end)}${end < normalizedText.length ? '...' : ''}`;
+    }
+
+    buildLocalSearchResults(query = '') {
+        const normalizedQuery = String(query || '').trim().toLowerCase();
+        const transcript = this.getTranscriptEntries?.() || [];
+        const results = [];
+
+        if (!normalizedQuery) {
+            return {
+                query: '',
+                transcriptCount: 0,
+                fileCount: 0,
+                results,
+            };
+        }
+
+        transcript.forEach((entry, index) => {
+            const text = String(entry.text || '');
+            if (!text.toLowerCase().includes(normalizedQuery)) {
+                return;
+            }
+            results.push({
+                source: 'Transcript',
+                label: `${entry.role || 'entry'} #${index + 1}`,
+                detail: this.getSearchSnippet(text, normalizedQuery),
+                target: 'transcript',
+                targetIndex: index,
+                command: '/export md',
+                submit: false,
+            });
+        });
+
+        this.sessionFiles.forEach((file) => {
+            const fileText = [
+                file.filename,
+                file.type,
+                file.mimeType,
+                file.content,
+                file.downloadUrl,
+                file.previewUrl,
+            ].map((value) => String(value || '')).join(' ');
+            if (!fileText.toLowerCase().includes(normalizedQuery)) {
+                return;
+            }
+            results.push({
+                source: 'File',
+                label: `${file.filename || `File #${file.id}`} (${this.formatFileSize(file.size || 0)})`,
+                detail: this.getSearchSnippet(fileText, normalizedQuery),
+                target: 'file',
+                targetIndex: file.id,
+                command: '/files',
+                submit: true,
+            });
+        });
+
+        return {
+            query: String(query || '').trim(),
+            transcriptCount: results.filter((item) => item.source === 'Transcript').length,
+            fileCount: results.filter((item) => item.source === 'File').length,
+            results: results.slice(0, 20),
+        };
+    }
+
+    renderFindResultsCard(data = this.buildLocalSearchResults()) {
+        const resultItems = data.results.length > 0
+            ? data.results.map((item) => `
+                <div class="cli-find-card__item">
+                    <span>${this.escapeHtml(item.source)}</span>
+                    <strong>${this.escapeHtml(item.label)}</strong>
+                    <small>${this.escapeHtml(item.detail)}</small>
+                    <div class="cli-find-card__actions">
+                        <button type="button" onclick="app.jumpToFindResult('${this.escapeHtmlAttr(item.target)}', '${this.escapeHtmlAttr(String(item.targetIndex))}')">Jump</button>
+                        <button type="button" onclick="app.useCommandSuggestion('${this.escapeHtmlAttr(item.command)}', { submit: ${item.submit ? 'true' : 'false'} })">${this.escapeHtml(item.command)}</button>
+                    </div>
+                </div>
+            `).join('')
+            : `<div class="cli-find-card__empty">No local matches for "${this.escapeHtml(data.query)}". Try a shorter term or search after the next response lands.</div>`;
+
+        return `
+            <div class="cli-find-card" aria-label="Local search results">
+                <div class="cli-find-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Local Find</span>
+                        <strong>${this.escapeHtml(data.query || 'No query')}</strong>
+                    </div>
+                    <button type="button" onclick="app.useCommandSuggestion('/find ', { submit: false })">New search</button>
+                </div>
+                <div class="cli-find-card__metrics">
+                    <div><span>Results</span><strong>${this.escapeHtml(String(data.results.length))}</strong></div>
+                    <div><span>Transcript</span><strong>${this.escapeHtml(String(data.transcriptCount))}</strong></div>
+                    <div><span>Files</span><strong>${this.escapeHtml(String(data.fileCount))}</strong></div>
+                </div>
+                <div class="cli-find-card__list">${resultItems}</div>
+            </div>
+        `;
+    }
+
+    printFindResults(query = '') {
+        const normalizedQuery = String(query || '').trim();
+        if (!normalizedQuery) {
+            this.printWarning('Usage: /find <query> or /search <query>');
+            return;
+        }
+
+        const data = this.buildLocalSearchResults(normalizedQuery);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-find-card-line';
+        const body = this.renderFindResultsCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Find</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">local search</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Find</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    jumpToFindResult(target = '', targetIndex = '') {
+        const normalizedTarget = String(target || '').toLowerCase();
+        if (normalizedTarget === 'file') {
+            const fileId = Number.parseInt(targetIndex, 10);
+            const file = this.sessionFiles.find((entry) => entry.id === fileId);
+            if (file) {
+                this.printSystem(`Focused file #${file.id}: ${file.filename}`);
+                this.openFileManager();
+            } else {
+                this.printWarning(`File #${targetIndex} is no longer available in this session.`);
+            }
+            return;
+        }
+
+        const index = Number.parseInt(targetIndex, 10);
+        const nodes = Array.from(this.terminalOutput?.children || []);
+        const transcriptNodes = nodes.filter((node) => {
+            const text = String(node.innerText || node.textContent || '').trim();
+            if (!text) {
+                return false;
+            }
+            return node.classList?.contains('line-input')
+                || node.classList?.contains('ai')
+                || node.classList?.contains('error')
+                || node.classList?.contains('success')
+                || node.classList?.contains('system');
+        });
+        const node = transcriptNodes[index];
+        if (!node) {
+            this.printWarning('That search result is no longer visible in the transcript.');
+            return;
+        }
+
+        node.classList.remove('cli-find-target-highlight');
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.requestAnimationFrame(() => {
+            node.classList.add('cli-find-target-highlight');
+            window.setTimeout(() => node.classList.remove('cli-find-target-highlight'), 2400);
+        });
+    }
+
+    getDefaultPinnedCommands() {
+        return ['/status', '/brief', '/find ', '/workflows', '/canvas document ', '/export md'];
+    }
+
+    normalizePinnedCommand(command = '') {
+        return String(command || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    }
+
+    loadPinnedCommands() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(WEB_CLI_PINNED_COMMANDS_KEY) || 'null');
+            if (Array.isArray(saved)) {
+                const normalized = saved
+                    .map((command) => this.normalizePinnedCommand(command))
+                    .filter(Boolean);
+                if (normalized.length > 0) {
+                    return Array.from(new Set(normalized)).slice(0, 12);
+                }
+            }
+        } catch (_error) {}
+        return this.getDefaultPinnedCommands();
+    }
+
+    savePinnedCommands() {
+        try {
+            localStorage.setItem(WEB_CLI_PINNED_COMMANDS_KEY, JSON.stringify(this.pinnedCommands.slice(0, 12)));
+        } catch (error) {
+            console.warn('[WebCLI] Failed to save pinned commands:', error);
+        }
+    }
+
+    getRecentCommandLaunchers(limit = 6) {
+        const seen = new Set();
+        return [...this.history]
+            .reverse()
+            .map((command) => this.normalizePinnedCommand(command))
+            .filter((command) => {
+                if (!command || seen.has(command)) {
+                    return false;
+                }
+                seen.add(command);
+                return true;
+            })
+            .slice(0, limit);
+    }
+
+    getPinnedCommandMeta(command = '') {
+        const entry = this.getCommandEntry(command);
+        const isExactRunnable = Boolean(entry && command.trim().toLowerCase() === String(entry.command || '').toLowerCase() && !entry.requiresInput);
+        return {
+            entry,
+            label: entry?.label || (command.startsWith('/') ? command.split(/\s+/)[0] : 'Prompt'),
+            detail: entry?.description || (command.startsWith('/') ? 'Custom CLI command' : 'Plain-language prompt starter'),
+            isExactRunnable,
+        };
+    }
+
+    pinCommand(command = '') {
+        const normalized = this.normalizePinnedCommand(command);
+        if (!normalized) {
+            this.printWarning('Usage: /pin <command or prompt starter>');
+            return;
+        }
+        this.pinnedCommands = [
+            normalized,
+            ...this.pinnedCommands.filter((item) => item.toLowerCase() !== normalized.toLowerCase()),
+        ].slice(0, 12);
+        this.savePinnedCommands();
+        this.printSystem(`Pinned: ${normalized}`);
+        this.printCommandPinboard();
+    }
+
+    unpinCommand(commandOrIndex = '') {
+        const normalized = this.normalizePinnedCommand(commandOrIndex);
+        if (!normalized) {
+            this.printWarning('Usage: /unpin <number or command text>');
+            return;
+        }
+
+        const numericIndex = Number.parseInt(normalized, 10);
+        let removed = '';
+        if (Number.isFinite(numericIndex) && String(numericIndex) === normalized && numericIndex >= 1) {
+            removed = this.pinnedCommands[numericIndex - 1] || '';
+            this.pinnedCommands = this.pinnedCommands.filter((_, index) => index !== numericIndex - 1);
+        } else {
+            const lowered = normalized.toLowerCase();
+            removed = this.pinnedCommands.find((item) => item.toLowerCase() === lowered) || '';
+            this.pinnedCommands = this.pinnedCommands.filter((item) => item.toLowerCase() !== lowered);
+        }
+
+        if (!removed) {
+            this.printWarning(`Pinned command not found: ${normalized}`);
+            return;
+        }
+
+        this.savePinnedCommands();
+        this.printSystem(`Unpinned: ${removed}`);
+        this.printCommandPinboard();
+    }
+
+    usePinnedCommand(index = 0, options = {}) {
+        const command = this.pinnedCommands[Number(index)] || '';
+        if (!command) {
+            this.printWarning('Pinned command is no longer available.');
+            return;
+        }
+        this.useCommandSuggestion(command, options);
+    }
+
+    useRecentCommand(index = 0, options = {}) {
+        const command = this.getRecentCommandLaunchers()[Number(index)] || '';
+        if (!command) {
+            this.printWarning('Recent command is no longer available.');
+            return;
+        }
+        this.useCommandSuggestion(command, options);
+    }
+
+    renderCommandPinboard() {
+        const pins = this.pinnedCommands.length > 0
+            ? this.pinnedCommands.map((command, index) => {
+                const meta = this.getPinnedCommandMeta(command);
+                return `
+                    <div class="cli-pinboard-card__item">
+                        <span>${this.escapeHtml(String(index + 1).padStart(2, '0'))}</span>
+                        <div>
+                            <strong>${this.escapeHtml(meta.label)}</strong>
+                            <code>${this.escapeHtml(command)}</code>
+                            <small>${this.escapeHtml(meta.detail)}</small>
+                        </div>
+                        <div class="cli-pinboard-card__actions">
+                            <button type="button" onclick="app.usePinnedCommand(${index}, { submit: false })">Stage</button>
+                            <button type="button" onclick="app.usePinnedCommand(${index}, { submit: ${meta.isExactRunnable ? 'true' : 'false'} })">Run</button>
+                            <button type="button" onclick="app.unpinCommand('${index + 1}')">Remove</button>
+                        </div>
+                    </div>
+                `;
+            }).join('')
+            : '<div class="cli-pinboard-card__empty">No pinned commands. Use /pin /status or /pin your prompt starter.</div>';
+
+        const recentCommands = this.getRecentCommandLaunchers();
+        const recents = recentCommands.length > 0
+            ? recentCommands.map((command, index) => {
+                const meta = this.getPinnedCommandMeta(command);
+                return `
+                    <button type="button" class="cli-pinboard-card__recent" onclick="app.useRecentCommand(${index}, { submit: false })">
+                        <strong>${this.escapeHtml(meta.label)}</strong>
+                        <span>${this.escapeHtml(command)}</span>
+                    </button>
+                `;
+            }).join('')
+            : '<div class="cli-pinboard-card__empty">Recent commands will appear after you run work in this browser.</div>';
+
+        return `
+            <div class="cli-pinboard-card" aria-label="Command pinboard">
+                <div class="cli-pinboard-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Command Pinboard</span>
+                        <strong>${this.escapeHtml(String(this.pinnedCommands.length))} pinned launchers</strong>
+                    </div>
+                    <button type="button" onclick="app.useCommandSuggestion('/pin ', { submit: false })">Add pin</button>
+                </div>
+                <div class="cli-pinboard-card__list">${pins}</div>
+                <div class="cli-pinboard-card__recent-grid">${recents}</div>
+                <div class="cli-pinboard-card__footer">Use <code>/pin &lt;command&gt;</code> to add and <code>/unpin &lt;number&gt;</code> to remove.</div>
+            </div>
+        `;
+    }
+
+    printCommandPinboard() {
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-pinboard-card-line';
+        const body = this.renderCommandPinboard();
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Pinboard</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">launchers</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Pinboard</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    printSessionBrief() {
+        const data = this.getSessionBriefData();
+        this.lastSessionBriefText = this.buildSessionBriefText(data);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-brief-card-line';
+        const body = this.renderSessionBriefCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Brief</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">handoff</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Brief</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    async copySessionBrief() {
+        const text = this.lastSessionBriefText || this.buildSessionBriefText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Session brief copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use /export md for a saved transcript.');
+        }
+    }
+
+    async copySessionAudit() {
+        const text = this.lastSessionAuditText || this.buildSessionAuditText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Session audit trail copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use /export md for a saved transcript.');
+        }
+    }
+
+    buildSessionPacketText() {
+        const briefData = this.getSessionBriefData();
+        const auditData = this.buildSessionAuditData();
+        const status = this.getOperationalStatusData();
+        const pins = (this.pinnedCommands || []).slice(0, 8);
+        const recents = this.getRecentCommandLaunchers(8);
+        return [
+            'KimiBuilt Web CLI Continuation Packet',
+            `Created: ${new Date().toISOString()}`,
+            `Session: ${status.session}`,
+            `Model: ${status.model}`,
+            `Runtime: ${status.runtime}`,
+            `Connection: ${status.connection}`,
+            `Transcript entries: ${briefData.transcriptCount}`,
+            `Files: ${briefData.files.length}`,
+            '',
+            'Pinned commands:',
+            ...(pins.length > 0 ? pins.map((command, index) => `${index + 1}. ${command}`) : ['- None']),
+            '',
+            'Recent commands:',
+            ...(recents.length > 0 ? recents.map((command, index) => `${index + 1}. ${command}`) : ['- None']),
+            '',
+            '--- Session Brief ---',
+            this.buildSessionBriefText(briefData),
+            '',
+            '--- Audit Trail ---',
+            this.buildSessionAuditText(auditData),
+        ].join('\n');
+    }
+
+    renderSessionPacketCard() {
+        const data = this.getSessionBriefData();
+        const audit = this.buildSessionAuditData();
+        const readinessIssues = (data.readiness || []).filter((item) => item.state !== 'ready').length;
+        const pins = (this.pinnedCommands || []).slice(0, 4);
+        const recents = this.getRecentCommandLaunchers(4);
+        const pinRows = pins.length > 0
+            ? pins.map((command) => `<span>${this.escapeHtml(command)}</span>`).join('')
+            : '<span>No pinned commands yet</span>';
+        const recentRows = recents.length > 0
+            ? recents.map((command) => `<span>${this.escapeHtml(command)}</span>`).join('')
+            : '<span>No recent commands yet</span>';
+
+        return `
+            <div class="cli-packet-card" aria-label="Continuation packet">
+                <div class="cli-packet-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Continuation Packet</span>
+                        <strong>${this.escapeHtml(data.status.session === 'new' ? 'Local draft session' : data.status.session)}</strong>
+                    </div>
+                    <div class="cli-packet-card__actions">
+                        <button type="button" onclick="app.copySessionPacket()">Copy packet</button>
+                        <button type="button" onclick="app.downloadSessionPacket()">Download md</button>
+                    </div>
+                </div>
+                <div class="cli-packet-card__metrics">
+                    <div><span>Runtime</span><strong>${this.escapeHtml(data.status.runtime)}</strong></div>
+                    <div><span>Transcript</span><strong>${this.escapeHtml(String(data.transcriptCount))}</strong></div>
+                    <div><span>Files</span><strong>${this.escapeHtml(String(data.files.length))}</strong></div>
+                    <div><span>Open Issues</span><strong>${this.escapeHtml(String(readinessIssues))}</strong></div>
+                    <div><span>Audit Events</span><strong>${this.escapeHtml(String(audit.events.length))}</strong></div>
+                    <div><span>Pins</span><strong>${this.escapeHtml(String(this.pinnedCommands?.length || 0))}</strong></div>
+                </div>
+                <div class="cli-packet-card__section">
+                    <strong>Latest user</strong>
+                    <p>${this.escapeHtml((data.lastUser || 'None captured yet.').replace(/\s+/g, ' ').slice(0, 220))}</p>
+                </div>
+                <div class="cli-packet-card__lists">
+                    <div><strong>Pinned launchers</strong>${pinRows}</div>
+                    <div><strong>Recent commands</strong>${recentRows}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    printSessionPacket() {
+        this.lastSessionPacketText = this.buildSessionPacketText();
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-packet-card-line';
+        const body = this.renderSessionPacketCard();
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Packet</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">handoff</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Continuation Packet</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    async copySessionPacket() {
+        const text = this.lastSessionPacketText || this.buildSessionPacketText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Continuation packet copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use Download md instead.');
+        }
+    }
+
+    downloadSessionPacket() {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        this.downloadFile(this.lastSessionPacketText || this.buildSessionPacketText(), `kimibuilt-web-cli-packet-${stamp}.md`, 'text/markdown');
+        this.printSystem('Continuation packet downloaded as Markdown');
+    }
+
+    classifyRegisterLine(text = '') {
+        const normalized = String(text || '').trim();
+        const lower = normalized.toLowerCase();
+        if (!normalized || normalized.length < 8) {
+            return null;
+        }
+        if (/\b(decision|decided|approved|chosen|choose|selected|agreed)\b/.test(lower)) {
+            return 'decision';
+        }
+        if (/\b(risk|blocked|blocker|concern|issue|problem|failure|regression|missing|unsafe)\b/.test(lower)) {
+            return 'risk';
+        }
+        if (/\b(next|todo|action|follow up|follow-up|verify|ship|fix|run|check|need to|should)\b/.test(lower)) {
+            return 'action';
+        }
+        return null;
+    }
+
+    buildSessionRegisterData() {
+        const transcript = this.getTranscriptEntries?.() || [];
+        const buckets = { decision: [], risk: [], action: [] };
+        const seen = new Set();
+        transcript.forEach((entry, entryIndex) => {
+            const lines = String(entry.text || '')
+                .split(/\n|(?<=[.!?])\s+(?=[A-Z0-9/-])/)
+                .map((line) => line.replace(/^[-*•\d.)\s]+/, '').replace(/\s+/g, ' ').trim())
+                .filter(Boolean);
+            lines.forEach((line) => {
+                const type = this.classifyRegisterLine(line);
+                if (!type) {
+                    return;
+                }
+                const key = `${type}:${line.toLowerCase()}`;
+                if (seen.has(key)) {
+                    return;
+                }
+                seen.add(key);
+                buckets[type].push({
+                    type,
+                    text: line.slice(0, 220),
+                    source: `${entry.role || 'entry'} #${entryIndex + 1}`,
+                });
+            });
+        });
+
+        return {
+            createdAt: new Date().toISOString(),
+            transcriptCount: transcript.length,
+            decisions: buckets.decision.slice(0, 10),
+            risks: buckets.risk.slice(0, 10),
+            actions: buckets.action.slice(0, 10),
+        };
+    }
+
+    buildSessionRegisterText(data = this.buildSessionRegisterData()) {
+        const formatItems = (items) => items.length > 0
+            ? items.map((item, index) => `${index + 1}. ${item.text} (${item.source})`)
+            : ['- None detected locally.'];
+        return [
+            'KimiBuilt Web CLI Decision Register',
+            `Created: ${data.createdAt}`,
+            `Transcript entries: ${data.transcriptCount}`,
+            '',
+            'Decisions:',
+            ...formatItems(data.decisions),
+            '',
+            'Risks:',
+            ...formatItems(data.risks),
+            '',
+            'Actions:',
+            ...formatItems(data.actions),
+        ].join('\n');
+    }
+
+    renderSessionRegisterCard(data = this.buildSessionRegisterData()) {
+        const renderBucket = (title, items, className) => {
+            const rows = items.length > 0
+                ? items.slice(0, 5).map((item) => `
+                    <div class="cli-register-card__item ${this.escapeHtmlAttr(className)}">
+                        <strong>${this.escapeHtml(item.source)}</strong>
+                        <span>${this.escapeHtml(item.text)}</span>
+                    </div>
+                `).join('')
+                : '<div class="cli-register-card__empty">None detected locally.</div>';
+            return `<section><h4>${this.escapeHtml(title)}</h4>${rows}</section>`;
+        };
+
+        return `
+            <div class="cli-register-card" aria-label="Decision register">
+                <div class="cli-register-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Decision Register</span>
+                        <strong>${this.escapeHtml(String(data.decisions.length + data.risks.length + data.actions.length))} captured signals</strong>
+                    </div>
+                    <button type="button" onclick="app.copySessionRegister()">Copy register</button>
+                </div>
+                <div class="cli-register-card__metrics">
+                    <div><span>Decisions</span><strong>${this.escapeHtml(String(data.decisions.length))}</strong></div>
+                    <div><span>Risks</span><strong>${this.escapeHtml(String(data.risks.length))}</strong></div>
+                    <div><span>Actions</span><strong>${this.escapeHtml(String(data.actions.length))}</strong></div>
+                </div>
+                <div class="cli-register-card__columns">
+                    ${renderBucket('Decisions', data.decisions, 'decision')}
+                    ${renderBucket('Risks', data.risks, 'risk')}
+                    ${renderBucket('Actions', data.actions, 'action')}
+                </div>
+            </div>
+        `;
+    }
+
+    printSessionRegister() {
+        const data = this.buildSessionRegisterData();
+        this.lastSessionRegisterText = this.buildSessionRegisterText(data);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-register-card-line';
+        const body = this.renderSessionRegisterCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Register</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">decisions</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Decision Register</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    async copySessionRegister() {
+        const text = this.lastSessionRegisterText || this.buildSessionRegisterText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Decision register copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
+        }
+    }
+
+    buildSessionGateData() {
+        const brief = this.getSessionBriefData();
+        const register = this.buildSessionRegisterData();
+        const status = this.getOperationalStatusData();
+        const gates = [
+            {
+                label: 'Backend connection',
+                state: String(status.connection || '').toLowerCase() === 'connected' ? 'pass' : 'warn',
+                detail: status.connection || 'unknown',
+            },
+            {
+                label: 'Transcript context',
+                state: brief.transcriptCount > 0 ? 'pass' : 'fail',
+                detail: brief.transcriptCount > 0 ? `${brief.transcriptCount} transcript entries` : 'No transcript captured',
+            },
+            {
+                label: 'Assistant response',
+                state: brief.lastAssistant ? 'pass' : 'fail',
+                detail: brief.lastAssistant ? 'Latest assistant output available' : 'No assistant output yet',
+            },
+            {
+                label: 'Runtime idle',
+                state: status.runtime === 'ready' ? 'pass' : 'warn',
+                detail: status.runtime === 'ready' ? 'No active stream' : 'Request still running',
+            },
+            {
+                label: 'Decision trace',
+                state: register.decisions.length > 0 ? 'pass' : 'warn',
+                detail: register.decisions.length > 0 ? `${register.decisions.length} decisions detected` : 'No decision language detected',
+            },
+            {
+                label: 'Risk visibility',
+                state: register.risks.length > 0 ? 'warn' : 'pass',
+                detail: register.risks.length > 0 ? `${register.risks.length} risks detected` : 'No explicit risks detected',
+            },
+            {
+                label: 'Action path',
+                state: register.actions.length > 0 || (brief.nextActions || []).length > 0 ? 'pass' : 'warn',
+                detail: register.actions.length > 0 ? `${register.actions.length} local actions detected` : `${(brief.nextActions || []).length} suggested actions`,
+            },
+            {
+                label: 'Handoff packet',
+                state: brief.transcriptCount > 0 ? 'pass' : 'warn',
+                detail: brief.transcriptCount > 0 ? '/packet can export continuation context' : 'Start a session before exporting packet',
+            },
+        ];
+        const counts = gates.reduce((acc, gate) => {
+            acc[gate.state] = (acc[gate.state] || 0) + 1;
+            return acc;
+        }, { pass: 0, warn: 0, fail: 0 });
+        return {
+            createdAt: new Date().toISOString(),
+            status,
+            gates,
+            counts,
+        };
+    }
+
+    buildSessionGateText(data = this.buildSessionGateData()) {
+        return [
+            'KimiBuilt Web CLI Quality Gates',
+            `Created: ${data.createdAt}`,
+            `Pass: ${data.counts.pass || 0}`,
+            `Warn: ${data.counts.warn || 0}`,
+            `Fail: ${data.counts.fail || 0}`,
+            '',
+            ...data.gates.map((gate) => `- [${gate.state}] ${gate.label}: ${gate.detail}`),
+        ].join('\n');
+    }
+
+    renderSessionGateCard(data = this.buildSessionGateData()) {
+        const gateRows = data.gates.map((gate) => `
+            <div class="cli-gates-card__item ${this.escapeHtmlAttr(gate.state)}">
+                <strong>${this.escapeHtml(gate.label)}</strong>
+                <span>${this.escapeHtml(gate.detail)}</span>
+            </div>
+        `).join('');
+        const verdict = (data.counts.fail || 0) > 0
+            ? 'Needs attention'
+            : ((data.counts.warn || 0) > 0 ? 'Ready with warnings' : 'Ready');
+
+        return `
+            <div class="cli-gates-card" aria-label="Quality gates">
+                <div class="cli-gates-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Quality Gates</span>
+                        <strong>${this.escapeHtml(verdict)}</strong>
+                    </div>
+                    <button type="button" onclick="app.copySessionGates()">Copy gates</button>
+                </div>
+                <div class="cli-gates-card__metrics">
+                    <div><span>Pass</span><strong>${this.escapeHtml(String(data.counts.pass || 0))}</strong></div>
+                    <div><span>Warn</span><strong>${this.escapeHtml(String(data.counts.warn || 0))}</strong></div>
+                    <div><span>Fail</span><strong>${this.escapeHtml(String(data.counts.fail || 0))}</strong></div>
+                </div>
+                <div class="cli-gates-card__list">${gateRows}</div>
+            </div>
+        `;
+    }
+
+    printSessionGates() {
+        const data = this.buildSessionGateData();
+        this.lastSessionGateText = this.buildSessionGateText(data);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-gates-card-line';
+        const body = this.renderSessionGateCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Quality Gates</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">readiness</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Quality Gates</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    async copySessionGates() {
+        const text = this.lastSessionGateText || this.buildSessionGateText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Quality gates copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
+        }
+    }
+
+    buildOpsSnapshotData() {
+        const brief = this.getSessionBriefData();
+        const audit = this.buildSessionAuditData();
+        const gates = this.buildSessionGateData();
+        const register = this.buildSessionRegisterData();
+        const pins = (this.pinnedCommands || []).slice(0, 6);
+        const recents = this.getRecentCommandLaunchers(6);
+        const verdict = (gates.counts.fail || 0) > 0
+            ? 'Needs attention'
+            : ((gates.counts.warn || 0) > 0 ? 'Ready with warnings' : 'Ready');
+        const openSignals = [
+            ...(register.risks || []).map((item) => ({ type: 'Risk', text: item.text })),
+            ...(brief.readiness || []).filter((item) => item.state !== 'ready').map((item) => ({ type: 'Readiness', text: item.label })),
+            ...gates.gates.filter((gate) => gate.state === 'fail').map((gate) => ({ type: 'Gate', text: `${gate.label}: ${gate.detail}` })),
+        ].slice(0, 5);
+        return {
+            createdAt: new Date().toISOString(),
+            verdict,
+            status: brief.status,
+            brief,
+            audit,
+            gates,
+            register,
+            pins,
+            recents,
+            openSignals,
+            nextActions: (brief.nextActions || []).slice(0, 5),
+        };
+    }
+
+    buildOpsSnapshotText(data = this.buildOpsSnapshotData()) {
+        const formatRows = (rows, fallback = '- None') => rows.length > 0
+            ? rows.map((row, index) => `${index + 1}. ${typeof row === 'string' ? row : `${row.type}: ${row.text}`}`)
+            : [fallback];
+        return [
+            'KimiBuilt Web CLI Ops Snapshot',
+            `Created: ${data.createdAt}`,
+            `Verdict: ${data.verdict}`,
+            `Session: ${data.status.session}`,
+            `Model: ${data.status.model}`,
+            `Runtime: ${data.status.runtime}`,
+            `Connection: ${data.status.connection}`,
+            `Transcript entries: ${data.brief.transcriptCount}`,
+            `Files: ${data.brief.files.length}`,
+            `Audit events: ${data.audit.events.length}`,
+            `Gates: ${data.gates.counts.pass || 0} pass / ${data.gates.counts.warn || 0} warn / ${data.gates.counts.fail || 0} fail`,
+            `Register: ${data.register.decisions.length} decisions / ${data.register.risks.length} risks / ${data.register.actions.length} actions`,
+            `Pinned commands: ${data.pins.length}`,
+            '',
+            'Open signals:',
+            ...formatRows(data.openSignals),
+            '',
+            'Next actions:',
+            ...formatRows(data.nextActions),
+            '',
+            'Recent commands:',
+            ...formatRows(data.recents),
+        ].join('\n');
+    }
+
+    renderOpsSnapshotCard(data = this.buildOpsSnapshotData()) {
+        const metricRows = [
+            ['Runtime', data.status.runtime],
+            ['Connection', data.status.connection],
+            ['Transcript', String(data.brief.transcriptCount)],
+            ['Files', String(data.brief.files.length)],
+            ['Audit Events', String(data.audit.events.length)],
+            ['Pins', String(data.pins.length)],
+            ['Gates', `${data.gates.counts.pass || 0}/${data.gates.gates.length} pass`],
+            ['Register', `${data.register.decisions.length}/${data.register.risks.length}/${data.register.actions.length}`],
+        ].map(([label, value]) => `
+            <div>
+                <span>${this.escapeHtml(label)}</span>
+                <strong>${this.escapeHtml(value)}</strong>
+            </div>
+        `).join('');
+        const signalRows = data.openSignals.length > 0
+            ? data.openSignals.map((signal) => `
+                <div class="cli-ops-card__signal">
+                    <strong>${this.escapeHtml(signal.type)}</strong>
+                    <span>${this.escapeHtml(signal.text)}</span>
+                </div>
+            `).join('')
+            : '<div class="cli-ops-card__empty">No open blockers detected locally.</div>';
+        const actionRows = data.nextActions.length > 0
+            ? data.nextActions.map((action) => `<span>${this.escapeHtml(action)}</span>`).join('')
+            : '<span>No next action detected yet</span>';
+        const commandRows = data.recents.length > 0
+            ? data.recents.map((command) => `<span>${this.escapeHtml(command)}</span>`).join('')
+            : '<span>No recent commands yet</span>';
+
+        return `
+            <div class="cli-ops-card" aria-label="Operations snapshot">
+                <div class="cli-ops-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Ops Snapshot</span>
+                        <strong>${this.escapeHtml(data.verdict)}</strong>
+                    </div>
+                    <button type="button" onclick="app.copyOpsSnapshot()">Copy snapshot</button>
+                </div>
+                <div class="cli-ops-card__metrics">${metricRows}</div>
+                <div class="cli-ops-card__columns">
+                    <section>
+                        <h4>Open Signals</h4>
+                        ${signalRows}
+                    </section>
+                    <section>
+                        <h4>Next Actions</h4>
+                        <div class="cli-ops-card__action-list">${actionRows}</div>
+                    </section>
+                </div>
+                <div class="cli-ops-card__commands">
+                    <strong>Recent launchers</strong>
+                    <div>${commandRows}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    printOpsSnapshot() {
+        const data = this.buildOpsSnapshotData();
+        this.lastOpsSnapshotText = this.buildOpsSnapshotText(data);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-ops-card-line';
+        const body = this.renderOpsSnapshotCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Ops Snapshot</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">readiness</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Ops Snapshot</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    async copyOpsSnapshot() {
+        const text = this.lastOpsSnapshotText || this.buildOpsSnapshotText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Ops snapshot copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
+        }
+    }
+
+    buildEvidencePackData() {
+        const ops = this.buildOpsSnapshotData();
+        const audit = this.buildSessionAuditData();
+        const gates = this.buildSessionGateData();
+        const register = this.buildSessionRegisterData();
+        const files = this.sessionFiles.slice(-8).map((file) => ({
+            id: file.id,
+            filename: file.filename,
+            type: file.type || 'file',
+            size: Number(file.size || 0),
+            createdAt: file.createdAt || null,
+        }));
+        const evidence = [
+            {
+                label: 'Runtime',
+                state: ops.status.runtime === 'ready' ? 'pass' : 'warn',
+                detail: `${ops.status.runtime} / ${ops.status.connection}`,
+            },
+            {
+                label: 'Transcript',
+                state: ops.brief.transcriptCount > 0 ? 'pass' : 'fail',
+                detail: `${ops.brief.transcriptCount} captured entries`,
+            },
+            {
+                label: 'Quality gates',
+                state: (gates.counts.fail || 0) > 0 ? 'fail' : ((gates.counts.warn || 0) > 0 ? 'warn' : 'pass'),
+                detail: `${gates.counts.pass || 0} pass / ${gates.counts.warn || 0} warn / ${gates.counts.fail || 0} fail`,
+            },
+            {
+                label: 'Decision register',
+                state: register.decisions.length + register.risks.length + register.actions.length > 0 ? 'pass' : 'warn',
+                detail: `${register.decisions.length} decisions / ${register.risks.length} risks / ${register.actions.length} actions`,
+            },
+            {
+                label: 'File manifest',
+                state: files.length > 0 ? 'pass' : 'warn',
+                detail: `${files.length} recent file${files.length === 1 ? '' : 's'}`,
+            },
+            {
+                label: 'Audit trail',
+                state: audit.events.length > 0 ? 'pass' : 'warn',
+                detail: `${audit.events.length} recent events`,
+            },
+        ];
+        return {
+            createdAt: new Date().toISOString(),
+            verdict: ops.verdict,
+            status: ops.status,
+            ops,
+            audit,
+            gates,
+            register,
+            files,
+            evidence,
+            recentCommands: this.getRecentCommandLaunchers(6),
+        };
+    }
+
+    buildEvidencePackText(data = this.buildEvidencePackData()) {
+        const formatItems = (items, formatter, fallback = '- None') => items.length > 0
+            ? items.map((item, index) => `${index + 1}. ${formatter(item)}`)
+            : [fallback];
+        return [
+            'KimiBuilt Web CLI Evidence Pack',
+            `Created: ${data.createdAt}`,
+            `Verdict: ${data.verdict}`,
+            `Session: ${data.status.session}`,
+            `Model: ${data.status.model}`,
+            `Runtime: ${data.status.runtime}`,
+            `Connection: ${data.status.connection}`,
+            '',
+            'Evidence coverage:',
+            ...formatItems(data.evidence, (item) => `[${item.state}] ${item.label}: ${item.detail}`),
+            '',
+            'File manifest:',
+            ...formatItems(data.files, (file) => `#${file.id} ${file.filename} (${file.type}, ${this.formatFileSize(file.size)})`),
+            '',
+            'Recent audit events:',
+            ...formatItems(data.audit.events.slice(0, 8), (event) => `[${event.state}] ${event.time} ${event.label}: ${event.detail}`),
+            '',
+            'Gate review:',
+            ...data.gates.gates.map((gate) => `- [${gate.state}] ${gate.label}: ${gate.detail}`),
+            '',
+            'Register summary:',
+            `- Decisions: ${data.register.decisions.length}`,
+            `- Risks: ${data.register.risks.length}`,
+            `- Actions: ${data.register.actions.length}`,
+            '',
+            'Recent commands:',
+            ...formatItems(data.recentCommands, (command) => command),
+        ].join('\n');
+    }
+
+    renderEvidencePackCard(data = this.buildEvidencePackData()) {
+        const coverageRows = data.evidence.map((item) => `
+            <div class="cli-ops-card__signal ${this.escapeHtmlAttr(item.state)}">
+                <strong>${this.escapeHtml(item.label)}</strong>
+                <span>${this.escapeHtml(item.detail)}</span>
+            </div>
+        `).join('');
+        const fileRows = data.files.length > 0
+            ? data.files.slice(0, 5).map((file) => `
+                <span>#${this.escapeHtml(String(file.id))} ${this.escapeHtml(file.filename)} - ${this.escapeHtml(this.formatFileSize(file.size))}</span>
+            `).join('')
+            : '<span>No session files yet</span>';
+        const eventRows = data.audit.events.length > 0
+            ? data.audit.events.slice(0, 5).map((event) => `
+                <span>${this.escapeHtml(event.time)} ${this.escapeHtml(event.label)} - ${this.escapeHtml(event.detail)}</span>
+            `).join('')
+            : '<span>No audit events yet</span>';
+
+        return `
+            <div class="cli-ops-card cli-evidence-card" aria-label="Evidence pack">
+                <div class="cli-ops-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Evidence Pack</span>
+                        <strong>${this.escapeHtml(data.verdict)}</strong>
+                    </div>
+                    <button type="button" onclick="app.copyEvidencePack()">Copy evidence</button>
+                </div>
+                <div class="cli-ops-card__metrics">
+                    <div><span>Gates</span><strong>${this.escapeHtml(String(data.gates.gates.length))}</strong></div>
+                    <div><span>Files</span><strong>${this.escapeHtml(String(data.files.length))}</strong></div>
+                    <div><span>Events</span><strong>${this.escapeHtml(String(data.audit.events.length))}</strong></div>
+                    <div><span>Register</span><strong>${this.escapeHtml(String(data.register.decisions.length + data.register.risks.length + data.register.actions.length))}</strong></div>
+                </div>
+                <div class="cli-ops-card__columns">
+                    <section>
+                        <h4>Coverage</h4>
+                        ${coverageRows}
+                    </section>
+                    <section>
+                        <h4>Manifest</h4>
+                        <div class="cli-ops-card__action-list">${fileRows}</div>
+                    </section>
+                </div>
+                <div class="cli-ops-card__commands">
+                    <strong>Recent audit proof</strong>
+                    <div>${eventRows}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    printEvidencePack() {
+        const data = this.buildEvidencePackData();
+        this.lastEvidencePackText = this.buildEvidencePackText(data);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-evidence-card-line';
+        const body = this.renderEvidencePackCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Evidence Pack</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">proof</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Evidence Pack</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+            this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    async copyEvidencePack() {
+        const text = this.lastEvidencePackText || this.buildEvidencePackText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Evidence pack copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
+        }
+    }
+
+    buildReviewQueueData() {
+        const ops = this.buildOpsSnapshotData();
+        const gates = this.buildSessionGateData();
+        const register = this.buildSessionRegisterData();
+        const recents = this.getRecentCommandLaunchers(6);
+        const signals = [];
+
+        gates.gates
+            .filter((gate) => gate.state === 'fail' || gate.state === 'warn')
+            .forEach((gate) => {
+                signals.push({
+                    priority: gate.state === 'fail' ? 'high' : 'medium',
+                    kind: 'Gate',
+                    text: `${gate.label}: ${gate.detail}`,
+                });
+            });
+
+        register.risks
+            .forEach((risk) => {
+                signals.push({
+                    priority: 'high',
+                    kind: 'Risk',
+                    text: `${risk.text}`,
+                });
+            });
+
+        register.actions
+            .forEach((action) => {
+                signals.push({
+                    priority: 'medium',
+                    kind: 'Action',
+                    text: `${action.text}`,
+                });
+            });
+
+        register.decisions
+            .forEach((decision) => {
+                signals.push({
+                    priority: 'low',
+                    kind: 'Decision',
+                    text: `${decision.text}`,
+                });
+            });
+
+        const orderedSignals = signals.slice(0, 12).map((item) => ({
+            ...item,
+            state: item.priority === 'high' ? 'fail' : (item.priority === 'medium' ? 'warn' : 'pass'),
+        }));
+
+        const counts = orderedSignals.reduce((acc, signal) => {
+            acc[signal.priority] = (acc[signal.priority] || 0) + 1;
+            return acc;
+        }, {});
+        const total = orderedSignals.length;
+        const verdict = counts.high > 0
+            ? 'Needs immediate attention'
+            : (counts.medium > 0 ? 'Needs review' : 'Ready');
+
+        return {
+            createdAt: new Date().toISOString(),
+            verdict,
+            total,
+            counts: {
+                high: counts.high || 0,
+                medium: counts.medium || 0,
+                low: counts.low || 0,
+            },
+            signals: orderedSignals,
+            recents,
+            ops,
+            gates,
+            register,
+        };
+    }
+
+    buildReviewQueueText(data = this.buildReviewQueueData()) {
+        const formatItems = (items, formatter, fallback = '- None') => items.length > 0
+            ? items.map((item, index) => `${index + 1}. ${formatter(item)}`)
+            : [fallback];
+
+        return [
+            'KimiBuilt Web CLI Review Queue',
+            `Created: ${data.createdAt}`,
+            `Verdict: ${data.verdict}`,
+            `Session: ${data.ops.status.session}`,
+            `Model: ${data.ops.status.model}`,
+            `Total: ${data.total} item${data.total === 1 ? '' : 's'}`,
+            `High: ${data.counts.high} / Medium: ${data.counts.medium} / Low: ${data.counts.low}`,
+            '',
+            'Queue:',
+            ...formatItems(data.signals, (signal) => `- [${signal.priority}] ${signal.kind}: ${signal.text}`),
+            '',
+            'Recent commands:',
+            ...formatItems(data.recents, (command) => command),
+        ].join('\n');
+    }
+
+    renderReviewQueueCard(data = this.buildReviewQueueData()) {
+        const signalRows = data.signals.length > 0
+            ? data.signals.map((signal) => `
+                <div class="cli-ops-card__signal ${this.escapeHtmlAttr(signal.state)}">
+                    <strong>${this.escapeHtml(signal.kind)}</strong>
+                    <span>[${this.escapeHtml(signal.priority)}] ${this.escapeHtml(signal.text)}</span>
+                </div>
+            `).join('')
+            : '<span>No review items queued.</span>';
+        const recentRows = data.recents.length > 0
+            ? data.recents.map((command) => `<span>${this.escapeHtml(command)}</span>`).join('')
+            : '<span>No recent commands yet</span>';
+
+        return `
+            <div class="cli-ops-card cli-review-card" aria-label="Review queue">
+                <div class="cli-ops-card__header">
+                    <div>
+                        <span class="cli-status-card__kicker">Review Queue</span>
+                        <strong>${this.escapeHtml(data.verdict)}</strong>
+                    </div>
+                    <button type="button" onclick="app.copyReviewQueue()">Copy review queue</button>
+                </div>
+                <div class="cli-ops-card__metrics">
+                    <div><span>High</span><strong>${this.escapeHtml(String(data.counts.high))}</strong></div>
+                    <div><span>Medium</span><strong>${this.escapeHtml(String(data.counts.medium))}</strong></div>
+                    <div><span>Low</span><strong>${this.escapeHtml(String(data.counts.low))}</strong></div>
+                    <div><span>Total</span><strong>${this.escapeHtml(String(data.total))}</strong></div>
+                </div>
+                <div class="cli-ops-card__commands">
+                    <strong>Queue</strong>
+                    <div>${signalRows}</div>
+                </div>
+                <div class="cli-ops-card__commands">
+                    <strong>Recent launchers</strong>
+                    <div>${recentRows}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    printReviewQueue() {
+        const data = this.buildReviewQueueData();
+        this.lastReviewQueueText = this.buildReviewQueueText(data);
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-ops-card-line';
+        const body = this.renderReviewQueueCard(data);
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>Review Queue</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">triage</span>
+                </div>
+                <div class="voxel-response-body">${body}</div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">Review Queue</span>
+                    </div>
+                    <div class="cli-response-body">${body}</div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+    }
+
+    async copyReviewQueue() {
+        const text = this.lastReviewQueueText || this.buildReviewQueueText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.printSystem('Review queue copied to clipboard');
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
+        }
+    }
+
     isCurrentHelpCommand(command = {}) {
         return WEB_CLI_CURRENT_HELP_COMMAND_IDS.has(command.id);
     }
@@ -794,7 +3086,11 @@ class CodeCLIApp {
         this.commandInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                if (this.autocompleteMatches.length > 0 && this.autocompleteIndex >= 0) {
+                const exactCommand = this.getExactCommandEntry(this.commandInput.value);
+                if (exactCommand && !exactCommand.requiresInput) {
+                    this.hideAutocomplete();
+                    this.sendCommand();
+                } else if (this.autocompleteMatches.length > 0 && this.autocompleteIndex >= 0) {
                     this.selectAutocomplete();
                 } else {
                     this.sendCommand();
@@ -1135,6 +3431,7 @@ class CodeCLIApp {
             this.clearVoxelRoamerPlacementClasses();
         }
         this.renderVoxelPet(this.voxelPetHidden ? 'idle' : 'scout');
+        this.updateEnterpriseButton();
     }
 
     closeVoxelCreator() {
@@ -2026,6 +4323,83 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
                     this.cycleTheme();
                 }
                 break;
+            case 'density':
+            case 'compact':
+                if (args[0]) {
+                    this.setDensity(args[0]);
+                } else {
+                    this.cycleDensity();
+                }
+                break;
+            case 'enterprise':
+            case 'workmode':
+            case 'professional':
+                this.applyEnterpriseMode();
+                this.printOperationalStatus();
+                break;
+            case 'status':
+                this.printOperationalStatus();
+                break;
+            case 'brief':
+            case 'handoff':
+            case 'summary':
+                this.printSessionBrief();
+                break;
+            case 'next':
+            case 'next-actions':
+            case 'todo':
+                this.printSessionNextActions();
+                break;
+            case 'audit':
+            case 'activity':
+            case 'trail':
+                this.printSessionAudit();
+                break;
+            case 'packet':
+            case 'handoff-packet':
+            case 'continue':
+                this.printSessionPacket();
+                break;
+            case 'register':
+            case 'decisions':
+            case 'risks':
+                this.printSessionRegister();
+                break;
+            case 'gates':
+            case 'quality':
+            case 'readiness':
+                this.printSessionGates();
+                break;
+            case 'ops':
+            case 'dashboard':
+            case 'snapshot':
+                this.printOpsSnapshot();
+                break;
+            case 'evidence':
+            case 'proof':
+            case 'receipts':
+                this.printEvidencePack();
+                break;
+            case 'review':
+            case 'queue':
+            case 'triage':
+            case 'issue-queue':
+                this.printReviewQueue();
+                break;
+            case 'find':
+            case 'search':
+                this.printFindResults(args.join(' '));
+                break;
+            case 'pins':
+            case 'pinboard':
+                this.printCommandPinboard();
+                break;
+            case 'pin':
+                this.pinCommand(args.join(' '));
+                break;
+            case 'unpin':
+                this.unpinCommand(args.join(' '));
+                break;
             case 'voxel':
                 this.setTheme('voxel');
                 this.printPetCard();
@@ -2040,9 +4414,18 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
                 this.printBuildDeck();
                 this.recordVoxelToolUse('build');
                 break;
+            case 'canvas':
+                await this.handleCanvasCommand(args);
+                break;
             case 'long':
             case 'long-agent':
                 await this.createLongAgentWorkload(args);
+                break;
+            case 'workflow':
+            case 'workflows':
+            case 'playbook':
+            case 'wf':
+                this.printWorkflows(args);
                 break;
             case 'remote':
                 await this.handleRemoteCommand(args);
@@ -2069,7 +4452,7 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
                 this.generateRandomVoxelPet();
                 break;
             case 'export':
-                this.exportSession();
+                await this.exportSession(args[0] || 'md');
                 break;
             case 'save':
                 this.saveConversation(args[0] || 'session');
@@ -2342,6 +4725,112 @@ ${this.voxelPet.trait} ${this.voxelPet.species} | ${this.voxelPet.palette.name} 
             },
         };
         return this.processQuery(input, merged);
+    }
+
+    getCanvasFileInfo(canvasType = 'document', response = {}) {
+        const metadata = response?.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+        const rawName = String(metadata.filename || metadata.title || `canvas-${canvasType}-${Date.now()}`).trim();
+        const safeBase = rawName
+            .replace(/\.[a-z0-9]+$/i, '')
+            .replace(/[^a-z0-9._-]+/gi, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 72) || `canvas-${canvasType}`;
+        const extension = String(metadata.extension || '').replace(/^\./, '').trim().toLowerCase()
+            || (canvasType === 'code' ? 'txt' : (canvasType === 'diagram' ? 'mmd' : 'md'));
+        const mimeType = canvasType === 'code'
+            ? 'text/plain'
+            : (canvasType === 'diagram' ? 'text/plain' : 'text/markdown');
+        return {
+            filename: `${safeBase}.${extension}`,
+            mimeType,
+        };
+    }
+
+    getCanvasResponseContent(response = {}) {
+        const value = response?.content ?? response?.result ?? response?.text ?? response?.markdown ?? '';
+        if (typeof value === 'string') {
+            return value.trim();
+        }
+        if (value == null) {
+            return '';
+        }
+        try {
+            return JSON.stringify(value, null, 2);
+        } catch (_error) {
+            return String(value);
+        }
+    }
+
+    async handleCanvasCommand(args = []) {
+        const firstArg = String(args[0] || '').trim().toLowerCase();
+        if (!firstArg || ['help', '?'].includes(firstArg)) {
+            this.printAI(`## Canvas CLI
+
+Generate structured Canvas content from the Web CLI and save it into session files.
+
+- \`/canvas document <prompt>\`
+- \`/canvas code <prompt>\`
+- \`/canvas diagram <prompt>\`
+- Add \`--from-last\` to include the last assistant response as existing content.
+
+Generated content is added to \`/files\` for download or reuse.`);
+            return;
+        }
+
+        const validTypes = new Set(['document', 'doc', 'markdown', 'code', 'diagram']);
+        const hasExplicitType = validTypes.has(firstArg);
+        const canvasType = hasExplicitType
+            ? (['doc', 'markdown'].includes(firstArg) ? 'document' : firstArg)
+            : 'document';
+        const promptArgs = hasExplicitType ? args.slice(1) : args;
+        const fromLastIndex = promptArgs.findIndex((part) => String(part || '').trim() === '--from-last');
+        const includeLastResponse = fromLastIndex >= 0;
+        if (includeLastResponse) {
+            promptArgs.splice(fromLastIndex, 1);
+        }
+
+        const message = promptArgs.join(' ').trim();
+        if (!message) {
+            this.printError('Usage: /canvas <document|code|diagram> <prompt> [--from-last]');
+            return;
+        }
+
+        const existingContent = includeLastResponse ? String(this.lastResponse || '').trim() : '';
+        this.setStatus('thinking');
+        this.printSystem(`Generating ${canvasType} canvas content...`);
+
+        try {
+            const response = await api.sendCanvasRequest(message, canvasType, existingContent);
+            const content = this.getCanvasResponseContent(response);
+            if (!content) {
+                this.printWarning('Canvas returned no content.');
+                return;
+            }
+
+            const fileInfo = this.getCanvasFileInfo(canvasType, response);
+            const file = this.addSessionFile(fileInfo.filename, content, fileInfo.mimeType, 'canvas', {
+                canvasType,
+                size: new Blob([content]).size,
+            });
+            this.updateSessionInfo();
+
+            const suggestions = Array.isArray(response?.suggestions) && response.suggestions.length > 0
+                ? `\n\nSuggestions:\n${response.suggestions.slice(0, 4).map((item) => `- ${String(item || '').trim()}`).join('\n')}`
+                : '';
+            const preview = content.length > 900 ? `${content.slice(0, 900).trim()}\n...` : content;
+            this.printAI(`## Canvas ${canvasType} generated
+
+Saved to \`/files\` as **${file.filename}** (file ${file.id}).
+
+\`\`\`${canvasType === 'diagram' ? 'mermaid' : ''}
+${preview.replace(/```/g, '\\`\\`\\`')}
+\`\`\`${suggestions}`);
+            this.printSystem(`Use /download ${file.id} to save ${file.filename}.`);
+        } catch (error) {
+            this.printError(`Canvas generation failed: ${error.message}`);
+        } finally {
+            this.setStatus('ready');
+        }
     }
     
     // ==================== Simple Status & Queue ====================
@@ -4100,6 +6589,10 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                     <button type="button" onclick="app.useCommandSuggestion('/tools', { submit: true })">
                         <strong>/tools</strong>
                         <span>Inspect available actions</span>
+                    </button>
+                    <button type="button" onclick="app.useCommandSuggestion('/workflows', { submit: true })">
+                        <strong>/workflows</strong>
+                        <span>Stage common task starters</span>
                     </button>
                     <button type="button" onclick="app.useCommandSuggestion('/files', { submit: true })">
                         <strong>/files</strong>
@@ -6594,20 +9087,234 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         }
     }
     
-    exportSession() {
-        const data = {
-            history: this.history,
-            timestamp: Date.now(),
-            model: api.currentModel
+    getTranscriptEntries() {
+        const nodes = Array.from(this.terminalOutput?.children || []);
+        return nodes
+            .map((node) => {
+                const text = String(node.innerText || node.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+                if (!text) {
+                    return null;
+                }
+                let role = 'system';
+                if (node.classList?.contains('line-input')) {
+                    role = 'user';
+                } else if (node.classList?.contains('ai')) {
+                    role = 'assistant';
+                } else if (node.classList?.contains('error')) {
+                    role = 'error';
+                } else if (node.classList?.contains('success')) {
+                    role = 'success';
+                }
+                return {
+                    role,
+                    text,
+                };
+            })
+            .filter(Boolean);
+    }
+
+    async getTranscriptExportData() {
+        let source = 'terminal-dom';
+        let messages = [];
+        if (api.sessionId) {
+            try {
+                const backendMessages = await api.getSessionMessages(api.sessionId, 200);
+                if (Array.isArray(backendMessages) && backendMessages.length > 0) {
+                    messages = backendMessages
+                        .map((message) => ({
+                            role: String(message.role || 'unknown').toLowerCase(),
+                            content: String(message.displayContent || message.content || '').trim(),
+                            timestamp: message.timestamp || message.createdAt || null,
+                        }))
+                        .filter((message) => message.content);
+                    if (messages.length > 0) {
+                        source = 'backend-messages';
+                    }
+                }
+            } catch (error) {
+                console.warn('[WebCLI] Falling back to DOM transcript export:', error);
+            }
+        }
+
+        if (messages.length === 0) {
+            messages = this.getTranscriptEntries().map((entry) => ({
+                role: entry.role,
+                content: entry.text,
+                timestamp: null,
+            }));
+        }
+
+        return {
+            app: 'KimiBuilt Web CLI',
+            exportedAt: new Date().toISOString(),
+            sessionId: api.sessionId || null,
+            model: api.currentModel || null,
+            theme: this.theme,
+            source,
+            commandHistory: [...this.history],
+            sessionFiles: this.sessionFiles.map((file) => ({
+                id: file.id,
+                filename: file.filename,
+                type: file.type,
+                mimeType: file.mimeType,
+                size: file.size,
+                createdAt: file.createdAt,
+                artifactId: file.artifactId || null,
+                downloadUrl: file.downloadUrl || null,
+            })),
+            messages,
         };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `codecli-session-${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        this.printSystem('Session exported');
+    }
+
+    buildTranscriptMarkdown(data) {
+        const lines = [
+            '# KimiBuilt Web CLI Transcript',
+            '',
+            `- Exported: ${data.exportedAt}`,
+            `- Session: ${data.sessionId || 'new'}`,
+            `- Model: ${data.model || 'default'}`,
+            `- Source: ${data.source || 'terminal-dom'}`,
+            `- Files: ${data.sessionFiles.length}`,
+            '',
+            '---',
+            '',
+        ];
+
+        data.messages.forEach((entry, index) => {
+            const title = entry.role.charAt(0).toUpperCase() + entry.role.slice(1);
+            const timestamp = entry.timestamp ? ` | ${entry.timestamp}` : '';
+            lines.push(`## ${index + 1}. ${title}${timestamp}`, '', entry.content, '');
+        });
+
+        if (data.sessionFiles.length > 0) {
+            lines.push('---', '', '## Session Files', '');
+            data.sessionFiles.forEach((file) => {
+                lines.push(`- ${file.id}. ${file.filename} (${this.formatFileSize(file.size || 0)}, ${file.type || 'file'})`);
+            });
+        }
+
+        return lines.join('\n');
+    }
+
+    buildTranscriptText(data) {
+        const header = [
+            'KimiBuilt Web CLI Transcript',
+            `Exported: ${data.exportedAt}`,
+            `Session: ${data.sessionId || 'new'}`,
+            `Model: ${data.model || 'default'}`,
+            `Source: ${data.source || 'terminal-dom'}`,
+            `Files: ${data.sessionFiles.length}`,
+            ''.padEnd(40, '='),
+            '',
+        ];
+        const body = data.messages.flatMap((entry, index) => [
+            `${index + 1}. ${entry.role.toUpperCase()}${entry.timestamp ? ` | ${entry.timestamp}` : ''}`,
+            entry.content,
+            ''.padEnd(40, '-'),
+        ]);
+        return [...header, ...body].join('\n');
+    }
+
+    buildTranscriptHtml(data) {
+        const transcript = data.messages.map((entry, index) => `
+            <section class="entry entry-${this.escapeHtmlAttr(entry.role)}">
+                <h2>${index + 1}. ${this.escapeHtml(entry.role.charAt(0).toUpperCase() + entry.role.slice(1))}</h2>
+                ${entry.timestamp ? `<div class="timestamp">${this.escapeHtml(entry.timestamp)}</div>` : ''}
+                <pre>${this.escapeHtml(entry.content)}</pre>
+            </section>
+        `).join('\n');
+        const files = data.sessionFiles.map((file) => `
+            <li>${this.escapeHtml(String(file.id))}. ${this.escapeHtml(file.filename)} <span>${this.escapeHtml(this.formatFileSize(file.size || 0))}</span></li>
+        `).join('\n');
+        return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KimiBuilt Web CLI Transcript</title>
+  <style>
+    :root { color-scheme: light dark; --text: #111827; --muted: #667085; --surface: #ffffff; --panel: #f8fafc; --border: #d9e1ea; --accent: #0f766e; }
+    body { margin: 0; padding: 32px; color: var(--text); background: var(--panel); font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    header, .entry, .files { margin-bottom: 16px; padding: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    h1, h2 { margin: 0 0 10px; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 15px; color: var(--accent); }
+    .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; color: var(--muted); }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    li span { color: var(--muted); }
+    @media (prefers-color-scheme: dark) { :root { --text: #edf2f7; --muted: #aab8c7; --surface: #151c23; --panel: #0f141a; --border: #334155; --accent: #5fb3a9; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>KimiBuilt Web CLI Transcript</h1>
+      <div class="meta">
+        <div>Exported: ${this.escapeHtml(data.exportedAt)}</div>
+        <div>Session: ${this.escapeHtml(data.sessionId || 'new')}</div>
+        <div>Model: ${this.escapeHtml(data.model || 'default')}</div>
+        <div>Source: ${this.escapeHtml(data.source || 'terminal-dom')}</div>
+        <div>Files: ${this.escapeHtml(String(data.sessionFiles.length))}</div>
+      </div>
+    </header>
+    ${transcript}
+    ${data.sessionFiles.length > 0 ? `<section class="files"><h2>Session Files</h2><ul>${files}</ul></section>` : ''}
+  </main>
+</body>
+</html>`;
+    }
+
+    async exportSession(format = 'md') {
+        const normalizedFormat = String(format || 'md').trim().toLowerCase();
+        if (['help', '?', 'list'].includes(normalizedFormat)) {
+            this.printAI('## Export Session\n\nUse `/export md`, `/export txt`, `/export html`, or `/export json`. The toolbar Export button uses Markdown by default.');
+            return;
+        }
+
+        const data = await this.getTranscriptExportData();
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const formats = {
+            md: {
+                content: this.buildTranscriptMarkdown(data),
+                filename: `kimibuilt-web-cli-${stamp}.md`,
+                mimeType: 'text/markdown',
+            },
+            markdown: {
+                content: this.buildTranscriptMarkdown(data),
+                filename: `kimibuilt-web-cli-${stamp}.md`,
+                mimeType: 'text/markdown',
+            },
+            txt: {
+                content: this.buildTranscriptText(data),
+                filename: `kimibuilt-web-cli-${stamp}.txt`,
+                mimeType: 'text/plain',
+            },
+            text: {
+                content: this.buildTranscriptText(data),
+                filename: `kimibuilt-web-cli-${stamp}.txt`,
+                mimeType: 'text/plain',
+            },
+            html: {
+                content: this.buildTranscriptHtml(data),
+                filename: `kimibuilt-web-cli-${stamp}.html`,
+                mimeType: 'text/html',
+            },
+            json: {
+                content: JSON.stringify(data, null, 2),
+                filename: `kimibuilt-web-cli-${stamp}.json`,
+                mimeType: 'application/json',
+            },
+        };
+
+        const output = formats[normalizedFormat];
+        if (!output) {
+            this.printError('Unsupported export format. Use /export md, /export txt, /export html, or /export json.');
+            return;
+        }
+
+        this.downloadFile(output.content, output.filename, output.mimeType);
+        this.printSystem(`Transcript exported as ${output.filename}`);
     }
     
     // ==================== File Management ====================
@@ -7048,6 +9755,66 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         this.printSystem(`Theme: ${this.getThemeLabel(this.theme)}`);
     }
 
+    normalizeDensity(value = '') {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['compact', 'dense', 'operator'].includes(normalized)) {
+            return 'compact';
+        }
+        if (['comfortable', 'comfort', 'default', 'roomy'].includes(normalized)) {
+            return 'comfortable';
+        }
+        return '';
+    }
+
+    getDensityLabel(value = this.density) {
+        return value === 'compact' ? 'Compact' : 'Comfortable';
+    }
+
+    applyDensity(value = this.density) {
+        const density = this.normalizeDensity(value) || 'comfortable';
+        this.density = density;
+        document.body.setAttribute('data-density', density);
+        localStorage.setItem(WEB_CLI_DENSITY_KEY, density);
+        this.updateDensityButton();
+        this.updateEnterpriseButton();
+    }
+
+    setDensity(value = '', options = {}) {
+        const density = this.normalizeDensity(value);
+        if (!density) {
+            this.printError('Unknown density. Use /density compact or /density comfortable.');
+            return;
+        }
+        this.applyDensity(density);
+        if (!options.silent) {
+            this.printSystem(`Density: ${this.getDensityLabel(this.density)}`);
+        }
+    }
+
+    cycleDensity(options = {}) {
+        const nextDensity = this.density === 'compact' ? 'comfortable' : 'compact';
+        this.applyDensity(nextDensity);
+        if (!options.silent) {
+            this.printSystem(`Density: ${this.getDensityLabel(this.density)}`);
+        }
+    }
+
+    isEnterpriseModeActive() {
+        return this.theme === WEB_CLI_DEFAULT_THEME
+            && this.density === 'compact'
+            && this.voxelPetHidden;
+    }
+
+    applyEnterpriseMode(options = {}) {
+        this.setTheme(WEB_CLI_DEFAULT_THEME, { silent: true });
+        this.applyDensity('compact');
+        this.setVoxelPetHidden(true);
+        this.updateEnterpriseButton();
+        if (!options.silent) {
+            this.printSystem('Enterprise Mode enabled: command-center theme, compact density, companion chrome hidden');
+        }
+    }
+
     setTheme(theme, options = {}) {
         const normalizedTheme = this.normalizeThemeId(theme);
         if (!normalizedTheme) {
@@ -7083,6 +9850,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             }
         }
         this.updateThemeButton();
+        this.updateEnterpriseButton();
         
         // Update mermaid theme
         if (typeof mermaid !== 'undefined') {
@@ -7161,7 +9929,9 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             '--cli-theme-page-background': preview.background || palette.bgPrimary,
             '--cli-theme-panel-background': preview.surface || palette.bgSecondary,
             '--cli-theme-output-background': preview.assistantBubble || palette.bgSecondary,
-            '--cli-theme-user-background': preview.userBubble || accent,
+            '--cli-theme-user-background': mode === 'light'
+                ? palette.bgTertiary
+                : (preview.userBubble || accent),
             '--cli-theme-overlay-background': palette.overlay,
             '--cli-theme-panel-shadow': palette.panelShadow,
             '--cli-theme-control-shadow': palette.controlShadow,
@@ -7209,6 +9979,30 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         const label = this.getThemeLabel(this.theme);
         this.themeButton.title = `Theme: ${label}`;
         this.themeButton.setAttribute('aria-label', `Cycle theme. Current theme: ${label}`);
+    }
+
+    updateDensityButton() {
+        if (!this.densityButton) {
+            return;
+        }
+        const label = this.getDensityLabel(this.density);
+        this.densityButton.title = `Density: ${label}`;
+        this.densityButton.setAttribute('aria-label', `Cycle layout density. Current density: ${label}`);
+        const textNode = this.densityButton.querySelector('span');
+        if (textNode) {
+            textNode.textContent = label === 'Compact' ? 'Compact' : 'Comfort';
+        }
+        this.densityButton.classList.toggle('is-active', this.density === 'compact');
+    }
+
+    updateEnterpriseButton() {
+        if (!this.enterpriseButton) {
+            return;
+        }
+        const active = this.isEnterpriseModeActive();
+        this.enterpriseButton.classList.toggle('is-active', active);
+        this.enterpriseButton.title = active ? 'Enterprise Mode active' : 'Enable Enterprise Mode';
+        this.enterpriseButton.setAttribute('aria-label', active ? 'Enterprise Mode active' : 'Enable Enterprise Mode');
     }
     
     copyLastOutput() {
@@ -7282,11 +10076,8 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         }
         
         const matches = this.getCommandMatches(input);
-        const exactMatch = matches.length === 1
-            && [matches[0].command, ...(matches[0].aliases || [])]
-                .filter(Boolean)
-                .some((candidate) => String(candidate).toLowerCase() === input.trim().toLowerCase());
-        if (matches.length === 0 || (exactMatch && !matches[0].requiresInput && !matches[0].arguments)) {
+        const exactMatch = this.getExactCommandEntry(input);
+        if (matches.length === 0 || (exactMatch && !exactMatch.requiresInput)) {
             this.hideAutocomplete();
             return;
         }
@@ -7316,6 +10107,17 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 this.activateCommandEntry(match, { source: 'autocomplete' });
             });
         });
+    }
+
+    getExactCommandEntry(input = '') {
+        const normalized = String(input || '').trim().toLowerCase();
+        if (!normalized) {
+            return null;
+        }
+
+        return this.commandCatalog.find((command) => [command.command, ...(command.aliases || [])]
+            .filter(Boolean)
+            .some((candidate) => String(candidate).trim().toLowerCase() === normalized)) || null;
     }
     
     navigateAutocomplete(direction) {

@@ -37,6 +37,7 @@ const CANVAS_AGENT_TOOL_LANES = Object.freeze({
 
 const CANVAS_AGENT_DEFAULT_TOOL_LANES = ['inspect', 'create', 'arrange', 'label'];
 const CANVAS_AGENT_TOOL_LANE_STORAGE_KEY = 'kimi-canvas-agent-tool-lanes';
+const CANVAS_AGENT_WORK_SET_STORAGE_KEY = 'kimi-canvas-agent-work-sets';
 const CANVAS_AGENT_STEP_ORDER = ['read', 'tool', 'apply'];
 
 class AIAssistant {
@@ -57,12 +58,32 @@ class AIAssistant {
         this.toolPlanSummary = document.getElementById('aiToolPlanSummary');
         this.toolPlanPill = document.getElementById('aiToolPlanPill');
         this.planSteps = document.getElementById('aiPlanSteps');
+        this.pinboardSummary = document.getElementById('aiPinboardSummary');
         this.templateSummary = document.getElementById('aiTemplateSummary');
         this.organizerSummary = document.getElementById('aiOrganizerSummary');
         this.ledgerSummary = document.getElementById('aiLedgerSummary');
         this.actionList = document.getElementById('aiActionList');
         this.changeSetSummary = document.getElementById('aiChangeSetSummary');
         this.changeSetList = document.getElementById('aiChangeSetList');
+        this.workSetSummary = document.getElementById('aiWorkSetSummary');
+        this.workSetList = document.getElementById('aiWorkSetList');
+        this.checkpointSummary = document.getElementById('aiCheckpointSummary');
+        this.checkpointList = document.getElementById('aiCheckpointList');
+        this.briefSummary = document.getElementById('aiBriefSummary');
+        this.briefList = document.getElementById('aiBriefList');
+        this.boardIndexSummary = document.getElementById('aiBoardIndexSummary');
+        this.boardIndexInput = document.getElementById('aiBoardIndexInput');
+        this.boardIndexList = document.getElementById('aiBoardIndexList');
+        this.decisionSummary = document.getElementById('aiDecisionSummary');
+        this.decisionList = document.getElementById('aiDecisionList');
+        this.gatesSummary = document.getElementById('aiGatesSummary');
+        this.gatesList = document.getElementById('aiGatesList');
+        this.opsSummary = document.getElementById('aiOpsSummary');
+        this.opsGrid = document.getElementById('aiOpsGrid');
+        this.reviewSummary = document.getElementById('aiReviewSummary');
+        this.reviewGrid = document.getElementById('aiReviewGrid');
+        this.evidenceSummary = document.getElementById('aiEvidenceSummary');
+        this.evidenceGrid = document.getElementById('aiEvidenceGrid');
         this.selectionBar = document.getElementById('aiSelectionBar');
         this.selectionBarSummary = document.getElementById('aiSelectionBarSummary');
         this.healthSummary = document.getElementById('aiHealthSummary');
@@ -75,7 +96,11 @@ class AIAssistant {
         this.toolLaneIds = this.loadToolLaneSelection();
         this.actionLedger = [];
         this.changeSets = [];
+        this.workSets = this.loadWorkSets();
         this.pendingFixPlan = { fixes: [], actions: [] };
+        this.lastBoardBriefText = '';
+        this.lastReviewQueueText = '';
+        this.boardIndexMatches = [];
         
         // Mode: 'chat' | 'diagram' | 'image'
         this.mode = 'chat';
@@ -161,6 +186,42 @@ class AIAssistant {
             });
         });
 
+        document.querySelectorAll('[data-ai-pin-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handlePinnedBoardAction(btn.dataset.aiPinAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-decision-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleDecisionRegisterAction(btn.dataset.aiDecisionAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-gates-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleGateReviewAction(btn.dataset.aiGatesAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-review-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleReviewQueueAction(btn.dataset.aiReviewAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-ops-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleOpsSnapshotAction(btn.dataset.aiOpsAction || '');
+            });
+        });
+
+        document.querySelectorAll('[data-ai-evidence-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleEvidencePackAction(btn.dataset.aiEvidenceAction || '');
+            });
+        });
+
         document.querySelectorAll('[data-ai-template]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 this.handleTemplateAction(btn.dataset.aiTemplate || '');
@@ -171,6 +232,65 @@ class AIAssistant {
             btn.addEventListener('click', () => {
                 this.handleOrganizerAction(btn.dataset.aiOrganizerAction || '');
             });
+        });
+
+        document.querySelectorAll('[data-ai-workset-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleWorkSetAction(btn.dataset.aiWorksetAction || '', btn.dataset.aiWorksetId || '');
+            });
+        });
+
+        this.workSetList?.addEventListener('click', (event) => {
+            const button = event.target?.closest?.('[data-ai-workset-action]');
+            if (!button) {
+                return;
+            }
+            this.handleWorkSetAction(button.dataset.aiWorksetAction || '', button.dataset.aiWorksetId || '');
+        });
+
+        document.querySelectorAll('[data-ai-checkpoint-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleCheckpointAction(btn.dataset.aiCheckpointAction || '', btn.dataset.aiCheckpointId || '');
+            });
+        });
+
+        this.checkpointList?.addEventListener('click', (event) => {
+            const button = event.target?.closest?.('[data-ai-checkpoint-action]');
+            if (!button) {
+                return;
+            }
+            this.handleCheckpointAction(button.dataset.aiCheckpointAction || '', button.dataset.aiCheckpointId || '');
+        });
+
+        document.querySelectorAll('[data-ai-brief-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleBoardBriefAction(btn.dataset.aiBriefAction || '');
+            });
+        });
+        this.briefList?.addEventListener('click', (event) => {
+            const button = event.target?.closest?.('[data-ai-brief-next-action]');
+            if (!button || button.disabled) {
+                return;
+            }
+            this.handleBoardBriefNextAction(button.dataset.aiBriefNextAction || '');
+        });
+
+        this.boardIndexInput?.addEventListener('input', () => {
+            this.renderBoardIndex(this.boardIndexInput.value || '');
+        });
+
+        document.querySelectorAll('[data-ai-board-index-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleBoardIndexAction(btn.dataset.aiBoardIndexAction || '', btn.dataset.aiBoardIndexId || '');
+            });
+        });
+
+        this.boardIndexList?.addEventListener('click', (event) => {
+            const button = event.target?.closest?.('[data-ai-board-index-action]');
+            if (!button || button.disabled) {
+                return;
+            }
+            this.handleBoardIndexAction(button.dataset.aiBoardIndexAction || '', button.dataset.aiBoardIndexId || '');
         });
 
         document.querySelectorAll('[data-ai-health-action]').forEach((btn) => {
@@ -191,6 +311,12 @@ class AIAssistant {
             });
         });
 
+        document.querySelectorAll('[data-ai-audit-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.handleCanvasAuditAction(btn.dataset.aiAuditAction || '');
+            });
+        });
+
         ['pointerdown', 'mousedown', 'touchstart'].forEach((eventName) => {
             this.selectionBar?.addEventListener(eventName, (event) => {
                 event.stopPropagation();
@@ -204,7 +330,7 @@ class AIAssistant {
             }
             this.handleSelectionAction(button.dataset.aiSelectionAction || '');
         });
-        
+
         // Fetch models on init
         this.fetchModels();
         this.setMode('chat');
@@ -213,6 +339,16 @@ class AIAssistant {
         this.renderToolPlan();
         this.renderActionLedger();
         this.renderChangeSets();
+        this.renderWorkSets();
+        this.renderCheckpoints();
+        this.renderBoardBrief();
+        this.renderBoardIndex();
+        this.renderPinnedActions();
+        this.renderDecisionRegister();
+        this.renderGateReview();
+        this.renderOpsSnapshot();
+        this.renderEvidencePack();
+        this.renderReviewQueue();
         this.updateSelectionActionBar();
         this.setAgentPlanStep();
     }
@@ -231,6 +367,1733 @@ class AIAssistant {
         } catch {}
 
         return [...CANVAS_AGENT_DEFAULT_TOOL_LANES];
+    }
+
+    loadWorkSets() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CANVAS_AGENT_WORK_SET_STORAGE_KEY) || '[]');
+            if (!Array.isArray(saved)) {
+                return [];
+            }
+            return saved
+                .map((set) => ({
+                    id: String(set?.id || '').trim(),
+                    name: String(set?.name || '').trim(),
+                    elementIds: Array.isArray(set?.elementIds)
+                        ? set.elementIds.map((id) => String(id || '').trim()).filter(Boolean)
+                        : [],
+                    createdAt: String(set?.createdAt || new Date().toISOString()),
+                }))
+                .filter((set) => set.id && set.name && set.elementIds.length > 0)
+                .slice(0, 12);
+        } catch (_error) {
+            return [];
+        }
+    }
+
+    saveWorkSets() {
+        try {
+            localStorage.setItem(CANVAS_AGENT_WORK_SET_STORAGE_KEY, JSON.stringify(this.workSets.slice(0, 12)));
+        } catch (error) {
+            console.warn('[CanvasAgent] Failed to save work sets:', error);
+        }
+    }
+
+    renderWorkSets() {
+        if (this.workSetSummary) {
+            this.workSetSummary.textContent = this.workSets.length > 0
+                ? `${this.workSets.length} saved`
+                : 'No saved sets';
+        }
+        if (!this.workSetList) {
+            return;
+        }
+
+        if (this.workSets.length === 0) {
+            this.workSetList.innerHTML = '<div class="ai-workset-empty">Save a selection to reuse it later.</div>';
+            return;
+        }
+
+        this.workSetList.innerHTML = this.workSets.map((set) => {
+            const count = set.elementIds.length;
+            return `
+                <div class="ai-workset-item">
+                    <div class="ai-workset-item__main">
+                        <strong>${this.escapeHtml(set.name)}</strong>
+                        <span>${count} object${count === 1 ? '' : 's'}</span>
+                    </div>
+                    <div class="ai-workset-item__actions">
+                        <button type="button" data-ai-workset-action="select" data-ai-workset-id="${this.escapeHtml(set.id)}">Select</button>
+                        <button type="button" data-ai-workset-action="tidy" data-ai-workset-id="${this.escapeHtml(set.id)}">Tidy</button>
+                        <button type="button" data-ai-workset-action="connect" data-ai-workset-id="${this.escapeHtml(set.id)}">Connect</button>
+                        <button type="button" data-ai-workset-action="frame" data-ai-workset-id="${this.escapeHtml(set.id)}">Frame</button>
+                        <button type="button" data-ai-workset-action="delete" data-ai-workset-id="${this.escapeHtml(set.id)}">Delete</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    saveCurrentSelectionAsWorkSet() {
+        const selected = window.infiniteCanvas?.selectedElements || [];
+        if (selected.length === 0) {
+            this.recordActionLedger('No selection to save as a work set', 'warning', 'work set');
+            window.app?.showToast?.('Select objects before saving a work set', 'warning');
+            return;
+        }
+
+        const defaultName = selected.length === 1 ? 'Selected object' : `${selected.length} object set`;
+        const requestedName = window.prompt?.('Name this work set', defaultName);
+        const name = String(requestedName || '').trim();
+        if (!name) {
+            return;
+        }
+
+        const elementIds = selected.map((element) => element.id).filter(Boolean);
+        const workSet = {
+            id: `workset-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: name.slice(0, 64),
+            elementIds,
+            createdAt: new Date().toISOString(),
+        };
+        this.workSets = [workSet, ...this.workSets.filter((set) => set.name !== workSet.name)].slice(0, 12);
+        this.saveWorkSets();
+        this.renderWorkSets();
+        this.recordActionLedger(`Saved work set "${workSet.name}"`, 'success', 'work set');
+        window.app?.showToast?.(`Saved work set "${workSet.name}"`);
+    }
+
+    selectWorkSet(workSetId = '', options = {}) {
+        const canvas = window.infiniteCanvas;
+        const workSet = this.workSets.find((set) => set.id === workSetId);
+        if (!canvas || !workSet) {
+            this.recordActionLedger('Work set was not found', 'warning', 'work set');
+            return [];
+        }
+
+        const idSet = new Set(workSet.elementIds);
+        const found = (canvas.elements || []).filter((element) => idSet.has(element.id));
+        const missing = Math.max(0, workSet.elementIds.length - found.length);
+        if (found.length === 0) {
+            this.recordActionLedger(`Work set "${workSet.name}" has no remaining objects`, 'warning', 'work set');
+            window.app?.showToast?.('No saved work set objects remain', 'warning');
+            return [];
+        }
+
+        canvas.selectElements(found);
+        canvas.render();
+        this.updateGroundingPanel();
+        if (!options.silent) {
+            const suffix = missing > 0 ? ` (${missing} missing)` : '';
+            this.recordActionLedger(`Selected work set "${workSet.name}"${suffix}`, missing > 0 ? 'warning' : 'success', 'work set');
+            window.app?.showToast?.(`Selected "${workSet.name}"${suffix}`);
+        }
+        return found;
+    }
+
+    handleWorkSetAction(action = '', workSetId = '') {
+        if (action === 'save') {
+            this.saveCurrentSelectionAsWorkSet();
+            return;
+        }
+
+        if (action === 'delete') {
+            const workSet = this.workSets.find((set) => set.id === workSetId);
+            this.workSets = this.workSets.filter((set) => set.id !== workSetId);
+            this.saveWorkSets();
+            this.renderWorkSets();
+            if (workSet) {
+                this.recordActionLedger(`Deleted work set "${workSet.name}"`, 'success', 'work set');
+            }
+            return;
+        }
+
+        const selected = this.selectWorkSet(workSetId, { silent: action !== 'select' });
+        if (selected.length === 0 || action === 'select') {
+            return;
+        }
+
+        if (action === 'tidy') {
+            this.tidySelection();
+        } else if (action === 'connect') {
+            this.connectSelection();
+        } else if (action === 'frame') {
+            this.frameSelection();
+        }
+    }
+
+    renderCheckpoints() {
+        const checkpoints = window.app?.loadCanvasCheckpoints?.() || [];
+        if (this.checkpointSummary) {
+            this.checkpointSummary.textContent = checkpoints.length > 0
+                ? `${checkpoints.length} saved`
+                : 'No checkpoints';
+        }
+        if (!this.checkpointList) {
+            return;
+        }
+
+        if (checkpoints.length === 0) {
+            this.checkpointList.innerHTML = '<div class="ai-checkpoint-empty">Save a board checkpoint before a risky edit.</div>';
+            return;
+        }
+
+        this.checkpointList.innerHTML = checkpoints.map((checkpoint) => {
+            const created = checkpoint.createdAt
+                ? new Date(checkpoint.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : 'Saved';
+            const count = Number(checkpoint.elementCount || checkpoint.elements?.length || 0);
+            return `
+                <div class="ai-checkpoint-item">
+                    <div class="ai-checkpoint-item__main">
+                        <strong>${this.escapeHtml(checkpoint.name)}</strong>
+                        <span>${this.escapeHtml(created)} - ${count} object${count === 1 ? '' : 's'}</span>
+                    </div>
+                    <div class="ai-checkpoint-item__actions">
+                        <button type="button" data-ai-checkpoint-action="restore" data-ai-checkpoint-id="${this.escapeHtml(checkpoint.id)}">Restore</button>
+                        <button type="button" data-ai-checkpoint-action="delete" data-ai-checkpoint-id="${this.escapeHtml(checkpoint.id)}">Delete</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    handleCheckpointAction(action = '', checkpointId = '') {
+        if (action === 'save') {
+            const checkpoint = window.app?.saveCanvasCheckpoint?.();
+            if (checkpoint) {
+                this.recordActionLedger(`Saved checkpoint "${checkpoint.name}"`, 'success', 'checkpoint');
+                this.renderCheckpoints();
+            }
+            return;
+        }
+
+        if (action === 'restore') {
+            const restored = window.app?.restoreCanvasCheckpoint?.(checkpointId);
+            if (restored) {
+                this.recordActionLedger('Restored board checkpoint', 'success', 'checkpoint');
+                this.updateGroundingPanel();
+            }
+            return;
+        }
+
+        if (action === 'delete') {
+            window.app?.deleteCanvasCheckpoint?.(checkpointId);
+            this.recordActionLedger('Deleted board checkpoint', 'muted', 'checkpoint');
+            this.renderCheckpoints();
+        }
+    }
+
+    buildBoardReadinessItems(data) {
+        return [
+            {
+                label: 'Board content',
+                state: data.objectCount > 0 ? 'ready' : 'missing',
+                detail: data.objectCount > 0 ? `${data.objectCount} editable object${data.objectCount === 1 ? '' : 's'}` : 'Add objects before handoff',
+            },
+            {
+                label: 'Readable text',
+                state: data.textPreviews.length > 0 ? 'ready' : 'attention',
+                detail: data.textPreviews.length > 0 ? `${data.textPreviews.length} text preview${data.textPreviews.length === 1 ? '' : 's'} captured` : 'Add labels or notes for reviewers',
+            },
+            {
+                label: 'Structure health',
+                state: data.healthScore == null ? 'missing' : (data.healthScore >= 76 ? 'ready' : (data.healthScore >= 50 ? 'attention' : 'missing')),
+                detail: data.healthScore == null ? 'No auditable board yet' : `Board audit score ${data.healthScore}`,
+            },
+            {
+                label: 'Checkpoint',
+                state: data.checkpoints > 0 ? 'ready' : 'attention',
+                detail: data.checkpoints > 0 ? `${data.checkpoints} rollback point${data.checkpoints === 1 ? '' : 's'} saved` : 'Save a checkpoint before risky edits',
+            },
+            {
+                label: 'Selection focus',
+                state: data.selectedCount > 0 ? 'ready' : 'optional',
+                detail: data.selectedCount > 0 ? `${data.selectedCount} selected for focused edits` : 'No focused selection',
+            },
+        ];
+    }
+
+    buildBoardNextActions(data) {
+        const actions = [];
+
+        if (data.objectCount === 0) {
+            actions.push({
+                label: 'Draft a board starter',
+                detail: 'Open the agent with a structured starter prompt.',
+                action: 'starter-prompt',
+                priority: 'high',
+            });
+        }
+        if (data.textPreviews.length === 0 && data.objectCount > 0) {
+            actions.push({
+                label: 'Add QA note',
+                detail: 'Create an editable note with missing labels and structure gaps.',
+                action: 'qa-note',
+                priority: 'high',
+            });
+        }
+        if (data.healthScore != null && data.healthScore < 76) {
+            actions.push({
+                label: 'Select suggested fixes',
+                detail: 'Highlight objects that need labels, links, or grouping.',
+                action: 'select-fixes',
+                priority: data.healthScore < 50 ? 'high' : 'medium',
+            });
+        }
+        if (data.checkpoints === 0 && data.objectCount > 0) {
+            actions.push({
+                label: 'Save checkpoint',
+                detail: 'Create a rollback point before major changes.',
+                action: 'save-checkpoint',
+                priority: 'medium',
+            });
+        }
+        if (data.selectedCount === 0 && data.objectCount > 0) {
+            actions.push({
+                label: 'Refresh audit',
+                detail: 'Recompute structure health and fix suggestions.',
+                action: 'refresh-audit',
+                priority: 'low',
+            });
+        }
+        actions.push({
+            label: 'Add brief note',
+            detail: 'Place the current board brief on the canvas.',
+            action: 'brief-note',
+            priority: 'low',
+        });
+        actions.push({
+            label: 'Copy brief',
+            detail: 'Copy the handoff summary for another tool or chat.',
+            action: 'copy-brief',
+            priority: 'low',
+        });
+
+        return actions.slice(0, 6);
+    }
+
+    buildBoardBriefData(context = this.buildCanvasContext()) {
+        const elements = window.infiniteCanvas?.elements || [];
+        const checkpoints = window.app?.loadCanvasCheckpoints?.() || [];
+        const textPreviews = elements
+            .filter((element) => typeof element.text === 'string' && element.text.trim())
+            .slice(0, 5)
+            .map((element) => element.text.trim().replace(/\s+/g, ' '));
+        const issues = (context.boardHealth?.issues || [])
+            .filter((issue) => issue.severity !== 'good')
+            .map((issue) => issue.text)
+            .slice(0, 4);
+        const actions = this.actionLedger.slice(0, 4).map((entry) => entry.text);
+        const data = {
+            createdAt: new Date(),
+            objectCount: context.board?.elementCount || 0,
+            boardTypes: context.board?.typeCounts || 'None',
+            selectedCount: context.selection?.count || 0,
+            selectedTypes: context.selection?.typeCounts || 'None',
+            healthScore: context.boardHealth?.objectCount > 0 ? context.boardHealth.score : null,
+            checkpoints: checkpoints.length,
+            issues,
+            textPreviews,
+            actions,
+        };
+        data.readiness = this.buildBoardReadinessItems(data);
+        data.nextActions = this.buildBoardNextActions(data);
+        return data;
+    }
+
+    buildBoardBriefText(data = this.buildBoardBriefData()) {
+        const lines = [
+            'Lilly Canvas Board Brief',
+            `Created: ${data.createdAt.toLocaleString()}`,
+            `Objects: ${data.objectCount}`,
+            `Types: ${data.boardTypes}`,
+            `Selection: ${data.selectedCount}${data.selectedTypes && data.selectedTypes !== 'None' ? ` (${data.selectedTypes})` : ''}`,
+            `Health score: ${data.healthScore ?? '--'}`,
+            `Checkpoints: ${data.checkpoints}`,
+            '',
+            'Issues:',
+            ...(data.issues.length > 0 ? data.issues.map((issue) => `- ${issue}`) : ['- No major board issues detected.']),
+            '',
+            'Visible text:',
+            ...(data.textPreviews.length > 0 ? data.textPreviews.map((text) => `- ${text}`) : ['- No text objects yet.']),
+            '',
+            'Readiness:',
+            ...(data.readiness || []).map((item) => `- [${item.state}] ${item.label}: ${item.detail}`),
+            '',
+            'Next actions:',
+            ...(data.nextActions || []).map((item) => `- [${item.priority}] ${item.label}: ${item.detail}`),
+            '',
+            'Recent actions:',
+            ...(data.actions.length > 0 ? data.actions.map((action) => `- ${action}`) : ['- No recent canvas actions.']),
+        ];
+
+        return lines.join('\n');
+    }
+
+    renderBoardBrief(context = this.buildCanvasContext()) {
+        const data = this.buildBoardBriefData(context);
+        this.lastBoardBriefText = this.buildBoardBriefText(data);
+
+        if (this.briefSummary) {
+            this.briefSummary.textContent = data.objectCount > 0
+                ? `${data.objectCount} objects, score ${data.healthScore ?? '--'}`
+                : 'No board content';
+        }
+
+        if (!this.briefList) {
+            return;
+        }
+
+        const issueSummary = data.issues[0] || 'No major issues';
+        const textSummary = data.textPreviews[0] || 'No text objects yet';
+        const rows = [
+            ['Board', data.boardTypes],
+            ['Selection', data.selectedCount > 0 ? `${data.selectedCount} selected - ${data.selectedTypes}` : 'Nothing selected'],
+            ['Health', `${data.healthScore ?? '--'} - ${issueSummary}`],
+            ['Text', textSummary],
+            ['Checkpoints', `${data.checkpoints} saved`],
+        ];
+        const readiness = (data.readiness || []).map((item) => `
+            <div class="ai-brief-readiness-item ${this.escapeHtml(item.state)}">
+                <strong>${this.escapeHtml(item.label)}</strong>
+                <span>${this.escapeHtml(item.detail)}</span>
+            </div>
+        `).join('');
+        const nextActions = (data.nextActions || []).map((item) => `
+            <button type="button" class="ai-brief-next-action ${this.escapeHtml(item.priority)}" data-ai-brief-next-action="${this.escapeHtml(item.action)}">
+                <strong>${this.escapeHtml(item.label)}</strong>
+                <span>${this.escapeHtml(item.detail)}</span>
+            </button>
+        `).join('');
+
+        this.briefList.innerHTML = rows.map(([label, value]) => `
+            <div class="ai-brief-item">
+                <strong>${this.escapeHtml(label)}</strong>
+                <span>${this.escapeHtml(value)}</span>
+            </div>
+        `).join('') + `
+            <div class="ai-brief-readiness" aria-label="Board readiness checklist">${readiness}</div>
+            <div class="ai-brief-next-actions" aria-label="Board suggested next actions">${nextActions}</div>
+        `;
+    }
+
+    getBoardIndexLabel(element = {}) {
+        const text = String(element.text || element.label || '').replace(/\s+/g, ' ').trim();
+        if (text) {
+            return text.slice(0, 96);
+        }
+        if (element.type === 'arrow' || element.type === 'line') {
+            return `${element.type || 'connector'} ${String(element.id || '').slice(0, 8)}`;
+        }
+        return `${element.type || 'object'} ${String(element.id || '').slice(0, 8)}`;
+    }
+
+    getBoardIndexSearchText(element = {}) {
+        return [
+            element.id,
+            element.type,
+            element.text,
+            element.label,
+            element.healthRole,
+            element.groupId,
+            element.strokeColor,
+            element.backgroundColor,
+        ].map((value) => String(value || '')).join(' ').toLowerCase();
+    }
+
+    buildBoardIndexItems(query = '') {
+        const canvas = window.infiniteCanvas;
+        const normalizedQuery = String(query || '').trim().toLowerCase();
+        if (!canvas || !normalizedQuery) {
+            return [];
+        }
+
+        return (canvas.elements || [])
+            .filter((element) => this.getBoardIndexSearchText(element).includes(normalizedQuery))
+            .map((element) => {
+                const bounds = this.getElementBounds(element);
+                const label = this.getBoardIndexLabel(element);
+                return {
+                    id: element.id,
+                    element,
+                    label,
+                    detail: `${element.type || 'object'} - ${Math.round(bounds.width || element.width || 0)}x${Math.round(bounds.height || element.height || 0)} at ${Math.round(element.x || 0)}, ${Math.round(element.y || 0)}`,
+                };
+            })
+            .slice(0, 12);
+    }
+
+    renderBoardIndex(query = this.boardIndexInput?.value || '') {
+        const normalizedQuery = String(query || '').trim();
+        const matches = this.buildBoardIndexItems(normalizedQuery);
+        this.boardIndexMatches = matches;
+
+        if (this.boardIndexSummary) {
+            this.boardIndexSummary.textContent = normalizedQuery
+                ? `${matches.length} match${matches.length === 1 ? '' : 'es'}`
+                : 'No query';
+        }
+
+        if (!this.boardIndexList) {
+            return;
+        }
+
+        if (!normalizedQuery) {
+            this.boardIndexList.innerHTML = '<div class="ai-board-index-empty">Search board objects to focus or select them.</div>';
+            return;
+        }
+
+        if (matches.length === 0) {
+            this.boardIndexList.innerHTML = `<div class="ai-board-index-empty">No board objects matched "${this.escapeHtml(normalizedQuery)}".</div>`;
+            return;
+        }
+
+        this.boardIndexList.innerHTML = matches.map((match) => `
+            <div class="ai-board-index-item" title="${this.escapeHtml(match.id)}">
+                <div class="ai-board-index-item__main">
+                    <strong>${this.escapeHtml(match.label)}</strong>
+                    <span>${this.escapeHtml(match.detail)}</span>
+                </div>
+                <div class="ai-board-index-item__actions">
+                    <button type="button" data-ai-board-index-action="select" data-ai-board-index-id="${this.escapeHtml(match.id)}">Select</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    buildBoardIndexSummaryText(query = this.boardIndexInput?.value || '') {
+        const normalizedQuery = String(query || '').trim();
+        const canvas = window.infiniteCanvas;
+        const elements = canvas?.elements || [];
+        const matches = normalizedQuery ? (this.boardIndexMatches || []) : elements.slice(0, 12).map((element) => {
+            const bounds = this.getElementBounds(element);
+            return {
+                id: element.id,
+                element,
+                label: this.getBoardIndexLabel(element),
+                detail: `${element.type || 'object'} - ${Math.round(bounds.width || element.width || 0)}x${Math.round(bounds.height || element.height || 0)} at ${Math.round(element.x || 0)}, ${Math.round(element.y || 0)}`,
+            };
+        });
+        const selected = canvas?.selectedElements || [];
+        const lines = [
+            'KimiBuilt Canvas Board Index',
+            `Created: ${new Date().toLocaleString()}`,
+            `Query: ${normalizedQuery || 'All board objects'}`,
+            `Objects: ${elements.length}`,
+            `Matches listed: ${matches.length}`,
+            `Selection: ${selected.length}`,
+            '',
+            'Matches:',
+            ...(matches.length > 0
+                ? matches.map((match, index) => `${index + 1}. ${match.label} [${match.detail}] id=${match.id}`)
+                : ['- No matching objects.']),
+        ];
+        return lines.join('\n');
+    }
+
+    async copyBoardIndexSummary() {
+        const text = this.buildBoardIndexSummaryText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied board index summary', 'success', 'index');
+            this.showStatus('Board index copied.', 'success');
+        } catch (_error) {
+            this.recordActionLedger('Clipboard unavailable for board index', 'warning', 'index');
+            this.showStatus('Clipboard unavailable for board index.', 'error');
+        }
+    }
+
+    buildCanvasHandoffPacketText() {
+        const context = this.buildCanvasContext();
+        const healthScore = context.boardHealth?.objectCount > 0 ? context.boardHealth.score : '--';
+        return [
+            'KimiBuilt Canvas Continuation Packet',
+            `Created: ${new Date().toLocaleString()}`,
+            `Objects: ${context.board?.elementCount || 0}`,
+            `Types: ${context.board?.typeCounts || 'None'}`,
+            `Selection: ${context.selection?.count || 0}${context.selection?.typeCounts && context.selection.typeCounts !== 'None' ? ` (${context.selection.typeCounts})` : ''}`,
+            `Health score: ${healthScore}`,
+            `Scope: ${context.scope}`,
+            '',
+            '--- Board Brief ---',
+            this.buildBoardBriefText(this.buildBoardBriefData(context)),
+            '',
+            '--- Board Index ---',
+            this.buildBoardIndexSummaryText(),
+            '',
+            '--- Canvas Audit ---',
+            this.buildCanvasAuditText(this.buildCanvasAuditData(context)),
+        ].join('\n');
+    }
+
+    async copyCanvasHandoffPacket() {
+        const text = this.buildCanvasHandoffPacketText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied canvas continuation packet', 'success', 'packet');
+            this.showStatus('Canvas packet copied.', 'success');
+        } catch (_error) {
+            this.recordActionLedger('Clipboard unavailable for canvas packet', 'warning', 'packet');
+            this.showStatus('Clipboard unavailable for canvas packet.', 'error');
+        }
+    }
+
+    classifyDecisionText(text = '') {
+        const normalized = String(text || '').trim();
+        const lower = normalized.toLowerCase();
+        if (!normalized || normalized.length < 8) {
+            return null;
+        }
+        if (/\b(decision|decided|approved|chosen|selected|agreed)\b/.test(lower)) {
+            return 'decision';
+        }
+        if (/\b(risk|blocked|blocker|concern|issue|problem|failure|regression|missing)\b/.test(lower)) {
+            return 'risk';
+        }
+        if (/\b(next|todo|action|follow up|follow-up|verify|ship|fix|run|check|owner|due)\b/.test(lower)) {
+            return 'action';
+        }
+        return null;
+    }
+
+    buildDecisionRegisterData(context = this.buildCanvasContext()) {
+        const elements = window.infiniteCanvas?.elements || [];
+        const buckets = { decision: [], risk: [], action: [] };
+        const seen = new Set();
+        elements
+            .filter((element) => typeof element.text === 'string' && element.text.trim())
+            .forEach((element) => {
+                String(element.text || '')
+                    .split(/\n|(?<=[.!?])\s+(?=[A-Z0-9/-])/)
+                    .map((line) => line.replace(/^[-*•\d.)\s]+/, '').replace(/\s+/g, ' ').trim())
+                    .filter(Boolean)
+                    .forEach((line) => {
+                        const type = this.classifyDecisionText(line);
+                        if (!type) {
+                            return;
+                        }
+                        const key = `${type}:${line.toLowerCase()}`;
+                        if (seen.has(key)) {
+                            return;
+                        }
+                        seen.add(key);
+                        buckets[type].push({
+                            type,
+                            text: line.slice(0, 180),
+                            source: `${element.type || 'object'} ${String(element.id || '').slice(0, 8)}`,
+                        });
+                    });
+            });
+
+        return {
+            objectCount: context.board?.elementCount || elements.length,
+            selectedCount: context.selection?.count || 0,
+            decisions: buckets.decision.slice(0, 8),
+            risks: buckets.risk.slice(0, 8),
+            actions: buckets.action.slice(0, 8),
+        };
+    }
+
+    buildDecisionRegisterText(data = this.buildDecisionRegisterData()) {
+        const formatItems = (items) => items.length > 0
+            ? items.map((item, index) => `${index + 1}. ${item.text} (${item.source})`)
+            : ['- None detected locally.'];
+        return [
+            'KimiBuilt Canvas Decision Register',
+            `Created: ${new Date().toLocaleString()}`,
+            `Objects: ${data.objectCount}`,
+            `Selection: ${data.selectedCount}`,
+            '',
+            'Decisions:',
+            ...formatItems(data.decisions),
+            '',
+            'Risks:',
+            ...formatItems(data.risks),
+            '',
+            'Actions:',
+            ...formatItems(data.actions),
+        ].join('\n');
+    }
+
+    renderDecisionRegister(context = this.buildCanvasContext()) {
+        const data = this.buildDecisionRegisterData(context);
+        const total = data.decisions.length + data.risks.length + data.actions.length;
+        if (this.decisionSummary) {
+            this.decisionSummary.textContent = total > 0
+                ? `${data.decisions.length} decisions / ${data.risks.length} risks / ${data.actions.length} actions`
+                : 'No signals';
+        }
+        if (!this.decisionList) {
+            return;
+        }
+
+        const renderBucket = (label, items, type) => {
+            if (items.length === 0) {
+                return `<div class="ai-decision-empty">${label}: none detected locally.</div>`;
+            }
+            return items.slice(0, 4).map((item) => `
+                <div class="ai-decision-item ${this.escapeHtml(type)}">
+                    <strong>${this.escapeHtml(label)} - ${this.escapeHtml(item.source)}</strong>
+                    <span>${this.escapeHtml(item.text)}</span>
+                </div>
+            `).join('');
+        };
+
+        this.decisionList.innerHTML = [
+            renderBucket('Decision', data.decisions, 'decision'),
+            renderBucket('Risk', data.risks, 'risk'),
+            renderBucket('Action', data.actions, 'action'),
+        ].join('');
+    }
+
+    async copyDecisionRegister() {
+        const text = this.buildDecisionRegisterText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied decision register', 'success', 'register');
+            this.showStatus('Decision register copied.', 'success');
+        } catch (_error) {
+            this.recordActionLedger('Clipboard unavailable for decision register', 'warning', 'register');
+            this.showStatus('Clipboard unavailable for decision register.', 'error');
+        }
+    }
+
+    addDecisionRegisterNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const text = this.buildDecisionRegisterText().slice(0, 1100);
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `decision-register-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 300,
+            y: center.y + 90,
+            width: 300,
+            height: 240,
+            text,
+            backgroundColor: '#eef2ff',
+            strokeColor: '#3730a3',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 14,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Arial',
+            qaGenerated: true,
+            healthRole: 'note',
+        };
+
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Decision register note', 'register', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable decision register note', 'success', 'register');
+        this.showStatus('Added a decision register note.', 'success');
+    }
+
+    handleDecisionRegisterAction(action = '') {
+        if (action === 'copy') {
+            this.copyDecisionRegister();
+            return;
+        }
+        if (action === 'note') {
+            this.addDecisionRegisterNote();
+        }
+    }
+
+    buildGateReviewData(context = this.buildCanvasContext()) {
+        const brief = this.buildBoardBriefData(context);
+        const register = this.buildDecisionRegisterData(context);
+        const health = context.boardHealth || {};
+        const gates = [
+            {
+                label: 'Board content',
+                state: (context.board?.elementCount || 0) > 0 ? 'pass' : 'fail',
+                detail: `${context.board?.elementCount || 0} editable objects`,
+            },
+            {
+                label: 'Readable labels',
+                state: brief.textPreviews.length > 0 ? 'pass' : 'warn',
+                detail: brief.textPreviews.length > 0 ? `${brief.textPreviews.length} text previews` : 'No readable text objects',
+            },
+            {
+                label: 'Structure health',
+                state: health.objectCount > 0 && health.score >= 76 ? 'pass' : (health.objectCount > 0 ? 'warn' : 'fail'),
+                detail: health.objectCount > 0 ? `Score ${health.score}` : 'No auditable board',
+            },
+            {
+                label: 'Checkpoint',
+                state: brief.checkpoints > 0 ? 'pass' : 'warn',
+                detail: brief.checkpoints > 0 ? `${brief.checkpoints} saved rollback point${brief.checkpoints === 1 ? '' : 's'}` : 'No rollback point saved',
+            },
+            {
+                label: 'Decision trace',
+                state: register.decisions.length > 0 ? 'pass' : 'warn',
+                detail: register.decisions.length > 0 ? `${register.decisions.length} decisions detected` : 'No decision language detected',
+            },
+            {
+                label: 'Risk visibility',
+                state: register.risks.length > 0 ? 'warn' : 'pass',
+                detail: register.risks.length > 0 ? `${register.risks.length} risks detected` : 'No explicit risks detected',
+            },
+            {
+                label: 'Action path',
+                state: register.actions.length > 0 || (brief.nextActions || []).length > 0 ? 'pass' : 'warn',
+                detail: register.actions.length > 0 ? `${register.actions.length} local actions detected` : `${(brief.nextActions || []).length} suggested next actions`,
+            },
+            {
+                label: 'Focused selection',
+                state: (context.selection?.count || 0) > 0 ? 'pass' : 'warn',
+                detail: (context.selection?.count || 0) > 0 ? `${context.selection.count} selected` : 'No focused selection',
+            },
+        ];
+        const counts = gates.reduce((acc, gate) => {
+            acc[gate.state] = (acc[gate.state] || 0) + 1;
+            return acc;
+        }, { pass: 0, warn: 0, fail: 0 });
+        return { gates, counts, context };
+    }
+
+    buildGateReviewText(data = this.buildGateReviewData()) {
+        return [
+            'KimiBuilt Canvas Gate Review',
+            `Created: ${new Date().toLocaleString()}`,
+            `Pass: ${data.counts.pass || 0}`,
+            `Warn: ${data.counts.warn || 0}`,
+            `Fail: ${data.counts.fail || 0}`,
+            '',
+            ...data.gates.map((gate) => `- [${gate.state}] ${gate.label}: ${gate.detail}`),
+        ].join('\n');
+    }
+
+    renderGateReview(context = this.buildCanvasContext()) {
+        const data = this.buildGateReviewData(context);
+        const verdict = (data.counts.fail || 0) > 0
+            ? 'Needs attention'
+            : ((data.counts.warn || 0) > 0 ? 'Ready with warnings' : 'Ready');
+        if (this.gatesSummary) {
+            this.gatesSummary.textContent = `${verdict} - ${data.counts.pass || 0}/${data.gates.length} pass`;
+        }
+        if (!this.gatesList) {
+            return;
+        }
+        this.gatesList.innerHTML = data.gates.map((gate) => `
+            <div class="ai-gates-item ${this.escapeHtml(gate.state)}">
+                <strong>${this.escapeHtml(gate.label)}</strong>
+                <span>${this.escapeHtml(gate.detail)}</span>
+            </div>
+        `).join('');
+    }
+
+    async copyGateReview() {
+        const text = this.buildGateReviewText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied gate review', 'success', 'gates');
+            this.showStatus('Gate review copied.', 'success');
+        } catch (_error) {
+            this.recordActionLedger('Clipboard unavailable for gate review', 'warning', 'gates');
+            this.showStatus('Clipboard unavailable for gate review.', 'error');
+        }
+    }
+
+    addGateReviewNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const text = this.buildGateReviewText().slice(0, 1000);
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `gate-review-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 330,
+            y: center.y - 130,
+            width: 300,
+            height: 230,
+            text,
+            backgroundColor: '#ecfdf3',
+            strokeColor: '#166534',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 14,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Arial',
+            qaGenerated: true,
+            healthRole: 'note',
+        };
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Gate review note', 'gates', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable gate review note', 'success', 'gates');
+        this.showStatus('Added a gate review note.', 'success');
+    }
+
+    handleGateReviewAction(action = '') {
+        if (action === 'copy') {
+            this.copyGateReview();
+            return;
+        }
+        if (action === 'note') {
+            this.addGateReviewNote();
+        }
+    }
+
+    buildCanvasOpsSnapshotData(context = this.buildCanvasContext()) {
+        const brief = this.buildBoardBriefData(context);
+        const gates = this.buildGateReviewData(context);
+        const register = this.buildDecisionRegisterData(context);
+        const checkpoints = window.app?.loadCanvasCheckpoints?.() || [];
+        const verdict = (gates.counts.fail || 0) > 0
+            ? 'Needs attention'
+            : ((gates.counts.warn || 0) > 0 ? 'Ready with warnings' : 'Ready');
+        const openSignals = [
+            ...(context.boardHealth?.issues || [])
+                .filter((issue) => issue.severity !== 'good')
+                .map((issue) => ({ type: 'Health', text: issue.text })),
+            ...(register.risks || []).map((item) => ({ type: 'Risk', text: item.text })),
+            ...gates.gates.filter((gate) => gate.state === 'fail').map((gate) => ({ type: 'Gate', text: `${gate.label}: ${gate.detail}` })),
+        ].slice(0, 5);
+        return {
+            createdAt: new Date(),
+            verdict,
+            context,
+            brief,
+            gates,
+            register,
+            checkpoints,
+            ledger: this.actionLedger.slice(0, 5),
+            changeSets: this.changeSets.slice(0, 5),
+            openSignals,
+            nextActions: (brief.nextActions || []).slice(0, 5),
+        };
+    }
+
+    buildCanvasOpsSnapshotText(data = this.buildCanvasOpsSnapshotData()) {
+        const formatRows = (rows, fallback = '- None') => rows.length > 0
+            ? rows.map((row, index) => {
+                if (typeof row === 'string') {
+                    return `${index + 1}. ${row}`;
+                }
+                if (row.label && row.detail) {
+                    return `${index + 1}. ${row.label}: ${row.detail}`;
+                }
+                if (row.type && row.text) {
+                    return `${index + 1}. ${row.type}: ${row.text}`;
+                }
+                return `${index + 1}. ${row.text || row.title || 'Signal'}`;
+            })
+            : [fallback];
+        return [
+            'KimiBuilt Canvas Ops Snapshot',
+            `Created: ${data.createdAt.toLocaleString()}`,
+            `Verdict: ${data.verdict}`,
+            `Objects: ${data.context.board?.elementCount || 0}`,
+            `Types: ${data.context.board?.typeCounts || 'None'}`,
+            `Selection: ${data.context.selection?.count || 0}`,
+            `Health score: ${data.context.boardHealth?.objectCount > 0 ? data.context.boardHealth.score : '--'}`,
+            `Gates: ${data.gates.counts.pass || 0} pass / ${data.gates.counts.warn || 0} warn / ${data.gates.counts.fail || 0} fail`,
+            `Register: ${data.register.decisions.length} decisions / ${data.register.risks.length} risks / ${data.register.actions.length} actions`,
+            `Checkpoints: ${data.checkpoints.length}`,
+            `Change sets: ${data.changeSets.length}`,
+            `Ledger entries: ${data.ledger.length}`,
+            '',
+            'Open signals:',
+            ...formatRows(data.openSignals),
+            '',
+            'Next actions:',
+            ...formatRows(data.nextActions),
+            '',
+            'Recent ledger:',
+            ...formatRows(data.ledger.map((entry) => entry.text)),
+        ].join('\n');
+    }
+
+    renderOpsSnapshot(context = this.buildCanvasContext()) {
+        const data = this.buildCanvasOpsSnapshotData(context);
+        if (this.opsSummary) {
+            this.opsSummary.textContent = `${data.verdict} - ${data.gates.counts.pass || 0}/${data.gates.gates.length} gates`;
+        }
+        if (!this.opsGrid) {
+            return;
+        }
+
+        const metricRows = [
+            ['Objects', String(data.context.board?.elementCount || 0)],
+            ['Selection', String(data.context.selection?.count || 0)],
+            ['Health', data.context.boardHealth?.objectCount > 0 ? String(data.context.boardHealth.score) : '--'],
+            ['Gates', `${data.gates.counts.pass || 0}/${data.gates.gates.length}`],
+            ['Register', `${data.register.decisions.length}/${data.register.risks.length}/${data.register.actions.length}`],
+            ['Checkpoints', String(data.checkpoints.length)],
+            ['Change Sets', String(data.changeSets.length)],
+            ['Ledger', String(data.ledger.length)],
+        ].map(([label, value]) => `
+            <div class="ai-ops-metric">
+                <span>${this.escapeHtml(label)}</span>
+                <strong>${this.escapeHtml(value)}</strong>
+            </div>
+        `).join('');
+        const signalRows = data.openSignals.length > 0
+            ? data.openSignals.map((signal) => `
+                <div class="ai-ops-item signal">
+                    <strong>${this.escapeHtml(signal.type)}</strong>
+                    <span>${this.escapeHtml(signal.text)}</span>
+                </div>
+            `).join('')
+            : '<div class="ai-ops-empty">No open blockers detected locally.</div>';
+        const actionRows = data.nextActions.length > 0
+            ? data.nextActions.map((action) => `
+                <div class="ai-ops-item">
+                    <strong>${this.escapeHtml(action.label)}</strong>
+                    <span>${this.escapeHtml(action.detail)}</span>
+                </div>
+            `).join('')
+            : '<div class="ai-ops-empty">No next action detected yet.</div>';
+
+        this.opsGrid.innerHTML = `
+            <div class="ai-ops-metrics">${metricRows}</div>
+            <div class="ai-ops-columns">
+                <section>
+                    <span class="ai-grounding-kicker">Open Signals</span>
+                    ${signalRows}
+                </section>
+                <section>
+                    <span class="ai-grounding-kicker">Next Actions</span>
+                    ${actionRows}
+                </section>
+            </div>
+        `;
+    }
+
+    async copyOpsSnapshot() {
+        const text = this.buildCanvasOpsSnapshotText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied ops snapshot', 'success', 'ops');
+            this.showStatus('Ops snapshot copied.', 'success');
+        } catch (_error) {
+            this.recordActionLedger('Clipboard unavailable for ops snapshot', 'warning', 'ops');
+            this.showStatus('Clipboard unavailable for ops snapshot.', 'error');
+        }
+    }
+
+    addOpsSnapshotNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const text = this.buildCanvasOpsSnapshotText().slice(0, 1100);
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `ops-snapshot-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 360,
+            y: center.y + 20,
+            width: 320,
+            height: 250,
+            text,
+            backgroundColor: '#f8fafc',
+            strokeColor: '#334155',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 14,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Arial',
+            qaGenerated: true,
+            healthRole: 'note',
+        };
+
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Ops snapshot note', 'ops', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable ops snapshot note', 'success', 'ops');
+        this.showStatus('Added an ops snapshot note.', 'success');
+    }
+
+    handleOpsSnapshotAction(action = '') {
+        if (action === 'copy') {
+            this.copyOpsSnapshot();
+            return;
+        }
+        if (action === 'note') {
+            this.addOpsSnapshotNote();
+        }
+    }
+
+    buildCanvasEvidencePackData(context = this.buildCanvasContext()) {
+        const ops = this.buildCanvasOpsSnapshotData(context);
+        const audit = this.buildCanvasAuditData(context);
+        const gates = this.buildGateReviewData(context);
+        const register = this.buildDecisionRegisterData(context);
+        const checkpoints = window.app?.loadCanvasCheckpoints?.() || [];
+        const coverage = [
+            {
+                label: 'Board content',
+                state: (context.board?.elementCount || 0) > 0 ? 'pass' : 'fail',
+                detail: `${context.board?.elementCount || 0} editable objects`,
+            },
+            {
+                label: 'Health audit',
+                state: context.boardHealth?.objectCount > 0 && context.boardHealth.score >= 76 ? 'pass' : (context.boardHealth?.objectCount > 0 ? 'warn' : 'fail'),
+                detail: context.boardHealth?.objectCount > 0 ? `Score ${context.boardHealth.score}` : 'No auditable board',
+            },
+            {
+                label: 'Gate review',
+                state: (gates.counts.fail || 0) > 0 ? 'fail' : ((gates.counts.warn || 0) > 0 ? 'warn' : 'pass'),
+                detail: `${gates.counts.pass || 0} pass / ${gates.counts.warn || 0} warn / ${gates.counts.fail || 0} fail`,
+            },
+            {
+                label: 'Decision register',
+                state: register.decisions.length + register.risks.length + register.actions.length > 0 ? 'pass' : 'warn',
+                detail: `${register.decisions.length} decisions / ${register.risks.length} risks / ${register.actions.length} actions`,
+            },
+            {
+                label: 'Rollback proof',
+                state: checkpoints.length > 0 ? 'pass' : 'warn',
+                detail: `${checkpoints.length} checkpoint${checkpoints.length === 1 ? '' : 's'}`,
+            },
+            {
+                label: 'Change ledger',
+                state: this.changeSets.length + this.actionLedger.length > 0 ? 'pass' : 'warn',
+                detail: `${this.changeSets.length} change sets / ${this.actionLedger.length} ledger entries`,
+            },
+        ];
+        return {
+            createdAt: new Date(),
+            verdict: ops.verdict,
+            context,
+            ops,
+            audit,
+            gates,
+            register,
+            checkpoints,
+            changeSets: this.changeSets.slice(0, 6),
+            ledger: this.actionLedger.slice(0, 8),
+            coverage,
+        };
+    }
+
+    buildCanvasEvidencePackText(data = this.buildCanvasEvidencePackData()) {
+        const formatRows = (rows, formatter, fallback = '- None') => rows.length > 0
+            ? rows.map((row, index) => `${index + 1}. ${formatter(row)}`)
+            : [fallback];
+        return [
+            'KimiBuilt Canvas Evidence Pack',
+            `Created: ${data.createdAt.toLocaleString()}`,
+            `Verdict: ${data.verdict}`,
+            `Objects: ${data.context.board?.elementCount || 0}`,
+            `Selection: ${data.context.selection?.count || 0}`,
+            `Health score: ${data.context.boardHealth?.objectCount > 0 ? data.context.boardHealth.score : '--'}`,
+            '',
+            'Evidence coverage:',
+            ...formatRows(data.coverage, (item) => `[${item.state}] ${item.label}: ${item.detail}`),
+            '',
+            'Recent audit events:',
+            ...formatRows(data.audit.events.slice(0, 8), (event) => `[${event.state}] ${event.kind || 'event'} ${event.label}: ${event.detail}`),
+            '',
+            'Gate review:',
+            ...data.gates.gates.map((gate) => `- [${gate.state}] ${gate.label}: ${gate.detail}`),
+            '',
+            'Checkpoints:',
+            ...formatRows(data.checkpoints.slice(0, 6), (checkpoint) => `${checkpoint.name} (${Number(checkpoint.elementCount || checkpoint.elements?.length || 0)} objects)`),
+            '',
+            'Change sets:',
+            ...formatRows(data.changeSets, (entry) => `${entry.label}: ${entry.summary || entry.type || 'change'}`),
+            '',
+            'Recent ledger:',
+            ...formatRows(data.ledger, (entry) => `[${entry.status}] ${entry.text}`),
+        ].join('\n');
+    }
+
+    renderEvidencePack(context = this.buildCanvasContext()) {
+        const data = this.buildCanvasEvidencePackData(context);
+        if (this.evidenceSummary) {
+            this.evidenceSummary.textContent = `${data.verdict} - ${data.coverage.filter((item) => item.state === 'pass').length}/${data.coverage.length} covered`;
+        }
+        if (!this.evidenceGrid) {
+            return;
+        }
+
+        const metricRows = [
+            ['Objects', String(data.context.board?.elementCount || 0)],
+            ['Health', data.context.boardHealth?.objectCount > 0 ? String(data.context.boardHealth.score) : '--'],
+            ['Gates', `${data.gates.counts.pass || 0}/${data.gates.gates.length}`],
+            ['Register', String(data.register.decisions.length + data.register.risks.length + data.register.actions.length)],
+            ['Checkpoints', String(data.checkpoints.length)],
+            ['Changes', String(data.changeSets.length)],
+            ['Ledger', String(data.ledger.length)],
+            ['Events', String(data.audit.events.length)],
+        ].map(([label, value]) => `
+            <div class="ai-ops-metric">
+                <span>${this.escapeHtml(label)}</span>
+                <strong>${this.escapeHtml(value)}</strong>
+            </div>
+        `).join('');
+        const coverageRows = data.coverage.map((item) => `
+            <div class="ai-ops-item ${this.escapeHtml(item.state)}">
+                <strong>${this.escapeHtml(item.label)}</strong>
+                <span>${this.escapeHtml(item.detail)}</span>
+            </div>
+        `).join('');
+        const auditRows = data.audit.events.length > 0
+            ? data.audit.events.slice(0, 5).map((event) => `
+                <div class="ai-ops-item">
+                    <strong>${this.escapeHtml(event.label)}</strong>
+                    <span>${this.escapeHtml(event.detail)}</span>
+                </div>
+            `).join('')
+            : '<div class="ai-ops-empty">No audit proof captured yet.</div>';
+
+        this.evidenceGrid.innerHTML = `
+            <div class="ai-ops-metrics">${metricRows}</div>
+            <div class="ai-ops-columns">
+                <section>
+                    <span class="ai-grounding-kicker">Coverage</span>
+                    ${coverageRows}
+                </section>
+                <section>
+                    <span class="ai-grounding-kicker">Audit Proof</span>
+                    ${auditRows}
+                </section>
+            </div>
+        `;
+    }
+
+    async copyEvidencePack() {
+        const text = this.buildCanvasEvidencePackText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied evidence pack', 'success', 'evidence');
+            this.showStatus('Evidence pack copied.', 'success');
+        } catch (_error) {
+            this.recordActionLedger('Clipboard unavailable for evidence pack', 'warning', 'evidence');
+            this.showStatus('Clipboard unavailable for evidence pack.', 'error');
+        }
+    }
+
+    addEvidencePackNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const text = this.buildCanvasEvidencePackText().slice(0, 1200);
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `evidence-pack-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 390,
+            y: center.y + 190,
+            width: 330,
+            height: 270,
+            text,
+            backgroundColor: '#f1f5f9',
+            strokeColor: '#334155',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 14,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Arial',
+            qaGenerated: true,
+            healthRole: 'note',
+        };
+
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Evidence pack note', 'evidence', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable evidence pack note', 'success', 'evidence');
+        this.showStatus('Added an evidence pack note.', 'success');
+    }
+
+    handleEvidencePackAction(action = '') {
+        if (action === 'copy') {
+            this.copyEvidencePack();
+            return;
+        }
+        if (action === 'note') {
+            this.addEvidencePackNote();
+        }
+    }
+
+    buildReviewQueueData(context = this.buildCanvasContext()) {
+        const ops = this.buildCanvasOpsSnapshotData(context);
+        const gates = this.buildGateReviewData(context);
+        const register = this.buildDecisionRegisterData(context);
+        const recents = this.actionLedger
+            .slice(0, 6)
+            .map((entry) => String(entry?.text || '').trim())
+            .filter(Boolean);
+        const signals = [];
+
+        gates.gates
+            .filter((gate) => gate.state === 'fail' || gate.state === 'warn')
+            .forEach((gate) => {
+                signals.push({
+                    priority: gate.state === 'fail' ? 'high' : 'medium',
+                    kind: 'Gate',
+                    text: `${gate.label}: ${gate.detail}`,
+                });
+            });
+
+        register.risks.forEach((risk) => {
+            signals.push({
+                priority: 'high',
+                kind: 'Risk',
+                text: `${risk.text}`,
+            });
+        });
+
+        register.actions.forEach((action) => {
+            signals.push({
+                priority: 'medium',
+                kind: 'Action',
+                text: `${action.text}`,
+            });
+        });
+
+        register.decisions.forEach((decision) => {
+            signals.push({
+                priority: 'low',
+                kind: 'Decision',
+                text: `${decision.text}`,
+            });
+        });
+
+        const orderedSignals = signals
+            .slice(0, 12)
+            .map((item) => ({
+                ...item,
+                state: item.priority === 'high' ? 'fail' : (item.priority === 'medium' ? 'warn' : 'pass'),
+            }));
+
+        const counts = orderedSignals.reduce((acc, signal) => {
+            acc[signal.priority] = (acc[signal.priority] || 0) + 1;
+            return acc;
+        }, {});
+        const total = orderedSignals.length;
+        const verdict = counts.high > 0
+            ? 'Needs immediate attention'
+            : (counts.medium > 0 ? 'Needs review' : 'Ready');
+
+        return {
+            createdAt: new Date(),
+            verdict,
+            total,
+            counts: {
+                high: counts.high || 0,
+                medium: counts.medium || 0,
+                low: counts.low || 0,
+            },
+            signals: orderedSignals,
+            recents,
+            ops,
+            gates,
+            register,
+        };
+    }
+
+    buildReviewQueueText(data = this.buildReviewQueueData()) {
+        const formatItems = (items, formatter, fallback = '- None') => items.length > 0
+            ? items.map((item, index) => `${index + 1}. ${formatter(item)}`)
+            : [fallback];
+
+        return [
+            'KimiBuilt Canvas Review Queue',
+            `Created: ${data.createdAt.toLocaleString()}`,
+            `Verdict: ${data.verdict}`,
+            `Objects: ${data.ops.context?.board?.objectCount || 0}`,
+            `Selection: ${data.ops.context?.selection?.count || 0}`,
+            `Total: ${data.total} item${data.total === 1 ? '' : 's'}`,
+            `High: ${data.counts.high} / Medium: ${data.counts.medium} / Low: ${data.counts.low}`,
+            '',
+            'Queue:',
+            ...formatItems(data.signals, (signal) => `[${signal.priority}] ${signal.kind}: ${signal.text}`),
+            '',
+            'Recent actions:',
+            ...formatItems(data.recents, (item) => item, '- No recent board actions'),
+        ].join('\n');
+    }
+
+    renderReviewQueue(context = this.buildCanvasContext()) {
+        const data = this.buildReviewQueueData(context);
+        this.lastReviewQueueText = this.buildReviewQueueText(data);
+
+        if (this.reviewSummary) {
+            this.reviewSummary.textContent = `${data.verdict} - ${data.counts.high}/${data.counts.medium}/${data.counts.low}`;
+        }
+        if (!this.reviewGrid) {
+            return;
+        }
+
+        const metricRows = [
+            ['High', String(data.counts.high)],
+            ['Medium', String(data.counts.medium)],
+            ['Low', String(data.counts.low)],
+            ['Total', String(data.total)],
+        ].map(([label, value]) => `
+            <div class="ai-ops-metric">
+                <span>${this.escapeHtml(label)}</span>
+                <strong>${this.escapeHtml(value)}</strong>
+            </div>
+        `).join('');
+        const signalRows = data.signals.length > 0
+            ? data.signals.map((signal) => `
+                <div class="ai-ops-item ${this.escapeHtml(signal.state)}">
+                    <strong>${this.escapeHtml(signal.kind)}</strong>
+                    <span>[${this.escapeHtml(signal.priority)}] ${this.escapeHtml(signal.text)}</span>
+                </div>
+            `).join('')
+            : '<div class="ai-ops-empty">No review items queued.</div>';
+        const recentRows = data.recents.length > 0
+            ? data.recents.map((command) => `
+                <div class="ai-ops-item">
+                    <strong>Action</strong>
+                    <span>${this.escapeHtml(command)}</span>
+                </div>
+            `).join('')
+            : '<div class="ai-ops-empty">No recent board actions.</div>';
+
+        this.reviewGrid.innerHTML = `
+            <div class="ai-ops-metrics">${metricRows}</div>
+            <div class="ai-ops-columns">
+                <section>
+                    <span class="ai-grounding-kicker">Queue</span>
+                    ${signalRows}
+                </section>
+                <section>
+                    <span class="ai-grounding-kicker">Recent actions</span>
+                    ${recentRows}
+                </section>
+            </div>
+        `;
+    }
+
+    async copyReviewQueue() {
+        const text = this.lastReviewQueueText || this.buildReviewQueueText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied review queue', 'success', 'review');
+            this.showStatus('Review queue copied.', 'success');
+        } catch (_error) {
+            this.recordActionLedger('Clipboard unavailable for review queue', 'warning', 'review');
+            this.showStatus('Clipboard unavailable for review queue.', 'error');
+        }
+    }
+
+    addReviewQueueNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const text = this.buildReviewQueueText().slice(0, 1050);
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `review-queue-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 420,
+            y: center.y + 20,
+            width: 300,
+            height: 240,
+            text,
+            backgroundColor: '#e0edff',
+            strokeColor: '#2563eb',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 14,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Arial',
+            qaGenerated: true,
+            healthRole: 'note',
+        };
+
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Review queue note', 'review', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable review queue note', 'success', 'review');
+        this.showStatus('Added a review queue note.', 'success');
+    }
+
+    handleReviewQueueAction(action = '') {
+        if (action === 'copy') {
+            this.copyReviewQueue();
+            return;
+        }
+        if (action === 'note') {
+            this.addReviewQueueNote();
+        }
+    }
+
+    selectBoardIndexMatch(elementId = '') {
+        const canvas = window.infiniteCanvas;
+        if (!canvas || !elementId) {
+            return;
+        }
+        const element = (canvas.elements || []).find((item) => item.id === elementId);
+        if (!element) {
+            this.recordActionLedger('Board index object was not found', 'warning', 'index');
+            this.renderBoardIndex();
+            return;
+        }
+        canvas.selectElements([element]);
+        canvas.render();
+        this.updateGroundingPanel();
+        this.recordActionLedger(`Selected indexed object "${this.getBoardIndexLabel(element)}"`, 'success', 'index');
+        this.showStatus('Selected board index match.', 'success');
+    }
+
+    selectBoardIndexMatches() {
+        const canvas = window.infiniteCanvas;
+        const matches = this.boardIndexMatches || [];
+        if (!canvas || matches.length === 0) {
+            this.recordActionLedger('No board index matches to select', 'warning', 'index');
+            this.showStatus('No board index matches to select.', 'error');
+            return;
+        }
+        canvas.selectElements(matches.map((match) => match.element));
+        canvas.render();
+        this.updateGroundingPanel();
+        this.recordActionLedger(`Selected ${matches.length} board index match${matches.length === 1 ? '' : 'es'}`, 'success', 'index');
+        this.showStatus(`Selected ${matches.length} board index match${matches.length === 1 ? '' : 'es'}.`, 'success');
+    }
+
+    handleBoardIndexAction(action = '', elementId = '') {
+        if (action === 'clear') {
+            if (this.boardIndexInput) {
+                this.boardIndexInput.value = '';
+            }
+            this.renderBoardIndex('');
+            return;
+        }
+
+        if (action === 'select-all') {
+            this.selectBoardIndexMatches();
+            return;
+        }
+
+        if (action === 'copy') {
+            this.copyBoardIndexSummary();
+            return;
+        }
+
+        if (action === 'select') {
+            this.selectBoardIndexMatch(elementId);
+        }
+    }
+
+    renderPinnedActions(context = this.buildCanvasContext()) {
+        if (!this.pinboardSummary) {
+            return;
+        }
+        const objectCount = context.board?.elementCount || 0;
+        const selectedCount = context.selection?.count || 0;
+        const healthScore = context.boardHealth?.objectCount > 0 ? context.boardHealth.score : '--';
+        this.pinboardSummary.textContent = `${objectCount} objects - ${selectedCount} selected - score ${healthScore}`;
+        this.pinboardSummary.title = 'Pinned actions reuse board brief, index, checkpoint, and audit workflows.';
+    }
+
+    handlePinnedBoardAction(action = '') {
+        if (action === 'save-checkpoint') {
+            const checkpoint = window.app?.saveCanvasCheckpoint?.();
+            if (checkpoint) {
+                this.recordActionLedger(`Saved checkpoint "${checkpoint.name}" from pinboard`, 'success', 'pinboard');
+                this.renderCheckpoints();
+                this.showStatus('Checkpoint saved.', 'success');
+            }
+            return;
+        }
+
+        if (action === 'refresh-audit') {
+            this.handleHealthAction('refresh');
+            return;
+        }
+
+        if (action === 'preview-fixes') {
+            this.handleFixAction('preview');
+            return;
+        }
+
+        if (action === 'copy-brief') {
+            this.copyBoardBrief();
+            return;
+        }
+
+        if (action === 'copy-index') {
+            this.copyBoardIndexSummary();
+            return;
+        }
+
+        if (action === 'copy-packet') {
+            this.copyCanvasHandoffPacket();
+            return;
+        }
+
+        if (action === 'qa-note') {
+            this.addBoardQaNote();
+            return;
+        }
+
+        this.recordActionLedger('Unknown pinned board action requested', 'warning', 'pinboard');
+        this.showStatus('That pinned action is not available.', 'error');
+    }
+
+    async copyBoardBrief() {
+        const text = this.lastBoardBriefText || this.buildBoardBriefText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied board brief', 'success', 'brief');
+            this.showStatus('Board brief copied.', 'success');
+        } catch {
+            this.recordActionLedger('Clipboard unavailable for board brief', 'warning', 'brief');
+            this.showStatus('Clipboard unavailable. Add the brief as a note instead.', 'error');
+        }
+    }
+
+    addBoardBriefNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const text = (this.lastBoardBriefText || this.buildBoardBriefText()).slice(0, 900);
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `brief-note-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 250,
+            y: center.y + 50,
+            width: 280,
+            height: 210,
+            text,
+            backgroundColor: '#dbeafe',
+            strokeColor: '#1d4ed8',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 15,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Virgil, cursive',
+            qaGenerated: true,
+            healthRole: 'note',
+        };
+
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Board brief note', 'brief', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable board brief note', 'success', 'brief');
+        this.showStatus('Added a board brief note to the canvas.', 'success');
+    }
+
+    handleBoardBriefAction(action = '') {
+        if (action === 'copy') {
+            this.copyBoardBrief();
+            return;
+        }
+
+        if (action === 'note') {
+            this.addBoardBriefNote();
+        }
+    }
+
+    handleBoardBriefNextAction(action = '') {
+        if (action === 'starter-prompt') {
+            this.setMode('chat');
+            this.showPanel();
+            if (this.input) {
+                this.input.value = 'Create an enterprise-ready canvas starter with three labeled sections, decisions, risks, and next actions.';
+                this.input.focus();
+            }
+            this.recordActionLedger('Loaded board starter prompt', 'success', 'brief');
+            return;
+        }
+
+        if (action === 'qa-note') {
+            this.addBoardQaNote();
+            return;
+        }
+
+        if (action === 'select-fixes') {
+            this.handleFixAction('select');
+            return;
+        }
+
+        if (action === 'save-checkpoint') {
+            this.handleCheckpointAction('save');
+            this.updateGroundingPanel();
+            return;
+        }
+
+        if (action === 'refresh-audit') {
+            this.handleHealthAction('refresh');
+            return;
+        }
+
+        if (action === 'brief-note') {
+            this.addBoardBriefNote();
+            return;
+        }
+
+        if (action === 'copy-brief') {
+            this.copyBoardBrief();
+        }
     }
 
     setupToolLaneControls() {
@@ -366,6 +2229,131 @@ class AIAssistant {
                 </div>
             `;
         }).join('');
+    }
+
+    buildCanvasAuditData(context = this.buildCanvasContext()) {
+        const checkpoints = window.app?.loadCanvasCheckpoints?.() || [];
+        const ledgerEvents = this.actionLedger.map((entry) => ({
+            kind: 'ledger',
+            label: entry.text,
+            detail: entry.meta || entry.status,
+            state: entry.status || 'success',
+            createdAt: entry.createdAt,
+        }));
+        const changeEvents = this.changeSets.map((entry) => ({
+            kind: 'change',
+            label: entry.label,
+            detail: `${entry.changedIds.length} object${entry.changedIds.length === 1 ? '' : 's'} changed from ${entry.source}`,
+            state: 'success',
+            createdAt: entry.createdAt,
+        }));
+        const checkpointEvents = checkpoints.slice(0, 4).map((checkpoint) => ({
+            kind: 'checkpoint',
+            label: checkpoint.name || 'Board checkpoint',
+            detail: `${Number(checkpoint.elementCount || checkpoint.elements?.length || 0)} object snapshot`,
+            state: 'success',
+            createdAt: checkpoint.createdAt ? new Date(checkpoint.createdAt).getTime() : Date.now(),
+        }));
+
+        return {
+            createdAt: new Date(),
+            board: context.board,
+            selection: context.selection,
+            healthScore: context.boardHealth?.objectCount > 0 ? context.boardHealth.score : null,
+            checkpoints: checkpoints.length,
+            events: [...ledgerEvents, ...changeEvents, ...checkpointEvents]
+                .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+                .slice(0, 14),
+        };
+    }
+
+    buildCanvasAuditText(data = this.buildCanvasAuditData()) {
+        const lines = [
+            'Lilly Canvas Audit Trail',
+            `Created: ${data.createdAt.toLocaleString()}`,
+            `Objects: ${data.board?.elementCount || 0}`,
+            `Types: ${data.board?.typeCounts || 'None'}`,
+            `Selection: ${data.selection?.count || 0}`,
+            `Health score: ${data.healthScore ?? '--'}`,
+            `Checkpoints: ${data.checkpoints}`,
+            '',
+            'Events:',
+            ...(data.events.length > 0
+                ? data.events.map((event) => {
+                    const time = event.createdAt ? new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
+                    return `- [${event.kind}] ${time} ${event.label}: ${event.detail}`;
+                })
+                : ['- No action events captured yet.']),
+        ];
+
+        return lines.join('\n');
+    }
+
+    async copyCanvasAudit() {
+        const text = this.buildCanvasAuditText();
+        try {
+            await navigator.clipboard.writeText(text);
+            this.recordActionLedger('Copied canvas audit trail', 'success', 'audit');
+            this.showStatus('Canvas audit copied.', 'success');
+        } catch {
+            this.recordActionLedger('Clipboard unavailable for canvas audit', 'warning', 'audit');
+            this.showStatus('Clipboard unavailable. Add the audit as a note instead.', 'error');
+        }
+    }
+
+    addCanvasAuditNote() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return;
+        }
+
+        const beforeElements = this.cloneElementsForChangeSet(canvas.elements || []);
+        const text = this.buildCanvasAuditText().slice(0, 1000);
+        const viewportCenter = canvas.getViewportCenter?.() || {
+            x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+            y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+        };
+        const center = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+        const note = {
+            id: window.toolManager?.generateId?.() || `audit-note-${Date.now()}`,
+            type: 'sticky',
+            x: center.x + 260,
+            y: center.y + 60,
+            width: 300,
+            height: 230,
+            text,
+            backgroundColor: '#e0f2fe',
+            strokeColor: '#0369a1',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            fontSize: 14,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Virgil, cursive',
+            qaGenerated: true,
+            healthRole: 'note',
+        };
+
+        canvas.addElement(note);
+        canvas.selectElement(note);
+        window.historyManager?.pushState(canvas.elements);
+        window.app?.saveCanvasToStorage?.();
+        canvas.render();
+        this.recordChangeSet('Canvas audit note', 'audit', beforeElements, canvas.elements || [], [note.id]);
+        this.updateGroundingPanel();
+        this.recordActionLedger('Added editable canvas audit note', 'success', 'audit');
+        this.showStatus('Added a canvas audit note.', 'success');
+    }
+
+    handleCanvasAuditAction(action = '') {
+        if (action === 'copy') {
+            this.copyCanvasAudit();
+            return;
+        }
+
+        if (action === 'note') {
+            this.addCanvasAuditNote();
+        }
     }
 
     cloneElementForChangeSet(element) {
@@ -1320,7 +3308,7 @@ class AIAssistant {
         }
         this.panel?.classList.toggle('active');
         if (this.panel?.classList.contains('active')) {
-            this.input?.focus();
+            this.prepareOpenPanelScroll();
         }
     }
 
@@ -1330,7 +3318,26 @@ class AIAssistant {
         if (!this.panel?.classList.contains('active')) {
             this.panel?.classList.add('active');
         }
-        this.input?.focus();
+        this.prepareOpenPanelScroll();
+    }
+
+    prepareOpenPanelScroll() {
+        const content = this.panel?.querySelector('.ai-panel-content');
+        if (content) {
+            content.scrollTop = 0;
+        }
+        if (this.input) {
+            try {
+                this.input.focus({ preventScroll: true });
+            } catch (_error) {
+                this.input.focus();
+            }
+        }
+        requestAnimationFrame(() => {
+            if (content) {
+                content.scrollTop = 0;
+            }
+        });
     }
     
     hidePanel() {
@@ -1694,6 +3701,16 @@ class AIAssistant {
         this.renderToolPlan();
         this.renderBoardHealth(context.boardHealth);
         this.renderChangeSets();
+        this.renderWorkSets();
+        this.renderCheckpoints();
+        this.renderBoardBrief(context);
+        this.renderBoardIndex();
+        this.renderPinnedActions(context);
+        this.renderDecisionRegister(context);
+        this.renderGateReview(context);
+        this.renderOpsSnapshot(context);
+        this.renderEvidencePack(context);
+        this.renderReviewQueue(context);
         this.updateSelectionActionBar(context);
     }
 

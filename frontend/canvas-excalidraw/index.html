@@ -6,7 +6,7 @@
     <title>Lilly Canvas</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
-    <link rel="stylesheet" href="css/enterprise.css?v=20260614a">
+    <link rel="stylesheet" href="css/enterprise.css?v=20260614q">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;700&family=Roboto+Mono:wght@400;500&family=Fira+Code:wght@400;500&family=Merriweather:wght@400;700&family=Poppins:wght@400;600&family=Bebas+Neue&family=Lobster&family=Pacifico&family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet">
     <script src="/api/sandbox-libraries/rough/rough.js"></script>
@@ -51,8 +51,25 @@
                     <option value="claude-3-sonnet">Claude 3 Sonnet</option>
                 </select>
             </div>
+            <div class="canvas-status-strip" id="canvasStatusStrip" aria-label="Board status">
+                <span><strong id="canvasObjectCount">0</strong> Objects</span>
+                <span><strong id="canvasSelectionCount">0</strong> Selected</span>
+                <span><strong id="canvasCheckpointCount">0</strong> Checkpoints</span>
+                <span><strong id="canvasModeState">Core</strong></span>
+                <span><strong id="canvasSaveState">Draft</strong></span>
+            </div>
         </div>
         <div class="top-bar-right">
+            <button id="enterpriseModeBtn" title="Enable Enterprise Mode" aria-label="Enable Enterprise Mode">
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                    <path fill="currentColor" d="M9 6V4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v2h4c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2h4zm2 0h2V4h-2v2zm-6 5h14V8H5v3zm0 2v4h14v-4h-5v1h-4v-1H5z"/>
+                </svg>
+            </button>
+            <button id="densityBtn" title="Density: Comfortable" aria-label="Toggle layout density">
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                    <path fill="currentColor" d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"/>
+                </svg>
+            </button>
             <button id="clearBtn" title="Clear Canvas">
                 <svg viewBox="0 0 24 24" width="18" height="18">
                     <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -347,8 +364,8 @@
         <div class="tool-separator"></div>
 
         <!-- Agent tools -->
-        <div class="tool-category ai-tools-top">
-            <div class="tool-category-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <div class="tool-category ai-tools-top expanded">
+            <div class="tool-category-header" onclick="this.parentElement.classList.toggle('expanded')">
                 <span>Agent</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
                     <path fill="currentColor" d="M7 10l5 5 5-5z"/>
@@ -1267,6 +1284,62 @@
                 </div>
             </div>
 
+            <div class="ai-workset-deck" id="aiWorkSetDeck">
+                <div class="ai-workset-header">
+                    <span class="ai-grounding-kicker">Work Sets</span>
+                    <strong id="aiWorkSetSummary">No saved sets</strong>
+                </div>
+                <div class="ai-workset-actions">
+                    <button type="button" class="ai-context-btn" data-ai-workset-action="save">Save selection</button>
+                </div>
+                <div class="ai-workset-list" id="aiWorkSetList">
+                    <div class="ai-workset-empty">Save a selection to reuse it later.</div>
+                </div>
+            </div>
+
+            <div class="ai-checkpoint-deck" id="aiCheckpointDeck">
+                <div class="ai-checkpoint-header">
+                    <span class="ai-grounding-kicker">Checkpoints</span>
+                    <strong id="aiCheckpointSummary">No checkpoints</strong>
+                </div>
+                <div class="ai-checkpoint-actions">
+                    <button type="button" class="ai-context-btn" data-ai-checkpoint-action="save">Save checkpoint</button>
+                </div>
+                <div class="ai-checkpoint-list" id="aiCheckpointList">
+                    <div class="ai-checkpoint-empty">Save a board checkpoint before a risky edit.</div>
+                </div>
+            </div>
+
+            <div class="ai-brief-deck" id="aiBriefDeck">
+                <div class="ai-brief-header">
+                    <span class="ai-grounding-kicker">Board Brief</span>
+                    <strong id="aiBriefSummary">No board content</strong>
+                </div>
+                <div class="ai-brief-list" id="aiBriefList">
+                    <div class="ai-brief-empty">Build or select objects to prepare a handoff brief.</div>
+                </div>
+                <div class="ai-brief-actions">
+                    <button type="button" class="ai-context-btn" data-ai-brief-action="copy">Copy brief</button>
+                    <button type="button" class="ai-context-btn" data-ai-brief-action="note">Add note</button>
+                </div>
+            </div>
+
+            <div class="ai-board-index" id="aiBoardIndex">
+                <div class="ai-board-index-header">
+                    <span class="ai-grounding-kicker">Board Index</span>
+                    <strong id="aiBoardIndexSummary">No query</strong>
+                </div>
+                <div class="ai-board-index-search">
+                    <input id="aiBoardIndexInput" type="search" placeholder="Find text, type, or id..." autocomplete="off" spellcheck="false">
+                    <button type="button" class="ai-context-btn" data-ai-board-index-action="select-all">Select all</button>
+                    <button type="button" class="ai-context-btn" data-ai-board-index-action="copy">Copy index</button>
+                    <button type="button" class="ai-context-btn" data-ai-board-index-action="clear">Clear</button>
+                </div>
+                <div class="ai-board-index-list" id="aiBoardIndexList">
+                    <div class="ai-board-index-empty">Search board objects to focus or select them.</div>
+                </div>
+            </div>
+
             <div class="ai-board-health" id="aiBoardHealth">
                 <div class="ai-board-health-header">
                     <div>
@@ -1307,6 +1380,92 @@
                     <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Use boardHealth to fix the highest-priority board gaps. Add missing labels, connectors, frames, and one concise risk note as editable canvas objects.">Board QA pass</button>
                     <button type="button" class="ai-command-btn" data-ai-command-mode="chat" data-ai-command-prompt="Summarize the current board using boardHealth, name the weakest structural issue, and suggest the next three editable object actions.">Critique</button>
                     <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Turn the visible area into a structured system map with grouped frames, arrows, and concise labels.">Map viewport</button>
+                </div>
+            </div>
+
+            <div class="ai-pinboard-deck" id="aiPinboardDeck">
+                <div class="ai-pinboard-header">
+                    <span class="ai-grounding-kicker">Pinned Actions</span>
+                    <strong id="aiPinboardSummary">Ready</strong>
+                </div>
+                <div class="ai-pinboard-grid">
+                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="save-checkpoint">Save checkpoint</button>
+                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="refresh-audit">Refresh audit</button>
+                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="preview-fixes">Preview fixes</button>
+                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="copy-brief">Copy brief</button>
+                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="copy-index">Copy index</button>
+                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="copy-packet">Copy packet</button>
+                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="qa-note">Add QA note</button>
+                </div>
+            </div>
+
+            <div class="ai-decision-deck" id="aiDecisionDeck">
+                <div class="ai-decision-header">
+                    <span class="ai-grounding-kicker">Decision Register</span>
+                    <strong id="aiDecisionSummary">No register yet</strong>
+                </div>
+                <div class="ai-decision-list" id="aiDecisionList">
+                    <div class="ai-decision-empty">Board decisions, risks, and actions will appear here.</div>
+                </div>
+                <div class="ai-decision-actions">
+                    <button type="button" class="ai-context-btn" data-ai-decision-action="copy">Copy register</button>
+                    <button type="button" class="ai-context-btn" data-ai-decision-action="note">Add note</button>
+                </div>
+            </div>
+
+            <div class="ai-gates-deck" id="aiGatesDeck">
+                <div class="ai-gates-header">
+                    <span class="ai-grounding-kicker">Gate Review</span>
+                    <strong id="aiGatesSummary">No gate review</strong>
+                </div>
+                <div class="ai-gates-list" id="aiGatesList">
+                    <div class="ai-gates-empty">Board readiness gates will appear here.</div>
+                </div>
+                <div class="ai-gates-actions">
+                    <button type="button" class="ai-context-btn" data-ai-gates-action="copy">Copy gates</button>
+                    <button type="button" class="ai-context-btn" data-ai-gates-action="note">Add note</button>
+                </div>
+            </div>
+
+            <div class="ai-ops-deck ai-review-deck" id="aiReviewDeck">
+                <div class="ai-ops-header">
+                    <span class="ai-grounding-kicker">Review Queue</span>
+                    <strong id="aiReviewSummary">No review queue</strong>
+                </div>
+                <div class="ai-ops-grid" id="aiReviewGrid">
+                    <div class="ai-ops-empty">Review items will appear here.</div>
+                </div>
+                <div class="ai-ops-actions">
+                    <button type="button" class="ai-context-btn" data-ai-review-action="copy">Copy review queue</button>
+                    <button type="button" class="ai-context-btn" data-ai-review-action="note">Add note</button>
+                </div>
+            </div>
+
+            <div class="ai-ops-deck" id="aiOpsDeck">
+                <div class="ai-ops-header">
+                    <span class="ai-grounding-kicker">Ops Snapshot</span>
+                    <strong id="aiOpsSummary">No snapshot</strong>
+                </div>
+                <div class="ai-ops-grid" id="aiOpsGrid">
+                    <div class="ai-ops-empty">Board operating signals will appear here.</div>
+                </div>
+                <div class="ai-ops-actions">
+                    <button type="button" class="ai-context-btn" data-ai-ops-action="copy">Copy snapshot</button>
+                    <button type="button" class="ai-context-btn" data-ai-ops-action="note">Add note</button>
+                </div>
+            </div>
+
+            <div class="ai-ops-deck ai-evidence-deck" id="aiEvidenceDeck">
+                <div class="ai-ops-header">
+                    <span class="ai-grounding-kicker">Evidence Pack</span>
+                    <strong id="aiEvidenceSummary">No evidence</strong>
+                </div>
+                <div class="ai-ops-grid" id="aiEvidenceGrid">
+                    <div class="ai-ops-empty">Board proof signals will appear here.</div>
+                </div>
+                <div class="ai-ops-actions">
+                    <button type="button" class="ai-context-btn" data-ai-evidence-action="copy">Copy evidence</button>
+                    <button type="button" class="ai-context-btn" data-ai-evidence-action="note">Add note</button>
                 </div>
             </div>
 
@@ -1386,8 +1545,14 @@
 
             <div class="ai-action-ledger" id="aiActionLedger">
                 <div class="ai-action-ledger-header">
-                    <span class="ai-grounding-kicker">Action Ledger</span>
-                    <strong id="aiLedgerSummary">No actions yet</strong>
+                    <div>
+                        <span class="ai-grounding-kicker">Action Ledger</span>
+                        <strong id="aiLedgerSummary">No actions yet</strong>
+                    </div>
+                    <div class="ai-action-ledger-actions">
+                        <button type="button" class="ai-context-btn" data-ai-audit-action="copy">Copy audit</button>
+                        <button type="button" class="ai-context-btn" data-ai-audit-action="note">Add audit note</button>
+                    </div>
                 </div>
                 <div class="ai-action-list" id="aiActionList">
                     <div class="ai-action-empty">Applied edits, local moves, and skipped actions will appear here.</div>
@@ -1777,8 +1942,8 @@
     <script src="js/layers.js"></script>
     <script src="js/templates.js"></script>
     <script src="js/stickers.js"></script>
-    <script src="js/ai-assistant.js"></script>
+    <script src="js/ai-assistant.js?v=20260614q"></script>
     <script src="js/import-export.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=20260614q"></script>
 </body>
 </html>

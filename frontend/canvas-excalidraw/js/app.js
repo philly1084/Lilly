@@ -4,11 +4,19 @@
  * Fixed: Share functionality, mobile controls, export/import improvements
  */
 
+const CANVAS_CHECKPOINT_STORAGE_KEY = 'kimi-canvas-checkpoints';
+const CANVAS_CHECKPOINT_LIMIT = 8;
+const CANVAS_DENSITY_STORAGE_KEY = 'kimi-canvas-density';
+const CANVAS_ENTERPRISE_STORAGE_KEY = 'kimi-canvas-enterprise-mode';
+
 class App {
     constructor() {
         this.currentTool = 'selection';
         this.aiTooltipTimeout = null;
         this.lastImport = null; // For undo import functionality
+        this.lastCanvasSavedAt = null;
+        this.density = this.normalizeDensity(localStorage.getItem(CANVAS_DENSITY_STORAGE_KEY)) || 'comfortable';
+        this.enterpriseMode = localStorage.getItem(CANVAS_ENTERPRISE_STORAGE_KEY) === 'true';
         this.init();
     }
     
@@ -16,6 +24,12 @@ class App {
         // Wait for all modules to load
         document.addEventListener('DOMContentLoaded', () => {
             this.applyCoreWorkspaceMode();
+            this.applyDensity(this.density);
+            if (this.enterpriseMode) {
+                this.applyEnterpriseMode(true, { silent: true });
+            } else {
+                this.updateEnterpriseButton();
+            }
             this.setupEventListeners();
             this.setupImageUpload();
             this.setupTheme();
@@ -27,6 +41,7 @@ class App {
             this.setupAITooltip();
             this.setupFontSearch();
             this.setupOpacitySlider();
+            this.setupCanvasStatusStrip();
             
             // Note: WebSocket not used with OpenAI SDK mode
             console.log('OpenAI SDK mode: WebSocket not used');
@@ -34,6 +49,7 @@ class App {
             // Load saved canvas or initial render
             this.loadCanvasFromStorage();
             window.infiniteCanvas?.render();
+            this.updateCanvasStatusStrip();
             
             // Push initial state for undo
             window.historyManager?.pushState(window.infiniteCanvas?.elements || []);
@@ -121,11 +137,79 @@ class App {
             category.classList.add('expanded');
         });
     }
+
+    normalizeDensity(value = '') {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['compact', 'dense', 'operator'].includes(normalized)) {
+            return 'compact';
+        }
+        if (['comfortable', 'comfort', 'default', 'roomy'].includes(normalized)) {
+            return 'comfortable';
+        }
+        return '';
+    }
+
+    getDensityLabel(value = this.density) {
+        return value === 'compact' ? 'Compact' : 'Comfortable';
+    }
+
+    applyDensity(value = this.density) {
+        const density = this.normalizeDensity(value) || 'comfortable';
+        this.density = density;
+        document.body.setAttribute('data-density', density);
+        localStorage.setItem(CANVAS_DENSITY_STORAGE_KEY, density);
+        this.updateDensityButton();
+        this.updateCanvasStatusStrip();
+    }
+
+    toggleDensity() {
+        const nextDensity = this.density === 'compact' ? 'comfortable' : 'compact';
+        this.applyDensity(nextDensity);
+        this.showToast(`Density changed to ${this.getDensityLabel(this.density)}`);
+    }
+
+    updateDensityButton() {
+        const button = document.getElementById('densityBtn');
+        if (!button) {
+            return;
+        }
+        const label = this.getDensityLabel(this.density);
+        button.title = `Density: ${label}`;
+        button.setAttribute('aria-label', `Toggle layout density. Current density: ${label}`);
+        button.classList.toggle('active', this.density === 'compact');
+    }
+
+    applyEnterpriseMode(enabled = true, options = {}) {
+        this.enterpriseMode = Boolean(enabled);
+        document.body.setAttribute('data-enterprise-mode', this.enterpriseMode ? 'on' : 'off');
+        localStorage.setItem(CANVAS_ENTERPRISE_STORAGE_KEY, String(this.enterpriseMode));
+        this.applyDensity(this.enterpriseMode ? 'compact' : 'comfortable');
+        this.updateEnterpriseButton();
+        this.updateCanvasStatusStrip();
+        if (!options.silent) {
+            this.showToast(this.enterpriseMode ? 'Enterprise Mode enabled' : 'Enterprise Mode disabled');
+        }
+    }
+
+    toggleEnterpriseMode() {
+        this.applyEnterpriseMode(!this.enterpriseMode);
+    }
+
+    updateEnterpriseButton() {
+        const button = document.getElementById('enterpriseModeBtn');
+        if (!button) {
+            return;
+        }
+        button.classList.toggle('active', this.enterpriseMode);
+        button.title = this.enterpriseMode ? 'Enterprise Mode active' : 'Enable Enterprise Mode';
+        button.setAttribute('aria-label', this.enterpriseMode ? 'Enterprise Mode active' : 'Enable Enterprise Mode');
+    }
     
     setupAutoSave() {
         // Auto-save every 30 seconds
         this.autoSaveInterval = setInterval(() => {
             this.saveCanvasToStorage();
+            this.updateCanvasStatusStrip();
         }, 30000);
         
         // Save on page unload
@@ -144,24 +228,208 @@ class App {
     saveCanvasToStorage() {
         try {
             const canvas = window.infiniteCanvas;
-            if (!canvas || canvas.elements.length === 0) return;
-            
-            // Don't save image elements (can't serialize Image objects)
-            const serializableElements = canvas.elements.map(el => {
-                const copy = { ...el };
-                delete copy.imageElement; // Remove non-serializable Image objects
-                return copy;
-            });
+            if (!canvas || canvas.elements.length === 0) {
+                this.updateCanvasStatusStrip();
+                return;
+            }
             
             const data = {
-                elements: serializableElements,
+                elements: this.getSerializableCanvasElements(canvas.elements),
                 timestamp: Date.now(),
                 version: '1.0'
             };
             
             localStorage.setItem('kimi-canvas-autosave', JSON.stringify(data));
+            this.lastCanvasSavedAt = data.timestamp;
+            this.updateCanvasStatusStrip();
         } catch (error) {
             console.warn('Failed to auto-save canvas:', error);
+        }
+    }
+
+    setupCanvasStatusStrip() {
+        this.canvasObjectCount = document.getElementById('canvasObjectCount');
+        this.canvasSelectionCount = document.getElementById('canvasSelectionCount');
+        this.canvasCheckpointCount = document.getElementById('canvasCheckpointCount');
+        this.canvasModeState = document.getElementById('canvasModeState');
+        this.canvasSaveState = document.getElementById('canvasSaveState');
+        this.updateCanvasStatusStrip();
+    }
+
+    updateCanvasStatusStrip() {
+        const canvas = window.infiniteCanvas;
+        const objectCount = canvas?.elements?.length || 0;
+        const selectedCount = canvas?.selectedElements?.length || 0;
+        const checkpointCount = this.loadCanvasCheckpoints?.().length || 0;
+        const savedAt = Number(this.lastCanvasSavedAt || 0);
+        const saveLabel = savedAt
+            ? `Saved ${this.formatRelativeTime(savedAt)}`
+            : (objectCount > 0 ? 'Draft' : 'Empty');
+
+        if (this.canvasObjectCount) {
+            this.canvasObjectCount.textContent = String(objectCount);
+        }
+        if (this.canvasSelectionCount) {
+            this.canvasSelectionCount.textContent = String(selectedCount);
+        }
+        if (this.canvasCheckpointCount) {
+            this.canvasCheckpointCount.textContent = String(checkpointCount);
+        }
+        if (this.canvasModeState) {
+            this.canvasModeState.textContent = this.enterpriseMode ? 'Enterprise' : this.getDensityLabel(this.density);
+        }
+        if (this.canvasSaveState) {
+            this.canvasSaveState.textContent = saveLabel;
+        }
+    }
+
+    formatRelativeTime(timestamp) {
+        const elapsedSeconds = Math.max(0, Math.floor((Date.now() - Number(timestamp || 0)) / 1000));
+        if (elapsedSeconds < 5) return 'now';
+        if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`;
+        const minutes = Math.floor(elapsedSeconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        return `${hours}h ago`;
+    }
+
+    getSerializableCanvasElements(elements = []) {
+        return (Array.isArray(elements) ? elements : []).map(el => {
+            const copy = {
+                ...el,
+                points: Array.isArray(el.points)
+                    ? el.points.map(point => Array.isArray(point) ? [...point] : point)
+                    : el.points,
+                boundElements: Array.isArray(el.boundElements)
+                    ? el.boundElements.map(bound => ({ ...bound }))
+                    : el.boundElements,
+            };
+            delete copy.imageElement;
+            return copy;
+        });
+    }
+
+    normalizeCanvasElement(element = {}) {
+        const normalized = { ...element };
+        delete normalized.imageElement;
+        if (!normalized.strokeColor) normalized.strokeColor = '#000000';
+        if (!normalized.backgroundColor) normalized.backgroundColor = 'transparent';
+        if (!normalized.strokeWidth) normalized.strokeWidth = 2;
+        if (!normalized.strokeStyle) normalized.strokeStyle = 'solid';
+        if (normalized.roughness === undefined) normalized.roughness = 1;
+        if (normalized.opacity === undefined) normalized.opacity = 1;
+        if (Array.isArray(normalized.points)) {
+            normalized.points = normalized.points.map(point => Array.isArray(point) ? [...point] : point);
+        }
+        if (Array.isArray(normalized.boundElements)) {
+            normalized.boundElements = normalized.boundElements.map(bound => ({ ...bound }));
+        }
+        return normalized;
+    }
+
+    loadCanvasCheckpoints() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CANVAS_CHECKPOINT_STORAGE_KEY) || '[]');
+            if (!Array.isArray(saved)) {
+                return [];
+            }
+            return saved
+                .map(checkpoint => ({
+                    id: String(checkpoint?.id || '').trim(),
+                    name: String(checkpoint?.name || '').trim(),
+                    createdAt: String(checkpoint?.createdAt || ''),
+                    elementCount: Number(checkpoint?.elementCount || 0),
+                    elements: Array.isArray(checkpoint?.elements)
+                        ? checkpoint.elements.map(element => this.normalizeCanvasElement(element))
+                        : [],
+                }))
+                .filter(checkpoint => checkpoint.id && checkpoint.name && checkpoint.createdAt)
+                .slice(0, CANVAS_CHECKPOINT_LIMIT);
+        } catch (error) {
+            console.warn('Failed to load canvas checkpoints:', error);
+            return [];
+        }
+    }
+
+    saveCanvasCheckpoints(checkpoints = []) {
+        const next = (Array.isArray(checkpoints) ? checkpoints : []).slice(0, CANVAS_CHECKPOINT_LIMIT);
+        try {
+            localStorage.setItem(CANVAS_CHECKPOINT_STORAGE_KEY, JSON.stringify(next));
+        } catch (error) {
+            console.warn('Failed to save canvas checkpoints:', error);
+            this.showToast('Could not save checkpoint storage', 'error');
+        }
+        return next;
+    }
+
+    saveCanvasCheckpoint(name = '') {
+        const canvas = window.infiniteCanvas;
+        const elements = this.getSerializableCanvasElements(canvas?.elements || []);
+        if (!canvas || elements.length === 0) {
+            this.showToast('Add board objects before saving a checkpoint', 'warning');
+            return null;
+        }
+
+        const requestedName = name || window.prompt?.('Name this board checkpoint', `Checkpoint ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+        const checkpointName = String(requestedName || '').trim();
+        if (!checkpointName) {
+            return null;
+        }
+
+        const checkpoint = {
+            id: `checkpoint-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: checkpointName.slice(0, 72),
+            createdAt: new Date().toISOString(),
+            elementCount: elements.length,
+            elements,
+        };
+        const checkpoints = [
+            checkpoint,
+            ...this.loadCanvasCheckpoints().filter(existing => existing.name !== checkpoint.name),
+        ].slice(0, CANVAS_CHECKPOINT_LIMIT);
+        this.saveCanvasCheckpoints(checkpoints);
+        window.aiAssistant?.renderCheckpoints?.();
+        this.updateCanvasStatusStrip();
+        this.showToast(`Saved checkpoint "${checkpoint.name}"`);
+        return checkpoint;
+    }
+
+    restoreCanvasCheckpoint(id = '') {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) {
+            return false;
+        }
+        const checkpoint = this.loadCanvasCheckpoints().find(item => item.id === id);
+        if (!checkpoint) {
+            this.showToast('Checkpoint was not found', 'warning');
+            return false;
+        }
+
+        const accepted = window.confirm?.(`Restore checkpoint "${checkpoint.name}" and replace the current board?`) ?? true;
+        if (!accepted) {
+            return false;
+        }
+
+        canvas.elements = checkpoint.elements.map(element => this.normalizeCanvasElement(element));
+        canvas.deselectAll?.();
+        canvas.render?.();
+        window.historyManager?.pushState(canvas.elements);
+        this.saveCanvasToStorage();
+        window.aiAssistant?.updateGroundingPanel?.();
+        window.aiAssistant?.renderCheckpoints?.();
+        this.updateCanvasStatusStrip();
+        this.showToast(`Restored checkpoint "${checkpoint.name}"`);
+        return true;
+    }
+
+    deleteCanvasCheckpoint(id = '') {
+        const checkpoints = this.loadCanvasCheckpoints();
+        const checkpoint = checkpoints.find(item => item.id === id);
+        this.saveCanvasCheckpoints(checkpoints.filter(item => item.id !== id));
+        window.aiAssistant?.renderCheckpoints?.();
+        this.updateCanvasStatusStrip();
+        if (checkpoint) {
+            this.showToast(`Deleted checkpoint "${checkpoint.name}"`);
         }
     }
     
@@ -178,20 +446,13 @@ class App {
             
             const savedTime = new Date(data.timestamp).toLocaleString();
             
-            // Load elements
-            for (const el of data.elements) {
-                // Restore default properties if missing
-                if (!el.strokeColor) el.strokeColor = '#000000';
-                if (!el.backgroundColor) el.backgroundColor = 'transparent';
-                if (!el.strokeWidth) el.strokeWidth = 2;
-                if (!el.strokeStyle) el.strokeStyle = 'solid';
-                if (el.roughness === undefined) el.roughness = 1;
-                if (el.opacity === undefined) el.opacity = 1;
-                
-                canvas.elements.push(el);
-            }
+            data.elements.forEach(el => {
+                canvas.elements.push(this.normalizeCanvasElement(el));
+            });
+            this.lastCanvasSavedAt = Number(data.timestamp || 0) || null;
             
             canvas.render();
+            this.updateCanvasStatusStrip();
             console.log(`Restored ${data.elements.length} elements from auto-save (${savedTime})`);
         } catch (error) {
             console.warn('Failed to load auto-saved canvas:', error);
@@ -215,6 +476,12 @@ class App {
         // Theme picker dropdown
         const themePickerBtn = document.getElementById('themePickerBtn');
         const themeDropdown = document.getElementById('themeDropdown');
+        document.getElementById('densityBtn')?.addEventListener('click', () => {
+            this.toggleDensity();
+        });
+        document.getElementById('enterpriseModeBtn')?.addEventListener('click', () => {
+            this.toggleEnterpriseMode();
+        });
         
         themePickerBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1031,6 +1298,7 @@ class App {
         // Update properties panel
         window.propertiesManager?.updateForSelection();
         window.aiAssistant?.updateGroundingPanel();
+        this.updateCanvasStatusStrip();
         
         // Selection box update is now handled in canvas.render()
         // which is called after selection changes
@@ -1185,6 +1453,8 @@ class App {
             // Clear auto-save
             try {
                 localStorage.removeItem('kimi-canvas-autosave');
+                this.lastCanvasSavedAt = null;
+                this.updateCanvasStatusStrip();
             } catch (e) {
                 console.warn('Failed to clear auto-save:', e);
             }
