@@ -367,3 +367,69 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-center-boot-l
         font-size: 20px;
     }
 }
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .app-container,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .terminal-output {
+    background: var(--cli-theme-page-background, var(--bg-primary));
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .header,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .input-container {
+    background: var(--cli-theme-panel-background, var(--bg-secondary));
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .btn,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) #modelSelect,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .header-model {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .btn:hover,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .btn:focus-visible {
+    background: var(--bg-hover);
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--border-color));
+    color: var(--text-primary);
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .line-output.ai,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .line-output.user-message {
+    background: var(--cli-theme-output-background, var(--bg-secondary));
+    border-color: var(--border-color);
+    border-left-color: var(--accent);
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .cli-response-head {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .input-wrapper,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .autocomplete,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .modal,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .file-manager-content,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .voxel-panel {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+    box-shadow: var(--cli-theme-panel-shadow, 0 18px 44px rgba(15, 23, 42, 0.14));
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .command-center-contract,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .command-center-actions button {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .command-center-actions button:hover,
+body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .command-center-actions button:focus-visible {
+    background: var(--bg-hover);
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border-color));
+}
