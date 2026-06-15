@@ -1054,6 +1054,101 @@ describe('ai-route-utils', () => {
         );
     });
 
+    test('maybePrepareImagesForArtifactPrompt degrades when the image tool returns a failure', async () => {
+        const toolManager = {
+            getTool: jest.fn(() => ({ id: 'image-generate' })),
+            executeTool: jest.fn().mockResolvedValue({
+                success: false,
+                toolId: 'image-generate',
+                error: 'Provider returned a blank assistant completion. provider=codex-cli model=gpt-image-2',
+            }),
+        };
+
+        await expect(maybePrepareImagesForArtifactPrompt({
+            toolManager,
+            sessionId: 'session-1',
+            route: '/api/chat',
+            transport: 'http',
+            taskType: 'chat',
+            text: 'Make a hypercar image and put it in a PDF brochure.',
+            outputFormat: 'pdf',
+            artifactIds: ['existing-1'],
+        })).resolves.toEqual({
+            artifactIds: ['existing-1'],
+            artifacts: [],
+            imagePrompt: 'Make a hypercar image',
+            resetPreviousResponse: false,
+            toolEvents: [expect.objectContaining({
+                reason: 'Image generation failed before creating the pdf artifact; continuing without generated image artifacts.',
+                result: expect.objectContaining({
+                    success: false,
+                    toolId: 'image-generate',
+                    error: 'Provider returned a blank assistant completion. provider=codex-cli model=gpt-image-2',
+                }),
+            })],
+        });
+    });
+
+    test('maybePrepareImagesForArtifactPrompt can still fail closed for required image pre-generation', async () => {
+        const toolManager = {
+            getTool: jest.fn(() => ({ id: 'image-generate' })),
+            executeTool: jest.fn().mockResolvedValue({
+                success: false,
+                toolId: 'image-generate',
+                error: 'image provider unavailable',
+            }),
+        };
+
+        await expect(maybePrepareImagesForArtifactPrompt({
+            toolManager,
+            text: 'Make a hypercar image and put it in a PDF brochure.',
+            outputFormat: 'pdf',
+            failOpen: false,
+        })).rejects.toThrow('image provider unavailable');
+    });
+
+    test('maybePrepareImagesForArtifactPrompt degrades when the image tool throws', async () => {
+        const toolManager = {
+            getTool: jest.fn(() => ({ id: 'image-generate' })),
+            executeTool: jest.fn().mockRejectedValue(Object.assign(
+                new Error('request aborted'),
+                { statusCode: 400 },
+            )),
+        };
+
+        const result = await maybePrepareImagesForArtifactPrompt({
+            toolManager,
+            sessionId: 'session-1',
+            route: '/api/chat',
+            transport: 'http',
+            taskType: 'chat',
+            text: 'Generate 3 hypercar images and put them in a PDF brochure.',
+            outputFormat: 'pdf',
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            artifactIds: [],
+            artifacts: [],
+            imagePrompt: 'Generate hypercar image',
+            resetPreviousResponse: false,
+        }));
+        expect(result.toolEvents[0]).toEqual(expect.objectContaining({
+            result: expect.objectContaining({
+                success: false,
+                toolId: 'image-generate',
+                error: 'request aborted',
+                statusCode: 400,
+            }),
+        }));
+        expect(toolManager.executeTool).toHaveBeenCalledWith(
+            'image-generate',
+            expect.objectContaining({
+                n: 3,
+            }),
+            expect.any(Object),
+        );
+    });
+
     test('getPreferredRemoteToolId prefers remote-command when both SSH tools exist', () => {
         const toolManager = {
             getTool: jest.fn((toolId) => (

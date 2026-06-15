@@ -2004,6 +2004,7 @@ async function maybePrepareImagesForArtifactPrompt({
     text = '',
     outputFormat = null,
     artifactIds = [],
+    failOpen = true,
 } = {}) {
     const resolvedArtifactIds = Array.isArray(artifactIds) ? artifactIds.filter(Boolean) : [];
     if (!shouldPreGenerateImagesForArtifactRequest({ text, outputFormat })) {
@@ -2016,31 +2017,77 @@ async function maybePrepareImagesForArtifactPrompt({
         };
     }
 
+    const imagePrompt = buildImagePromptFromArtifactRequest(text);
+    const requestedImageCount = extractRequestedImageCount(text, 1);
+    const buildFailureResult = (message, result = null) => ({
+        artifactIds: resolvedArtifactIds,
+        artifacts: [],
+        imagePrompt,
+        resetPreviousResponse: false,
+        toolEvents: [{
+            toolCall: {
+                function: {
+                    name: 'image-generate',
+                    arguments: JSON.stringify({
+                        prompt: imagePrompt,
+                        ...(requestedImageCount > 1 ? { n: requestedImageCount } : {}),
+                    }),
+                },
+            },
+            result: {
+                success: false,
+                toolId: 'image-generate',
+                ...(result && typeof result === 'object' ? result : {}),
+                error: message,
+            },
+            reason: `Image generation failed before creating the ${normalizeFormat(outputFormat) || 'requested'} artifact; continuing without generated image artifacts.`,
+        }],
+    });
+
     if (!toolManager?.executeTool || !toolManager?.getTool?.('image-generate')) {
         const error = new Error('Image generation is required for this request, but the image-generate tool is not available.');
         error.statusCode = 503;
+        if (failOpen) {
+            console.warn(`[Artifacts] ${error.message} Continuing without generated images.`);
+            return buildFailureResult(error.message);
+        }
         throw error;
     }
 
-    const imagePrompt = buildImagePromptFromArtifactRequest(text);
-    const requestedImageCount = extractRequestedImageCount(text, 1);
-    const toolResult = await toolManager.executeTool(
-        'image-generate',
-        {
-            prompt: imagePrompt,
-            ...(requestedImageCount > 1 ? { n: requestedImageCount } : {}),
-        },
-        {
-            sessionId,
-            route,
-            transport,
-            taskType,
-        },
-    );
+    let toolResult = null;
+    try {
+        toolResult = await toolManager.executeTool(
+            'image-generate',
+            {
+                prompt: imagePrompt,
+                ...(requestedImageCount > 1 ? { n: requestedImageCount } : {}),
+            },
+            {
+                sessionId,
+                route,
+                transport,
+                taskType,
+            },
+        );
+    } catch (error) {
+        if (!failOpen) {
+            throw error;
+        }
+        const message = error?.message || 'Image generation failed before artifact creation.';
+        console.warn(`[Artifacts] ${message} Continuing without generated images.`);
+        return buildFailureResult(message, {
+            errorName: error?.name || null,
+            statusCode: error?.statusCode || error?.status || null,
+        });
+    }
 
     if (!toolResult?.success) {
         const error = new Error(toolResult?.error || 'Image generation failed before artifact creation.');
         error.statusCode = 502;
+        if (failOpen) {
+            console.warn(`[Artifacts] ${error.message} Continuing without generated images.`);
+            return buildFailureResult(error.message, toolResult);
+        }
         throw error;
     }
 
@@ -2050,6 +2097,10 @@ async function maybePrepareImagesForArtifactPrompt({
     if (generatedArtifacts.length === 0) {
         const error = new Error('Image generation completed, but no image artifacts were persisted for the follow-up document.');
         error.statusCode = 502;
+        if (failOpen) {
+            console.warn(`[Artifacts] ${error.message} Continuing without generated images.`);
+            return buildFailureResult(error.message, toolResult);
+        }
         throw error;
     }
 
