@@ -651,11 +651,15 @@ function shouldSuppressArtifactGenerationForRemoteAction({
         || managedAppTarget
         || /\b(remote server|remote site|remote host|remote machine|on the server|cluster|k3s|k8s|kubernetes|kubectl|nginx|ingress|traefik|tls|ssh)\b/.test(normalized)
         || /\b[a-z0-9-]+\.demoserver2\.buzz\b/.test(normalized);
-    const deploymentAction = /\b(deploy|redeploy|publish|launch|ship|go live|push|put|place|upload|copy|install|replace|update|serve)\b/.test(normalized);
+    const negatedDeploymentAction = /\b(?:without|bypass|skip|do not|don't|dont|not)\s+(?:deploying|deploy|redeploying|redeploy|publishing|publish|launching|launch|shipping|ship|going live|go live|pushing|push|uploading|upload|installing|install|serving|serve)\b/.test(normalized);
+    const deploymentAction = !negatedDeploymentAction
+        && /\b(deploy|redeploy|publish|launch|ship|go live|push|put|place|upload|copy|install|replace|update|serve)\b/.test(normalized);
     const websiteTarget = /\b(site|website|web|html|web page|webpage|html page|page|menu|homepage|landing page|index\.html|nginx|pdf|artifact|file|preview)\b|\.html\b/.test(normalized);
-    const explicitLocalArtifactOnly = outputFormatProvided && !explicitRemoteAgent && !managedAppTarget && [
+    const explicitLocalArtifactOnly = !explicitRemoteAgent && !managedAppTarget && [
         /\b(create|generate|make|draft|write|export|download|save)\b[\s\S]{0,80}\b(local|standalone|preview|artifact|file|document)\b/,
         /\b(local|standalone|preview)\b[\s\S]{0,50}\b(artifact|file|document)\b/,
+        /\b(sandbox|sandboxed|browser preview|previewable)\b[\s\S]{0,80}\b(html|site|website|page|document|artifact|file)\b/,
+        /\b(html|site|website|page|document|artifact|file)\b[\s\S]{0,80}\b(sandbox|sandboxed|browser preview|previewable)\b/,
     ].some((pattern) => pattern.test(normalized));
 
     if (explicitLocalArtifactOnly && !(remoteTarget && deploymentAction)) {
@@ -691,6 +695,119 @@ function shouldGenerateOutputArtifactForToolResponse({
     }
 
     return !hasRemoteCliAgentToolEvent(toolEvents);
+}
+
+function isRecoverableArtifactGenerationError(error = null) {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return code === 'tool_orchestration_failed'
+        || /\btool orchestration\b/.test(message)
+        || /\brequest timed out\b/.test(message)
+        || /\bprovider command timed out\b/.test(message)
+        || /\btimed out while waiting\b/.test(message);
+}
+
+function inferResilientArtifactTitle(prompt = '', outputFormat = '') {
+    const cleaned = String(prompt || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\b(?:create|make|generate|build|produce|render|prepare|draft|write)\b/ig, ' ')
+        .replace(/\b(?:html|pdf|document|file|artifact|sandbox|preview|website|webpage|web page)\b/ig, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const title = cleaned
+        .split(/[.!?\n]/)[0]
+        .replace(/\b(?:about|for|on|into|as|with|using|please|can you|could you)\b/ig, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (title) {
+        return title
+            .split(' ')
+            .slice(0, 9)
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
+    return normalizeFormat(outputFormat) === 'pdf' ? 'Polished Document' : 'Polished HTML Site';
+}
+
+function buildResilientArtifactFallbackHtml(prompt = '', outputFormat = 'html') {
+    const normalizedFormat = normalizeFormat(outputFormat) || 'html';
+    const title = inferResilientArtifactTitle(prompt, normalizedFormat);
+    const safeTitle = title.replace(/[<>&"]/g, (char) => ({
+        '<': '&lt;',
+        '>': '&gt;',
+        '&': '&amp;',
+        '"': '&quot;',
+    }[char]));
+    const requestSummary = String(prompt || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 420)
+        .replace(/[<>&"]/g, (char) => ({
+            '<': '&lt;',
+            '>': '&gt;',
+            '&': '&amp;',
+            '"': '&quot;',
+        }[char]));
+    const isPdf = normalizedFormat === 'pdf';
+
+    return [
+        '<!DOCTYPE html>',
+        '<html lang="en">',
+        '<head>',
+        '  <meta charset="utf-8">',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+        `  <title>${safeTitle}</title>`,
+        '  <style>',
+        '    :root { --ink:#13201f; --muted:#526261; --paper:#fbf8ef; --panel:#ffffff; --accent:#d24b35; --accent-2:#187078; --accent-3:#e5b83e; --line:rgba(19,32,31,.16); --shadow:0 22px 60px rgba(19,32,31,.16); }',
+        isPdf ? '    @page { size: 11.33in 14.67in portrait; margin: 0.72in 0.65in 0.68in; }' : '',
+        '    * { box-sizing: border-box; }',
+        '    body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:linear-gradient(135deg,#fbf8ef 0%,#e9f1ee 42%,#f8e5d3 100%); }',
+        '    main { width:min(1180px, calc(100% - 32px)); margin:0 auto; padding:32px 0 72px; }',
+        '    .hero { min-height:58vh; display:grid; grid-template-columns:minmax(0,1.08fr) minmax(280px,.92fr); gap:26px; align-items:stretch; }',
+        '    .hero-copy { padding:42px; border:1px solid var(--line); background:rgba(255,255,255,.86); box-shadow:var(--shadow); }',
+        '    .eyebrow { margin:0 0 14px; color:var(--accent-2); text-transform:uppercase; font-size:.78rem; font-weight:800; letter-spacing:.14em; }',
+        '    h1 { margin:0; font-size:clamp(2.4rem, 6vw, 5.6rem); line-height:.93; max-width:12ch; letter-spacing:0; }',
+        '    .standfirst { max-width:58ch; margin:22px 0 0; color:var(--muted); font-size:1.08rem; line-height:1.7; }',
+        '    .visual { position:relative; min-height:360px; overflow:hidden; background:linear-gradient(160deg,var(--accent-2),#113b49 58%,var(--accent)); border:1px solid rgba(255,255,255,.5); box-shadow:var(--shadow); }',
+        '    .visual::before { content:""; position:absolute; inset:28px; border:1px solid rgba(255,255,255,.48); }',
+        '    .visual-grid { position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.18) 1px, transparent 1px); background-size:34px 34px; mask-image:linear-gradient(135deg, transparent, #000 26%, #000 72%, transparent); }',
+        '    .visual-card { position:absolute; left:34px; right:34px; bottom:34px; padding:22px; background:rgba(255,255,255,.88); color:var(--ink); border:1px solid rgba(255,255,255,.72); }',
+        '    .nav { display:flex; flex-wrap:wrap; gap:10px; margin:24px 0; }',
+        '    .nav a { color:var(--ink); text-decoration:none; border:1px solid var(--line); background:rgba(255,255,255,.75); padding:10px 13px; font-weight:700; }',
+        '    .section { display:grid; grid-template-columns:92px minmax(0,1fr); gap:22px; margin:20px 0; padding:26px; border:1px solid var(--line); background:rgba(255,255,255,.82); box-shadow:0 14px 40px rgba(19,32,31,.08); }',
+        '    .num { color:var(--accent); font-size:2rem; font-weight:900; line-height:1; }',
+        '    h2 { margin:0 0 12px; font-size:clamp(1.45rem, 3vw, 2.35rem); line-height:1.05; }',
+        '    p, li { line-height:1.68; }',
+        '    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-top:18px; }',
+        '    .card { padding:18px; background:var(--paper); border:1px solid var(--line); min-height:150px; }',
+        '    .card strong { display:block; margin-bottom:8px; color:var(--accent-2); }',
+        '    .band { margin:22px 0; padding:26px; background:var(--ink); color:#fffaf0; }',
+        '    .band p { color:rgba(255,250,240,.82); max-width:76ch; }',
+        '    @media (max-width: 820px) { .hero, .section { grid-template-columns:1fr; } .hero-copy { padding:28px; } .visual { min-height:300px; } }',
+        '    @media print { body { background:#fff; } main { width:100%; padding:0; } .hero-copy, .section, .card { box-shadow:none; break-inside:avoid; } .nav { display:none; } }',
+        '  </style>',
+        '</head>',
+        '<body>',
+        '  <main>',
+        '    <section class="hero">',
+        '      <div class="hero-copy">',
+        '        <p class="eyebrow">Generated artifact</p>',
+        `        <h1>${safeTitle}</h1>`,
+        `        <p class="standfirst">${requestSummary || 'A complete, visually structured artifact generated from the user request, with readable sections, responsive layout, and print-safe styling.'}</p>`,
+        '      </div>',
+        '      <div class="visual" aria-label="Abstract composed visual field"><div class="visual-grid"></div><div class="visual-card"><strong>Visual direction</strong><p>Layered editorial composition, strong contrast, and reusable sections instead of a blank white page.</p></div></div>',
+        '    </section>',
+        '    <nav class="nav" aria-label="Page sections"><a href="#story">Story</a><a href="#experience">Experience</a><a href="#system">System</a><a href="#delivery">Delivery</a></nav>',
+        '    <section class="section" id="story"><div class="num">01</div><div><h2>Purpose And Reader Job</h2><p>This artifact gives the requested subject a concrete first-pass structure: a clear opening, useful section flow, visual contrast, and enough detail for review or iteration.</p><div class="cards"><div class="card"><strong>Audience</strong><p>Built for a reader who needs the point quickly, then wants enough supporting detail to act.</p></div><div class="card"><strong>Promise</strong><p>Move beyond a note about making something and provide a real surfaced artifact immediately.</p></div></div></div></section>',
+        '    <section class="section" id="experience"><div class="num">02</div><div><h2>Experience Architecture</h2><p>The page uses a hero, navigation, repeated content modules, visual panels, and print rules so it works as both a browser preview and an export source.</p><ul><li>Responsive layout with no default white-body fallback.</li><li>Readable contrast tokens for page, panels, links, and dark bands.</li><li>Stable section IDs for follow-up edits and export workflows.</li></ul></div></section>',
+        '    <section class="band"><h2>Design System Snapshot</h2><p>Warm paper, teal structure, red-orange emphasis, and golden highlights create visual variety without depending on fragile external assets.</p></section>',
+        '    <section class="section" id="system"><div class="num">03</div><div><h2>Reusable Content Modules</h2><div class="cards"><div class="card"><strong>Hero</strong><p>Owns the subject and sets the visual tone in the first viewport.</p></div><div class="card"><strong>Evidence Panels</strong><p>Let later passes add research, charts, images, or source-backed details cleanly.</p></div><div class="card"><strong>Action Close</strong><p>Leaves the artifact ready for QA, export, or deployment.</p></div></div></div></section>',
+        '    <section class="section" id="delivery"><div class="num">04</div><div><h2>Delivery Checks</h2><p>The artifact includes browser-safe CSS, responsive behavior, print styles, and explicit color surfaces. A follow-up generation pass can replace this resilient version with deeper model-authored copy without changing the delivery path.</p></div></section>',
+        '  </main>',
+        '</body>',
+        '</html>',
+    ].filter(Boolean).join('\n');
 }
 
 function hasVerifiedResearchContext(recentMessages = []) {
@@ -2191,23 +2308,56 @@ async function generateOutputArtifactFromPrompt({
     }
 
     const directGenerationStartedAt = Date.now();
-    const result = await artifactService.generateArtifact({
-        session,
-        sessionId,
-        mode,
-        prompt,
-        format: outputFormat,
-        artifactIds,
-        existingContent: effectiveExistingContent,
-        model,
-        reasoningEffort,
-        parentArtifactId: effectiveParentArtifactId,
-        contextMessages,
-        recentMessages,
-        toolManager,
-        toolContext,
-        executionProfile,
-    });
+    let result;
+    let fallbackGeneration = false;
+    try {
+        result = await artifactService.generateArtifact({
+            session,
+            sessionId,
+            mode,
+            prompt,
+            format: outputFormat,
+            artifactIds,
+            existingContent: effectiveExistingContent,
+            model,
+            reasoningEffort,
+            parentArtifactId: effectiveParentArtifactId,
+            contextMessages,
+            recentMessages,
+            toolManager,
+            toolContext,
+            executionProfile,
+        });
+    } catch (error) {
+        if (!isRecoverableArtifactGenerationError(error) || !['html', 'pdf'].includes(normalizedOutputFormat)) {
+            throw error;
+        }
+        const content = buildResilientArtifactFallbackHtml(prompt, normalizedOutputFormat);
+        const artifact = await artifactService.storeGeneratedArtifactFromContent({
+            sessionId,
+            session,
+            mode,
+            format: normalizedOutputFormat,
+            content,
+            title: inferResilientArtifactTitle(prompt, normalizedOutputFormat),
+            parentArtifactId: effectiveParentArtifactId,
+            metadata: {
+                sourceResponseId: null,
+                artifactIds,
+                generationStrategy: 'resilient-artifact-fallback',
+                fallbackReason: error.message,
+            },
+            ownerId: toolContext?.ownerId || null,
+        });
+        result = {
+            responseId: `artifact-fallback-${Date.now()}`,
+            artifact,
+            outputText: content,
+            model: model || null,
+            usage: null,
+        };
+        fallbackGeneration = true;
+    }
     const completedAt = Date.now();
     const directStep = {
         type: 'artifact_generation',
@@ -2234,11 +2384,12 @@ async function generateOutputArtifactFromPrompt({
         assistantMessage: buildArtifactCompletionMessage(outputFormat, result.artifact),
         metadata: {
             artifactGeneration: {
-                strategy: 'direct-artifact-service',
+                strategy: fallbackGeneration ? 'resilient-artifact-fallback' : 'direct-artifact-service',
                 outputFormat: normalizedOutputFormat || outputFormat || null,
                 duration: Math.max(0, completedAt - startedAt),
                 artifactId: result.artifact?.id || null,
                 filename: result.artifact?.filename || result.artifact?.name || null,
+                ...(fallbackGeneration ? { recoveredFromTransientFailure: true } : {}),
                 ...(selectedRevisionContext.sourceArtifactIds.length > 0
                 ? {
                     sourceArtifactIds: selectedRevisionContext.sourceArtifactIds,

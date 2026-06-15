@@ -1730,6 +1730,15 @@ function shouldEnableArtifactToolOrchestration(prompt = '', format = '') {
     return /\b(research|source|sources|citations?|latest|recent|news|headlines?|sub-?agents?|delegate|parallel)\b/.test(normalizedPrompt);
 }
 
+function isRecoverableToolOrchestrationError(error = null) {
+    const message = String(error?.message || '').toLowerCase();
+    const code = String(error?.code || '').toLowerCase();
+    return code === 'tool_orchestration_failed'
+        || /\btool orchestration\b/.test(message)
+        || /\brequest timed out\b/.test(message)
+        || /\bprovider command timed out\b/.test(message);
+}
+
 function buildFrontendArtifactPayload(responseText = '') {
     const parsed = safeJsonParse(responseText);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -2453,6 +2462,7 @@ class ArtifactService {
                 'Build a polished frontend demo instead of a plain document.',
                 'Work as an orchestrated product team: silently plan, build, critique, and revise the artifact before returning the final JSON.',
                 'The final bundle must look like a finished first-pass product surface, not a cheap template or a document-suite wrapper.',
+                'Never leave the body or main sections on default white browser styling. Define explicit design tokens for page background, surfaces, text, muted text, borders, and accents, and use at least two distinct accent families that fit the subject.',
                 'Choose the right HTML artifact family for the request: landing page, dashboard, app workspace, documentation site, report/brief, editorial feature, campaign microsite, or portfolio showcase.',
                 'Match the request instead of defaulting to the same landing-page stack.',
                 'Aim for a strong visual thesis, deliberate layout hierarchy, and a premium request-matched feel.',
@@ -2509,6 +2519,7 @@ class ArtifactService {
                 'Return valid standalone HTML with inline-friendly structure and business formatting.',
                 'Start at the first character with <!DOCTYPE html> and include no preface, explanation, or trailing notes.',
                 'Use a deliberate visual thesis, strong hierarchy, and non-generic section pacing.',
+                'Never ship a default white page. Define explicit readable color tokens for page background, panels, dark bands, links, accents, muted text, borders, and captions, then apply them consistently.',
                 'Treat any provided template or sample as reference material, not copy to preserve verbatim.',
                 normalizedFormat === 'html'
                     ? 'For HTML outputs, add web-document affordances such as sticky wayfinding, details/summary disclosures, source cards, tasteful CSS motion, and responsive controls when they improve comprehension.'
@@ -2547,7 +2558,7 @@ class ArtifactService {
         enableAutomaticToolCalls = false,
         executionProfile = 'default',
     }) {
-        const response = await requestModelResponse({
+        const request = {
             input,
             previousResponseId,
             contextMessages,
@@ -2560,7 +2571,22 @@ class ArtifactService {
             toolContext,
             enableAutomaticToolCalls,
             executionProfile,
-        });
+        };
+        let usedAutomaticToolRecovery = false;
+        let response;
+        try {
+            response = await requestModelResponse(request);
+        } catch (error) {
+            if (!enableAutomaticToolCalls || !isRecoverableToolOrchestrationError(error)) {
+                throw error;
+            }
+            usedAutomaticToolRecovery = true;
+            console.warn(`[Artifacts] Automatic tool orchestration failed during artifact generation; retrying without tools: ${error.message}`);
+            response = await requestModelResponse({
+                ...request,
+                enableAutomaticToolCalls: false,
+            });
+        }
 
         return {
             responseId: response.id,
@@ -2569,6 +2595,7 @@ class ArtifactService {
             model: response.model || model || null,
             usage: extractResponseUsageMetadata(response),
             piiCleansing: normalizePiiCleansingMetadata(response._kimibuiltPiiCleansing),
+            automaticToolRecovery: usedAutomaticToolRecovery,
         };
     }
 
@@ -2673,6 +2700,7 @@ class ArtifactService {
             'The visible page must contain finished subject-specific content, not template slot labels or prose about what the page should eventually say.',
             'Keep the layout printer-friendly because the HTML may be rendered to PDF.',
             'Use CSS variables, a deliberate theme, and section-level hierarchy so the result feels designed rather than default.',
+            'Do not leave the document on a plain white browser background; use explicit readable color tokens and visible section surfaces while preserving print-safe styles.',
             'Create a strong opening hero, visible section chrome, and alternating density across sections.',
             'Do not let every section reuse the same card treatment, paragraph width, or transition language.',
             'When verified image URLs are available, make the design image-rich with a hero image, repeated section visuals, image cards, and gallery treatments across the document.',
@@ -2951,6 +2979,11 @@ class ArtifactService {
                 sectionCount: expandedDocument.sections.length,
                 compositionRecovered: usedCompositionRecovery,
                 toolOrchestrationEnabled: enableAutomaticToolCalls,
+                toolOrchestrationRecovered: Boolean(
+                    planPass.automaticToolRecovery
+                    || expansionPass.automaticToolRecovery
+                    || compositionPass.automaticToolRecovery,
+                ),
                 creativeDirectionId: creativePlan.id,
                 creativeDirection: creativePlan.label,
                 creativeRationale: creativePlan.rationale,
@@ -3040,8 +3073,8 @@ class ArtifactService {
         });
         const instructionSession = this.sanitizeDocumentInstructionSession(session);
         const generated = frontendDemoRequest
-            ? {
-                ...(await this.runGenerationPass({
+            ? await (async () => {
+                const frontendPass = await this.runGenerationPass({
                     session: instructionSession,
                     input: prompt,
                     instructions: buildSessionInstructions(
@@ -3064,13 +3097,17 @@ class ArtifactService {
                     toolContext,
                     enableAutomaticToolCalls: canUseArtifactToolOrchestration,
                     executionProfile,
-                })),
-                title: inferDocumentTitle(prompt, 'Frontend Demo'),
-                metadata: {
-                    generationStrategy: 'single-pass-frontend-demo',
-                    toolOrchestrationEnabled: canUseArtifactToolOrchestration,
-                },
-            }
+                });
+                return {
+                    ...frontendPass,
+                    title: inferDocumentTitle(prompt, 'Frontend Demo'),
+                    metadata: {
+                        generationStrategy: 'single-pass-frontend-demo',
+                        toolOrchestrationEnabled: canUseArtifactToolOrchestration,
+                        toolOrchestrationRecovered: Boolean(frontendPass.automaticToolRecovery),
+                    },
+                };
+            })()
             : MULTI_PASS_DOCUMENT_FORMATS.has(normalizedFormat)
             ? await this.generateMultiPassDocumentSource({
                 session: instructionSession,

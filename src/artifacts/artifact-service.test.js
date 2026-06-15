@@ -1097,7 +1097,11 @@ describe('ArtifactService', () => {
     });
 
     test('allows tool orchestration for research-backed frontend artifacts', async () => {
-        createResponse.mockResolvedValueOnce({
+        const orchestrationError = new Error('Model gateway request timed out while waiting for the provider.');
+        orchestrationError.code = 'tool_orchestration_failed';
+        createResponse
+            .mockRejectedValueOnce(orchestrationError)
+            .mockResolvedValueOnce({
             id: 'resp-frontend-research-1',
             output: [{
                 type: 'message',
@@ -1125,11 +1129,15 @@ describe('ArtifactService', () => {
             toolManager: expect.objectContaining({ id: 'tool-manager' }),
             toolContext: { sessionId: 'session-1' },
         }));
+        expect(createResponse.mock.calls[1][0]).toEqual(expect.objectContaining({
+            enableAutomaticToolCalls: false,
+        }));
         expect(createResponse.mock.calls[0][0]?.instructions).toContain('Use available tools when they materially improve factual grounding');
         expect(createResponse.mock.calls[0][0]?.instructions).not.toContain('Do not use external tools, function calls, or tool invocation syntax.');
         expect(artifactStore.create).toHaveBeenCalledWith(expect.objectContaining({
             metadata: expect.objectContaining({
                 toolOrchestrationEnabled: true,
+                toolOrchestrationRecovered: true,
             }),
         }));
     });

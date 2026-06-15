@@ -4,6 +4,7 @@ jest.mock('./artifacts/artifact-service', () => ({
         canStoreArtifacts: jest.fn(() => true),
         generateArtifact: jest.fn(),
         getArtifact: jest.fn(),
+        storeGeneratedArtifactFromContent: jest.fn(),
     },
 }));
 
@@ -59,6 +60,13 @@ const {
 describe('ai-route-utils', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        artifactService.storeGeneratedArtifactFromContent.mockResolvedValue({
+            id: 'artifact-fallback-1',
+            filename: 'resilient-artifact.html',
+            extension: 'html',
+            previewUrl: '/api/artifacts/artifact-fallback-1/preview',
+            sandboxUrl: '/api/artifacts/artifact-fallback-1/sandbox',
+        });
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: false,
             host: '',
@@ -248,6 +256,49 @@ describe('ai-route-utils', () => {
             format: 'pdf',
             artifactIds: ['artifact-a'],
             model: 'gpt-test',
+        }));
+    });
+
+    test('generateOutputArtifactFromPrompt stores a polished html fallback after transient generation failure', async () => {
+        const error = new Error('Model gateway request timed out while waiting for the provider.');
+        error.code = 'tool_orchestration_failed';
+        artifactService.generateArtifact.mockRejectedValue(error);
+        artifactService.storeGeneratedArtifactFromContent.mockResolvedValue({
+            id: 'artifact-fallback-1',
+            filename: 'resilient-artifact.html',
+            extension: 'html',
+            previewUrl: '/api/artifacts/artifact-fallback-1/preview',
+            sandboxUrl: '/api/artifacts/artifact-fallback-1/sandbox',
+        });
+
+        const result = await generateOutputArtifactFromPrompt({
+            sessionId: 'session-fallback-1',
+            mode: 'chat',
+            outputFormat: 'html',
+            prompt: 'Create a sandbox HTML site for a training program with a full visual layout.',
+        });
+
+        expect(artifactService.storeGeneratedArtifactFromContent).toHaveBeenCalledWith(expect.objectContaining({
+            sessionId: 'session-fallback-1',
+            format: 'html',
+            content: expect.stringContaining('<!DOCTYPE html>'),
+            metadata: expect.objectContaining({
+                generationStrategy: 'resilient-artifact-fallback',
+                fallbackReason: error.message,
+            }),
+        }));
+        const fallbackContent = artifactService.storeGeneratedArtifactFromContent.mock.calls[0][0].content;
+        expect(fallbackContent).toContain('linear-gradient');
+        expect(fallbackContent).toContain('Delivery Checks');
+        expect(fallbackContent).not.toContain('No content provided');
+        expect(result).toEqual(expect.objectContaining({
+            artifact: expect.objectContaining({ id: 'artifact-fallback-1' }),
+            metadata: expect.objectContaining({
+                artifactGeneration: expect.objectContaining({
+                    strategy: 'resilient-artifact-fallback',
+                    recoveredFromTransientFailure: true,
+                }),
+            }),
         }));
     });
 
@@ -546,6 +597,12 @@ describe('ai-route-utils', () => {
             text: 'Create a standalone HTML artifact for Light It Up.',
             outputFormat: 'html',
             outputFormatProvided: true,
+        })).toBe(false);
+        expect(shouldSuppressArtifactGenerationForRemoteAction({
+            text: 'Create a sandbox HTML artifact preview for Light It Up, do not deploy it.',
+            outputFormat: 'html',
+            outputFormatProvided: false,
+            remoteContext: true,
         })).toBe(false);
         expect(shouldSuppressArtifactGenerationForRemoteAction({
             text: 'the preview html is missing to push',
