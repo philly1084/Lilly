@@ -55,6 +55,7 @@ const {
 const MULTI_PASS_DOCUMENT_FORMATS = new Set(['html', 'pdf']);
 const DEFAULT_DOCUMENT_IMAGE_TARGET = 20;
 const DEFAULT_DOCUMENT_REASONING_EFFORT = 'high';
+const FRONTEND_SANDBOX_REPAIR_ATTEMPTS = 2;
 const COMPOSITION_PLANNING_PATTERNS = [
     /\bpage layout plan\b/i,
     /\bcredits? and source register\b/i,
@@ -1680,6 +1681,8 @@ function isFrontendDemoArtifactRequest(prompt = '') {
     }
 
     return /\b(website|web page|webpage|landing page|homepage|microsite|marketing site|product page|campaign page|frontend demo|front-end demo|site prototype|site mockup|browser game|web game|video game|sandboxed game|playable game|game prototype|interactive sandbox|vite preview|vite sandbox|multi step frontend|multi-step frontend)\b/.test(normalized)
+        || (/\b(sandbox build|sandbox preview|previewable sandbox|code sandbox|build it in the sandbox)\b/.test(normalized)
+            && /\b(html|document|brief|report|page|artifact|frontend|front-end|site|website|dashboard|app)\b/.test(normalized))
         || /\b(3d|three\.?js|webgl|web gpu|webgpu|immersive scene|interactive scene|scene sandbox|sandboxed scene|shader|particles?|orbit controls?)\b/.test(normalized)
         || isDashboardRequest(normalized)
         || (
@@ -1747,7 +1750,10 @@ function buildFrontendArtifactPayload(responseText = '') {
         const fallbackMetadata = buildFrontendFallbackMetadata(fallbackContent);
         return {
             content: fallbackContent,
-            metadata: fallbackMetadata,
+            metadata: {
+                ...fallbackMetadata,
+                parseRecovery: fallbackContent ? 'non-json-fallback' : 'empty-fallback',
+            },
         };
     }
 
@@ -1792,8 +1798,97 @@ function buildFrontendArtifactPayload(responseText = '') {
 
     return {
         content: sanitizeFrontendHtmlContent(renderContent) || renderContent,
-        metadata,
+        metadata: {
+            ...metadata,
+            parseRecovery: 'json',
+        },
     };
+}
+
+function stripHtmlForQuality(content = '') {
+    return stripHtml(String(content || ''))
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function hasAuthoredFrontendCss(payload = null) {
+    const files = Array.isArray(payload?.metadata?.bundle?.files)
+        ? payload.metadata.bundle.files
+        : [];
+    const htmlSources = [
+        payload?.content,
+        ...files
+            .filter((file) => /\.html?$/i.test(String(file?.path || '')))
+            .map((file) => file?.content || ''),
+    ].map((value) => String(value || '')).filter(Boolean);
+    const cssSources = files
+        .filter((file) => /\.css$/i.test(String(file?.path || '')))
+        .map((file) => String(file?.content || ''))
+        .filter(Boolean);
+
+    if (cssSources.some((css) => css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, '').length >= 20
+        && !/kimibuilt bundle style safety net/i.test(css))) {
+        return true;
+    }
+
+    if (htmlSources.some((html) => {
+        const styleBlocks = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/ig)]
+            .map((match) => String(match?.[1] || '').replace(/\/\*[\s\S]*?\*\//g, '').trim());
+        return styleBlocks.some((css) => css.replace(/\s+/g, '').length >= 80)
+            || /\sstyle=["'][^"']{24,}["']/i.test(html)
+            || /<link\b[^>]*rel=["'][^"']*stylesheet[^"']*["'][^>]*\bhref=["'](?:https?:)?\/\//i.test(html);
+    })) {
+        return true;
+    }
+
+    return false;
+}
+
+function collectWeakFrontendPayloadReasons(payload = null) {
+    const reasons = [];
+    const files = Array.isArray(payload?.metadata?.bundle?.files)
+        ? payload.metadata.bundle.files
+        : [];
+    const htmlFiles = files.filter((file) => /\.html?$/i.test(String(file?.path || '')));
+    const plainText = stripHtmlForQuality([
+        payload?.content || '',
+        ...htmlFiles.map((file) => file?.content || ''),
+    ].join('\n\n'));
+    const parseRecovery = String(payload?.metadata?.parseRecovery || '').trim();
+    const hasAuthoredCss = hasAuthoredFrontendCss(payload);
+
+    if (!payload || !String(payload.content || '').trim()) {
+        reasons.push('empty-content');
+    }
+    if (parseRecovery && parseRecovery !== 'json') {
+        reasons.push(parseRecovery);
+    }
+    if (plainText.length < 360 && (parseRecovery !== 'json' || !hasAuthoredCss)) {
+        reasons.push('thin-content');
+    }
+    if (!hasAuthoredCss) {
+        reasons.push('missing-authored-css');
+    }
+    if (files.length <= 1 && parseRecovery !== 'json' && !/<style\b/i.test(String(payload?.content || ''))) {
+        reasons.push('single-file-without-inline-style');
+    }
+
+    return Array.from(new Set(reasons));
+}
+
+function buildFrontendRepairPrompt(requestPrompt = '', rejectedOutput = '', reasons = [], attempt = 1) {
+    return [
+        'Rebuild the HTML sandbox artifact from scratch.',
+        `Repair attempt ${attempt} of ${FRONTEND_SANDBOX_REPAIR_ATTEMPTS}.`,
+        'The previous model output was rejected by the server quality gate.',
+        `Rejected reasons: ${reasons.join(', ') || 'weak sandbox output'}.`,
+        'Return valid JSON only using the requested bundle shape.',
+        'The artifact must include real authored CSS, not rely on the server safety-net stylesheet.',
+        'The entry page must contain the actual requested document/page experience, not a generic suite index, apology, wrapper, or handoff note.',
+        'Include concrete subject-specific content and enough information density for the user to review the result without asking for a rewrite.',
+        rejectedOutput ? `Rejected output excerpt:\n${String(rejectedOutput).slice(0, 6000)}` : '',
+        `Original request:\n${requestPrompt}`,
+    ].filter(Boolean).join('\n\n');
 }
 
 function buildFrontendBundleGenerationInstructions({
@@ -3072,7 +3167,7 @@ class ArtifactService {
             recentMessages,
         });
         const instructionSession = this.sanitizeDocumentInstructionSession(session);
-        const generated = frontendDemoRequest
+        let generated = frontendDemoRequest
             ? await (async () => {
                 const frontendPass = await this.runGenerationPass({
                     session: instructionSession,
@@ -3152,9 +3247,91 @@ class ArtifactService {
                 executionProfile,
             });
 
-        const outputText = frontendDemoRequest
+        let outputText = frontendDemoRequest
             ? (generated.rawOutputText || generated.outputText)
             : generated.outputText;
+        let frontendPayload = frontendDemoRequest
+            ? buildFrontendArtifactPayload(outputText)
+            : null;
+        if (frontendDemoRequest && complexFrontendBundleRequest) {
+            const repairAttempts = [];
+            let weakReasons = collectWeakFrontendPayloadReasons(frontendPayload);
+            let lastRejectedOutput = outputText;
+            for (let attempt = 1; weakReasons.length > 0 && attempt <= FRONTEND_SANDBOX_REPAIR_ATTEMPTS; attempt += 1) {
+                console.warn(`[Artifacts] Rebuilding weak frontend sandbox output (attempt ${attempt}): ${weakReasons.join(', ')}`);
+                repairAttempts.push({
+                    attempt,
+                    rejectedReasons: weakReasons,
+                    rejectedChars: String(lastRejectedOutput || '').length,
+                    action: 'rebuild_frontend_bundle',
+                });
+                const repairPrompt = buildFrontendRepairPrompt(prompt, lastRejectedOutput, weakReasons, attempt);
+                const requestedPageCount = extractRequestedSitePageCount(prompt);
+                const repairPass = await this.runGenerationPass({
+                    session: instructionSession,
+                    input: repairPrompt,
+                    instructions: buildSessionInstructions(
+                        instructionSession,
+                        buildFrontendBundleGenerationInstructions({
+                            promptContext: [
+                                promptContext,
+                                imageReferenceContext,
+                                renderCreativityPromptContext(creativityPacket),
+                            ].filter(Boolean).join('\n\n'),
+                            existingContent: combinedExistingContent,
+                            requestPrompt: prompt,
+                            requestedPageCount,
+                            dashboardInstructions: buildDashboardHtmlInstructions(prompt, combinedExistingContent),
+                        }),
+                    ),
+                    model,
+                    reasoningEffort: documentReasoningEffort,
+                    previousResponseId: generated.responseId || session?.previousResponseId || null,
+                    contextMessages,
+                    recentMessages,
+                    toolManager,
+                    toolContext,
+                    enableAutomaticToolCalls: false,
+                    executionProfile,
+                });
+                const repairOutputText = repairPass.rawOutputText || repairPass.outputText;
+                const repairedPayload = buildFrontendArtifactPayload(repairOutputText);
+                const repairedWeakReasons = collectWeakFrontendPayloadReasons(repairedPayload);
+
+                generated = {
+                    ...repairPass,
+                    title: generated.title || inferDocumentTitle(prompt, 'Frontend Demo'),
+                    metadata: {
+                        ...(generated.metadata || {}),
+                        ...(repairPass.metadata || {}),
+                        frontendSandboxRepaired: true,
+                        frontendSandboxRepairAttempts: repairAttempts,
+                        frontendSandboxRetrospective: {
+                            status: repairedWeakReasons.length > 0 ? 'needs_another_repair' : 'repaired',
+                            firstRejectedReasons: repairAttempts[0]?.rejectedReasons || [],
+                            finalRejectedReasons: repairedWeakReasons,
+                            finalAction: repairedWeakReasons.length > 0
+                                ? 'stop_before_shipping_fallback'
+                                : 'ship_rebuilt_bundle',
+                        },
+                    },
+                };
+                outputText = repairOutputText;
+                frontendPayload = repairedPayload;
+                lastRejectedOutput = repairOutputText;
+                weakReasons = repairedWeakReasons;
+            }
+
+            if (weakReasons.length > 0) {
+                const error = new Error(`Frontend sandbox generation produced weak fallback output after ${FRONTEND_SANDBOX_REPAIR_ATTEMPTS} repair attempts: ${weakReasons.join(', ')}`);
+                error.code = 'weak_frontend_sandbox_output';
+                error.details = {
+                    rejectedReasons: weakReasons,
+                    repairAttempts,
+                };
+                throw error;
+            }
+        }
         const generatedPiiCleansing = mergePiiCleansingMetadata(generated.piiCleansing);
         const piiRestoreOptions = {
             sessionId,
@@ -3167,9 +3344,6 @@ class ArtifactService {
             clientSurface: toolContext?.clientSurface || 'artifact-generation',
             route: toolContext?.route || '/api/artifacts/generate',
         };
-        const frontendPayload = frontendDemoRequest
-            ? buildFrontendArtifactPayload(outputText)
-            : null;
         const normalizedFrontendPayloadBase = frontendPayload
             ? {
                 ...frontendPayload,

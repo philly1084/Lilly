@@ -1197,6 +1197,11 @@ function isComplexFrontendBundleRequest(text = '', existingContent = '') {
         return true;
     }
 
+    if (/\b(sandbox build|sandbox preview|previewable sandbox|code sandbox|build it in the sandbox)\b/.test(normalized)
+        && /\b(html|document|brief|report|page|artifact|frontend|front-end|site|website|dashboard|app)\b/.test(normalized)) {
+        return true;
+    }
+
     const hasSiteCue = /\b(website|site|microsite|news site|newsroom|frontend demo|site prototype|site mockup)\b/.test(normalized);
     const hasComplexityCue = /\b(multi[- ]page|multiple pages|full website|full site|complete website|site map|sitemap|navigation|routes?|sub[- ]agents?|delegate|parallel)\b/.test(normalized)
         || /\b\d{1,2}\s+pages?\b/.test(normalized);

@@ -1064,16 +1064,55 @@ describe('ArtifactService', () => {
         }));
     });
 
-    test('recovers empty 3D sandbox model output into a playable zip instead of a 22-byte archive', async () => {
-        createResponse.mockResolvedValueOnce({
-            id: 'resp-3d-empty-1',
-            output: [{
-                type: 'message',
-                content: [{
-                    text: '',
+    test('rebuilds empty 3D sandbox model output instead of shipping fallback css', async () => {
+        createResponse
+            .mockResolvedValueOnce({
+                id: 'resp-3d-empty-1',
+                output: [{
+                    type: 'message',
+                    content: [{
+                        text: '',
+                    }],
                 }],
-            }],
-        });
+            })
+            .mockResolvedValueOnce({
+                id: 'resp-3d-repair-1',
+                output: [{
+                    type: 'message',
+                    content: [{
+                        text: JSON.stringify({
+                            content: '<!DOCTYPE html><html><head><title>Particle Field</title><link rel="stylesheet" href="./styles.css"></head><body><main id="scene-root"><h1>Particle Field</h1></main><script type="module" src="./scene.js"></script></body></html>',
+                            metadata: {
+                                title: 'Particle Field',
+                                frameworkTarget: 'static',
+                                bundle: {
+                                    entry: 'index.html',
+                                    files: [
+                                        {
+                                            path: 'index.html',
+                                            language: 'html',
+                                            purpose: '3D scene entry',
+                                            content: '<!DOCTYPE html><html><head><title>Particle Field</title><link rel="stylesheet" href="./styles.css"></head><body><main id="scene-root"><h1>Particle Field</h1></main><script type="module" src="./scene.js"></script></body></html>',
+                                        },
+                                        {
+                                            path: 'styles.css',
+                                            language: 'css',
+                                            purpose: 'Authored 3D scene styles',
+                                            content: 'html, body { margin: 0; min-height: 100%; background: #07111f; color: #e2e8f0; font-family: system-ui; } #scene-root { min-height: 100vh; display: grid; place-items: center; }',
+                                        },
+                                        {
+                                            path: 'scene.js',
+                                            language: 'javascript',
+                                            purpose: 'Scene runtime',
+                                            content: 'document.documentElement.dataset.sceneReady = "true";',
+                                        },
+                                    ],
+                                },
+                            },
+                        }),
+                    }],
+                }],
+            });
 
         await artifactService.generateArtifact({
             session: { previousResponseId: 'prev-3d-empty', metadata: {} },
@@ -1092,8 +1131,17 @@ describe('ArtifactService', () => {
         expect(createArg.extension).toBe('zip');
         expect(createArg.mimeType).toBe('application/zip');
         expect(createArg.contentBuffer.length).toBeGreaterThan(22);
-        expect(entries.get('index.html').toString('utf8')).toContain('Frontend Demo');
+        expect(createResponse).toHaveBeenCalledTimes(2);
+        expect(entries.get('index.html').toString('utf8')).toContain('Particle Field');
+        expect(entries.get('styles.css').toString('utf8')).not.toContain('kimibuilt bundle style safety net');
         expect(entries.get('README.md').toString('utf8')).toContain('python -m http.server 8000');
+        expect(createArg.metadata).toEqual(expect.objectContaining({
+            frontendSandboxRepaired: true,
+            frontendSandboxRetrospective: expect.objectContaining({
+                status: 'repaired',
+                finalAction: 'ship_rebuilt_bundle',
+            }),
+        }));
     });
 
     test('allows tool orchestration for research-backed frontend artifacts', async () => {
@@ -1106,7 +1154,28 @@ describe('ArtifactService', () => {
             output: [{
                 type: 'message',
                 content: [{
-                    text: '<!DOCTYPE html><html><body><h1>Newsroom Research Demo</h1></body></html>',
+                    text: JSON.stringify({
+                        content: '<!DOCTYPE html><html><head><title>Newsroom Research Demo</title><link rel="stylesheet" href="./styles.css"></head><body><main><h1>Newsroom Research Demo</h1></main></body></html>',
+                        metadata: {
+                            title: 'Newsroom Research Demo',
+                            frameworkTarget: 'static',
+                            bundle: {
+                                entry: 'index.html',
+                                files: [
+                                    {
+                                        path: 'index.html',
+                                        language: 'html',
+                                        content: '<!DOCTYPE html><html><head><title>Newsroom Research Demo</title><link rel="stylesheet" href="./styles.css"></head><body><main><h1>Newsroom Research Demo</h1></main></body></html>',
+                                    },
+                                    {
+                                        path: 'styles.css',
+                                        language: 'css',
+                                        content: 'body { margin: 0; min-height: 100%; background: #f8fafc; color: #111827; font-family: system-ui; } main { max-width: 960px; margin: 0 auto; padding: 48px 24px; }',
+                                    },
+                                ],
+                            },
+                        },
+                    }),
                 }],
             }],
         });
@@ -1482,7 +1551,13 @@ describe('ArtifactService', () => {
                                         path: 'story.html',
                                         language: 'html',
                                         purpose: 'Story continuation',
-                                        content: '<!DOCTYPE html><html><body><main><section id="scene-2"><h1>Momentum</h1></section></main></body></html>',
+                                        content: '<!DOCTYPE html><html><head><link rel="stylesheet" href="./styles.css"></head><body><main><section id="scene-2"><h1>Momentum</h1></section></main></body></html>',
+                                    },
+                                    {
+                                        path: 'styles.css',
+                                        language: 'css',
+                                        purpose: 'Storyboard visual system',
+                                        content: 'body { margin: 0; min-height: 100%; background: #101827; color: #f8fafc; font-family: system-ui; } main { max-width: 1080px; margin: 0 auto; padding: 44px 24px; } section { border: 1px solid #334155; padding: 24px; }',
                                     },
                                     {
                                         path: 'app.js',
