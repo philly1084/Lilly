@@ -204,6 +204,78 @@ describe('notes agent parsing', () => {
         }));
     });
 
+    test('normalizes plain image blocks from image-from-url tool result payloads', () => {
+        const agent = loadAgent();
+        const parsed = agent._extractNotesActionPlan(JSON.stringify({
+            actions: [
+                {
+                    op: 'append_to_page',
+                    blocks: [
+                        {
+                            type: 'image',
+                            content: {
+                                source: 'url',
+                                verified: true,
+                                image: {
+                                    url: 'https://images.example.com/verified-hero.jpg',
+                                    alt: 'Verified hero',
+                                },
+                                normalizedUrl: 'https://images.example.com/verified-hero.jpg',
+                                markdownImage: '![Verified hero](https://images.example.com/verified-hero.jpg)',
+                            },
+                        },
+                    ],
+                },
+            ],
+        }));
+
+        const normalizedActions = agent._normalizeStructuredPageActions(parsed.actions, 'Add this verified image URL.', {
+            blockCount: 0,
+            outline: [],
+        });
+
+        expect(normalizedActions[0].blocks[0]).toEqual(expect.objectContaining({
+            type: 'image',
+            content: {
+                url: 'https://images.example.com/verified-hero.jpg',
+                caption: 'Verified hero',
+            },
+        }));
+    });
+
+    test('recovers shorthand plain image blocks with nested image payloads', () => {
+        const agent = loadAgent();
+        const parsed = agent._extractNotesActionPlan(JSON.stringify({
+            actions: [
+                {
+                    op: 'append_to_page',
+                    blocks: [
+                        {
+                            type: 'image',
+                            image: {
+                                url: 'https://images.example.com/shorthand-hero.jpg',
+                                alt: 'Shorthand hero',
+                            },
+                        },
+                    ],
+                },
+            ],
+        }));
+
+        const normalizedActions = agent._normalizeStructuredPageActions(parsed.actions, 'Add this shorthand image URL.', {
+            blockCount: 0,
+            outline: [],
+        });
+
+        expect(normalizedActions[0].blocks[0]).toEqual(expect.objectContaining({
+            type: 'image',
+            content: {
+                url: 'https://images.example.com/shorthand-hero.jpg',
+                caption: 'Shorthand hero',
+            },
+        }));
+    });
+
     test('rebuilds the page from assistant reply plus top-level markdown content when actions are omitted', () => {
         const agent = loadAgent();
         const responseText = JSON.stringify({

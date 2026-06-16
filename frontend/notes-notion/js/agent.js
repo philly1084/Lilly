@@ -4994,6 +4994,73 @@ GUIDELINES:
         return collectedImages.length ? collectedImages.join('\n\n') : null;
     }
 
+    function normalizeImageBlockContent(value) {
+        if (value && typeof value === 'object') {
+            const nestedImage = value.image && typeof value.image === 'object'
+                ? value.image
+                : null;
+            const firstImage = Array.isArray(value.images)
+                ? value.images.find((image) => image && typeof image === 'object')
+                : null;
+            let url = String(
+                value.url
+                || value.imageUrl
+                || value.image_url
+                || value.normalizedUrl
+                || value.downloadUrl
+                || value.inlineUrl
+                || value.absoluteUrl
+                || value.absoluteInlineUrl
+                || value.thumbUrl
+                || nestedImage?.url
+                || nestedImage?.imageUrl
+                || nestedImage?.image_url
+                || nestedImage?.normalizedUrl
+                || nestedImage?.downloadUrl
+                || nestedImage?.inlineUrl
+                || firstImage?.url
+                || firstImage?.imageUrl
+                || firstImage?.image_url
+                || firstImage?.normalizedUrl
+                || firstImage?.downloadUrl
+                || firstImage?.inlineUrl
+                || ''
+            ).trim();
+            let caption = coerceTextValue(
+                value.caption
+                || value.alt
+                || value.text
+                || value.title
+                || nestedImage?.caption
+                || nestedImage?.alt
+                || nestedImage?.title
+                || firstImage?.caption
+                || firstImage?.alt
+                || firstImage?.title
+                || ''
+            );
+
+            if (!url) {
+                const markdownImage = extractMarkdownImageContent(value);
+                const match = typeof markdownImage === 'string'
+                    ? markdownImage.match(/!\[([^\]]*)\]\(([^)]+)\)/)
+                    : null;
+                if (match) {
+                    const destination = parseMarkdownImageDestination(match[2]);
+                    url = destination.url;
+                    caption = caption || coerceTextValue(match[1] || destination.title || '');
+                }
+            }
+
+            return { url, caption };
+        }
+
+        const text = String(value || '').trim();
+        return /^https?:\/\//i.test(text)
+            ? { url: text, caption: '' }
+            : { url: '', caption: coerceTextValue(value) };
+    }
+
     function scoreFallbackBlocks(blocks = []) {
         return blocks.reduce((score, block) => {
             const type = block?.type;
@@ -5360,7 +5427,10 @@ GUIDELINES:
             ? normalized.content
             : (hasExplicitText ? normalized.text : '');
 
-        if (typeof contentValue === 'string') {
+        if (type === 'image' && !hasExplicitContent && !hasExplicitText && normalized && typeof normalized === 'object') {
+            normalized.content = normalizeImageBlockContent(normalized);
+            delete normalized.text;
+        } else if (typeof contentValue === 'string') {
             const rawHtmlSplit = splitRawHtmlDocumentSource(contentValue);
             if ((type === 'text' || type === 'code') && rawHtmlSplit?.html) {
                 type = 'code';
@@ -5399,10 +5469,7 @@ GUIDELINES:
                 text: normalizeMarkdownTextForBlockType('callout', contentValue.text || contentValue.content || contentValue.message || ''),
             };
         } else if (type === 'image' && contentValue && typeof contentValue === 'object') {
-            normalized.content = {
-                url: String(contentValue.url || contentValue.imageUrl || contentValue.image_url || contentValue.normalizedUrl || contentValue.downloadUrl || ''),
-                caption: coerceTextValue(contentValue.caption || contentValue.alt || contentValue.text || ''),
-            };
+            normalized.content = normalizeImageBlockContent(contentValue);
         } else if (['heading_1', 'heading_2', 'heading_3', 'bulleted_list', 'numbered_list', 'quote', 'text'].includes(type) && typeof contentValue === 'string') {
             normalized.content = normalizeMarkdownTextForBlockType(type, contentValue);
         }
@@ -6695,14 +6762,9 @@ Silently verify the lead cluster, section order, and final polish before returni
                 return { prompt: String(value || ''), result: null, model: null };
             case 'image':
                 if (value && typeof value === 'object') {
-                    return {
-                        url: String(value.url || value.imageUrl || value.image_url || value.normalizedUrl || value.downloadUrl || ''),
-                        caption: coerceTextValue(value.caption || value.alt || value.text || '')
-                    };
+                    return normalizeImageBlockContent(value);
                 }
-                return /^https?:\/\//i.test(String(value).trim())
-                    ? { url: String(value).trim(), caption: '' }
-                    : { url: '', caption: coerceTextValue(value) };
+                return normalizeImageBlockContent(value);
             case 'ai_image':
                 if (value && typeof value === 'object') {
                     const hasSearchResults =
@@ -6933,10 +6995,7 @@ Silently verify the lead cluster, section order, and final polish before returni
                     };
                     break;
                 case 'image':
-                    contentInput = {
-                        url: definition.url || '',
-                        caption: definition.caption || definition.text || ''
-                    };
+                    contentInput = normalizeImageBlockContent(definition);
                     break;
                 case 'ai_image':
                     contentInput = {
@@ -7608,7 +7667,20 @@ Silently verify the lead cluster, section order, and final polish before returni
             case 'divider':
                 return true;
             case 'image':
-                return Boolean(value.url || value.imageUrl || value.image_url || value.normalizedUrl || value.downloadUrl || value.caption || value.alt || value.text);
+                return Boolean(
+                    value.url ||
+                    value.imageUrl ||
+                    value.image_url ||
+                    value.normalizedUrl ||
+                    value.downloadUrl ||
+                    value.markdownImage ||
+                    value.markdownImages ||
+                    value.image ||
+                    value.images ||
+                    value.caption ||
+                    value.alt ||
+                    value.text
+                );
             case 'ai_image':
                 return Boolean(
                     value.prompt ||
