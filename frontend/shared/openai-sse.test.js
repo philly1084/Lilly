@@ -311,6 +311,40 @@ describe('openai-sse helpers', () => {
     expect(events[1].content).toBe('Checked the request. Chose the direct path.');
   });
 
+  test('keeps Kimi-style thinking blocks out of final assistant text', () => {
+    const events = normalizeGatewayEventPayload({
+      object: 'response',
+      id: 'resp_kimi_thinking',
+      output: [
+        {
+          type: 'thinking',
+          text: 'Private scratchpad that must not render.',
+        },
+        {
+          type: 'redacted_thinking',
+          data: 'opaque-redacted-reasoning',
+        },
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            { type: 'thinking', text: 'Nested private thought.' },
+            { type: 'output_text', text: 'Public answer only.' },
+          ],
+        },
+      ],
+    }, { allowFinalText: true });
+
+    const textEvents = events.filter((event) => event.type === 'text_delta');
+    const reasoningEvents = events.filter((event) => event.type === 'reasoning_delta');
+
+    expect(textEvents.map((event) => event.content)).toEqual(['Public answer only.']);
+    expect(textEvents.map((event) => event.content).join(' ')).not.toContain('Private scratchpad');
+    expect(textEvents.map((event) => event.content).join(' ')).not.toContain('Nested private thought');
+    expect(textEvents.map((event) => event.content).join(' ')).not.toContain('opaque-redacted-reasoning');
+    expect(reasoningEvents[0].content).toBe('Private scratchpad that must not render.');
+  });
+
   test('streams final response text when SSE completion arrives without deltas', async () => {
     const payload = {
       type: 'response.completed',

@@ -337,6 +337,25 @@ function extractDisplayText(value = null) {
     }
 }
 
+function isReasoningLikeBlock(value = {}) {
+    const blockType = String(value?.type || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+    return new Set([
+        'analysis',
+        'analysis_delta',
+        'reasoning',
+        'reasoning_delta',
+        'reasoning_summary',
+        'reasoning_summary_text',
+        'reasoning_text',
+        'redacted_thinking',
+        'thinking',
+        'thinking_delta',
+        'thinking_summary',
+        'thought',
+        'thought_delta',
+    ]).has(blockType);
+}
+
 function extractAssistantText(value) {
     if (typeof value === 'string') {
         const trimmed = stripNullCharacters(value).trim();
@@ -370,7 +389,7 @@ function extractAssistantText(value) {
         return '';
     }
 
-    if (value.type === 'reasoning') {
+    if (isReasoningLikeBlock(value)) {
         return '';
     }
 
@@ -569,7 +588,7 @@ function extractReasoningSummary(value) {
         return '';
     }
 
-    if (value.type === 'reasoning') {
+    if (isReasoningLikeBlock(value)) {
         const segments = [
             value.summary,
             value.summary_text,

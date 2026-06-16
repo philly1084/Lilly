@@ -310,6 +310,25 @@
     return itemType === 'function_call' || itemType === 'custom_tool_call';
   }
 
+  function isReasoningLikeBlock(value = {}) {
+    const blockType = String(value?.type || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+    return new Set([
+      'analysis',
+      'analysis_delta',
+      'reasoning',
+      'reasoning_delta',
+      'reasoning_summary',
+      'reasoning_summary_text',
+      'reasoning_text',
+      'redacted_thinking',
+      'thinking',
+      'thinking_delta',
+      'thinking_summary',
+      'thought',
+      'thought_delta',
+    ]).has(blockType);
+  }
+
   function extractAssistantText(value) {
     if (typeof value === 'string') {
       const trimmed = stripNullCharacters(value).trim();
@@ -343,7 +362,7 @@
       return '';
     }
 
-    if (value.type === 'reasoning') {
+    if (isReasoningLikeBlock(value)) {
       return '';
     }
 
@@ -474,7 +493,7 @@
       return '';
     }
 
-    if (value.type === 'reasoning') {
+    if (isReasoningLikeBlock(value)) {
       const segments = [
         value.summary,
         value.summary_text,
