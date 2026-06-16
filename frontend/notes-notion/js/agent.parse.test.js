@@ -171,6 +171,39 @@ describe('notes agent parsing', () => {
         ]));
     });
 
+    test('normalizes plain image blocks that use imageUrl fields', () => {
+        const agent = loadAgent();
+        const parsed = agent._extractNotesActionPlan(JSON.stringify({
+            actions: [
+                {
+                    op: 'append_to_page',
+                    blocks: [
+                        {
+                            type: 'image',
+                            content: {
+                                imageUrl: 'https://images.example.com/notes-hero.jpg',
+                                alt: 'Notes hero',
+                            },
+                        },
+                    ],
+                },
+            ],
+        }));
+
+        const normalizedActions = agent._normalizeStructuredPageActions(parsed.actions, 'Add this image from URL.', {
+            blockCount: 0,
+            outline: [],
+        });
+
+        expect(normalizedActions[0].blocks[0]).toEqual(expect.objectContaining({
+            type: 'image',
+            content: {
+                url: 'https://images.example.com/notes-hero.jpg',
+                caption: 'Notes hero',
+            },
+        }));
+    });
+
     test('rebuilds the page from assistant reply plus top-level markdown content when actions are omitted', () => {
         const agent = loadAgent();
         const responseText = JSON.stringify({

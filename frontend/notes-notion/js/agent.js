@@ -5398,6 +5398,11 @@ GUIDELINES:
                 ...contentValue,
                 text: normalizeMarkdownTextForBlockType('callout', contentValue.text || contentValue.content || contentValue.message || ''),
             };
+        } else if (type === 'image' && contentValue && typeof contentValue === 'object') {
+            normalized.content = {
+                url: String(contentValue.url || contentValue.imageUrl || contentValue.image_url || contentValue.normalizedUrl || contentValue.downloadUrl || ''),
+                caption: coerceTextValue(contentValue.caption || contentValue.alt || contentValue.text || ''),
+            };
         } else if (['heading_1', 'heading_2', 'heading_3', 'bulleted_list', 'numbered_list', 'quote', 'text'].includes(type) && typeof contentValue === 'string') {
             normalized.content = normalizeMarkdownTextForBlockType(type, contentValue);
         }
@@ -6691,8 +6696,8 @@ Silently verify the lead cluster, section order, and final polish before returni
             case 'image':
                 if (value && typeof value === 'object') {
                     return {
-                        url: String(value.url || ''),
-                        caption: coerceTextValue(value.caption || value.text || '')
+                        url: String(value.url || value.imageUrl || value.image_url || value.normalizedUrl || value.downloadUrl || ''),
+                        caption: coerceTextValue(value.caption || value.alt || value.text || '')
                     };
                 }
                 return /^https?:\/\//i.test(String(value).trim())
@@ -7603,7 +7608,7 @@ Silently verify the lead cluster, section order, and final polish before returni
             case 'divider':
                 return true;
             case 'image':
-                return Boolean(value.url || value.caption || value.text);
+                return Boolean(value.url || value.imageUrl || value.image_url || value.normalizedUrl || value.downloadUrl || value.caption || value.alt || value.text);
             case 'ai_image':
                 return Boolean(
                     value.prompt ||

@@ -1445,15 +1445,26 @@ const Blocks = (function() {
         const wrapper = document.createElement('div');
         wrapper.className = 'block-content';
         
-        if (block.content && block.content.url) {
+        const imageUrl = String(
+            block.content?.url
+            || block.content?.imageUrl
+            || block.content?.image_url
+            || block.content?.normalizedUrl
+            || block.content?.downloadUrl
+            || ''
+        ).trim();
+        if (block.content && imageUrl) {
+            if (!block.content.url) {
+                block.content.url = imageUrl;
+            }
             const imgWrapper = document.createElement('div');
             imgWrapper.className = 'image-wrapper';
-            
+
             const img = document.createElement('img');
-            img.src = block.content.url;
-            img.alt = block.content.caption || '';
+            img.src = imageUrl;
+            img.alt = block.content.caption || block.content.alt || '';
             img.draggable = false;
-            
+
             // Handle image load errors
             img.addEventListener('error', () => {
                 imgWrapper.innerHTML = `
@@ -1500,6 +1511,7 @@ const Blocks = (function() {
                     const url = prompt('Enter image URL:');
                     if (url) {
                         block.content = { url, caption: '' };
+                        window.Editor?.savePage?.();
                         // Re-render
                         wrapper.innerHTML = '';
                         const newContent = renderImageBlock(block, isEditable);
