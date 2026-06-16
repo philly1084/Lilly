@@ -2964,14 +2964,16 @@ class ToolManager {
                 }
 
               if (resolvedFormat === 'html'
-                && isPreviewableFrontendWorkflowRequest(groundedPrompt)
+                && (useSandboxBuild || isPreviewableFrontendWorkflowRequest(groundedPrompt))
                 && context?.sessionId) {
                 try {
                   const generatedArtifact = await artifactService.generateArtifact({
                     session: context.session || null,
                     sessionId: context.sessionId,
                     mode: context.clientSurface || 'chat',
-                    prompt: groundedPrompt,
+                    prompt: useSandboxBuild && !isPreviewableFrontendWorkflowRequest(groundedPrompt)
+                      ? `${groundedPrompt}\n\nBuild this as a previewable sandbox HTML artifact with authored CSS, complete source files, and no generic document-suite wrapper.`
+                      : groundedPrompt,
                     format: 'html',
                     artifactIds: [],
                     existingContent: '',
@@ -3101,14 +3103,19 @@ class ToolManager {
                 const suiteDocumentType = suiteRecommendation.inferredType || resolvedDocumentType;
 
                 if (suiteFormat === 'html'
-                  && isPreviewableFrontendWorkflowRequest(groundedPrompt)
+                  && (
+                    isPreviewableFrontendWorkflowRequest(groundedPrompt)
+                    || (useSandboxBuild && requestedFormats.length === 1 && graphSpecs.length === 0)
+                  )
                   && context?.sessionId) {
                   try {
                     const generatedArtifact = await artifactService.generateArtifact({
                       session: context.session || null,
                       sessionId: context.sessionId,
                       mode: context.clientSurface || 'chat',
-                      prompt: groundedPrompt,
+                      prompt: useSandboxBuild && !isPreviewableFrontendWorkflowRequest(groundedPrompt)
+                        ? `${groundedPrompt}\n\nBuild this as a previewable sandbox HTML artifact with authored CSS, complete source files, and no generic document-suite wrapper.`
+                        : groundedPrompt,
                       format: 'html',
                       artifactIds: [],
                       existingContent: '',
