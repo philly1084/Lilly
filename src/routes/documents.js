@@ -163,6 +163,17 @@ function normalizeDocumentContentBuffer(document = null) {
   return null;
 }
 
+function getGeneratedDocumentContentBuffer(document = null) {
+  const contentBuffer = normalizeDocumentContentBuffer(document);
+  if (contentBuffer) {
+    return contentBuffer;
+  }
+
+  const error = new Error(`Generated document content is no longer available: ${document?.id || 'unknown'}`);
+  error.statusCode = 410;
+  throw error;
+}
+
 function isInlineDocumentRequest(req) {
   const inlineValue = String(req.query?.inline || '').trim().toLowerCase();
   return ['1', 'true', 'yes'].includes(inlineValue);
@@ -567,6 +578,7 @@ router.post('/generate', validate(generateSchema), async (req, res, next) => {
         downloadUrl: persistedArtifact.downloadUrl,
       };
     }
+    const contentBuffer = getGeneratedDocumentContentBuffer(document);
     
     // Set appropriate headers
     res.setHeader('Content-Type', document.mimeType);
@@ -575,7 +587,7 @@ router.post('/generate', validate(generateSchema), async (req, res, next) => {
     setDocumentMetadataHeaders(res, document.metadata);
     setPersistedArtifactHeaders(res, persistedArtifact);
     
-    res.send(document.content);
+    res.send(contentBuffer);
   } catch (err) {
     next(err);
   }
@@ -766,13 +778,14 @@ router.post('/generate-from-data', validate(dataGenerateSchema), async (req, res
         downloadUrl: persistedArtifact.downloadUrl,
       };
     }
+    const contentBuffer = getGeneratedDocumentContentBuffer(document);
     
     res.setHeader('Content-Type', document.mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${document.filename}"`);
     res.setHeader('X-Document-Id', document.id);
     setPersistedArtifactHeaders(res, persistedArtifact);
     
-    res.send(document.content);
+    res.send(contentBuffer);
   } catch (err) {
     next(err);
   }
@@ -802,13 +815,14 @@ router.post('/assemble', validate(assembleSchema), async (req, res, next) => {
         downloadUrl: persistedArtifact.downloadUrl,
       };
     }
+    const contentBuffer = getGeneratedDocumentContentBuffer(document);
     
     res.setHeader('Content-Type', document.mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${document.filename}"`);
     res.setHeader('X-Document-Id', document.id);
     setPersistedArtifactHeaders(res, persistedArtifact);
     
-    res.send(document.content);
+    res.send(contentBuffer);
   } catch (err) {
     next(err);
   }
@@ -921,13 +935,15 @@ router.post('/presentation', async (req, res, next) => {
         downloadUrl: persistedArtifact.downloadUrl,
       };
     }
+    const contentBuffer = getGeneratedDocumentContentBuffer(document);
 
     res.setHeader('Content-Type', document.mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${document.filename}"`);
     res.setHeader('X-Document-Id', document.id);
     res.setHeader('X-Slide-Count', document.metadata.slideCount);
+    setPersistedArtifactHeaders(res, persistedArtifact);
     
-    res.send(document.content);
+    res.send(contentBuffer);
   } catch (err) {
     next(err);
   }

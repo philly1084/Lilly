@@ -525,6 +525,79 @@ describe('/api/documents route', () => {
     expect(response.body.downloadUrl).toBe('/api/artifacts/artifact-pptx-1/download');
   });
 
+  test('returns pptx bytes from the active presentation response after artifact persistence', async () => {
+    sessionStore.get.mockResolvedValue({
+      id: 'session-1',
+      metadata: {},
+    });
+    const pptxBuffer = Buffer.from('PK\u0003\u0004pptx-buffer', 'latin1');
+    const documentService = {
+      generatePresentation: jest.fn().mockResolvedValue({
+        id: 'doc-pptx-1',
+        filename: 'launch-story.pptx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        size: pptxBuffer.length,
+        metadata: { format: 'pptx', slideCount: 6 },
+        contentBuffer: pptxBuffer,
+        previewHtml: '<!DOCTYPE html><html><body><h1>Launch Story</h1></body></html>',
+        extractedText: 'Launch Story',
+      }),
+    };
+    const runtimeArtifactService = {
+      createStoredArtifact: jest.fn().mockResolvedValue({
+        id: 'artifact-pptx-1',
+        filename: 'launch-story.pptx',
+        extension: 'pptx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        sizeBytes: pptxBuffer.length,
+        metadata: { format: 'pptx', slideCount: 6 },
+      }),
+      serializeArtifact: jest.fn().mockReturnValue({
+        id: 'artifact-pptx-1',
+        filename: 'launch-story.pptx',
+        format: 'pptx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        sizeBytes: pptxBuffer.length,
+        downloadUrl: '/api/artifacts/artifact-pptx-1/download',
+        metadata: { format: 'pptx', slideCount: 6 },
+      }),
+    };
+    const parseBinaryResponse = (res, callback) => {
+      res.setEncoding('binary');
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        callback(null, Buffer.from(data, 'binary'));
+      });
+    };
+
+    const response = await request(buildApp(documentService, {
+      artifactService: runtimeArtifactService,
+    }))
+      .post('/api/documents/presentation')
+      .buffer(true)
+      .parse(parseBinaryResponse)
+      .send({
+        sessionId: 'session-1',
+        content: 'Build a launch presentation.',
+        title: 'Launch Story',
+        format: 'pptx',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.header['content-type']).toContain('application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    expect(response.header['x-artifact-id']).toBe('artifact-pptx-1');
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+    expect(response.body.equals(pptxBuffer)).toBe(true);
+    expect(runtimeArtifactService.createStoredArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-1',
+      sourceMode: 'document-presentation',
+      buffer: pptxBuffer,
+    }));
+  });
+
   test('converts a stored generated document through the document service', async () => {
     const documentService = {
       convertStoredDocument: jest.fn().mockResolvedValue({
