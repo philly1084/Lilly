@@ -1556,28 +1556,54 @@ const Blocks = (function() {
         return normalizedId ? `/api/artifacts/${encodeURIComponent(normalizedId)}/download?inline=1` : null;
     }
 
+    function isRenderableAIImageUrl(value = '') {
+        const imageUrl = String(value || '').trim();
+        if (!imageUrl) return false;
+        if (/^(data:image\/|blob:)/i.test(imageUrl)) return true;
+        if (/^\/api\/artifacts\/[^/]+\/download\b/i.test(imageUrl)) return true;
+
+        try {
+            const parsed = new URL(imageUrl, window.location?.origin || 'http://localhost');
+            const hostname = parsed.hostname.toLowerCase();
+            if (!/^https?:$/i.test(parsed.protocol)) return false;
+            if (/^\/api\/artifacts\/[^/]+\/download\b/i.test(parsed.pathname)) return true;
+            if (/\.(?:png|jpe?g|gif|webp|svg|bmp|avif)(?:[?#].*)?$/i.test(parsed.pathname)) return true;
+            return /(?:^|\.)images\.unsplash\.com$/.test(hostname) ||
+                /(?:^|\.)source\.unsplash\.com$/.test(hostname) ||
+                /(?:^|\.)oaiusercontent\.com$/.test(hostname) ||
+                /(?:^|\.)openai\.com$/.test(hostname) ||
+                /blob\.core\.windows\.net$/.test(hostname);
+        } catch (_error) {
+            return false;
+        }
+    }
+
     function getAIImageFallbackUrl(content = {}) {
-        const directUrl = String(
-            content.inlineUrl
-            || content.absoluteInlineUrl
-            || content.downloadUrl
-            || content.absoluteUrl
-            || content.url
-            || ''
-        ).trim();
+        const directCandidates = [
+            content.inlineUrl,
+            content.absoluteInlineUrl,
+            content.imageUrl,
+            content.url,
+            content.absoluteUrl,
+            content.downloadUrl,
+        ];
+        const directUrl = directCandidates
+            .map((candidate) => String(candidate || '').trim())
+            .find((candidate) => isRenderableAIImageUrl(candidate));
         if (directUrl) return directUrl;
 
         const generatedImages = Array.isArray(content.generatedImages) ? content.generatedImages : [];
         for (const image of generatedImages) {
-            const imageUrl = String(
-                image?.inlineUrl
-                || image?.imageUrl
-                || image?.url
-                || image?.downloadUrl
-                || image?.absoluteInlineUrl
-                || image?.absoluteUrl
-                || ''
-            ).trim();
+            const imageUrl = [
+                image?.inlineUrl,
+                image?.imageUrl,
+                image?.url,
+                image?.downloadUrl,
+                image?.absoluteInlineUrl,
+                image?.absoluteUrl,
+            ]
+                .map((candidate) => String(candidate || '').trim())
+                .find((candidate) => isRenderableAIImageUrl(candidate));
             if (imageUrl) return imageUrl;
 
             const artifactPath = buildAIImageArtifactInlinePath(image?.artifactId || image?.artifact_id);

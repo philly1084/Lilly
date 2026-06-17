@@ -1,16 +1,24 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { JSDOM } = require('jsdom');
 
-function loadBlocks() {
+function loadBlocks(overrides = {}) {
     const source = fs.readFileSync(path.join(__dirname, 'blocks.js'), 'utf8');
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+        url: 'http://localhost:3000/notes',
+    });
+    const windowObject = dom.window;
+    Object.assign(windowObject, overrides.window || {});
     const context = {
         console,
-        window: {},
+        window: windowObject,
+        document: windowObject.document,
         setTimeout,
         clearTimeout,
         Date,
         Math,
+        URL,
     };
     context.global = context;
     context.globalThis = context;
@@ -92,5 +100,63 @@ describe('Notes Blocks database normalization', () => {
 
         expect(database.columns).toEqual(['Column 1', 'Column 2']);
         expect(database.rows).toEqual([['Main body still works', 'Second value']]);
+    });
+});
+
+describe('Notes Blocks image rendering', () => {
+    test('auto-searches Unsplash photo pages instead of treating them as renderable image URLs', () => {
+        const searchUnsplash = jest.fn(() => new Promise(() => {}));
+        const Blocks = loadBlocks({
+            window: {
+                API: { searchUnsplash },
+                Editor: { savePage: jest.fn() },
+            },
+        });
+
+        const block = {
+            type: 'ai_image',
+            content: {
+                prompt: 'Penguins during daytime',
+                imageUrl: null,
+                source: 'unsplash',
+                status: 'pending',
+                downloadUrl: 'https://unsplash.com/photos/penguins-during-daytime-_FRAYdYmQCM',
+            },
+        };
+
+        const rendered = Blocks.render.ai_image(block, false);
+
+        expect(searchUnsplash).toHaveBeenCalledWith('Penguins during daytime', { perPage: 1 });
+        expect(block.content.status).toBe('generating');
+        expect(rendered.querySelector('.ai-image-loading-text')?.textContent).toBe('Searching Unsplash...');
+        expect(rendered.querySelector('img')).toBeNull();
+    });
+
+    test('renders direct Unsplash image CDN URLs without forcing a search', () => {
+        const searchUnsplash = jest.fn();
+        const Blocks = loadBlocks({
+            window: {
+                API: { searchUnsplash },
+                Editor: { savePage: jest.fn() },
+            },
+        });
+
+        const block = {
+            type: 'ai_image',
+            content: {
+                prompt: 'Paris art hero',
+                imageUrl: 'https://images.unsplash.com/photo-12345',
+                source: 'unsplash',
+                status: 'done',
+                downloadUrl: 'https://unsplash.com/photos/paris-art-12345',
+            },
+        };
+
+        const rendered = Blocks.render.ai_image(block, false);
+        const image = rendered.querySelector('img.ai-image');
+
+        expect(searchUnsplash).not.toHaveBeenCalled();
+        expect(image).not.toBeNull();
+        expect(image.getAttribute('src')).toBe('https://images.unsplash.com/photo-12345');
     });
 });
