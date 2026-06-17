@@ -4,7 +4,21 @@ jest.mock('./artifact-store', () => ({
     },
 }));
 
+jest.mock('../documents/generators/pptx-generator', () => ({
+    PptxGenerator: jest.fn().mockImplementation(() => ({
+        generateFromContent: jest.fn(async (content) => ({
+            buffer: Buffer.from('PK\u0003\u0004mock-pptx', 'latin1'),
+            metadata: {
+                format: 'pptx',
+                slideCount: 2,
+                title: content.title,
+            },
+        })),
+    })),
+}));
+
 const { artifactStore } = require('./artifact-store');
+const { PptxGenerator } = require('../documents/generators/pptx-generator');
 const {
     buildPdfRuntimeStyleOverrides,
     buildStyledPdfBufferFromHtml,
@@ -16,6 +30,7 @@ const {
     inlineExternalImagesForPdf,
     inlineRenderableImagesForPdf,
     inlineInternalArtifactImagesForPdf,
+    renderArtifact,
 } = require('./artifact-renderer');
 
 let originalFetch;
@@ -265,6 +280,36 @@ describe('normalizeMermaidSource', () => {
         expect(Buffer.isBuffer(buffer)).toBe(true);
         expect(buffer.toString('utf8', 0, 4)).toBe('%PDF');
         expect(buffer.length).toBeGreaterThan(1000);
+    });
+
+    test('renders PPTX artifacts as PowerPoint zip packages instead of text files', async () => {
+        const artifact = await renderArtifact({
+            format: 'pptx',
+            title: 'Today News Casefile',
+            content: [
+                '# Today News Casefile',
+                '## World, Canada, and Technology Briefing',
+                '### Presentation Draft',
+                '---',
+                '## Slide 1: Cover',
+                'Today News Casefile',
+                '## Slide 2: Main Signals',
+                '- Diplomacy is moving fast',
+                '- Technology investment remains intense',
+            ].join('\n'),
+        });
+
+        expect(artifact.format).toBe('pptx');
+        expect(artifact.mimeType).toBe('application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        expect(artifact.filename).toMatch(/\.pptx$/);
+        expect(artifact.buffer.subarray(0, 4).toString('latin1')).toBe('PK\u0003\u0004');
+        expect(artifact.extractedText).toContain('# Today News Casefile');
+        expect(artifact.metadata).toEqual(expect.objectContaining({
+            renderEngine: 'pptxgenjs',
+            slideCount: 2,
+            title: 'Today News Casefile',
+        }));
+        expect(PptxGenerator).toHaveBeenCalledTimes(1);
     });
 
     test('inlines internal artifact image urls for PDF rendering', async () => {

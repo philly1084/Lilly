@@ -1643,6 +1643,29 @@ async function renderArtifact({ format, content, title = 'artifact', workbookSpe
         };
     }
 
+    if (normalizedFormat === 'pptx') {
+        const { PptxGenerator } = require('../documents/generators/pptx-generator');
+        const textContent = String(content || '');
+        const pptxDocument = await new PptxGenerator().generateFromContent({
+            title,
+            content: textContent,
+        });
+
+        return {
+            filename,
+            format: 'pptx',
+            mimeType,
+            buffer: pptxDocument.buffer,
+            previewHtml: `<pre>${escapeHtml(textContent)}</pre>`,
+            extractedText: textContent,
+            metadata: {
+                ...(pptxDocument.metadata || {}),
+                title,
+                renderEngine: 'pptxgenjs',
+            },
+        };
+    }
+
     const textContent = String(content || '');
     const normalizedTextContent = normalizedFormat === 'mermaid'
         ? normalizeMermaidSource(textContent)
