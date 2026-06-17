@@ -2,6 +2,7 @@ const { randomUUID } = require('crypto');
 const { stripNullCharacters } = require('./utils/text');
 const { parseLenientJson } = require('./utils/lenient-json');
 const { looksLikeSaveableDocumentResponse } = require('./artifacts/saveable-document-extractor');
+const { shouldHideArtifactFromDefaultLists } = require('./runtime-artifacts');
 
 const COLLAPSIBLE_ARTIFACT_FORMATS = new Set(['pdf', 'docx', 'xlsx', 'xml', 'html', 'mermaid', 'power-query', 'pptx', 'ppt']);
 const COLLAPSIBLE_ARTIFACT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.xml', '.html', '.htm', '.mmd', '.mermaid', '.pq', '.m', '.ppt', '.pptx'];
@@ -116,6 +117,7 @@ function shouldCollapseArtifactTranscript(artifact) {
 function normalizeAssistantArtifacts(artifacts = []) {
     return (Array.isArray(artifacts) ? artifacts : [])
         .filter((artifact) => artifact && typeof artifact === 'object' && artifact.id && artifact.downloadUrl)
+        .filter((artifact) => !shouldHideArtifactFromDefaultLists(artifact))
         .map((artifact) => ({
             ...artifact,
             id: String(artifact.id).trim(),

@@ -2,6 +2,7 @@ jest.mock('./artifact-store', () => ({
     artifactStore: {
         create: jest.fn(),
         updateProcessing: jest.fn(),
+        markSupersededSandboxArtifacts: jest.fn(),
         listBySession: jest.fn(),
         findReusableExtractionBySha: jest.fn(),
         listAllWithSessions: jest.fn(),
@@ -142,6 +143,7 @@ describe('ArtifactService', () => {
             vectorizedAt: null,
         });
         artifactStore.listBySession.mockResolvedValue([]);
+        artifactStore.markSupersededSandboxArtifacts.mockResolvedValue([]);
         artifactStore.findReusableExtractionBySha.mockResolvedValue(null);
         artifactStore.listAllWithSessions.mockResolvedValue([]);
         artifactStore.get.mockResolvedValue(null);
@@ -187,6 +189,71 @@ describe('ArtifactService', () => {
             expect.objectContaining({ id: 'artifact-1' }),
             expect.objectContaining({ session: null }),
         );
+    });
+
+    test('marks earlier sandbox artifacts as superseded after storing a newer sandbox bundle', async () => {
+        await artifactService.createStoredArtifact({
+            sessionId: 'session-1',
+            direction: 'generated',
+            sourceMode: 'sandbox',
+            filename: 'sandbox-project-new.zip',
+            extension: 'zip',
+            mimeType: 'application/zip',
+            buffer: Buffer.from('test'),
+            extractedText: 'test',
+            previewHtml: '',
+            metadata: { title: 'sandbox-project' },
+            vectorize: false,
+        });
+
+        expect(artifactStore.markSupersededSandboxArtifacts).toHaveBeenCalledWith({
+            sessionId: 'session-1',
+            artifactId: 'artifact-1',
+            title: 'sandbox-project',
+        });
+    });
+
+    test('hides superseded sandbox artifacts from default session artifact lists', async () => {
+        artifactStore.listBySession.mockResolvedValue([
+            {
+                id: 'old-sandbox',
+                sessionId: 'session-1',
+                direction: 'generated',
+                sourceMode: 'sandbox',
+                filename: 'sandbox-project-old.zip',
+                extension: 'zip',
+                mimeType: 'application/zip',
+                sizeBytes: 100,
+                extractedText: '',
+                previewHtml: '',
+                metadata: {
+                    hiddenFromArtifactList: true,
+                    artifactLifecycle: {
+                        state: 'superseded',
+                        supersededByArtifactId: 'new-sandbox',
+                    },
+                },
+            },
+            {
+                id: 'new-sandbox',
+                sessionId: 'session-1',
+                direction: 'generated',
+                sourceMode: 'sandbox',
+                filename: 'sandbox-project-new.zip',
+                extension: 'zip',
+                mimeType: 'application/zip',
+                sizeBytes: 200,
+                extractedText: '',
+                previewHtml: '<!doctype html><html></html>',
+                metadata: { title: 'sandbox-project' },
+            },
+        ]);
+
+        const visible = await artifactService.listSessionArtifacts('session-1');
+        const all = await artifactService.listSessionArtifacts('session-1', { includeSuppressed: true });
+
+        expect(visible.map((artifact) => artifact.id)).toEqual(['new-sandbox']);
+        expect(all.map((artifact) => artifact.id)).toEqual(['old-sandbox', 'new-sandbox']);
     });
 
     test('falls back to local artifacts when Postgres storage is not configured', async () => {

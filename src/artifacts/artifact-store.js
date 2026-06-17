@@ -144,6 +144,56 @@ class ArtifactStore {
         return result.rows.map((row) => toArtifact(row));
     }
 
+    async markSupersededSandboxArtifacts({
+        sessionId,
+        artifactId,
+        title = '',
+        windowMinutes = 30,
+    } = {}) {
+        const normalizedSessionId = String(sessionId || '').trim();
+        const normalizedArtifactId = String(artifactId || '').trim();
+        const normalizedTitle = String(title || '').trim();
+        const boundedWindowMinutes = Math.max(1, Math.min(120, Number(windowMinutes) || 30));
+        if (!normalizedSessionId || !normalizedArtifactId || !normalizedTitle) {
+            return [];
+        }
+
+        const result = await postgres.query(
+            `
+                UPDATE artifacts
+                SET metadata = jsonb_set(
+                        jsonb_set(
+                            metadata,
+                            '{artifactLifecycle}',
+                            jsonb_build_object(
+                                'state', 'superseded',
+                                'reason', 'sandbox_iteration_replaced',
+                                'supersededByArtifactId', $2,
+                                'supersededAt', to_jsonb(NOW())
+                            ),
+                            true
+                        ),
+                        '{hiddenFromArtifactList}',
+                        'true'::jsonb,
+                        true
+                    ),
+                    updated_at = NOW()
+                WHERE session_id = $1
+                    AND id <> $2
+                    AND direction = 'generated'
+                    AND source_mode = 'sandbox'
+                    AND extension IN ('zip', 'html')
+                    AND COALESCE(metadata->>'title', '') = $3
+                    AND COALESCE(metadata->>'hiddenFromArtifactList', 'false') <> 'true'
+                    AND created_at >= NOW() - ($4::text || ' minutes')::interval
+                RETURNING *
+            `,
+            [normalizedSessionId, normalizedArtifactId, normalizedTitle, boundedWindowMinutes],
+        );
+
+        return result.rows.map((row) => toArtifact(row));
+    }
+
     async findReusableExtractionBySha(sha256) {
         const normalizedSha = String(sha256 || '').trim();
         if (!normalizedSha) {

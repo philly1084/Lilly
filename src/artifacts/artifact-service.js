@@ -35,6 +35,7 @@ const {
     extractResponseUsageMetadata,
     mergeUsageMetadata,
 } = require('../utils/token-usage');
+const { shouldHideArtifactFromDefaultLists } = require('../runtime-artifacts');
 const { parseLenientJson } = require('../utils/lenient-json');
 const { resolveDocumentTheme } = require('../documents/document-design-engine');
 const {
@@ -1941,6 +1942,19 @@ function buildFrontendBundleGenerationInstructions({
     ].filter(Boolean).join('\n\n');
 }
 
+function isSupersedableSandboxArtifact({
+    direction = '',
+    sourceMode = '',
+    extension = '',
+    metadata = {},
+} = {}) {
+    const title = String(metadata?.title || '').trim();
+    return String(direction || '').toLowerCase() === 'generated'
+        && String(sourceMode || '').toLowerCase() === 'sandbox'
+        && ['zip', 'html'].includes(String(extension || '').toLowerCase())
+        && Boolean(title);
+}
+
 class ArtifactService {
     isEnabled() {
         return Boolean(postgres.enabled);
@@ -2234,6 +2248,23 @@ class ArtifactService {
                 });
             }
 
+            if (storedArtifact?.id && isSupersedableSandboxArtifact({
+                direction,
+                sourceMode,
+                extension,
+                metadata: storedMetadata,
+            })) {
+                try {
+                    await artifactStore.markSupersededSandboxArtifacts?.({
+                        sessionId,
+                        artifactId: storedArtifact.id,
+                        title: storedMetadata.title,
+                    });
+                } catch (error) {
+                    console.warn('[Artifacts] Failed to mark superseded sandbox artifacts:', error.message);
+                }
+            }
+
             return storedArtifact;
         } catch (error) {
             if (error?.statusCode !== 503 && postgres.enabled) {
@@ -2339,7 +2370,8 @@ class ArtifactService {
         return this.serializeArtifact(artifact);
     }
 
-    async listSessionArtifacts(sessionId) {
+    async listSessionArtifacts(sessionId, options = {}) {
+        const includeSuppressed = options?.includeSuppressed === true;
         const artifacts = [];
         if (this.isEnabled()) {
             try {
@@ -2350,7 +2382,9 @@ class ArtifactService {
         }
 
         artifacts.push(...await listLocalGeneratedArtifactsBySession(sessionId));
-        return artifacts.map((artifact) => this.serializeArtifact(artifact));
+        return artifacts
+            .filter((artifact) => includeSuppressed || !shouldHideArtifactFromDefaultLists(artifact))
+            .map((artifact) => this.serializeArtifact(artifact));
     }
 
     async getArtifact(id, options = {}) {

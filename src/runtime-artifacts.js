@@ -93,6 +93,9 @@ function normalizeArtifactEntry(value = null) {
     const metadata = value.metadata && typeof value.metadata === 'object' && !Array.isArray(value.metadata)
         ? value.metadata
         : {};
+    if (shouldHideArtifactFromDefaultLists({ ...value, metadata })) {
+        return null;
+    }
     const previewUrl = normalizePreviewUrl(value.previewUrl || value.preview_url || '');
     const sandboxUrl = normalizeSandboxUrl(value.sandboxUrl || value.sandbox_url || '');
     const bundleDownloadUrl = normalizeBundleDownloadUrl(
@@ -119,6 +122,23 @@ function normalizeArtifactEntry(value = null) {
             ? { contentPreview: value.contentPreview.trim() }
             : {}),
     };
+}
+
+function shouldHideArtifactFromDefaultLists(artifact = null) {
+    if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+        return false;
+    }
+
+    const metadata = artifact.metadata && typeof artifact.metadata === 'object' && !Array.isArray(artifact.metadata)
+        ? artifact.metadata
+        : {};
+    const lifecycle = metadata.artifactLifecycle && typeof metadata.artifactLifecycle === 'object' && !Array.isArray(metadata.artifactLifecycle)
+        ? metadata.artifactLifecycle
+        : {};
+
+    return artifact.hiddenFromArtifactList === true
+        || metadata.hiddenFromArtifactList === true
+        || String(lifecycle.state || '').trim().toLowerCase() === 'superseded';
 }
 
 function extractArtifactsFromValue(value, depth = 0) {
@@ -166,6 +186,9 @@ function mergeRuntimeArtifacts(...artifactSets) {
         if (!artifact || typeof artifact !== 'object') {
             return;
         }
+        if (shouldHideArtifactFromDefaultLists(artifact)) {
+            return;
+        }
 
         const normalized = normalizeArtifactEntry(artifact) || {
             ...artifact,
@@ -205,4 +228,5 @@ function mergeRuntimeArtifacts(...artifactSets) {
 module.exports = {
     extractArtifactsFromToolEvents,
     mergeRuntimeArtifacts,
+    shouldHideArtifactFromDefaultLists,
 };

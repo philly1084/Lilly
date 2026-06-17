@@ -2,7 +2,7 @@ const { Router } = require('express');
 const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { artifactService } = require('../artifacts/artifact-service');
-const { mergeRuntimeArtifacts } = require('../runtime-artifacts');
+const { mergeRuntimeArtifacts, shouldHideArtifactFromDefaultLists } = require('../runtime-artifacts');
 const { abortForegroundRequest } = require('../foreground-request-registry');
 const { cancelForegroundTurn, resolveForegroundTurn } = require('../foreground-turn-state');
 const {
@@ -258,16 +258,25 @@ router.get('/:id/artifacts', async (req, res, next) => {
         }
 
         const [storedArtifacts, messages] = await Promise.all([
-            artifactService.listSessionArtifacts(req.params.id).catch((error) => {
+            artifactService.listSessionArtifacts(req.params.id, { includeSuppressed: true }).catch((error) => {
                 console.warn(`[Sessions] Failed to list stored artifacts for ${req.params.id}: ${error.message}`);
                 return [];
             }),
             sessionStore.listMessages(req.params.id, 500, getRequestOwnerId(req)),
         ]);
+        const hiddenArtifactIds = new Set(
+            storedArtifacts
+                .filter((artifact) => shouldHideArtifactFromDefaultLists(artifact))
+                .map((artifact) => String(artifact.id || '').trim())
+                .filter(Boolean),
+        );
         const artifacts = mergeRuntimeArtifacts(
             storedArtifacts,
             extractArtifactsFromMessages(messages),
-        );
+        ).filter((artifact) => (
+            !shouldHideArtifactFromDefaultLists(artifact)
+            && !hiddenArtifactIds.has(String(artifact.id || '').trim())
+        ));
         res.json({ sessionId: req.params.id, artifacts, count: artifacts.length });
     } catch (err) {
         next(err);

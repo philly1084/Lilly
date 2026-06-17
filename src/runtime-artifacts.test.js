@@ -174,6 +174,34 @@ describe('runtime artifact helpers', () => {
         ]);
     });
 
+    test('omits superseded artifacts from runtime artifact merges', () => {
+        const merged = mergeRuntimeArtifacts([
+            {
+                id: 'artifact-old',
+                filename: 'sandbox-project-old.zip',
+                mimeType: 'application/zip',
+                downloadUrl: '/api/artifacts/artifact-old/download',
+                metadata: {
+                    hiddenFromArtifactList: true,
+                    artifactLifecycle: {
+                        state: 'superseded',
+                        supersededByArtifactId: 'artifact-new',
+                    },
+                },
+            },
+            {
+                id: 'artifact-new',
+                filename: 'sandbox-project-new.zip',
+                mimeType: 'application/zip',
+                downloadUrl: '/api/artifacts/artifact-new/download',
+            },
+        ]);
+
+        expect(merged).toEqual([
+            expect.objectContaining({ id: 'artifact-new' }),
+        ]);
+    });
+
     test('preserves preview, sandbox, and bundle download urls for previewable site artifacts', () => {
         const merged = mergeRuntimeArtifacts([{
             id: 'artifact-site-1',

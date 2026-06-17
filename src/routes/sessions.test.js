@@ -274,7 +274,7 @@ describe('/api/sessions route', () => {
         const response = await request(app).get('/api/sessions/session-1/artifacts');
 
         expect(response.status).toBe(200);
-        expect(artifactService.listSessionArtifacts).toHaveBeenCalledWith('session-1');
+        expect(artifactService.listSessionArtifacts).toHaveBeenCalledWith('session-1', { includeSuppressed: true });
         expect(sessionStore.listMessages).toHaveBeenCalledWith('session-1', 500, 'phill');
         expect(response.body.artifacts).toEqual([
             expect.objectContaining({
@@ -327,7 +327,7 @@ describe('/api/sessions route', () => {
         const response = await request(app).get('/api/sessions/session-1/artifacts');
 
         expect(response.status).toBe(200);
-        expect(artifactService.listSessionArtifacts).toHaveBeenCalledWith('session-1');
+        expect(artifactService.listSessionArtifacts).toHaveBeenCalledWith('session-1', { includeSuppressed: true });
         expect(response.body.artifacts).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 id: 'artifact-local-1',
@@ -340,6 +340,64 @@ describe('/api/sessions route', () => {
                 format: 'pdf',
             }),
         ]));
+    });
+
+    test('suppresses superseded stored artifacts even when old message history still references them', async () => {
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        artifactService.listSessionArtifacts.mockResolvedValue([
+            {
+                id: 'artifact-old',
+                filename: 'sandbox-project-old.zip',
+                format: 'zip',
+                mimeType: 'application/zip',
+                downloadUrl: '/api/artifacts/artifact-old/download',
+                metadata: {
+                    hiddenFromArtifactList: true,
+                    artifactLifecycle: {
+                        state: 'superseded',
+                        supersededByArtifactId: 'artifact-new',
+                    },
+                },
+            },
+            {
+                id: 'artifact-new',
+                filename: 'sandbox-project-new.zip',
+                format: 'zip',
+                mimeType: 'application/zip',
+                downloadUrl: '/api/artifacts/artifact-new/download',
+                sandboxUrl: '/api/artifacts/artifact-new/sandbox',
+                metadata: { title: 'sandbox-project' },
+            },
+        ]);
+        sessionStore.listMessages.mockResolvedValue([
+            {
+                id: 'assistant-1',
+                role: 'assistant',
+                metadata: {
+                    artifacts: [{
+                        id: 'artifact-old',
+                        filename: 'sandbox-project-old.zip',
+                        mimeType: 'application/zip',
+                        downloadUrl: '/api/artifacts/artifact-old/download',
+                    }],
+                },
+            },
+        ]);
+
+        const app = express();
+        app.use((req, _res, next) => {
+            req.user = { username: 'phill' };
+            next();
+        });
+        app.use('/api/sessions', sessionsRouter);
+
+        const response = await request(app).get('/api/sessions/session-1/artifacts');
+
+        expect(response.status).toBe(200);
+        expect(response.body.artifacts.map((artifact) => artifact.id)).toEqual(['artifact-new']);
     });
 
     test('cancels an active foreground request for the owned session', async () => {
