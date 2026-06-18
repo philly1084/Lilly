@@ -163,25 +163,30 @@ class PptxGenerator {
   }
 
   normalizePresentationContent(content = {}, options = {}) {
-    const slides = Array.isArray(content.slides)
-      ? content.slides.map((slide, index) => this.normalizeSlide(slide, index))
+    const sourceContent = content && typeof content === 'object' && !Array.isArray(content)
+      ? content
+      : { content: String(content || '') };
+    const sourceText = String(sourceContent.content || sourceContent.body || '');
+    const parsedJsonContent = this.tryParsePresentationJson(sourceText);
+    const structuredContent = parsedJsonContent || sourceContent;
+    const deckTitle = structuredContent.title || sourceContent.title || options.title || 'Presentation';
+    const deckSubtitle = structuredContent.subtitle || sourceContent.subtitle || options.subtitle || '';
+    const slides = Array.isArray(structuredContent.slides)
+      ? structuredContent.slides.map((slide, index) => this.normalizeSlide(slide, index))
       : [];
 
     const normalizedSlides = slides.length > 0
       ? slides
-      : this.parseContentIntoSections(content.content || content.body || '').map((section, index) => ({
-        layout: index === 0 ? 'title' : 'content',
-        title: section.title || `Slide ${index + 1}`,
-        content: section.content || '',
-        bullets: [],
-        subtitle: index === 0 ? (content.subtitle || '') : '',
-      }));
+      : this.parseContentIntoSlides(sourceText, {
+        title: deckTitle,
+        subtitle: deckSubtitle,
+      }).map((slide, index) => this.normalizeSlide(slide, index));
 
     if (normalizedSlides.length === 0) {
       normalizedSlides.push({
         layout: 'title',
-        title: content.title || 'Presentation',
-        subtitle: content.subtitle || '',
+        title: deckTitle,
+        subtitle: deckSubtitle,
         bullets: [],
       });
     }
@@ -189,16 +194,21 @@ class PptxGenerator {
     if (normalizedSlides[0].layout !== 'title') {
       normalizedSlides.unshift({
         layout: 'title',
-        title: content.title || options.title || 'Presentation',
-        subtitle: content.subtitle || options.subtitle || '',
+        title: deckTitle,
+        subtitle: deckSubtitle,
       });
     }
 
+    const finalDeckTitle = deckTitle === 'Presentation' && normalizedSlides[0]?.title
+      ? normalizedSlides[0].title
+      : deckTitle;
+    const finalDeckSubtitle = deckSubtitle || normalizedSlides[0]?.subtitle || '';
+
     return {
-      title: content.title || options.title || 'Presentation',
-      subtitle: content.subtitle || options.subtitle || '',
-      theme: content.theme || options.theme || 'editorial',
-      author: content.author || options.author || 'LillyBuilt AI',
+      title: finalDeckTitle,
+      subtitle: finalDeckSubtitle,
+      theme: structuredContent.theme || sourceContent.theme || options.theme || 'editorial',
+      author: structuredContent.author || sourceContent.author || options.author || 'LillyBuilt AI',
       slides: normalizedSlides,
     };
   }
@@ -249,6 +259,23 @@ class PptxGenerator {
     }
 
     return [];
+  }
+
+  tryParsePresentationJson(value = '') {
+    const trimmed = String(value || '').trim();
+    if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return { slides: parsed };
+      }
+      return parsed && typeof parsed === 'object' && Array.isArray(parsed.slides) ? parsed : null;
+    } catch (_error) {
+      return null;
+    }
   }
 
   async renderSlide(slide, slideData, index, presentation, theme, options) {
@@ -823,6 +850,197 @@ class PptxGenerator {
     }
 
     return sections;
+  }
+
+  parseContentIntoSlides(content, options = {}) {
+    const text = this.normalizeSourceTextForSlides(content);
+    const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+    const slides = [];
+    const fallbackTitle = options.title || 'Presentation';
+    let title = fallbackTitle;
+    let current = null;
+
+    const pushCurrent = () => {
+      if (!current) {
+        return;
+      }
+      const contentLines = current.contentLines || [];
+      const bullets = this.normalizeBullets(current.bullets);
+      const contentText = contentLines.join('\n').trim();
+      slides.push({
+        layout: current.layout || 'content',
+        title: current.title || `Slide ${slides.length + 1}`,
+        subtitle: current.subtitle || '',
+        content: bullets.length > 0 ? this.compactSlideContent(contentText) : this.compactSlideContent(contentText, 360),
+        bullets: bullets.length > 0 ? bullets : this.deriveBulletsFromText(contentText),
+      });
+      current = null;
+    };
+
+    const startContentSlide = (slideTitle) => {
+      pushCurrent();
+      current = {
+        layout: 'content',
+        title: this.cleanSlideTitle(slideTitle) || `Slide ${slides.length + 1}`,
+        contentLines: [],
+        bullets: [],
+      };
+    };
+
+    for (const line of lines) {
+      const cleaned = this.cleanSourceLine(line);
+      if (!cleaned) {
+        continue;
+      }
+
+      const titleLabelMatch = cleaned.match(/^title\s*[:.)-]\s*(.+)$/i);
+      if (titleLabelMatch && slides.length === 0 && !current) {
+        title = this.cleanSlideTitle(titleLabelMatch[1]) || title;
+        slides.push({
+          layout: 'title',
+          title,
+          subtitle: options.subtitle || '',
+          bullets: [],
+        });
+        continue;
+      }
+
+      const subtitleLabelMatch = cleaned.match(/^subtitle\s*[:.)-]\s*(.+)$/i);
+      if (subtitleLabelMatch && slides.length > 0 && slides[0].layout === 'title' && !current) {
+        slides[0].subtitle = subtitleLabelMatch[1].trim();
+        continue;
+      }
+
+      const headingMatch = cleaned.match(/^(#{1,6})\s+(.+)$/);
+      const slideLabelMatch = cleaned.match(/^(?:slide|page)\s*\d+\s*[:.)-]\s*(.+)$/i);
+      if (headingMatch || slideLabelMatch) {
+        const level = headingMatch ? headingMatch[1].length : 2;
+        const heading = headingMatch ? headingMatch[2].trim() : slideLabelMatch[1].trim();
+        if (level === 1 && slides.length === 0 && !current) {
+          title = this.cleanSlideTitle(heading) || title;
+          slides.push({
+            layout: 'title',
+            title,
+            subtitle: options.subtitle || '',
+            bullets: [],
+          });
+        } else {
+          startContentSlide(heading);
+        }
+        continue;
+      }
+
+      const bulletMatch = cleaned.match(/^[-*•]\s+(.+)$/);
+      if (bulletMatch) {
+        if (!current) {
+          startContentSlide('Key Points');
+        }
+        current.bullets.push(bulletMatch[1].trim());
+        continue;
+      }
+
+      const contentLabelMatch = cleaned.match(/^(?:content|body|summary)\s*[:.)-]\s*(.+)$/i);
+      const bodyLine = contentLabelMatch ? contentLabelMatch[1].trim() : cleaned;
+      if (!current) {
+        const fallbackSlideTitle = slides.length <= 1 ? 'Overview' : `Slide ${slides.length + 1}`;
+        startContentSlide(contentLabelMatch ? 'Overview' : fallbackSlideTitle);
+      }
+      current.contentLines.push(bodyLine);
+    }
+
+    pushCurrent();
+
+    if (slides.length === 0) {
+      return [];
+    }
+
+    if (slides[0].layout !== 'title') {
+      slides.unshift({
+        layout: 'title',
+        title,
+        subtitle: options.subtitle || '',
+        bullets: [],
+      });
+    }
+
+    return slides;
+  }
+
+  normalizeSourceTextForSlides(content = '') {
+    let text = String(content || '')
+      .replace(/```[a-z0-9_-]*\s*/gi, '')
+      .replace(/```/g, '')
+      .replace(/\r\n?/g, '\n');
+
+    if (/<\/?[a-z][\s\S]*>/i.test(text)) {
+      text = text
+        .replace(/<h1[^>]*>/gi, '\n# ')
+        .replace(/<h2[^>]*>/gi, '\n## ')
+        .replace(/<h3[^>]*>/gi, '\n### ')
+        .replace(/<\/h[1-6]>/gi, '\n')
+        .replace(/<li[^>]*>/gi, '\n- ')
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<\/(?:p|div|section|article|tr)>/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<style[\s\S]*?<\/style>/gi, '\n')
+        .replace(/<script[\s\S]*?<\/script>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ');
+    }
+
+    return this.decodeHtmlEntities(text)
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .join('\n');
+  }
+
+  decodeHtmlEntities(value = '') {
+    return String(value || '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'");
+  }
+
+  cleanSourceLine(line = '') {
+    const cleaned = String(line || '').trim();
+    if (!cleaned || cleaned === '---' || cleaned === '___') {
+      return '';
+    }
+    if (/^<\/?(?:task|requirements|output_contract|rules|current_presentation_json|revision_instructions)>$/i.test(cleaned)) {
+      return '';
+    }
+    return cleaned;
+  }
+
+  cleanSlideTitle(value = '') {
+    return String(value || '')
+      .replace(/^(?:slide|page)\s*\d+\s*[:.)-]\s*/i, '')
+      .replace(/^title\s*[:.)-]\s*/i, '')
+      .trim();
+  }
+
+  compactSlideContent(value = '', maxChars = 260) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length <= maxChars) {
+      return text;
+    }
+    return `${text.slice(0, maxChars - 1).replace(/\s+\S*$/, '')}.`;
+  }
+
+  deriveBulletsFromText(value = '') {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length < 120) {
+      return [];
+    }
+
+    return text
+      .split(/(?<=[.!?])\s+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .map((entry) => this.compactSlideContent(entry, 110));
   }
 
   generateFilename(title) {
