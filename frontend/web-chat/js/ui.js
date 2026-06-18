@@ -2165,15 +2165,7 @@ class UIHelpers {
             }
         }
 
-        const parsed = this.parseJsonSafely(source);
-        if (parsed) {
-            const normalized = this.normalizeSurveyDefinition(parsed, fallbackId);
-            if (normalized) {
-                return normalized;
-            }
-        }
-
-        return this.extractPlainSurveyDefinition(source, fallbackId);
+        return null;
     }
 
     buildSurveyAnsweredSummary(surveyState = {}, survey = null) {
@@ -2550,18 +2542,6 @@ class UIHelpers {
     buildSurveyRenderPlan(content = '', message = {}) {
         const source = String(content || '');
         if (!/```(?:survey|kb-survey)/i.test(source)) {
-            const inferredSurvey = this.extractSurveyDefinitionFromContent(source, message?.id || '');
-            if (inferredSurvey) {
-                const token = `KB_SURVEY_TOKEN_${String(message?.id || 'message').replace(/[^a-z0-9_-]/gi, '_')}_0`;
-                return {
-                    markdown: token,
-                    surveys: [{
-                        token,
-                        html: this.renderSurveyBlock(inferredSurvey, message),
-                    }],
-                };
-            }
-
             return {
                 markdown: source,
                 surveys: [],

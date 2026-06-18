@@ -410,38 +410,43 @@ The strongest watchlist for tonight and Monday:
         });
     });
 
-    test('still infers a compact plain-text choice prompt', () => {
-        const helper = Object.create(loadUIHelpersPrototype());
-        const survey = helper.extractSurveyDefinitionFromContent(`Which direction should we take?
-
-1. Dashboard UI
-2. Cluster deployment`, 'choice-message');
-
-        expect(survey).toEqual(expect.objectContaining({
-            id: 'choice-message',
-            question: 'Which direction should we take?',
-            options: [
-                expect.objectContaining({ label: 'Dashboard UI' }),
-                expect.objectContaining({ label: 'Cluster deployment' }),
-            ],
-        }));
-    });
-
-    test('keeps inferred survey ids stable when the submit path reparses the message', () => {
+    test('does not infer a survey card from compact plain-text choice prompts', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const content = `Which direction should we take?
 
 1. Dashboard UI
 2. Cluster deployment`;
-        const message = { id: 'choice-message-1' };
-        const renderPlan = helper.buildSurveyRenderPlan(content, message);
-        const reparsedSurvey = helper.extractSurveyDefinitionFromContent(content, message.id);
 
+        expect(helper.extractSurveyDefinitionFromContent(content, 'choice-message')).toBeNull();
+        expect(helper.buildSurveyRenderPlan(content, { id: 'choice-message' })).toEqual({
+            markdown: content,
+            surveys: [],
+        });
+    });
+
+    test('does not infer a survey card from unfenced JSON-like questionnaire text', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const content = '{"question":"Which direction should we take?","options":[{"label":"Dashboard UI"},{"label":"Cluster deployment"}]}';
+
+        expect(helper.extractSurveyDefinitionFromContent(content, 'json-choice-message')).toBeNull();
+        expect(helper.buildSurveyRenderPlan(content, { id: 'json-choice-message' })).toEqual({
+            markdown: content,
+            surveys: [],
+        });
+    });
+
+    test('renders explicit fenced survey payloads from checkpoint tool output', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.expandedReasoningMessageIds = new Set();
+        const content = `\`\`\`survey
+{"question":"Which direction should we take?","options":[{"label":"Dashboard UI"},{"label":"Cluster deployment"}]}
+\`\`\``;
+        const renderPlan = helper.buildSurveyRenderPlan(content, { id: 'choice-message-1' });
+
+        expect(renderPlan.surveys).toHaveLength(1);
         expect(renderPlan.surveys[0].html).toContain('data-survey-id="choice-message-1"');
-        expect(reparsedSurvey).toEqual(expect.objectContaining({
-            id: 'choice-message-1',
-            question: 'Which direction should we take?',
-        }));
+        expect(renderPlan.surveys[0].html).toContain('Dashboard UI');
+        expect(renderPlan.surveys[0].html).toContain('Cluster deployment');
     });
 
     test('does not infer a survey card from final-answer completion summaries', () => {
