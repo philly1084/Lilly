@@ -1650,9 +1650,10 @@ async function renderArtifact({ format, content, title = 'artifact', workbookSpe
             title,
             content: textContent,
         });
+        const deckTitle = pptxDocument.metadata?.title || title;
 
         return {
-            filename,
+            filename: createUniqueFilename(deckTitle, extension, 'artifact'),
             format: 'pptx',
             mimeType,
             buffer: pptxDocument.buffer,
@@ -1660,7 +1661,7 @@ async function renderArtifact({ format, content, title = 'artifact', workbookSpe
             extractedText: textContent,
             metadata: {
                 ...(pptxDocument.metadata || {}),
-                title,
+                title: deckTitle,
                 renderEngine: 'pptxgenjs',
             },
         };

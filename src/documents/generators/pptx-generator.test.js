@@ -113,4 +113,27 @@ describe('PptxGenerator', () => {
     expect(allText).not.toContain('Title:');
     expect(allText).not.toContain('Content:');
   });
+
+  test('splits inline model-labeled presentation strings into multiple slides', () => {
+    const presentation = new PptxGenerator().normalizePresentationContent({
+      content: [
+        'Title: Monkeys Subtitle: Intelligence, Adaptation, and What They Reveal About Life on Earth',
+        'Format: PPTX presentation draft Style: Launch Manifesto',
+        'Slide 1: Cover Monkeys Intelligence in Motion',
+        'Slide 2: Why Monkeys Matter Monkeys are social, adaptive primates that reveal how intelligence evolves.',
+        'Slide 3: Key Adaptations - Tool use - Social learning - Flexible diets',
+      ].join(' '),
+    });
+
+    const allText = JSON.stringify(presentation.slides);
+
+    expect(presentation.title).toBe('Monkeys');
+    expect(presentation.subtitle).toBe('Intelligence, Adaptation, and What They Reveal About Life on Earth');
+    expect(presentation.slides.length).toBeGreaterThanOrEqual(4);
+    expect(allText).toContain('Cover Monkeys Intelligence in Motion');
+    expect(allText).toContain('Why Monkeys Matter Monkeys are social');
+    expect(allText).toContain('Key Adaptations');
+    expect(allText).not.toContain('Format:');
+    expect(allText).not.toContain('Style:');
+  });
 });

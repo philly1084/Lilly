@@ -972,6 +972,11 @@ class PptxGenerator {
       .replace(/```/g, '')
       .replace(/\r\n?/g, '\n');
 
+    text = text.replace(
+      /\s+(?=(?:title|subtitle|format|style|theme|tone|content|body|summary|slide\s+\d+|page\s+\d+)\s*[:.)-]\s*)/gi,
+      '\n',
+    );
+
     if (/<\/?[a-z][\s\S]*>/i.test(text)) {
       text = text
         .replace(/<h1[^>]*>/gi, '\n# ')
@@ -1009,6 +1014,9 @@ class PptxGenerator {
       return '';
     }
     if (/^<\/?(?:task|requirements|output_contract|rules|current_presentation_json|revision_instructions)>$/i.test(cleaned)) {
+      return '';
+    }
+    if (/^(?:format|style|theme|tone)\s*[:.)-]\s*/i.test(cleaned)) {
       return '';
     }
     return cleaned;
