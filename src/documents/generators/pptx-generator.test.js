@@ -116,6 +116,7 @@ describe('PptxGenerator', () => {
 
   test('splits inline model-labeled presentation strings into multiple slides', () => {
     const presentation = new PptxGenerator().normalizePresentationContent({
+      title: 'pptx-2026-06-18',
       content: [
         'Title: Monkeys Subtitle: Intelligence, Adaptation, and What They Reveal About Life on Earth',
         'Format: PPTX presentation draft Style: Launch Manifesto',

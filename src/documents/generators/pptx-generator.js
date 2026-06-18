@@ -199,7 +199,7 @@ class PptxGenerator {
       });
     }
 
-    const finalDeckTitle = deckTitle === 'Presentation' && normalizedSlides[0]?.title
+    const finalDeckTitle = this.isGenericPresentationTitle(deckTitle) && normalizedSlides[0]?.title
       ? normalizedSlides[0].title
       : deckTitle;
     const finalDeckSubtitle = deckSubtitle || normalizedSlides[0]?.subtitle || '';
@@ -1027,6 +1027,17 @@ class PptxGenerator {
       .replace(/^(?:slide|page)\s*\d+\s*[:.)-]\s*/i, '')
       .replace(/^title\s*[:.)-]\s*/i, '')
       .trim();
+  }
+
+  isGenericPresentationTitle(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      return true;
+    }
+    return normalized === 'presentation'
+      || normalized === 'generated-artifact'
+      || normalized === 'chat-output'
+      || /^(?:pptx|presentation|slides?|deck|artifact)(?:[-_\s]\d{4}-\d{2}-\d{2})?(?:[-_\s][a-z0-9]{4,8})?$/.test(normalized);
   }
 
   compactSlideContent(value = '', maxChars = 260) {
