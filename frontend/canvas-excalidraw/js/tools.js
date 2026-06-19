@@ -33,6 +33,7 @@ class ToolManager {
         // Clipboard for copy/paste
         this.clipboard = [];
         this.clipboardOffset = 0;
+        this.activeDrawPreset = 'pencil';
         
         // Default properties
         this.defaultProperties = {
@@ -228,6 +229,42 @@ class ToolManager {
     
     updateDefaultProperties(props) {
         this.defaultProperties = { ...this.defaultProperties, ...props };
+    }
+
+    applyDrawPreset(preset = 'pencil') {
+        const presets = {
+            pencil: {
+                strokeColor: '#0f172a',
+                strokeWidth: 2,
+                strokeStyle: 'solid',
+                opacity: 1,
+                roughness: 1.2,
+            },
+            marker: {
+                strokeColor: '#2563eb',
+                strokeWidth: 5,
+                strokeStyle: 'solid',
+                opacity: 0.92,
+                roughness: 0.8,
+            },
+            highlighter: {
+                strokeColor: '#facc15',
+                strokeWidth: 11,
+                strokeStyle: 'solid',
+                opacity: 0.42,
+                roughness: 0.35,
+            },
+        };
+        const nextPreset = presets[preset] ? preset : 'pencil';
+        this.activeDrawPreset = nextPreset;
+        this.updateDefaultProperties(presets[nextPreset]);
+        this.setTool('freedraw');
+        document.querySelectorAll('[data-draw-preset]').forEach((button) => {
+            const active = button.dataset.drawPreset === nextPreset;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        window.app?.showToast?.(`${nextPreset.charAt(0).toUpperCase()}${nextPreset.slice(1)} ready`);
     }
     
     handleMouseDown(e) {
@@ -442,6 +479,7 @@ class ToolManager {
                 // Save to history
                 window.historyManager?.pushState(canvas.elements);
                 completedElement = el;
+                window.app?.onCanvasElementsChanged?.();
             }
             
             this.isDrawing = false;
@@ -452,6 +490,7 @@ class ToolManager {
         if (this.isMoving) {
             if (this.hasMoved) {
                 window.historyManager?.pushState(canvas.elements);
+                window.app?.onCanvasElementsChanged?.();
             }
             this.isMoving = false;
             this.moveStartPositions = null;
@@ -460,6 +499,7 @@ class ToolManager {
         
         if (this.isResizing) {
             window.historyManager?.pushState(canvas.elements);
+            window.app?.onCanvasElementsChanged?.();
             this.isResizing = false;
             this.resizeHandle = null;
             this.resizeStartElement = null;
@@ -1316,6 +1356,7 @@ class ToolManager {
         
         window.historyManager?.pushState(canvas.elements);
         canvas.render();
+        window.app?.onCanvasElementsChanged?.();
     }
     
     handlePaste(e) {
@@ -1509,6 +1550,7 @@ class ToolManager {
                 }
                 canvas.deselectAll();
                 window.historyManager?.pushState(canvas.elements);
+                window.app?.onCanvasElementsChanged?.();
             }
         }
     }

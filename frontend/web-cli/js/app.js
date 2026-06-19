@@ -124,6 +124,10 @@ class CodeCLIApp {
             .flatMap((command) => [command.command, ...(command.aliases || [])])
             .filter(Boolean);
         this.pinnedCommands = this.loadPinnedCommands();
+        this.cliMenuBackStack = [];
+        this.cliMenuCurrentView = null;
+        this.toolCatalogById = new Map();
+        this.skillCatalogById = new Map();
         
         this.init();
     }
@@ -3813,6 +3817,619 @@ class CodeCLIApp {
         this.roamVoxelPet('prompt', 'guard', 1000, { thought: 'command staged' });
     }
 
+    async openCliMenuButton(button = null) {
+        const view = String(button?.dataset?.menuView || '').trim();
+        const value = String(button?.dataset?.menuValue || '').trim();
+        if (!view) {
+            return;
+        }
+        await this.navigateCliMenu(view, value, { push: true });
+    }
+
+    async navigateCliMenu(view = 'root', value = '', options = {}) {
+        const spec = {
+            view: String(view || 'root'),
+            value: String(value || ''),
+        };
+
+        if (options.push && this.cliMenuCurrentView) {
+            const current = this.cliMenuCurrentView;
+            if (current.view !== spec.view || current.value !== spec.value) {
+                this.cliMenuBackStack.push(current);
+            }
+        }
+        if (options.reset) {
+            this.cliMenuBackStack = [];
+        }
+
+        this.cliMenuCurrentView = spec;
+
+        switch (spec.view) {
+            case 'root':
+                this.printHelp({ resetNavigation: options.reset === true });
+                break;
+            case 'category':
+                this.printHelpCategory(spec.value);
+                break;
+            case 'command':
+                await this.printCommandMenuPanel(spec.value);
+                break;
+            case 'tools':
+                await this.listTools(spec.value || null, { menu: true });
+                break;
+            case 'tool-help':
+                await this.showToolHelp([spec.value], { menu: true });
+                break;
+            case 'tool-run':
+                await this.printToolRunPanel(spec.value);
+                break;
+            case 'skills':
+                await this.listSkills(spec.value, { menu: true });
+                break;
+            case 'skill':
+                await this.showSkill([spec.value], { menu: true });
+                break;
+            case 'skill-use':
+                await this.printSkillUsePanel(spec.value);
+                break;
+            default:
+                this.printHelp({ resetNavigation: options.reset === true });
+        }
+    }
+
+    async goBackCliMenu() {
+        const previous = this.cliMenuBackStack.pop();
+        if (!previous) {
+            await this.navigateCliMenu('root', '', { reset: true });
+            return;
+        }
+        await this.navigateCliMenu(previous.view, previous.value, { push: false });
+    }
+
+    async goHomeCliMenu() {
+        await this.navigateCliMenu('root', '', { reset: true });
+    }
+
+    clearCliMenuPanels() {
+        if (!this.terminalOutput) {
+            return;
+        }
+        this.terminalOutput
+            .querySelectorAll('.line-output.ai.cli-interactive-menu-line')
+            .forEach((line) => line.remove());
+    }
+
+    renderCliMenuNavMarkup() {
+        const canGoBack = this.cliMenuBackStack.length > 0;
+        return `
+            <div class="cli-menu-nav" aria-label="Help menu navigation">
+                <button type="button" onclick="app.goBackCliMenu()"${canGoBack ? '' : ' disabled'} title="Back">Back</button>
+                <button type="button" onclick="app.goHomeCliMenu()" title="Command home">Home</button>
+            </div>
+        `;
+    }
+
+    printCliMenuPanel(title = 'CLI Menu', body = '', options = {}) {
+        this.clearCliMenuPanels();
+        const line = document.createElement('div');
+        line.className = 'line line-output ai cli-interactive-menu-line';
+        const meta = options.meta || 'interactive menu';
+        const navMarkup = this.renderCliMenuNavMarkup();
+        if (this.theme === 'voxel') {
+            line.innerHTML = `
+                <div class="voxel-response-head">
+                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>${this.escapeHtml(title)}</span>
+                    <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                    <span class="voxel-response-meta">${this.escapeHtml(meta)}</span>
+                </div>
+                <div class="voxel-response-body">
+                    ${navMarkup}
+                    ${body}
+                </div>
+            `;
+        } else {
+            line.innerHTML = `
+                <div class="cli-response-shell">
+                    <div class="cli-response-head">
+                        <button type="button" class="ai-response-toggle" onclick="app.toggleAIResponse(this)" title="Collapse response" aria-label="Collapse response" aria-expanded="true">v</button>
+                        <span class="cli-response-title">${this.escapeHtml(title)}</span>
+                    </div>
+                    <div class="cli-response-body">
+                        ${navMarkup}
+                        ${body}
+                    </div>
+                </div>
+            `;
+        }
+        this.terminalOutput.appendChild(line);
+        this.finishAIContentLine(line);
+        this.scrollToBottom();
+        return line;
+    }
+
+    getCommandPrefix(command = {}) {
+        const template = String(command.template || command.command || '').trimEnd();
+        return template || String(command.command || '').trim();
+    }
+
+    getCommandMenuTarget(command = {}) {
+        const id = String(command.id || '').trim();
+        if (id === 'tools' || id === 'tool-help') {
+            return { view: 'tools', value: '' };
+        }
+        if (id === 'tool') {
+            return { view: 'tools', value: '' };
+        }
+        if (id === 'skills' || id === 'skill') {
+            return { view: 'skills', value: '' };
+        }
+        return { view: 'command', value: id || command.command || '' };
+    }
+
+    getCommandFormPlaceholder(command = {}) {
+        const id = String(command.id || '').trim();
+        if (id === 'image') {
+            return 'A crisp product photo of a tiny solar-powered workshop, warm natural light...';
+        }
+        if (id === 'remote-agent') {
+            return 'Inspect and fix the production issue, then run focused verification...';
+        }
+        if (id === 'sandbox') {
+            return 'html {"files":{"index.html":"..."}}';
+        }
+        if (id === 'canvas') {
+            return 'document Create a release-readiness brief for...';
+        }
+        return command.arguments || 'details';
+    }
+
+    async printCommandMenuPanel(commandId = '') {
+        const command = this.commandCatalog.find((entry) => {
+            const id = String(entry.id || '');
+            const commandText = String(entry.command || '').replace(/^\//, '');
+            return id === commandId || entry.command === commandId || commandText === commandId;
+        });
+
+        if (!command) {
+            this.printWarning(`Command not found: ${commandId}`);
+            return;
+        }
+
+        const target = this.getCommandMenuTarget(command);
+        if (target.view !== 'command') {
+            await this.navigateCliMenu(target.view, target.value, { push: false });
+            return;
+        }
+
+        const prefix = this.getCommandPrefix(command);
+        const needsDetails = Boolean(command.requiresInput || command.arguments);
+        const detailControl = needsDetails ? `
+            <form class="cli-menu-form" data-command-prefix="${this.escapeHtmlAttr(prefix)}" onsubmit="app.runCliMenuCommandForm(this); return false;">
+                <label>
+                    <span>${this.escapeHtml(command.arguments || 'Details')}</span>
+                    <textarea name="details" rows="3" placeholder="${this.escapeHtmlAttr(this.getCommandFormPlaceholder(command))}"></textarea>
+                </label>
+                <div class="cli-menu-actions">
+                    <button type="submit">Run</button>
+                    <button type="button" onclick="app.stageCliMenuCommandForm(this)">Stage</button>
+                </div>
+            </form>
+        ` : `
+            <div class="cli-menu-actions">
+                <button type="button" onclick="app.runCliMenuCommandText('${this.escapeHtmlAttr(prefix)}')">Run ${this.escapeHtml(command.command)}</button>
+                <button type="button" onclick="app.stageCliMenuCommandText('${this.escapeHtmlAttr(prefix)}')">Stage</button>
+            </div>
+        `;
+
+        const body = `
+            <div class="cli-menu-panel">
+                <div class="cli-menu-panel__intro">
+                    <span class="cli-menu-panel__icon">${this.escapeHtml(command.icon || '/')}</span>
+                    <div>
+                        <strong>${this.escapeHtml(command.label || command.command)}</strong>
+                        <code>${this.escapeHtml(command.command)}</code>
+                        <p>${this.escapeHtml(command.description || 'CLI command')}</p>
+                    </div>
+                </div>
+                ${detailControl}
+            </div>
+        `;
+        this.printCliMenuPanel(command.label || command.command, body, { meta: 'command runner' });
+    }
+
+    getCommandFromMenuForm(form = null) {
+        const commandPrefix = String(form?.dataset?.commandPrefix || '').trimEnd();
+        const details = String(form?.querySelector?.('[name="details"]')?.value || '').trim();
+        if (!commandPrefix) {
+            return details;
+        }
+        return details ? `${commandPrefix} ${details}` : commandPrefix;
+    }
+
+    runCliMenuCommandForm(form = null) {
+        this.runCliMenuCommandText(this.getCommandFromMenuForm(form));
+    }
+
+    stageCliMenuCommandForm(button = null) {
+        const form = button?.closest?.('form');
+        this.stageCliMenuCommandText(this.getCommandFromMenuForm(form));
+    }
+
+    runCliMenuCommandText(command = '') {
+        const normalized = String(command || '').trim();
+        if (!normalized) {
+            return;
+        }
+        this.clearCliMenuPanels();
+        this.setCommandInputValue(normalized);
+        this.sendCommand();
+    }
+
+    stageCliMenuCommandText(command = '') {
+        const normalized = String(command || '').trim();
+        if (!normalized) {
+            return;
+        }
+        this.setCommandInputValue(normalized);
+        this.updateCommandAssist(this.getCommandEntry(normalized), { activated: true });
+        this.roamVoxelPet('prompt', 'guard', 1000, { thought: 'command staged' });
+    }
+
+    rememberToolCatalog(tools = []) {
+        tools.forEach((tool) => {
+            if (tool?.id) {
+                this.toolCatalogById.set(tool.id, tool);
+            }
+        });
+    }
+
+    async getToolCatalogEntry(toolId = '') {
+        const normalizedToolId = String(toolId || '').trim();
+        if (!normalizedToolId) {
+            return null;
+        }
+        if (this.toolCatalogById.has(normalizedToolId)) {
+            return this.toolCatalogById.get(normalizedToolId);
+        }
+        const response = await api.getAvailableTools(null);
+        const tools = Array.isArray(response) ? response : (response.tools || []);
+        this.rememberToolCatalog(tools);
+        return this.toolCatalogById.get(normalizedToolId) || null;
+    }
+
+    renderToolCategoryChips(tools = [], activeCategory = '') {
+        const categories = [...new Set(tools.map((tool) => tool.category).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b));
+        if (!categories.length) {
+            return '';
+        }
+        return `
+            <div class="cli-menu-chip-row" aria-label="Tool categories">
+                <button type="button" class="${activeCategory ? '' : 'is-active'}" data-menu-view="tools" data-menu-value="" onclick="app.openCliMenuButton(this)">All</button>
+                ${categories.map((category) => `
+                    <button
+                        type="button"
+                        class="${category === activeCategory ? 'is-active' : ''}"
+                        data-menu-view="tools"
+                        data-menu-value="${this.escapeHtmlAttr(category)}"
+                        onclick="app.openCliMenuButton(this)"
+                    >${this.escapeHtml(category)}</button>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    renderToolsMenu(tools = [], meta = {}, activeCategory = '') {
+        const runtime = meta?.runtime || null;
+        const runtimeMarkup = runtime ? `
+            <div class="cli-menu-runtime">
+                <span>Runtime</span>
+                <strong>${this.escapeHtml(runtime.source || 'backend')}</strong>
+                <span>${this.escapeHtml(runtime.modelGateway?.baseURL || 'tool gateway')}</span>
+            </div>
+        ` : '';
+        const cards = tools.map((tool) => {
+            const params = Array.isArray(tool.parameters)
+                ? tool.parameters.map((param) => typeof param === 'string' ? param : param.name).filter(Boolean)
+                : Object.keys(tool.inputSchema?.properties || {});
+            return `
+                <article class="cli-menu-card">
+                    <div class="cli-menu-card__main">
+                        <div class="cli-menu-card__top">
+                            <code>${this.escapeHtml(tool.id || 'tool')}</code>
+                            <strong>${this.escapeHtml(tool.name || tool.label || tool.id || 'Tool')}</strong>
+                        </div>
+                        <p>${this.escapeHtml(tool.description || 'No description provided.')}</p>
+                        <div class="cli-menu-card__meta">
+                            ${tool.category ? `<span>${this.escapeHtml(tool.category)}</span>` : ''}
+                            ${tool.support?.status ? `<span>${this.escapeHtml(tool.support.status)}</span>` : ''}
+                            ${params.length ? `<span>${this.escapeHtml(params.slice(0, 5).join(', '))}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="cli-menu-card__actions">
+                        <button type="button" data-menu-view="tool-run" data-menu-value="${this.escapeHtmlAttr(tool.id)}" onclick="app.openCliMenuButton(this)">Run</button>
+                        <button type="button" data-menu-view="tool-help" data-menu-value="${this.escapeHtmlAttr(tool.id)}" onclick="app.openCliMenuButton(this)">Help</button>
+                    </div>
+                </article>
+            `;
+        }).join('');
+
+        return `
+            <div class="cli-menu-panel">
+                <div class="cli-menu-panel__intro">
+                    <span class="cli-menu-panel__icon">T</span>
+                    <div>
+                        <strong>Backend Tools</strong>
+                        <p>Choose a tool, inspect its docs, or open a parameter form without retyping slash commands.</p>
+                    </div>
+                </div>
+                ${runtimeMarkup}
+                ${this.renderToolCategoryChips(tools, activeCategory)}
+                <div class="cli-menu-card-list">${cards}</div>
+            </div>
+        `;
+    }
+
+    getToolPropertyEntries(tool = {}) {
+        const properties = tool.inputSchema?.properties || {};
+        const schemaEntries = Object.entries(properties);
+        if (schemaEntries.length) {
+            return schemaEntries.map(([name, schema]) => [name, schema || {}]);
+        }
+
+        const parameters = Array.isArray(tool.parameters) ? tool.parameters : [];
+        return parameters
+            .map((param) => {
+                if (typeof param === 'string') {
+                    return [param, { type: 'string' }];
+                }
+                return [param?.name, param || {}];
+            })
+            .filter(([name]) => Boolean(name));
+    }
+
+    renderToolField(name = '', schema = {}, required = false) {
+        const type = String(schema.type || 'string').toLowerCase();
+        const description = schema.description || schema.title || '';
+        const placeholder = name === 'prompt'
+            ? 'Describe the result you want...'
+            : (schema.default != null ? String(schema.default) : type);
+        if (type === 'boolean') {
+            return `
+                <label class="cli-menu-field cli-menu-field--checkbox">
+                    <input type="checkbox" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}">
+                    <span>${this.escapeHtml(name)}${required ? ' *' : ''}</span>
+                </label>
+            `;
+        }
+        const tag = /prompt|content|body|command|query|text|task/i.test(name) ? 'textarea' : 'input';
+        const control = tag === 'textarea'
+            ? `<textarea rows="3" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" placeholder="${this.escapeHtmlAttr(placeholder)}"></textarea>`
+            : `<input type="${type === 'number' || type === 'integer' ? 'number' : 'text'}" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" placeholder="${this.escapeHtmlAttr(placeholder)}">`;
+        return `
+            <label class="cli-menu-field">
+                <span>${this.escapeHtml(name)}${required ? ' *' : ''}</span>
+                ${control}
+                ${description ? `<small>${this.escapeHtml(description)}</small>` : ''}
+            </label>
+        `;
+    }
+
+    async printToolRunPanel(toolId = '') {
+        const tool = await this.getToolCatalogEntry(toolId);
+        if (!tool) {
+            this.printWarning(`Tool not found: ${toolId}`);
+            return;
+        }
+
+        const required = new Set(tool.inputSchema?.required || []);
+        const fields = this.getToolPropertyEntries(tool);
+        const fieldMarkup = fields.length
+            ? fields.map(([name, schema]) => this.renderToolField(name, schema, required.has(name))).join('')
+            : `
+                <label class="cli-menu-field">
+                    <span>JSON parameters</span>
+                    <textarea rows="5" name="jsonParams" placeholder='{"query":"..."}'></textarea>
+                    <small>This tool did not publish a parameter schema.</small>
+                </label>
+            `;
+        const body = `
+            <div class="cli-menu-panel">
+                <div class="cli-menu-panel__intro">
+                    <span class="cli-menu-panel__icon">TX</span>
+                    <div>
+                        <strong>${this.escapeHtml(tool.name || tool.id)}</strong>
+                        <code>${this.escapeHtml(tool.id)}</code>
+                        <p>${this.escapeHtml(tool.description || 'Run this backend tool.')}</p>
+                    </div>
+                </div>
+                <form class="cli-menu-form" data-tool-id="${this.escapeHtmlAttr(tool.id)}" onsubmit="app.runToolMenuForm(this); return false;">
+                    ${fieldMarkup}
+                    <div class="cli-menu-actions">
+                        <button type="submit">Run Tool</button>
+                        <button type="button" onclick="app.stageToolMenuForm(this)">Stage /tool</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        this.printCliMenuPanel(`Run Tool: ${tool.id}`, body, { meta: 'tool runner' });
+    }
+
+    collectToolMenuFormParams(form = null) {
+        const jsonParams = form?.querySelector?.('[name="jsonParams"]');
+        if (jsonParams) {
+            const rawJson = String(jsonParams.value || '').trim();
+            return rawJson ? JSON.parse(rawJson) : {};
+        }
+
+        const params = {};
+        form?.querySelectorAll?.('[data-tool-param]').forEach((field) => {
+            const name = field.dataset.toolParam;
+            const type = String(field.dataset.toolType || 'string').toLowerCase();
+            let value = field.type === 'checkbox' ? field.checked : String(field.value || '').trim();
+            if (value === '' && field.type !== 'checkbox') {
+                return;
+            }
+            if (type === 'number' || type === 'integer') {
+                value = Number(value);
+            } else if (type === 'object' || type === 'array') {
+                value = JSON.parse(value);
+            }
+            params[name] = value;
+        });
+        return params;
+    }
+
+    async runToolMenuForm(form = null) {
+        const toolId = String(form?.dataset?.toolId || '').trim();
+        if (!toolId) {
+            return;
+        }
+        let params = {};
+        try {
+            params = this.collectToolMenuFormParams(form);
+        } catch (error) {
+            this.printError(`Invalid tool parameters: ${error.message}`);
+            return;
+        }
+        this.clearCliMenuPanels();
+        await this.invokeToolCommand([toolId, JSON.stringify(params)]);
+    }
+
+    stageToolMenuForm(button = null) {
+        const form = button?.closest?.('form');
+        const toolId = String(form?.dataset?.toolId || '').trim();
+        if (!toolId) {
+            return;
+        }
+        try {
+            const params = this.collectToolMenuFormParams(form);
+            this.stageCliMenuCommandText(`/tool ${toolId} ${JSON.stringify(params)}`);
+        } catch (error) {
+            this.printError(`Invalid tool parameters: ${error.message}`);
+        }
+    }
+
+    rememberSkillCatalog(skills = []) {
+        skills.forEach((skill) => {
+            if (skill?.id) {
+                this.skillCatalogById.set(skill.id, skill);
+            }
+        });
+    }
+
+    async getSkillCatalogEntry(skillId = '') {
+        const normalizedSkillId = String(skillId || '').trim();
+        if (!normalizedSkillId) {
+            return null;
+        }
+        if (this.skillCatalogById.has(normalizedSkillId)) {
+            return this.skillCatalogById.get(normalizedSkillId);
+        }
+        const response = await api.listSkills({ search: normalizedSkillId });
+        const skills = Array.isArray(response) ? response : (response.skills || []);
+        this.rememberSkillCatalog(skills);
+        return this.skillCatalogById.get(normalizedSkillId) || skills.find((skill) => skill.id === normalizedSkillId) || null;
+    }
+
+    renderSkillsMenu(skills = [], meta = {}, search = '') {
+        const cards = skills.map((skill) => `
+            <article class="cli-menu-card">
+                <div class="cli-menu-card__main">
+                    <div class="cli-menu-card__top">
+                        <code>${this.escapeHtml(skill.id || 'skill')}</code>
+                        <strong>${this.escapeHtml(skill.name || skill.id || 'Skill')}</strong>
+                    </div>
+                    <p>${this.escapeHtml(skill.description || 'No description provided.')}</p>
+                    <div class="cli-menu-card__meta">
+                        ${Array.isArray(skill.tools) && skill.tools.length ? `<span>tools: ${this.escapeHtml(skill.tools.slice(0, 4).join(', '))}</span>` : ''}
+                    </div>
+                </div>
+                <div class="cli-menu-card__actions">
+                    <button type="button" data-menu-view="skill-use" data-menu-value="${this.escapeHtmlAttr(skill.id)}" onclick="app.openCliMenuButton(this)">Use</button>
+                    <button type="button" data-menu-view="skill" data-menu-value="${this.escapeHtmlAttr(skill.id)}" onclick="app.openCliMenuButton(this)">Open</button>
+                </div>
+            </article>
+        `).join('');
+        return `
+            <div class="cli-menu-panel">
+                <div class="cli-menu-panel__intro">
+                    <span class="cli-menu-panel__icon">K</span>
+                    <div>
+                        <strong>Registered Skills</strong>
+                        <p>Open a skill, or choose Use to fill a task prompt beside the selected skill.</p>
+                    </div>
+                </div>
+                <form class="cli-menu-search" onsubmit="app.searchSkillsMenu(this); return false;">
+                    <input name="search" value="${this.escapeHtmlAttr(search)}" placeholder="Search skills">
+                    <button type="submit">Search</button>
+                </form>
+                ${meta.root ? `<div class="cli-menu-runtime"><span>Location</span><strong>${this.escapeHtml(meta.root)}</strong></div>` : ''}
+                <div class="cli-menu-card-list">${cards}</div>
+            </div>
+        `;
+    }
+
+    async searchSkillsMenu(form = null) {
+        const query = String(form?.querySelector?.('[name="search"]')?.value || '').trim();
+        await this.navigateCliMenu('skills', query, { push: true });
+    }
+
+    async printSkillUsePanel(skillId = '') {
+        const skill = await this.getSkillCatalogEntry(skillId);
+        if (!skill) {
+            this.printWarning(`Skill not found: ${skillId}`);
+            return;
+        }
+        const body = `
+            <div class="cli-menu-panel">
+                <div class="cli-menu-panel__intro">
+                    <span class="cli-menu-panel__icon">KS</span>
+                    <div>
+                        <strong>${this.escapeHtml(skill.name || skill.id)}</strong>
+                        <code>${this.escapeHtml(skill.id)}</code>
+                        <p>${this.escapeHtml(skill.description || 'Use this skill with a task prompt.')}</p>
+                    </div>
+                </div>
+                <form class="cli-menu-form" data-skill-id="${this.escapeHtmlAttr(skill.id)}" onsubmit="app.runSkillPromptForm(this); return false;">
+                    <label>
+                        <span>Task prompt</span>
+                        <textarea name="prompt" rows="4" placeholder="Describe what you want this skill to do..."></textarea>
+                    </label>
+                    <div class="cli-menu-actions">
+                        <button type="submit">Run Prompt</button>
+                        <button type="button" onclick="app.stageSkillPromptForm(this)">Stage Prompt</button>
+                        <button type="button" onclick="app.stageCliMenuCommandText('/skill ${this.escapeHtmlAttr(skill.id)}')">Stage /skill</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        this.printCliMenuPanel(`Use Skill: ${skill.id}`, body, { meta: 'skill prompt' });
+    }
+
+    getSkillPromptFromForm(form = null) {
+        const skillId = String(form?.dataset?.skillId || '').trim();
+        const prompt = String(form?.querySelector?.('[name="prompt"]')?.value || '').trim();
+        return prompt
+            ? `Use the ${skillId} skill for this task: ${prompt}`
+            : `Use the ${skillId} skill for this task: `;
+    }
+
+    runSkillPromptForm(form = null) {
+        const prompt = this.getSkillPromptFromForm(form).trim();
+        if (!prompt.endsWith(':')) {
+            this.clearCliMenuPanels();
+            this.setCommandInputValue(prompt);
+            this.sendCommand();
+            return;
+        }
+        this.stageCliMenuCommandText(prompt);
+    }
+
+    stageSkillPromptForm(button = null) {
+        this.stageCliMenuCommandText(this.getSkillPromptFromForm(button?.closest?.('form')));
+    }
+
     updateCommandAssist(command = null, options = {}) {
         if (!this.commandAssist) {
             return;
@@ -6680,17 +7297,18 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             }));
     }
 
-    renderHelpCommandMenu() {
-        const groups = this.getHelpCommandGroups();
+    renderHelpCommandMenu(activeCategory = '') {
+        const groups = this.getHelpCommandGroups()
+            .filter((group) => !activeCategory || group.category === activeCategory);
         const groupsMarkup = groups.map((group) => `
             <section class="cli-help-group" aria-label="${this.escapeHtmlAttr(group.category)} commands">
-                <h3>${this.escapeHtml(group.category)}</h3>
+                <div class="cli-help-group__head">
+                    <h3>${this.escapeHtml(group.category)}</h3>
+                    ${activeCategory ? '' : `<button type="button" data-menu-view="category" data-menu-value="${this.escapeHtmlAttr(group.category)}" onclick="app.openCliMenuButton(this)">Open</button>`}
+                </div>
                 <div class="cli-help-command-list">
                     ${group.commands.map((command) => {
-                        const value = String(command.template || command.command || '').trimEnd();
-                        const stagedValue = command.requiresInput || command.arguments
-                            ? `${value}${value.endsWith(' ') ? '' : ' '}`
-                            : value;
+                        const target = this.getCommandMenuTarget(command);
                         const aliasText = Array.isArray(command.aliases) && command.aliases.length > 0
                             ? `aliases: ${command.aliases.join(', ')}`
                             : '';
@@ -6699,9 +7317,10 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                                 type="button"
                                 class="cli-help-command"
                                 data-command-id="${this.escapeHtmlAttr(command.id || command.command)}"
-                                data-command-value="${this.escapeHtmlAttr(stagedValue)}"
-                                onclick="app.useHelpCommandButton(this)"
-                                title="Fill ${this.escapeHtmlAttr(stagedValue)}"
+                                data-menu-view="${this.escapeHtmlAttr(target.view)}"
+                                data-menu-value="${this.escapeHtmlAttr(target.value)}"
+                                onclick="app.openCliMenuButton(this)"
+                                title="Open ${this.escapeHtmlAttr(command.label || command.command)}"
                             >
                                 <span class="cli-help-command__prompt" aria-hidden="true">$</span>
                                 <span class="cli-help-command__main">
@@ -6726,7 +7345,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
             <div class="cli-help-menu">
                 <div class="cli-help-menu__intro">
                     <strong>Current agent commands.</strong>
-                    <span>Click a row to stage a supported command, then press Enter or add the requested details.</span>
+                    <span>Click a row to open a focused runner, sub-menu, or prompt form. Only one menu stays open at a time.</span>
                 </div>
                 ${groupsMarkup}
                 <div class="cli-help-menu__footer">
@@ -6736,47 +7355,25 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         `;
     }
 
-    printHelp() {
-        const line = document.createElement('div');
-        line.className = 'line line-output ai';
-        const helpBody = this.renderHelpCommandMenu();
-        if (this.theme === 'voxel') {
-            line.innerHTML = `
-                <div class="voxel-response-head">
-                    <span class="voxel-response-title"><span class="voxel-response-pip" aria-hidden="true"></span>CLI Help</span>
-                    <button
-                        type="button"
-                        class="ai-response-toggle"
-                        onclick="app.toggleAIResponse(this)"
-                        title="Collapse response"
-                        aria-label="Collapse response"
-                        aria-expanded="true"
-                    >-</button>
-                    <span class="voxel-response-meta">command menu</span>
-                </div>
-                <div class="voxel-response-body">${helpBody}</div>
-            `;
-        } else {
-            line.innerHTML = `
-                <div class="cli-response-shell">
-                    <div class="cli-response-head">
-                        <button
-                            type="button"
-                            class="ai-response-toggle"
-                            onclick="app.toggleAIResponse(this)"
-                            title="Collapse response"
-                            aria-label="Collapse response"
-                            aria-expanded="true"
-                        >-</button>
-                        <span class="cli-response-title">CLI Help</span>
-                    </div>
-                    <div class="cli-response-body">${helpBody}</div>
-                </div>
-            `;
+    printHelp(options = {}) {
+        if (options.resetNavigation !== false) {
+            this.cliMenuBackStack = [];
+            this.cliMenuCurrentView = { view: 'root', value: '' };
         }
-        this.terminalOutput.appendChild(line);
-        this.finishAIContentLine(line);
-        this.scrollToBottom();
+        this.printCliMenuPanel('CLI Help', this.renderHelpCommandMenu(), { meta: 'command menu' });
+    }
+
+    printHelpCategory(category = '') {
+        const normalizedCategory = String(category || '').trim();
+        if (!normalizedCategory) {
+            this.printHelp({ resetNavigation: false });
+            return;
+        }
+        this.printCliMenuPanel(
+            `${normalizedCategory} Commands`,
+            this.renderHelpCommandMenu(normalizedCategory),
+            { meta: 'command category' }
+        );
     }
 
     printToolbeltCard() {
@@ -7458,66 +8055,32 @@ Raw expert access remains available:
         this.printError('Usage: /remote status | /remote tools | /remote plan | /remote run <command> | /remote agent <task> | /remote verify [host]');
     }
 
-    async listTools(category = null) {
+    async listTools(category = null, options = {}) {
         this.setActiveVoxelTool('tools');
+        if (!options.menu) {
+            this.cliMenuBackStack = [];
+            this.cliMenuCurrentView = { view: 'tools', value: category || '' };
+        }
         try {
             const toolResponse = await api.getAvailableTools(category);
             const tools = Array.isArray(toolResponse) ? toolResponse : (toolResponse.tools || []);
-            const runtime = toolResponse?.meta?.runtime || null;
             if (!tools.length) {
                 this.printSystem(category ? `No tools available in category "${category}".` : 'No tools are currently available.');
                 return;
             }
 
-            const lines = ['## Available Tools', ''];
-            if (runtime) {
-                const gatewayScope = runtime.modelGateway?.internalCluster ? 'internal cluster' : 'external endpoint';
-                lines.push(`Runtime source: \`${runtime.source || 'backend'}\``);
-                lines.push(`Model gateway: \`${runtime.modelGateway?.baseURL || 'unknown'}\` (${gatewayScope})`);
-                if (runtime.sshDefaults?.enabled) {
-                    const target = runtime.sshDefaults.host
-                        ? `${runtime.sshDefaults.username || 'unknown'}@${runtime.sshDefaults.host}:${runtime.sshDefaults.port || 22}`
-                        : 'not set';
-                    lines.push(`SSH defaults: source=${runtime.sshDefaults.source || 'unknown'}, target=${target}, configured=${runtime.sshDefaults.configured ? 'yes' : 'no'}`);
-                } else {
-                    lines.push('SSH defaults: disabled');
-                }
-                lines.push('');
-            }
-
-            tools.forEach((tool) => {
-                const params = Array.isArray(tool.parameters)
-                    ? tool.parameters
-                    : Object.keys(tool.inputSchema?.properties || {});
-                lines.push(`- \`${tool.id}\` (${tool.category})`);
-                lines.push(`  ${tool.description || 'No description provided.'}`);
-                if (tool.support?.status) {
-                    lines.push(`  Support: ${tool.support.status}`);
-                }
-                if (tool.runtime?.defaultTarget) {
-                    lines.push(`  Runtime: ${tool.runtime.defaultTarget} via ${tool.runtime.source || 'unknown'}`);
-                } else if (tool.runtime && Object.prototype.hasOwnProperty.call(tool.runtime, 'configured')) {
-                    lines.push(`  Runtime: configured=${tool.runtime.configured ? 'yes' : 'no'}`);
-                }
-                if (params.length) {
-                    const paramNames = Array.isArray(params)
-                        ? params.map((param) => typeof param === 'string' ? param : param.name).filter(Boolean)
-                        : [];
-                    if (paramNames.length) {
-                        lines.push(`  Params: ${paramNames.join(', ')}`);
-                    }
-                }
-            });
-            lines.push('');
-            lines.push('Usage: /tool <id> {"key":"value"}');
-            lines.push('Help: /tool-help <id>');
-            this.printAI(lines.join('\n'));
+            this.rememberToolCatalog(tools);
+            this.printCliMenuPanel(
+                category ? `Tools: ${category}` : 'Available Tools',
+                this.renderToolsMenu(tools, toolResponse?.meta || {}, category || ''),
+                { meta: 'tool catalog' }
+            );
         } catch (error) {
             this.printError(`Failed to load tools: ${error.message}`);
         }
     }
 
-    async showToolHelp(args) {
+    async showToolHelp(args, options = {}) {
         const [toolId] = args;
         if (!toolId) {
             this.printError('Usage: /tool-help <id>');
@@ -7525,10 +8088,36 @@ Raw expert access remains available:
         }
 
         this.setActiveVoxelTool('tools');
+        if (!options.menu) {
+            this.cliMenuBackStack = [];
+            this.cliMenuCurrentView = { view: 'tool-help', value: toolId };
+        }
         this.setStatus('thinking');
         try {
             const doc = await api.getToolDoc(toolId);
-            this.printAI(`## Tool Help: \`${toolId}\`\n\nSupport: \`${doc?.support?.status || 'unknown'}\`\n\n${doc?.content || 'No documentation found.'}`);
+            const tool = await this.getToolCatalogEntry(toolId).catch(() => null);
+            const body = `
+                <div class="cli-menu-panel">
+                    <div class="cli-menu-panel__intro">
+                        <span class="cli-menu-panel__icon">TD</span>
+                        <div>
+                            <strong>${this.escapeHtml(tool?.name || toolId)}</strong>
+                            <code>${this.escapeHtml(toolId)}</code>
+                            <p>${this.escapeHtml(tool?.description || 'Tool documentation and invocation guidance.')}</p>
+                        </div>
+                    </div>
+                    <div class="cli-menu-runtime">
+                        <span>Support</span>
+                        <strong>${this.escapeHtml(doc?.support?.status || tool?.support?.status || 'unknown')}</strong>
+                    </div>
+                    <div class="cli-menu-doc">${this.renderMarkdown(doc?.content || 'No documentation found.')}</div>
+                    <div class="cli-menu-actions">
+                        <button type="button" data-menu-view="tool-run" data-menu-value="${this.escapeHtmlAttr(toolId)}" onclick="app.openCliMenuButton(this)">Run Tool</button>
+                        <button type="button" onclick="app.stageCliMenuCommandText('/tool-help ${this.escapeHtmlAttr(toolId)}')">Stage /tool-help</button>
+                    </div>
+                </div>
+            `;
+            this.printCliMenuPanel(`Tool Help: ${toolId}`, body, { meta: 'tool docs' });
         } catch (error) {
             this.printError(`Tool help failed: ${error.message}`);
         } finally {
@@ -7536,8 +8125,12 @@ Raw expert access remains available:
         }
     }
 
-    async listSkills(search = '') {
+    async listSkills(search = '', options = {}) {
         this.setActiveVoxelTool('tools');
+        if (!options.menu) {
+            this.cliMenuBackStack = [];
+            this.cliMenuCurrentView = { view: 'skills', value: search || '' };
+        }
         try {
             const response = await api.listSkills({ search });
             const skills = Array.isArray(response) ? response : (response.skills || []);
@@ -7548,30 +8141,18 @@ Raw expert access remains available:
                 return;
             }
 
-            const lines = ['## Registered Skills', ''];
-            if (meta.root) {
-                lines.push(`Location: \`${meta.root}\``);
-                lines.push('');
-            }
-            skills.forEach((skill) => {
-                lines.push(`- \`${skill.id}\` - ${skill.name || skill.id}`);
-                if (skill.description) {
-                    lines.push(`  ${skill.description}`);
-                }
-                if (Array.isArray(skill.tools) && skill.tools.length > 0) {
-                    lines.push(`  Tools: ${skill.tools.map((tool) => `\`${tool}\``).join(', ')}`);
-                }
-            });
-            lines.push('');
-            lines.push('Usage: /skill <id>');
-            lines.push('Maintainer commands remain available when needed: /skill-create {...}, /skill-update <id> {...}');
-            this.printAI(lines.join('\n'));
+            this.rememberSkillCatalog(skills);
+            this.printCliMenuPanel(
+                search ? `Skills: ${search}` : 'Registered Skills',
+                this.renderSkillsMenu(skills, meta, search),
+                { meta: 'skill catalog' }
+            );
         } catch (error) {
             this.printError(`Failed to load skills: ${error.message}`);
         }
     }
 
-    async showSkill(args) {
+    async showSkill(args, options = {}) {
         const [skillId] = args;
         if (!skillId) {
             this.printError('Usage: /skill <id>');
@@ -7579,10 +8160,38 @@ Raw expert access remains available:
         }
 
         this.setActiveVoxelTool('tools');
+        if (!options.menu) {
+            this.cliMenuBackStack = [];
+            this.cliMenuCurrentView = { view: 'skill', value: skillId };
+        }
         this.setStatus('thinking');
         try {
             const skill = await api.getSkill(skillId);
-            this.printAI(`## Skill: \`${skill.id}\`\n\n${skill.description || 'No description provided.'}\n\nTools: ${(skill.tools || []).map((tool) => `\`${tool}\``).join(', ') || 'none'}\n\nTriggers: ${(skill.triggerPatterns || []).map((trigger) => `\`${trigger}\``).join(', ') || 'none'}\n\n\`\`\`markdown\n${skill.body || ''}\n\`\`\``);
+            this.rememberSkillCatalog([skill]);
+            const body = `
+                <div class="cli-menu-panel">
+                    <div class="cli-menu-panel__intro">
+                        <span class="cli-menu-panel__icon">KS</span>
+                        <div>
+                            <strong>${this.escapeHtml(skill.name || skill.id)}</strong>
+                            <code>${this.escapeHtml(skill.id)}</code>
+                            <p>${this.escapeHtml(skill.description || 'No description provided.')}</p>
+                        </div>
+                    </div>
+                    <div class="cli-menu-card__meta cli-menu-card__meta--wrap">
+                        ${(skill.tools || []).map((tool) => `<span>tool: ${this.escapeHtml(tool)}</span>`).join('') || '<span>tools: none</span>'}
+                        ${(skill.triggerPatterns || []).map((trigger) => `<span>trigger: ${this.escapeHtml(trigger)}</span>`).join('') || ''}
+                    </div>
+                    <div class="cli-menu-doc">
+                        <pre><code>${this.escapeHtml(skill.body || '')}</code></pre>
+                    </div>
+                    <div class="cli-menu-actions">
+                        <button type="button" data-menu-view="skill-use" data-menu-value="${this.escapeHtmlAttr(skill.id)}" onclick="app.openCliMenuButton(this)">Use Skill</button>
+                        <button type="button" onclick="app.stageCliMenuCommandText('/skill ${this.escapeHtmlAttr(skill.id)}')">Stage /skill</button>
+                    </div>
+                </div>
+            `;
+            this.printCliMenuPanel(`Skill: ${skill.id}`, body, { meta: 'skill detail' });
         } catch (error) {
             this.printError(`Skill read failed: ${error.message}`);
         } finally {

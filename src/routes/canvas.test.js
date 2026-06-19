@@ -99,6 +99,24 @@ describe('/api/canvas helpers', () => {
         expect(instructions).toContain('image snapshots');
     });
 
+    test('buildCanvasInstructions keeps lean Excalidraw agent instructions compact', () => {
+        const instructions = buildCanvasInstructions(
+            'diagram',
+            'surface=canvas-excalidraw\nboard=20 objects',
+            'Polish the selected objects.',
+            '',
+            { leanCanvasAgent: true },
+        );
+
+        expect(instructions).toContain('lean object-action agent');
+        expect(instructions).toContain('excalidraw-actions-v1');
+        expect(instructions).toContain('Allowed actions: add, add_many, update, update_many, delete, select');
+        expect(instructions).toContain('storyboardFrame');
+        expect(instructions).not.toContain('DEMO WEBSITE FRONTEND');
+        expect(instructions).not.toContain('<frontend_format_router>');
+        expect(instructions.length).toBeLessThan(1600);
+    });
+
     test('buildCanvasInstructions includes recursive template store guidance when provided', () => {
         const instructions = buildCanvasInstructions(
             'document',

@@ -370,6 +370,11 @@
                     <span class="key-hint">K</span>
                 </button>
             </div>
+            <div class="draw-preset-strip" aria-label="Drawing presets">
+                <button type="button" data-draw-preset="pencil">Pencil</button>
+                <button type="button" data-draw-preset="marker">Marker</button>
+                <button type="button" data-draw-preset="highlighter">Highlighter</button>
+            </div>
         </div>
 
         <!-- Content -->
@@ -439,6 +444,54 @@
     <!-- Main Canvas Container -->
     <main class="canvas-container" id="canvasContainer">
         <canvas id="canvas"></canvas>
+        <div class="canvas-command-rail" id="canvasCommandRail" aria-label="Canvas quick commands">
+            <button type="button" id="canvasCommandBtn" class="canvas-command-btn" aria-haspopup="dialog" aria-expanded="false" title="Open commands (Ctrl+K)">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path fill="currentColor" d="M12 2l1.6 5.3L19 9l-5.4 1.7L12 16l-1.6-5.3L5 9l5.4-1.7L12 2zm6 12l.8 2.7L22 18l-3.2 1.3L18 22l-.8-2.7L14 18l3.2-1.3L18 14z"/>
+                </svg>
+                <span>Commands</span>
+                <kbd>Ctrl K</kbd>
+            </button>
+            <button type="button" class="canvas-rail-action" data-command-shortcut="ai" title="Ask Canvas AI">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path fill="currentColor" d="M4 4h16v12H8l-4 4V4zm4 5h8V7H8v2zm0 4h5v-2H8v2z"/>
+                </svg>
+            </button>
+            <button type="button" class="canvas-rail-action" data-command-shortcut="scene" title="Add scene pack">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path fill="currentColor" d="M3 5h18v14H3V5zm2 2v10h14V7H5zm2 2h5v3H7V9zm7 0h3v6h-3V9z"/>
+                </svg>
+            </button>
+            <button type="button" class="canvas-rail-action" data-command-shortcut="connect" title="Connect selected">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 7h5m2 10h5M11 7c4 0 2 10 6 10"/>
+                    <circle cx="5" cy="7" r="2" fill="currentColor"/>
+                    <circle cx="19" cy="17" r="2" fill="currentColor"/>
+                </svg>
+            </button>
+        </div>
+        <div class="canvas-command-palette" id="canvasCommandPalette" role="dialog" aria-modal="false" aria-labelledby="canvasCommandTitle" hidden>
+            <div class="canvas-command-shell">
+                <div class="canvas-command-header">
+                    <div>
+                        <span>Canvas Actions</span>
+                        <strong id="canvasCommandTitle">Create, connect, and ask AI</strong>
+                    </div>
+                    <button type="button" id="canvasCommandClose" aria-label="Close commands">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                            <path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1.41 1.41L10.59 13.41 4.29 19.7 2.88 18.29 9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.3-6.29z"/>
+                        </svg>
+                    </button>
+                </div>
+                <label class="canvas-command-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <path fill="currentColor" d="M9.5 3a6.5 6.5 0 0 1 5.16 10.45l4.44 4.45-1.4 1.4-4.45-4.44A6.5 6.5 0 1 1 9.5 3zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/>
+                    </svg>
+                    <input id="canvasCommandSearch" type="search" autocomplete="off" placeholder="Search commands">
+                </label>
+                <div class="canvas-command-list" id="canvasCommandList" role="listbox" aria-label="Available canvas commands"></div>
+            </div>
+        </div>
         <!-- Selection Box (created dynamically) -->
         <div class="selection-box" id="selectionBox" style="display: none;">
             <div class="resize-handle nw"></div>
@@ -508,7 +561,13 @@
         <div class="panel-header">
             <h3>Properties</h3>
         </div>
-        <div class="panel-content">
+        <nav class="canvas-panel-tabs" aria-label="Canvas side panel">
+            <button class="canvas-panel-tab active" type="button" data-canvas-panel-tab="inspector" aria-pressed="true">Inspect</button>
+            <button class="canvas-panel-tab" type="button" data-canvas-panel-tab="objects" aria-pressed="false">Objects</button>
+            <button class="canvas-panel-tab" type="button" data-canvas-panel-tab="creative" aria-pressed="false">Create</button>
+            <button class="canvas-panel-tab" type="button" data-canvas-panel-tab="library" aria-pressed="false">Blocks</button>
+        </nav>
+        <div class="panel-content canvas-panel-view active" data-canvas-panel="inspector">
             <!-- Grid Snap Toggle -->
             <div class="property-group">
                 <button id="snapToGridBtn" class="action-btn" title="Toggle Grid Snapping">
@@ -519,21 +578,90 @@
                 </button>
             </div>
 
+            <div class="property-group color-studio" id="colorStudio">
+                <div class="color-studio-header">
+                    <div>
+                        <label>Color Studio</label>
+                        <span>Apply readable stroke and fill pairs fast.</span>
+                    </div>
+                    <button type="button" class="color-studio-swap" id="colorStudioSwap" title="Swap stroke and fill">Swap</button>
+                </div>
+                <div class="color-studio-current" aria-label="Current color pair">
+                    <span class="color-studio-chip">
+                        <span id="colorStudioStrokePreview" class="color-studio-swatch" style="background:#000000;"></span>
+                        Stroke
+                    </span>
+                    <span class="color-studio-chip">
+                        <span id="colorStudioFillPreview" class="color-studio-swatch transparent"></span>
+                        Fill
+                    </span>
+                </div>
+                <div class="color-studio-custom">
+                    <label>
+                        <span>Stroke</span>
+                        <input type="color" id="colorStudioStrokeInput" value="#000000" aria-label="Custom stroke color">
+                    </label>
+                    <label>
+                        <span>Fill</span>
+                        <input type="color" id="colorStudioFillInput" value="#ffffff" aria-label="Custom fill color">
+                    </label>
+                    <button type="button" id="colorStudioClearFill">Clear fill</button>
+                </div>
+                <div class="color-preset-grid" id="colorPresetGrid" aria-label="Color presets">
+                    <button type="button" class="color-preset-btn" data-stroke="#1f2937" data-fill="#f8fafc" title="Ink on paper">
+                        <span class="preset-pair"><span style="background:#1f2937;"></span><span style="background:#f8fafc;"></span></span>
+                        <strong>Paper</strong>
+                    </button>
+                    <button type="button" class="color-preset-btn" data-stroke="#075985" data-fill="#e0f2fe" title="System blue">
+                        <span class="preset-pair"><span style="background:#075985;"></span><span style="background:#e0f2fe;"></span></span>
+                        <strong>Flow</strong>
+                    </button>
+                    <button type="button" class="color-preset-btn" data-stroke="#166534" data-fill="#dcfce7" title="Approved green">
+                        <span class="preset-pair"><span style="background:#166534;"></span><span style="background:#dcfce7;"></span></span>
+                        <strong>Go</strong>
+                    </button>
+                    <button type="button" class="color-preset-btn" data-stroke="#92400e" data-fill="#fef3c7" title="Decision amber">
+                        <span class="preset-pair"><span style="background:#92400e;"></span><span style="background:#fef3c7;"></span></span>
+                        <strong>Decide</strong>
+                    </button>
+                    <button type="button" class="color-preset-btn" data-stroke="#9f1239" data-fill="#ffe4e6" title="Risk rose">
+                        <span class="preset-pair"><span style="background:#9f1239;"></span><span style="background:#ffe4e6;"></span></span>
+                        <strong>Risk</strong>
+                    </button>
+                    <button type="button" class="color-preset-btn" data-stroke="#5b21b6" data-fill="#ede9fe" title="AI purple">
+                        <span class="preset-pair"><span style="background:#5b21b6;"></span><span style="background:#ede9fe;"></span></span>
+                        <strong>AI</strong>
+                    </button>
+                    <button type="button" class="color-preset-btn" data-stroke="#0f766e" data-fill="#ccfbf1" title="Audio teal">
+                        <span class="preset-pair"><span style="background:#0f766e;"></span><span style="background:#ccfbf1;"></span></span>
+                        <strong>Audio</strong>
+                    </button>
+                    <button type="button" class="color-preset-btn" data-stroke="#334155" data-fill="transparent" title="Transparent fill">
+                        <span class="preset-pair"><span style="background:#334155;"></span><span class="transparent"></span></span>
+                        <strong>Clear</strong>
+                    </button>
+                </div>
+            </div>
+
             <!-- Stroke Color Section -->
-            <div class="property-group">
-                <label>Stroke</label>
-                <div class="color-section expanded" data-target="stroke" id="strokeColorSection">
-                    <div class="color-section-header" onclick="this.parentElement.classList.toggle('expanded')">
+            <div class="property-group advanced-color-group">
+                <label>Advanced Stroke</label>
+                <div class="color-section" data-target="stroke" id="strokeColorSection">
+                    <button type="button" class="color-section-header" data-color-section-toggle="strokeColorSection" aria-expanded="false">
                         <span class="section-title">
                             <svg viewBox="0 0 24 24" width="14" height="14">
                                 <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
                             </svg>
-                            Choose Stroke Color
+                            Palettes and history
+                        </span>
+                        <span class="color-section-current" aria-hidden="true">
+                            <span id="strokeColorPreview" class="color-current-swatch" style="background: #000000;"></span>
+                            <span class="color-current-label">Open</span>
                         </span>
                         <svg class="toggle-icon" viewBox="0 0 24 24" width="16" height="16">
                             <path fill="currentColor" d="M7 10l5 5 5-5z"/>
                         </svg>
-                    </div>
+                    </button>
                     <div class="color-section-content">
                         <!-- Quick Colors -->
                         <div class="color-picker" id="strokeColorPicker">
@@ -655,20 +783,24 @@
             </div>
 
             <!-- Background Color Section -->
-            <div class="property-group">
-                <label>Background</label>
-                <div class="color-section expanded" data-target="background" id="backgroundColorSection">
-                    <div class="color-section-header" onclick="this.parentElement.classList.toggle('expanded')">
+            <div class="property-group advanced-color-group">
+                <label>Advanced Fill</label>
+                <div class="color-section" data-target="background" id="backgroundColorSection">
+                    <button type="button" class="color-section-header" data-color-section-toggle="backgroundColorSection" aria-expanded="false">
                         <span class="section-title">
                             <svg viewBox="0 0 24 24" width="14" height="14">
                                 <rect x="3" y="3" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"/>
                             </svg>
-                            Choose Fill Style
+                            Fill palettes, gradients, patterns
+                        </span>
+                        <span class="color-section-current" aria-hidden="true">
+                            <span id="backgroundColorPreview" class="color-current-swatch transparent"></span>
+                            <span class="color-current-label">Open</span>
                         </span>
                         <svg class="toggle-icon" viewBox="0 0 24 24" width="16" height="16">
                             <path fill="currentColor" d="M7 10l5 5 5-5z"/>
                         </svg>
-                    </div>
+                    </button>
                     <div class="color-section-content">
                         <!-- Fill Type Tabs with Previews -->
                         <div class="color-tabs bg-tabs">
@@ -700,7 +832,7 @@
                             </div>
                             
                             <!-- Extended Colors -->
-                            <div style="margin-top: 10px;">
+                            <div class="advanced-color-grid">
                                 <div class="color-picker-extended">
                                     <button class="color-btn" data-color="#ffffff" style="background: #ffffff; border: 1px solid var(--border-color);" title="White"><span class="color-checkmark dark">✓</span></button>
                                     <button class="color-btn" data-color="#f8f9fa" style="background: #f8f9fa; border: 1px solid var(--border-color);" title="Gray 50"><span class="color-checkmark dark">✓</span></button>
@@ -1163,6 +1295,245 @@
                 <button id="sendToBackBtn" class="action-btn">Send to Back</button>
             </div>
         </div>
+        <div class="panel-content canvas-panel-view" data-canvas-panel="objects" hidden>
+            <div class="canvas-rail-intro">
+                <strong>Board Objects</strong>
+                <span id="objectLibrarySummary">No objects yet</span>
+            </div>
+            <div class="object-library-actions">
+                <button type="button" class="action-btn" data-object-action="save-board">Save named board</button>
+                <button type="button" class="action-btn" data-object-action="save-checkpoint">Save board checkpoint</button>
+                <button type="button" class="action-btn" data-object-action="select-all">Select all</button>
+                <button type="button" class="action-btn" data-object-action="duplicate-selection">Duplicate selection</button>
+            </div>
+            <div class="board-shelf" id="boardShelf">
+                <div class="board-shelf-header">
+                    <div>
+                        <strong>Saved Boards</strong>
+                        <span id="boardShelfSummary">No saved boards yet</span>
+                    </div>
+                    <button type="button" data-board-shelf-action="save-current">Save</button>
+                </div>
+                <div class="board-shelf-list" id="boardShelfList">
+                    <div class="board-shelf-empty">Save named boards here, then restore, duplicate, or export them later.</div>
+                </div>
+            </div>
+            <div class="object-browser-tools">
+                <label class="object-search">
+                    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M9.5 3a6.5 6.5 0 0 1 5.16 10.45l4.44 4.45-1.4 1.4-4.45-4.44A6.5 6.5 0 1 1 9.5 3zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/>
+                    </svg>
+                    <input id="objectLibrarySearch" type="search" placeholder="Find objects" autocomplete="off">
+                </label>
+                <div class="object-filter-chips" id="objectFilterChips" aria-label="Filter objects">
+                    <button type="button" class="active" data-object-filter="all">All</button>
+                    <button type="button" data-object-filter="drawing">Draw</button>
+                    <button type="button" data-object-filter="production">Media</button>
+                    <button type="button" data-object-filter="diagram">Diagram</button>
+                </div>
+            </div>
+            <div class="object-library-list" id="objectLibraryList">
+                <div class="object-library-empty">Create shapes, frames, audio cues, storyboard panels, or AI diagrams and they will appear here.</div>
+            </div>
+        </div>
+        <div class="panel-content canvas-panel-view" data-canvas-panel="creative" hidden>
+            <div class="canvas-rail-intro">
+                <strong>Creative Studio</strong>
+                <span>Storyboard, motion, audio, diagrams, and AI composition blocks.</span>
+            </div>
+            <div class="production-timeline" id="productionTimeline">
+                <div class="production-timeline-header">
+                    <div>
+                        <strong>Production Timeline</strong>
+                        <span id="productionTimelineSummary">No scenes yet</span>
+                    </div>
+                    <button type="button" class="action-btn" data-timeline-action="play">Play</button>
+                </div>
+                <div class="production-transport" id="productionTransport">
+                    <button type="button" data-timeline-action="prev" id="timelinePrevBtn" aria-label="Previous cue">Prev</button>
+                    <button type="button" data-timeline-action="play" id="timelinePlayBtn">Play</button>
+                    <button type="button" data-timeline-action="stop" id="timelineStopBtn">Stop</button>
+                    <span id="timelineCurrentTime">0:00</span>
+                    <div class="timeline-progress" aria-hidden="true">
+                        <span id="timelineProgressFill"></span>
+                    </div>
+                    <span id="timelineDuration">0:00</span>
+                    <button type="button" data-timeline-action="next" id="timelineNextBtn" aria-label="Next cue">Next</button>
+                </div>
+                <div class="timeline-preview-stage" id="timelinePreviewStage" aria-live="polite">
+                    <div class="timeline-preview-empty">Add cues to preview a scene, motion beat, or audio moment.</div>
+                </div>
+                <div class="production-timeline-list" id="productionTimelineList">
+                    <div class="production-timeline-empty">Add storyboard, animation, or audio cues to build a sequence.</div>
+                </div>
+                <div class="timeline-cue-editor" id="timelineCueEditor" hidden>
+                    <div class="timeline-cue-editor-header">
+                        <strong>Edit selected cue</strong>
+                        <span id="timelineCueType">No cue selected</span>
+                    </div>
+                    <label>
+                        <span>Title</span>
+                        <input type="text" data-timeline-field="title" id="timelineCueTitle" maxlength="96">
+                    </label>
+                    <div class="timeline-cue-grid">
+                        <label>
+                            <span>Start</span>
+                            <input type="number" data-timeline-field="startTime" id="timelineCueStart" min="0" step="0.25">
+                        </label>
+                        <label>
+                            <span>Duration</span>
+                            <input type="number" data-timeline-field="durationSeconds" id="timelineCueDuration" min="0.25" step="0.25">
+                        </label>
+                    </div>
+                    <label>
+                        <span>Notes</span>
+                        <textarea data-timeline-field="text" id="timelineCueNote" rows="3"></textarea>
+                    </label>
+                    <div class="timeline-cue-extra" id="timelineAnimationControls" hidden>
+                        <label>
+                            <span>Motion preset</span>
+                            <select data-timeline-field="motionPreset" id="timelineMotionPreset">
+                                <option value="ease">Ease</option>
+                                <option value="cut">Cut</option>
+                                <option value="push">Push</option>
+                                <option value="zoom">Zoom</option>
+                                <option value="fade">Fade</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="timeline-cue-extra" id="timelineAudioControls" hidden>
+                        <div class="timeline-audio-meta" id="timelineAudioMeta">No audio file attached</div>
+                        <div class="timeline-audio-actions">
+                            <button type="button" data-timeline-extra-action="play-audio">Play cue</button>
+                            <button type="button" data-timeline-extra-action="replace-audio">Replace audio</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mermaid-object-editor" id="mermaidObjectEditor" hidden>
+                <div class="mermaid-object-editor-header">
+                    <div>
+                        <strong>Selected Mermaid</strong>
+                        <span id="mermaidObjectSummary">No diagram selected</span>
+                    </div>
+                </div>
+                <label>
+                    <span>Source</span>
+                    <textarea id="selectedMermaidSource" rows="7" spellcheck="false"></textarea>
+                </label>
+                <div class="mermaid-object-actions">
+                    <button type="button" data-mermaid-object-action="save">Save source</button>
+                    <button type="button" data-mermaid-object-action="render">Render to objects</button>
+                </div>
+            </div>
+            <div class="connection-builder" id="connectionBuilder">
+                <div class="connection-builder-header">
+                    <div>
+                        <strong>Connection Builder</strong>
+                        <span id="connectionBuilderSummary">Select two or more objects.</span>
+                    </div>
+                    <button type="button" class="action-btn" data-creative-action="connect">Connect</button>
+                </div>
+                <div class="connection-builder-controls">
+                    <label>
+                        <span>Mode</span>
+                        <select id="connectionModeSelect">
+                            <option value="chain">Chain selected</option>
+                            <option value="star">First to all</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Label</span>
+                        <input type="text" id="connectionLabelInput" maxlength="42" placeholder="optional">
+                    </label>
+                </div>
+            </div>
+            <div class="creative-action-grid">
+                <button type="button" class="creative-action-card" data-creative-action="storyboard">
+                    <strong>Storyboard frame</strong>
+                    <span>Frame a scene with shot notes and visual space.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="animation">
+                    <strong>Animation beat</strong>
+                    <span>Add timing, action, and transition notes.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="audio">
+                    <strong>Audio cue</strong>
+                    <span>Mark voice, music, effects, or ambience.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="audio-import">
+                    <strong>Import audio</strong>
+                    <span>Add a track cue with name, duration, and waveform.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="mermaid">
+                    <strong>Mermaid diagram</strong>
+                    <span>Place editable diagram source on the board.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="mermaid-render">
+                    <strong>Mermaid to objects</strong>
+                    <span>Convert simple Mermaid flow lines into editable boxes.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="connect">
+                    <strong>Connect selected</strong>
+                    <span>Draw smart arrows through selected objects.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="ai-brief">
+                    <strong>Ask AI to compose</strong>
+                    <span>Open the agent with board-aware creative prompts.</span>
+                </button>
+            </div>
+            <div class="creative-prompt-box">
+                <label for="creativePromptInput">AI canvas direction</label>
+                <textarea id="creativePromptInput" rows="5" placeholder="Example: storyboard a 20-second product reveal with three scenes, camera motion, music cue, and editable diagram labels."></textarea>
+                <button type="button" class="ai-generate-btn" data-creative-action="ai-prompt">Send to Canvas AI</button>
+            </div>
+            <div class="creative-prompt-box">
+                <label for="mermaidSourceInput">Mermaid source</label>
+                <textarea id="mermaidSourceInput" rows="6" spellcheck="false">flowchart TD
+  Idea --> Draft
+  Draft --> Review
+  Review --> Ship</textarea>
+                <button type="button" class="ai-generate-btn" data-creative-action="mermaid-render">Create editable flow</button>
+            </div>
+            <input type="file" id="canvasAudioInput" accept="audio/*" hidden>
+            <input type="file" id="selectedAudioInput" accept="audio/*" hidden>
+        </div>
+        <div class="panel-content canvas-panel-view" data-canvas-panel="library" hidden>
+            <div class="canvas-rail-intro">
+                <strong>Reusable Blocks</strong>
+                <span>Drop structured starting points onto the canvas.</span>
+            </div>
+            <div class="creative-action-grid">
+                <button type="button" class="creative-action-card" data-creative-action="journey-map">
+                    <strong>Journey map</strong>
+                    <span>Stages, user actions, emotions, and opportunities.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="system-flow">
+                    <strong>System flow</strong>
+                    <span>Boxes, connectors, risks, and decision points.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="scene-pack">
+                    <strong>Scene pack</strong>
+                    <span>Three storyboard frames with audio and motion cues.</span>
+                </button>
+                <button type="button" class="creative-action-card" data-creative-action="empty-frame">
+                    <strong>Blank production frame</strong>
+                    <span>Large framed area for drawing or import work.</span>
+                </button>
+            </div>
+            <div class="saved-block-shelf" id="savedBlockShelf">
+                <div class="saved-block-header">
+                    <div>
+                        <strong>Saved Blocks</strong>
+                        <span id="savedBlockSummary">No saved blocks yet</span>
+                    </div>
+                    <button type="button" data-saved-block-action="save-selection">Save selection</button>
+                </div>
+                <div class="saved-block-list" id="savedBlockList">
+                    <div class="saved-block-empty">Select drawings, frames, or diagram pieces and save them as reusable blocks.</div>
+                </div>
+            </div>
+        </div>
     </aside>
 
     <!-- Bottom Controls -->
@@ -1248,7 +1619,7 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px; vertical-align: middle;">
                     <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                Canvas Agent
+                Canvas AI
             </h3>
             <button class="close-btn" id="closeAiPanel">
                 <svg viewBox="0 0 24 24" width="18" height="18">
@@ -1256,40 +1627,37 @@
                 </svg>
             </button>
         </div>
-        <div class="ai-panel-content">
-            <!-- Mode Toggle -->
-            <div class="ai-mode-toggle">
-                <button class="ai-mode-btn active" id="chatModeBtn" data-mode="chat">
-                    <svg viewBox="0 0 24 24" width="16" height="16" style="margin-right: 6px; vertical-align: middle;">
+        <div class="ai-panel-content ai-panel-content--lean">
+            <div class="ai-mode-toggle" aria-label="Canvas AI mode">
+                <button class="ai-mode-btn active" id="chatModeBtn" data-mode="chat" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path fill="currentColor" d="M4 4h16v12H7l-3 3V4z"/>
                     </svg>
                     Talk
                 </button>
-                <button class="ai-mode-btn" id="diagramModeBtn" data-mode="diagram">
-                    <svg viewBox="0 0 24 24" width="16" height="16" style="margin-right: 6px; vertical-align: middle;">
+                <button class="ai-mode-btn" id="diagramModeBtn" data-mode="diagram" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path fill="currentColor" d="M3 3h18v18H3V3zm16 16V5H5v14h14zM7 7h4v4H7V7zm0 6h4v4H7v-4zm6-6h4v4h-4V7zm0 6h4v4h-4v-4z"/>
                     </svg>
-                    Build Objects
+                    Objects
                 </button>
-                <button class="ai-mode-btn" id="imageModeBtn" data-mode="image">
-                    <svg viewBox="0 0 24 24" width="16" height="16" style="margin-right: 6px; vertical-align: middle;">
+                <button class="ai-mode-btn" id="imageModeBtn" data-mode="image" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
                     </svg>
-                    Image Asset
+                    Image
                 </button>
             </div>
-            
-            <p class="ai-description">Chat with the canvas agent about the current board, then ask it to make changes.</p>
 
-            <div class="ai-grounding-panel" id="aiGroundingPanel">
+            <div class="ai-grounding-panel ai-grounding-panel--lean" id="aiGroundingPanel">
                 <div class="ai-grounding-header">
                     <div>
-                        <span class="ai-grounding-kicker">Grounding</span>
+                        <span class="ai-grounding-kicker">Lean Context</span>
                         <strong id="aiGroundingTitle">Whole board</strong>
                     </div>
                     <span class="ai-grounding-pill" id="aiGroundingState">0 selected</span>
                 </div>
-                <div class="ai-grounding-grid">
+                <div class="ai-lean-metrics">
                     <label>
                         <span>Scope</span>
                         <select id="aiScopeSelect" class="ai-select">
@@ -1299,385 +1667,129 @@
                             <option value="viewport">Visible area</option>
                         </select>
                     </label>
-                    <div class="ai-grounding-fact">
+                    <div>
                         <span>Board</span>
                         <strong id="aiBoardSummary">0 objects</strong>
                     </div>
-                    <div class="ai-grounding-fact">
+                    <div>
                         <span>Selection</span>
                         <strong id="aiSelectionSummary">None</strong>
                     </div>
-                    <div class="ai-grounding-fact">
-                        <span>Apply</span>
-                        <strong id="aiApplySummary">Actions + messages</strong>
-                    </div>
-                    <div class="ai-grounding-fact">
-                        <span>State</span>
-                        <strong id="aiStateSummary">Local draft</strong>
-                    </div>
                 </div>
-                <div class="ai-grounding-actions">
-                    <button type="button" class="ai-context-btn" data-ai-context-prompt="What is selected and what should I improve first?">Inspect selection</button>
-                    <button type="button" class="ai-context-btn" data-ai-local-action="tidy-selection">Tidy layout</button>
-                    <button type="button" class="ai-context-btn" data-ai-local-action="connect-selection">Connect</button>
-                    <button type="button" class="ai-context-btn" data-ai-local-action="frame-selection">Frame</button>
+                <div class="ai-lean-hidden-facts" aria-hidden="true">
+                    <strong id="aiApplySummary">Editable actions</strong>
+                    <strong id="aiStateSummary">Local draft</strong>
+                    <strong id="aiToolPlanSummary">Editable object actions</strong>
+                    <strong id="aiToolPlanPill">Object-first</strong>
                 </div>
             </div>
 
-            <div class="ai-workset-deck" id="aiWorkSetDeck">
-                <div class="ai-workset-header">
-                    <span class="ai-grounding-kicker">Work Sets</span>
-                    <strong id="aiWorkSetSummary">No saved sets</strong>
-                </div>
-                <div class="ai-workset-actions">
-                    <button type="button" class="ai-context-btn" data-ai-workset-action="save">Save selection</button>
-                </div>
-                <div class="ai-workset-list" id="aiWorkSetList">
-                    <div class="ai-workset-empty">Save a selection to reuse it later.</div>
-                </div>
+            <div class="ai-quick-actions" aria-label="Canvas quick actions">
+                <button type="button" class="ai-context-btn" data-ai-context-prompt="What is selected and what should I improve first?">Inspect</button>
+                <button type="button" class="ai-context-btn" data-ai-local-action="tidy-selection">Tidy</button>
+                <button type="button" class="ai-context-btn" data-ai-local-action="connect-selection">Connect</button>
+                <button type="button" class="ai-context-btn" data-ai-local-action="frame-selection">Frame</button>
             </div>
 
-            <div class="ai-checkpoint-deck" id="aiCheckpointDeck">
-                <div class="ai-checkpoint-header">
-                    <span class="ai-grounding-kicker">Checkpoints</span>
-                    <strong id="aiCheckpointSummary">No checkpoints</strong>
-                </div>
-                <div class="ai-checkpoint-actions">
-                    <button type="button" class="ai-context-btn" data-ai-checkpoint-action="save">Save checkpoint</button>
-                </div>
-                <div class="ai-checkpoint-list" id="aiCheckpointList">
-                    <div class="ai-checkpoint-empty">Save a board checkpoint before a risky edit.</div>
-                </div>
+            <div class="ai-prompt-stack">
+                <textarea id="aiInput" placeholder="Ask for a critique, or build editable boxes, arrows, storyboard frames, audio cues, and labels."></textarea>
+                <button id="aiGenerateBtn" class="ai-generate-btn" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <path fill="currentColor" d="M12 2 4 20l8-4 8 4L12 2zm0 4.8 3.8 8.6-3.8-1.9-3.8 1.9L12 6.8z"/>
+                    </svg>
+                    Send
+                </button>
             </div>
 
-            <div class="ai-brief-deck" id="aiBriefDeck">
-                <div class="ai-brief-header">
-                    <span class="ai-grounding-kicker">Board Brief</span>
-                    <strong id="aiBriefSummary">No board content</strong>
-                </div>
-                <div class="ai-brief-list" id="aiBriefList">
-                    <div class="ai-brief-empty">Build or select objects to prepare a handoff brief.</div>
-                </div>
-                <div class="ai-brief-actions">
-                    <button type="button" class="ai-context-btn" data-ai-brief-action="copy">Copy brief</button>
-                    <button type="button" class="ai-context-btn" data-ai-brief-action="note">Add note</button>
-                </div>
-            </div>
-
-            <div class="ai-board-index" id="aiBoardIndex">
-                <div class="ai-board-index-header">
-                    <span class="ai-grounding-kicker">Board Index</span>
-                    <strong id="aiBoardIndexSummary">No query</strong>
-                </div>
-                <div class="ai-board-index-search">
-                    <input id="aiBoardIndexInput" type="search" placeholder="Find text, type, or id..." autocomplete="off" spellcheck="false">
-                    <button type="button" class="ai-context-btn" data-ai-board-index-action="select-all">Select all</button>
-                    <button type="button" class="ai-context-btn" data-ai-board-index-action="copy">Copy index</button>
-                    <button type="button" class="ai-context-btn" data-ai-board-index-action="clear">Clear</button>
-                </div>
-                <div class="ai-board-index-list" id="aiBoardIndexList">
-                    <div class="ai-board-index-empty">Search board objects to focus or select them.</div>
-                </div>
-            </div>
-
-            <div class="ai-board-health" id="aiBoardHealth">
-                <div class="ai-board-health-header">
-                    <div>
-                        <span class="ai-grounding-kicker">Board Intelligence</span>
-                        <strong id="aiHealthSummary">No board audit yet</strong>
-                    </div>
-                    <span class="ai-health-score" id="aiHealthScore">--</span>
-                </div>
-                <div class="ai-health-list" id="aiHealthList">
-                    <div class="ai-health-empty">Select objects or build a board to see structure signals.</div>
-                </div>
-                <div class="ai-fix-plan" id="aiFixPlan">
-                    <div class="ai-fix-plan-header">
-                        <span class="ai-grounding-kicker">Suggested Fixes</span>
-                        <strong id="aiFixSummary">No fixes queued</strong>
-                    </div>
-                    <div class="ai-fix-list" id="aiFixList">
-                        <div class="ai-health-empty">Board audit suggestions will appear here.</div>
-                    </div>
-                    <div class="ai-health-actions">
-                        <button type="button" class="ai-context-btn" data-ai-fix-action="preview">Preview plan</button>
-                        <button type="button" class="ai-context-btn" data-ai-fix-action="apply">Apply fixes</button>
-                    </div>
-                </div>
-                <div class="ai-health-actions">
-                    <button type="button" class="ai-context-btn" data-ai-health-action="refresh">Refresh audit</button>
-                    <button type="button" class="ai-context-btn" data-ai-health-action="note">Add QA note</button>
-                </div>
-            </div>
-
-            <div class="ai-command-deck" id="aiCommandDeck">
-                <div class="ai-command-header">
-                    <span class="ai-grounding-kicker">Command Deck</span>
-                    <strong>Ask, inspect, build</strong>
-                </div>
+            <div class="ai-command-deck ai-command-deck--lean" id="aiCommandDeck">
                 <div class="ai-command-grid">
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Use boardHealth and relationships to improve the selected objects into a cleaner composition with better spacing, labels, and connections. Use update_many/add_many actions only.">Polish selection</button>
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Use boardHealth to fix the highest-priority board gaps. Add missing labels, connectors, frames, and one concise risk note as editable canvas objects.">Board QA pass</button>
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="chat" data-ai-command-prompt="Summarize the current board using boardHealth, name the weakest structural issue, and suggest the next three editable object actions.">Critique</button>
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Turn the visible area into a structured system map with grouped frames, arrows, and concise labels.">Map viewport</button>
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Polish the selected objects into a cleaner composition with better spacing, labels, and connections. Use update_many/add_many actions only.">Polish</button>
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Add missing labels, connectors, frames, and one concise QA note as editable canvas objects.">QA Pass</button>
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="chat" data-ai-command-prompt="Critique the current board and suggest the next three editable object actions.">Critique</button>
+                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Turn the visible area into a structured system map with grouped frames, arrows, and concise labels.">Map</button>
                 </div>
             </div>
 
-            <div class="ai-pinboard-deck" id="aiPinboardDeck">
-                <div class="ai-pinboard-header">
-                    <span class="ai-grounding-kicker">Pinned Actions</span>
-                    <strong id="aiPinboardSummary">Ready</strong>
-                </div>
-                <div class="ai-pinboard-grid">
-                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="save-checkpoint">Save checkpoint</button>
-                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="refresh-audit">Refresh audit</button>
-                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="preview-fixes">Preview fixes</button>
-                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="copy-brief">Copy brief</button>
-                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="copy-index">Copy index</button>
-                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="copy-packet">Copy packet</button>
-                    <button type="button" class="ai-pinboard-btn" data-ai-pin-action="qa-note">Add QA note</button>
-                </div>
-            </div>
-
-            <div class="ai-decision-deck" id="aiDecisionDeck">
-                <div class="ai-decision-header">
-                    <span class="ai-grounding-kicker">Decision Register</span>
-                    <strong id="aiDecisionSummary">No register yet</strong>
-                </div>
-                <div class="ai-decision-list" id="aiDecisionList">
-                    <div class="ai-decision-empty">Board decisions, risks, and actions will appear here.</div>
-                </div>
-                <div class="ai-decision-actions">
-                    <button type="button" class="ai-context-btn" data-ai-decision-action="copy">Copy register</button>
-                    <button type="button" class="ai-context-btn" data-ai-decision-action="note">Add note</button>
-                </div>
-            </div>
-
-            <div class="ai-gates-deck" id="aiGatesDeck">
-                <div class="ai-gates-header">
-                    <span class="ai-grounding-kicker">Gate Review</span>
-                    <strong id="aiGatesSummary">No gate review</strong>
-                </div>
-                <div class="ai-gates-list" id="aiGatesList">
-                    <div class="ai-gates-empty">Board readiness gates will appear here.</div>
-                </div>
-                <div class="ai-gates-actions">
-                    <button type="button" class="ai-context-btn" data-ai-gates-action="copy">Copy gates</button>
-                    <button type="button" class="ai-context-btn" data-ai-gates-action="note">Add note</button>
-                </div>
-            </div>
-
-            <div class="ai-ops-deck ai-review-deck" id="aiReviewDeck">
-                <div class="ai-ops-header">
-                    <span class="ai-grounding-kicker">Review Queue</span>
-                    <strong id="aiReviewSummary">No review queue</strong>
-                </div>
-                <div class="ai-ops-grid" id="aiReviewGrid">
-                    <div class="ai-ops-empty">Review items will appear here.</div>
-                </div>
-                <div class="ai-ops-actions">
-                    <button type="button" class="ai-context-btn" data-ai-review-action="copy">Copy review queue</button>
-                    <button type="button" class="ai-context-btn" data-ai-review-action="note">Add note</button>
-                </div>
-            </div>
-
-            <div class="ai-ops-deck" id="aiOpsDeck">
-                <div class="ai-ops-header">
-                    <span class="ai-grounding-kicker">Ops Snapshot</span>
-                    <strong id="aiOpsSummary">No snapshot</strong>
-                </div>
-                <div class="ai-ops-grid" id="aiOpsGrid">
-                    <div class="ai-ops-empty">Board operating signals will appear here.</div>
-                </div>
-                <div class="ai-ops-actions">
-                    <button type="button" class="ai-context-btn" data-ai-ops-action="copy">Copy snapshot</button>
-                    <button type="button" class="ai-context-btn" data-ai-ops-action="note">Add note</button>
-                </div>
-            </div>
-
-            <div class="ai-ops-deck ai-evidence-deck" id="aiEvidenceDeck">
-                <div class="ai-ops-header">
-                    <span class="ai-grounding-kicker">Evidence Pack</span>
-                    <strong id="aiEvidenceSummary">No evidence</strong>
-                </div>
-                <div class="ai-ops-grid" id="aiEvidenceGrid">
-                    <div class="ai-ops-empty">Board proof signals will appear here.</div>
-                </div>
-                <div class="ai-ops-actions">
-                    <button type="button" class="ai-context-btn" data-ai-evidence-action="copy">Copy evidence</button>
-                    <button type="button" class="ai-context-btn" data-ai-evidence-action="note">Add note</button>
-                </div>
-            </div>
-
-            <div class="ai-template-deck" id="aiTemplateDeck">
-                <div class="ai-template-header">
-                    <span class="ai-grounding-kicker">Smart Starts</span>
-                    <strong id="aiTemplateSummary">Editable boards</strong>
-                </div>
-                <div class="ai-template-grid">
-                    <button type="button" class="ai-template-btn" data-ai-template="decision-flow">Decision flow</button>
-                    <button type="button" class="ai-template-btn" data-ai-template="journey-map">Journey map</button>
-                    <button type="button" class="ai-template-btn" data-ai-template="wireframe">Wireframe</button>
-                    <button type="button" class="ai-template-btn" data-ai-template="retro">Retro board</button>
-                </div>
-            </div>
-
-            <div class="ai-organizer-deck" id="aiOrganizerDeck">
-                <div class="ai-organizer-header">
-                    <span class="ai-grounding-kicker">AI Organizer</span>
-                    <strong id="aiOrganizerSummary">Selection or board</strong>
-                </div>
-                <div class="ai-organizer-grid">
-                    <button type="button" class="ai-organizer-btn" data-ai-organizer-action="cluster-notes">Cluster notes</button>
-                    <button type="button" class="ai-organizer-btn" data-ai-organizer-action="extract-actions">Extract tasks</button>
-                </div>
-            </div>
-
-            <div class="ai-tool-plan" id="aiToolPlan">
-                <div class="ai-tool-plan-header">
-                    <div>
-                        <span class="ai-grounding-kicker">Tool Plan</span>
-                        <strong id="aiToolPlanSummary">Editable object actions</strong>
+            <details class="ai-advanced-panel">
+                <summary>Advanced</summary>
+                <div id="diagramOptions" class="ai-options">
+                    <div class="ai-option-group">
+                        <label>AI Model</label>
+                        <select id="diagramModelSelect" class="ai-select">
+                            <option value="gpt-4o">GPT-4o</option>
+                            <option value="gpt-4o-mini">GPT-4o Mini</option>
+                            <option value="claude-3-opus">Claude 3 Opus</option>
+                            <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                        </select>
                     </div>
-                    <span class="ai-tool-plan-pill" id="aiToolPlanPill">Object-first</span>
                 </div>
-                <div class="ai-tool-lanes">
-                    <label class="ai-tool-lane">
-                        <input type="checkbox" data-ai-tool-lane="inspect" checked>
-                        <span>Inspect</span>
-                    </label>
-                    <label class="ai-tool-lane">
-                        <input type="checkbox" data-ai-tool-lane="create" checked>
-                        <span>Create</span>
-                    </label>
-                    <label class="ai-tool-lane">
-                        <input type="checkbox" data-ai-tool-lane="arrange" checked>
-                        <span>Arrange</span>
-                    </label>
-                    <label class="ai-tool-lane">
-                        <input type="checkbox" data-ai-tool-lane="label" checked>
-                        <span>Label</span>
-                    </label>
-                    <label class="ai-tool-lane">
-                        <input type="checkbox" data-ai-tool-lane="research">
-                        <span>Research</span>
-                    </label>
-                    <label class="ai-tool-lane">
-                        <input type="checkbox" data-ai-tool-lane="qa">
-                        <span>QA</span>
-                    </label>
+                <div id="imageOptions" class="ai-options hidden">
+                    <div class="ai-option-group">
+                        <label>Image Model</label>
+                        <select id="imageModelSelect" class="ai-select">
+                            <option value="">Loading image models...</option>
+                        </select>
+                    </div>
+                    <div class="ai-option-row">
+                        <div class="ai-option-group">
+                            <label>Size</label>
+                            <select id="imageSizeSelect" class="ai-select">
+                                <option value="1024x1024">1024x1024</option>
+                            </select>
+                        </div>
+                        <div id="imageQualityGroup" class="ai-option-group">
+                            <label>Quality</label>
+                            <select id="imageQualitySelect" class="ai-select">
+                                <option value="">Default</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="imageStyleGroup" class="ai-option-group">
+                        <label>Style</label>
+                        <select id="imageStyleSelect" class="ai-select">
+                            <option value="">Default</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="ai-plan-steps" id="aiPlanSteps" aria-live="polite">
-                    <div class="ai-plan-step" data-agent-step="read">
-                        <span class="ai-plan-dot"></span>
-                        <span>Read</span>
-                    </div>
-                    <div class="ai-plan-step" data-agent-step="tool">
-                        <span class="ai-plan-dot"></span>
-                        <span>Tool</span>
-                    </div>
-                    <div class="ai-plan-step" data-agent-step="apply">
-                        <span class="ai-plan-dot"></span>
-                        <span>Apply</span>
-                    </div>
+                    <div class="ai-plan-step" data-agent-step="read"><span class="ai-plan-dot"></span><span>Read</span></div>
+                    <div class="ai-plan-step" data-agent-step="tool"><span class="ai-plan-dot"></span><span>Build</span></div>
+                    <div class="ai-plan-step" data-agent-step="apply"><span class="ai-plan-dot"></span><span>Apply</span></div>
+                </div>
+            </details>
+
+            <div class="ai-conversation ai-conversation--lean" id="aiConversation">
+                <div class="ai-conversation-empty" id="aiConversationEmpty">
+                    Canvas AI is quiet until you ask. Local tools above do not spend tokens.
                 </div>
             </div>
 
-            <div class="ai-action-ledger" id="aiActionLedger">
-                <div class="ai-action-ledger-header">
+            <details class="ai-action-ledger ai-action-ledger--lean" id="aiActionLedger">
+                <summary class="ai-action-ledger-header">
                     <div>
-                        <span class="ai-grounding-kicker">Action Ledger</span>
+                        <span class="ai-grounding-kicker">Recent</span>
                         <strong id="aiLedgerSummary">No actions yet</strong>
                     </div>
-                    <div class="ai-action-ledger-actions">
-                        <button type="button" class="ai-context-btn" data-ai-audit-action="copy">Copy audit</button>
-                        <button type="button" class="ai-context-btn" data-ai-audit-action="note">Add audit note</button>
-                    </div>
-                </div>
+                </summary>
                 <div class="ai-action-list" id="aiActionList">
-                    <div class="ai-action-empty">Applied edits, local moves, and skipped actions will appear here.</div>
+                    <div class="ai-action-empty">Object edits and skipped actions appear here.</div>
                 </div>
-            </div>
+            </details>
 
-            <div class="ai-change-sets" id="aiChangeSets">
-                <div class="ai-change-set-header">
-                    <span class="ai-grounding-kicker">Change Sets</span>
-                    <strong id="aiChangeSetSummary">No reversible edits yet</strong>
-                </div>
+            <details class="ai-change-sets ai-change-sets--lean" id="aiChangeSets">
+                <summary class="ai-change-set-header">
+                    <span class="ai-grounding-kicker">Undoable Edits</span>
+                    <strong id="aiChangeSetSummary">No edits yet</strong>
+                </summary>
                 <div class="ai-change-set-list" id="aiChangeSetList">
-                    <div class="ai-action-empty">AI and board-fix edits will appear here.</div>
+                    <div class="ai-action-empty">AI edits will appear here.</div>
                 </div>
                 <div class="ai-change-set-actions">
                     <button type="button" class="ai-context-btn" data-ai-change-action="select">Select changed</button>
                     <button type="button" class="ai-context-btn" data-ai-change-action="undo">Undo last</button>
                 </div>
-            </div>
+            </details>
 
-            <div class="ai-conversation" id="aiConversation">
-                <div class="ai-conversation-empty" id="aiConversationEmpty">
-                    Start a chat with the canvas agent or ask it to generate something directly on the board.
-                </div>
-            </div>
-            
-            <!-- Diagram Options -->
-            <div id="diagramOptions" class="ai-options">
-                <div class="ai-option-group">
-                    <label>AI Model</label>
-                    <select id="diagramModelSelect" class="ai-select">
-                        <option value="gpt-4o">GPT-4o</option>
-                        <option value="gpt-4o-mini">GPT-4o Mini</option>
-                        <option value="claude-3-opus">Claude 3 Opus</option>
-                        <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-                    </select>
-                </div>
-            </div>
-            
-            <!-- Image Options -->
-            <div id="imageOptions" class="ai-options hidden">
-                <div class="ai-option-group">
-                    <label>Image Model</label>
-                    <select id="imageModelSelect" class="ai-select">
-                        <option value="">Loading image models...</option>
-                    </select>
-                </div>
-                <div class="ai-option-row">
-                    <div class="ai-option-group">
-                        <label>Size</label>
-                        <select id="imageSizeSelect" class="ai-select">
-                            <option value="1024x1024">1024x1024</option>
-                        </select>
-                    </div>
-                    <div id="imageQualityGroup" class="ai-option-group">
-                        <label>Quality</label>
-                        <select id="imageQualitySelect" class="ai-select">
-                            <option value="">Default</option>
-                        </select>
-                    </div>
-                </div>
-                <div id="imageStyleGroup" class="ai-option-group">
-                    <label>Style</label>
-                    <select id="imageStyleSelect" class="ai-select">
-                        <option value="">Default</option>
-                    </select>
-                </div>
-            </div>
-            
-            <textarea id="aiInput" placeholder="e.g., 'What is missing from this flow?' or 'Suggest a cleaner layout for these boxes'"></textarea>
-            <button id="aiGenerateBtn" class="ai-generate-btn">
-                <svg viewBox="0 0 24 24" width="16" height="16">
-                    <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-                Send
-            </button>
-            <div class="ai-suggestions" id="aiSuggestions">
-                <h4>Suggestions</h4>
-                <div class="suggestion-list">
-                    <button class="suggestion-btn" data-prompt="Build an editable user login flow with shapes, arrows, labels, and one risk note.">Login Flow</button>
-                    <button class="suggestion-btn" data-prompt="Create an editable system architecture map with services, data stores, trust boundaries, and handoff notes.">Architecture Map</button>
-                    <button class="suggestion-btn" data-prompt="Inspect the current board and add missing labels, connections, and one concise QA note.">Board QA</button>
-                    <button class="suggestion-btn" data-prompt="Turn the selected objects into a cleaner decision tree using object actions, not a raster image.">Selection Rewrite</button>
-                </div>
-            </div>
             <div class="ai-status" id="aiStatus"></div>
         </div>
     </div>
@@ -1984,8 +2096,24 @@
             <button type="button" role="menuitem" data-context-action="tool:arrow">
                 <span>Arrow</span><kbd>A</kbd>
             </button>
+            <hr>
+            <button type="button" role="menuitem" data-context-action="create:storyboard">
+                <span>Storyboard frame here</span>
+            </button>
+            <button type="button" role="menuitem" data-context-action="create:animation">
+                <span>Animation beat here</span>
+            </button>
+            <button type="button" role="menuitem" data-context-action="create:audio">
+                <span>Audio cue here</span>
+            </button>
+            <button type="button" role="menuitem" data-context-action="create:mermaid">
+                <span>Mermaid source here</span>
+            </button>
+            <button type="button" role="menuitem" data-context-action="insert-recent-block">
+                <span>Insert recent block here</span>
+            </button>
             <button type="button" role="menuitem" data-context-action="ai:board">
-                <span>Ask Canvas Agent</span><kbd>Z</kbd>
+                <span>Ask Canvas AI here</span><kbd>Z</kbd>
             </button>
             <button type="button" role="menuitem" data-context-action="import">
                 <span>Import</span><kbd>Ctrl+O</kbd>
@@ -2013,6 +2141,12 @@
             </button>
             <button type="button" role="menuitem" data-context-action="ungroup">
                 <span>Ungroup</span><kbd>Shift+Ctrl+G</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="connect-selected">
+                <span>Connect selected</span>
+            </button>
+            <button type="button" role="menuitem" data-context-action="save-selection-block">
+                <span>Save as reusable block</span>
             </button>
             <hr>
             <button type="button" role="menuitem" data-context-action="ai:selection">

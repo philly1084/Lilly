@@ -169,6 +169,7 @@ class SelectionManager {
         
         window.historyManager?.pushState(canvas.elements);
         canvas.render();
+        window.app?.onCanvasElementsChanged?.();
     }
     
     bringToFront() {
@@ -186,6 +187,7 @@ class SelectionManager {
         
         window.historyManager?.pushState(canvas.elements);
         canvas.render();
+        window.app?.onCanvasElementsChanged?.();
     }
     
     sendToBack() {

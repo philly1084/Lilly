@@ -56,6 +56,19 @@ function buildOwnerMemoryMetadata(ownerId = null, memoryScope = null, extra = {}
     });
 }
 
+function isLeanCanvasAgentRequest({
+    canvasType = '',
+    executionProfile = '',
+    clientSurface = '',
+    metadata = {},
+} = {}) {
+    const profile = String(executionProfile || metadata?.executionProfile || '').trim().toLowerCase();
+    const surface = String(clientSurface || metadata?.clientSurface || metadata?.surface || '').trim().toLowerCase();
+    return canvasType === 'diagram'
+        && profile === 'lean-canvas'
+        && surface === 'canvas-excalidraw';
+}
+
 const canvasSchema = {
     message: { required: true, type: 'string' },
     sessionId: { required: false, type: 'string' },
@@ -148,7 +161,7 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             templateVariables = {},
         } = req.body;
         const reasoningEffort = resolveReasoningEffort(req.body);
-        const enableConversationExecutor = resolveConversationExecutorFlag(req.body);
+        let enableConversationExecutor = resolveConversationExecutorFlag(req.body);
         let { sessionId } = req.body;
         const memoryKeywords = normalizeMemoryKeywords(
             req.body.memoryKeywords || req.body?.metadata?.memoryKeywords || [],
@@ -173,6 +186,15 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             ...(memoryKeywords.length > 0 ? { memoryKeywords } : {}),
         };
         const requestedClientSurface = resolveClientSurface(req.body || {}, null, 'canvas');
+        const leanCanvasAgent = isLeanCanvasAgentRequest({
+            canvasType,
+            executionProfile,
+            clientSurface: requestedClientSurface,
+            metadata: effectiveRequestMetadata,
+        });
+        if (leanCanvasAgent) {
+            enableConversationExecutor = false;
+        }
         const requestedSessionMetadata = buildScopedSessionMetadata({
             ...effectiveRequestMetadata,
             mode: 'canvas',
@@ -198,40 +220,52 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             clientSurface,
         }, session);
         const sessionIsolation = isSessionIsolationEnabled(requestedSessionMetadata, session);
-        const templateSelection = await buildCanvasTemplateSelection(req.app.locals.templateStore, {
-            canvasType,
-            message,
-            existingContent,
-            templateId,
-            templateIds,
-            templateVariables,
-        });
-        const naturalContext = buildNaturalContext({
-            session,
-            metadata: effectiveRequestMetadata,
-            clientSurface,
-            taskType: 'canvas',
-            userText: message,
-        });
-        const naturalInstructions = [
-            buildSkillsTreeInstructions({ clientSurface, taskType: 'canvas' }),
-            buildNaturalContextInstructions(naturalContext),
-        ].filter(Boolean).join('\n\n');
-        const requestFrame = buildRequestDecisionFrame({
-            text: message,
-            session,
-            outputFormat,
-            candidateOutputFormat: outputFormat,
-            outputFormatProvided: Boolean(outputFormat),
-            artifactIds,
-            effectiveArtifactIds: artifactIds,
-            executionProfile,
-            taskType: 'canvas',
-            clientSurface,
-            route: '/api/canvas',
-        });
-        const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
-        const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
+        const templateSelection = leanCanvasAgent
+            ? { matches: [], context: '' }
+            : await buildCanvasTemplateSelection(req.app.locals.templateStore, {
+                canvasType,
+                message,
+                existingContent,
+                templateId,
+                templateIds,
+                templateVariables,
+            });
+        const naturalContext = leanCanvasAgent
+            ? null
+            : buildNaturalContext({
+                session,
+                metadata: effectiveRequestMetadata,
+                clientSurface,
+                taskType: 'canvas',
+                userText: message,
+            });
+        const naturalInstructions = leanCanvasAgent
+            ? ''
+            : [
+                buildSkillsTreeInstructions({ clientSurface, taskType: 'canvas' }),
+                buildNaturalContextInstructions(naturalContext),
+            ].filter(Boolean).join('\n\n');
+        const requestFrame = leanCanvasAgent
+            ? null
+            : buildRequestDecisionFrame({
+                text: message,
+                session,
+                outputFormat,
+                candidateOutputFormat: outputFormat,
+                outputFormatProvided: Boolean(outputFormat),
+                artifactIds,
+                effectiveArtifactIds: artifactIds,
+                executionProfile,
+                taskType: 'canvas',
+                clientSurface,
+                route: '/api/canvas',
+            });
+        const requestFrameMetadata = leanCanvasAgent
+            ? { executionProfile: 'lean-canvas', leanCanvasAgent: true }
+            : buildRequestDecisionMetadata(requestFrame);
+        const requestFrameInstructions = leanCanvasAgent
+            ? ''
+            : formatRequestDecisionFrameForPrompt(requestFrame);
 
         runtimeTask = startRuntimeTask({
             sessionId,
@@ -245,7 +279,7 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             session,
             [
                 requestFrameInstructions,
-                buildCanvasInstructions(canvasType, existingContent, message, templateSelection.context),
+                buildCanvasInstructions(canvasType, existingContent, message, templateSelection.context, { leanCanvasAgent }),
                 naturalInstructions,
             ].filter(Boolean).join('\n\n'),
             artifactIds,
@@ -434,7 +468,22 @@ function buildFrontendTechnologyGuide() {
     ].join('\n');
 }
 
-function buildCanvasInstructions(canvasType, existingContent, requestPrompt = '', templateContext = '') {
+function buildCanvasInstructions(canvasType, existingContent, requestPrompt = '', templateContext = '', options = {}) {
+    const leanCanvasAgent = options?.leanCanvasAgent === true && canvasType === 'diagram';
+    if (leanCanvasAgent) {
+        const instructions = [
+            'You are a lean object-action agent for an Excalidraw-style canvas.',
+            'Return valid JSON only in this exact outer shape: {"content":"{\\"message\\":\\"short\\",\\"actions\\":[...],\\"elements\\":[]}","metadata":{"type":"diagram","surface":"canvas-excalidraw","actionContract":"excalidraw-actions-v1"},"suggestions":[]}.',
+            'Use selected ids for updates. Do not invent ids for existing objects.',
+            'Allowed actions: add, add_many, update, update_many, delete, select.',
+            'Allowed editable object types: rectangle, diamond, ellipse, arrow, line, freedraw, text, sticky, frame, storyboardFrame, animationBeat, audioCue, mermaidDiagram.',
+            'For storyboardFrame or animationBeat include title, text, startTime, and durationSeconds. For audioCue include title, text, audioName, startTime, and durationSeconds. For mermaidDiagram include title and mermaidSource.',
+            'Keep changes modest and editable. Do not create image elements, raster screenshots, or snapshots unless image asset mode is explicit.',
+            existingContent ? `Canvas grounding:\n\`\`\`\n${existingContent.slice(0, 1200)}\n\`\`\`` : '',
+        ].filter(Boolean);
+        return instructions.join('\n\n');
+    }
+
     const base = `You are an AI assistant working in canvas mode. You generate structured content that can be displayed in an editable canvas interface.
 
 Always respond with valid JSON in this format:
@@ -454,7 +503,7 @@ Always respond with valid JSON in this format:
     const typeInstructions = {
         code: '\n\nYou are generating CODE. Include the programming language in metadata.language. Provide working, well-commented code. Suggestions should be improvements or alternative approaches.',
         document: '\n\nYou are generating a DOCUMENT. Use markdown formatting. Include a title in metadata.title. Suggestions should be ways to expand or improve the document.',
-        diagram: '\n\nYou are generating a DIAGRAM. Use Mermaid syntax for ordinary text-diagram requests. If the request mentions Excalidraw, canvas-excalidraw, editable board objects, selected object ids, canvasContext, or an actionContract, return /api/canvas-compatible JSON where content is an inner board-edit JSON string: {"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"existing-id","patch":{...}},{"type":"update_many","patches":[{"id":"existing-id","patch":{...}}]},{"type":"delete","id":"existing-id"},{"type":"select","ids":["existing-id"]}],"elements":[]}. Prefer existing selected ids for updates, use editable rectangle/diamond/ellipse/arrow/line/freedraw/text/sticky/frame objects, and do not create raster screenshots, image snapshots, or image elements unless the user explicitly asks for an image asset. Include metadata.type or metadata.actionContract as appropriate. Suggestions should be ways to enhance the diagram or next object-action passes.',
+        diagram: '\n\nYou are generating a DIAGRAM. Use Mermaid syntax for ordinary text-diagram requests. If the request mentions Excalidraw, canvas-excalidraw, editable board objects, selected object ids, canvasContext, or an actionContract, return /api/canvas-compatible JSON where content is an inner board-edit JSON string: {"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"existing-id","patch":{...}},{"type":"update_many","patches":[{"id":"existing-id","patch":{...}}]},{"type":"delete","id":"existing-id"},{"type":"select","ids":["existing-id"]}],"elements":[]}. Prefer existing selected ids for updates. Use editable rectangle/diamond/ellipse/arrow/line/freedraw/text/sticky/frame/storyboardFrame/animationBeat/audioCue/mermaidDiagram objects. For storyboardFrame or animationBeat include title, text, startTime, and durationSeconds. For audioCue include title, text, audioName, startTime, and durationSeconds. For mermaidDiagram include title and mermaidSource. do not create raster screenshots, image snapshots, or image elements unless the user explicitly asks for an image asset. Include metadata.type or metadata.actionContract as appropriate. Suggestions should be ways to enhance the diagram or next object-action passes.',
         frontend: '\n\nYou are generating a DEMO WEBSITE FRONTEND or STRUCTURED AGENT CLI/WORKBENCH. Favor polished but request-matched HTML artifacts: landing pages, product sites, dashboards, app workspaces, documentation sites, editorial features, briefs, microsites, games, simulations, data explorers, 3D/interactive scenes, or structured build tools with deliberate visual direction. Treat metadata.bundle.files as the source of truth for the complete project. Include the full runnable project only in metadata.bundle.files; do not duplicate the same multi-file project or giant HTML payload in multiple fields. The content field may be a short preview summary or the entry page HTML only when the complete project is present in metadata.bundle.files. Include metadata.language as "html", metadata.frameworkTarget as "static", "vite", "react", or "nextjs", and metadata.previewMode as "iframe". Include metadata.bundle in the shape {"entry":"index.html","files":[{"path":"index.html","language":"html","purpose":"Preview entry","content":"..."},{"path":"src/main.jsx","language":"javascript","purpose":"React/Vite entry or app logic","content":"..."},{"path":"styles.css","language":"css","purpose":"Shared styles","content":"..."},{"path":"AGENT_SANDBOX_BUILD.md","language":"markdown","purpose":"Local build and promotion handoff","content":"..."}]}. When the request implies a full website or multiple pages, include a linked multi-page bundle instead of a single screen. If metadata.frameworkTarget is "vite" or "react", still keep the preview files browser-runnable from a static server by using relative modules or browser-compatible URLs instead of unresolved bare imports. Include metadata.handoff in the shape {"summary":"...","targetFramework":"...","componentMap":[{"name":"Hero","purpose":"...","targetPath":"src/components/Hero.jsx"}],"buildWorkbench":{"mode":"agent-build-workbench","phases":[{"id":"brief","name":"Brief","purpose":"...","entryCondition":"...","actions":["..."],"exitCheck":"..."}],"commands":[{"name":"create_scene","purpose":"...","when":"...","args":["..."]}],"hookPoints":[{"phase":"assemble","kind":"script|function|library|asset-generator","description":"...","scriptOrFunction":"..."}],"callableHooks":[{"name":"...","type":"script|function","when":"...","input":"...","output":"...","proof":"..."}],"objectFactories":[{"name":"...","purpose":"...","creates":"...","placeholderStrategy":"..."}],"qaGates":[{"name":"...","checks":["..."],"onFail":"repair|redesign|ask"}]},"designMoves":[{"name":"...","purpose":"Why this move fits the domain","interaction":"How the user uses it","effect":"What changes visually, spatially, or behaviorally","fallback":"Simpler repair path if it fails"}],"integrationSteps":["..."],"qaPlan":["desktop/mobile screenshot checks","opened interactive states to inspect","broken-image, console-error, contrast, overflow, clipped-text, and canvas/WebGL render checks"],"fallbackGate":{"decision":"repair|redesign|ask|ready","reason":"...","nextAction":"..."}}. Include metadata.buildPipeline when useful in the shape {"localSandbox":"...","visualQa":"...","remoteBuild":"...","livePromotion":"..."}. Keep the demo portable so the bundle files can be copied into a real repository later or promoted through managed-app/remote-cli-agent with artifact IDs and QA notes. Use realistic example data by default, and when a live source is known, wire it behind a small fetch layer or clearly swappable data adapter. Build a structured agent-facing CLI/workbench from the domain instead of copying a fixed list of UI controls. Prefer a Unity-like surface when it fits: phase rail, scene/object hierarchy, inspector, asset shelf, command palette, script/function hook slots, object factories, play/test loop, console, QA gate, and build/promotion pipeline. Familiar pieces such as filters, tabs, carousels, drill-downs, chart toggles, search, animation controls, game loops, 3D controls, and simulated workflow state are seed examples only. Let the system compose or invent build commands, object systems, generated placeholders, layout mechanics, motion rules, state visualizations, and callable hooks that help the agent progress through the build. Name those in metadata.handoff.buildWorkbench so the next agent can run the same phase, add a script/function, repair the implementation, or redesign the workbench without guessing. When real game object files, sprites, textures, or models are not available, create varied in-place placeholder objects using CSS, canvas, SVG, procedural meshes, or data-driven object factories; distinguish heroes, hazards, pickups, scenery, goals, enemies, NPCs, vehicles, doors, and projectiles with different silhouettes, colors, scale, motion, labels, materials, and collision/interaction behavior. Document those placeholders in AGENT_SANDBOX_BUILD.md or metadata.handoff so real assets can replace them later without changing gameplay contracts. Do not default every request to the same landing-page scaffold. For complex, premium, or redesign requests, make a distinct design-system choice plus a structured CLI/workbench choice, then use the fallback gate to state whether the next pass should repair implementation issues, redesign the visual/build system, ask for direction, or mark ready. For documentation requests, build a docs-style experience with information architecture and wayfinding. For report or brief requests, build an evidence-led reading experience rather than a marketing page. When the request is dashboard-oriented, choose one dashboard template from the provided catalog only as a starting point, include metadata.dashboardTemplate as {"id":"...","label":"...","rationale":"..."}, include metadata.dashboardTemplateOptions as [{"id":"...","label":"..."}], set <body data-dashboard-template="template-id">, and add data-dashboard-zone attributes on major layout regions. Suggestions should be concrete next build-workbench iterations and at least one script/function hook or object factory to add.',
     };
 

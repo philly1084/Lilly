@@ -116,6 +116,53 @@ class PropertiesManager {
                 this.updatePatternUI(btn);
             });
         });
+
+        document.querySelectorAll('[data-stroke][data-fill].color-preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.applyColorPreset(btn.dataset.stroke, btn.dataset.fill);
+            });
+        });
+
+        document.querySelectorAll('[data-color-section-toggle]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.toggleColorSection(btn.dataset.colorSectionToggle);
+            });
+        });
+
+        document.getElementById('colorStudioStrokeInput')?.addEventListener('input', (e) => {
+            const color = e.target.value || '#000000';
+            this.setStrokeColor(color);
+            if (window.ColorSystem) {
+                window.ColorSystem.addToHistory(color);
+                this.updateColorHistoryUI();
+            }
+        });
+
+        document.getElementById('colorStudioFillInput')?.addEventListener('input', (e) => {
+            const color = e.target.value || '#ffffff';
+            this.setBackgroundColor(color);
+            this.clearGradientAndPattern();
+            if (window.ColorSystem) {
+                window.ColorSystem.addToHistory(color);
+                this.updateColorHistoryUI();
+            }
+        });
+
+        document.getElementById('colorStudioClearFill')?.addEventListener('click', () => {
+            this.setBackgroundColor('transparent');
+            this.clearGradientAndPattern();
+        });
+
+        document.getElementById('colorStudioSwap')?.addEventListener('click', () => {
+            this.swapStrokeAndFill();
+        });
+
+        this.updateColorPreview('stroke', window.toolManager?.defaultProperties?.strokeColor || '#000000');
+        this.updateColorPreview('background', window.toolManager?.defaultProperties?.backgroundColor || 'transparent');
+        this.updateColorStudioUI(
+            window.toolManager?.defaultProperties?.strokeColor || '#000000',
+            window.toolManager?.defaultProperties?.backgroundColor || 'transparent',
+        );
         
         // Stroke width picker
         document.querySelectorAll('#strokeWidthPicker .stroke-btn').forEach(btn => {
@@ -303,6 +350,14 @@ class PropertiesManager {
             content.classList.toggle('active', content.dataset.bgTab === tab);
         });
     }
+
+    toggleColorSection(sectionId = '') {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+        const isExpanded = section.classList.toggle('expanded');
+        const button = document.querySelector(`[data-color-section-toggle="${sectionId}"]`);
+        button?.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+    }
     
     // Switch gradient type
     switchGradientType(type) {
@@ -459,6 +514,10 @@ class PropertiesManager {
     }
     
     syncUItoElement(element) {
+        this.updateColorPreview('stroke', element.strokeColor || '#000000');
+        this.updateColorPreview('background', element.backgroundColor || 'transparent');
+        this.updateColorStudioUI(element.strokeColor || '#000000', element.backgroundColor || 'transparent');
+
         // Update stroke color
         const strokeBtn = document.querySelector(`#strokeColorPicker .color-btn[data-color="${element.strokeColor}"]`);
         if (strokeBtn) this.updateColorUI(strokeBtn, '#strokeColorPicker');
@@ -588,12 +647,82 @@ class PropertiesManager {
     // Property setters
     setStrokeColor(color) {
         window.toolManager.updateDefaultProperties({ strokeColor: color });
+        this.updateColorPreview('stroke', color);
+        this.updateColorStudioUI(color, window.toolManager?.defaultProperties?.backgroundColor || 'transparent');
         this.updateSelectedElements('strokeColor', color);
     }
     
     setBackgroundColor(color) {
         window.toolManager.updateDefaultProperties({ backgroundColor: color });
+        this.updateColorPreview('background', color);
+        this.updateColorStudioUI(window.toolManager?.defaultProperties?.strokeColor || '#000000', color);
         this.updateSelectedElements('backgroundColor', color);
+    }
+
+    applyColorPreset(strokeColor = '#000000', fillColor = 'transparent') {
+        const stroke = strokeColor || '#000000';
+        const fill = fillColor || 'transparent';
+        const canvas = window.infiniteCanvas;
+        let changed = false;
+
+        window.toolManager?.updateDefaultProperties?.({
+            strokeColor: stroke,
+            backgroundColor: fill,
+        });
+        this.clearGradientAndPattern();
+        this.updateColorPreview('stroke', stroke);
+        this.updateColorPreview('background', fill);
+        this.updateColorStudioUI(stroke, fill);
+        this.markColorPresetActive(stroke, fill);
+
+        if (canvas?.selectedElements?.length) {
+            canvas.selectedElements.forEach((element) => {
+                if (element.strokeColor !== stroke) {
+                    element.strokeColor = stroke;
+                    changed = true;
+                }
+                if (element.backgroundColor !== fill) {
+                    element.backgroundColor = fill;
+                    changed = true;
+                }
+                if (element.fillType) {
+                    element.fillType = 'solid';
+                    changed = true;
+                }
+                if (element.gradient) {
+                    delete element.gradient;
+                    changed = true;
+                }
+                if (element.pattern) {
+                    delete element.pattern;
+                    changed = true;
+                }
+            });
+        }
+
+        if (window.ColorSystem) {
+            window.ColorSystem.addToHistory(stroke);
+            if (fill !== 'transparent') {
+                window.ColorSystem.addToHistory(fill);
+            }
+            this.updateColorHistoryUI();
+        }
+
+        if (changed && canvas) {
+            canvas.render();
+            window.historyManager?.pushState(canvas.elements);
+            window.app?.onCanvasElementsChanged?.();
+        }
+    }
+
+    swapStrokeAndFill() {
+        const defaults = window.toolManager?.defaultProperties || {};
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        const source = selected[0] || defaults;
+        const nextStroke = source.backgroundColor || defaults.backgroundColor || 'transparent';
+        const nextFill = source.strokeColor || defaults.strokeColor || '#000000';
+        this.applyColorPreset(nextStroke === 'transparent' ? '#334155' : nextStroke, nextFill);
     }
     
     setStrokeWidth(width) {
@@ -677,6 +806,10 @@ class PropertiesManager {
     updateColorUI(activeBtn, container) {
         document.querySelectorAll(`${container} .color-btn`).forEach(btn => btn.classList.remove('active'));
         activeBtn.classList.add('active');
+        const section = activeBtn.closest('.color-section');
+        if (section?.dataset.target) {
+            this.updateColorPreview(section.dataset.target, activeBtn.dataset.color);
+        }
     }
     
     updateExtendedColorUI(activeBtn, container) {
@@ -685,7 +818,52 @@ class PropertiesManager {
         if (section) {
             section.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('active'));
             activeBtn.classList.add('active');
+            if (section.dataset.target) {
+                this.updateColorPreview(section.dataset.target, activeBtn.dataset.color);
+            }
         }
+    }
+
+    updateColorPreview(target, color) {
+        const preview = document.getElementById(target === 'background' ? 'backgroundColorPreview' : 'strokeColorPreview');
+        if (!preview) return;
+        const nextColor = color || 'transparent';
+        preview.classList.toggle('transparent', nextColor === 'transparent');
+        preview.style.background = nextColor === 'transparent' ? '' : nextColor;
+    }
+
+    updateColorStudioUI(strokeColor = '#000000', fillColor = 'transparent') {
+        const strokePreview = document.getElementById('colorStudioStrokePreview');
+        const fillPreview = document.getElementById('colorStudioFillPreview');
+        const strokeInput = document.getElementById('colorStudioStrokeInput');
+        const fillInput = document.getElementById('colorStudioFillInput');
+        const stroke = strokeColor || '#000000';
+        const fill = fillColor || 'transparent';
+        if (strokePreview) {
+            strokePreview.classList.toggle('transparent', stroke === 'transparent');
+            strokePreview.style.background = stroke === 'transparent' ? '' : stroke;
+        }
+        if (fillPreview) {
+            fillPreview.classList.toggle('transparent', fill === 'transparent');
+            fillPreview.style.background = fill === 'transparent' ? '' : fill;
+        }
+        if (strokeInput && /^#[0-9a-f]{6}$/i.test(stroke)) {
+            strokeInput.value = stroke;
+        }
+        if (fillInput && /^#[0-9a-f]{6}$/i.test(fill)) {
+            fillInput.value = fill;
+        }
+        this.markColorPresetActive(stroke, fill);
+    }
+
+    markColorPresetActive(strokeColor = '#000000', fillColor = 'transparent') {
+        const stroke = String(strokeColor || '#000000').toLowerCase();
+        const fill = String(fillColor || 'transparent').toLowerCase();
+        document.querySelectorAll('.color-preset-btn').forEach((btn) => {
+            btn.classList.toggle('active',
+                String(btn.dataset.stroke || '').toLowerCase() === stroke
+                && String(btn.dataset.fill || '').toLowerCase() === fill);
+        });
     }
     
     updateGradientUI(activeBtn) {

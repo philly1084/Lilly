@@ -59,6 +59,18 @@ class Renderer {
             case 'frame':
                 this.drawFrame(ctx, rc, element, options);
                 break;
+            case 'storyboardFrame':
+                this.drawStoryboardFrame(ctx, element);
+                break;
+            case 'animationBeat':
+                this.drawAnimationBeat(ctx, element);
+                break;
+            case 'audioCue':
+                this.drawAudioCue(ctx, element);
+                break;
+            case 'mermaidDiagram':
+                this.drawMermaidDiagram(ctx, element);
+                break;
             default:
                 this.drawFallbackElement(ctx, element);
                 break;
@@ -704,6 +716,266 @@ class Renderer {
         ctx.restore();
     }
 
+    drawStoryboardFrame(ctx, element) {
+        const x = element.x - element.width / 2;
+        const y = element.y - element.height / 2;
+        const w = element.width;
+        const h = element.height;
+
+        ctx.save();
+        ctx.globalAlpha = element.opacity ?? 1;
+        this.drawPanelShell(ctx, element, x, y, w, h, '#f8fafc', '#334155');
+
+        ctx.fillStyle = 'rgba(51, 65, 85, 0.08)';
+        ctx.fillRect(x + 12, y + 34, w - 24, Math.max(34, h - 76));
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.28)';
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(x + 12, y + 34, w - 24, Math.max(34, h - 76));
+        ctx.setLineDash([]);
+
+        this.drawPanelTitle(ctx, element.title || 'Storyboard frame', x, y, w, '#0f172a');
+        this.drawPanelTimecode(ctx, element, x + w - 82, y + 12, '#334155', '#e2e8f0');
+        this.drawWrappedPanelText(ctx, element.text || '', x + 14, y + h - 34, w - 28, 13, '#475569', 2);
+        this.drawProductionPlaybackState(ctx, element, x, y, w, h, '#334155');
+        ctx.restore();
+    }
+
+    drawAnimationBeat(ctx, element) {
+        const x = element.x - element.width / 2;
+        const y = element.y - element.height / 2;
+        const w = element.width;
+        const h = element.height;
+
+        ctx.save();
+        ctx.globalAlpha = element.opacity ?? 1;
+        this.drawPanelShell(ctx, element, x, y, w, h, '#ecfeff', '#0e7490');
+        this.drawPanelTitle(ctx, element.title || 'Animation beat', x, y, w, '#164e63');
+        this.drawPanelTimecode(ctx, element, x + w - 82, y + 12, '#0e7490', '#cffafe');
+
+        const railY = y + h - 26;
+        ctx.strokeStyle = '#0e7490';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + 18, railY);
+        ctx.lineTo(x + w - 18, railY);
+        ctx.stroke();
+        [0.18, 0.5, 0.82].forEach((tick) => {
+            const tx = x + w * tick;
+            ctx.fillStyle = '#0e7490';
+            ctx.beginPath();
+            ctx.arc(tx, railY, 4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        const preset = String(element.motionPreset || 'ease').toUpperCase();
+        ctx.fillStyle = '#cffafe';
+        ctx.strokeStyle = '#0e7490';
+        ctx.lineWidth = 1;
+        this.roundRectPath(ctx, x + 15, y + h - 52, 58, 18, 9);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#155e75';
+        ctx.font = '800 9px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(preset.slice(0, 7), x + 44, y + h - 43, 48);
+
+        this.drawWrappedPanelText(ctx, element.text || '', x + 16, y + 36, w - 32, 13, '#155e75', 3);
+        this.drawProductionPlaybackState(ctx, element, x, y, w, h, '#0e7490');
+        ctx.restore();
+    }
+
+    drawAudioCue(ctx, element) {
+        const x = element.x - element.width / 2;
+        const y = element.y - element.height / 2;
+        const w = element.width;
+        const h = element.height;
+
+        ctx.save();
+        ctx.globalAlpha = element.opacity ?? 1;
+        this.drawPanelShell(ctx, element, x, y, w, h, '#fff7ed', '#9a3412');
+        this.drawPanelTitle(ctx, element.title || 'Audio cue', x, y, w, '#7c2d12');
+        this.drawPanelTimecode(ctx, element, x + w - 82, y + 12, '#9a3412', '#fed7aa');
+
+        const detail = [
+            element.audioName || '',
+            Number.isFinite(element.duration) ? this.formatPanelDuration(element.duration) : '',
+            element.audioPersistent === false ? 'session linked' : '',
+        ].filter(Boolean).join(' - ');
+        this.drawWrappedPanelText(ctx, detail || element.text || '', x + 16, y + 35, w - 32, 12, '#9a3412', 2);
+
+        const waveY = y + h - 31;
+        const peaks = Array.isArray(element.waveformPeaks) && element.waveformPeaks.length > 0
+            ? element.waveformPeaks
+            : Array.from({ length: 36 }, (_, index) => 0.35 + Math.abs(Math.sin(index * 0.85)) * 0.65);
+        const barWidth = Math.max(2, (w - 34) / peaks.length - 2);
+        ctx.fillStyle = '#ea580c';
+        peaks.forEach((peak, index) => {
+            const normalizedPeak = Math.max(0.12, Math.min(1, Number(peak) || 0.3));
+            const barHeight = 7 + normalizedPeak * 22;
+            const px = x + 17 + index * ((w - 34) / peaks.length);
+            ctx.fillRect(px, waveY - barHeight / 2, barWidth, barHeight);
+        });
+
+        ctx.strokeStyle = '#ea580c';
+        ctx.globalAlpha *= 0.22;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + 16, waveY);
+        ctx.lineTo(x + w - 16, waveY);
+        ctx.stroke();
+
+        this.drawProductionPlaybackState(ctx, element, x, y, w, h, '#ea580c');
+        ctx.restore();
+    }
+
+    drawMermaidDiagram(ctx, element) {
+        const x = element.x - element.width / 2;
+        const y = element.y - element.height / 2;
+        const w = element.width;
+        const h = element.height;
+
+        ctx.save();
+        ctx.globalAlpha = element.opacity ?? 1;
+        this.drawPanelShell(ctx, element, x, y, w, h, '#eef2ff', '#3730a3');
+        this.drawPanelTitle(ctx, element.title || 'Mermaid diagram', x, y, w, '#312e81');
+
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(x + 14, y + 40, w - 28, h - 54);
+        this.drawWrappedPanelText(ctx, element.text || '', x + 24, y + 52, w - 48, 12, '#bfdbfe', 5, '12px "Roboto Mono", Consolas, monospace');
+        const nodeCount = Array.isArray(element.mermaidNodes) ? element.mermaidNodes.length : 0;
+        if (nodeCount > 0) {
+            ctx.fillStyle = '#c7d2fe';
+            ctx.font = '700 11px Inter, system-ui, sans-serif';
+            ctx.fillText(`${nodeCount} parsed node${nodeCount === 1 ? '' : 's'}`, x + 18, y + h - 22, w - 36);
+        }
+        ctx.restore();
+    }
+
+    drawPanelShell(ctx, element, x, y, w, h, fallbackFill, fallbackStroke) {
+        ctx.fillStyle = element.backgroundColor || fallbackFill;
+        ctx.strokeStyle = element.strokeColor || fallbackStroke;
+        ctx.lineWidth = element.strokeWidth || 2;
+        this.roundRectPath(ctx, x, y, w, h, 10);
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    drawPanelTitle(ctx, title, x, y, w, color) {
+        ctx.fillStyle = color;
+        ctx.font = '700 14px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(String(title || '').slice(0, 42), x + 14, y + 12, w - 28);
+    }
+
+    drawPanelTimecode(ctx, element, x, y, stroke, fill) {
+        if (!Number.isFinite(element.startTime)) return;
+        const duration = Number.isFinite(element.durationSeconds) ? element.durationSeconds : 4;
+        const text = `${this.formatPanelDuration(element.startTime)}-${this.formatPanelDuration(element.startTime + duration)}`;
+        ctx.save();
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        this.roundRectPath(ctx, x, y, 68, 20, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = stroke;
+        ctx.font = '700 10px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x + 34, y + 10, 58);
+        ctx.restore();
+    }
+
+    drawProductionPlaybackState(ctx, element, x, y, w, h, color) {
+        const previewState = window.app?.getTimelineCuePreviewState?.(element);
+        if (!previewState?.active) {
+            return;
+        }
+        const progress = Math.max(0, Math.min(1, Number(previewState.progress) || 0));
+
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+        ctx.globalAlpha = 0.86;
+        this.roundRectPath(ctx, x - 5, y - 5, w + 10, h + 10, 14);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        this.roundRectPath(ctx, x + 12, y - 14, 74, 22, 11);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 10px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(previewState.isPlaying ? 'PLAYING' : 'CUE', x + 49, y - 3, 60);
+
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+        this.roundRectPath(ctx, x + 12, y + h + 8, w - 24, 8, 4);
+        ctx.fill();
+        ctx.fillStyle = color;
+        this.roundRectPath(ctx, x + 12, y + h + 8, Math.max(8, (w - 24) * progress), 8, 4);
+        ctx.fill();
+
+        if (element.type === 'animationBeat') {
+            const railY = y + h + 26;
+            const startX = x + 18;
+            const endX = x + w - 18;
+            const markerX = startX + (endX - startX) * progress;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 5]);
+            ctx.beginPath();
+            ctx.moveTo(startX, railY);
+            ctx.lineTo(endX, railY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(markerX, railY, 6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    drawWrappedPanelText(ctx, text, x, y, maxWidth, fontSize, color, maxLines = 3, font = '') {
+        ctx.fillStyle = color;
+        ctx.font = font || `${fontSize}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        const lines = String(text || '')
+            .split(/\r?\n/)
+            .flatMap((line) => this.wrapText(ctx, line, maxWidth))
+            .slice(0, maxLines);
+        lines.forEach((line, index) => {
+            ctx.fillText(line, x, y + index * fontSize * 1.35);
+        });
+    }
+
+    formatPanelDuration(seconds) {
+        const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+        const minutes = Math.floor(safeSeconds / 60);
+        const rest = String(safeSeconds % 60).padStart(2, '0');
+        return `${minutes}:${rest}`;
+    }
+
+    roundRectPath(ctx, x, y, w, h, radius = 8) {
+        const r = Math.min(radius, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+    
     drawFallbackElement(ctx, element) {
         if (element.points && element.points.length >= 2) {
             ctx.save();

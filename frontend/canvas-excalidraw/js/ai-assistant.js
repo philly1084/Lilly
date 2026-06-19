@@ -2,42 +2,14 @@
  * AI Assistant Module - object-first canvas agent panel.
  */
 
-const CANVAS_AGENT_TOOL_LANES = Object.freeze({
-    inspect: {
-        label: 'Inspect',
-        toolIds: [],
-        actionPolicy: 'read_board_context',
-    },
-    create: {
-        label: 'Create',
-        toolIds: ['graph-diagram'],
-        actionPolicy: 'create_editable_canvas_objects',
-    },
-    arrange: {
-        label: 'Arrange',
-        toolIds: ['graph-diagram'],
-        actionPolicy: 'move_and_align_existing_objects',
-    },
-    label: {
-        label: 'Label',
-        toolIds: ['graph-diagram'],
-        actionPolicy: 'add_text_sticky_and_connection_labels',
-    },
-    research: {
-        label: 'Research',
-        toolIds: ['web-search', 'web-fetch'],
-        actionPolicy: 'ground_board_content_before_editing',
-    },
-    qa: {
-        label: 'QA',
-        toolIds: ['design-resource-search'],
-        actionPolicy: 'review_layout_readability_and_missing_links',
-    },
+const CANVAS_AGENT_CONTEXT_LIMITS = Object.freeze({
+    selectedElements: 4,
+    referenceElements: 4,
+    relationships: 4,
+    promptCharacters: 900,
+    restoredHistory: 2,
+    liveHistory: 2,
 });
-
-const CANVAS_AGENT_DEFAULT_TOOL_LANES = ['inspect', 'create', 'arrange', 'label'];
-const CANVAS_AGENT_TOOL_LANE_STORAGE_KEY = 'kimi-canvas-agent-tool-lanes';
-const CANVAS_AGENT_WORK_SET_STORAGE_KEY = 'kimi-canvas-agent-work-sets';
 const CANVAS_AGENT_STEP_ORDER = ['read', 'tool', 'apply'];
 
 class AIAssistant {
@@ -93,10 +65,9 @@ class AIAssistant {
         this.fixList = document.getElementById('aiFixList');
         this.isGenerating = false;
         this.scope = 'auto';
-        this.toolLaneIds = this.loadToolLaneSelection();
         this.actionLedger = [];
         this.changeSets = [];
-        this.workSets = this.loadWorkSets();
+        this.workSets = [];
         this.pendingFixPlan = { fixes: [], actions: [] };
         this.lastBoardBriefText = '';
         this.lastReviewQueueText = '';
@@ -163,8 +134,6 @@ class AIAssistant {
             this.updateGroundingPanel();
         });
 
-        this.setupToolLaneControls();
-
         document.querySelectorAll('[data-ai-context-prompt], [data-ai-local-action]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 if (btn.dataset.aiLocalAction) {
@@ -186,134 +155,9 @@ class AIAssistant {
             });
         });
 
-        document.querySelectorAll('[data-ai-pin-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handlePinnedBoardAction(btn.dataset.aiPinAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-decision-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleDecisionRegisterAction(btn.dataset.aiDecisionAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-gates-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleGateReviewAction(btn.dataset.aiGatesAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-review-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleReviewQueueAction(btn.dataset.aiReviewAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-ops-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleOpsSnapshotAction(btn.dataset.aiOpsAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-evidence-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleEvidencePackAction(btn.dataset.aiEvidenceAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-template]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleTemplateAction(btn.dataset.aiTemplate || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-organizer-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleOrganizerAction(btn.dataset.aiOrganizerAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-workset-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleWorkSetAction(btn.dataset.aiWorksetAction || '', btn.dataset.aiWorksetId || '');
-            });
-        });
-
-        this.workSetList?.addEventListener('click', (event) => {
-            const button = event.target?.closest?.('[data-ai-workset-action]');
-            if (!button) {
-                return;
-            }
-            this.handleWorkSetAction(button.dataset.aiWorksetAction || '', button.dataset.aiWorksetId || '');
-        });
-
-        document.querySelectorAll('[data-ai-checkpoint-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleCheckpointAction(btn.dataset.aiCheckpointAction || '', btn.dataset.aiCheckpointId || '');
-            });
-        });
-
-        this.checkpointList?.addEventListener('click', (event) => {
-            const button = event.target?.closest?.('[data-ai-checkpoint-action]');
-            if (!button) {
-                return;
-            }
-            this.handleCheckpointAction(button.dataset.aiCheckpointAction || '', button.dataset.aiCheckpointId || '');
-        });
-
-        document.querySelectorAll('[data-ai-brief-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleBoardBriefAction(btn.dataset.aiBriefAction || '');
-            });
-        });
-        this.briefList?.addEventListener('click', (event) => {
-            const button = event.target?.closest?.('[data-ai-brief-next-action]');
-            if (!button || button.disabled) {
-                return;
-            }
-            this.handleBoardBriefNextAction(button.dataset.aiBriefNextAction || '');
-        });
-
-        this.boardIndexInput?.addEventListener('input', () => {
-            this.renderBoardIndex(this.boardIndexInput.value || '');
-        });
-
-        document.querySelectorAll('[data-ai-board-index-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleBoardIndexAction(btn.dataset.aiBoardIndexAction || '', btn.dataset.aiBoardIndexId || '');
-            });
-        });
-
-        this.boardIndexList?.addEventListener('click', (event) => {
-            const button = event.target?.closest?.('[data-ai-board-index-action]');
-            if (!button || button.disabled) {
-                return;
-            }
-            this.handleBoardIndexAction(button.dataset.aiBoardIndexAction || '', button.dataset.aiBoardIndexId || '');
-        });
-
-        document.querySelectorAll('[data-ai-health-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleHealthAction(btn.dataset.aiHealthAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-fix-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleFixAction(btn.dataset.aiFixAction || '');
-            });
-        });
-
         document.querySelectorAll('[data-ai-change-action]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 this.handleChangeSetAction(btn.dataset.aiChangeAction || '');
-            });
-        });
-
-        document.querySelectorAll('[data-ai-audit-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.handleCanvasAuditAction(btn.dataset.aiAuditAction || '');
             });
         });
 
@@ -339,64 +183,20 @@ class AIAssistant {
         this.renderToolPlan();
         this.renderActionLedger();
         this.renderChangeSets();
-        this.renderWorkSets();
-        this.renderCheckpoints();
-        this.renderBoardBrief();
-        this.renderBoardIndex();
-        this.renderPinnedActions();
-        this.renderDecisionRegister();
-        this.renderGateReview();
-        this.renderOpsSnapshot();
-        this.renderEvidencePack();
-        this.renderReviewQueue();
         this.updateSelectionActionBar();
         this.setAgentPlanStep();
     }
 
     loadToolLaneSelection() {
-        try {
-            const saved = JSON.parse(localStorage.getItem(CANVAS_AGENT_TOOL_LANE_STORAGE_KEY) || 'null');
-            if (Array.isArray(saved)) {
-                const valid = saved
-                    .map((lane) => String(lane || '').trim())
-                    .filter((lane) => CANVAS_AGENT_TOOL_LANES[lane]);
-                if (valid.length > 0) {
-                    return Array.from(new Set(valid));
-                }
-            }
-        } catch {}
-
-        return [...CANVAS_AGENT_DEFAULT_TOOL_LANES];
+        return [];
     }
 
     loadWorkSets() {
-        try {
-            const saved = JSON.parse(localStorage.getItem(CANVAS_AGENT_WORK_SET_STORAGE_KEY) || '[]');
-            if (!Array.isArray(saved)) {
-                return [];
-            }
-            return saved
-                .map((set) => ({
-                    id: String(set?.id || '').trim(),
-                    name: String(set?.name || '').trim(),
-                    elementIds: Array.isArray(set?.elementIds)
-                        ? set.elementIds.map((id) => String(id || '').trim()).filter(Boolean)
-                        : [],
-                    createdAt: String(set?.createdAt || new Date().toISOString()),
-                }))
-                .filter((set) => set.id && set.name && set.elementIds.length > 0)
-                .slice(0, 12);
-        } catch (_error) {
-            return [];
-        }
+        return [];
     }
 
     saveWorkSets() {
-        try {
-            localStorage.setItem(CANVAS_AGENT_WORK_SET_STORAGE_KEY, JSON.stringify(this.workSets.slice(0, 12)));
-        } catch (error) {
-            console.warn('[CanvasAgent] Failed to save work sets:', error);
-        }
+        // Legacy no-op. Reusable object storage now lives in the Canvas Blocks shelf.
     }
 
     renderWorkSets() {
@@ -2097,86 +1897,61 @@ class AIAssistant {
     }
 
     setupToolLaneControls() {
-        document.querySelectorAll('[data-ai-tool-lane]').forEach((input) => {
-            const lane = String(input.dataset.aiToolLane || '').trim();
-            input.checked = this.toolLaneIds.includes(lane);
-            input.addEventListener('change', () => {
-                this.toolLaneIds = this.getSelectedToolLaneIds();
-                this.persistToolLaneSelection();
-                this.renderToolPlan();
-                this.updateGroundingPanel();
-            });
-        });
+        // Legacy no-op: the active Canvas agent now uses a lean mode plan.
     }
 
     getSelectedToolLaneIds() {
-        const selected = Array.from(document.querySelectorAll('[data-ai-tool-lane]'))
-            .filter((input) => input.checked)
-            .map((input) => String(input.dataset.aiToolLane || '').trim())
-            .filter((lane) => CANVAS_AGENT_TOOL_LANES[lane]);
-
-        return selected.length > 0 ? Array.from(new Set(selected)) : [...CANVAS_AGENT_DEFAULT_TOOL_LANES];
+        return [];
     }
 
     persistToolLaneSelection() {
-        try {
-            localStorage.setItem(CANVAS_AGENT_TOOL_LANE_STORAGE_KEY, JSON.stringify(this.toolLaneIds));
-        } catch {}
+        // Legacy no-op.
     }
 
     buildToolPlan(mode = this.mode) {
-        const lanes = this.getSelectedToolLaneIds();
-        const plannedTools = [];
-        lanes.forEach((laneId) => {
-            CANVAS_AGENT_TOOL_LANES[laneId]?.toolIds?.forEach((toolId) => {
-                if (toolId && !plannedTools.includes(toolId)) {
-                    plannedTools.push(toolId);
-                }
-            });
-        });
+        const normalizedMode = mode === 'image'
+            ? 'image'
+            : (mode === 'diagram' ? 'diagram' : 'chat');
+        const plannedTools = normalizedMode === 'image'
+            ? ['image-generate']
+            : (normalizedMode === 'diagram' ? ['graph-diagram'] : []);
 
-        if (mode === 'image') {
-            if (!plannedTools.includes('image-generate')) {
-                plannedTools.unshift('image-generate');
-            }
-        } else {
-            const imageToolIndex = plannedTools.indexOf('image-generate');
-            if (imageToolIndex !== -1) {
-                plannedTools.splice(imageToolIndex, 1);
-            }
-        }
+        return {
+            mode: normalizedMode,
+            plannedTools,
+            preferredTool: plannedTools[0] || null,
+            executionProfile: 'lean-canvas',
+            creationMode: normalizedMode === 'image' ? 'explicit-image-asset' : 'editable-object-actions',
+            preferEditableObjects: normalizedMode !== 'image',
+            avoidRasterSnapshots: normalizedMode !== 'image',
+            allowedActions: normalizedMode === 'image'
+                ? ['add image asset after explicit image generation']
+                : ['add', 'add_many', 'update', 'update_many', 'delete', 'select'],
+        };
+    }
 
-        const laneLabels = lanes.map((laneId) => CANVAS_AGENT_TOOL_LANES[laneId]?.label || laneId);
-        const lanePolicies = lanes
-            .map((laneId) => CANVAS_AGENT_TOOL_LANES[laneId]?.actionPolicy)
-            .filter(Boolean);
+    buildAgentToolPlan(mode = this.mode) {
+        const fullPlan = this.buildToolPlan(mode);
+        const plannedTools = Array.isArray(fullPlan.plannedTools)
+            ? fullPlan.plannedTools.filter((toolId) => toolId !== 'image-generate').slice(0, 4)
+            : [];
 
         return {
             mode,
-            lanes,
-            laneLabels,
-            lanePolicies,
-            plannedTools,
-            preferredTool: plannedTools[0] || null,
-            executionProfile: 'default',
-            creationMode: mode === 'image' ? 'explicit-image-asset' : 'editable-object-actions',
+            plannedTools: mode === 'image' ? ['image-generate'] : plannedTools,
+            preferredTool: mode === 'image' ? 'image-generate' : (plannedTools[0] || null),
+            executionProfile: fullPlan.executionProfile || 'lean-canvas',
             preferEditableObjects: mode !== 'image',
             avoidRasterSnapshots: mode !== 'image',
-            stateBackend: {
-                current: 'browser-local-draft',
-                target: 'valkey-live-bus',
-                savedAt: new Date().toISOString(),
-            },
-            allowedActions: mode === 'image'
-                ? ['add image asset after explicit image generation']
-                : ['add', 'add_many', 'update', 'update_many', 'delete', 'select'],
         };
     }
 
     renderToolPlan() {
         const plan = this.buildToolPlan();
         if (this.toolPlanSummary) {
-            this.toolPlanSummary.textContent = plan.laneLabels.join(', ') || 'Editable object actions';
+            this.toolPlanSummary.textContent = plan.mode === 'image'
+                ? 'Image asset only'
+                : (plan.mode === 'diagram' ? 'Editable object build' : 'Lean board read');
         }
         if (this.toolPlanPill) {
             this.toolPlanPill.textContent = plan.preferEditableObjects ? 'Object-first' : 'Image asset';
@@ -3374,21 +3149,15 @@ class AIAssistant {
             y: Math.round(Number(element.y) || 0),
             width: Math.round(Number(element.width) || 0),
             height: Math.round(Number(element.height) || 0),
-            text: element.text || '',
-            name: element.name || '',
+            text: String(element.text || '').slice(0, 180),
+            name: String(element.name || element.title || '').slice(0, 80),
             strokeColor: element.strokeColor,
             backgroundColor: element.backgroundColor,
-            strokeWidth: element.strokeWidth,
-            strokeStyle: element.strokeStyle,
-            opacity: element.opacity,
-            fontSize: element.fontSize,
-            fontFamily: element.fontFamily,
-            smartTemplate: Boolean(element.smartTemplate),
-            healthRole: element.healthRole || '',
+            canvasRole: element.canvasRole || element.healthRole || '',
         };
 
         if (Array.isArray(element.points)) {
-            clone.points = element.points.slice(0, 16).map((point) => ({
+            clone.points = element.points.slice(0, 4).map((point) => ({
                 x: Math.round(Number(point.x) || 0),
                 y: Math.round(Number(point.y) || 0),
             }));
@@ -3630,7 +3399,7 @@ class AIAssistant {
         };
     }
 
-    buildCanvasContext() {
+    buildCanvasContext(options = {}) {
         const canvas = window.infiniteCanvas;
         const elements = canvas?.elements || [];
         const selected = canvas?.selectedElements || [];
@@ -3638,12 +3407,38 @@ class AIAssistant {
         const scopedElements = scope === 'selection'
             ? selected
             : (scope === 'viewport' ? this.getElementsInViewport() : elements);
-        const relationships = this.buildCanvasRelationships(scopedElements);
-        const boardHealth = this.analyzeCanvasHealth(elements);
-        const scopedHealth = this.analyzeCanvasHealth(scopedElements);
+        const includeHealth = options?.includeHealth === true;
+        const boardHealth = includeHealth ? this.analyzeCanvasHealth(elements) : null;
+        const selectedIds = new Set(selected.map((element) => element.id));
+        const selectedElements = selected
+            .slice(0, CANVAS_AGENT_CONTEXT_LIMITS.selectedElements)
+            .map((element) => this.cloneElementForAI(element));
+        const referenceElements = scopedElements
+            .filter((element) => !selectedIds.has(element.id))
+            .slice(-CANVAS_AGENT_CONTEXT_LIMITS.referenceElements)
+            .map((element) => this.cloneElementForAI(element));
+        const relationships = this.buildCanvasRelationships([...selected, ...scopedElements.slice(-16)])
+            .slice(0, CANVAS_AGENT_CONTEXT_LIMITS.relationships)
+            .map((relationship) => {
+                if (relationship.type === 'frame_contains') {
+                    return {
+                        type: relationship.type,
+                        frameId: relationship.frameId,
+                        elementIds: (relationship.elementIds || []).slice(0, 6),
+                    };
+                }
+                return {
+                    type: relationship.type,
+                    connectorId: relationship.connectorId,
+                    fromId: relationship.fromId,
+                    toId: relationship.toId,
+                    label: relationship.label || '',
+                };
+            });
 
         return {
             surface: 'canvas-excalidraw',
+            compact: true,
             scope,
             board: {
                 elementCount: elements.length,
@@ -3653,20 +3448,54 @@ class AIAssistant {
                 count: selected.length,
                 ids: selected.map((element) => element.id),
                 typeCounts: this.summarizeTypeCounts(selected),
-                elements: selected.slice(0, 20).map((element) => this.cloneElementForAI(element)),
+                elements: selectedElements,
             },
             viewport: this.getViewportBounds(),
-            elements: scopedElements.slice(-60).map((element) => ({
-                ...this.cloneElementForAI(element),
-                bounds: this.getElementBounds(element),
-            })),
+            elements: referenceElements,
             relationships,
-            boardHealth,
-            scopedHealth,
-            toolPlan: this.buildToolPlan(),
+            boardHealth: boardHealth ? {
+                score: boardHealth.score,
+                objectCount: boardHealth.objectCount,
+                issues: (boardHealth.issues || []).slice(0, 2),
+                unlabeledIds: (boardHealth.unlabeledIds || []).slice(0, 4),
+                disconnectedIds: (boardHealth.disconnectedIds || []).slice(0, 4),
+            } : null,
+            toolPlan: this.buildAgentToolPlan(),
             allowedActions: ['add', 'add_many', 'update', 'update_many', 'delete', 'select'],
-            instruction: 'Ground your answer in selected objects when scope is selection. Preserve element ids for updates. Use editable object actions for canvas edits. Use relationships and boardHealth to preserve connector intent, label gaps, disconnected objects, and frame membership. Do not create raster snapshots unless the user explicitly switches to image asset mode.',
         };
+    }
+
+    buildCanvasPromptContext(canvasContext = this.buildCanvasContext()) {
+        const context = canvasContext || {};
+        const board = context.board || {};
+        const selection = context.selection || {};
+        const viewport = context.viewport || {};
+        const elementLines = (context.elements || [])
+            .slice(0, 8)
+            .map((element) => {
+                const label = String(element.name || element.text || element.canvasRole || '').replace(/\s+/g, ' ').trim();
+                const size = element.width && element.height ? `${element.width}x${element.height}` : 'line';
+                return `${element.id || 'new'} ${element.type || 'object'} @${element.x || 0},${element.y || 0} ${size}${label ? ` "${label.slice(0, 80)}"` : ''}`;
+            });
+        const relationshipLines = (context.relationships || [])
+            .slice(0, 8)
+            .map((relationship) => relationship.type === 'frame_contains'
+                ? `frame ${relationship.frameId} contains ${(relationship.elementIds || []).join(', ')}`
+                : `${relationship.fromId || '?'} -> ${relationship.toId || '?'}${relationship.label ? ` "${relationship.label}"` : ''}`);
+        const issueLines = (context.boardHealth?.issues || [])
+            .slice(0, 3)
+            .map((issue) => `${issue.severity || 'note'}: ${issue.text || ''}`);
+
+        return [
+            `surface=${context.surface || 'canvas-excalidraw'} scope=${context.scope || 'board'}`,
+            `board=${board.elementCount || 0} objects; types=${board.typeCounts || 'none'}`,
+            `selection=${selection.count || 0}; ids=${(selection.ids || []).slice(0, 10).join(', ') || 'none'}; types=${selection.typeCounts || 'none'}`,
+            viewport ? `viewport=${viewport.x || 0},${viewport.y || 0},${viewport.width || 0}x${viewport.height || 0}; zoom=${viewport.zoom || '1.00'}` : '',
+            elementLines.length ? `objects:\n- ${elementLines.join('\n- ')}` : 'objects: none in scope',
+            relationshipLines.length ? `relationships:\n- ${relationshipLines.join('\n- ')}` : 'relationships: none',
+            issueLines.length ? `board health:\n- ${issueLines.join('\n- ')}` : '',
+            'allowed creative types: rectangle, diamond, ellipse, arrow, line, text, sticky, frame, storyboardFrame, animationBeat, audioCue, mermaidDiagram',
+        ].filter(Boolean).join('\n').slice(0, CANVAS_AGENT_CONTEXT_LIMITS.promptCharacters);
     }
 
     updateGroundingPanel() {
@@ -3699,18 +3528,8 @@ class AIAssistant {
             this.applySummary.textContent = scope === 'selection' ? 'Backend + selected objects' : (scope === 'viewport' ? 'Backend + visible objects' : 'Backend + board');
         }
         this.renderToolPlan();
-        this.renderBoardHealth(context.boardHealth);
         this.renderChangeSets();
-        this.renderWorkSets();
-        this.renderCheckpoints();
-        this.renderBoardBrief(context);
-        this.renderBoardIndex();
-        this.renderPinnedActions(context);
-        this.renderDecisionRegister(context);
-        this.renderGateReview(context);
-        this.renderOpsSnapshot(context);
-        this.renderEvidencePack(context);
-        this.renderReviewQueue(context);
+        this.renderActionLedger();
         this.updateSelectionActionBar(context);
     }
 
@@ -4183,6 +4002,7 @@ class AIAssistant {
 
         try {
             const canvasContext = this.buildCanvasContext();
+            const canvasPromptContext = this.buildCanvasPromptContext(canvasContext);
             const toolPlan = canvasContext.toolPlan || this.buildToolPlan('chat');
             this.setAgentPlanStep('tool', ['read']);
             let response;
@@ -4190,6 +4010,7 @@ class AIAssistant {
                 response = await window.apiManager.requestCanvasAgent({
                     message: prompt,
                     canvasContext,
+                    existingContent: canvasPromptContext,
                     mode: 'chat',
                     toolPlan,
                 });
@@ -4243,8 +4064,9 @@ class AIAssistant {
         try {
             // Get current canvas state for context
             const canvasContext = this.buildCanvasContext();
+            const canvasPromptContext = this.buildCanvasPromptContext(canvasContext);
             const toolPlan = canvasContext.toolPlan || this.buildToolPlan('diagram');
-            const existingContent = JSON.stringify(canvasContext.elements);
+            const existingContent = canvasPromptContext;
             this.addConversationMessage('user', prompt);
             this.setAgentPlanStep('tool', ['read']);
             
@@ -4618,11 +4440,12 @@ class AIAssistant {
     }
 
     normalizeGeneratedElement(element = {}) {
-        const allowedTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame']);
+        const allowedTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame', 'storyboardFrame', 'animationBeat', 'audioCue', 'mermaidDiagram']);
+        const requestedType = allowedTypes.has(element.type) ? element.type : 'rectangle';
         const normalized = {
             ...element,
             id: window.toolManager?.generateId?.() || `el-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            type: allowedTypes.has(element.type) ? element.type : 'rectangle',
+            type: requestedType,
             x: Number.isFinite(Number(element.x)) ? Number(element.x) : 0,
             y: Number.isFinite(Number(element.y)) ? Number(element.y) : 0,
             width: Number.isFinite(Number(element.width)) && Number(element.width) > 0 ? Number(element.width) : 140,
@@ -4634,6 +4457,45 @@ class AIAssistant {
             roughness: element.roughness ?? window.toolManager?.defaultProperties?.roughness ?? 1,
             opacity: element.opacity ?? window.toolManager?.defaultProperties?.opacity ?? 1,
         };
+
+        if (requestedType === 'storyboardFrame') {
+            normalized.width = Math.max(normalized.width, 300);
+            normalized.height = Math.max(normalized.height, 220);
+            normalized.title = String(element.title || element.name || 'Storyboard Frame').slice(0, 80);
+            normalized.text = String(element.text || element.note || 'Shot, action, camera, and composition notes').slice(0, 360);
+            normalized.startTime = Number.isFinite(Number(element.startTime)) ? Number(element.startTime) : 0;
+            normalized.durationSeconds = Number.isFinite(Number(element.durationSeconds)) ? Math.max(1, Number(element.durationSeconds)) : 4;
+            normalized.canvasRole = element.canvasRole || 'storyboard';
+        } else if (requestedType === 'animationBeat') {
+            normalized.width = Math.max(normalized.width, 260);
+            normalized.height = Math.max(normalized.height, 150);
+            normalized.title = String(element.title || element.name || 'Animation Beat').slice(0, 80);
+            normalized.text = String(element.text || element.note || 'Motion, easing, transition').slice(0, 360);
+            normalized.motionPreset = String(element.motionPreset || 'ease').slice(0, 32);
+            normalized.startTime = Number.isFinite(Number(element.startTime)) ? Number(element.startTime) : 0;
+            normalized.durationSeconds = Number.isFinite(Number(element.durationSeconds)) ? Math.max(1, Number(element.durationSeconds)) : 4;
+            normalized.canvasRole = element.canvasRole || 'animation';
+        } else if (requestedType === 'audioCue') {
+            normalized.width = Math.max(normalized.width, 300);
+            normalized.height = Math.max(normalized.height, 132);
+            normalized.title = String(element.title || element.name || 'Audio Cue').slice(0, 80);
+            normalized.text = String(element.text || element.note || 'Voice, music, SFX, or ambience note').slice(0, 360);
+            normalized.audioName = String(element.audioName || element.title || 'Audio cue').slice(0, 120);
+            normalized.startTime = Number.isFinite(Number(element.startTime)) ? Number(element.startTime) : 0;
+            normalized.durationSeconds = Number.isFinite(Number(element.durationSeconds)) ? Math.max(1, Number(element.durationSeconds)) : 4;
+            normalized.audioPersistent = element.audioPersistent !== false;
+            normalized.waveformPeaks = Array.isArray(element.waveformPeaks) ? element.waveformPeaks.slice(0, 24) : window.app?.createWaveformPeaks?.(normalized.audioName || normalized.text) || [];
+            normalized.canvasRole = element.canvasRole || 'audio';
+        } else if (requestedType === 'mermaidDiagram') {
+            normalized.width = Math.max(normalized.width, 360);
+            normalized.height = Math.max(normalized.height, 220);
+            normalized.title = String(element.title || element.name || 'Mermaid Diagram').slice(0, 80);
+            normalized.mermaidSource = String(element.mermaidSource || element.text || 'flowchart TD\n  Idea --> Draft\n  Draft --> Review\n  Review --> Ship').slice(0, 2400);
+            normalized.mermaidNodes = Array.isArray(element.mermaidNodes)
+                ? element.mermaidNodes.slice(0, 24)
+                : window.app?.parseMermaidFlow?.(normalized.mermaidSource)?.nodes?.map((node) => node.label).slice(0, 24) || [];
+            normalized.canvasRole = element.canvasRole || 'diagram-source';
+        }
 
         if (Array.isArray(element.points)) {
             normalized.points = element.points.map((point) => ({
@@ -4665,6 +4527,19 @@ class AIAssistant {
             'points',
             'healthRole',
             'smartTemplate',
+            'title',
+            'startTime',
+            'durationSeconds',
+            'audioName',
+            'audioType',
+            'audioSize',
+            'audioUrl',
+            'audioPersistent',
+            'waveformPeaks',
+            'mermaidSource',
+            'mermaidNodes',
+            'canvasRole',
+            'motionPreset',
         ]);
         const safePatch = {};
 
@@ -4673,7 +4548,7 @@ class AIAssistant {
                 return;
             }
 
-            if (['x', 'y', 'width', 'height', 'strokeWidth', 'roughness', 'opacity', 'fontSize'].includes(key)) {
+            if (['x', 'y', 'width', 'height', 'strokeWidth', 'roughness', 'opacity', 'fontSize', 'startTime', 'durationSeconds', 'audioSize'].includes(key)) {
                 const numberValue = Number(value);
                 if (!Number.isFinite(numberValue)) {
                     return;
@@ -4690,6 +4565,20 @@ class AIAssistant {
                     x: Number(point?.x) || 0,
                     y: Number(point?.y) || 0,
                 }));
+                return;
+            }
+
+            if (key === 'waveformPeaks') {
+                if (Array.isArray(value)) {
+                    safePatch.waveformPeaks = value.slice(0, 32).map((entry) => Math.max(0, Math.min(1, Number(entry) || 0)));
+                }
+                return;
+            }
+
+            if (key === 'mermaidNodes') {
+                if (Array.isArray(value)) {
+                    safePatch.mermaidNodes = value.slice(0, 32).map((entry) => String(entry || '').slice(0, 120));
+                }
                 return;
             }
 
@@ -4871,7 +4760,7 @@ class AIAssistant {
         }
         
         // Validate and filter elements. Image assets are handled by explicit image mode.
-        const objectTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame']);
+        const objectTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'sticky', 'frame', 'storyboardFrame', 'animationBeat', 'audioCue', 'mermaidDiagram']);
         elements = elements.filter(el => el && typeof el === 'object' && objectTypes.has(el.type));
         
         // Add elements to canvas
@@ -5257,21 +5146,23 @@ class AIAssistant {
                     'When the user asks you to change the canvas, return strict JSON with this shape:',
                     '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"existing-id","patch":{...}},{"type":"update_many","patches":[{"id":"existing-id","patch":{...}}]},{"type":"delete","id":"existing-id"},{"type":"select","ids":["existing-id"]}]}',
                     'Use selected element ids for updates. Do not invent ids for existing objects. Keep geometry changes modest unless asked for a large rewrite.',
-                    'Default to editable objects and object actions. Do not create image elements, screenshots, or raster snapshots unless image asset mode is explicit.',
+                    'Default to editable objects and object actions. Creative object types are allowed: storyboardFrame, animationBeat, audioCue, mermaidDiagram.',
+                    'For storyboardFrame or animationBeat include title, text, startTime, and durationSeconds. For audioCue include title, text, audioName, startTime, and durationSeconds. For mermaidDiagram include title and mermaidSource.',
+                    'Do not create image elements, screenshots, or raster snapshots unless image asset mode is explicit.',
                     'For discussion-only answers, plain text is fine.',
                 ].join(' '),
             },
             {
                 role: 'system',
-                content: `Current canvas grounding: ${JSON.stringify(canvasContext)}`,
+                content: `Current canvas grounding:\n${this.buildCanvasPromptContext(canvasContext)}`,
             },
             ...this.chatHistory,
         ];
     }
 
     trimChatHistory() {
-        if (this.chatHistory.length > 12) {
-            this.chatHistory = this.chatHistory.slice(-12);
+        if (this.chatHistory.length > CANVAS_AGENT_CONTEXT_LIMITS.liveHistory) {
+            this.chatHistory = this.chatHistory.slice(-CANVAS_AGENT_CONTEXT_LIMITS.liveHistory);
         }
     }
 
@@ -5286,7 +5177,7 @@ class AIAssistant {
             }
 
             window.apiManager.setSessionId(activeSessionId);
-            const messages = await window.apiManager.getSessionMessages(activeSessionId, 40);
+            const messages = await window.apiManager.getSessionMessages(activeSessionId, 16);
             this.chatHistory = messages
                 .filter((message) => message?.role === 'user' || message?.role === 'assistant')
                 .map((message) => ({
@@ -5294,7 +5185,7 @@ class AIAssistant {
                     content: this.extractHistoryContent(message.content),
                 }))
                 .filter((message) => message.content)
-                .slice(-12);
+                .slice(-CANVAS_AGENT_CONTEXT_LIMITS.restoredHistory);
 
             this.renderConversationHistory();
             if (this.chatHistory.length > 0) {

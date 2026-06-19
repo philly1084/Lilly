@@ -795,12 +795,282 @@
             min-width: 0;
         }
 
+        .cli-help-group__head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
         .cli-help-group h3 {
             margin: 0;
             color: var(--accent);
             font-size: 12px;
             font-weight: 800;
             text-transform: uppercase;
+        }
+
+        .cli-help-group__head button,
+        .cli-menu-nav button,
+        .cli-menu-actions button,
+        .cli-menu-card__actions button,
+        .cli-menu-chip-row button,
+        .cli-menu-search button {
+            min-height: 30px;
+            padding: 6px 10px;
+            color: var(--text-primary);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font: inherit;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .cli-help-group__head button:hover,
+        .cli-help-group__head button:focus-visible,
+        .cli-menu-nav button:hover,
+        .cli-menu-nav button:focus-visible,
+        .cli-menu-actions button:hover,
+        .cli-menu-actions button:focus-visible,
+        .cli-menu-card__actions button:hover,
+        .cli-menu-card__actions button:focus-visible,
+        .cli-menu-chip-row button:hover,
+        .cli-menu-chip-row button:focus-visible,
+        .cli-menu-search button:hover,
+        .cli-menu-search button:focus-visible {
+            border-color: var(--accent);
+            background: var(--bg-hover);
+            outline: none;
+        }
+
+        .cli-menu-nav button:disabled {
+            opacity: 0.45;
+            cursor: default;
+        }
+
+        .cli-menu-nav {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .cli-menu-panel {
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .cli-menu-panel__intro {
+            display: grid;
+            grid-template-columns: 38px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+
+        .cli-menu-panel__intro strong,
+        .cli-menu-panel__intro code,
+        .cli-menu-panel__intro p {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-menu-panel__intro strong {
+            display: block;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .cli-menu-panel__intro code {
+            display: inline-block;
+            margin-top: 3px;
+            color: var(--accent);
+            font-size: 12px;
+        }
+
+        .cli-menu-panel__intro p {
+            margin: 5px 0 0;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .cli-menu-panel__icon {
+            display: grid;
+            place-items: center;
+            width: 38px;
+            height: 38px;
+            color: var(--accent);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .cli-menu-runtime,
+        .cli-menu-card__meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        .cli-menu-runtime span,
+        .cli-menu-runtime strong,
+        .cli-menu-card__meta span {
+            max-width: 100%;
+            padding: 4px 7px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-menu-runtime strong {
+            color: var(--text-primary);
+        }
+
+        .cli-menu-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .cli-menu-chip-row button.is-active {
+            color: var(--bg-primary);
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .cli-menu-card-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .cli-menu-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            padding: 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+
+        .cli-menu-card__main {
+            display: grid;
+            gap: 5px;
+            min-width: 0;
+        }
+
+        .cli-menu-card__top {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .cli-menu-card__top code {
+            color: var(--accent);
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-menu-card__top strong {
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+
+        .cli-menu-card p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-menu-card__actions,
+        .cli-menu-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .cli-menu-form,
+        .cli-menu-search {
+            display: grid;
+            gap: 10px;
+        }
+
+        .cli-menu-search {
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        .cli-menu-form label,
+        .cli-menu-field {
+            display: grid;
+            gap: 5px;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .cli-menu-field--checkbox {
+            grid-template-columns: auto minmax(0, 1fr);
+            align-items: center;
+        }
+
+        .cli-menu-form input,
+        .cli-menu-form textarea,
+        .cli-menu-search input {
+            width: 100%;
+            min-width: 0;
+            padding: 9px 10px;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font: inherit;
+            font-size: 12px;
+        }
+
+        .cli-menu-form textarea {
+            resize: vertical;
+        }
+
+        .cli-menu-form small,
+        .cli-menu-field small {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 500;
+            line-height: 1.35;
+        }
+
+        .cli-menu-doc {
+            max-height: 340px;
+            overflow: auto;
+            padding: 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+        }
+
+        .cli-menu-doc pre {
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
         }
 
         .cli-help-command-list {
@@ -1328,6 +1598,23 @@
             .cli-help-command {
                 grid-template-columns: 18px minmax(0, 1fr);
                 align-items: flex-start;
+            }
+
+            .cli-menu-card,
+            .cli-menu-search {
+                grid-template-columns: 1fr;
+            }
+
+            .cli-menu-card__actions,
+            .cli-menu-actions,
+            .cli-menu-nav {
+                justify-content: stretch;
+            }
+
+            .cli-menu-card__actions button,
+            .cli-menu-actions button,
+            .cli-menu-nav button {
+                flex: 1 1 120px;
             }
 
             .cli-help-command__meta {

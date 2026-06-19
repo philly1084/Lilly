@@ -7,11 +7,11 @@ const CANVAS_EXCALIDRAW_TASK_TYPE = 'canvas';
 const CANVAS_EXCALIDRAW_CLIENT_SURFACE = 'canvas-excalidraw';
 const CANVAS_DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 const CANVAS_EXCALIDRAW_ACTION_CONTRACT = [
-    'Return /api/canvas-compatible JSON. Put board edits inside the top-level content string using this inner shape:',
-    '{"message":"short summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"element-id","patch":{...}},{"type":"update_many","patches":[{"id":"element-id","patch":{...}}]},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[]}',
-    'The full response shape should be {"content":"<inner board-edit JSON string>","metadata":{"type":"diagram","surface":"canvas-excalidraw"},"suggestions":[]}.',
-    'Use existing selected ids for updates. Keep changes modest unless the user asks for a rewrite.',
-    'Default to editable board objects and object actions. Do not create raster screenshots, image snapshots, or image elements unless the user explicitly asks for an image asset.',
+    'Return JSON only: {"content":"{\\"message\\":\\"short\\",\\"actions\\":[...],\\"elements\\":[]}","metadata":{"type":"diagram","surface":"canvas-excalidraw"},"suggestions":[]}.',
+    'Actions: add, add_many, update, update_many, delete, select.',
+    'Use existing selected ids for updates. Prefer editable rectangle/diamond/ellipse/arrow/line/text/sticky/frame/storyboardFrame/animationBeat/audioCue/mermaidDiagram objects.',
+    'For storyboardFrame include title,text,startTime,durationSeconds. For animationBeat include title,text,startTime,durationSeconds. For audioCue include title,text,audioName,startTime,durationSeconds. For mermaidDiagram include title,mermaidSource.',
+    'No raster/image elements unless explicitly requested.',
 ].join(' ');
 const canvasGatewayHelpers = window.KimiBuiltGatewaySSE || {};
 const buildCanvasGatewayHeaders = canvasGatewayHelpers.buildGatewayHeaders || ((headers = {}) => ({
@@ -72,6 +72,71 @@ class OpenAICanvasAPI {
         return this.baseURL.replace(/\/v1\/?$/, '');
     }
 
+    formatCanvasGrounding(canvasContext = null, fallback = '') {
+        if (fallback) {
+            return String(fallback).slice(0, 900);
+        }
+        if (!canvasContext || typeof canvasContext !== 'object') {
+            return '';
+        }
+        const board = canvasContext.board || {};
+        const selection = canvasContext.selection || {};
+        const elements = Array.isArray(canvasContext.elements) ? canvasContext.elements : [];
+        const elementLines = elements.slice(0, 4).map((element) => {
+            const label = String(element.name || element.text || element.canvasRole || '').replace(/\s+/g, ' ').trim();
+            return `${element.id || 'new'} ${element.type || 'object'} @${element.x || 0},${element.y || 0}${label ? ` "${label.slice(0, 64)}"` : ''}`;
+        });
+        return [
+            `surface=${canvasContext.surface || 'canvas-excalidraw'} scope=${canvasContext.scope || 'board'}`,
+            `board=${board.elementCount || 0}; types=${board.typeCounts || 'none'}`,
+            `selection=${selection.count || 0}; ids=${(selection.ids || []).slice(0, 8).join(', ') || 'none'}`,
+            elementLines.length ? `objects:\n- ${elementLines.join('\n- ')}` : '',
+        ].filter(Boolean).join('\n').slice(0, 900);
+    }
+
+    compactCanvasContext(canvasContext = null) {
+        if (!canvasContext || typeof canvasContext !== 'object') {
+            return null;
+        }
+        const selection = canvasContext.selection || {};
+        return {
+            surface: canvasContext.surface || 'canvas-excalidraw',
+            compact: true,
+            scope: canvasContext.scope || 'board',
+            board: canvasContext.board || {},
+            selection: {
+                count: selection.count || 0,
+                ids: Array.isArray(selection.ids) ? selection.ids.slice(0, 8) : [],
+                typeCounts: selection.typeCounts || '',
+                elements: Array.isArray(selection.elements) ? selection.elements.slice(0, 4) : [],
+            },
+            viewport: canvasContext.viewport || null,
+            elements: Array.isArray(canvasContext.elements) ? canvasContext.elements.slice(0, 4) : [],
+            relationships: Array.isArray(canvasContext.relationships) ? canvasContext.relationships.slice(0, 4) : [],
+            toolPlan: this.summarizeToolPlan(canvasContext.toolPlan),
+            allowedActions: Array.isArray(canvasContext.allowedActions)
+                ? canvasContext.allowedActions.slice(0, 8)
+                : ['add', 'add_many', 'update', 'update_many', 'delete', 'select'],
+        };
+    }
+
+    summarizeToolPlan(toolPlan = null) {
+        if (!toolPlan || typeof toolPlan !== 'object') {
+            return null;
+        }
+        const plannedTools = Array.isArray(toolPlan.plannedTools)
+            ? toolPlan.plannedTools.slice(0, 3)
+            : [];
+        return {
+            mode: toolPlan.mode || 'chat',
+            executionProfile: toolPlan.executionProfile || 'lean-canvas',
+            plannedTools,
+            preferredTool: toolPlan.preferredTool || plannedTools[0] || null,
+            preferEditableObjects: toolPlan.preferEditableObjects !== false,
+            avoidRasterSnapshots: toolPlan.avoidRasterSnapshots !== false,
+        };
+    }
+
     async requestCanvasAgent({
         message,
         canvasContext = null,
@@ -79,17 +144,17 @@ class OpenAICanvasAPI {
         existingContent = '',
         toolPlan = null,
     }) {
-        const contextText = canvasContext ? JSON.stringify(canvasContext) : '';
-        const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools : [];
+        const compactContext = this.compactCanvasContext(canvasContext);
+        const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools.slice(0, 3) : [];
+        const compactToolPlan = this.summarizeToolPlan(toolPlan);
+        const compactExistingContent = this.formatCanvasGrounding(compactContext, existingContent);
         const prompt = [
             message,
             '',
             CANVAS_EXCALIDRAW_ACTION_CONTRACT,
-            'You are working inside the Lilly Canvas Excalidraw-style whiteboard, so reason about layout, labels, spacing, arrows, and selected objects as real editable canvas objects.',
             mode === 'diagram'
-                ? 'The user expects you to draw or modify diagram objects on the board.'
-                : 'The user may want either advice or direct board edits. Use plain text only for discussion-only answers.',
-            contextText ? `Canvas grounding:\n${contextText}` : '',
+                ? 'Draw or modify editable board objects.'
+                : 'Use plain text for discussion-only answers.',
         ].filter(Boolean).join('\n');
 
         const response = await fetch(`${this.getBackendBaseURL()}/api/canvas`, {
@@ -103,25 +168,25 @@ class OpenAICanvasAPI {
                 message: prompt,
                 sessionId: this.sessionId,
                 canvasType: 'diagram',
-                existingContent: existingContent || contextText,
+                existingContent: compactExistingContent,
                 model: this.selectedModel,
-                executionProfile: toolPlan?.executionProfile || 'default',
-                enableConversationExecutor: true,
+                executionProfile: toolPlan?.executionProfile || 'lean-canvas',
+                enableConversationExecutor: false,
                 metadata: {
                     taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                     clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
-                    enableConversationExecutor: true,
+                    enableConversationExecutor: false,
                     surfaceMode: mode,
-                    canvasContext,
-                    canvasToolPlan: toolPlan,
+                    canvasContext: compactContext,
+                    canvasToolPlan: compactToolPlan,
                     plannedTools,
-                    preferredTool: toolPlan?.preferredTool || plannedTools[0] || null,
+                    preferredTool: compactToolPlan?.preferredTool || plannedTools[0] || null,
                     userSelectedToolIds: plannedTools,
                     toolIds: plannedTools,
                     actionContract: 'excalidraw-actions-v1',
                     artifactPolicy: {
-                        preferEditableObjects: toolPlan?.preferEditableObjects !== false,
-                        avoidRasterSnapshots: toolPlan?.avoidRasterSnapshots !== false,
+                        preferEditableObjects: compactToolPlan?.preferEditableObjects !== false,
+                        avoidRasterSnapshots: compactToolPlan?.avoidRasterSnapshots !== false,
                         explicitImageMode: mode === 'image',
                     },
                 },
@@ -149,24 +214,26 @@ class OpenAICanvasAPI {
 
     async chat(messages, canvasContext = null, toolPlan = null) {
         const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools : [];
+        const compactContext = this.compactCanvasContext(canvasContext);
+        const compactToolPlan = this.summarizeToolPlan(toolPlan);
         const params = {
             model: this.selectedModel,
             messages,
             stream: false,
-            enableConversationExecutor: true,
-            executionProfile: toolPlan?.executionProfile || 'default',
+            enableConversationExecutor: false,
+            executionProfile: toolPlan?.executionProfile || 'lean-canvas',
             taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
             clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
-                enableConversationExecutor: true,
-                canvasContext,
-                canvasToolPlan: toolPlan,
-                plannedTools,
-                preferredTool: toolPlan?.preferredTool || plannedTools[0] || null,
-                userSelectedToolIds: plannedTools,
-                toolIds: plannedTools,
+                enableConversationExecutor: false,
+                canvasContext: compactContext,
+                canvasToolPlan: compactToolPlan,
+                plannedTools: plannedTools.slice(0, 3),
+                preferredTool: compactToolPlan?.preferredTool || plannedTools[0] || null,
+                userSelectedToolIds: plannedTools.slice(0, 3),
+                toolIds: plannedTools.slice(0, 3),
             },
         };
 
@@ -211,6 +278,7 @@ class OpenAICanvasAPI {
 
     // Generate diagram (uses chat completions with special prompt)
     async generateDiagram(message, existingContent = null, canvasContext = null, toolPlan = null) {
+        const groundingText = this.formatCanvasGrounding(canvasContext, existingContent || '');
         const messages = [
             {
                 role: 'system',
@@ -219,7 +287,8 @@ class OpenAICanvasAPI {
                     'Respond with strict JSON only.',
                     'Use this shape: {"message":"short human summary","actions":[{"type":"add","element":{...}},{"type":"add_many","elements":[...]},{"type":"update","id":"element-id","patch":{...}},{"type":"update_many","patches":[{"id":"element-id","patch":{...}}]},{"type":"delete","id":"element-id"},{"type":"select","ids":["element-id"]}],"elements":[...]}',
                     'Prefer actions when changing existing selected objects. Use elements for newly generated diagrams.',
-                    'Element types: rectangle, diamond, ellipse, arrow, line, freedraw, text, sticky, frame.',
+                    'Element types: rectangle, diamond, ellipse, arrow, line, freedraw, text, sticky, frame, storyboardFrame, animationBeat, audioCue, mermaidDiagram.',
+                    'For storyboardFrame include title,text,startTime,durationSeconds. For animationBeat include title,text,startTime,durationSeconds. For audioCue include title,text,audioName,startTime,durationSeconds. For mermaidDiagram include title,mermaidSource.',
                     'Do not return image elements, screenshots, or raster snapshots unless the user explicitly asks for an image asset.',
                 ].join(' ')
             },
@@ -227,31 +296,32 @@ class OpenAICanvasAPI {
                 role: 'user',
                 content: [
                     message,
-                    canvasContext ? `\nCanvas grounding:\n${JSON.stringify(canvasContext)}` : '',
-                    existingContent ? `\nExisting content:\n${existingContent}` : '',
+                    groundingText ? `\nCanvas grounding:\n${groundingText}` : '',
                 ].filter(Boolean).join('\n')
             }
         ];
 
         const plannedTools = Array.isArray(toolPlan?.plannedTools) ? toolPlan.plannedTools : [];
+        const compactContext = this.compactCanvasContext(canvasContext);
+        const compactToolPlan = this.summarizeToolPlan(toolPlan);
         const params = {
             model: this.selectedModel,
             messages,
             stream: false,
-            enableConversationExecutor: true,
-            executionProfile: toolPlan?.executionProfile || 'default',
+            enableConversationExecutor: false,
+            executionProfile: toolPlan?.executionProfile || 'lean-canvas',
             taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
             clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
             metadata: {
                 taskType: CANVAS_EXCALIDRAW_TASK_TYPE,
                 clientSurface: CANVAS_EXCALIDRAW_CLIENT_SURFACE,
-                enableConversationExecutor: true,
-                canvasContext,
-                canvasToolPlan: toolPlan,
-                plannedTools,
-                preferredTool: toolPlan?.preferredTool || plannedTools[0] || null,
-                userSelectedToolIds: plannedTools,
-                toolIds: plannedTools,
+                enableConversationExecutor: false,
+                canvasContext: compactContext,
+                canvasToolPlan: compactToolPlan,
+                plannedTools: plannedTools.slice(0, 3),
+                preferredTool: compactToolPlan?.preferredTool || plannedTools[0] || null,
+                userSelectedToolIds: plannedTools.slice(0, 3),
+                toolIds: plannedTools.slice(0, 3),
             },
         };
 

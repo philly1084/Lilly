@@ -415,6 +415,7 @@ class InfiniteCanvas {
         
         this.elements.push(element);
         this.render();
+        window.app?.onCanvasElementsChanged?.();
     }
     
     // Remove element
@@ -422,6 +423,7 @@ class InfiniteCanvas {
         this.elements = this.elements.filter(el => el.id !== elementId);
         this.selectedElements = this.selectedElements.filter(el => el.id !== elementId);
         this.render();
+        window.app?.onCanvasElementsChanged?.();
     }
     
     // Get element at position
@@ -458,6 +460,10 @@ class InfiniteCanvas {
             case 'cylinder':
             case 'cube':
             case 'speechBubble':
+            case 'storyboardFrame':
+            case 'animationBeat':
+            case 'audioCue':
+            case 'mermaidDiagram':
                 return x >= element.x - halfWidth && 
                        x <= element.x + halfWidth &&
                        y >= element.y - halfHeight && 

@@ -8,6 +8,10 @@ const CANVAS_CHECKPOINT_STORAGE_KEY = 'kimi-canvas-checkpoints';
 const CANVAS_CHECKPOINT_LIMIT = 8;
 const CANVAS_DENSITY_STORAGE_KEY = 'kimi-canvas-density';
 const CANVAS_ENTERPRISE_STORAGE_KEY = 'kimi-canvas-enterprise-mode';
+const CANVAS_SAVED_BLOCK_STORAGE_KEY = 'kimi-canvas-saved-blocks';
+const CANVAS_SAVED_BLOCK_LIMIT = 18;
+const CANVAS_SAVED_BOARD_STORAGE_KEY = 'kimi-canvas-saved-boards';
+const CANVAS_SAVED_BOARD_LIMIT = 12;
 
 class App {
     constructor() {
@@ -20,6 +24,21 @@ class App {
         this.activeDockGroup = '';
         this.contextMenuWorldPos = null;
         this.contextLongPressTimer = null;
+        this.timelinePreviewTimers = [];
+        this.timelinePlaybackFrame = null;
+        this.timelinePlaybackStartedAt = 0;
+        this.timelinePlaybackBaseTime = 0;
+        this.timelineCurrentTime = 0;
+        this.timelineActiveCueId = '';
+        this.timelinePlaybackActiveProgress = 0;
+        this.timelineIsPlaying = false;
+        this.timelineAudio = null;
+        this.commandPaletteOpen = false;
+        this.commandSearchValue = '';
+        this.commandPaletteCommands = [];
+        this.lastCommandSelectionIds = [];
+        this.objectLibraryQuery = '';
+        this.objectLibraryFilter = 'all';
         this.init();
     }
     
@@ -41,11 +60,13 @@ class App {
             this.setupAutoSave();
             this.setupMobileControls();
             this.setupToolDock();
+            this.setupCanvasSideRail();
             this.setupMiniMap();
             this.setupAITooltip();
             this.setupFontSearch();
             this.setupOpacitySlider();
             this.setupCanvasStatusStrip();
+            this.setupCanvasCommandPalette();
             
             // Note: WebSocket not used with OpenAI SDK mode
             console.log('OpenAI SDK mode: WebSocket not used');
@@ -54,6 +75,9 @@ class App {
             this.loadCanvasFromStorage();
             window.infiniteCanvas?.render();
             this.updateCanvasStatusStrip();
+            this.renderObjectLibrary();
+            this.renderBoardShelf();
+            this.renderProductionTimeline();
             
             // Push initial state for undo
             window.historyManager?.pushState(window.infiniteCanvas?.elements || []);
@@ -193,6 +217,9 @@ class App {
         this.updateCanvasStatusStrip();
         if (!options.silent) {
             this.showToast(this.enterpriseMode ? 'Enterprise Mode enabled' : 'Enterprise Mode disabled');
+            if (this.enterpriseMode) {
+                this.selectCanvasPanel?.('creative');
+            }
         }
     }
 
@@ -234,7 +261,10 @@ class App {
         try {
             const canvas = window.infiniteCanvas;
             if (!canvas || canvas.elements.length === 0) {
+                localStorage.removeItem('kimi-canvas-autosave');
+                this.lastCanvasSavedAt = null;
                 this.updateCanvasStatusStrip();
+                this.renderObjectLibrary();
                 return;
             }
             
@@ -435,6 +465,216 @@ class App {
         this.updateCanvasStatusStrip();
         if (checkpoint) {
             this.showToast(`Deleted checkpoint "${checkpoint.name}"`);
+        }
+    }
+
+    loadSavedBoards() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CANVAS_SAVED_BOARD_STORAGE_KEY) || '[]');
+            if (!Array.isArray(saved)) {
+                return [];
+            }
+            return saved
+                .map((board) => ({
+                    id: String(board?.id || '').trim(),
+                    name: String(board?.name || '').trim(),
+                    createdAt: String(board?.createdAt || ''),
+                    updatedAt: String(board?.updatedAt || board?.createdAt || ''),
+                    elementCount: Number(board?.elementCount || 0),
+                    summary: String(board?.summary || '').trim(),
+                    elements: Array.isArray(board?.elements)
+                        ? board.elements.map((element) => this.normalizeCanvasElement(element))
+                        : [],
+                }))
+                .filter((board) => board.id && board.name && board.elements.length > 0)
+                .slice(0, CANVAS_SAVED_BOARD_LIMIT);
+        } catch (error) {
+            console.warn('Failed to load saved canvas boards:', error);
+            return [];
+        }
+    }
+
+    saveSavedBoards(boards = []) {
+        const next = (Array.isArray(boards) ? boards : []).slice(0, CANVAS_SAVED_BOARD_LIMIT);
+        try {
+            localStorage.setItem(CANVAS_SAVED_BOARD_STORAGE_KEY, JSON.stringify(next));
+        } catch (error) {
+            console.warn('Failed to save canvas boards:', error);
+            this.showToast('Could not save board shelf', 'error');
+        }
+        return next;
+    }
+
+    buildSavedBoardSummary(elements = []) {
+        const typeCounts = elements.reduce((counts, element) => {
+            const type = element?.type || 'object';
+            counts[type] = (counts[type] || 0) + 1;
+            return counts;
+        }, {});
+        const parts = [
+            typeCounts.storyboardFrame ? `${typeCounts.storyboardFrame} scenes` : '',
+            typeCounts.animationBeat ? `${typeCounts.animationBeat} motion` : '',
+            typeCounts.audioCue ? `${typeCounts.audioCue} audio` : '',
+            typeCounts.mermaidDiagram ? `${typeCounts.mermaidDiagram} mermaid` : '',
+        ].filter(Boolean);
+        return parts.length > 0 ? parts.join(' / ') : `${elements.length} object${elements.length === 1 ? '' : 's'}`;
+    }
+
+    saveCurrentBoard(name = '') {
+        const canvas = window.infiniteCanvas;
+        const elements = this.getSerializableCanvasElements(canvas?.elements || []);
+        if (!canvas || elements.length === 0) {
+            this.showToast('Add objects before saving a board', 'warning');
+            return null;
+        }
+
+        const fallbackName = `Board ${new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+        const requestedName = name || window.prompt?.('Name this saved board', fallbackName);
+        const boardName = String(requestedName || '').trim();
+        if (!boardName) {
+            return null;
+        }
+
+        const now = new Date().toISOString();
+        const existing = this.loadSavedBoards();
+        const board = {
+            id: `board-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: boardName.slice(0, 72),
+            createdAt: now,
+            updatedAt: now,
+            elementCount: elements.length,
+            summary: this.buildSavedBoardSummary(elements),
+            elements,
+        };
+        this.saveSavedBoards([
+            board,
+            ...existing.filter((item) => item.name !== board.name),
+        ]);
+        this.renderBoardShelf();
+        this.updateCanvasStatusStrip();
+        this.showToast(`Saved board "${board.name}"`);
+        return board;
+    }
+
+    restoreSavedBoard(boardId = '') {
+        const canvas = window.infiniteCanvas;
+        const board = this.loadSavedBoards().find((item) => item.id === boardId);
+        if (!canvas || !board) {
+            this.showToast('Saved board was not found', 'warning');
+            return false;
+        }
+        const accepted = window.confirm?.(`Open saved board "${board.name}" and replace the current canvas?`) ?? true;
+        if (!accepted) {
+            return false;
+        }
+
+        canvas.elements = board.elements.map((element) => this.normalizeCanvasElement(element));
+        canvas.deselectAll?.();
+        canvas.render?.();
+        window.historyManager?.pushState(canvas.elements);
+        this.onCanvasElementsChanged();
+        this.selectCanvasPanel('objects');
+        this.showToast(`Opened "${board.name}"`);
+        return true;
+    }
+
+    duplicateSavedBoard(boardId = '') {
+        const boards = this.loadSavedBoards();
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) {
+            this.showToast('Saved board was not found', 'warning');
+            return null;
+        }
+        const now = new Date().toISOString();
+        const duplicate = {
+            ...board,
+            id: `board-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: `${board.name} copy`.slice(0, 72),
+            createdAt: now,
+            updatedAt: now,
+            elements: board.elements.map((element) => this.normalizeCanvasElement(element)),
+        };
+        this.saveSavedBoards([duplicate, ...boards]);
+        this.renderBoardShelf();
+        this.showToast(`Duplicated "${board.name}"`);
+        return duplicate;
+    }
+
+    deleteSavedBoard(boardId = '') {
+        const boards = this.loadSavedBoards();
+        const board = boards.find((item) => item.id === boardId);
+        this.saveSavedBoards(boards.filter((item) => item.id !== boardId));
+        this.renderBoardShelf();
+        this.updateCanvasStatusStrip();
+        this.showToast(board ? `Deleted "${board.name}"` : 'Deleted saved board');
+    }
+
+    exportSavedBoard(boardId = '') {
+        const board = this.loadSavedBoards().find((item) => item.id === boardId);
+        if (!board) {
+            this.showToast('Saved board was not found', 'warning');
+            return false;
+        }
+        const payload = {
+            app: 'KimiBuilt Canvas',
+            version: '1.0',
+            exportedAt: new Date().toISOString(),
+            board,
+        };
+        const slug = board.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'canvas-board';
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        this.downloadFile(URL.createObjectURL(blob), `${slug}.canvas-board.json`);
+        this.showToast(`Exported "${board.name}"`);
+        return true;
+    }
+
+    renderBoardShelf() {
+        const list = document.getElementById('boardShelfList');
+        const summary = document.getElementById('boardShelfSummary');
+        if (!list) return;
+
+        const boards = this.loadSavedBoards();
+        if (summary) {
+            summary.textContent = boards.length > 0
+                ? `${boards.length} saved board${boards.length === 1 ? '' : 's'}`
+                : 'No saved boards yet';
+        }
+        if (boards.length === 0) {
+            list.innerHTML = '<div class="board-shelf-empty">Save named boards here, then restore, duplicate, or export them later.</div>';
+            return;
+        }
+
+        list.innerHTML = boards.map((board) => {
+            const dateMs = Date.parse(board.updatedAt || board.createdAt) || Date.now();
+            const detail = `${board.elementCount || board.elements.length} objects - ${this.formatRelativeTime(dateMs)}`;
+            return `
+                <div class="board-shelf-item" data-board-id="${this.escapeHtmlAttr(board.id)}">
+                    <button type="button" class="board-shelf-main" data-board-shelf-action="open" data-board-id="${this.escapeHtmlAttr(board.id)}">
+                        <strong>${this.escapeHtml(board.name)}</strong>
+                        <span>${this.escapeHtml(board.summary || detail)}</span>
+                        <small>${this.escapeHtml(detail)}</small>
+                    </button>
+                    <div class="board-shelf-actions">
+                        <button type="button" data-board-shelf-action="duplicate" data-board-id="${this.escapeHtmlAttr(board.id)}">Copy</button>
+                        <button type="button" data-board-shelf-action="export" data-board-id="${this.escapeHtmlAttr(board.id)}">Export</button>
+                        <button type="button" data-board-shelf-action="delete" data-board-id="${this.escapeHtmlAttr(board.id)}">Del</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    handleBoardShelfAction(action = '', boardId = '') {
+        if (action === 'save-current') {
+            this.saveCurrentBoard();
+        } else if (action === 'open') {
+            this.restoreSavedBoard(boardId);
+        } else if (action === 'duplicate') {
+            this.duplicateSavedBoard(boardId);
+        } else if (action === 'export') {
+            this.exportSavedBoard(boardId);
+        } else if (action === 'delete') {
+            this.deleteSavedBoard(boardId);
         }
     }
     
@@ -831,6 +1071,2107 @@ class App {
             btn.classList.toggle('active', matchesTool || matchesOpenGroup || matchesToolGroup);
         });
     }
+
+    setupCanvasSideRail() {
+        document.querySelectorAll('[data-canvas-panel-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                this.selectCanvasPanel(tab.dataset.canvasPanelTab);
+            });
+        });
+
+        document.querySelectorAll('[data-object-action]').forEach((button) => {
+            button.addEventListener('click', () => this.handleObjectLibraryAction(button.dataset.objectAction));
+        });
+
+        document.querySelectorAll('[data-creative-action]').forEach((button) => {
+            button.addEventListener('click', () => this.handleCreativeAction(button.dataset.creativeAction));
+        });
+
+        document.querySelectorAll('[data-draw-preset]').forEach((button) => {
+            button.addEventListener('click', () => {
+                window.toolManager?.applyDrawPreset?.(button.dataset.drawPreset || 'pencil');
+            });
+        });
+
+        document.getElementById('savedBlockShelf')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-saved-block-action]');
+            if (!button) return;
+            this.handleSavedBlockAction(button.dataset.savedBlockAction || '', button.dataset.blockId || '');
+        });
+
+        document.getElementById('boardShelf')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-board-shelf-action]');
+            if (!button) return;
+            this.handleBoardShelfAction(button.dataset.boardShelfAction || '', button.dataset.boardId || '');
+        });
+
+        document.getElementById('canvasAudioInput')?.addEventListener('change', (event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+                this.handleCanvasAudioFile(file);
+            }
+            event.target.value = '';
+        });
+
+        document.getElementById('objectLibraryList')?.addEventListener('click', (event) => {
+            const actionButton = event.target.closest('[data-object-row-action]');
+            if (!actionButton) return;
+            this.handleObjectRowAction(actionButton.dataset.objectRowAction, actionButton.dataset.objectId);
+        });
+
+        document.getElementById('objectLibrarySearch')?.addEventListener('input', (event) => {
+            this.objectLibraryQuery = event.target.value || '';
+            this.renderObjectLibrary();
+        });
+
+        document.getElementById('objectFilterChips')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-object-filter]');
+            if (!button) return;
+            this.objectLibraryFilter = button.dataset.objectFilter || 'all';
+            document.querySelectorAll('[data-object-filter]').forEach((chip) => {
+                chip.classList.toggle('active', chip === button);
+            });
+            this.renderObjectLibrary();
+        });
+
+        document.getElementById('productionTimeline')?.addEventListener('click', (event) => {
+            const actionButton = event.target.closest('[data-timeline-action]');
+            if (!actionButton) return;
+            this.handleTimelineAction(actionButton.dataset.timelineAction, actionButton.dataset.objectId);
+        });
+
+        document.getElementById('timelineCueEditor')?.addEventListener('input', (event) => {
+            const field = event.target?.dataset?.timelineField;
+            if (!field) return;
+            this.updateSelectedTimelineCue(field, event.target.value);
+        });
+
+        document.getElementById('timelineCueEditor')?.addEventListener('change', (event) => {
+            const field = event.target?.dataset?.timelineField;
+            if (!field) return;
+            this.updateSelectedTimelineCue(field, event.target.value);
+        });
+
+        document.getElementById('timelineCueEditor')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-timeline-extra-action]');
+            if (!button) return;
+            this.handleTimelineExtraAction(button.dataset.timelineExtraAction);
+        });
+
+        document.getElementById('selectedAudioInput')?.addEventListener('change', async (event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+                await this.replaceSelectedAudioCueFile(file);
+            }
+            event.target.value = '';
+        });
+
+        document.getElementById('mermaidObjectEditor')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-mermaid-object-action]');
+            if (!button) return;
+            this.handleSelectedMermaidAction(button.dataset.mermaidObjectAction);
+        });
+
+        this.selectCanvasPanel('inspector');
+        this.renderObjectLibrary();
+        this.renderProductionTimeline();
+        this.renderSelectedMermaidEditor();
+        this.renderConnectionBuilder();
+        this.renderSavedBlockShelf();
+    }
+
+    selectCanvasPanel(panelName = 'inspector') {
+        document.querySelectorAll('[data-canvas-panel-tab]').forEach((tab) => {
+            const active = tab.dataset.canvasPanelTab === panelName;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+
+        document.querySelectorAll('[data-canvas-panel]').forEach((panel) => {
+            const active = panel.dataset.canvasPanel === panelName;
+            panel.hidden = !active;
+            panel.classList.toggle('active', active);
+        });
+
+        if (panelName === 'objects') {
+            this.renderObjectLibrary();
+        } else if (panelName === 'creative') {
+            this.renderProductionTimeline();
+            this.renderSelectedMermaidEditor();
+            this.renderConnectionBuilder();
+        } else if (panelName === 'library') {
+            this.renderSavedBlockShelf();
+        }
+    }
+
+    setupCanvasCommandPalette() {
+        this.commandPaletteCommands = this.buildCanvasCommandEntries();
+
+        document.getElementById('canvasCommandBtn')?.addEventListener('click', () => {
+            this.toggleCanvasCommandPalette();
+        });
+        document.getElementById('canvasCommandClose')?.addEventListener('click', () => {
+            this.closeCanvasCommandPalette();
+        });
+        document.getElementById('canvasCommandRail')?.addEventListener('pointerdown', (event) => {
+            this.rememberCanvasCommandSelection();
+            event.stopPropagation();
+        });
+        document.getElementById('canvasCommandRail')?.addEventListener('click', (event) => {
+            event.stopPropagation();
+        });
+        document.getElementById('canvasCommandPalette')?.addEventListener('pointerdown', (event) => {
+            this.rememberCanvasCommandSelection();
+            event.stopPropagation();
+            if (event.target === event.currentTarget) {
+                this.closeCanvasCommandPalette();
+            }
+        });
+        document.getElementById('canvasCommandPalette')?.addEventListener('click', (event) => {
+            event.stopPropagation();
+        });
+        document.getElementById('canvasCommandSearch')?.addEventListener('input', (event) => {
+            this.commandSearchValue = event.target.value || '';
+            this.renderCanvasCommandPalette();
+        });
+        document.getElementById('canvasCommandSearch')?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const firstEnabled = document.querySelector('#canvasCommandList .canvas-command-item:not(:disabled)');
+                firstEnabled?.click();
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                document.querySelector('#canvasCommandList .canvas-command-item:not(:disabled)')?.focus();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeCanvasCommandPalette();
+            }
+        });
+        document.getElementById('canvasCommandList')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-command-id]');
+            if (!button || button.disabled) return;
+            this.runCanvasCommand(button.dataset.commandId);
+        });
+        document.getElementById('canvasCommandList')?.addEventListener('keydown', (event) => {
+            const items = Array.from(document.querySelectorAll('#canvasCommandList .canvas-command-item:not(:disabled)'));
+            const currentIndex = items.indexOf(document.activeElement);
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                document.activeElement?.click?.();
+            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                const direction = event.key === 'ArrowDown' ? 1 : -1;
+                const next = items[(currentIndex + direction + items.length) % items.length];
+                next?.focus();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeCanvasCommandPalette();
+            }
+        });
+        document.querySelectorAll('[data-command-shortcut]').forEach((button) => {
+            button.addEventListener('click', () => {
+                this.runCanvasRailShortcut(button.dataset.commandShortcut);
+            });
+        });
+
+        this.renderCanvasCommandPalette();
+    }
+
+    buildCanvasCommandEntries() {
+        return [
+            {
+                id: 'ai-board',
+                label: 'Ask Canvas AI',
+                meta: 'Open the lean agent with board context',
+                group: 'AI',
+                keywords: 'agent ai critique prompt board',
+                run: () => this.openCanvasAIWithPrompt('What should I improve next on this canvas?'),
+            },
+            {
+                id: 'ai-build',
+                label: 'AI Build Pass',
+                meta: 'Create editable objects from the creative prompt',
+                group: 'AI',
+                keywords: 'agent ai build storyboard diagram audio animation',
+                run: () => this.handleCreativeAction('ai-brief'),
+            },
+            {
+                id: 'scene-pack',
+                label: 'Scene Pack',
+                meta: 'Three storyboard frames, audio cues, and motion beats',
+                group: 'Create',
+                keywords: 'storyboard scene animation audio production',
+                run: () => this.handleCreativeAction('scene-pack'),
+            },
+            {
+                id: 'storyboard',
+                label: 'Storyboard Frame',
+                meta: 'Add an editable production frame',
+                group: 'Create',
+                keywords: 'shot scene storyboard frame',
+                run: () => this.handleCreativeAction('storyboard'),
+            },
+            {
+                id: 'animation',
+                label: 'Animation Beat',
+                meta: 'Add motion timing and notes',
+                group: 'Create',
+                keywords: 'animation motion easing timeline',
+                run: () => this.handleCreativeAction('animation'),
+            },
+            {
+                id: 'audio',
+                label: 'Audio Cue',
+                meta: 'Add voice, music, or SFX timing',
+                group: 'Create',
+                keywords: 'audio voice music sfx sound',
+                run: () => this.handleCreativeAction('audio'),
+            },
+            {
+                id: 'mermaid',
+                label: 'Mermaid Source Card',
+                meta: 'Add editable Mermaid source to the canvas',
+                group: 'Diagram',
+                keywords: 'mermaid flowchart diagram source',
+                run: () => this.handleCreativeAction('mermaid'),
+            },
+            {
+                id: 'mermaid-render',
+                label: 'Render Mermaid To Objects',
+                meta: 'Turn Mermaid source into editable boxes and arrows',
+                group: 'Diagram',
+                keywords: 'mermaid render flowchart editable objects',
+                run: () => {
+                    this.selectCanvasPanel('creative');
+                    this.handleCreativeAction('mermaid-render');
+                },
+            },
+            {
+                id: 'connect',
+                label: 'Connect Selected',
+                meta: 'Draw editable arrows between selected objects',
+                group: 'Arrange',
+                keywords: 'connect arrow selected relationship',
+                isEnabled: () => this.getCanvasCommandSelection().length >= 2,
+                run: () => {
+                    this.restoreCanvasCommandSelection();
+                    this.connectSelectedObjects();
+                },
+            },
+            {
+                id: 'save-block',
+                label: 'Save Selection As Block',
+                meta: 'Reuse selected objects from the Blocks shelf',
+                group: 'Objects',
+                keywords: 'save block library reuse selected',
+                isEnabled: () => this.getCanvasCommandSelection().length > 0,
+                run: () => {
+                    this.restoreCanvasCommandSelection();
+                    this.saveSelectionAsBlock();
+                },
+            },
+            {
+                id: 'save-board',
+                label: 'Save Named Board',
+                meta: 'Store this whole canvas in the Saved Boards shelf',
+                group: 'Objects',
+                keywords: 'save board workspace project canvas restore duplicate export',
+                isEnabled: () => (window.infiniteCanvas?.elements || []).length > 0,
+                run: () => {
+                    this.saveCurrentBoard();
+                    this.selectCanvasPanel('objects');
+                },
+            },
+            {
+                id: 'duplicate',
+                label: 'Duplicate Selection',
+                meta: 'Copy selected objects with spacing',
+                group: 'Objects',
+                keywords: 'duplicate copy selected object',
+                isEnabled: () => this.getCanvasCommandSelection().length > 0,
+                run: () => {
+                    this.restoreCanvasCommandSelection();
+                    window.selectionManager?.duplicateSelection?.();
+                },
+            },
+            {
+                id: 'objects-panel',
+                label: 'Show Object Library',
+                meta: 'Select, duplicate, and delete canvas objects',
+                group: 'View',
+                keywords: 'objects library duplicate save choose',
+                run: () => this.selectCanvasPanel('objects'),
+            },
+            {
+                id: 'creative-panel',
+                label: 'Show Creative Panel',
+                meta: 'Timeline, Mermaid, audio, animation, and blocks',
+                group: 'View',
+                keywords: 'creative timeline mermaid audio animation storyboard',
+                run: () => this.selectCanvasPanel('creative'),
+            },
+            {
+                id: 'blocks-panel',
+                label: 'Show Blocks Shelf',
+                meta: 'Insert saved reusable object groups',
+                group: 'View',
+                keywords: 'blocks shelf saved reusable insert',
+                run: () => this.selectCanvasPanel('library'),
+            },
+        ];
+    }
+
+    getFilteredCanvasCommands() {
+        const query = this.commandSearchValue.trim().toLowerCase();
+        const commands = this.commandPaletteCommands.length > 0
+            ? this.commandPaletteCommands
+            : this.buildCanvasCommandEntries();
+        if (!query) return commands;
+        return commands.filter((command) => {
+            const haystack = [
+                command.label,
+                command.meta,
+                command.group,
+                command.keywords,
+            ].join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+    }
+
+    renderCanvasCommandPalette() {
+        const list = document.getElementById('canvasCommandList');
+        if (!list) return;
+
+        const selectedCount = this.getCanvasCommandSelection().length;
+        const commands = this.getFilteredCanvasCommands();
+        if (commands.length === 0) {
+            list.innerHTML = '<div class="canvas-command-empty">No matching commands</div>';
+            return;
+        }
+
+        list.innerHTML = commands.map((command) => {
+            const enabled = typeof command.isEnabled === 'function' ? command.isEnabled() : true;
+            const reason = enabled
+                ? command.meta
+                : (selectedCount === 0 ? 'Select canvas objects first' : 'Select at least two objects');
+            return `
+                <button type="button" role="option" class="canvas-command-item" data-command-id="${command.id}" ${enabled ? '' : 'disabled'}>
+                    <span class="canvas-command-item-main">
+                        <strong>${this.escapeHtml(command.label)}</strong>
+                        <small>${this.escapeHtml(reason)}</small>
+                    </span>
+                    <span class="canvas-command-item-group">${this.escapeHtml(command.group)}</span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    openCanvasCommandPalette() {
+        const palette = document.getElementById('canvasCommandPalette');
+        const button = document.getElementById('canvasCommandBtn');
+        const input = document.getElementById('canvasCommandSearch');
+        if (!palette) return;
+
+        this.rememberCanvasCommandSelection();
+        this.commandPaletteOpen = true;
+        palette.hidden = false;
+        button?.setAttribute('aria-expanded', 'true');
+        this.renderCanvasCommandPalette();
+        requestAnimationFrame(() => {
+            input?.focus();
+            input?.select();
+        });
+    }
+
+    closeCanvasCommandPalette() {
+        const palette = document.getElementById('canvasCommandPalette');
+        const button = document.getElementById('canvasCommandBtn');
+        if (!palette) return;
+
+        this.commandPaletteOpen = false;
+        this.commandSearchValue = '';
+        const input = document.getElementById('canvasCommandSearch');
+        if (input) input.value = '';
+        palette.hidden = true;
+        button?.setAttribute('aria-expanded', 'false');
+    }
+
+    toggleCanvasCommandPalette() {
+        if (this.commandPaletteOpen) {
+            this.closeCanvasCommandPalette();
+        } else {
+            this.openCanvasCommandPalette();
+        }
+    }
+
+    runCanvasRailShortcut(shortcut = '') {
+        if (shortcut === 'ai') {
+            this.runCanvasCommand('ai-board');
+        } else if (shortcut === 'scene') {
+            this.runCanvasCommand('scene-pack');
+        } else if (shortcut === 'connect') {
+            this.runCanvasCommand('connect');
+        }
+    }
+
+    runCanvasCommand(commandId = '') {
+        const command = (this.commandPaletteCommands.length > 0
+            ? this.commandPaletteCommands
+            : this.buildCanvasCommandEntries())
+            .find((entry) => entry.id === commandId);
+        if (!command) return false;
+        if (typeof command.isEnabled === 'function' && !command.isEnabled()) {
+            this.showToast(commandId === 'connect'
+                ? 'Select two or more objects to connect'
+                : 'Select one or more objects first', 'warning');
+            this.renderCanvasCommandPalette();
+            return false;
+        }
+
+        command.run();
+        this.closeCanvasCommandPalette();
+        this.renderCanvasCommandPalette();
+        return true;
+    }
+
+    rememberCanvasCommandSelection() {
+        const selected = window.infiniteCanvas?.selectedElements || [];
+        if (selected.length > 0) {
+            this.lastCommandSelectionIds = selected.map((element) => element.id).filter(Boolean);
+        }
+    }
+
+    getCanvasCommandSelection() {
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        if (selected.length > 0) {
+            this.lastCommandSelectionIds = selected.map((element) => element.id).filter(Boolean);
+            return selected;
+        }
+        if (!canvas || this.lastCommandSelectionIds.length === 0) {
+            return [];
+        }
+        const ids = new Set(this.lastCommandSelectionIds);
+        return (canvas.elements || []).filter((element) => ids.has(element.id));
+    }
+
+    restoreCanvasCommandSelection() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) return [];
+        const selected = canvas.selectedElements || [];
+        if (selected.length > 0) {
+            this.rememberCanvasCommandSelection();
+            return selected;
+        }
+        const restored = this.getCanvasCommandSelection();
+        if (restored.length > 0) {
+            canvas.selectElements(restored);
+            canvas.render();
+        }
+        return restored;
+    }
+
+    onCanvasElementsChanged() {
+        this.saveCanvasToStorage();
+        this.updateCanvasStatusStrip();
+        this.renderObjectLibrary();
+        this.renderBoardShelf();
+        this.renderProductionTimeline();
+        this.renderSelectedMermaidEditor();
+        this.renderSavedBlockShelf();
+        this.renderCanvasCommandPalette();
+        this.renderConnectionBuilder();
+        window.aiAssistant?.updateGroundingPanel?.();
+    }
+
+    loadSavedBlocks() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CANVAS_SAVED_BLOCK_STORAGE_KEY) || '[]');
+            if (!Array.isArray(saved)) return [];
+            return saved
+                .map((block) => ({
+                    id: String(block?.id || '').trim(),
+                    name: String(block?.name || '').trim(),
+                    createdAt: String(block?.createdAt || ''),
+                    elementCount: Number(block?.elementCount || 0),
+                    elements: Array.isArray(block?.elements) ? block.elements.map((element) => this.normalizeCanvasElement(element)) : [],
+                }))
+                .filter((block) => block.id && block.name && block.elements.length > 0)
+                .slice(0, CANVAS_SAVED_BLOCK_LIMIT);
+        } catch (error) {
+            console.warn('Failed to load saved canvas blocks:', error);
+            return [];
+        }
+    }
+
+    saveSavedBlocks(blocks = []) {
+        const next = (Array.isArray(blocks) ? blocks : []).slice(0, CANVAS_SAVED_BLOCK_LIMIT);
+        try {
+            localStorage.setItem(CANVAS_SAVED_BLOCK_STORAGE_KEY, JSON.stringify(next));
+        } catch (error) {
+            console.warn('Failed to save canvas blocks:', error);
+            this.showToast('Could not save reusable block', 'error');
+        }
+        return next;
+    }
+
+    renderSavedBlockShelf() {
+        const list = document.getElementById('savedBlockList');
+        const summary = document.getElementById('savedBlockSummary');
+        if (!list) return;
+        const blocks = this.loadSavedBlocks();
+        if (summary) {
+            summary.textContent = blocks.length > 0
+                ? `${blocks.length} reusable block${blocks.length === 1 ? '' : 's'}`
+                : 'No saved blocks yet';
+        }
+        if (blocks.length === 0) {
+            list.innerHTML = '<div class="saved-block-empty">Select drawings, frames, or diagram pieces and save them as reusable blocks.</div>';
+            return;
+        }
+        list.innerHTML = blocks.map((block) => `
+            <div class="saved-block-item" data-block-id="${this.escapeHtmlAttr(block.id)}">
+                <div class="saved-block-main">
+                    <strong>${this.escapeHtml(block.name)}</strong>
+                    <span>${this.escapeHtml(`${block.elementCount || block.elements.length} objects - ${this.formatRelativeTime(Date.parse(block.createdAt) || Date.now())}`)}</span>
+                </div>
+                <div class="saved-block-actions">
+                    <button type="button" data-saved-block-action="insert" data-block-id="${this.escapeHtmlAttr(block.id)}">Insert</button>
+                    <button type="button" data-saved-block-action="delete" data-block-id="${this.escapeHtmlAttr(block.id)}">Del</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    handleSavedBlockAction(action = '', blockId = '') {
+        if (action === 'save-selection') {
+            this.saveSelectionAsBlock();
+        } else if (action === 'insert') {
+            this.insertSavedBlock(blockId);
+        } else if (action === 'delete') {
+            this.deleteSavedBlock(blockId);
+        }
+    }
+
+    saveSelectionAsBlock() {
+        const canvas = window.infiniteCanvas;
+        const selected = canvas?.selectedElements || [];
+        if (selected.length === 0) {
+            this.showToast('Select drawings or objects before saving a block', 'warning');
+            return null;
+        }
+        const bounds = this.getElementsBounds(selected);
+        const center = {
+            x: bounds.left + bounds.width / 2,
+            y: bounds.top + bounds.height / 2,
+        };
+        const elements = this.getSerializableCanvasElements(selected).map((element) => this.makeElementRelativeToPoint(element, center));
+        const firstName = this.getElementDisplayName(selected[0], 0).replace(/:.+$/, '').trim();
+        const block = {
+            id: `block-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: `${firstName || 'Canvas'} block ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            createdAt: new Date().toISOString(),
+            elementCount: selected.length,
+            elements,
+        };
+        this.saveSavedBlocks([block, ...this.loadSavedBlocks()]).slice(0, CANVAS_SAVED_BLOCK_LIMIT);
+        this.renderSavedBlockShelf();
+        this.selectCanvasPanel('library');
+        this.showToast(`Saved "${block.name}"`);
+        return block;
+    }
+
+    insertSavedBlock(blockId = '', pointOverride = null) {
+        const block = this.loadSavedBlocks().find((item) => item.id === blockId);
+        const canvas = window.infiniteCanvas;
+        if (!block || !canvas) {
+            this.showToast('Saved block was not found', 'warning');
+            return false;
+        }
+        const point = pointOverride && Number.isFinite(pointOverride.x) && Number.isFinite(pointOverride.y)
+            ? pointOverride
+            : this.getCanvasInsertionPoint();
+        const inserted = block.elements.map((element) => this.makeElementAbsoluteFromPoint(element, point));
+        inserted.forEach((element) => {
+            element.id = window.toolManager?.generateId?.() || `el-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            canvas.addElement(element);
+        });
+        canvas.selectElements(inserted);
+        window.historyManager?.pushState(canvas.elements);
+        this.onCanvasElementsChanged();
+        this.showToast(`Inserted "${block.name}"`);
+        return true;
+    }
+
+    insertMostRecentSavedBlock(pointOverride = null) {
+        const block = this.loadSavedBlocks()[0];
+        if (!block) {
+            this.showToast('Save a block first, then insert it from the canvas', 'warning');
+            this.selectCanvasPanel('library');
+            return false;
+        }
+        return this.insertSavedBlock(block.id, pointOverride);
+    }
+
+    deleteSavedBlock(blockId = '') {
+        const blocks = this.loadSavedBlocks();
+        const block = blocks.find((item) => item.id === blockId);
+        this.saveSavedBlocks(blocks.filter((item) => item.id !== blockId));
+        this.renderSavedBlockShelf();
+        this.showToast(block ? `Deleted "${block.name}"` : 'Deleted saved block');
+    }
+
+    getElementsBounds(elements = []) {
+        const boxes = elements.map((element) => this.getElementBounds(element));
+        const left = Math.min(...boxes.map((box) => box.left));
+        const top = Math.min(...boxes.map((box) => box.top));
+        const right = Math.max(...boxes.map((box) => box.right));
+        const bottom = Math.max(...boxes.map((box) => box.bottom));
+        return {
+            left,
+            top,
+            right,
+            bottom,
+            width: Math.max(1, right - left),
+            height: Math.max(1, bottom - top),
+        };
+    }
+
+    getElementBounds(element = {}) {
+        if (Array.isArray(element.points) && element.points.length > 0) {
+            const xs = element.points.map((point) => Number(point.x) || 0);
+            const ys = element.points.map((point) => Number(point.y) || 0);
+            const left = Math.min(...xs);
+            const right = Math.max(...xs);
+            const top = Math.min(...ys);
+            const bottom = Math.max(...ys);
+            return { left, top, right, bottom, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
+        }
+        const width = Math.max(1, Number(element.width) || 1);
+        const height = Math.max(1, Number(element.height) || 1);
+        const x = Number(element.x) || 0;
+        const y = Number(element.y) || 0;
+        return {
+            left: x - width / 2,
+            top: y - height / 2,
+            right: x + width / 2,
+            bottom: y + height / 2,
+            width,
+            height,
+        };
+    }
+
+    makeElementRelativeToPoint(element = {}, point = { x: 0, y: 0 }) {
+        const copy = this.normalizeCanvasElement(element);
+        copy.x = (Number(copy.x) || 0) - point.x;
+        copy.y = (Number(copy.y) || 0) - point.y;
+        if (Array.isArray(copy.points)) {
+            copy.points = copy.points.map((entry) => ({
+                x: (Number(entry.x) || 0) - point.x,
+                y: (Number(entry.y) || 0) - point.y,
+            }));
+        }
+        return copy;
+    }
+
+    makeElementAbsoluteFromPoint(element = {}, point = { x: 0, y: 0 }) {
+        const copy = this.normalizeCanvasElement(element);
+        copy.x = (Number(copy.x) || 0) + point.x;
+        copy.y = (Number(copy.y) || 0) + point.y;
+        if (Array.isArray(copy.points)) {
+            copy.points = copy.points.map((entry) => ({
+                x: (Number(entry.x) || 0) + point.x,
+                y: (Number(entry.y) || 0) + point.y,
+            }));
+        }
+        return copy;
+    }
+
+    getElementDisplayName(element = {}, index = 0) {
+        const typeLabel = {
+            rectangle: 'Rectangle',
+            ellipse: 'Ellipse',
+            diamond: 'Diamond',
+            line: 'Line',
+            arrow: 'Arrow',
+            text: 'Text',
+            sticky: 'Sticky note',
+            frame: 'Frame',
+            image: 'Image',
+            freedraw: 'Drawing',
+            storyboardFrame: 'Storyboard frame',
+            animationBeat: 'Animation beat',
+            audioCue: 'Audio cue',
+            mermaidDiagram: 'Mermaid diagram',
+        }[element.type] || `${String(element.type || 'Object').charAt(0).toUpperCase()}${String(element.type || 'Object').slice(1)}`;
+
+        const label = String(element.name || element.title || element.text || '').replace(/\s+/g, ' ').trim();
+        return label ? `${typeLabel}: ${label.slice(0, 36)}` : `${typeLabel} ${index + 1}`;
+    }
+
+    getElementDetail(element = {}) {
+        const size = element.width && element.height ? `${Math.round(element.width)}x${Math.round(element.height)}` : 'line';
+        const role = element.canvasRole || element.healthRole || element.type || 'object';
+        if (element.type === 'audioCue') {
+            const duration = Number.isFinite(element.duration) ? ` - ${this.formatDuration(element.duration)}` : '';
+            const storage = element.audioPersistent === false ? ' - session audio' : '';
+            return `${element.audioName || role}${duration}${storage}`;
+        }
+        if (element.type === 'mermaidDiagram') {
+            const nodeCount = Array.isArray(element.mermaidNodes) ? element.mermaidNodes.length : 0;
+            const flow = nodeCount > 0 ? `${nodeCount} parsed node${nodeCount === 1 ? '' : 's'}` : 'source card';
+            return `${flow} - ${size}`;
+        }
+        return `${role} - ${size}`;
+    }
+
+    getObjectLibraryCategory(element = {}) {
+        if (['freedraw', 'line', 'arrow', 'rectangle', 'ellipse', 'diamond', 'text', 'sticky', 'frame'].includes(element.type)) {
+            return 'drawing';
+        }
+        if (['storyboardFrame', 'animationBeat', 'audioCue'].includes(element.type)) {
+            return 'production';
+        }
+        if (['mermaidDiagram'].includes(element.type) || String(element.canvasRole || '').includes('mermaid')) {
+            return 'diagram';
+        }
+        return 'drawing';
+    }
+
+    getObjectLibraryPreview(element = {}) {
+        const stroke = this.escapeHtmlAttr(element.strokeColor || '#64748b');
+        const fill = this.escapeHtmlAttr(element.backgroundColor || 'transparent');
+        const fillStyle = fill === 'transparent'
+            ? 'background: repeating-conic-gradient(#edf2f7 0% 25%, #475569 0% 50%) 50% / 8px 8px;'
+            : `background: ${fill};`;
+        const typeClass = this.escapeHtmlAttr(this.getObjectLibraryCategory(element));
+        return `<span class="object-preview ${typeClass}" style="border-color:${stroke}; ${fillStyle}"></span>`;
+    }
+
+    getFilteredObjectLibraryElements(elements = []) {
+        const query = String(this.objectLibraryQuery || '').trim().toLowerCase();
+        const filter = this.objectLibraryFilter || 'all';
+        return elements.filter((element, index) => {
+            const category = this.getObjectLibraryCategory(element);
+            if (filter !== 'all' && category !== filter) {
+                return false;
+            }
+            if (!query) {
+                return true;
+            }
+            const haystack = [
+                this.getElementDisplayName(element, index),
+                this.getElementDetail(element),
+                element.id,
+                element.type,
+                element.canvasRole,
+                element.title,
+                element.text,
+                element.audioName,
+                element.mermaidSource,
+            ].join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+    }
+
+    renderObjectLibrary() {
+        const list = document.getElementById('objectLibraryList');
+        const summary = document.getElementById('objectLibrarySummary');
+        const canvas = window.infiniteCanvas;
+        if (!list || !canvas) return;
+
+        const elements = Array.isArray(canvas.elements) ? canvas.elements : [];
+        const selectedIds = new Set((canvas.selectedElements || []).map((element) => element.id));
+        const filteredElements = this.getFilteredObjectLibraryElements(elements);
+        if (summary) {
+            const selectedText = selectedIds.size > 0 ? `, ${selectedIds.size} selected` : '';
+            const filteredText = filteredElements.length !== elements.length ? `${filteredElements.length} shown / ` : '';
+            summary.textContent = `${filteredText}${elements.length} saved object${elements.length === 1 ? '' : 's'}${selectedText}`;
+        }
+
+        if (elements.length === 0) {
+            list.innerHTML = '<div class="object-library-empty">Create shapes, frames, audio cues, storyboard panels, or AI diagrams and they will appear here.</div>';
+            return;
+        }
+
+        if (filteredElements.length === 0) {
+            list.innerHTML = '<div class="object-library-empty">No objects match this filter.</div>';
+            return;
+        }
+
+        list.innerHTML = filteredElements.map((element, index) => `
+            <div class="object-library-item${selectedIds.has(element.id) ? ' selected' : ''}" data-object-id="${this.escapeHtmlAttr(element.id)}">
+                ${this.getObjectLibraryPreview(element)}
+                <button type="button" class="object-library-main" data-object-row-action="select" data-object-id="${this.escapeHtmlAttr(element.id)}">
+                    <strong>${this.escapeHtml(this.getElementDisplayName(element, index))}</strong>
+                    <span>${this.escapeHtml(this.getElementDetail(element))}</span>
+                </button>
+                <div class="object-library-row-actions">
+                    <button type="button" data-object-row-action="duplicate" data-object-id="${this.escapeHtmlAttr(element.id)}">Copy</button>
+                    <button type="button" data-object-row-action="save-block" data-object-id="${this.escapeHtmlAttr(element.id)}">Save</button>
+                    <button type="button" data-object-row-action="delete" data-object-id="${this.escapeHtmlAttr(element.id)}">Del</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    getProductionTimelineItems() {
+        const canvas = window.infiniteCanvas;
+        const sequenceTypes = new Set(['storyboardFrame', 'animationBeat', 'audioCue']);
+        const elements = Array.isArray(canvas?.elements) ? canvas.elements : [];
+        return elements
+            .filter((element) => sequenceTypes.has(element.type))
+            .map((element, index) => ({
+                element,
+                index,
+                time: Number.isFinite(element.startTime) ? element.startTime : index * 4,
+                duration: Number.isFinite(element.durationSeconds)
+                    ? element.durationSeconds
+                    : (Number.isFinite(element.duration) ? Math.max(1, Math.round(element.duration)) : 4),
+            }))
+            .sort((a, b) => (a.time - b.time) || ((a.element.x || 0) - (b.element.x || 0)));
+    }
+
+    getTimelineTypeLabel(type = '') {
+        return {
+            storyboardFrame: 'Scene',
+            animationBeat: 'Motion',
+            audioCue: 'Audio',
+        }[type] || 'Cue';
+    }
+
+    getProductionDuration(items = this.getProductionTimelineItems()) {
+        if (!Array.isArray(items) || items.length === 0) return 0;
+        return Math.max(...items.map((item) => item.time + item.duration));
+    }
+
+    renderProductionTimeline() {
+        const list = document.getElementById('productionTimelineList');
+        const summary = document.getElementById('productionTimelineSummary');
+        if (!list) return;
+
+        const items = this.getProductionTimelineItems();
+        const selectedIds = new Set((window.infiniteCanvas?.selectedElements || []).map((element) => element.id));
+        const activeCueId = this.timelineActiveCueId;
+        if (summary) {
+            const scenes = items.filter((item) => item.element.type === 'storyboardFrame').length;
+            const beats = items.filter((item) => item.element.type === 'animationBeat').length;
+            const audio = items.filter((item) => item.element.type === 'audioCue').length;
+            summary.textContent = items.length > 0
+                ? `${scenes} scenes / ${beats} motion / ${audio} audio`
+                : 'No scenes yet';
+        }
+
+        if (items.length === 0) {
+            list.innerHTML = '<div class="production-timeline-empty">Add storyboard, animation, or audio cues to build a sequence.</div>';
+            this.timelineCurrentTime = 0;
+            this.timelineActiveCueId = '';
+            this.timelinePlaybackActiveProgress = 0;
+            this.renderTimelineTransport(items);
+            this.renderTimelinePreviewStage(items);
+            this.renderTimelineCueEditor();
+            return;
+        }
+
+        list.innerHTML = items.map((item, index) => {
+            const element = item.element;
+            const title = String(element.title || element.audioName || element.text || this.getElementDisplayName(element, index)).replace(/\s+/g, ' ').trim();
+            const note = String(element.text || element.audioName || '').replace(/\s+/g, ' ').trim();
+            return `
+                <div class="production-timeline-item${selectedIds.has(element.id) ? ' selected' : ''}${activeCueId === element.id ? ' active' : ''}" data-object-id="${this.escapeHtmlAttr(element.id)}">
+                    <button type="button" class="production-timeline-main" data-timeline-action="select" data-object-id="${this.escapeHtmlAttr(element.id)}">
+                        <span class="timeline-badge ${this.escapeHtmlAttr(element.type)}">${this.escapeHtml(this.getTimelineTypeLabel(element.type))}</span>
+                        <strong>${this.escapeHtml(title.slice(0, 48) || `Cue ${index + 1}`)}</strong>
+                        <small>${this.escapeHtml(`${this.formatDuration(item.time)}-${this.formatDuration(item.time + item.duration)}${note ? ` - ${note.slice(0, 42)}` : ''}`)}</small>
+                    </button>
+                    <div class="production-timeline-actions">
+                        <button type="button" data-timeline-action="duplicate" data-object-id="${this.escapeHtmlAttr(element.id)}">Copy</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        this.renderTimelineTransport(items);
+        this.renderTimelinePreviewStage(items);
+        this.renderTimelineCueEditor();
+    }
+
+    handleTimelineAction(action = '', objectId = '') {
+        if (action === 'preview' || action === 'play') {
+            this.startTimelinePlayback();
+            return;
+        }
+        if (action === 'stop') {
+            this.stopTimelinePlayback({ reset: true });
+            return;
+        }
+        if (action === 'prev' || action === 'next') {
+            this.selectTimelineCueByOffset(action === 'next' ? 1 : -1);
+            return;
+        }
+        if (!objectId) return;
+        if (action === 'select') {
+            this.selectObjectById(objectId);
+            this.selectCanvasPanel('creative');
+        } else if (action === 'duplicate') {
+            this.duplicateObjectById(objectId);
+            this.selectCanvasPanel('creative');
+        }
+    }
+
+    previewProductionTimeline() {
+        this.startTimelinePlayback();
+    }
+
+    renderTimelineTransport(items = this.getProductionTimelineItems()) {
+        const duration = this.getProductionDuration(items);
+        const current = Math.min(Math.max(0, this.timelineCurrentTime || 0), Math.max(duration, 0));
+        const currentEl = document.getElementById('timelineCurrentTime');
+        const durationEl = document.getElementById('timelineDuration');
+        const fill = document.getElementById('timelineProgressFill');
+        const playBtn = document.getElementById('timelinePlayBtn');
+        const stopBtn = document.getElementById('timelineStopBtn');
+        const prevBtn = document.getElementById('timelinePrevBtn');
+        const nextBtn = document.getElementById('timelineNextBtn');
+        if (currentEl) currentEl.textContent = this.formatDuration(current);
+        if (durationEl) durationEl.textContent = this.formatDuration(duration);
+        if (fill) fill.style.width = duration > 0 ? `${Math.min(100, (current / duration) * 100)}%` : '0%';
+        if (playBtn) {
+            playBtn.textContent = this.timelineIsPlaying ? 'Playing' : 'Play';
+            playBtn.disabled = items.length === 0;
+            playBtn.setAttribute('aria-pressed', this.timelineIsPlaying ? 'true' : 'false');
+        }
+        if (stopBtn) {
+            stopBtn.disabled = items.length === 0 && current <= 0;
+        }
+        if (prevBtn) prevBtn.disabled = items.length === 0;
+        if (nextBtn) nextBtn.disabled = items.length === 0;
+    }
+
+    getTimelineActiveItem(items = this.getProductionTimelineItems(), time = this.timelineCurrentTime) {
+        if (!Array.isArray(items) || items.length === 0) return null;
+        return items.find((item) => time >= item.time && time < item.time + item.duration)
+            || items.find((item) => item.element.id === this.timelineActiveCueId)
+            || items[0];
+    }
+
+    getTimelineCuePreviewState(element = {}) {
+        if (!element?.id || element.id !== this.timelineActiveCueId) {
+            return null;
+        }
+        return {
+            active: true,
+            progress: Math.max(0, Math.min(1, this.timelinePlaybackActiveProgress || 0)),
+            isPlaying: this.timelineIsPlaying,
+        };
+    }
+
+    renderTimelinePreviewStage(items = this.getProductionTimelineItems()) {
+        const stage = document.getElementById('timelinePreviewStage');
+        if (!stage) return;
+        if (!Array.isArray(items) || items.length === 0) {
+            stage.innerHTML = '<div class="timeline-preview-empty">Add cues to preview a scene, motion beat, or audio moment.</div>';
+            return;
+        }
+
+        const active = this.getTimelineActiveItem(items);
+        const element = active?.element || items[0]?.element;
+        if (!element) {
+            stage.innerHTML = '<div class="timeline-preview-empty">Select a cue to preview it here.</div>';
+            return;
+        }
+
+        const progress = Math.max(0, Math.min(1, this.timelinePlaybackActiveProgress || 0));
+        const title = String(element.title || element.audioName || element.text || 'Untitled cue').replace(/\s+/g, ' ').trim();
+        const note = String(element.text || element.audioName || '').replace(/\s+/g, ' ').trim();
+        const typeLabel = this.getTimelineTypeLabel(element.type);
+        const progressLabel = `${Math.round(progress * 100)}%`;
+        const timeRange = `${this.formatDuration(active.time)}-${this.formatDuration(active.time + active.duration)}`;
+        stage.innerHTML = `
+            <div class="timeline-preview-card ${this.escapeHtmlAttr(element.type)}">
+                <div class="timeline-preview-main">
+                    <span class="timeline-badge ${this.escapeHtmlAttr(element.type)}">${this.escapeHtml(typeLabel)}</span>
+                    <strong>${this.escapeHtml(title.slice(0, 72) || typeLabel)}</strong>
+                    <small>${this.escapeHtml(`${timeRange}${note ? ` - ${note.slice(0, 78)}` : ''}`)}</small>
+                </div>
+                <div class="timeline-preview-meter" aria-label="Cue progress ${this.escapeHtmlAttr(progressLabel)}">
+                    <span style="width: ${progress * 100}%"></span>
+                </div>
+                <div class="timeline-preview-meta">
+                    <span>${this.timelineIsPlaying ? 'Playing' : 'Ready'}</span>
+                    <span>${this.escapeHtml(progressLabel)}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    selectTimelineCueByOffset(offset = 1) {
+        const items = this.getProductionTimelineItems();
+        if (items.length === 0) {
+            this.showToast('Add timeline cues first', 'warning');
+            return;
+        }
+        this.stopTimelinePlayback({ reset: false, silent: true });
+        const selectedCue = this.getSelectedTimelineCue();
+        const activeId = selectedCue?.id || this.timelineActiveCueId;
+        const foundIndex = items.findIndex((item) => item.element.id === activeId);
+        const currentIndex = foundIndex >= 0 ? foundIndex : (offset > 0 ? -1 : items.length);
+        const nextIndex = Math.max(0, Math.min(items.length - 1, currentIndex + offset));
+        const item = items[nextIndex];
+        this.timelineCurrentTime = item.time;
+        this.timelineActiveCueId = item.element.id;
+        this.timelinePlaybackActiveProgress = 0;
+        this.selectObjectById(item.element.id);
+        this.renderTimelineTransport(items);
+        this.renderTimelinePreviewStage(items);
+        this.renderProductionTimeline();
+        window.infiniteCanvas?.render();
+    }
+
+    startTimelinePlayback() {
+        this.timelinePreviewTimers.forEach((timer) => clearTimeout(timer));
+        this.timelinePreviewTimers = [];
+        const items = this.getProductionTimelineItems();
+        if (items.length === 0) {
+            this.showToast('Add storyboard, animation, or audio cues first', 'warning');
+            return;
+        }
+
+        const duration = this.getProductionDuration(items);
+        if (duration <= 0) {
+            this.showToast('Timeline needs cue durations first', 'warning');
+            return;
+        }
+
+        if (this.timelineIsPlaying) {
+            this.stopTimelinePlayback();
+            return;
+        }
+
+        this.timelineIsPlaying = true;
+        this.timelinePlaybackBaseTime = this.timelineCurrentTime >= duration ? 0 : this.timelineCurrentTime;
+        this.timelinePlaybackStartedAt = performance.now();
+        this.showToast('Timeline preview started');
+        this.tickTimelinePlayback();
+    }
+
+    tickTimelinePlayback() {
+        if (!this.timelineIsPlaying) return;
+        const items = this.getProductionTimelineItems();
+        const duration = this.getProductionDuration(items);
+        const elapsed = ((performance.now() - this.timelinePlaybackStartedAt) / 1000) + this.timelinePlaybackBaseTime;
+        this.timelineCurrentTime = Math.min(elapsed, duration);
+        this.updateTimelineActiveCue(items, this.timelineCurrentTime);
+        this.renderTimelineTransport(items);
+        this.renderTimelinePreviewStage(items);
+        window.infiniteCanvas?.render();
+
+        if (elapsed >= duration) {
+            this.stopTimelinePlayback({ reset: false, finished: true });
+            return;
+        }
+
+        this.timelinePlaybackFrame = requestAnimationFrame(() => this.tickTimelinePlayback());
+    }
+
+    updateTimelineActiveCue(items = this.getProductionTimelineItems(), time = this.timelineCurrentTime) {
+        const active = items.find((item) => time >= item.time && time < item.time + item.duration) || items[items.length - 1] || null;
+        if (!active) {
+            return;
+        }
+        this.timelinePlaybackActiveProgress = active.duration > 0
+            ? Math.max(0, Math.min(1, (time - active.time) / active.duration))
+            : 0;
+        if (active.element.id === this.timelineActiveCueId) {
+            return;
+        }
+
+        this.timelineActiveCueId = active.element.id;
+        window.infiniteCanvas?.selectElement(active.element);
+        window.infiniteCanvas?.render();
+        this.renderProductionTimeline();
+        this.renderObjectLibrary();
+        this.playTimelineAudioCue(active.element);
+    }
+
+    playTimelineAudioCue(element = {}) {
+        if (this.timelineAudio) {
+            this.timelineAudio.pause();
+            this.timelineAudio = null;
+        }
+        if (element.type !== 'audioCue' || !element.audioUrl) {
+            return;
+        }
+        try {
+            this.timelineAudio = new Audio(element.audioUrl);
+            this.timelineAudio.volume = 0.82;
+            const playResult = this.timelineAudio.play();
+            if (playResult?.catch) {
+                playResult.catch(() => {});
+            }
+        } catch {}
+    }
+
+    stopTimelinePlayback(options = {}) {
+        if (this.timelinePlaybackFrame) {
+            cancelAnimationFrame(this.timelinePlaybackFrame);
+            this.timelinePlaybackFrame = null;
+        }
+        this.timelinePreviewTimers.forEach((timer) => clearTimeout(timer));
+        this.timelinePreviewTimers = [];
+        if (this.timelineAudio) {
+            this.timelineAudio.pause();
+            this.timelineAudio = null;
+        }
+        this.timelineIsPlaying = false;
+        if (options.reset) {
+            this.timelineCurrentTime = 0;
+            this.timelineActiveCueId = '';
+            this.timelinePlaybackActiveProgress = 0;
+        }
+        this.renderTimelineTransport();
+        this.renderTimelinePreviewStage();
+        this.renderProductionTimeline();
+        if (options.finished) {
+            this.showToast('Timeline preview finished');
+        } else if (!options.silent) {
+            window.infiniteCanvas?.render();
+        }
+    }
+
+    getSelectedTimelineCue() {
+        const selected = window.infiniteCanvas?.selectedElements || [];
+        const sequenceTypes = new Set(['storyboardFrame', 'animationBeat', 'audioCue']);
+        return selected.find((element) => sequenceTypes.has(element.type)) || null;
+    }
+
+    renderTimelineCueEditor() {
+        const editor = document.getElementById('timelineCueEditor');
+        if (!editor) return;
+        const cue = this.getSelectedTimelineCue();
+        editor.hidden = !cue;
+        if (!cue) return;
+        const activeElement = document.activeElement;
+        if (activeElement && editor.contains(activeElement)) {
+            return;
+        }
+        const typeEl = document.getElementById('timelineCueType');
+        const titleEl = document.getElementById('timelineCueTitle');
+        const startEl = document.getElementById('timelineCueStart');
+        const durationEl = document.getElementById('timelineCueDuration');
+        const noteEl = document.getElementById('timelineCueNote');
+        const animationControls = document.getElementById('timelineAnimationControls');
+        const motionPresetEl = document.getElementById('timelineMotionPreset');
+        const audioControls = document.getElementById('timelineAudioControls');
+        const audioMeta = document.getElementById('timelineAudioMeta');
+        if (typeEl) typeEl.textContent = this.getTimelineTypeLabel(cue.type);
+        if (titleEl) titleEl.value = cue.title || cue.audioName || '';
+        if (startEl) startEl.value = Number.isFinite(cue.startTime) ? String(cue.startTime) : '0';
+        if (durationEl) durationEl.value = Number.isFinite(cue.durationSeconds) ? String(cue.durationSeconds) : '4';
+        if (noteEl) noteEl.value = cue.text || '';
+        if (animationControls) animationControls.hidden = cue.type !== 'animationBeat';
+        if (motionPresetEl) motionPresetEl.value = cue.motionPreset || 'ease';
+        if (audioControls) audioControls.hidden = cue.type !== 'audioCue';
+        if (audioMeta) {
+            const parts = [
+                cue.audioName || 'No file name',
+                Number.isFinite(cue.duration) ? this.formatDuration(cue.duration) : '',
+                cue.audioUrl ? (cue.audioPersistent === false ? 'session link' : 'saved with board') : 'no attached file',
+            ].filter(Boolean);
+            audioMeta.textContent = parts.join(' - ');
+        }
+    }
+
+    updateSelectedTimelineCue(field = '', value = '') {
+        const cue = this.getSelectedTimelineCue();
+        if (!cue) return;
+        if (field === 'startTime' || field === 'durationSeconds') {
+            const numberValue = Number(value);
+            if (!Number.isFinite(numberValue)) return;
+            cue[field] = field === 'durationSeconds' ? Math.max(0.25, numberValue) : Math.max(0, numberValue);
+        } else if (field === 'title') {
+            cue.title = String(value || '').slice(0, 96);
+            if (cue.type === 'audioCue') {
+                cue.audioName = cue.title || cue.audioName || 'Audio cue';
+            }
+        } else if (field === 'text') {
+            cue.text = String(value || '').slice(0, 600);
+        } else if (field === 'motionPreset') {
+            cue.motionPreset = String(value || 'ease').slice(0, 32);
+        }
+        window.historyManager?.pushState(window.infiniteCanvas?.elements || []);
+        this.onCanvasElementsChanged();
+        window.infiniteCanvas?.render();
+    }
+
+    handleTimelineExtraAction(action = '') {
+        if (action === 'play-audio') {
+            this.playSelectedAudioCue();
+        } else if (action === 'replace-audio') {
+            document.getElementById('selectedAudioInput')?.click();
+        }
+    }
+
+    playSelectedAudioCue() {
+        const cue = this.getSelectedTimelineCue();
+        if (!cue || cue.type !== 'audioCue') {
+            this.showToast('Select an audio cue first', 'warning');
+            return false;
+        }
+        if (!cue.audioUrl) {
+            this.showToast('Attach an audio file to this cue first', 'warning');
+            return false;
+        }
+        this.playTimelineAudioCue(cue);
+        this.showToast(`Playing ${cue.audioName || cue.title || 'audio cue'}`);
+        return true;
+    }
+
+    async replaceSelectedAudioCueFile(file) {
+        const cue = this.getSelectedTimelineCue();
+        if (!cue || cue.type !== 'audioCue') {
+            this.showToast('Select an audio cue before replacing audio', 'warning');
+            return false;
+        }
+        if (!file || !file.type?.startsWith('audio/')) {
+            this.showToast('Choose an audio file for this cue', 'warning');
+            return false;
+        }
+
+        const audioUrl = URL.createObjectURL(file);
+        let duration = null;
+        try {
+            duration = await this.readAudioDuration(audioUrl);
+        } catch {
+            duration = null;
+        }
+
+        cue.audioName = file.name;
+        cue.title = cue.title || file.name;
+        cue.audioType = file.type;
+        cue.audioSize = file.size;
+        cue.duration = duration;
+        cue.durationSeconds = Number.isFinite(duration) ? Math.max(0.25, Math.round(duration * 4) / 4) : cue.durationSeconds || 4;
+        cue.audioUrl = audioUrl;
+        cue.audioPersistent = false;
+        cue.waveformPeaks = this.createWaveformPeaks(file.name, file.size);
+
+        const maxPersistentBytes = 1500 * 1024;
+        if (file.size <= maxPersistentBytes) {
+            try {
+                cue.audioUrl = await this.readFileAsDataUrl(file);
+                cue.audioPersistent = true;
+            } catch {
+                cue.audioUrl = audioUrl;
+                cue.audioPersistent = false;
+            }
+        }
+
+        window.historyManager?.pushState(window.infiniteCanvas?.elements || []);
+        this.onCanvasElementsChanged();
+        window.infiniteCanvas?.render();
+        this.showToast('Audio cue replaced');
+        return true;
+    }
+
+    getSelectedMermaidDiagram() {
+        const selected = window.infiniteCanvas?.selectedElements || [];
+        return selected.find((element) => element.type === 'mermaidDiagram') || null;
+    }
+
+    renderSelectedMermaidEditor() {
+        const editor = document.getElementById('mermaidObjectEditor');
+        if (!editor) return;
+        const diagram = this.getSelectedMermaidDiagram();
+        editor.hidden = !diagram;
+        if (!diagram) return;
+
+        const activeElement = document.activeElement;
+        if (activeElement && editor.contains(activeElement)) {
+            return;
+        }
+
+        const sourceInput = document.getElementById('selectedMermaidSource');
+        const summary = document.getElementById('mermaidObjectSummary');
+        const source = String(diagram.mermaidSource || diagram.text || '').trim();
+        const parsed = this.parseMermaidFlow(source);
+        if (sourceInput) sourceInput.value = source;
+        if (summary) {
+            summary.textContent = `${parsed.nodes.length} nodes / ${parsed.edges.length} connectors`;
+        }
+    }
+
+    handleSelectedMermaidAction(action = '') {
+        if (action === 'save') {
+            this.saveSelectedMermaidSource();
+        } else if (action === 'render') {
+            this.renderSelectedMermaidToObjects();
+        }
+    }
+
+    saveSelectedMermaidSource() {
+        const diagram = this.getSelectedMermaidDiagram();
+        const source = document.getElementById('selectedMermaidSource')?.value?.trim() || '';
+        if (!diagram) {
+            this.showToast('Select a Mermaid source card first', 'warning');
+            return false;
+        }
+        if (!source) {
+            this.showToast('Add Mermaid source before saving', 'warning');
+            return false;
+        }
+
+        const parsed = this.parseMermaidFlow(source);
+        diagram.mermaidSource = source;
+        diagram.mermaidNodes = parsed.nodes.map((node) => node.label);
+        diagram.title = diagram.title || 'Mermaid Diagram';
+        diagram.text = diagram.text || '';
+        const summary = document.getElementById('mermaidObjectSummary');
+        if (summary) {
+            summary.textContent = `${parsed.nodes.length} nodes / ${parsed.edges.length} connectors`;
+        }
+        window.historyManager?.pushState(window.infiniteCanvas?.elements || []);
+        this.onCanvasElementsChanged();
+        window.infiniteCanvas?.render();
+        this.showToast('Mermaid source saved');
+        return true;
+    }
+
+    renderSelectedMermaidToObjects() {
+        const diagram = this.getSelectedMermaidDiagram();
+        if (!diagram) {
+            this.showToast('Select a Mermaid source card first', 'warning');
+            return false;
+        }
+        if (!this.saveSelectedMermaidSource()) {
+            return false;
+        }
+        const source = String(diagram.mermaidSource || '').trim();
+        const base = {
+            x: (Number(diagram.x) || 0) - 300,
+            y: (Number(diagram.y) || 0) - 90,
+        };
+        const elements = this.buildMermaidFlowElements(source, base, { includeSourceCard: false });
+        if (elements.length === 0) {
+            this.showToast('Could not find simple Mermaid arrows to render', 'warning');
+            return false;
+        }
+        this.addCreativeElements(elements, 'Selected Mermaid rendered to objects');
+        return true;
+    }
+
+    handleObjectLibraryAction(action = '') {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) return;
+        switch (action) {
+            case 'save-board':
+                this.saveCurrentBoard();
+                break;
+            case 'save-checkpoint':
+                this.saveCanvasCheckpoint();
+                break;
+            case 'select-all':
+                canvas.selectElements(canvas.elements || []);
+                this.renderObjectLibrary();
+                break;
+            case 'duplicate-selection':
+                window.selectionManager?.duplicateSelection();
+                this.onCanvasElementsChanged();
+                break;
+        }
+    }
+
+    handleObjectRowAction(action = '', objectId = '') {
+        if (!objectId) return;
+        if (action === 'select') {
+            this.selectObjectById(objectId);
+        } else if (action === 'duplicate') {
+            this.duplicateObjectById(objectId);
+        } else if (action === 'save-block') {
+            this.saveObjectAsBlock(objectId);
+        } else if (action === 'delete') {
+            this.deleteObjectById(objectId);
+        }
+    }
+
+    saveObjectAsBlock(objectId = '') {
+        const canvas = window.infiniteCanvas;
+        const element = canvas?.elements?.find((item) => item.id === objectId);
+        if (!canvas || !element) {
+            this.showToast('Object was not found', 'warning');
+            return null;
+        }
+        canvas.selectElement(element);
+        canvas.render();
+        return this.saveSelectionAsBlock();
+    }
+
+    selectObjectById(objectId = '') {
+        const canvas = window.infiniteCanvas;
+        const element = canvas?.elements?.find((item) => item.id === objectId);
+        if (!canvas || !element) return false;
+        canvas.selectElement(element);
+        canvas.render();
+        this.renderObjectLibrary();
+        this.renderProductionTimeline();
+        this.selectCanvasPanel('objects');
+        return true;
+    }
+
+    duplicateObjectById(objectId = '') {
+        const canvas = window.infiniteCanvas;
+        const element = canvas?.elements?.find((item) => item.id === objectId);
+        if (!canvas || !element) return false;
+        const copy = {
+            ...this.normalizeCanvasElement(element),
+            id: window.toolManager?.generateId?.() || `el-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            x: (element.x || 0) + 28,
+            y: (element.y || 0) + 28,
+            startTime: Number.isFinite(element.startTime)
+                ? element.startTime + (Number.isFinite(element.durationSeconds) ? element.durationSeconds : 4)
+                : element.startTime,
+            points: Array.isArray(element.points)
+                ? element.points.map((point) => ({ x: point.x + 28, y: point.y + 28 }))
+                : element.points,
+        };
+        canvas.addElement(copy);
+        canvas.selectElement(copy);
+        window.historyManager?.pushState(canvas.elements);
+        this.onCanvasElementsChanged();
+        this.showToast('Duplicated object');
+        return true;
+    }
+
+    deleteObjectById(objectId = '') {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) return false;
+        canvas.removeElement(objectId);
+        window.historyManager?.pushState(canvas.elements);
+        this.onCanvasElementsChanged();
+        this.showToast('Deleted object');
+        return true;
+    }
+
+    getCanvasInsertionPoint(offsetX = 0, offsetY = 0) {
+        const canvas = window.infiniteCanvas;
+        const viewportCenter = canvas?.getViewportCenter?.() || {
+            x: (canvas?.canvas?.clientWidth || canvas?.canvas?.width || 800) / 2,
+            y: (canvas?.canvas?.clientHeight || canvas?.canvas?.height || 600) / 2,
+        };
+        const center = canvas?.screenToWorld?.(viewportCenter.x, viewportCenter.y) || { x: 0, y: 0 };
+        return { x: center.x + offsetX, y: center.y + offsetY };
+    }
+
+    handleCreativeAction(action = '') {
+        switch (action) {
+            case 'connect':
+                this.connectSelectedObjects();
+                break;
+            case 'ai-brief':
+                this.openCanvasAIWithPrompt('Compose a richer editable canvas plan using storyboard frames, labels, connectors, audio cues, animation beats, and diagram objects.', { submit: true });
+                break;
+            case 'ai-prompt':
+                this.openCanvasAIWithPrompt(document.getElementById('creativePromptInput')?.value || '', { submit: true });
+                break;
+            case 'audio-import':
+                document.getElementById('canvasAudioInput')?.click();
+                break;
+            case 'mermaid-render':
+                this.addMermaidFlowFromInput();
+                break;
+            case 'journey-map':
+                this.addJourneyMap();
+                break;
+            case 'system-flow':
+                this.addSystemFlow();
+                break;
+            case 'scene-pack':
+                this.addScenePack();
+                break;
+            case 'empty-frame':
+                this.addCreativeElements([this.createStoryboardFrame(this.getCanvasInsertionPoint(), 'Production Frame', 'Draw, import, or generate inside this frame.')]);
+                break;
+            default:
+                this.addCreativePreset(action);
+        }
+    }
+
+    openCanvasAIWithPrompt(prompt = '', options = {}) {
+        window.aiAssistant?.setMode?.('diagram');
+        window.aiAssistant?.showPanel?.();
+        const input = document.getElementById('aiInput');
+        if (input && prompt.trim()) {
+            input.value = prompt.trim();
+            input.focus();
+        }
+        if (options.submit && prompt.trim() && window.aiAssistant && !window.aiAssistant.isGenerating) {
+            window.aiAssistant.generate?.();
+            this.showToast('Canvas AI is building editable objects');
+            return;
+        }
+        this.showToast('Canvas AI is ready for a creative pass');
+    }
+
+    addCreativePreset(type = '') {
+        this.addCreativePresetAt(type, this.getCanvasInsertionPoint());
+    }
+
+    addCreativePresetAt(type = '', point = this.getCanvasInsertionPoint()) {
+        const factories = {
+            storyboard: () => [this.createStoryboardFrame(point, 'Scene 1', 'Shot, action, camera, and composition notes', { startTime: 0, durationSeconds: 4 })],
+            animation: () => [this.createAnimationBeat(point, 'Animation Beat', '0:00-0:04 - motion, easing, transition', { startTime: 0, durationSeconds: 4 })],
+            audio: () => [this.createAudioCue(point, 'Audio Cue', 'Voice, music, SFX, or ambience note', { startTime: 0, durationSeconds: 4 })],
+            mermaid: () => [this.createMermaidDiagram(point, document.getElementById('mermaidSourceInput')?.value || 'flowchart TD\n  Idea --> Draft\n  Draft --> Review\n  Review --> Ship')],
+        };
+        const elements = factories[type]?.() || [];
+        this.addCreativeElements(elements, `${this.getElementDisplayName(elements[0] || {}, 0)} added`);
+    }
+
+    async handleCanvasAudioFile(file) {
+        if (!file || !file.type?.startsWith('audio/')) {
+            this.showToast('Choose an audio file to add to the canvas', 'warning');
+            return;
+        }
+
+        const audioUrl = URL.createObjectURL(file);
+        const point = this.getCanvasInsertionPoint();
+        const maxPersistentBytes = 1500 * 1024;
+        let duration = null;
+
+        try {
+            duration = await this.readAudioDuration(audioUrl);
+        } catch {
+            duration = null;
+        }
+
+        const options = {
+            audioName: file.name,
+            audioType: file.type,
+            audioSize: file.size,
+            duration,
+            startTime: this.getNextProductionStartTime(),
+            durationSeconds: Number.isFinite(duration) ? Math.max(1, Math.round(duration)) : 4,
+            audioUrl,
+            audioPersistent: false,
+            waveformPeaks: this.createWaveformPeaks(file.name, file.size),
+        };
+
+        if (file.size <= maxPersistentBytes) {
+            try {
+                options.audioUrl = await this.readFileAsDataUrl(file);
+                options.audioPersistent = true;
+            } catch {
+                options.audioUrl = audioUrl;
+                options.audioPersistent = false;
+            }
+        }
+
+        const note = `${file.name}${Number.isFinite(duration) ? ` - ${this.formatDuration(duration)}` : ''}`;
+        this.addCreativeElements([this.createAudioCue(point, 'Imported Audio', note, options)], 'Audio cue imported');
+        if (file.size > maxPersistentBytes) {
+            this.showToast('Large audio is linked for this session; small clips are saved with the board', 'warning');
+        }
+    }
+
+    readAudioDuration(audioUrl) {
+        return new Promise((resolve, reject) => {
+            const audio = new Audio();
+            const cleanup = () => {
+                audio.removeAttribute('src');
+                audio.load();
+            };
+            audio.preload = 'metadata';
+            audio.onloadedmetadata = () => {
+                const duration = Number.isFinite(audio.duration) ? audio.duration : null;
+                cleanup();
+                resolve(duration);
+            };
+            audio.onerror = () => {
+                cleanup();
+                reject(new Error('Unable to read audio metadata'));
+            };
+            audio.src = audioUrl;
+        });
+    }
+
+    readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    createWaveformPeaks(seedText = '', seedNumber = 0, count = 36) {
+        let seed = Array.from(String(seedText)).reduce((sum, char) => sum + char.charCodeAt(0), Number(seedNumber) || 1);
+        return Array.from({ length: count }, () => {
+            seed = (seed * 1664525 + 1013904223) % 4294967296;
+            return 0.2 + ((seed / 4294967296) * 0.8);
+        });
+    }
+
+    formatDuration(seconds) {
+        const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+        const minutes = Math.floor(safeSeconds / 60);
+        const rest = String(safeSeconds % 60).padStart(2, '0');
+        return `${minutes}:${rest}`;
+    }
+
+    getNextProductionStartTime() {
+        const items = this.getProductionTimelineItems();
+        if (items.length === 0) return 0;
+        return Math.max(...items.map((item) => item.time + item.duration));
+    }
+
+    addJourneyMap() {
+        const base = this.getCanvasInsertionPoint(-260, -40);
+        const elements = ['Discover', 'Try', 'Decide', 'Return'].map((title, index) => ({
+            id: window.toolManager?.generateId?.() || `journey-${Date.now()}-${index}`,
+            type: 'sticky',
+            x: base.x + index * 190,
+            y: base.y,
+            width: 160,
+            height: 132,
+            text: `${title}\nAction\nEmotion\nOpportunity`,
+            backgroundColor: ['#fef3c7', '#dbeafe', '#dcfce7', '#fae8ff'][index],
+            strokeColor: '#334155',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            canvasRole: 'journey',
+        }));
+        this.addCreativeElements(elements, 'Journey map added');
+    }
+
+    addSystemFlow() {
+        const base = this.getCanvasInsertionPoint(-220, 0);
+        const nodes = ['Input', 'Agent', 'Review', 'Output'].map((title, index) => ({
+            id: window.toolManager?.generateId?.() || `flow-${Date.now()}-${index}`,
+            type: 'rectangle',
+            x: base.x + index * 170,
+            y: base.y,
+            width: 130,
+            height: 76,
+            text: title,
+            backgroundColor: '#e0f2fe',
+            strokeColor: '#075985',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            canvasRole: 'system-flow',
+        }));
+        const arrows = nodes.slice(0, -1).map((node, index) => this.createArrowBetween(node, nodes[index + 1]));
+        this.addCreativeElements([...nodes, ...arrows], 'System flow added');
+    }
+
+    addScenePack() {
+        const base = this.getCanvasInsertionPoint(-300, -30);
+        const frames = [0, 1, 2].map((index) => this.createStoryboardFrame(
+            { x: base.x + index * 250, y: base.y },
+            `Scene ${index + 1}`,
+            index === 0 ? 'Open on problem' : (index === 1 ? 'Show transformation' : 'Resolve with outcome'),
+            { startTime: index * 4, durationSeconds: 4 }
+        ));
+        const beats = frames.map((frame, index) => this.createAnimationBeat(
+            { x: frame.x, y: frame.y + 282 },
+            `Motion ${index + 1}`,
+            index === 0 ? 'Ease in / establish' : (index === 1 ? 'Move through transformation' : 'Hold for resolution'),
+            { startTime: index * 4, durationSeconds: 4 }
+        ));
+        const cues = frames.map((frame, index) => this.createAudioCue(
+            { x: frame.x, y: frame.y + 150 },
+            `Audio ${index + 1}`,
+            'Voice or music cue',
+            { startTime: index * 4, durationSeconds: 4 }
+        ));
+        this.addCreativeElements([...frames, ...cues, ...beats], 'Scene pack added');
+    }
+
+    createStoryboardFrame(point, title, note, options = {}) {
+        return {
+            id: window.toolManager?.generateId?.() || `story-${Date.now()}`,
+            type: 'storyboardFrame',
+            x: point.x,
+            y: point.y,
+            width: 220,
+            height: 150,
+            title,
+            text: note,
+            backgroundColor: '#f8fafc',
+            strokeColor: '#334155',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            canvasRole: 'storyboard',
+            startTime: Number.isFinite(options.startTime) ? options.startTime : null,
+            durationSeconds: Number.isFinite(options.durationSeconds) ? options.durationSeconds : 4,
+        };
+    }
+
+    createAnimationBeat(point, title, note, options = {}) {
+        return {
+            id: window.toolManager?.generateId?.() || `anim-${Date.now()}`,
+            type: 'animationBeat',
+            x: point.x,
+            y: point.y,
+            width: 260,
+            height: 98,
+            title,
+            text: note,
+            motionPreset: options.motionPreset || 'ease',
+            backgroundColor: '#ecfeff',
+            strokeColor: '#0e7490',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            canvasRole: 'animation',
+            startTime: Number.isFinite(options.startTime) ? options.startTime : null,
+            durationSeconds: Number.isFinite(options.durationSeconds) ? options.durationSeconds : 4,
+        };
+    }
+
+    createAudioCue(point, title, note, options = {}) {
+        return {
+            id: window.toolManager?.generateId?.() || `audio-${Date.now()}`,
+            type: 'audioCue',
+            x: point.x,
+            y: point.y,
+            width: 270,
+            height: 104,
+            title,
+            text: note,
+            audioName: options.audioName || '',
+            audioType: options.audioType || '',
+            audioSize: options.audioSize || 0,
+            audioUrl: options.audioUrl || '',
+            audioPersistent: options.audioPersistent !== false,
+            duration: Number.isFinite(options.duration) ? options.duration : null,
+            startTime: Number.isFinite(options.startTime) ? options.startTime : null,
+            durationSeconds: Number.isFinite(options.durationSeconds)
+                ? options.durationSeconds
+                : (Number.isFinite(options.duration) ? Math.max(1, Math.round(options.duration)) : 4),
+            waveformPeaks: Array.isArray(options.waveformPeaks)
+                ? options.waveformPeaks
+                : this.createWaveformPeaks(title || note || 'audio'),
+            backgroundColor: '#fff7ed',
+            strokeColor: '#9a3412',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            canvasRole: 'audio',
+        };
+    }
+
+    createMermaidDiagram(point, source) {
+        const mermaidNodes = this.parseMermaidFlow(source).nodes.map((node) => node.label);
+        return {
+            id: window.toolManager?.generateId?.() || `mermaid-${Date.now()}`,
+            type: 'mermaidDiagram',
+            x: point.x,
+            y: point.y,
+            width: 300,
+            height: 170,
+            title: 'Mermaid Diagram',
+            text: source,
+            mermaidNodes,
+            backgroundColor: '#eef2ff',
+            strokeColor: '#3730a3',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            canvasRole: 'mermaid',
+        };
+    }
+
+    addMermaidFlowFromInput() {
+        const source = document.getElementById('mermaidSourceInput')?.value?.trim() || '';
+        if (!source) {
+            this.showToast('Add Mermaid source first', 'warning');
+            return;
+        }
+
+        const base = this.getCanvasInsertionPoint(-260, -50);
+        const elements = this.buildMermaidFlowElements(source, base, { includeSourceCard: true });
+        if (elements.length === 0) {
+            this.addCreativeElements([this.createMermaidDiagram(this.getCanvasInsertionPoint(), source)], 'Mermaid source card added');
+            this.showToast('Could not find simple Mermaid arrows; source card saved', 'warning');
+            return;
+        }
+
+        this.addCreativeElements(elements, 'Editable Mermaid flow added');
+    }
+
+    buildMermaidFlowElements(source = '', base = this.getCanvasInsertionPoint(-260, -50), options = {}) {
+        const parsed = this.parseMermaidFlow(source);
+        if (parsed.nodes.length < 2 || parsed.edges.length === 0) {
+            return [];
+        }
+
+        const nodeElements = parsed.nodes.map((node, index) => {
+            const column = index % 3;
+            const row = Math.floor(index / 3);
+            const isDecision = node.shape === 'diamond';
+            return {
+                id: window.toolManager?.generateId?.() || `mermaid-node-${Date.now()}-${index}`,
+                type: isDecision ? 'diamond' : 'rectangle',
+                x: base.x + column * 190,
+                y: base.y + row * 130,
+                width: isDecision ? 130 : 150,
+                height: isDecision ? 92 : 76,
+                text: node.label,
+                backgroundColor: isDecision ? '#fef3c7' : '#e0e7ff',
+                strokeColor: isDecision ? '#92400e' : '#3730a3',
+                strokeWidth: 2,
+                strokeStyle: 'solid',
+                roughness: 1,
+                opacity: 1,
+                canvasRole: 'mermaid-node',
+                mermaidId: node.id,
+            };
+        });
+        const byMermaidId = new Map(parsed.nodes.map((node, index) => [node.id, nodeElements[index]]));
+        const arrows = parsed.edges
+            .map((edge) => {
+                const from = byMermaidId.get(edge.from);
+                const to = byMermaidId.get(edge.to);
+                return from && to ? this.createArrowBetween(from, to) : null;
+            })
+            .filter(Boolean);
+        const sourceCard = options.includeSourceCard === false
+            ? null
+            : this.createMermaidDiagram({ x: base.x + 610, y: base.y + 65 }, source);
+
+        return [...nodeElements, ...arrows, sourceCard].filter(Boolean);
+    }
+
+    parseMermaidFlow(source = '') {
+        const nodes = new Map();
+        const edges = [];
+        const cleanLines = String(source)
+            .split('\n')
+            .map((line) => line.replace(/%%.*$/, '').replace(/;$/, '').trim())
+            .filter((line) => line && !/^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram)/i.test(line));
+
+        cleanLines.forEach((line) => {
+            const match = line.match(/^(.+?)\s*(?:-->|---|\-.->|==>)\s*(.+?)$/);
+            if (!match) return;
+            const from = this.parseMermaidNodeToken(match[1]);
+            const to = this.parseMermaidNodeToken(match[2]);
+            if (!from.id || !to.id) return;
+            this.rememberMermaidNode(nodes, from);
+            this.rememberMermaidNode(nodes, to);
+            edges.push({ from: from.id, to: to.id });
+        });
+
+        return {
+            nodes: Array.from(nodes.values()),
+            edges,
+        };
+    }
+
+    rememberMermaidNode(nodes, node) {
+        const existing = nodes.get(node.id);
+        if (!existing) {
+            nodes.set(node.id, node);
+            return;
+        }
+
+        const existingIsBareReference = existing.label === existing.id;
+        const nodeIsBareReference = node.label === node.id;
+        if (existingIsBareReference && !nodeIsBareReference) {
+            nodes.set(node.id, node);
+        }
+    }
+
+    parseMermaidNodeToken(token = '') {
+        const cleaned = String(token)
+            .replace(/^\|.*?\|/, '')
+            .replace(/\|.*?\|$/, '')
+            .trim()
+            .replace(/^["']|["']$/g, '');
+        const bracketMatch = cleaned.match(/^([A-Za-z0-9_-]+)?\s*([\[\(\{])(.+?)([\]\)\}])$/);
+        if (bracketMatch) {
+            const [, idPrefix, open, label] = bracketMatch;
+            return {
+                id: this.normalizeMermaidId(idPrefix || label),
+                label: label.trim().replace(/^["']|["']$/g, ''),
+                shape: open === '{' ? 'diamond' : 'rectangle',
+            };
+        }
+        const plain = cleaned.replace(/^[A-Za-z0-9_-]+:/, '').trim();
+        return {
+            id: this.normalizeMermaidId(plain),
+            label: plain,
+            shape: 'rectangle',
+        };
+    }
+
+    normalizeMermaidId(value = '') {
+        const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        return normalized || String(value || '').trim();
+    }
+
+    createArrowBetween(from, to) {
+        const { start, end } = this.getConnectionEndpoints(from, to);
+        return {
+            id: window.toolManager?.generateId?.() || `arrow-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            type: 'arrow',
+            x: (start.x + end.x) / 2,
+            y: (start.y + end.y) / 2,
+            width: Math.abs(end.x - start.x),
+            height: Math.abs(end.y - start.y),
+            points: [start, end],
+            arrowhead: 'end',
+            strokeColor: '#64748b',
+            backgroundColor: 'transparent',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            roughness: 1,
+            opacity: 1,
+            canvasRole: 'connector',
+        };
+    }
+
+    getConnectionEndpoints(from = {}, to = {}) {
+        const fromBounds = this.getElementBounds(from);
+        const toBounds = this.getElementBounds(to);
+        const fromCenter = {
+            x: (fromBounds.left + fromBounds.right) / 2,
+            y: (fromBounds.top + fromBounds.bottom) / 2,
+        };
+        const toCenter = {
+            x: (toBounds.left + toBounds.right) / 2,
+            y: (toBounds.top + toBounds.bottom) / 2,
+        };
+        const dx = toCenter.x - fromCenter.x;
+        const dy = toCenter.y - fromCenter.y;
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            return dx >= 0
+                ? {
+                    start: { x: fromBounds.right + 8, y: fromCenter.y },
+                    end: { x: toBounds.left - 8, y: toCenter.y },
+                }
+                : {
+                    start: { x: fromBounds.left - 8, y: fromCenter.y },
+                    end: { x: toBounds.right + 8, y: toCenter.y },
+                };
+        }
+
+        return dy >= 0
+            ? {
+                start: { x: fromCenter.x, y: fromBounds.bottom + 8 },
+                end: { x: toCenter.x, y: toBounds.top - 8 },
+            }
+            : {
+                start: { x: fromCenter.x, y: fromBounds.top - 8 },
+                end: { x: toCenter.x, y: toBounds.bottom + 8 },
+            };
+    }
+
+    getConnectionBuilderOptions() {
+        return {
+            mode: document.getElementById('connectionModeSelect')?.value || 'chain',
+            label: String(document.getElementById('connectionLabelInput')?.value || '').trim(),
+        };
+    }
+
+    sortElementsForConnection(elements = []) {
+        if (elements.length < 3) return [...elements];
+        const boxes = elements.map((element) => this.getElementBounds(element));
+        const spreadX = Math.max(...boxes.map((box) => box.right)) - Math.min(...boxes.map((box) => box.left));
+        const spreadY = Math.max(...boxes.map((box) => box.bottom)) - Math.min(...boxes.map((box) => box.top));
+        return [...elements].sort((a, b) => spreadX >= spreadY ? (a.x || 0) - (b.x || 0) : (a.y || 0) - (b.y || 0));
+    }
+
+    createConnectionLabel(arrow = {}, label = '', index = 0, total = 1) {
+        const text = total > 1 && label ? `${label} ${index + 1}` : label;
+        if (!text || !Array.isArray(arrow.points) || arrow.points.length < 2) return null;
+        const [start, end] = arrow.points;
+        return {
+            id: window.toolManager?.generateId?.() || `connector-label-${Date.now()}-${index}`,
+            type: 'text',
+            x: (start.x + end.x) / 2,
+            y: (start.y + end.y) / 2 - 12,
+            width: Math.max(84, text.length * 8),
+            height: 26,
+            text,
+            strokeColor: arrow.strokeColor || '#475569',
+            backgroundColor: 'transparent',
+            fontSize: 13,
+            fontFamily: window.toolManager?.defaultProperties?.fontFamily || 'Inter, system-ui, sans-serif',
+            opacity: 1,
+            canvasRole: 'connector-label',
+        };
+    }
+
+    renderConnectionBuilder() {
+        const summary = document.getElementById('connectionBuilderSummary');
+        if (!summary) return;
+        const selectedCount = window.infiniteCanvas?.selectedElements?.length || 0;
+        summary.textContent = selectedCount >= 2
+            ? `${selectedCount} selected - ready to connect`
+            : 'Select two or more objects.';
+    }
+
+    connectSelectedObjects() {
+        const selected = window.infiniteCanvas?.selectedElements || [];
+        if (selected.length < 2) {
+            this.showToast('Select two objects to connect', 'warning');
+            this.renderConnectionBuilder();
+            return;
+        }
+        const options = this.getConnectionBuilderOptions();
+        const pairs = [];
+        if (options.mode === 'star') {
+            const [source, ...targets] = selected;
+            targets.forEach((target) => pairs.push([source, target]));
+        } else {
+            const sorted = this.sortElementsForConnection(selected);
+            for (let index = 0; index < sorted.length - 1; index += 1) {
+                pairs.push([sorted[index], sorted[index + 1]]);
+            }
+        }
+
+        const arrows = pairs.map(([from, to]) => this.createArrowBetween(from, to));
+        const labels = arrows
+            .map((arrow, index) => this.createConnectionLabel(arrow, options.label, index, arrows.length))
+            .filter(Boolean);
+        this.addCreativeElements(
+            [...arrows, ...labels],
+            `Connected ${selected.length} objects with ${arrows.length} arrow${arrows.length === 1 ? '' : 's'}`,
+        );
+    }
+
+    addCreativeElements(elements = [], message = 'Added canvas block') {
+        const canvas = window.infiniteCanvas;
+        if (!canvas || elements.length === 0) return;
+        elements.forEach((element) => canvas.addElement(element));
+        canvas.selectElements(elements);
+        window.historyManager?.pushState(canvas.elements);
+        this.onCanvasElementsChanged();
+        this.selectCanvasPanel('objects');
+        this.showToast(message);
+    }
+
+    escapeHtml(value = '') {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    escapeHtmlAttr(value = '') {
+        return this.escapeHtml(value);
+    }
     
     setupMiniMap() {
         const miniMapToggle = document.getElementById('miniMapToggle');
@@ -1037,6 +3378,13 @@ class App {
             if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !isInputActive) {
                 this.showHelpModal();
             }
+
+            // Command palette (Ctrl/Cmd + K)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                this.toggleCanvasCommandPalette();
+                return;
+            }
             
             // Templates shortcut (Ctrl/Cmd + T)
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 't' && !isInputActive) {
@@ -1063,6 +3411,11 @@ class App {
             
             // Escape to close modals and deselect
             if (e.key === 'Escape') {
+                if (this.commandPaletteOpen) {
+                    this.closeCanvasCommandPalette();
+                    return;
+                }
+
                 // First check if text editor is open
                 const textEditor = document.getElementById('textEditor');
                 if (textEditor && textEditor.style.display === 'block') {
@@ -1281,12 +3634,24 @@ class App {
             return;
         }
 
+        if (action.startsWith('create:')) {
+            const type = action.replace('create:', '');
+            this.addCreativePresetAt(type, this.contextMenuWorldPos || this.getCanvasInsertionPoint());
+            this.hideCanvasContextMenu();
+            return;
+        }
+
         switch (action) {
             case 'ai:board':
+                {
+                    const point = this.contextMenuWorldPos || this.getCanvasInsertionPoint();
+                    this.openCanvasAIWithPrompt(`Create or improve editable canvas objects around (${Math.round(point.x)}, ${Math.round(point.y)}). Use concise labels, boxes, arrows, storyboard frames, audio cues, or motion beats when useful.`);
+                }
+                break;
             case 'ai:selection':
                 window.aiAssistant?.setMode('chat');
                 window.aiAssistant?.showPanel();
-                this.showToast(action === 'ai:selection' ? 'AI panel focused on selection' : 'AI panel opened');
+                this.showToast('AI panel focused on selection');
                 break;
             case 'import':
                 this.importJSON();
@@ -1298,6 +3663,9 @@ class App {
             case 'copy':
                 window.toolManager?.copySelection();
                 this.showToast('Copied selection');
+                break;
+            case 'save-selection-block':
+                this.saveSelectionAsBlock();
                 break;
             case 'delete':
                 this.deleteSelectedElements();
@@ -1315,6 +3683,12 @@ class App {
                 break;
             case 'ungroup':
                 window.selectionManager?.ungroupSelection();
+                break;
+            case 'connect-selected':
+                this.connectSelectedObjects();
+                break;
+            case 'insert-recent-block':
+                this.insertMostRecentSavedBlock(this.contextMenuWorldPos || this.getCanvasInsertionPoint());
                 break;
         }
 
@@ -1598,6 +3972,9 @@ class App {
         window.propertiesManager?.updateForSelection();
         window.aiAssistant?.updateGroundingPanel();
         this.updateCanvasStatusStrip();
+        this.renderObjectLibrary();
+        this.renderBoardShelf();
+        this.renderProductionTimeline();
         
         // Selection box update is now handled in canvas.render()
         // which is called after selection changes
