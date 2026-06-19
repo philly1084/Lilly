@@ -15,7 +15,7 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) {
     --error: #ff7b72;
     --info: #8ab4f8;
     background: var(--bg-primary);
-    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-family: var(--font-ui, 'Inter', ui-sans-serif, system-ui, sans-serif);
 }
 
 body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .app-container {
@@ -2177,4 +2177,180 @@ body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .c
 
 body[data-ui-surface="web-cli"][data-theme="light"]:not([data-theme="voxel"]) .cli-status-card__badge {
     background: var(--bg-tertiary);
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header {
+    gap: 12px;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header-left,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .toolbar {
+    min-width: 0;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header-title,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .status-indicator,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .btn,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .cli-response-head,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .cli-response-body,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .autocomplete,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .modal {
+    font-family: var(--font-ui, 'Inter', ui-sans-serif, system-ui, sans-serif);
+    letter-spacing: 0;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .prompt,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .input-prompt,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) #commandInput,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header-model,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) #modelSelect,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) pre,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) code,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .code-block,
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .inline-code {
+    font-family: var(--font-mono, 'JetBrains Mono', Consolas, monospace);
+    letter-spacing: 0;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .terminal-output {
+    font-family: var(--font-ui, 'Inter', ui-sans-serif, system-ui, sans-serif);
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .toolbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) #modelSelect {
+    width: clamp(150px, 20vw, 240px);
+    max-width: 100%;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer-toggle {
+    width: 36px;
+    padding: 0;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer-toggle span {
+    transform: translateY(-2px);
+    font: 700 18px/1 var(--font-mono, 'JetBrains Mono', Consolas, monospace);
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 80;
+    width: min(310px, calc(100vw - 24px));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    padding: 8px;
+    background: color-mix(in srgb, var(--bg-secondary) 96%, #05070a);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 22px 58px rgba(2, 6, 23, 0.42);
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer[hidden] {
+    display: none !important;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer .btn {
+    width: 100%;
+    justify-content: center;
+    min-width: 0;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer a.btn {
+    text-decoration: none;
+}
+
+@media (max-width: 900px) {
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header-left {
+        width: 100%;
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .toolbar {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) #modelSelect {
+        flex: 1 1 180px;
+    }
+}
+
+@media (max-width: 560px) {
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header {
+        padding: 10px;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .header-model {
+        max-width: min(100%, 180px);
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 7px;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) #modelSelect {
+        width: 100%;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer {
+        position: fixed;
+        left: max(10px, env(safe-area-inset-left, 0px));
+        right: max(10px, env(safe-area-inset-right, 0px));
+        top: auto;
+        bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        width: auto;
+    }
+}
+
+@media (max-width: 600px) {
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer-toggle {
+        display: inline-flex !important;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer-toggle span {
+        display: block !important;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer .btn span {
+        display: inline !important;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer .btn[data-short]::before {
+        content: none !important;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .input-meta {
+        gap: 7px;
+        flex-wrap: wrap;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-assist,
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .shortcut-hint {
+        display: none;
+    }
+
+    body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .voxel-pet-status {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 }

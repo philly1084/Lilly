@@ -65,8 +65,12 @@ class InfiniteCanvas {
         // Zoom with wheel
         this.container.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
         
-        // Context menu (prevent on canvas)
-        this.container.addEventListener('contextmenu', (e) => e.preventDefault());
+        // Context menu is owned by the app shell so desktop and touch share actions.
+        this.container.addEventListener('contextmenu', (e) => {
+            if (!window.app?.handleCanvasContextMenu?.(e)) {
+                e.preventDefault();
+            }
+        });
         
         // Mouse move for AI image tooltip
         this.container.addEventListener('mousemove', (e) => this.handleMouseMoveForTooltip(e));
@@ -169,11 +173,8 @@ class InfiniteCanvas {
             return;
         }
         
-        // Right-click pan (optional)
+        // Right-click opens the app context menu.
         if (e.button === 2) {
-            this.isPanning = true;
-            this.lastPanX = e.clientX;
-            this.lastPanY = e.clientY;
             e.preventDefault();
             return;
         }

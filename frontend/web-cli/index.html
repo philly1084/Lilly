@@ -28,9 +28,11 @@
     <link rel="stylesheet" href="css/enterprise.css?v=20260614r">
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
         
         :root {
+            --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
             --bg-primary: #0d1117;
             --bg-secondary: #161b22;
             --bg-tertiary: #21262d;
@@ -168,7 +170,7 @@
         * { box-sizing: border-box; }
         
         body {
-            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            font-family: var(--font-ui);
             background: var(--bg-primary);
             color: var(--text-primary);
             margin: 0;
@@ -1513,39 +1515,44 @@
                 </div>
                 <span id="headerModelDisplay" class="header-model" title="Current AI model">--</span>
             </div>
-            <div class="toolbar">
+            <div class="toolbar" data-command-toolbar>
                 <select id="modelSelect" style="padding: 6px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-family: inherit; font-size: 12px;">
                     <option>Loading models...</option>
                 </select>
                 <button class="btn btn-sm btn-primary" data-short="New" onclick="app.startNewSession('', { clear: true })" title="Start a new isolated chat session" aria-label="Start new isolated chat session">
                     <span>New Chat</span>
                 </button>
-                <button class="btn btn-sm" data-short="Sess" onclick="app.listSessions()" title="List isolated chat sessions" aria-label="List isolated chat sessions">
-                    <span>Sessions</span>
+                <button id="commandDrawerToggle" class="btn btn-sm btn-icon command-drawer-toggle" type="button" title="Open command actions" aria-label="Open command actions" aria-expanded="false" aria-controls="commandDrawer">
+                    <span aria-hidden="true">...</span>
                 </button>
-                <button class="btn btn-sm" data-short="Clr" onclick="app.clearOutput()" title="Clear (Ctrl+L)" aria-label="Clear terminal">
-                    <span>Clear</span>
-                </button>
-                <button class="btn btn-sm" data-short="Exp" onclick="app.exportSession()" title="Export session" aria-label="Export session">
-                    <span>Export</span>
-                </button>
-                <button id="themeButton" class="btn btn-sm" data-short="Thm" onclick="app.cycleTheme()" title="Toggle theme" aria-label="Toggle theme">
-                    <span>Theme</span>
-                </button>
-                <button id="densityButton" class="btn btn-sm" data-short="Dns" onclick="app.cycleDensity()" title="Toggle density" aria-label="Toggle density">
-                    <span>Comfort</span>
-                </button>
-                <button id="enterpriseButton" class="btn btn-sm" data-short="Ent" onclick="app.applyEnterpriseMode()" title="Enable Enterprise Mode" aria-label="Enable Enterprise Mode">
-                    <span>Enterprise</span>
-                </button>
-                <button id="ttsToggleButton" class="btn btn-sm" data-short="TTS" onclick="app.toggleTtsAutoPlayFromToolbar()" title="Read replies aloud" aria-label="Read replies aloud" disabled>
-                    <span>Voice</span>
-                </button>
-                <button class="btn btn-sm voxel-only" data-short="Agent" onclick="app.focusVoxelCreator()" title="Agent companion console" aria-label="Open agent companion console">
-                    <span>Agent</span>
-                </button>
-                <button class="btn btn-sm" onclick="app.showShortcuts()" title="Help (F1)" aria-label="Show keyboard shortcuts">?</button>
-                <a href="/" class="btn btn-sm" aria-label="Go to home">Home</a>
+                <div id="commandDrawer" class="command-drawer" hidden>
+                    <button class="btn btn-sm" data-short="Sess" onclick="app.listSessions()" title="List isolated chat sessions" aria-label="List isolated chat sessions">
+                        <span>Sessions</span>
+                    </button>
+                    <button class="btn btn-sm" data-short="Clr" onclick="app.clearOutput()" title="Clear (Ctrl+L)" aria-label="Clear terminal">
+                        <span>Clear</span>
+                    </button>
+                    <button class="btn btn-sm" data-short="Exp" onclick="app.exportSession()" title="Export session" aria-label="Export session">
+                        <span>Export</span>
+                    </button>
+                    <button id="themeButton" class="btn btn-sm" data-short="Thm" onclick="app.cycleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                        <span>Theme</span>
+                    </button>
+                    <button id="densityButton" class="btn btn-sm" data-short="Dns" onclick="app.cycleDensity()" title="Toggle density" aria-label="Toggle density">
+                        <span>Roomy</span>
+                    </button>
+                    <button id="enterpriseButton" class="btn btn-sm" data-short="Ent" onclick="app.applyEnterpriseMode()" title="Enable Enterprise Mode" aria-label="Enable Enterprise Mode">
+                        <span>Enterprise</span>
+                    </button>
+                    <button id="ttsToggleButton" class="btn btn-sm" data-short="TTS" onclick="app.toggleTtsAutoPlayFromToolbar()" title="Read replies aloud" aria-label="Read replies aloud" disabled>
+                        <span>Voice</span>
+                    </button>
+                    <button class="btn btn-sm voxel-only" data-short="Agent" onclick="app.focusVoxelCreator()" title="Agent companion console" aria-label="Open agent companion console">
+                        <span>Agent</span>
+                    </button>
+                    <button class="btn btn-sm" onclick="app.showShortcuts()" title="Help (F1)" aria-label="Show keyboard shortcuts">?</button>
+                    <a href="/" class="btn btn-sm" aria-label="Go to home">Home</a>
+                </div>
             </div>
         </header>
 

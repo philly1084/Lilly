@@ -65,7 +65,7 @@
                     <path fill="currentColor" d="M9 6V4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v2h4c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2h4zm2 0h2V4h-2v2zm-6 5h14V8H5v3zm0 2v4h14v-4h-5v1h-4v-1H5z"/>
                 </svg>
             </button>
-            <button id="densityBtn" title="Density: Comfortable" aria-label="Toggle layout density">
+            <button id="densityBtn" title="Density: Roomy" aria-label="Toggle layout density">
                 <svg viewBox="0 0 24 24" width="18" height="18">
                     <path fill="currentColor" d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"/>
                 </svg>
@@ -167,14 +167,54 @@
     <!-- Left Toolbar -->
     <aside class="toolbar" id="toolbar">
         <!-- Mobile Toolbar Close Button -->
-        <button id="mobileToolbarClose" class="mobile-toolbar-close">
+        <button id="mobileToolbarClose" class="mobile-toolbar-close" type="button" aria-label="Close tool dock">
             <svg viewBox="0 0 24 24" width="20" height="20">
                 <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
             </svg>
         </button>
 
+        <nav class="tool-dock-rail" aria-label="Canvas tool groups">
+            <button class="tool-dock-btn active" type="button" data-dock-tool="selection" title="Select (V)" aria-label="Select tool">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                </svg>
+            </button>
+            <button class="tool-dock-btn" type="button" data-dock-group="content" title="Text and content tools" aria-label="Open text and content tools">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M4 4h16v3h-6.5v13h-3V7H4V4z"/>
+                </svg>
+            </button>
+            <button class="tool-dock-btn" type="button" data-dock-group="shapes" title="Shapes" aria-label="Open shape tools">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <rect x="4" y="5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <circle cx="17" cy="16" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                </svg>
+            </button>
+            <button class="tool-dock-btn" type="button" data-dock-group="lines" title="Lines and arrows" aria-label="Open lines and arrows">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 18L18 4"/>
+                    <path fill="currentColor" d="M18 4h-6v2h2.59L6 14.59 7.41 16 16 7.41V10h2V4z"/>
+                </svg>
+            </button>
+            <button class="tool-dock-btn" type="button" data-dock-group="draw" title="Draw tools" aria-label="Open draw tools">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 17c4-7 6 5 9-2 2-5 4-7 7-7"/>
+                </svg>
+            </button>
+            <button class="tool-dock-btn" type="button" data-dock-tool="image" title="Place image (I)" aria-label="Place image">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/>
+                </svg>
+            </button>
+            <button class="tool-dock-btn tool-dock-btn-ai" type="button" data-dock-group="ai" title="Canvas agent" aria-label="Open AI tools">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M12 2l1.7 5.2L19 9l-5.3 1.8L12 16l-1.7-5.2L5 9l5.3-1.8L12 2zm6 12l.9 2.8L22 18l-3.1 1.2L18 22l-.9-2.8L14 18l3.1-1.2L18 14z"/>
+                </svg>
+            </button>
+        </nav>
+
         <!-- Selection -->
-        <div class="tool-category">
+        <div class="tool-category" data-tool-group="selection">
             <div class="tool-category-content">
                 <button class="tool-btn active" data-tool="selection" data-key="v" title="Selection (V or 1)">
                     <svg viewBox="0 0 24 24" width="20" height="20">
@@ -187,7 +227,7 @@
         <div class="tool-separator"></div>
 
         <!-- Basic Shapes -->
-        <div class="tool-category expanded">
+        <div class="tool-category expanded" data-tool-group="basic">
             <div class="tool-category-header" onclick="this.parentElement.classList.toggle('expanded')">
                 <span>Basic</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
@@ -223,7 +263,7 @@
         </div>
 
         <!-- Lines & Arrows -->
-        <div class="tool-category expanded">
+        <div class="tool-category expanded" data-tool-group="lines">
             <div class="tool-category-header" onclick="this.parentElement.classList.toggle('expanded')">
                 <span>Lines</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
@@ -247,7 +287,7 @@
         </div>
 
         <!-- Advanced Shapes -->
-        <div class="tool-category">
+        <div class="tool-category" data-tool-group="shapes">
             <div class="tool-category-header" onclick="this.parentElement.classList.toggle('expanded')">
                 <span>Shapes</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
@@ -303,7 +343,7 @@
         </div>
 
         <!-- Drawing -->
-        <div class="tool-category">
+        <div class="tool-category" data-tool-group="draw">
             <div class="tool-category-header" onclick="this.parentElement.classList.toggle('expanded')">
                 <span>Draw</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
@@ -333,7 +373,7 @@
         </div>
 
         <!-- Content -->
-        <div class="tool-category">
+        <div class="tool-category" data-tool-group="content">
             <div class="tool-category-header" onclick="this.parentElement.classList.toggle('expanded')">
                 <span>Content</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
@@ -364,7 +404,7 @@
         <div class="tool-separator"></div>
 
         <!-- Agent tools -->
-        <div class="tool-category ai-tools-top expanded">
+        <div class="tool-category ai-tools-top expanded" data-tool-group="ai">
             <div class="tool-category-header" onclick="this.parentElement.classList.toggle('expanded')">
                 <span>Agent</span>
                 <svg viewBox="0 0 24 24" width="12" height="12">
@@ -1924,6 +1964,60 @@
             <span class="format-tag">OPML</span>
             <span class="format-tag">Draw.io</span>
             <span class="format-tag">JSON</span>
+        </div>
+    </div>
+
+    <div id="canvasContextMenu" class="canvas-context-menu" role="menu" aria-label="Canvas actions" hidden>
+        <div class="context-menu-section" data-context-section="empty">
+            <button type="button" role="menuitem" data-context-action="tool:selection">
+                <span>Select</span><kbd>V</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="tool:text">
+                <span>Text</span><kbd>X</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="tool:sticky">
+                <span>Sticky note</span><kbd>S</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="tool:rectangle">
+                <span>Rectangle</span><kbd>R</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="tool:arrow">
+                <span>Arrow</span><kbd>A</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="ai:board">
+                <span>Ask Canvas Agent</span><kbd>Z</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="import">
+                <span>Import</span><kbd>Ctrl+O</kbd>
+            </button>
+        </div>
+        <div class="context-menu-section" data-context-section="selection">
+            <button type="button" role="menuitem" data-context-action="duplicate">
+                <span>Duplicate</span><kbd>Ctrl+D</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="copy">
+                <span>Copy</span><kbd>Ctrl+C</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="delete">
+                <span>Delete</span><kbd>Del</kbd>
+            </button>
+            <hr>
+            <button type="button" role="menuitem" data-context-action="bring-front">
+                <span>Bring forward</span>
+            </button>
+            <button type="button" role="menuitem" data-context-action="send-back">
+                <span>Send backward</span>
+            </button>
+            <button type="button" role="menuitem" data-context-action="group">
+                <span>Group</span><kbd>Ctrl+G</kbd>
+            </button>
+            <button type="button" role="menuitem" data-context-action="ungroup">
+                <span>Ungroup</span><kbd>Shift+Ctrl+G</kbd>
+            </button>
+            <hr>
+            <button type="button" role="menuitem" data-context-action="ai:selection">
+                <span>Ask AI about selection</span><kbd>Z</kbd>
+            </button>
         </div>
     </div>
 

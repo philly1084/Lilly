@@ -166,6 +166,8 @@ class CodeCLIApp {
         this.modelSelect = document.getElementById('modelSelect');
         this.themeButton = document.getElementById('themeButton');
         this.densityButton = document.getElementById('densityButton');
+        this.commandDrawerToggle = document.getElementById('commandDrawerToggle');
+        this.commandDrawer = document.getElementById('commandDrawer');
         this.enterpriseButton = document.getElementById('enterpriseButton');
         this.ttsToggleButton = document.getElementById('ttsToggleButton');
         this.statusDot = document.getElementById('statusDot');
@@ -202,6 +204,7 @@ class CodeCLIApp {
         this.voxelToolStat = document.getElementById('voxelToolStat');
         
         this.setupEventListeners();
+        this.setupCommandDrawer();
         this.applyTheme(this.theme);
         this.applyDensity(this.density);
         this.initializeTts();
@@ -352,9 +355,9 @@ class CodeCLIApp {
                 label: 'Density',
                 icon: 'DN',
                 category: 'General',
-                description: 'Switch between comfortable and compact enterprise layouts.',
+                description: 'Switch between roomy and compact enterprise layouts.',
                 template: '/density compact',
-                arguments: 'compact or comfortable',
+                arguments: 'compact or roomy',
             },
             {
                 id: 'enterprise',
@@ -3124,6 +3127,7 @@ class CodeCLIApp {
                 }
             } else if (e.key === 'Escape') {
                 this.hideAutocomplete();
+                this.closeCommandDrawer();
                 this.closeShortcuts();
                 this.closeFileManager();
                 this.closeVoxelCreator();
@@ -3158,7 +3162,7 @@ class CodeCLIApp {
         
         // Focus input on click anywhere
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('button, input, textarea, select, a, [contenteditable="true"], .autocomplete, .modal, .voxel-creator-modal, .file-manager-modal')) {
+            if (!e.target.closest('button, input, textarea, select, a, [contenteditable="true"], .autocomplete, .modal, .voxel-creator-modal, .file-manager-modal, .command-drawer')) {
                 this.commandInput.focus();
             }
         });
@@ -3216,10 +3220,49 @@ class CodeCLIApp {
             }
 
             this.closeVoxelCreator();
+            this.closeCommandDrawer();
             if (this.dragOverlay && this.dragOverlay.classList.contains('active')) {
                 this.cancelDrag();
             }
         });
+    }
+
+    setupCommandDrawer() {
+        if (!this.commandDrawerToggle || !this.commandDrawer) return;
+
+        this.commandDrawerToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleCommandDrawer();
+        });
+
+        this.commandDrawer.addEventListener('click', (e) => {
+            if (e.target.closest('button, a')) {
+                this.closeCommandDrawer();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!this.commandDrawer.hidden && !e.target.closest('.toolbar')) {
+                this.closeCommandDrawer();
+            }
+        });
+    }
+
+    toggleCommandDrawer(forceOpen = null) {
+        if (!this.commandDrawer || !this.commandDrawerToggle) return;
+        const shouldOpen = forceOpen === null ? this.commandDrawer.hidden : forceOpen;
+        this.commandDrawer.hidden = !shouldOpen;
+        this.commandDrawer.classList.toggle('is-open', shouldOpen);
+        this.commandDrawerToggle.classList.toggle('is-active', shouldOpen);
+        this.commandDrawerToggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+
+        if (shouldOpen) {
+            this.commandDrawer.querySelector('button, a')?.focus({ preventScroll: true });
+        }
+    }
+
+    closeCommandDrawer() {
+        this.toggleCommandDrawer(false);
     }
 
     // ==================== Voxel Pet System ====================
@@ -9767,7 +9810,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     }
 
     getDensityLabel(value = this.density) {
-        return value === 'compact' ? 'Compact' : 'Comfortable';
+        return value === 'compact' ? 'Compact' : 'Roomy';
     }
 
     applyDensity(value = this.density) {
@@ -9782,7 +9825,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     setDensity(value = '', options = {}) {
         const density = this.normalizeDensity(value);
         if (!density) {
-            this.printError('Unknown density. Use /density compact or /density comfortable.');
+            this.printError('Unknown density. Use /density compact or /density roomy.');
             return;
         }
         this.applyDensity(density);
@@ -9990,7 +10033,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         this.densityButton.setAttribute('aria-label', `Cycle layout density. Current density: ${label}`);
         const textNode = this.densityButton.querySelector('span');
         if (textNode) {
-            textNode.textContent = label === 'Compact' ? 'Compact' : 'Comfort';
+            textNode.textContent = label;
         }
         this.densityButton.classList.toggle('is-active', this.density === 'compact');
     }

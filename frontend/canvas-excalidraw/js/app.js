@@ -17,6 +17,9 @@ class App {
         this.lastCanvasSavedAt = null;
         this.density = this.normalizeDensity(localStorage.getItem(CANVAS_DENSITY_STORAGE_KEY)) || 'comfortable';
         this.enterpriseMode = localStorage.getItem(CANVAS_ENTERPRISE_STORAGE_KEY) === 'true';
+        this.activeDockGroup = '';
+        this.contextMenuWorldPos = null;
+        this.contextLongPressTimer = null;
         this.init();
     }
     
@@ -37,6 +40,7 @@ class App {
             this.setupKeyboardShortcuts();
             this.setupAutoSave();
             this.setupMobileControls();
+            this.setupToolDock();
             this.setupMiniMap();
             this.setupAITooltip();
             this.setupFontSearch();
@@ -66,6 +70,7 @@ class App {
             
             // Setup touch/long-press for mobile
             this.setupTouchHandling();
+            this.setupCanvasContextMenu();
             
             console.log('Lilly Canvas initialized with OpenAI SDK');
         });
@@ -150,7 +155,7 @@ class App {
     }
 
     getDensityLabel(value = this.density) {
-        return value === 'compact' ? 'Compact' : 'Comfortable';
+        return value === 'compact' ? 'Compact' : 'Roomy';
     }
 
     applyDensity(value = this.density) {
@@ -676,6 +681,9 @@ class App {
             document.getElementById('propertiesPanel')?.classList.remove('active');
             window.aiAssistant?.hidePanel();
             toolbar?.classList.add('active');
+            if (!this.activeDockGroup) {
+                this.openToolDockGroup('shapes');
+            }
         });
         
         mobileToolbarClose?.addEventListener('click', () => {
@@ -695,6 +703,132 @@ class App {
         
         mobilePropertiesClose?.addEventListener('click', () => {
             propertiesPanel?.classList.remove('active');
+        });
+    }
+
+    setupToolDock() {
+        const toolbar = document.getElementById('toolbar');
+        const railButtons = Array.from(document.querySelectorAll('.tool-dock-btn'));
+        if (!toolbar || railButtons.length === 0) return;
+
+        railButtons.forEach((btn) => {
+            if (btn.dataset.dockGroup) {
+                btn.setAttribute('aria-expanded', 'false');
+            }
+
+            btn.addEventListener('click', () => {
+                const tool = btn.dataset.dockTool;
+                const group = btn.dataset.dockGroup;
+
+                if (tool) {
+                    window.toolManager?.setTool(tool);
+                    this.closeToolDockTray();
+                    this.syncToolDockActive(tool);
+                    if (tool === 'image') {
+                        document.getElementById('imageInput')?.click();
+                    }
+                    return;
+                }
+
+                if (group) {
+                    if (this.activeDockGroup === group) {
+                        this.closeToolDockTray();
+                    } else {
+                        this.openToolDockGroup(group);
+                    }
+                }
+            });
+
+            btn.addEventListener('keydown', (e) => {
+                if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Escape'].includes(e.key)) return;
+                e.preventDefault();
+                if (e.key === 'Escape') {
+                    this.closeToolDockTray();
+                    btn.focus();
+                    return;
+                }
+                const direction = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1;
+                const nextIndex = (railButtons.indexOf(btn) + direction + railButtons.length) % railButtons.length;
+                railButtons[nextIndex]?.focus();
+            });
+        });
+
+        document.querySelectorAll('.tool-btn[data-tool]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.syncToolDockActive(btn.dataset.tool);
+                if (!window.matchMedia('(max-width: 768px)').matches) {
+                    this.closeToolDockTray();
+                }
+            });
+        });
+
+        this.syncToolDockActive(window.toolManager?.currentTool || this.currentTool);
+    }
+
+    getToolDockGroups(group) {
+        const groups = {
+            shapes: ['basic', 'shapes'],
+            content: ['content'],
+            lines: ['lines'],
+            draw: ['draw'],
+            ai: ['ai'],
+        };
+        return groups[group] || [group];
+    }
+
+    openToolDockGroup(group) {
+        this.activeDockGroup = group;
+        const openGroups = new Set(this.getToolDockGroups(group));
+
+        document.querySelectorAll('.tool-category[data-tool-group]').forEach((category) => {
+            category.classList.toggle('is-open', openGroups.has(category.dataset.toolGroup));
+        });
+
+        document.querySelectorAll('.tool-dock-btn').forEach((btn) => {
+            const isOpen = btn.dataset.dockGroup === group;
+            if (btn.dataset.dockGroup) {
+                btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            }
+            btn.classList.toggle('active', isOpen || btn.dataset.dockTool === (window.toolManager?.currentTool || this.currentTool));
+        });
+    }
+
+    closeToolDockTray() {
+        this.activeDockGroup = '';
+        document.querySelectorAll('.tool-category.is-open').forEach((category) => {
+            category.classList.remove('is-open');
+        });
+        document.querySelectorAll('.tool-dock-btn[data-dock-group]').forEach((btn) => {
+            btn.setAttribute('aria-expanded', 'false');
+            btn.classList.remove('active');
+        });
+        this.syncToolDockActive(window.toolManager?.currentTool || this.currentTool);
+    }
+
+    syncToolDockActive(toolName = 'selection') {
+        this.currentTool = toolName;
+        const toolToGroup = {
+            rectangle: 'shapes',
+            ellipse: 'shapes',
+            diamond: 'shapes',
+            triangle: 'shapes',
+            star: 'shapes',
+            frame: 'shapes',
+            line: 'lines',
+            arrow: 'lines',
+            freedraw: 'draw',
+            eraser: 'draw',
+            text: 'content',
+            sticky: 'content',
+            'ai-image': 'ai',
+            'ai-assistant': 'ai',
+        };
+
+        document.querySelectorAll('.tool-dock-btn').forEach((btn) => {
+            const matchesTool = btn.dataset.dockTool === toolName;
+            const matchesOpenGroup = btn.dataset.dockGroup && btn.dataset.dockGroup === this.activeDockGroup;
+            const matchesToolGroup = !this.activeDockGroup && btn.dataset.dockGroup === toolToGroup[toolName];
+            btn.classList.toggle('active', matchesTool || matchesOpenGroup || matchesToolGroup);
         });
     }
     
@@ -1034,6 +1168,171 @@ class App {
                 });
             });
         }
+    }
+
+    setupCanvasContextMenu() {
+        const container = document.getElementById('canvasContainer');
+        const menu = document.getElementById('canvasContextMenu');
+        if (!container || !menu) return;
+
+        menu.addEventListener('click', (e) => {
+            const actionButton = e.target.closest('[data-context-action]');
+            if (!actionButton) return;
+            e.preventDefault();
+            this.runCanvasContextAction(actionButton.dataset.contextAction);
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!menu.hidden && !menu.contains(e.target)) {
+                this.hideCanvasContextMenu();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.hideCanvasContextMenu();
+            }
+        });
+
+        container.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            const touch = e.touches[0];
+            this.contextLongPressTimer = setTimeout(() => {
+                this.handleCanvasContextMenu({
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    preventDefault: () => e.preventDefault(),
+                });
+            }, 560);
+        }, { passive: false });
+
+        ['touchmove', 'touchend', 'touchcancel'].forEach((eventName) => {
+            container.addEventListener(eventName, () => {
+                clearTimeout(this.contextLongPressTimer);
+            });
+        });
+    }
+
+    handleCanvasContextMenu(event) {
+        const canvas = window.infiniteCanvas;
+        if (!canvas) return false;
+
+        event.preventDefault();
+        this.contextMenuWorldPos = this.getCanvasWorldPosition(event.clientX, event.clientY);
+
+        const element = canvas.getElementAt(this.contextMenuWorldPos.x, this.contextMenuWorldPos.y, 8 / Math.max(canvas.scale || 1, 0.1));
+        if (element && !canvas.selectedElements.includes(element)) {
+            canvas.selectElement(element);
+        }
+
+        this.showCanvasContextMenu(event.clientX, event.clientY, canvas.selectedElements.length > 0);
+        return true;
+    }
+
+    getCanvasWorldPosition(clientX, clientY) {
+        const canvas = window.infiniteCanvas;
+        const rect = canvas.container.getBoundingClientRect();
+        return {
+            x: (clientX - rect.left - canvas.offsetX) / canvas.scale,
+            y: (clientY - rect.top - canvas.offsetY) / canvas.scale,
+        };
+    }
+
+    showCanvasContextMenu(clientX, clientY, hasSelection) {
+        const menu = document.getElementById('canvasContextMenu');
+        if (!menu) return;
+
+        menu.hidden = false;
+        menu.style.visibility = 'hidden';
+
+        menu.querySelector('[data-context-section="empty"]')?.toggleAttribute('hidden', hasSelection);
+        menu.querySelector('[data-context-section="selection"]')?.toggleAttribute('hidden', !hasSelection);
+        menu.querySelectorAll('hr').forEach((rule) => {
+            rule.toggleAttribute('hidden', !hasSelection);
+        });
+
+        const gap = 10;
+        const menuRect = menu.getBoundingClientRect();
+        const left = Math.min(Math.max(gap, clientX), window.innerWidth - menuRect.width - gap);
+        const top = Math.min(Math.max(gap, clientY), window.innerHeight - menuRect.height - gap);
+
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+        menu.style.visibility = '';
+        menu.querySelector('button:not([hidden])')?.focus({ preventScroll: true });
+    }
+
+    hideCanvasContextMenu() {
+        const menu = document.getElementById('canvasContextMenu');
+        if (menu) {
+            menu.hidden = true;
+        }
+    }
+
+    runCanvasContextAction(action) {
+        const canvas = window.infiniteCanvas;
+        if (!action || !canvas) return;
+
+        if (action.startsWith('tool:')) {
+            const tool = action.replace('tool:', '');
+            window.toolManager?.setTool(tool);
+            this.syncToolDockActive(tool);
+            this.hideCanvasContextMenu();
+            return;
+        }
+
+        switch (action) {
+            case 'ai:board':
+            case 'ai:selection':
+                window.aiAssistant?.setMode('chat');
+                window.aiAssistant?.showPanel();
+                this.showToast(action === 'ai:selection' ? 'AI panel focused on selection' : 'AI panel opened');
+                break;
+            case 'import':
+                this.importJSON();
+                break;
+            case 'duplicate':
+                window.selectionManager?.duplicateSelection();
+                this.showToast('Duplicated selection');
+                break;
+            case 'copy':
+                window.toolManager?.copySelection();
+                this.showToast('Copied selection');
+                break;
+            case 'delete':
+                this.deleteSelectedElements();
+                break;
+            case 'bring-front':
+                window.selectionManager?.bringToFront();
+                this.showToast('Brought selection forward');
+                break;
+            case 'send-back':
+                window.selectionManager?.sendToBack();
+                this.showToast('Sent selection backward');
+                break;
+            case 'group':
+                window.selectionManager?.groupSelection();
+                break;
+            case 'ungroup':
+                window.selectionManager?.ungroupSelection();
+                break;
+        }
+
+        canvas.render();
+        this.onSelectionChange();
+        this.hideCanvasContextMenu();
+    }
+
+    deleteSelectedElements() {
+        const canvas = window.infiniteCanvas;
+        if (!canvas?.selectedElements.length) return;
+
+        const selectedIds = new Set(canvas.selectedElements.map((el) => el.id));
+        canvas.elements = canvas.elements.filter((el) => !selectedIds.has(el.id));
+        canvas.deselectAll();
+        window.historyManager?.pushState(canvas.elements);
+        this.saveCanvasToStorage();
+        this.showToast('Deleted selection');
     }
     
     setupImageUpload() {
