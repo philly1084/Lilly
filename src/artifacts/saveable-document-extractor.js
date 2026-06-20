@@ -6,6 +6,8 @@ const HTML_FILENAME_PATTERN = /[`"']?([a-z0-9][a-z0-9._ -]{1,100}\.html?)[`"']?/
 const SAVE_AS_FILENAME_PATTERN = /\b(?:save|saved|saving|name|named|called|download|open)\b[\s\S]{0,40}?\b(?:as|to)?\s*[`"']?([a-z0-9][a-z0-9._ -]{1,100}\.html?)[`"']?/i;
 const HTML_FENCE_PATTERN = /([`']{3,})([a-z0-9_-]*)\s*([\s\S]*?)\1/ig;
 const INTERNAL_THOUGHT_TAG_PATTERN = /<\s*(?:think|thinking|thought|analysis|reasoning)(?:\s[^>]*)?>[\s\S]*?<\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*>/ig;
+const INTERNAL_THOUGHT_BRACKET_PATTERN = /\[\s*(?:think|thinking|thought|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*\]/ig;
+const INTERNAL_THOUGHT_MARKER_PATTERN = /(?:^|\n)\s*(?:begin|start)\s+(?:think|thinking|thought|analysis|reasoning)\s*\n[\s\S]*?\n\s*(?:end|stop)\s+(?:think|thinking|thought|analysis|reasoning)\s*(?=\n|$)/ig;
 
 function cleanFilename(value = '') {
     const candidate = String(value || '')
@@ -36,7 +38,11 @@ function extractFilenameFromText(text = '') {
 }
 
 function stripInternalThoughtMarkup(value = '') {
-    return stripNullCharacters(String(value || '')).replace(INTERNAL_THOUGHT_TAG_PATTERN, '').trim();
+    return stripNullCharacters(String(value || ''))
+        .replace(INTERNAL_THOUGHT_TAG_PATTERN, '')
+        .replace(INTERNAL_THOUGHT_BRACKET_PATTERN, '')
+        .replace(INTERNAL_THOUGHT_MARKER_PATTERN, '')
+        .trim();
 }
 
 function trimHtmlDocument(html = '') {

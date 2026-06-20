@@ -246,6 +246,28 @@ describe('normalizeMermaidSource', () => {
         expect(parts.bodyContent).not.toContain('\'\'\'\'html');
     });
 
+    test('drops bracketed and marker-style internal thought blocks from html documents', () => {
+        const parts = extractCompositeDocumentParts([
+            '```html',
+            '<!DOCTYPE html>',
+            '<html><head><title>Clean Page</title></head><body><main>',
+            '[analysis]Private plan that must not render.[/analysis]',
+            '<h1>Clean Page</h1>',
+            'BEGIN THOUGHT',
+            'Hidden chain should not render in the generated document.',
+            'END THOUGHT',
+            '</main></body></html>',
+            '```',
+        ].join('\n'));
+
+        expect(parts.headContent).toContain('<title>Clean Page</title>');
+        expect(parts.bodyContent).toContain('<h1>Clean Page</h1>');
+        expect(parts.bodyContent).not.toContain('[analysis]');
+        expect(parts.bodyContent).not.toContain('Private plan');
+        expect(parts.bodyContent).not.toContain('BEGIN THOUGHT');
+        expect(parts.bodyContent).not.toContain('Hidden chain');
+    });
+
     test('drops explanatory prose before standalone html fragments', () => {
         const parts = extractCompositeDocumentParts([
             'Here is the finished page:',
