@@ -68,8 +68,8 @@ function formatWebCliSkillTaskPrompt(skillId = '', taskPrompt = '') {
     const skillLabel = normalizedSkillId ? `\`${normalizedSkillId}\`` : 'the selected';
     const prefix = `Use the ${skillLabel} skill for this task.`;
     return normalizedPrompt
-        ? `${prefix}\n\n${normalizedPrompt}`
-        : `${prefix}\n\nDescribe the task here.`;
+        ? `${prefix}\n\nTask:\n${normalizedPrompt}`
+        : `${prefix}\n\nTask:\nDescribe the task here.`;
 }
 
 class CodeCLIApp {

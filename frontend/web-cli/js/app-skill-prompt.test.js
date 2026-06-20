@@ -23,13 +23,19 @@ describe('web-cli skill prompt formatting', () => {
 
     test('separates skill routing instruction from the user task', () => {
         expect(formatWebCliSkillTaskPrompt('imagegen', 'Create three product hero options.')).toBe(
-            'Use the `imagegen` skill for this task.\n\nCreate three product hero options.'
+            'Use the `imagegen` skill for this task.\n\nTask:\nCreate three product hero options.'
         );
     });
 
     test('stages a clear editable placeholder instead of a dangling colon', () => {
         expect(formatWebCliSkillTaskPrompt('github:yeet', '')).toBe(
-            'Use the `github:yeet` skill for this task.\n\nDescribe the task here.'
+            'Use the `github:yeet` skill for this task.\n\nTask:\nDescribe the task here.'
+        );
+    });
+
+    test('keeps multi-line user tasks under the explicit task boundary', () => {
+        expect(formatWebCliSkillTaskPrompt('pdf', 'Create a report.\nInclude captions and page checks.')).toBe(
+            'Use the `pdf` skill for this task.\n\nTask:\nCreate a report.\nInclude captions and page checks.'
         );
     });
 });
