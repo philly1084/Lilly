@@ -8,6 +8,9 @@ jest.mock('../../../../config', () => ({
       defaultMaxTokens: 50000,
       defaultMaxTokensPerPage: 4096,
       defaultMaxOutputTokens: 3200,
+      timeoutMs: 120000,
+      proTimeoutMs: 240000,
+      deepTimeoutMs: 360000,
     },
   },
 }));
@@ -34,6 +37,32 @@ describe('WebSearchTool', () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+  });
+
+  test('uses larger timeout budgets for more complex research modes', () => {
+    const tool = new WebSearchTool();
+
+    expect(tool.resolveTimeout({
+      query: 'candidate URLs for OpenAI docs',
+      researchMode: 'search',
+    })).toBe(120000);
+
+    expect(tool.resolveTimeout({
+      query: 'live web search timeout',
+      prompt: 'investigate the live web search timeout',
+      researchMode: 'search',
+    })).toBe(240000);
+
+    expect(tool.resolveTimeout({
+      query: 'comprehensive AI provider analysis',
+      researchMode: 'sonar-deep-research',
+    })).toBe(360000);
+
+    expect(tool.resolveTimeout({
+      query: 'quick probe',
+      researchMode: 'pro-search',
+      timeout: 45000,
+    })).toBe(45000);
   });
 
   test('passes normalized filters to the Perplexity Search API', async () => {

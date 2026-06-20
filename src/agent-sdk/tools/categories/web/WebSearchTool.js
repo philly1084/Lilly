@@ -17,6 +17,9 @@ const DEFAULT_MAX_TOKENS = Math.max(10000, Number(config.search.defaultMaxTokens
 const DEFAULT_MAX_TOKENS_PER_PAGE = Math.max(1024, Number(config.search.defaultMaxTokensPerPage) || 4096);
 const DEFAULT_MAX_OUTPUT_TOKENS = Math.max(1200, Number(config.search.defaultMaxOutputTokens) || 3200);
 const DEFAULT_DEEP_RESEARCH_OUTPUT_TOKENS = 7000;
+const DEFAULT_SEARCH_TIMEOUT_MS = Math.max(30000, Number(config.search.timeoutMs) || 120000);
+const DEFAULT_PRO_SEARCH_TIMEOUT_MS = Math.max(DEFAULT_SEARCH_TIMEOUT_MS, Number(config.search.proTimeoutMs) || 240000);
+const DEFAULT_DEEP_SEARCH_TIMEOUT_MS = Math.max(DEFAULT_PRO_SEARCH_TIMEOUT_MS, Number(config.search.deepTimeoutMs) || 360000);
 const DEFAULT_SEARCH_REGION = 'ca-en';
 const DEFAULT_SEARCH_COUNTRY = 'CA';
 const AGENT_RESEARCH_MODES = Object.freeze([
@@ -176,6 +179,12 @@ function isAgentResearchMode(researchMode = '') {
   return AGENT_RESEARCH_MODES.includes(researchMode);
 }
 
+function isAbortLikeError(error) {
+  return error?.name === 'AbortError'
+    || error?.name === 'TimeoutError'
+    || error?.code === 'ABORT_ERR';
+}
+
 class WebSearchTool extends ToolBase {
   constructor() {
     super({
@@ -187,7 +196,7 @@ class WebSearchTool extends ToolBase {
       backend: {
         sideEffects: ['network'],
         sandbox: { network: true },
-        timeout: 120000,
+        timeout: DEFAULT_SEARCH_TIMEOUT_MS,
       },
       inputSchema: {
         type: 'object',
@@ -462,6 +471,119 @@ class WebSearchTool extends ToolBase {
     });
   }
 
+  async executeWithTimeout(params, context) {
+    const effectiveTimeout = this.resolveTimeout(params, context);
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    let timeoutId = null;
+    let parentAbortListener = null;
+
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (context?.signal && parentAbortListener) {
+        context.signal.removeEventListener('abort', parentAbortListener);
+        parentAbortListener = null;
+      }
+    };
+
+    return new Promise((resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        if (controller && !controller.signal.aborted) {
+          controller.abort();
+        }
+        reject(new Error(`Tool ${this.id} timed out after ${effectiveTimeout}ms`));
+      }, effectiveTimeout);
+
+      if (context?.signal && controller) {
+        parentAbortListener = () => {
+          if (!controller.signal.aborted) {
+            controller.abort();
+          }
+        };
+        if (context.signal.aborted) {
+          parentAbortListener();
+        } else {
+          context.signal.addEventListener('abort', parentAbortListener, { once: true });
+        }
+      }
+
+      Promise.resolve(this.handler(params, {
+        ...context,
+        signal: controller?.signal || context?.signal,
+        webSearchTimeoutMs: effectiveTimeout,
+      }, this.sideEffectTracker))
+        .then((result) => {
+          cleanup();
+          resolve(result);
+        })
+        .catch((error) => {
+          cleanup();
+          reject(this.formatProviderError(error, effectiveTimeout));
+        });
+    });
+  }
+
+  resolveTimeout(params = {}, context = {}) {
+    const requestedTimeout = Number(params?.timeout ?? params?.timeoutMs ?? context?.webSearchTimeoutMs);
+    if (Number.isFinite(requestedTimeout) && requestedTimeout > 0) {
+      return Math.max(1000, Math.trunc(requestedTimeout));
+    }
+
+    const resolvedMode = this.resolveTimeoutResearchMode(params, context);
+    if (resolvedMode === 'sonar-deep-research' || resolvedMode === 'deep-research' || resolvedMode === 'advanced-deep-research') {
+      return DEFAULT_DEEP_SEARCH_TIMEOUT_MS;
+    }
+
+    if (resolvedMode === 'pro-search' || resolvedMode === 'fast-search' || resolvedMode === 'sonar-pro' || resolvedMode === 'sonar-reasoning-pro') {
+      return DEFAULT_PRO_SEARCH_TIMEOUT_MS;
+    }
+
+    return DEFAULT_SEARCH_TIMEOUT_MS;
+  }
+
+  resolveTimeoutResearchMode(params = {}, context = {}) {
+    const researchMode = RESEARCH_MODES.includes(params?.researchMode) ? params.researchMode : 'search';
+    try {
+      const freshnessDefaults = applyResearchFreshnessDefaults({
+        query: params.query,
+        prompt: params.prompt,
+        timeRange: params.timeRange || 'all',
+        publishedAfter: params.publishedAfter,
+        publishedBefore: params.publishedBefore,
+        updatedAfter: params.updatedAfter,
+        updatedBefore: params.updatedBefore,
+      });
+      const inferredResearchMode = this.inferResearchMode({
+        query: freshnessDefaults.query,
+        prompt: params.prompt,
+        instructions: params.instructions,
+        researchMode,
+      });
+      const policyResearchMode = applyPerplexityResearchLevel({
+        researchMode: inferredResearchMode,
+        researchLevel: this.resolveAdminResearchLevel(context),
+        text: [params.prompt, Array.isArray(freshnessDefaults.query) ? freshnessDefaults.query.join(' ') : freshnessDefaults.query, params.instructions]
+          .filter(Boolean)
+          .join(' '),
+      });
+      return this.resolveResearchMode(policyResearchMode, {
+        returnImages: normalizeBoolean(params.returnImages ?? params.return_images ?? false),
+        returnVideos: normalizeBoolean(params.returnVideos ?? params.return_videos ?? false),
+      });
+    } catch (_error) {
+      return researchMode;
+    }
+  }
+
+  formatProviderError(error, timeoutMs) {
+    if (isAbortLikeError(error)) {
+      return new Error(`Perplexity request aborted after ${timeoutMs}ms`);
+    }
+    return error;
+  }
+
   async handler(params, context, tracker) {
     const {
       query,
@@ -505,6 +627,7 @@ class WebSearchTool extends ToolBase {
     } = params;
     const returnImages = normalizeBoolean(params.returnImages ?? params.return_images ?? false);
     const returnVideos = normalizeBoolean(params.returnVideos ?? params.return_videos ?? false);
+    const requestSignal = context?.signal || null;
     if (!RESEARCH_MODES.includes(researchMode)) {
       throw new Error(`Research mode '${researchMode}' is not supported by this backend`);
     }
@@ -587,6 +710,7 @@ class WebSearchTool extends ToolBase {
         updatedAfter,
         updatedBefore,
         userLocation: normalizedUserLocation,
+        signal: requestSignal,
       })
       : isSonarResearchMode(resolvedResearchMode)
         ? await this.sonarPerplexity({
@@ -615,6 +739,7 @@ class WebSearchTool extends ToolBase {
           searchContextSize: resolvedSearchContextSize,
           reasoningEffort: resolvedReasoningEffort,
           languagePreference: resolvedLanguagePreference,
+          signal: requestSignal,
         })
       : await this.researchPerplexity({
         query: resolvedQuery,
@@ -637,6 +762,7 @@ class WebSearchTool extends ToolBase {
         instructions,
         userLocation: normalizedUserLocation,
         languagePreference: resolvedLanguagePreference,
+        signal: requestSignal,
       });
     const searchTime = (Date.now() - startTime) / 1000;
 
@@ -687,6 +813,7 @@ class WebSearchTool extends ToolBase {
     updatedAfter,
     updatedBefore,
     userLocation,
+    signal,
   }) {
     if (!config.search.perplexityApiKey) {
       throw new Error('Perplexity search is not configured. Set PERPLEXITY_API_KEY in the backend environment.');
@@ -714,6 +841,7 @@ class WebSearchTool extends ToolBase {
         last_updated_after_filter: normalizeDateFilter(updatedAfter),
         last_updated_before_filter: normalizeDateFilter(updatedBefore),
       })),
+      ...(signal ? { signal } : {}),
     });
 
     if (!response.ok) {
@@ -771,6 +899,7 @@ class WebSearchTool extends ToolBase {
     searchContextSize,
     reasoningEffort,
     languagePreference,
+    signal,
   }) {
     if (!config.search.perplexityApiKey) {
       throw new Error('Perplexity search is not configured. Set PERPLEXITY_API_KEY in the backend environment.');
@@ -830,6 +959,7 @@ class WebSearchTool extends ToolBase {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
+      ...(signal ? { signal } : {}),
     });
 
     if (!response.ok) {
@@ -904,6 +1034,7 @@ class WebSearchTool extends ToolBase {
     instructions,
     userLocation,
     languagePreference,
+    signal,
   }) {
     if (!config.search.perplexityApiKey) {
       throw new Error('Perplexity search is not configured. Set PERPLEXITY_API_KEY in the backend environment.');
@@ -964,6 +1095,7 @@ class WebSearchTool extends ToolBase {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
+      ...(signal ? { signal } : {}),
     });
 
     if (!response.ok) {

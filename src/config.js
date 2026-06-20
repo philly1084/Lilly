@@ -886,6 +886,18 @@ const config = {
                 || parseInt(process.env.PERPLEXITY_MAX_OUTPUT_TOKENS, 10)
                 || 3200,
         ),
+        timeoutMs: Math.max(
+            30000,
+            parseInt(process.env.WEB_SEARCH_TIMEOUT_MS, 10) || 120000,
+        ),
+        proTimeoutMs: Math.max(
+            60000,
+            parseInt(process.env.WEB_SEARCH_PRO_TIMEOUT_MS, 10) || 240000,
+        ),
+        deepTimeoutMs: Math.max(
+            120000,
+            parseInt(process.env.WEB_SEARCH_DEEP_TIMEOUT_MS, 10) || 360000,
+        ),
     },
 
     scrape: {
