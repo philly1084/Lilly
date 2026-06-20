@@ -1,6 +1,15 @@
-const fetch = require('node-fetch');
-
 const UNSPLASH_API_BASE = 'https://api.unsplash.com';
+
+let cachedFetch = null;
+
+function getFetch() {
+    if (!cachedFetch) {
+        cachedFetch = typeof globalThis.fetch === 'function'
+            ? globalThis.fetch.bind(globalThis)
+            : require('node-fetch');
+    }
+    return cachedFetch;
+}
 
 /**
  * Get Unsplash Access Key from environment variables.
@@ -57,7 +66,7 @@ async function searchImages(query, options = {}) {
     const url = `${UNSPLASH_API_BASE}/search/photos?${params.toString()}`;
 
     try {
-        const response = await fetch(url, {
+        const response = await getFetch()(url, {
             headers: {
                 'Authorization': `Client-ID ${accessKey}`,
                 'Accept-Version': 'v1',
@@ -118,7 +127,7 @@ async function getRandomImage(query, options = {}) {
     const url = `${UNSPLASH_API_BASE}/photos/random?${params.toString()}`;
 
     try {
-        const response = await fetch(url, {
+        const response = await getFetch()(url, {
             headers: {
                 'Authorization': `Client-ID ${accessKey}`,
                 'Accept-Version': 'v1',
@@ -200,5 +209,6 @@ module.exports = {
     isConfigured,
     searchImages,
     getRandomImage,
+    getFetch,
 };
 
