@@ -28,6 +28,8 @@ const DEFAULT_PORTRAIT_PDF_MARGIN = {
     bottom: '0.68in',
     left: '0.65in',
 };
+const HTML_FENCE_PATTERN = /([`']{3,})([a-z0-9_-]*)\s*([\s\S]*?)\1/ig;
+const INTERNAL_THOUGHT_TAG_PATTERN = /<\s*(?:think|thinking|thought|analysis|reasoning)(?:\s[^>]*)?>[\s\S]*?<\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*>/ig;
 const NAMED_PDF_PAGE_SIZES = {
     a4: { width: '8.27in', height: '11.69in' },
     letter: { width: '8.5in', height: '11in' },
@@ -343,7 +345,7 @@ function normalizeMermaidSource(text = '') {
 }
 
 function extractHtmlBody(html = '') {
-    let source = String(html || '').trim();
+    let source = stripInternalThoughtMarkup(html).trim();
     if (!source) {
         return { body: '', head: '' };
     }
@@ -367,21 +369,25 @@ function extractHtmlBody(html = '') {
     };
 }
 
+function stripInternalThoughtMarkup(text = '') {
+    return String(text || '').replace(INTERNAL_THOUGHT_TAG_PATTERN, '').trim();
+}
+
 function findLikelyHtmlStartIndex(text = '') {
     const match = String(text || '').match(
-        /```html\b|<!doctype html>|<html\b|<body\b|<main\b|<article\b|<section\b|<header\b|<footer\b|<nav\b|<aside\b|<figure\b|<table\b|<div\b|<h1\b|<h2\b|<h3\b|<ul\b|<ol\b|<p\b/i,
+        /(?:```|'{3,})html\b|<!doctype html>|<html\b|<body\b|<main\b|<article\b|<section\b|<header\b|<footer\b|<nav\b|<aside\b|<figure\b|<table\b|<div\b|<h1\b|<h2\b|<h3\b|<ul\b|<ol\b|<p\b/i,
     );
 
     return match && Number.isInteger(match.index) ? match.index : -1;
 }
 
 function findHtmlFence(source = '') {
-    const fencePattern = /```([a-z0-9_-]*)\s*([\s\S]*?)```/ig;
     let match;
 
-    while ((match = fencePattern.exec(String(source || ''))) !== null) {
-        const language = String(match[1] || '').trim().toLowerCase();
-        const content = String(match[2] || '').trim();
+    HTML_FENCE_PATTERN.lastIndex = 0;
+    while ((match = HTML_FENCE_PATTERN.exec(String(source || ''))) !== null) {
+        const language = String(match[2] || '').trim().toLowerCase();
+        const content = stripInternalThoughtMarkup(match[3] || '');
 
         if (language === 'html' || (!language && findLikelyHtmlStartIndex(content) === 0)) {
             return {
@@ -395,7 +401,7 @@ function findHtmlFence(source = '') {
 }
 
 function extractCompositeDocumentParts(input = '') {
-    let source = String(input || '').replace(/\r\n?/g, '\n').trim();
+    let source = stripInternalThoughtMarkup(String(input || '').replace(/\r\n?/g, '\n')).trim();
     if (!source) {
         return { mermaidSource: '', bodyContent: '', headContent: '' };
     }
@@ -428,7 +434,7 @@ function extractCompositeDocumentParts(input = '') {
         mermaidSource = normalizeMermaidSource(mermaidFence[1]);
         source = source.replace(mermaidFence[0], '').trim();
     } else if (detectMermaidDiagramType(source) !== 'unknown') {
-        const htmlStart = source.search(/```html\b|<!doctype html>|<html\b|<body\b|<main\b|<article\b|<section\b|<header\b|<footer\b|<nav\b|<aside\b|<figure\b|<table\b|<div\b|<h1\b|<h2\b|<h3\b|<ul\b|<ol\b|<p\b|^#\s|^\d+\.\s|\n#\s|\n\d+\.\s/m);
+        const htmlStart = source.search(/(?:```|'{3,})html\b|<!doctype html>|<html\b|<body\b|<main\b|<article\b|<section\b|<header\b|<footer\b|<nav\b|<aside\b|<figure\b|<table\b|<div\b|<h1\b|<h2\b|<h3\b|<ul\b|<ol\b|<p\b|^#\s|^\d+\.\s|\n#\s|\n\d+\.\s/m);
         const mermaidCandidate = htmlStart > 0 ? source.slice(0, htmlStart).trim() : source;
         const normalizedMermaid = normalizeMermaidSource(mermaidCandidate);
         if (detectMermaidDiagramType(normalizedMermaid) !== 'unknown') {

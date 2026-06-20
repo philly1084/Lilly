@@ -1809,10 +1809,10 @@
                 <button class="btn btn-sm btn-primary" data-short="New" onclick="app.startNewSession('', { clear: true })" title="Start a new isolated chat session" aria-label="Start new isolated chat session">
                     <span>New Chat</span>
                 </button>
-                <button id="commandDrawerToggle" class="btn btn-sm btn-icon command-drawer-toggle" type="button" title="Open command actions" aria-label="Open command actions" aria-expanded="false" aria-controls="commandDrawer">
+                <button id="commandDrawerToggle" class="btn btn-sm btn-icon command-drawer-toggle" type="button" title="Open command actions" aria-label="Open command actions" aria-expanded="false" aria-haspopup="menu" aria-controls="commandDrawer">
                     <span aria-hidden="true">...</span>
                 </button>
-                <div id="commandDrawer" class="command-drawer" hidden>
+                <div id="commandDrawer" class="command-drawer" role="menu" aria-label="Frontend actions" hidden>
                     <button class="btn btn-sm" data-short="Sess" onclick="app.listSessions()" title="List isolated chat sessions" aria-label="List isolated chat sessions">
                         <span>Sessions</span>
                     </button>
@@ -2007,6 +2007,6 @@
     <script src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script src="js/file-handler.js"></script>
     <script src="js/voxel-pets.js"></script>
-    <script src="js/app.js?v=20260614r"></script>
+    <script src="js/app.js?v=20260619a"></script>
 </body>
 </html>

@@ -4,6 +4,8 @@ const HTML_DOCUMENT_PATTERN = /(?:<!doctype\s+html\b|<html\b[\s\S]*?>)/i;
 const HTML_CLOSE_PATTERN = /<\/html\s*>/i;
 const HTML_FILENAME_PATTERN = /[`"']?([a-z0-9][a-z0-9._ -]{1,100}\.html?)[`"']?/i;
 const SAVE_AS_FILENAME_PATTERN = /\b(?:save|saved|saving|name|named|called|download|open)\b[\s\S]{0,40}?\b(?:as|to)?\s*[`"']?([a-z0-9][a-z0-9._ -]{1,100}\.html?)[`"']?/i;
+const HTML_FENCE_PATTERN = /([`']{3,})([a-z0-9_-]*)\s*([\s\S]*?)\1/ig;
+const INTERNAL_THOUGHT_TAG_PATTERN = /<\s*(?:think|thinking|thought|analysis|reasoning)(?:\s[^>]*)?>[\s\S]*?<\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*>/ig;
 
 function cleanFilename(value = '') {
     const candidate = String(value || '')
@@ -33,8 +35,12 @@ function extractFilenameFromText(text = '') {
     return cleanFilename(explicit);
 }
 
+function stripInternalThoughtMarkup(value = '') {
+    return stripNullCharacters(String(value || '')).replace(INTERNAL_THOUGHT_TAG_PATTERN, '').trim();
+}
+
 function trimHtmlDocument(html = '') {
-    let source = String(html || '').trim();
+    let source = stripInternalThoughtMarkup(html).trim();
     if (!source) {
         return '';
     }
@@ -53,12 +59,12 @@ function trimHtmlDocument(html = '') {
 }
 
 function extractHtmlFromFence(text = '') {
-    const fencePattern = /```([a-z0-9_-]*)\s*([\s\S]*?)```/ig;
     let match;
 
-    while ((match = fencePattern.exec(String(text || ''))) !== null) {
-        const language = String(match[1] || '').trim().toLowerCase();
-        const content = stripNullCharacters(String(match[2] || '')).trim();
+    HTML_FENCE_PATTERN.lastIndex = 0;
+    while ((match = HTML_FENCE_PATTERN.exec(String(text || ''))) !== null) {
+        const language = String(match[2] || '').trim().toLowerCase();
+        const content = stripInternalThoughtMarkup(match[3] || '');
         if (!content) {
             continue;
         }
@@ -72,7 +78,7 @@ function extractHtmlFromFence(text = '') {
 }
 
 function extractRawHtml(text = '') {
-    const source = stripNullCharacters(String(text || '')).trim();
+    const source = stripInternalThoughtMarkup(text).trim();
     const match = source.match(HTML_DOCUMENT_PATTERN);
     if (!match || !Number.isInteger(match.index)) {
         return '';

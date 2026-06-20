@@ -109,6 +109,35 @@ describe('frontend bundle styling safety net', () => {
         expect(indexHtml).not.toContain('Sources used include');
     });
 
+    test('strips apostrophe html fences and thought tags from bundle files', () => {
+        const dirtyHtml = [
+            'continued',
+            '\'\'\'\'html',
+            '<think>This hidden planning text should not be stored in the page.</think>',
+            '<!DOCTYPE html><html><head><title>Clean Bundle</title></head><body><main><h1>Clean Bundle</h1></main></body></html>',
+            '\'\'\'\'',
+        ].join('\n');
+
+        const cleanHtml = sanitizeFrontendHtmlContent(dirtyHtml);
+        expect(cleanHtml.trim()).toMatch(/^<!DOCTYPE html>/);
+        expect(cleanHtml).toContain('<h1>Clean Bundle</h1>');
+        expect(cleanHtml).not.toContain('<think>');
+        expect(cleanHtml).not.toContain('continued');
+        expect(cleanHtml).not.toContain('\'\'\'\'html');
+
+        const artifact = buildFrontendBundleArtifact({
+            entry: 'index.html',
+            files: [{ path: 'index.html', language: 'html', content: dirtyHtml }],
+        }, 'Clean Bundle');
+        const entries = readFrontendBundleArchive(artifact.buffer);
+        const indexHtml = entries.get('index.html').toString('utf8');
+
+        expect(indexHtml.trim()).toMatch(/^<!DOCTYPE html>/);
+        expect(indexHtml).toContain('<h1>Clean Bundle</h1>');
+        expect(indexHtml).not.toContain('hidden planning text');
+        expect(indexHtml).not.toContain('\'\'\'\'html');
+    });
+
     test('fills an existing missing local stylesheet reference with fallback css', () => {
         const artifact = buildFrontendBundleArtifact({
             entry: 'index.html',

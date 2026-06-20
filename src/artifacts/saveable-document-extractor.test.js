@@ -43,6 +43,28 @@ describe('saveable document extractor', () => {
         expect(result.content).not.toContain('belongs in chat');
     });
 
+    test('extracts apostrophe-fenced html without internal thought markup', () => {
+        const result = extractSaveableDocumentArtifact({
+            assistantText: [
+                'Save this as `clean-page.html`.',
+                '\'\'\'\'html',
+                '<analysis>This reasoning must not become visible document text.</analysis>',
+                '<!DOCTYPE html><html><head><title>Clean Page</title></head><body><main>Ready</main></body></html>',
+                '\'\'\'\'',
+            ].join('\n'),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            format: 'html',
+            filename: 'clean-page.html',
+            content: expect.stringContaining('<!DOCTYPE html>'),
+        }));
+        expect(result.content).toContain('<title>Clean Page</title>');
+        expect(result.content).not.toContain('<analysis>');
+        expect(result.content).not.toContain('reasoning must not');
+        expect(result.content).not.toContain('\'\'\'\'html');
+    });
+
     test('ignores short non-document snippets', () => {
         expect(extractSaveableDocumentArtifact({
             assistantText: 'Use `<div>Hello</div>` inside your page.',

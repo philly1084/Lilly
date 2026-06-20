@@ -60,7 +60,7 @@
             </div>
         </div>
         <div class="top-bar-right">
-            <button id="enterpriseModeBtn" title="Enable Enterprise Mode" aria-label="Enable Enterprise Mode">
+            <button id="enterpriseModeBtn" title="Toggle focus workspace" aria-label="Toggle focus workspace">
                 <svg viewBox="0 0 24 24" width="18" height="18">
                     <path fill="currentColor" d="M9 6V4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v2h4c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2h4zm2 0h2V4h-2v2zm-6 5h14V8H5v3zm0 2v4h14v-4h-5v1h-4v-1H5z"/>
                 </svg>
@@ -1701,14 +1701,17 @@
                 </button>
             </div>
 
-            <div class="ai-command-deck ai-command-deck--lean" id="aiCommandDeck">
-                <div class="ai-command-grid">
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Polish the selected objects into a cleaner composition with better spacing, labels, and connections. Use update_many/add_many actions only.">Polish</button>
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Add missing labels, connectors, frames, and one concise QA note as editable canvas objects.">QA Pass</button>
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="chat" data-ai-command-prompt="Critique the current board and suggest the next three editable object actions.">Critique</button>
-                    <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Turn the visible area into a structured system map with grouped frames, arrows, and concise labels.">Map</button>
+            <details class="ai-secondary-panel ai-command-presets">
+                <summary>Presets</summary>
+                <div class="ai-command-deck ai-command-deck--lean" id="aiCommandDeck">
+                    <div class="ai-command-grid">
+                        <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Polish the selected objects into a cleaner composition with better spacing, labels, and connections. Use update_many/add_many actions only.">Polish</button>
+                        <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Add missing labels, connectors, frames, and one concise QA note as editable canvas objects.">QA Pass</button>
+                        <button type="button" class="ai-command-btn" data-ai-command-mode="chat" data-ai-command-prompt="Critique the current board and suggest the next three editable object actions.">Critique</button>
+                        <button type="button" class="ai-command-btn" data-ai-command-mode="diagram" data-ai-command-prompt="Turn the visible area into a structured system map with grouped frames, arrows, and concise labels.">Map</button>
+                    </div>
                 </div>
-            </div>
+            </details>
 
             <details class="ai-advanced-panel">
                 <summary>Advanced</summary>

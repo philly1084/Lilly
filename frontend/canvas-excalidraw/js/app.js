@@ -61,6 +61,7 @@ class App {
             this.setupMobileControls();
             this.setupToolDock();
             this.setupCanvasSideRail();
+            this.setupSimplifiedInspector();
             this.setupMiniMap();
             this.setupAITooltip();
             this.setupFontSearch();
@@ -216,7 +217,7 @@ class App {
         this.updateEnterpriseButton();
         this.updateCanvasStatusStrip();
         if (!options.silent) {
-            this.showToast(this.enterpriseMode ? 'Enterprise Mode enabled' : 'Enterprise Mode disabled');
+            this.showToast(this.enterpriseMode ? 'Focus workspace on' : 'Focus workspace off');
             if (this.enterpriseMode) {
                 this.selectCanvasPanel?.('creative');
             }
@@ -233,8 +234,8 @@ class App {
             return;
         }
         button.classList.toggle('active', this.enterpriseMode);
-        button.title = this.enterpriseMode ? 'Enterprise Mode active' : 'Enable Enterprise Mode';
-        button.setAttribute('aria-label', this.enterpriseMode ? 'Enterprise Mode active' : 'Enable Enterprise Mode');
+        button.title = this.enterpriseMode ? 'Focus workspace active' : 'Toggle focus workspace';
+        button.setAttribute('aria-label', this.enterpriseMode ? 'Focus workspace active' : 'Toggle focus workspace');
     }
     
     setupAutoSave() {
@@ -1172,12 +1173,47 @@ class App {
             this.handleSelectedMermaidAction(button.dataset.mermaidObjectAction);
         });
 
-        this.selectCanvasPanel('inspector');
+        this.selectCanvasPanel('objects');
         this.renderObjectLibrary();
         this.renderProductionTimeline();
         this.renderSelectedMermaidEditor();
         this.renderConnectionBuilder();
         this.renderSavedBlockShelf();
+    }
+
+    setupSimplifiedInspector() {
+        const inspector = document.querySelector('[data-canvas-panel="inspector"]');
+        if (!inspector || inspector.querySelector('.inspector-more-controls')) {
+            return;
+        }
+
+        const colorStudio = document.getElementById('colorStudio');
+        const layerActions = inspector.querySelector('.layer-actions');
+        if (!colorStudio || !layerActions) {
+            return;
+        }
+
+        const details = document.createElement('details');
+        details.className = 'inspector-more-controls';
+        details.innerHTML = `
+            <summary>
+                <span>More style controls</span>
+                <small>Stroke, text, shape, connector</small>
+            </summary>
+            <div class="inspector-more-controls-body"></div>
+        `;
+        const body = details.querySelector('.inspector-more-controls-body');
+
+        let node = colorStudio.nextElementSibling;
+        while (node && node !== layerActions) {
+            const next = node.nextElementSibling;
+            if (node.classList?.contains('property-group')) {
+                body.appendChild(node);
+            }
+            node = next;
+        }
+
+        inspector.insertBefore(details, layerActions);
     }
 
     selectCanvasPanel(panelName = 'inspector') {

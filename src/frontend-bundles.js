@@ -111,6 +111,8 @@ pre {
   nav { align-items: stretch; }
 }
 `;
+const HTML_FENCE_PATTERN = /([`']{3,})([a-z0-9_-]*)\s*([\s\S]*?)\1/ig;
+const INTERNAL_THOUGHT_TAG_PATTERN = /<\s*(?:think|thinking|thought|analysis|reasoning)(?:\s[^>]*)?>[\s\S]*?<\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*>/ig;
 
 const CONTENT_TYPES = {
     '.css': 'text/css; charset=utf-8',
@@ -140,6 +142,10 @@ function inferFrontendTitle(content = '') {
     const match = String(content || '').match(/<title>\s*([^<]+)\s*<\/title>/i)
         || String(content || '').match(/<h1[^>]*>\s*([^<]+)\s*<\/h1>/i);
     return match?.[1]?.trim() || 'Frontend Demo';
+}
+
+function stripInternalThoughtMarkup(content = '') {
+    return String(content || '').replace(INTERNAL_THOUGHT_TAG_PATTERN, '').trim();
 }
 
 function normalizeBundlePath(filePath = '') {
@@ -181,7 +187,7 @@ function inferBundleLanguage(filePath = '') {
 }
 
 function trimStandaloneHtmlDocument(content = '') {
-    let source = String(content || '').trim();
+    let source = stripInternalThoughtMarkup(content).trim();
     if (!source) {
         return '';
     }
@@ -193,19 +199,19 @@ function trimStandaloneHtmlDocument(content = '') {
 
     const closeMatch = source.match(/<\/html\s*>/i);
     if (!closeMatch || !Number.isInteger(closeMatch.index)) {
-        return source.replace(/```\s*$/i, '').trim();
+        return source.replace(/(?:```|'{3,})\s*$/i, '').trim();
     }
 
     return source.slice(0, closeMatch.index + closeMatch[0].length).trim();
 }
 
 function extractFencedHtmlContent(content = '') {
-    const fencePattern = /```([a-z0-9_-]*)\s*([\s\S]*?)```/ig;
     let match;
 
-    while ((match = fencePattern.exec(String(content || ''))) !== null) {
-        const language = String(match[1] || '').trim().toLowerCase();
-        const fencedContent = String(match[2] || '').trim();
+    HTML_FENCE_PATTERN.lastIndex = 0;
+    while ((match = HTML_FENCE_PATTERN.exec(String(content || ''))) !== null) {
+        const language = String(match[2] || '').trim().toLowerCase();
+        const fencedContent = stripInternalThoughtMarkup(match[3] || '');
         if (!fencedContent) {
             continue;
         }

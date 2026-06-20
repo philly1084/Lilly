@@ -229,6 +229,23 @@ describe('normalizeMermaidSource', () => {
         expect(parts.bodyContent).not.toContain('handoff note');
     });
 
+    test('drops apostrophe-fenced html wrappers and internal thought markup', () => {
+        const parts = extractCompositeDocumentParts([
+            'continued',
+            '\'\'\'\'html',
+            '<thinking>I should not be visible inside the generated page.</thinking>',
+            '<!DOCTYPE html>',
+            '<html><head><title>Clean Page</title></head><body><main><h1>Clean Page</h1></main></body></html>',
+            '\'\'\'\'',
+        ].join('\n'));
+
+        expect(parts.headContent).toContain('<title>Clean Page</title>');
+        expect(parts.bodyContent).toBe('<main><h1>Clean Page</h1></main>');
+        expect(parts.bodyContent).not.toContain('thinking');
+        expect(parts.bodyContent).not.toContain('continued');
+        expect(parts.bodyContent).not.toContain('\'\'\'\'html');
+    });
+
     test('drops explanatory prose before standalone html fragments', () => {
         const parts = extractCompositeDocumentParts([
             'Here is the finished page:',

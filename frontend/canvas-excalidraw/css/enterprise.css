@@ -73,13 +73,17 @@ body.canvas-core-mode .logo {
 
 body.canvas-core-mode .canvas-status-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(82px, auto));
+    grid-template-columns: repeat(2, minmax(82px, auto));
     gap: 4px;
-    max-width: min(520px, 42vw);
+    max-width: min(250px, 24vw);
     padding: 3px;
     background: #101720;
     border: 1px solid var(--enterprise-line);
     border-radius: 8px;
+}
+
+body.canvas-core-mode .canvas-status-strip span:nth-child(n + 3) {
+    display: none;
 }
 
 body.canvas-core-mode .canvas-status-strip span {
@@ -291,6 +295,58 @@ body.canvas-core-mode .canvas-panel-view {
 
 body.canvas-core-mode .canvas-panel-view[hidden] {
     display: none !important;
+}
+
+body.canvas-core-mode .inspector-more-controls {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    background: #111820;
+    border: 1px solid var(--enterprise-line);
+    border-radius: 8px;
+}
+
+body.canvas-core-mode .inspector-more-controls summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--enterprise-text);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 900;
+    list-style: none;
+}
+
+body.canvas-core-mode .inspector-more-controls summary::-webkit-details-marker {
+    display: none;
+}
+
+body.canvas-core-mode .inspector-more-controls summary::after {
+    content: '+';
+    flex: 0 0 auto;
+    color: var(--enterprise-muted);
+    font-size: 16px;
+    line-height: 1;
+}
+
+body.canvas-core-mode .inspector-more-controls[open] summary::after {
+    content: '-';
+}
+
+body.canvas-core-mode .inspector-more-controls summary small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--enterprise-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.canvas-core-mode .inspector-more-controls-body {
+    display: grid;
+    gap: 10px;
 }
 
 body.canvas-core-mode .canvas-rail-intro {
@@ -1766,6 +1822,22 @@ body.canvas-core-mode .ai-command-deck--lean {
     padding: 0;
     background: transparent;
     border: 0;
+}
+
+body.canvas-core-mode .ai-secondary-panel {
+    display: grid;
+    gap: 8px;
+    padding: 9px 10px;
+    background: var(--enterprise-panel-2);
+    border: 1px solid var(--enterprise-line);
+    border-radius: 8px;
+}
+
+body.canvas-core-mode .ai-secondary-panel summary {
+    color: var(--enterprise-muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 800;
 }
 
 body.canvas-core-mode .ai-command-deck--lean .ai-command-grid {

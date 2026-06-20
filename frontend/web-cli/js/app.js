@@ -62,6 +62,16 @@ const WEB_CLI_CURRENT_HELP_COMMAND_IDS = new Set([
 ]);
 const WEB_CLI_DEFAULT_THEME = 'command-center';
 
+function formatWebCliSkillTaskPrompt(skillId = '', taskPrompt = '') {
+    const normalizedSkillId = String(skillId || '').trim();
+    const normalizedPrompt = String(taskPrompt || '').trim();
+    const skillLabel = normalizedSkillId ? `\`${normalizedSkillId}\`` : 'the selected';
+    const prefix = `Use the ${skillLabel} skill for this task.`;
+    return normalizedPrompt
+        ? `${prefix}\n\n${normalizedPrompt}`
+        : `${prefix}\n\nDescribe the task here.`;
+}
+
 class CodeCLIApp {
     constructor() {
         this.history = [];
@@ -4410,14 +4420,13 @@ class CodeCLIApp {
     getSkillPromptFromForm(form = null) {
         const skillId = String(form?.dataset?.skillId || '').trim();
         const prompt = String(form?.querySelector?.('[name="prompt"]')?.value || '').trim();
-        return prompt
-            ? `Use the ${skillId} skill for this task: ${prompt}`
-            : `Use the ${skillId} skill for this task: `;
+        return formatWebCliSkillTaskPrompt(skillId, prompt);
     }
 
     runSkillPromptForm(form = null) {
+        const taskPrompt = String(form?.querySelector?.('[name="prompt"]')?.value || '').trim();
         const prompt = this.getSkillPromptFromForm(form).trim();
-        if (!prompt.endsWith(':')) {
+        if (taskPrompt) {
             this.clearCliMenuPanels();
             this.setCommandInputValue(prompt);
             this.sendCommand();
@@ -11028,3 +11037,4 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
 }
 
 const app = new CodeCLIApp();
+window.app = app;
