@@ -810,6 +810,38 @@ Options I ruled out:
         expect(html).not.toContain('uniqueStepSignatures');
     });
 
+    test('cleans remote CLI activity labels inside managed deployment progress', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const message = {
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            managedAppProgressState: {
+                phase: 'deploying',
+                summary: 'Remote deployment is running.',
+                detail: 'Waiting for public verification.',
+                steps: [
+                    { id: 'prepare', title: 'Prepare app record', status: 'completed' },
+                    { id: 'deploy', title: 'Roll out deployment', status: 'in_progress' },
+                ],
+            },
+            progressState: {
+                phase: 'checking-tools',
+                toolEvents: [{
+                    toolId: 'remote-cli-agent',
+                    stage: 'in_progress',
+                    detail: 'output: The public page is live from `index.html`; checking HTTPS.',
+                }],
+            },
+        };
+
+        const html = helper.buildAssistantRenderPlan(message, true).html;
+
+        expect(html).toContain('The public page is live from index.html; checking HTTPS.');
+        expect(html).not.toContain('output:');
+        expect(html).not.toContain('`index.html`');
+    });
+
     test('hides oversized git deployment status dumps beside managed progress', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const statusDump = [

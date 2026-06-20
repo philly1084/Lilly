@@ -3863,7 +3863,7 @@ class UIHelpers {
                 return 'Remote runner is checking tool results.';
             }
 
-            return text;
+            return this.cleanAssistantProgressLine(text, { maxLength: 180 }) || text;
         }
 
         return 'Remote runner is still working.';
