@@ -4201,21 +4201,57 @@ class CodeCLIApp {
     renderToolField(name = '', schema = {}, required = false) {
         const type = String(schema.type || 'string').toLowerCase();
         const description = schema.description || schema.title || '';
+        const requiredAttr = required ? ' required' : '';
+        const hasDefault = schema.default != null;
+        const defaultValue = hasDefault && (type === 'object' || type === 'array')
+            ? JSON.stringify(schema.default, null, 2)
+            : (hasDefault ? String(schema.default) : '');
         const placeholder = name === 'prompt'
             ? 'Describe the result you want...'
-            : (schema.default != null ? String(schema.default) : type);
+            : type;
+        if (Array.isArray(schema.enum) && schema.enum.length) {
+            const defaultValue = schema.default != null
+                ? String(schema.default)
+                : (required ? String(schema.enum[0]) : '');
+            const options = schema.enum.map((value) => {
+                const stringValue = String(value);
+                return `<option value="${this.escapeHtmlAttr(stringValue)}"${stringValue === defaultValue ? ' selected' : ''}>${this.escapeHtml(stringValue)}</option>`;
+            }).join('');
+            return `
+                <label class="cli-menu-field">
+                    <span>${this.escapeHtml(name)}${required ? ' *' : ''}</span>
+                    <select data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" data-tool-required="${required ? 'true' : 'false'}"${requiredAttr}>
+                        ${required ? '' : '<option value="">Optional</option>'}
+                        ${options}
+                    </select>
+                    ${description ? `<small>${this.escapeHtml(description)}</small>` : ''}
+                </label>
+            `;
+        }
+        if (type === 'object' || type === 'array') {
+            const jsonPlaceholder = type === 'array' ? '["value"]' : '{"key":"value"}';
+            return `
+                <label class="cli-menu-field">
+                    <span>${this.escapeHtml(name)}${required ? ' *' : ''}</span>
+                    <textarea rows="4" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" data-tool-required="${required ? 'true' : 'false'}" placeholder="${this.escapeHtmlAttr(jsonPlaceholder)}"${requiredAttr}>${hasDefault ? this.escapeHtml(defaultValue) : ''}</textarea>
+                    ${description ? `<small>${this.escapeHtml(description)}</small>` : ''}
+                </label>
+            `;
+        }
         if (type === 'boolean') {
+            const checkedAttr = schema.default === true ? ' checked' : '';
             return `
                 <label class="cli-menu-field cli-menu-field--checkbox">
-                    <input type="checkbox" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}">
+                    <input type="checkbox" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" data-tool-required="${required ? 'true' : 'false'}"${checkedAttr}>
                     <span>${this.escapeHtml(name)}${required ? ' *' : ''}</span>
                 </label>
             `;
         }
         const tag = /prompt|content|body|command|query|text|task/i.test(name) ? 'textarea' : 'input';
+        const integerStepAttr = type === 'integer' ? ' step="1"' : '';
         const control = tag === 'textarea'
-            ? `<textarea rows="3" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" placeholder="${this.escapeHtmlAttr(placeholder)}"></textarea>`
-            : `<input type="${type === 'number' || type === 'integer' ? 'number' : 'text'}" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" placeholder="${this.escapeHtmlAttr(placeholder)}">`;
+            ? `<textarea rows="3" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" data-tool-required="${required ? 'true' : 'false'}" placeholder="${this.escapeHtmlAttr(placeholder)}"${requiredAttr}>${hasDefault ? this.escapeHtml(defaultValue) : ''}</textarea>`
+            : `<input type="${type === 'number' || type === 'integer' ? 'number' : 'text'}" data-tool-param="${this.escapeHtmlAttr(name)}" data-tool-type="${this.escapeHtmlAttr(type)}" data-tool-required="${required ? 'true' : 'false'}" placeholder="${this.escapeHtmlAttr(placeholder)}"${integerStepAttr}${hasDefault ? ` value="${this.escapeHtmlAttr(defaultValue)}"` : ''}${requiredAttr}>`;
         return `
             <label class="cli-menu-field">
                 <span>${this.escapeHtml(name)}${required ? ' *' : ''}</span>
@@ -4276,14 +4312,30 @@ class CodeCLIApp {
         form?.querySelectorAll?.('[data-tool-param]').forEach((field) => {
             const name = field.dataset.toolParam;
             const type = String(field.dataset.toolType || 'string').toLowerCase();
+            const isRequired = field.dataset.toolRequired === 'true';
+            if (field.type === 'checkbox' && !field.checked && !isRequired) {
+                return;
+            }
             let value = field.type === 'checkbox' ? field.checked : String(field.value || '').trim();
             if (value === '' && field.type !== 'checkbox') {
                 return;
             }
             if (type === 'number' || type === 'integer') {
                 value = Number(value);
+                if (!Number.isFinite(value)) {
+                    throw new Error(`${name} must be a valid number`);
+                }
+                if (type === 'integer' && !Number.isInteger(value)) {
+                    throw new Error(`${name} must be an integer`);
+                }
             } else if (type === 'object' || type === 'array') {
                 value = JSON.parse(value);
+                if (type === 'array' && !Array.isArray(value)) {
+                    throw new Error(`${name} must be a JSON array`);
+                }
+                if (type === 'object' && (!value || Array.isArray(value) || typeof value !== 'object')) {
+                    throw new Error(`${name} must be a JSON object`);
+                }
             }
             params[name] = value;
         });

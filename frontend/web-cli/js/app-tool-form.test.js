@@ -1,0 +1,274 @@
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+function loadWebCliToolFormHelpers() {
+    const sourcePath = path.join(__dirname, 'app.js');
+    const source = fs.readFileSync(sourcePath, 'utf8')
+        .replace(
+            /const app = new CodeCLIApp\(\);\s*window\.app = app;\s*$/,
+            'module.exports = { CodeCLIApp };'
+        );
+    const sandbox = {
+        module: { exports: {} },
+        exports: {},
+    };
+
+    vm.runInNewContext(source, sandbox, { filename: sourcePath });
+    return sandbox.module.exports;
+}
+
+function createToolFormHarness() {
+    const { CodeCLIApp } = loadWebCliToolFormHelpers();
+    const app = Object.create(CodeCLIApp.prototype);
+    app.escapeHtml = (value) => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    app.escapeHtmlAttr = (value) => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    return app;
+}
+
+describe('web-cli tool form rendering', () => {
+    test('renders enum parameters as selectable controls', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('mode', {
+            type: 'string',
+            enum: ['preview', 'content', 'base64'],
+            description: 'Read mode.',
+        }, true);
+
+        expect(markup).toContain('<select');
+        expect(markup).toContain('data-tool-param="mode"');
+        expect(markup).toContain('<option value="preview" selected>preview</option>');
+        expect(markup).toContain('<option value="base64">base64</option>');
+        expect(markup).not.toContain('<input type="text"');
+    });
+
+    test('allows optional enum parameters to stay unset', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('category', {
+            type: 'string',
+            enum: ['images', 'docs'],
+        }, false);
+
+        expect(markup).toContain('<option value="">Optional</option>');
+        expect(markup).not.toContain('value="images" selected');
+    });
+
+    test('defaults required enum parameters to the first choice', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('format', {
+            type: 'string',
+            enum: ['html', 'pdf', 'pptx'],
+        }, true);
+
+        expect(markup).toContain('<option value="html" selected>html</option>');
+        expect(markup).not.toContain('<option value="">Optional</option>');
+    });
+
+    test('marks required select and text-like fields for native browser validation', () => {
+        const app = createToolFormHarness();
+
+        const selectMarkup = app.renderToolField('format', {
+            type: 'string',
+            enum: ['html', 'pdf'],
+        }, true);
+        const inputMarkup = app.renderToolField('url', {
+            type: 'string',
+        }, true);
+        const textareaMarkup = app.renderToolField('prompt', {
+            type: 'string',
+        }, true);
+
+        expect(selectMarkup).toContain('data-tool-required="true" required>');
+        expect(inputMarkup).toContain('data-tool-required="true" placeholder="string" required>');
+        expect(textareaMarkup).toContain('data-tool-required="true" placeholder="Describe the result you want..." required>');
+    });
+
+    test('does not force optional text-like fields through native required validation', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('url', {
+            type: 'string',
+        }, false);
+
+        expect(markup).toContain('data-tool-required="false"');
+        expect(markup).not.toContain(' required');
+    });
+
+    test('renders string and number defaults as submitted control values', () => {
+        const app = createToolFormHarness();
+
+        const inputMarkup = app.renderToolField('limit', {
+            type: 'number',
+            default: 25,
+        }, false);
+        const textareaMarkup = app.renderToolField('query', {
+            type: 'string',
+            default: 'status:open',
+        }, false);
+
+        expect(inputMarkup).toContain('placeholder="number" value="25"');
+        expect(textareaMarkup).toContain('>status:open</textarea>');
+    });
+
+    test('hints integer parameters with whole-number browser stepping', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('maxRetries', {
+            type: 'integer',
+            default: 3,
+        }, false);
+
+        expect(markup).toContain('type="number"');
+        expect(markup).toContain('placeholder="integer" step="1" value="3"');
+    });
+
+    test('renders object and array parameters as JSON textareas', () => {
+        const app = createToolFormHarness();
+
+        const objectMarkup = app.renderToolField('payload', {
+            type: 'object',
+            default: { mode: 'preview', limit: 2 },
+            description: 'Tool payload.',
+        }, true);
+        const arrayMarkup = app.renderToolField('items', {
+            type: 'array',
+            default: ['alpha', 'beta'],
+        }, false);
+
+        expect(objectMarkup).toContain('<textarea rows="4"');
+        expect(objectMarkup).toContain('placeholder="{&quot;key&quot;:&quot;value&quot;}" required>');
+        expect(objectMarkup).toContain('"mode": "preview"');
+        expect(objectMarkup).toContain('"limit": 2');
+        expect(objectMarkup).toContain('Tool payload.');
+        expect(arrayMarkup).toContain('placeholder="[&quot;value&quot;]"');
+        expect(arrayMarkup).toContain('"alpha"');
+        expect(arrayMarkup).not.toContain('[object Object]');
+    });
+
+    test('renders boolean true defaults as checked controls', () => {
+        const app = createToolFormHarness();
+
+        const checkedMarkup = app.renderToolField('includeArchived', {
+            type: 'boolean',
+            default: true,
+        }, false);
+        const uncheckedMarkup = app.renderToolField('dryRun', {
+            type: 'boolean',
+            default: false,
+        }, false);
+
+        expect(checkedMarkup).toContain('data-tool-required="false" checked>');
+        expect(uncheckedMarkup).not.toContain(' checked');
+    });
+
+    test('collects selected enum parameters through the normal tool JSON path', () => {
+        const app = createToolFormHarness();
+        const fields = [
+            { dataset: { toolParam: 'mode', toolType: 'string' }, type: 'select-one', value: 'content' },
+            { dataset: { toolParam: 'category', toolType: 'string' }, type: 'select-one', value: '' },
+        ];
+        const form = {
+            querySelector: () => null,
+            querySelectorAll: () => fields,
+        };
+
+        expect(app.collectToolMenuFormParams(form)).toEqual({ mode: 'content' });
+    });
+
+    test('collects object and array JSON parameters through the normal tool JSON path', () => {
+        const app = createToolFormHarness();
+        const fields = [
+            { dataset: { toolParam: 'payload', toolType: 'object' }, type: 'textarea', value: '{"mode":"preview","limit":2}' },
+            { dataset: { toolParam: 'items', toolType: 'array' }, type: 'textarea', value: '["alpha","beta"]' },
+            { dataset: { toolParam: 'emptyOptional', toolType: 'object' }, type: 'textarea', value: '' },
+        ];
+        const form = {
+            querySelector: () => null,
+            querySelectorAll: () => fields,
+        };
+
+        expect(app.collectToolMenuFormParams(form)).toEqual({
+            payload: { mode: 'preview', limit: 2 },
+            items: ['alpha', 'beta'],
+        });
+    });
+
+    test('rejects structured JSON parameters with the wrong schema shape', () => {
+        const app = createToolFormHarness();
+        const arrayAsObjectForm = {
+            querySelector: () => null,
+            querySelectorAll: () => [
+                { dataset: { toolParam: 'items', toolType: 'array' }, type: 'textarea', value: '{"alpha":true}' },
+            ],
+        };
+        const objectAsArrayForm = {
+            querySelector: () => null,
+            querySelectorAll: () => [
+                { dataset: { toolParam: 'payload', toolType: 'object' }, type: 'textarea', value: '["alpha"]' },
+            ],
+        };
+
+        expect(() => app.collectToolMenuFormParams(arrayAsObjectForm)).toThrow('items must be a JSON array');
+        expect(() => app.collectToolMenuFormParams(objectAsArrayForm)).toThrow('payload must be a JSON object');
+    });
+
+    test('rejects invalid numeric values before staging tool parameters', () => {
+        const app = createToolFormHarness();
+        const invalidNumberForm = {
+            querySelector: () => null,
+            querySelectorAll: () => [
+                { dataset: { toolParam: 'limit', toolType: 'number' }, type: 'number', value: 'not-a-number' },
+            ],
+        };
+        const fractionalIntegerForm = {
+            querySelector: () => null,
+            querySelectorAll: () => [
+                { dataset: { toolParam: 'count', toolType: 'integer' }, type: 'number', value: '1.5' },
+            ],
+        };
+
+        expect(() => app.collectToolMenuFormParams(invalidNumberForm)).toThrow('limit must be a valid number');
+        expect(() => app.collectToolMenuFormParams(fractionalIntegerForm)).toThrow('count must be an integer');
+    });
+
+    test('marks boolean fields as required-aware controls', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('force', {
+            type: 'boolean',
+        }, true);
+
+        expect(markup).toContain('type="checkbox"');
+        expect(markup).toContain('data-tool-param="force"');
+        expect(markup).toContain('data-tool-required="true"');
+    });
+
+    test('omits unchecked optional boolean parameters from staged tool JSON', () => {
+        const app = createToolFormHarness();
+        const fields = [
+            { dataset: { toolParam: 'dryRun', toolType: 'boolean', toolRequired: 'false' }, type: 'checkbox', checked: false },
+            { dataset: { toolParam: 'verbose', toolType: 'boolean', toolRequired: 'false' }, type: 'checkbox', checked: true },
+            { dataset: { toolParam: 'confirm', toolType: 'boolean', toolRequired: 'true' }, type: 'checkbox', checked: false },
+        ];
+        const form = {
+            querySelector: () => null,
+            querySelectorAll: () => fields,
+        };
+
+        expect(app.collectToolMenuFormParams(form)).toEqual({
+            verbose: true,
+            confirm: false,
+        });
+    });
+});
