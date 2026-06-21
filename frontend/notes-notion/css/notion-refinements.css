@@ -4233,12 +4233,12 @@ body.agent-chat-open .main-content {
   .page-workspace {
     width: 100%;
     max-width: 100%;
-    padding: 0 18px 96px;
+    padding: 0 18px 132px;
   }
 
   .editor {
     max-width: 100%;
-    padding: 18px 0 168px 40px;
+    padding: 18px 0 208px 40px;
   }
 
   .empty-state {
@@ -4348,6 +4348,8 @@ body.agent-chat-open .main-content {
   }
 
   .agent-widget-btn {
+    min-width: 0;
+    max-width: min(152px, calc(100vw - 24px));
     min-height: 48px;
     padding: 8px 12px;
   }
@@ -4546,6 +4548,30 @@ body.agent-chat-open .main-content {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .agent-widget-btn {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    height: 48px;
+    padding: 7px;
+    border-radius: 999px;
+  }
+
+  .agent-widget-copy {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .agent-avatar {
+    width: 34px;
+    height: 34px;
   }
 
   .agent-chat-modal {
