@@ -130,4 +130,42 @@ describe('model-catalog', () => {
             provider: 'cohere',
         }));
     });
+
+    test('labels Grok models with current tool and structured-output support', () => {
+        const contract = buildModelContract({ id: 'grok-4.3', owned_by: 'gateway' });
+
+        expect(contract).toEqual(expect.objectContaining({
+            provider: 'xai',
+            contextWindow: 1000000,
+        }));
+        expect(contract.capabilities).toEqual(expect.arrayContaining([
+            'chat',
+            'streaming',
+            'tools',
+            'reasoning',
+            'structured_outputs',
+        ]));
+        expect(contract.supports).toEqual(expect.objectContaining({
+            chat: true,
+            tools: true,
+            reasoning: true,
+            structured_outputs: true,
+        }));
+    });
+
+    test('auto-selects Grok for tool and structured-output chat requests', () => {
+        const selected = selectAutoModel([
+            { id: 'custom-basic-chat', owned_by: 'gateway' },
+            { id: 'grok-4.3', owned_by: 'gateway' },
+        ], {
+            needsTools: true,
+            needsStructuredOutputs: true,
+            apiMode: 'chat',
+        });
+
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'grok-4.3',
+            provider: 'xai',
+        }));
+    });
 });

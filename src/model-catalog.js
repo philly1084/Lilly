@@ -123,13 +123,13 @@ function inferModelCapabilities(model = {}) {
         }
     } else {
         capabilities.push('chat', 'responses', 'streaming');
-        if (/(tool|function|4o|o\d|gpt-5|claude|gemini|mistral|qwen|llama)/i.test(normalizedId)) {
+        if (/(tool|function|4o|o\d|gpt-5|claude|gemini|grok|mistral|qwen|llama)/i.test(normalizedId)) {
             capabilities.push('tools');
         }
-        if (/(^|[-_/])(o\d|reason|gpt-5)/i.test(normalizedId)) {
+        if (/(^|[-_/])(o\d|reason|gpt-5|grok-4)/i.test(normalizedId)) {
             capabilities.push('reasoning');
         }
-        if (/(json|structured|4o|o\d|gpt-5|claude|gemini)/i.test(normalizedId)) {
+        if (/(json|structured|4o|o\d|gpt-5|claude|gemini|grok)/i.test(normalizedId)) {
             capabilities.push('structured_outputs');
         }
         if (/(vision|image[_-]?input|4o|omni|gpt-5|gemini|claude-3|claude-4|llava)/i.test(normalizedId)) {
@@ -145,6 +145,7 @@ function inferProviderFamily(model = {}) {
     const owner = String(model?.owned_by || model?.provider || '').toLowerCase();
     const text = `${id} ${owner}`;
     if (text.includes('openai') || /^gpt-|^o\d|^chatgpt/.test(id)) return 'openai';
+    if (text.includes('xai') || text.includes('grok')) return 'xai';
     if (text.includes('groq')) return 'groq';
     if (text.includes('gemini') || text.includes('google')) return 'gemini';
     if (text.includes('anthropic') || text.includes('claude')) return 'anthropic';
@@ -159,7 +160,10 @@ function inferProviderFamily(model = {}) {
 
 function inferContextWindow(model = {}) {
     const id = normalizeModelId(typeof model === 'string' ? model : model.id).toLowerCase();
+    if (/grok-4(?:\.3|\.20)?/.test(id)) return 1000000;
+    if (/grok-build/.test(id)) return 256000;
     if (/gpt-5|gpt-4\.1|claude|gemini-1\.5|gemini-2|qwen|deepseek|kimi/.test(id)) return 128000;
+    if (/grok/.test(id)) return 128000;
     if (/gpt-4o|o3|o4|llama-3\.1|llama-3\.3/.test(id)) return 128000;
     if (/gpt-4|mixtral|mistral-large/.test(id)) return 32000;
     return 16000;
