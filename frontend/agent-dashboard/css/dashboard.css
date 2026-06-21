@@ -233,14 +233,24 @@ body.admin-nav-open {
     position: relative;
 }
 
-.nav-item:hover {
+.nav-item:hover,
+.nav-item:focus-visible {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
+}
+
+.nav-item:focus-visible {
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: 2px;
 }
 
 .nav-item.active {
     background-color: var(--accent-primary);
     color: var(--bg-primary);
+}
+
+.nav-item.active:focus-visible {
+    outline-color: var(--text-primary);
 }
 
 .nav-item svg {

@@ -575,12 +575,26 @@ class Dashboard {
      */
     setupNavigation() {
         document.querySelectorAll('.nav-item').forEach(item => {
-            item.addEventListener('click', () => {
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('aria-current', item.classList.contains('active') ? 'page' : 'false');
+
+            const activateItem = () => {
                 const view = item.dataset.view;
                 if (view) {
                     this.navigateTo(view);
                     this.closeMobileNavigation();
                 }
+            };
+
+            item.addEventListener('click', activateItem);
+            item.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+
+                event.preventDefault();
+                activateItem();
             });
         });
         
@@ -598,7 +612,9 @@ class Dashboard {
     navigateTo(view) {
         // Update sidebar
         document.querySelectorAll('.nav-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.view === view);
+            const active = item.dataset.view === view;
+            item.classList.toggle('active', active);
+            item.setAttribute('aria-current', active ? 'page' : 'false');
         });
         
         // Update view
