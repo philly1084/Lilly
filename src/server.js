@@ -58,6 +58,7 @@ const { ConversationOrchestrator } = require('./conversation-orchestrator');
 const { ConversationRunService } = require('./conversation-run-service');
 const { AgentWorkloadService } = require('./workloads/service');
 const { AgentWorkloadRunner } = require('./workloads/runner');
+const { AgentCompanyService } = require('./agent-company');
 const { ManagedAppService } = require('./managed-apps/service');
 const { ProviderSessionService } = require('./provider-session-service');
 const { RemoteAgentTaskService } = require('./remote-agent-task-service');
@@ -467,6 +468,12 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
             workloadService: app.locals.agentWorkloadService,
         });
         app.locals.agentWorkloadRunner.start();
+        app.locals.agentCompanyService = new AgentCompanyService({
+            settingsController,
+            workloadService: app.locals.agentWorkloadService,
+            sessionStore,
+        });
+        app.locals.agentCompanyService.start();
         app.locals.asyncLabService = asyncLabService;
         asyncLabService.configureExecutionRuntime?.({
             toolManager,

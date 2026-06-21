@@ -294,6 +294,9 @@ class Dashboard {
             e.preventDefault();
             this.saveAgentRuntimeSettings();
         });
+        document.getElementById('agentCompanyHeartbeatBtn')?.addEventListener('click', () => {
+            this.runAgentCompanyHeartbeat();
+        });
         document.getElementById('settingsAgentDirectedRuntime')?.addEventListener('change', (e) => {
             this.setInputValue('orchestrationAgentDirectedRuntime', String(e.target.checked));
         });
@@ -1981,10 +1984,11 @@ class Dashboard {
      */
     async loadSettings({ preserveDirty = true, background = false } = {}) {
         try {
-            const [settingsResponse, podcastAudioResponse, storageResponse] = await Promise.allSettled([
+            const [settingsResponse, podcastAudioResponse, storageResponse, agentCompanyResponse] = await Promise.allSettled([
                 apiClient.get('/api/admin/settings'),
                 apiClient.get('/api/admin/podcast-audio'),
                 apiClient.get('/api/admin/storage'),
+                apiClient.get('/api/admin/agent-company'),
             ]);
 
             if (settingsResponse.status === 'fulfilled') {
@@ -2003,6 +2007,10 @@ class Dashboard {
 
             if (storageResponse.status === 'fulfilled') {
                 this.renderStorageSettings(this.unwrapApiPayload(storageResponse.value, null));
+            }
+
+            if (agentCompanyResponse.status === 'fulfilled') {
+                this.renderAgentCompanyStatus(this.unwrapApiPayload(agentCompanyResponse.value, null));
             }
 
             if (!background) {
@@ -3466,14 +3474,60 @@ class Dashboard {
                     asyncRuntimeWebChatParallel: document.getElementById('settingsAsyncRuntimeWebChatParallel').checked,
                     asyncRuntimeAllowLiveRemote: document.getElementById('settingsAsyncRuntimeAllowLiveRemote').checked,
                 },
+                agentCompany: {
+                    ...(this.state.settings?.agentCompany || {}),
+                    enabled: document.getElementById('settingsAgentCompanyEnabled')?.checked === true,
+                    companyGoal: document.getElementById('settingsAgentCompanyGoal')?.value || '',
+                    heartbeatMinutes: parseInt(document.getElementById('settingsAgentCompanyHeartbeatMinutes')?.value || '60', 10),
+                    weeklyWorkloadLimit: parseInt(document.getElementById('settingsAgentCompanyWeeklyWorkloadLimit')?.value || '3', 10),
+                    maxConcurrentWorkloads: parseInt(document.getElementById('settingsAgentCompanyMaxConcurrentWorkloads')?.value || '1', 10),
+                    primaryModel: document.getElementById('settingsAgentCompanyPrimaryModel')?.value || '',
+                    escalationModels: (document.getElementById('settingsAgentCompanyEscalationModels')?.value || '')
+                        .split(',')
+                        .map((model) => model.trim())
+                        .filter(Boolean),
+                },
             };
 
             const response = await apiClient.put('/api/admin/settings', settings);
             this.applySettings(this.unwrapApiPayload(response, settings));
+            await this.loadAgentCompanyStatus();
             this.showToast('Runtime setting saved', 'success');
         } catch (error) {
             console.error('Error saving runtime setting:', error);
             this.showToast('Failed to save runtime setting', 'error');
+        }
+    }
+
+    async loadAgentCompanyStatus() {
+        try {
+            const response = await apiClient.get('/api/admin/agent-company');
+            this.renderAgentCompanyStatus(this.unwrapApiPayload(response, null));
+        } catch (error) {
+            this.renderAgentCompanyStatus({
+                available: false,
+                state: {
+                    heartbeat: {
+                        status: 'unavailable',
+                        reason: error.message || 'status_failed',
+                    },
+                },
+            });
+        }
+    }
+
+    async runAgentCompanyHeartbeat() {
+        try {
+            const response = await apiClient.post('/api/admin/agent-company/heartbeat', {
+                reason: 'admin',
+            });
+            const status = this.unwrapApiPayload(response, null);
+            this.renderAgentCompanyStatus(status);
+            const created = status?.createdWorkloads?.length || status?.state?.heartbeat?.createdWorkloads || 0;
+            this.showToast(created > 0 ? `Heartbeat scheduled ${created} workload${created === 1 ? '' : 's'}` : 'Heartbeat checked current work', 'success');
+        } catch (error) {
+            console.error('Error running agent company heartbeat:', error);
+            this.showToast('Failed to run company heartbeat', 'error');
         }
     }
     
@@ -6332,6 +6386,23 @@ class Dashboard {
         select.value = models.includes(currentValue) || currentValue === 'all' ? currentValue : 'all';
     }
 
+    renderAgentCompanyStatus(status = null) {
+        const label = document.getElementById('settingsAgentCompanyStatus');
+        if (!label) {
+            return;
+        }
+
+        const heartbeat = status?.state?.heartbeat || {};
+        const running = status?.state?.runningWork || {};
+        const available = status?.available === true;
+        const statusText = heartbeat.status || (available ? 'ready' : 'standby');
+        const nextAt = heartbeat.nextAt ? this.formatDate(heartbeat.nextAt) : 'not scheduled';
+        const workText = `${Number(running.running || 0)} running, ${Number(running.queued || 0)} queued`;
+        const reason = heartbeat.reason ? `; ${heartbeat.reason}` : '';
+
+        label.textContent = `Heartbeat ${statusText}; next ${nextAt}; ${workText}${reason}.`;
+    }
+
     applySettings(settings = {}, { preserveDirty = false } = {}) {
         this.state.settings = settings;
 
@@ -6341,6 +6412,7 @@ class Dashboard {
         const features = settings.features || {};
         const orchestration = settings.orchestration || {};
         const asyncRuntime = settings.asyncRuntime || {};
+        const agentCompany = settings.agentCompany || {};
         const personality = settings.personality || {};
         const userProfile = settings.userProfile || {};
         const agentNotes = settings.agentNotes || {};
@@ -6447,6 +6519,13 @@ class Dashboard {
         this.setCheckboxValue('settingsAsyncRuntimeWebChatParallel', asyncRuntime.webChatParallelEnabled === true);
         this.setInputValue('orchestrationAsyncRuntimeAllowLiveRemote', String(asyncRuntime.liveRemoteRequested === true || asyncRuntime.allowLiveRemote === true));
         this.setCheckboxValue('settingsAsyncRuntimeAllowLiveRemote', asyncRuntime.liveRemoteRequested === true || asyncRuntime.allowLiveRemote === true);
+        this.setCheckboxValue('settingsAgentCompanyEnabled', agentCompany.enabled === true);
+        this.setInputValue('settingsAgentCompanyGoal', agentCompany.companyGoal || '', { preserveDirty });
+        this.setInputValue('settingsAgentCompanyHeartbeatMinutes', agentCompany.heartbeatMinutes || 60);
+        this.setInputValue('settingsAgentCompanyWeeklyWorkloadLimit', agentCompany.weeklyWorkloadLimit || 3);
+        this.setInputValue('settingsAgentCompanyMaxConcurrentWorkloads', agentCompany.maxConcurrentWorkloads || 1);
+        this.setInputValue('settingsAgentCompanyPrimaryModel', agentCompany.primaryModel || '', { preserveDirty });
+        this.setInputValue('settingsAgentCompanyEscalationModels', (agentCompany.escalationModels || []).join(', '), { preserveDirty });
         const asyncRuntimeStatus = document.getElementById('settingsAsyncRuntimeStatus');
         if (asyncRuntimeStatus) {
             const availability = asyncRuntime.adminToggleAllowed

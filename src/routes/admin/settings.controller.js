@@ -60,6 +60,24 @@ const DEFAULT_PRIVACY_PII_SETTINGS = {
   },
 };
 
+const DEFAULT_AGENT_COMPANY_ROLES = [
+  {
+    id: 'strategy',
+    name: 'Strategy Lead',
+    mission: 'Turn the company goal into a weekly plan, pick priorities, and decide what should wait.',
+  },
+  {
+    id: 'production',
+    name: 'Production Lead',
+    mission: 'Create the core public deliverables such as episodes, pages, scripts, posts, documents, and assets.',
+  },
+  {
+    id: 'operations',
+    name: 'Operations Lead',
+    mission: 'Check running work, verify outputs, update schedules, and prevent duplicate loops.',
+  },
+];
+
 const PRIVACY_PII_ACTIONS = new Set(['vault-placeholder', 'mask', 'remove', 'ignore']);
 const NON_RESTORABLE_IDENTITY_TYPES = new Set([
   'personName',
@@ -1024,9 +1042,13 @@ class SettingsController {
     const gitlabUpdate = normalized.integrations?.gitlab;
     const managedAppsUpdate = normalized.integrations?.managedApps;
     const orchestrationUpdate = normalized.orchestration;
+    const agentCompanyUpdate = normalized.agentCompany;
     const privacyPiiUpdate = normalized.privacyPii;
     if (orchestrationUpdate && typeof orchestrationUpdate === 'object') {
       normalized.orchestration = this.normalizeOrchestrationSettings(orchestrationUpdate);
+    }
+    if (agentCompanyUpdate && typeof agentCompanyUpdate === 'object') {
+      normalized.agentCompany = this.normalizeAgentCompanySettings(agentCompanyUpdate);
     }
     if (privacyPiiUpdate && typeof privacyPiiUpdate === 'object') {
       normalized.privacyPii = normalizePrivacyPiiSettings(
@@ -1245,6 +1267,72 @@ class SettingsController {
     return next;
   }
 
+  normalizeAgentCompanyRoles(value = [], fallback = DEFAULT_AGENT_COMPANY_ROLES) {
+    const source = Array.isArray(value) ? value : [];
+    const normalized = source
+      .map((role, index) => {
+        if (typeof role === 'string') {
+          const name = String(role || '').trim();
+          if (!name) return null;
+          return {
+            id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `role-${index + 1}`,
+            name,
+            mission: '',
+          };
+        }
+        if (!role || typeof role !== 'object' || Array.isArray(role)) {
+          return null;
+        }
+        const name = String(role.name || role.label || role.id || '').trim();
+        if (!name) return null;
+        const id = String(role.id || name)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 48) || `role-${index + 1}`;
+        return {
+          id,
+          name: name.slice(0, 80),
+          mission: String(role.mission || role.description || '').trim().slice(0, 500),
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 8);
+
+    return normalized.length > 0 ? normalized : fallback.map((role) => ({ ...role }));
+  }
+
+  normalizeAgentCompanySettings(value = {}) {
+    const current = this.settings?.agentCompany || this.getDefaultSettings().agentCompany;
+    const next = {
+      ...current,
+      ...value,
+    };
+
+    next.enabled = value.enabled !== undefined
+      ? Boolean(value.enabled)
+      : current.enabled === true;
+    next.companyGoal = String(next.companyGoal || next.goal || '').trim().slice(0, 4000);
+    next.heartbeatMinutes = Math.max(15, parseBoundedPositiveInteger(next.heartbeatMinutes, current.heartbeatMinutes || 60, 1440));
+    next.scheduleHorizonDays = parseBoundedPositiveInteger(next.scheduleHorizonDays, current.scheduleHorizonDays || 7, 30);
+    next.weeklyWorkloadLimit = parseBoundedPositiveInteger(next.weeklyWorkloadLimit, current.weeklyWorkloadLimit || 3, 12);
+    next.maxConcurrentWorkloads = parseBoundedPositiveInteger(next.maxConcurrentWorkloads, current.maxConcurrentWorkloads || 1, 4);
+    next.ownerId = String(next.ownerId || 'system').trim().slice(0, 80) || 'system';
+    next.sessionId = String(next.sessionId || 'agent-company').trim().slice(0, 120) || 'agent-company';
+    next.primaryModel = String(next.primaryModel || '').trim().slice(0, 120);
+    next.escalationModels = this.normalizeStringArray(
+      next.escalationModels ?? next.fallbackModels ?? next.modelFallbacks,
+      current.escalationModels || ['gpt-5.5', 'codex-latest'],
+    ).slice(0, 8);
+    next.roles = this.normalizeAgentCompanyRoles(next.roles, current.roles || DEFAULT_AGENT_COMPANY_ROLES);
+
+    delete next.goal;
+    delete next.fallbackModels;
+    delete next.modelFallbacks;
+    return next;
+  }
+
   getPublicSettings() {
     const publicSettings = JSON.parse(JSON.stringify(this.settings));
     const ssh = publicSettings.integrations?.ssh;
@@ -1288,6 +1376,7 @@ class SettingsController {
     }
     publicSettings.orchestration = this.getEffectiveOrchestrationConfig();
     publicSettings.asyncRuntime = this.getEffectiveAsyncRuntimeConfig();
+    publicSettings.agentCompany = this.getEffectiveAgentCompanyConfig();
     publicSettings.privacyPii = this.getEffectivePrivacyPiiConfig();
     if (publicSettings.integrations?.opencode) {
       delete publicSettings.integrations.opencode;
@@ -1639,6 +1728,32 @@ class SettingsController {
     };
   }
 
+  getEffectiveAgentCompanyConfig() {
+    const defaults = this.getDefaultSettings().agentCompany;
+    const stored = this.settings?.agentCompany || {};
+    const merged = this.normalizeAgentCompanySettings({
+      ...defaults,
+      ...stored,
+    });
+    const envEnabled = String(process.env.KIMIBUILT_AGENT_COMPANY_ENABLED || '').trim().toLowerCase();
+    const envGoal = String(process.env.KIMIBUILT_AGENT_COMPANY_GOAL || '').trim();
+    const envPrimaryModel = String(process.env.KIMIBUILT_AGENT_COMPANY_PRIMARY_MODEL || '').trim();
+    const envEscalationModels = String(process.env.KIMIBUILT_AGENT_COMPANY_ESCALATION_MODELS || '').trim();
+
+    return {
+      ...merged,
+      enabled: envEnabled
+        ? ['1', 'true', 'yes', 'on', 'enabled'].includes(envEnabled)
+        : merged.enabled === true,
+      companyGoal: envGoal || merged.companyGoal || '',
+      primaryModel: envPrimaryModel || merged.primaryModel || '',
+      escalationModels: envEscalationModels
+        ? this.normalizeStringArray(envEscalationModels, merged.escalationModels)
+        : this.normalizeStringArray(merged.escalationModels, defaults.escalationModels),
+      source: this.canUsePostgresSettings() ? 'postgres' : 'file',
+    };
+  }
+
   getEffectivePrivacyPiiConfig() {
     const stored = this.settings?.privacyPii || {};
     const settings = {
@@ -1707,6 +1822,19 @@ class SettingsController {
         asyncRuntimeEnabled: config.asyncRuntime?.enabled === true,
         asyncRuntimeWebChatParallel: false,
         asyncRuntimeAllowLiveRemote: false,
+      },
+      agentCompany: {
+        enabled: false,
+        companyGoal: '',
+        heartbeatMinutes: 60,
+        scheduleHorizonDays: 7,
+        weeklyWorkloadLimit: 3,
+        maxConcurrentWorkloads: 1,
+        ownerId: 'system',
+        sessionId: 'agent-company',
+        primaryModel: '',
+        escalationModels: ['gpt-5.5', 'codex-latest'],
+        roles: DEFAULT_AGENT_COMPANY_ROLES.map((role) => ({ ...role })),
       },
       personality: {
         enabled: true,

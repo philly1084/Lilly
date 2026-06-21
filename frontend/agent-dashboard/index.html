@@ -1662,8 +1662,47 @@
                                                     <span class="toggle-slider"></span>
                                                 </label>
                                             </div>
+                                            <div class="feature-item">
+                                                <div class="feature-info">
+                                                    <span class="feature-name">Agent company heartbeat</span>
+                                                    <span class="feature-desc" id="settingsAgentCompanyStatus">Keep a small weekly operating rhythm for long-form company goals.</span>
+                                                </div>
+                                                <label class="toggle">
+                                                    <input type="checkbox" id="settingsAgentCompanyEnabled">
+                                                    <span class="toggle-slider"></span>
+                                                </label>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="settingsAgentCompanyGoal">Company goal</label>
+                                                <textarea class="form-control" id="settingsAgentCompanyGoal" rows="4" placeholder="Run a podcast company: plan the schedule, produce episodes, maintain the site, and review operations weekly."></textarea>
+                                            </div>
+                                            <div class="form-grid">
+                                                <div class="form-group">
+                                                    <label for="settingsAgentCompanyHeartbeatMinutes">Heartbeat minutes</label>
+                                                    <input type="number" class="form-control" id="settingsAgentCompanyHeartbeatMinutes" min="15" max="1440" step="15">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="settingsAgentCompanyWeeklyWorkloadLimit">Weekly workload limit</label>
+                                                    <input type="number" class="form-control" id="settingsAgentCompanyWeeklyWorkloadLimit" min="1" max="12" step="1">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="settingsAgentCompanyMaxConcurrentWorkloads">Concurrent workload limit</label>
+                                                    <input type="number" class="form-control" id="settingsAgentCompanyMaxConcurrentWorkloads" min="1" max="4" step="1">
+                                                </div>
+                                            </div>
+                                            <div class="form-grid">
+                                                <div class="form-group">
+                                                    <label for="settingsAgentCompanyPrimaryModel">Primary company model</label>
+                                                    <input type="text" class="form-control" id="settingsAgentCompanyPrimaryModel" placeholder="Use orchestration default">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="settingsAgentCompanyEscalationModels">Escalation models</label>
+                                                    <input type="text" class="form-control" id="settingsAgentCompanyEscalationModels" placeholder="gpt-5.5, codex-latest">
+                                                </div>
+                                            </div>
                                             <div class="form-actions">
                                                 <button type="submit" class="btn btn-primary">Save Runtime</button>
+                                                <button type="button" class="btn btn-secondary" id="agentCompanyHeartbeatBtn">Heartbeat Now</button>
                                             </div>
                                         </form>
                                     </div>

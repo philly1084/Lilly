@@ -121,6 +121,39 @@ describe('/api/admin workload routes', () => {
         expect(response.body.success).toBe(true);
     });
 
+    test('exposes agent company status and manual heartbeat', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+        };
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                available: true,
+                state: {
+                    heartbeat: { status: 'steady' },
+                },
+            })),
+            tick: jest.fn(async () => ({
+                available: true,
+                createdWorkloads: [{ id: 'workload-1' }],
+            })),
+        };
+
+        const statusResponse = await request(app).get('/api/admin/agent-company');
+        const heartbeatResponse = await request(app)
+            .post('/api/admin/agent-company/heartbeat')
+            .send({ reason: 'test' });
+
+        expect(statusResponse.status).toBe(200);
+        expect(statusResponse.body.data.state.heartbeat.status).toBe('steady');
+        expect(heartbeatResponse.status).toBe(200);
+        expect(app.locals.agentCompanyService.tick).toHaveBeenCalledWith({
+            force: true,
+            reason: 'test',
+        });
+        expect(heartbeatResponse.body.data.createdWorkloads).toHaveLength(1);
+    });
+
     test('creates a fallback dashboard controller when startup did not initialize one', async () => {
         const service = {
             isAvailable: jest.fn(() => true),

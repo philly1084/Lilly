@@ -111,6 +111,37 @@ router.post('/settings/reset', callController(settingsController, 'reset'));
 router.post('/settings/clear-cache', callController(settingsController, 'clearCache'));
 router.post('/settings/privacy-pii/preview', callController(settingsController, 'previewPrivacyPii'));
 
+router.get('/agent-company', async (req, res, next) => {
+  try {
+    const service = req.app.locals.agentCompanyService;
+    if (!service?.getStatus) {
+      return res.status(503).json({ success: false, error: 'Agent company service is not initialized' });
+    }
+
+    const status = await service.getStatus();
+    res.json({ success: true, data: status });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/agent-company/heartbeat', async (req, res, next) => {
+  try {
+    const service = req.app.locals.agentCompanyService;
+    if (!service?.tick) {
+      return res.status(503).json({ success: false, error: 'Agent company service is not initialized' });
+    }
+
+    const status = await service.tick({
+      force: true,
+      reason: String(req.body?.reason || 'admin').trim() || 'admin',
+    });
+    res.json({ success: true, data: status });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Podcast audio assets
 router.get('/podcast-audio', callController(podcastAudioController, 'list'));
 router.post('/podcast-audio/:track', callController(podcastAudioController, 'upload'));
