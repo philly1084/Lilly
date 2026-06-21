@@ -2160,6 +2160,50 @@ body {
     box-shadow: 0 0 0 3px rgba(95, 179, 169, 0.12);
 }
 
+.icon-btn:focus-visible,
+.type-btn:focus-visible,
+.template-chip:focus-visible,
+.mini-btn:focus-visible,
+.link-btn:focus-visible,
+.btn:focus-visible,
+.suggestion-chip:focus-visible,
+.status-btn:focus-visible,
+.diagram-control-btn:focus-visible {
+    outline-color: var(--accent-primary) !important;
+    outline-style: solid !important;
+    outline-width: 2px !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(95, 179, 169, 0.16) !important;
+}
+
+.icon-btn:focus,
+.template-chip:focus,
+.mini-btn:focus,
+.link-btn:focus,
+.btn:focus,
+.suggestion-chip:focus,
+.status-btn:focus,
+.diagram-control-btn:focus {
+    outline-color: var(--accent-primary) !important;
+    outline-style: solid !important;
+    outline-width: 2px !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(95, 179, 169, 0.16) !important;
+}
+
+.type-btn:focus-visible,
+.status-btn:focus-visible,
+.icon-btn:focus-visible {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-primary:focus-visible,
+.btn-accent:focus-visible {
+    outline-color: var(--text-active) !important;
+    box-shadow: 0 0 0 4px rgba(95, 179, 169, 0.34) !important;
+}
+
 .btn-primary {
     background: var(--accent-primary);
     color: #071513;
