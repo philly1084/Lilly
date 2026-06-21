@@ -58,6 +58,26 @@ function createNavigationHarness() {
     return { dom, dashboard };
 }
 
+function createSettingsHarness() {
+    const dom = new JSDOM(`
+        <div class="settings-nav">
+            <button class="settings-nav-item active" data-settings="general">General</button>
+            <button class="settings-nav-item" data-settings="api">API</button>
+        </div>
+        <div class="settings-section active" id="generalSettings"></div>
+        <div class="settings-section" id="apiSettings"></div>
+    `, { url: 'http://localhost:3000/admin/?view=settings' });
+    const Dashboard = loadDashboardClass(dom);
+    const dashboard = Object.create(Dashboard.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    dashboard.setupSettingsNavigation();
+
+    return { dashboard };
+}
+
 describe('agent dashboard navigation accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -130,5 +150,28 @@ describe('agent dashboard navigation accessibility', () => {
         expect(sidebar.classList.contains('open')).toBe(false);
         expect(mobileToggle.getAttribute('aria-expanded')).toBe('false');
         expect(document.activeElement).toBe(mobileToggle);
+    });
+
+    test('exposes settings sections as selectable tabs', () => {
+        const { dashboard } = createSettingsHarness();
+        const generalTab = document.querySelector('[data-settings="general"]');
+        const apiTab = document.querySelector('[data-settings="api"]');
+        const generalPanel = document.getElementById('generalSettings');
+        const apiPanel = document.getElementById('apiSettings');
+
+        expect(document.querySelector('.settings-nav').getAttribute('role')).toBe('tablist');
+        expect(generalTab.getAttribute('role')).toBe('tab');
+        expect(generalTab.getAttribute('aria-selected')).toBe('true');
+        expect(generalTab.getAttribute('aria-controls')).toBe('generalSettings');
+        expect(generalPanel.getAttribute('role')).toBe('tabpanel');
+        expect(generalPanel.getAttribute('aria-labelledby')).toBe(generalTab.id);
+        expect(apiPanel.hidden).toBe(true);
+
+        dashboard.switchSettingsSection('api');
+
+        expect(generalTab.getAttribute('aria-selected')).toBe('false');
+        expect(apiTab.getAttribute('aria-selected')).toBe('true');
+        expect(generalPanel.hidden).toBe(true);
+        expect(apiPanel.hidden).toBe(false);
     });
 });

@@ -89,6 +89,7 @@ class Dashboard {
     async init() {
         this.setupEventListeners();
         this.setupNavigation();
+        this.setupSettingsNavigation();
         this.setupPromptEditor();
         this.setupCharts();
         this.setupWebSocket();
@@ -3766,14 +3767,40 @@ class Dashboard {
         
         this.renderTraces(filtered);
     }
+
+    setupSettingsNavigation() {
+        document.querySelector('.settings-nav')?.setAttribute('role', 'tablist');
+        document.querySelectorAll('.settings-nav-item').forEach(item => {
+            const section = item.dataset.settings;
+            const panel = section ? document.getElementById(`${section}Settings`) : null;
+            if (!section || !panel) {
+                return;
+            }
+
+            if (!item.id) {
+                item.id = `${section}SettingsTab`;
+            }
+
+            item.setAttribute('role', 'tab');
+            item.setAttribute('aria-controls', panel.id);
+            item.setAttribute('aria-selected', item.classList.contains('active') ? 'true' : 'false');
+            panel.setAttribute('role', 'tabpanel');
+            panel.setAttribute('aria-labelledby', item.id);
+            panel.hidden = !panel.classList.contains('active');
+        });
+    }
     
     switchSettingsSection(section) {
         document.querySelectorAll('.settings-nav-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.settings === section);
+            const active = item.dataset.settings === section;
+            item.classList.toggle('active', active);
+            item.setAttribute('aria-selected', active ? 'true' : 'false');
         });
         
         document.querySelectorAll('.settings-section').forEach(s => {
-            s.classList.toggle('active', s.id === `${section}Settings`);
+            const active = s.id === `${section}Settings`;
+            s.classList.toggle('active', active);
+            s.hidden = !active;
         });
     }
     
