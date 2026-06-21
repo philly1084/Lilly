@@ -4,6 +4,11 @@ const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
 const { getStateDirectory } = require('./runtime-state-paths');
+const {
+    normalizeDailyAlignmentConfig,
+    runDailyFeedbackAlignment,
+    shouldRunDailyAlignment,
+} = require('./alignment/daily-feedback-loop');
 
 const DEFAULT_STATE_FILENAME = 'agent-company-state.json';
 const DEFAULT_OWNER_ID = 'system';
@@ -98,6 +103,7 @@ function normalizeConfig(config = {}) {
         primaryModel: sanitizeText(config.primaryModel || ''),
         escalationModels: escalationModels.length > 0 ? escalationModels.slice(0, 8) : ['gpt-5.5', 'codex-latest'],
         roles: roles.slice(0, 8),
+        dailyAlignment: normalizeDailyAlignmentConfig(config.dailyAlignment),
         source: sanitizeText(config.source || ''),
     };
 }
@@ -128,6 +134,15 @@ function defaultState() {
             queued: 0,
             companyWorkloads: 0,
         },
+        dailyAlignment: {
+            status: 'idle',
+            lastAt: null,
+            nextAt: null,
+            lastDayKey: '',
+            applied: [],
+            rejected: [],
+            evidence: {},
+        },
         createdWorkloads: [],
         updatedAt: null,
     };
@@ -138,6 +153,9 @@ class AgentCompanyService {
         settingsController,
         workloadService,
         sessionStore,
+        logsController = null,
+        collectAlignmentSuggestions = null,
+        applySelfReflectionUpdate = null,
         statePath = path.join(getStateDirectory(), DEFAULT_STATE_FILENAME),
         pollMs = 60000,
         now = () => new Date(),
@@ -145,6 +163,9 @@ class AgentCompanyService {
         this.settingsController = settingsController;
         this.workloadService = workloadService;
         this.sessionStore = sessionStore;
+        this.logsController = logsController;
+        this.collectAlignmentSuggestions = collectAlignmentSuggestions;
+        this.applySelfReflectionUpdate = applySelfReflectionUpdate;
         this.statePath = statePath;
         this.pollMs = pollMs;
         this.now = now;
@@ -224,6 +245,9 @@ class AgentCompanyService {
     }
 
     shouldHeartbeat(state = {}, config = {}) {
+        if (shouldRunDailyAlignment(state?.dailyAlignment || {}, config?.dailyAlignment || {}, this.now())) {
+            return true;
+        }
         if (!config.enabled || !config.companyGoal) {
             return false;
         }
@@ -232,6 +256,21 @@ class AgentCompanyService {
             return true;
         }
         return nextAt.getTime() <= this.now().getTime();
+    }
+
+    async buildDailyAlignmentState(config = {}, currentState = {}, heartbeat = {}, { force = false, reason = 'timer' } = {}) {
+        return runDailyFeedbackAlignment({
+            config: config.dailyAlignment,
+            previousState: currentState.dailyAlignment || {},
+            heartbeat,
+            logs: this.logsController?.logs || [],
+            sessionStore: this.sessionStore,
+            collectSuggestions: this.collectAlignmentSuggestions || undefined,
+            applyUpdate: this.applySelfReflectionUpdate || undefined,
+            now: this.now(),
+            force,
+            reason,
+        });
     }
 
     async tick({ force = false, reason = 'timer' } = {}) {
@@ -251,19 +290,28 @@ class AgentCompanyService {
                     skipped: true,
                 };
             }
-            return this.heartbeat({ config, state, reason });
+            return this.heartbeat({ config, state, reason, force });
         } finally {
             this.isTicking = false;
         }
     }
 
-    async heartbeat({ config = this.getConfig(), state = null, reason = 'manual' } = {}) {
+    async heartbeat({ config = this.getConfig(), state = null, reason = 'manual', force = false } = {}) {
         const currentState = state || await this.readState();
         const now = this.now();
         const goalHash = hashGoal(config.companyGoal);
         const nextAt = new Date(now.getTime() + config.heartbeatMinutes * 60 * 1000).toISOString();
 
         if (!config.enabled || !config.companyGoal) {
+            const heartbeat = {
+                status: config.enabled ? 'waiting_for_goal' : 'disabled',
+                lastAt: now.toISOString(),
+                nextAt,
+                reason,
+                createdWorkloads: 0,
+                skipped: 1,
+            };
+            const dailyAlignment = await this.buildDailyAlignmentState(config, currentState, heartbeat, { force, reason });
             const saved = await this.writeState({
                 ...currentState,
                 enabled: config.enabled,
@@ -274,19 +322,22 @@ class AgentCompanyService {
                     primaryModel: config.primaryModel,
                     escalationModels: config.escalationModels,
                 },
-                heartbeat: {
-                    status: config.enabled ? 'waiting_for_goal' : 'disabled',
-                    lastAt: now.toISOString(),
-                    nextAt,
-                    reason,
-                    createdWorkloads: 0,
-                    skipped: 1,
-                },
+                heartbeat,
+                dailyAlignment,
             });
             return { available: false, config, state: saved };
         }
 
         if (!this.workloadService?.isAvailable?.() || !this.sessionStore?.getOrCreateOwned) {
+            const heartbeat = {
+                status: 'standby',
+                lastAt: now.toISOString(),
+                nextAt,
+                reason: 'workload_service_unavailable',
+                createdWorkloads: 0,
+                skipped: 1,
+            };
+            const dailyAlignment = await this.buildDailyAlignmentState(config, currentState, heartbeat, { force, reason });
             const saved = await this.writeState({
                 ...currentState,
                 enabled: true,
@@ -298,14 +349,8 @@ class AgentCompanyService {
                     primaryModel: config.primaryModel,
                     escalationModels: config.escalationModels,
                 },
-                heartbeat: {
-                    status: 'standby',
-                    lastAt: now.toISOString(),
-                    nextAt,
-                    reason: 'workload_service_unavailable',
-                    createdWorkloads: 0,
-                    skipped: 1,
-                },
+                heartbeat,
+                dailyAlignment,
             });
             return { available: false, config, state: saved };
         }
@@ -344,6 +389,16 @@ class AgentCompanyService {
         }
         const createdIds = new Set(created.map((entry) => entry.id));
 
+        const heartbeat = {
+            status: !canCreateWork ? 'active_limit' : (created.length > 0 ? 'scheduled' : 'steady'),
+            lastAt: now.toISOString(),
+            nextAt,
+            reason,
+            createdWorkloads: created.length,
+            skipped: schedule.length - created.length,
+        };
+        const dailyAlignment = await this.buildDailyAlignmentState(config, currentState, heartbeat, { force, reason });
+
         const saved = await this.writeState({
             ...currentState,
             enabled: true,
@@ -357,14 +412,8 @@ class AgentCompanyService {
                 escalationModels: config.escalationModels,
             },
             runningWork,
-            heartbeat: {
-                status: !canCreateWork ? 'active_limit' : (created.length > 0 ? 'scheduled' : 'steady'),
-                lastAt: now.toISOString(),
-                nextAt,
-                reason,
-                createdWorkloads: created.length,
-                skipped: schedule.length - created.length,
-            },
+            heartbeat,
+            dailyAlignment,
             createdWorkloads: [
                 ...created,
                 ...((currentState.createdWorkloads || []).filter((entry) => !createdIds.has(entry?.id)).slice(0, 50)),

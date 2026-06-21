@@ -74,6 +74,70 @@ describe('AgentCompanyService', () => {
         expect(JSON.parse(await fs.readFile(statePath, 'utf8')).heartbeat.status).toBe('standby');
     });
 
+    test('runs daily alignment from heartbeat state even when company scheduling is disabled', async () => {
+        const applySelfReflectionUpdate = jest.fn(() => ({
+            id: 'self-reflection-daily',
+            applied: true,
+            actions: [{ type: 'model_card_note', status: 'recorded' }],
+        }));
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig({
+                    enabled: false,
+                    companyGoal: '',
+                    dailyAlignment: {
+                        enabled: true,
+                        autoApply: true,
+                    },
+                }),
+            },
+            workloadService: {
+                isAvailable: () => false,
+            },
+            sessionStore: {},
+            logsController: {
+                logs: [{
+                    timestamp: '2026-06-22T11:00:00.000Z',
+                    level: 'error',
+                    status: 'failed',
+                    error: 'planner skipped browser proof',
+                }],
+            },
+            collectAlignmentSuggestions: jest.fn(async () => ({
+                suggestions: [{
+                    id: 'daily-proof-note',
+                    canApply: true,
+                    applied: false,
+                    rating: 'down',
+                    input: {
+                        source: 'alignment-evaluator',
+                        trigger: 'model-card finding from alignment feedback',
+                        actions: [{
+                            type: 'model_card_note',
+                            content: 'Durable lesson: run the required proof path before finalizing.',
+                            reason: 'durable future routing guidance',
+                        }],
+                    },
+                }],
+                meta: { count: 1 },
+            })),
+            applySelfReflectionUpdate,
+        });
+
+        const result = await service.tick({ force: true, reason: 'test-daily-alignment' });
+
+        expect(result.state.heartbeat.status).toBe('disabled');
+        expect(result.state.dailyAlignment.status).toBe('applied');
+        expect(result.state.dailyAlignment.evidence.logs.count).toBe(1);
+        expect(result.state.dailyAlignment.applied).toEqual([expect.objectContaining({
+            id: 'daily-proof-note',
+            resultId: 'self-reflection-daily',
+        })]);
+        expect(applySelfReflectionUpdate).toHaveBeenCalledTimes(1);
+    });
+
     test('creates one weekly set of long-agent workloads and skips duplicates on the next heartbeat', async () => {
         const createdWorkloads = [];
         const workloadService = {

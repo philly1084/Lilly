@@ -38,6 +38,7 @@ const designResourcesRouter = require('./routes/design-resources');
 const unsplashRouter = require('./routes/unsplash');
 const adminRouter = require('./routes/admin');
 const settingsController = require('./routes/admin/settings.controller');
+const logsController = require('./routes/admin/logs.controller');
 const authRouter = require('./routes/auth');
 const toolsRouter = require('./routes/tools');
 const skillsRouter = require('./routes/skills');
@@ -472,6 +473,7 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
             settingsController,
             workloadService: app.locals.agentWorkloadService,
             sessionStore,
+            logsController,
         });
         app.locals.agentCompanyService.start();
         app.locals.asyncLabService = asyncLabService;

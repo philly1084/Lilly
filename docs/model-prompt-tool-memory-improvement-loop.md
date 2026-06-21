@@ -91,7 +91,20 @@ Guardrails:
 - `src/orchestration/run-harness.js` records harness evidence, blockers, diagnostics, failed tool events, retry counts, token counts, and grading payloads.
 - `src/conversation-orchestrator.js` attaches memory read/write targets, tool readiness, decision trace, verification summary, perceived-intelligence scores, failure tags, usage metadata, and harness metadata to responses and traces.
 - `src/alignment/evaluator-service.js` turns feedback into practical route, tool, source, memory, and regression-fixture guidance.
+- `src/alignment/daily-feedback-loop.js` runs from the agent-company heartbeat once per day, summarizes recent logs plus heartbeat state, validates pending self-reflection suggestions, and auto-applies at most one low-risk durable learning action such as `model_card_note` or carryover-note append.
 - `docs/prompt-optimization-hourly-backlog.md` is the recurring small-change lane for prompt and prompt-routing hardening.
+
+## Daily Heartbeat Alignment
+
+The daily alignment loop is the automatic bridge between yesterday's evidence and tomorrow's behavior. It does not treat raw logs as instructions. Instead, it uses logs and heartbeat status as evidence, then applies only bounded suggestions already produced by the alignment evaluator or after-process audit path.
+
+Defaults:
+
+- Runs through `AgentCompanyService` even when company workload scheduling is disabled.
+- Stores its last run, next run, evidence summary, applied suggestion ids, and rejected suggestions under `state.dailyAlignment`.
+- Auto-applies at most one safe suggestion per day by default.
+- Safe automatic action types are limited to `model_card_note`, `agent_notes_append`, and `carryover_notes_append`; soul/profile/skill rewrites remain manual review work.
+- A manual admin run is available at `POST /api/admin/agent-company/daily-alignment`.
 
 ## Change Record Format
 

@@ -142,6 +142,29 @@ router.post('/agent-company/heartbeat', async (req, res, next) => {
   }
 });
 
+router.post('/agent-company/daily-alignment', async (req, res, next) => {
+  try {
+    const service = req.app.locals.agentCompanyService;
+    if (!service?.tick) {
+      return res.status(503).json({ success: false, error: 'Agent company service is not initialized' });
+    }
+
+    const status = await service.tick({
+      force: true,
+      reason: String(req.body?.reason || 'daily-alignment-admin').trim() || 'daily-alignment-admin',
+    });
+    res.json({
+      success: true,
+      data: {
+        dailyAlignment: status?.state?.dailyAlignment || null,
+        status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Podcast audio assets
 router.get('/podcast-audio', callController(podcastAudioController, 'list'));
 router.post('/podcast-audio/:track', callController(podcastAudioController, 'upload'));

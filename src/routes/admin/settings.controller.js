@@ -29,6 +29,7 @@ const {
 const { detectPii, normalizeDetectorId } = require('../../pii/pii-detectors');
 const { resolvePreferredWritableFile } = require('../../runtime-state-paths');
 const { normalizePerplexityResearchLevel } = require('../../research-freshness');
+const { normalizeDailyAlignmentConfig } = require('../../alignment/daily-feedback-loop');
 const DEFAULT_PRIVACY_PII_SETTINGS = {
   defaultsVersion: 6,
   enabled: false,
@@ -1326,6 +1327,9 @@ class SettingsController {
       current.escalationModels || ['gpt-5.5', 'codex-latest'],
     ).slice(0, 8);
     next.roles = this.normalizeAgentCompanyRoles(next.roles, current.roles || DEFAULT_AGENT_COMPANY_ROLES);
+    next.dailyAlignment = normalizeDailyAlignmentConfig(
+      next.dailyAlignment || current.dailyAlignment || {},
+    );
 
     delete next.goal;
     delete next.fallbackModels;
@@ -1750,6 +1754,7 @@ class SettingsController {
       escalationModels: envEscalationModels
         ? this.normalizeStringArray(envEscalationModels, merged.escalationModels)
         : this.normalizeStringArray(merged.escalationModels, defaults.escalationModels),
+      dailyAlignment: normalizeDailyAlignmentConfig(merged.dailyAlignment),
       source: this.canUsePostgresSettings() ? 'postgres' : 'file',
     };
   }
@@ -1834,6 +1839,15 @@ class SettingsController {
         sessionId: 'agent-company',
         primaryModel: '',
         escalationModels: ['gpt-5.5', 'codex-latest'],
+        dailyAlignment: {
+          enabled: true,
+          autoApply: true,
+          intervalHours: 24,
+          logLookbackHours: 24,
+          maxSuggestions: 25,
+          sessionScanLimit: 200,
+          maxAppliedPerRun: 1,
+        },
         roles: DEFAULT_AGENT_COMPANY_ROLES.map((role) => ({ ...role })),
       },
       personality: {
