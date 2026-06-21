@@ -145,6 +145,26 @@ describe('openai-sse helpers', () => {
     expect(events[2].toolCalls).toHaveLength(1);
   });
 
+  test('normalizes explicit chat completion tool call delta events', () => {
+    const events = normalizeGatewayEventPayload({
+      type: 'chat.completion.tool_calls.delta',
+      session_id: 'session-tools',
+      tool_calls: [
+        { id: 'call_1', type: 'function', function: { name: 'web_search', arguments: '{"q":"docs"}' } },
+        { index: 3, id: 'call_2', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+      ],
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'tool_calls',
+      stage: 'started',
+      sessionId: 'session-tools',
+    });
+    expect(events[0].toolCalls.map((toolCall) => toolCall.index)).toEqual([0, 3]);
+    expect(events[0].toolCalls[0].function.name).toBe('web_search');
+  });
+
   test('prefers typed response deltas over legacy compatibility fields', () => {
     const textEvents = normalizeGatewayEventPayload({
       object: 'response.chunk',

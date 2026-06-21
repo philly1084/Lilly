@@ -815,6 +815,17 @@
       return events;
     }
 
+    if (payload.type === 'chat.completion.tool_calls.delta' && Array.isArray(payload.tool_calls) && payload.tool_calls.length > 0) {
+      events.push({
+        type: 'tool_calls',
+        toolCalls: normalizeToolCallsWithIndexes(payload.tool_calls),
+        stage: 'started',
+        raw: payload,
+        ...metadata,
+      });
+      return events;
+    }
+
     if (payload.type === 'response.completed') {
       events.push({
         type: 'final',
