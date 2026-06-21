@@ -305,4 +305,52 @@ describe('runtime artifact helpers', () => {
             }),
         ]);
     });
+
+    test('extracts artifacts from stringified JSON tool result payloads', () => {
+        const artifacts = extractArtifactsFromToolEvents([{
+            toolCall: {
+                function: {
+                    name: 'document-workflow',
+                },
+            },
+            result: {
+                success: true,
+                data: JSON.stringify({
+                    document: {
+                        id: 'doc-json-1',
+                        filename: 'serialized-brief.html',
+                        mimeType: 'text/html',
+                        downloadUrl: '/api/documents/doc-json-1/download',
+                    },
+                    sandboxBuild: {
+                        artifact: {
+                            id: 'artifact-json-sandbox-1',
+                            filename: 'serialized-brief.zip',
+                            mimeType: 'application/zip',
+                            downloadUrl: '/api/artifacts/artifact-json-sandbox-1/download',
+                            previewUrl: '/api/artifacts/artifact-json-sandbox-1/preview',
+                            sandboxUrl: '/api/artifacts/artifact-json-sandbox-1/sandbox',
+                            bundleDownloadUrl: '/api/artifacts/artifact-json-sandbox-1/bundle',
+                        },
+                    },
+                }),
+            },
+        }]);
+
+        expect(artifacts).toEqual([
+            expect.objectContaining({
+                id: 'doc-json-1',
+                filename: 'serialized-brief.html',
+                format: 'html',
+                downloadUrl: '/api/documents/doc-json-1/download',
+            }),
+            expect.objectContaining({
+                id: 'artifact-json-sandbox-1',
+                filename: 'serialized-brief.zip',
+                format: 'zip',
+                sandboxUrl: '/api/artifacts/artifact-json-sandbox-1/sandbox',
+                bundleDownloadUrl: '/api/artifacts/artifact-json-sandbox-1/bundle',
+            }),
+        ]);
+    });
 });

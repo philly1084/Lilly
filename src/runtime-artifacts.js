@@ -150,6 +150,19 @@ function extractArtifactsFromValue(value, depth = 0) {
         return value.flatMap((entry) => extractArtifactsFromValue(entry, depth + 1));
     }
 
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!/^[\[{]/.test(trimmed)) {
+            return [];
+        }
+
+        try {
+            return extractArtifactsFromValue(JSON.parse(trimmed), depth + 1);
+        } catch (_error) {
+            return [];
+        }
+    }
+
     if (typeof value !== 'object') {
         return [];
     }
