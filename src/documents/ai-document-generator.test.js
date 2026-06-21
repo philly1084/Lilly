@@ -293,6 +293,51 @@ describe('AIDocumentGenerator', () => {
     }));
   });
 
+  test('scrubs internal thought markup from visible document fields', async () => {
+    const generator = new AIDocumentGenerator({
+      createResponse: jest.fn(async () => buildResponse(JSON.stringify({
+        title: '<analysis>Pick a title before writing.</analysis>Incident Readiness Brief',
+        subtitle: '[reasoning]Private outline should not render.[/reasoning]Operations review',
+        sections: [{
+          heading: 'BEGIN REASONING\nUse a dramatic heading.\nEND REASONING\nReadiness Signals',
+          content: [
+            '<thinking>Compare three possible structures.</thinking>',
+            'Pager coverage, rollback ownership, and customer messaging are ready for release review.',
+            '<!-- analysis: keep this planning note private. -->',
+          ].join('\n'),
+          bullets: [
+            '[thought]Mention internal debate.[/thought]Rollback owner confirmed.',
+            '<reasoning>Private scoring.</reasoning>Support rotation staffed.',
+          ],
+          callout: {
+            title: '<think>Private framing</think>Decision Gate',
+            body: '<!-- reasoning: hidden note -->Proceed once the smoke test is green.',
+          },
+        }],
+      }))),
+    });
+
+    const result = await generator.generate('Create an incident readiness brief', {
+      format: 'html',
+      qualityPass: false,
+    });
+
+    expect(result.title).toBe('Incident Readiness Brief');
+    expect(result.subtitle).toBe('Operations review');
+    expect(result.sections[0].heading).toBe('Readiness Signals');
+    expect(result.sections[0].content).toBe(
+      'Pager coverage, rollback ownership, and customer messaging are ready for release review.',
+    );
+    expect(result.sections[0].bullets).toEqual([
+      'Rollback owner confirmed.',
+      'Support rotation staffed.',
+    ]);
+    expect(result.sections[0].callout).toEqual(expect.objectContaining({
+      title: 'Decision Gate',
+      body: 'Proceed once the smoke test is green.',
+    }));
+  });
+
   test('presentation prompt includes template-gallery guidance and treats templates as examples', async () => {
     const createResponse = jest.fn(async () => buildResponse(
       JSON.stringify({

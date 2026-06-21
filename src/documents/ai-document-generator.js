@@ -40,8 +40,18 @@ const PLACEHOLDER_VISIBLE_TEXT_PATTERNS = [
   /\b(?:overview|summary|introduction)\s+of\s+(?:the\s+)?(?:topic|key points|main points|subject matter)\b/i,
 ];
 
+const INTERNAL_THOUGHT_TEXT_PATTERNS = [
+  /<\s*(?:think|thinking|thought|analysis|reasoning)(?:\s[^>]*)?>[\s\S]*?<\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*>/ig,
+  /\[\s*(?:think|thinking|thought|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*\]/ig,
+  /(?:^|\n)\s*(?:begin|start)\s+(?:think|thinking|thought|analysis|reasoning)\s*\n[\s\S]*?\n\s*(?:end|stop)\s+(?:think|thinking|thought|analysis|reasoning)\s*(?=\n|$)/ig,
+  /<!--\s*(?:(?:begin|start)\s+)?(?:think|thinking|thought|analysis|reasoning)\b[\s\S]*?-->/ig,
+];
+
 function sanitizeVisibleDocumentText(value = '') {
-  const source = String(value || '');
+  const source = INTERNAL_THOUGHT_TEXT_PATTERNS.reduce(
+    (text, pattern) => text.replace(pattern, ''),
+    String(value || ''),
+  );
   if (!source) {
     return '';
   }
