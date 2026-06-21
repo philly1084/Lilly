@@ -115,6 +115,29 @@ describe('/api/tools routes', () => {
         ]));
     });
 
+    test('web fetch and scrape tool details expose source verification handoff guidance', async () => {
+        const app = buildApp();
+
+        const fetchResponse = await request(app).get('/api/tools/web-fetch');
+        const scrapeResponse = await request(app).get('/api/tools/web-scrape');
+
+        expect(fetchResponse.status).toBe(200);
+        expect(fetchResponse.body.data.runtime.provider).toBe('local');
+        expect(fetchResponse.body.data.runtime.callerContract).toEqual(expect.arrayContaining([
+            expect.stringContaining('verify selected URLs'),
+            expect.stringContaining('direct page/PDF fetches'),
+            expect.stringContaining('Escalate to web-scrape'),
+        ]));
+
+        expect(scrapeResponse.status).toBe(200);
+        expect(scrapeResponse.body.data.runtime.provider).toBe('browser-runtime');
+        expect(scrapeResponse.body.data.runtime.callerContract).toEqual(expect.arrayContaining([
+            expect.stringContaining('JS-rendered pages'),
+            expect.stringContaining('Prefer web-fetch first'),
+            expect.stringContaining('Capture screenshots'),
+        ]));
+    });
+
     test('document-workflow tool details expose format and verification handoff guidance', async () => {
         const app = buildApp();
 

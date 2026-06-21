@@ -472,6 +472,30 @@ function buildToolRuntime(toolId, options = {}) {
     };
   }
 
+  if (toolId === 'web-fetch') {
+    return {
+      configured: true,
+      provider: 'local',
+      callerContract: [
+        'Use after web-search to verify selected URLs before citing or composing source-backed outputs.',
+        'Prefer for direct page/PDF fetches, lightweight source checks, and non-JavaScript pages.',
+        'Escalate to web-scrape when the page needs browser rendering, screenshots, or structured extraction.',
+      ],
+    };
+  }
+
+  if (toolId === 'web-scrape') {
+    return {
+      configured: true,
+      provider: 'browser-runtime',
+      callerContract: [
+        'Use for JS-rendered pages, screenshots, visual QA, or explicit structured field extraction.',
+        'Prefer web-fetch first for simple URL verification so routine research stays fast.',
+        'Capture screenshots for frontend or generated-HTML proof when a rendered surface matters.',
+      ],
+    };
+  }
+
   if (toolId === 'document-workflow') {
     return {
       configured: true,
@@ -520,8 +544,6 @@ function buildToolRuntime(toolId, options = {}) {
     'research-bucket-read',
     'research-bucket-write',
     'research-bucket-mkdir',
-    'web-fetch',
-    'web-scrape',
     'news-scraper',
     'file-read',
     'file-write',
