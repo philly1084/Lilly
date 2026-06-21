@@ -274,6 +274,43 @@ describe('web-chat stream stability', () => {
         expect(app.buildToolCommandTemplate('web-search')).toBe('/tool web-search {"query":""}');
     });
 
+    test('formats runtime caller contracts in the tools list', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        const formatted = app.formatToolsList({
+            tools: [
+                {
+                    id: 'web-fetch',
+                    category: 'web',
+                    description: 'Fetch a selected source.',
+                    runtime: {
+                        configured: true,
+                        callerContract: [
+                            'Use after web-search to verify selected URLs before citing.',
+                            'Prefer for direct page/PDF fetches.',
+                            'Escalate to web-scrape for browser rendering.',
+                            'This fourth line should stay out of compact help.',
+                        ],
+                    },
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            url: { type: 'string' },
+                        },
+                    },
+                },
+            ],
+        });
+
+        expect(formatted).toContain('- `web-fetch` (web)');
+        expect(formatted).toContain('  Use:');
+        expect(formatted).toContain('    - Use after web-search to verify selected URLs before citing.');
+        expect(formatted).toContain('    - Prefer for direct page/PDF fetches.');
+        expect(formatted).toContain('    - Escalate to web-scrape for browser rendering.');
+        expect(formatted).not.toContain('This fourth line');
+        expect(formatted).toContain('  Params: url');
+    });
+
     test('replaces stale tool command drafts when picking a new tool', () => {
         const app = Object.create(loadChatAppPrototype());
         app.selectedToolIntentIds = new Set(['remote']);

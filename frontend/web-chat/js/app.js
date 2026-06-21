@@ -7040,6 +7040,13 @@ class ChatApp {
             } else if (tool.runtime && Object.prototype.hasOwnProperty.call(tool.runtime, 'configured')) {
                 lines.push(`  Runtime: configured=${tool.runtime.configured ? 'yes' : 'no'}`);
             }
+            const callerContract = this.formatToolCallerContract(tool.runtime?.callerContract);
+            if (callerContract.length) {
+                lines.push('  Use:');
+                callerContract.forEach((contractLine) => {
+                    lines.push(`    - ${contractLine}`);
+                });
+            }
             if (params.length) {
                 lines.push(`  Params: ${params.join(', ')}`);
             }
@@ -7048,6 +7055,13 @@ class ChatApp {
         lines.push('Usage: `/tool <id> {"key":"value"}`');
         lines.push('Help: `/tool-help <id>`');
         return lines.join('\n');
+    }
+
+    formatToolCallerContract(callerContract = []) {
+        return (Array.isArray(callerContract) ? callerContract : [])
+            .map((item) => String(item || '').replace(/\s+/g, ' ').trim())
+            .filter(Boolean)
+            .slice(0, 3);
     }
 
     formatSkillsList(skillResponse, search = '') {
