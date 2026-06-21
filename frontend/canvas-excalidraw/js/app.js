@@ -39,6 +39,7 @@ class App {
         this.lastCommandSelectionIds = [];
         this.objectLibraryQuery = '';
         this.objectLibraryFilter = 'all';
+        this.helpModalPreviousFocus = null;
         this.init();
     }
     
@@ -853,6 +854,10 @@ class App {
         // Help modal
         document.getElementById('closeHelpModal')?.addEventListener('click', () => {
             this.hideHelpModal();
+        });
+
+        document.getElementById('helpModal')?.addEventListener('keydown', (event) => {
+            this.handleHelpModalKeydown(event);
         });
         
         // Close modals on backdrop click
@@ -4025,11 +4030,51 @@ class App {
     }
     
     showHelpModal() {
-        document.getElementById('helpModal')?.classList.add('active');
+        const modal = document.getElementById('helpModal');
+        if (!modal) return;
+
+        this.helpModalPreviousFocus = document.activeElement?.focus ? document.activeElement : null;
+        modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
+        document.getElementById('closeHelpModal')?.focus({ preventScroll: true });
     }
     
     hideHelpModal() {
-        document.getElementById('helpModal')?.classList.remove('active');
+        const modal = document.getElementById('helpModal');
+        if (!modal) return;
+
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+        if (this.helpModalPreviousFocus && document.contains(this.helpModalPreviousFocus)) {
+            this.helpModalPreviousFocus.focus({ preventScroll: true });
+        }
+        this.helpModalPreviousFocus = null;
+    }
+
+    handleHelpModalKeydown(event) {
+        if (event.key !== 'Tab') return;
+
+        const modal = document.getElementById('helpModal');
+        if (!modal || !modal.classList.contains('active')) return;
+
+        const focusable = Array.from(modal.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )).filter((element) => !element.disabled
+            && !element.hasAttribute('hidden')
+            && element.getAttribute('aria-hidden') !== 'true');
+
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus({ preventScroll: true });
+        }
     }
     
     setupModelSelector() {
