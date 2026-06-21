@@ -118,4 +118,16 @@ describe('model-catalog', () => {
             id: 'gpt-5.5-tools',
         }));
     });
+
+    test('labels common gateway model families in public contracts', () => {
+        expect(buildModelContract({ id: 'mistral-large-latest' })).toEqual(expect.objectContaining({
+            provider: 'mistral',
+        }));
+        expect(buildModelContract({ id: 'qwen3-coder', owned_by: 'gateway' })).toEqual(expect.objectContaining({
+            provider: 'qwen',
+        }));
+        expect(buildModelContract({ id: 'command-r-plus', owned_by: 'gateway' })).toEqual(expect.objectContaining({
+            provider: 'cohere',
+        }));
+    });
 });

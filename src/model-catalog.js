@@ -148,9 +148,12 @@ function inferProviderFamily(model = {}) {
     if (text.includes('groq')) return 'groq';
     if (text.includes('gemini') || text.includes('google')) return 'gemini';
     if (text.includes('anthropic') || text.includes('claude')) return 'anthropic';
+    if (text.includes('mistral') || text.includes('mixtral')) return 'mistral';
+    if (text.includes('qwen') || text.includes('alibaba')) return 'qwen';
     if (text.includes('deepseek')) return 'deepseek';
     if (text.includes('kimi') || text.includes('moonshot')) return 'kimi';
     if (text.includes('llama') || text.includes('meta')) return 'meta';
+    if (text.includes('cohere') || /^command(?:[-_/]|$)/.test(id)) return 'cohere';
     return owner || 'unknown';
 }
 
