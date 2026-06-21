@@ -32,6 +32,14 @@ const TOOL_PROCESS_TEXT_PATTERNS = [
   /\bverified research results instead\b/i,
 ];
 
+const PLACEHOLDER_VISIBLE_TEXT_PATTERNS = [
+  /^\s*(?:todo|tbd|placeholder|lorem ipsum)\b/i,
+  /\[(?:insert|add|todo|tbd)[^\]]{0,80}\]/i,
+  /\b(?:insert|add)\s+(?:specific\s+)?(?:details|content|data|chart|image|citation|source|examples?)\s+(?:here|later|below)\b/i,
+  /\b(?:this|the)\s+(?:section|document|report|slide)\s+(?:should|will)\s+(?:explain|cover|describe|provide|include|outline|discuss)\b/i,
+  /\b(?:overview|summary|introduction)\s+of\s+(?:the\s+)?(?:topic|key points|main points|subject matter)\b/i,
+];
+
 function sanitizeVisibleDocumentText(value = '') {
   const source = String(value || '');
   if (!source) {
@@ -46,7 +54,10 @@ function sanitizeVisibleDocumentText(value = '') {
         return true;
       }
 
-      return !TOOL_PROCESS_TEXT_PATTERNS.some((pattern) => pattern.test(trimmed));
+      return ![
+        ...TOOL_PROCESS_TEXT_PATTERNS,
+        ...PLACEHOLDER_VISIBLE_TEXT_PATTERNS,
+      ].some((pattern) => pattern.test(trimmed));
     })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')

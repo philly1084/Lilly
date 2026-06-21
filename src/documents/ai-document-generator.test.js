@@ -251,6 +251,48 @@ describe('AIDocumentGenerator', () => {
     ]);
   });
 
+  test('scrubs placeholder residue from visible document sections', async () => {
+    const generator = new AIDocumentGenerator({
+      createResponse: jest.fn(async () => buildResponse(JSON.stringify({
+        title: 'Roadmap Brief',
+        subtitle: 'TODO add executive subtitle',
+        sections: [{
+          heading: 'Execution Plan',
+          content: [
+            'This section should explain the rollout plan.',
+            'Owners will sequence intake, build, pilot, and launch reviews across the release window.',
+            '[Insert chart here]',
+          ].join('\n'),
+          bullets: [
+            'Insert specific examples here',
+            'Pilot owners confirm launch readiness by Friday.',
+          ],
+          callout: {
+            title: 'TBD',
+            body: 'Use the pilot result as the approval gate.',
+          },
+        }],
+      }))),
+    });
+
+    const result = await generator.generate('Create a roadmap execution brief', {
+      format: 'html',
+      qualityPass: false,
+    });
+
+    expect(result.subtitle).toBe('');
+    expect(result.sections[0].content).toBe(
+      'Owners will sequence intake, build, pilot, and launch reviews across the release window.',
+    );
+    expect(result.sections[0].bullets).toEqual([
+      'Pilot owners confirm launch readiness by Friday.',
+    ]);
+    expect(result.sections[0].callout).toEqual(expect.objectContaining({
+      title: '',
+      body: 'Use the pilot result as the approval gate.',
+    }));
+  });
+
   test('presentation prompt includes template-gallery guidance and treats templates as examples', async () => {
     const createResponse = jest.fn(async () => buildResponse(
       JSON.stringify({
