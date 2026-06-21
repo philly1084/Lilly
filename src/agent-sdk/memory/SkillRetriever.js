@@ -188,6 +188,9 @@ class SkillRetriever {
     
     for (const skill of skills) {
       lines.push(`**${skill.name}**`);
+      if (skill.id) {
+        lines.push(`Skill ID: ${skill.id}`);
+      }
       lines.push(`Description: ${skill.description}`);
       
       if (skill.toolPreferences && skill.toolPreferences.length > 0) {
@@ -196,7 +199,7 @@ class SkillRetriever {
       
       if (skill.example && skill.example.steps && skill.example.steps.length > 0) {
         const stepTypes = skill.example.steps.map(s => s.type);
-        lines.push(`Example approach: ${stepTypes.join(' → ')}`);
+        lines.push(`Example approach: ${stepTypes.join(' -> ')}`);
       }
       
       lines.push('');
