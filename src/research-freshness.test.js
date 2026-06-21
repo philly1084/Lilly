@@ -37,6 +37,7 @@ describe('research freshness defaults', () => {
     });
     expect(inferDefaultResearchTimeRange('latest GPU prices')).toBe('day');
     expect(inferDefaultResearchTimeRange('modern provider comparison')).toBe('all');
+    expect(inferDefaultResearchTimeRange('AI funding activity this quarter')).toBe('month');
     expect(inferDefaultResearchTimeRange('AI tools', { publishedAfter: '05/01/2026' })).toBe('all');
   });
 

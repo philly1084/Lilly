@@ -205,6 +205,35 @@ describe('WebSearchTool', () => {
     expect(result.searchQueries).toEqual(['AI chip startups recent this month']);
   });
 
+  test('keeps explicit quarter searches bounded to supported recency filters', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'search-quarter-range',
+        results: [],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const tracker = {
+      recordNetworkCall: jest.fn(),
+    };
+
+    const result = await tool.handler({
+      query: 'AI funding activity this quarter',
+    }, {}, tracker);
+
+    const [, request] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+
+    expect(payload).toEqual(expect.objectContaining({
+      query: 'AI funding activity this quarter',
+      search_recency_filter: 'month',
+    }));
+    expect(result.query).toBe('AI funding activity this quarter');
+  });
+
   test('upgrades explicit research requests from raw search to Perplexity pro-search', async () => {
     global.fetch.mockResolvedValue({
       ok: true,
