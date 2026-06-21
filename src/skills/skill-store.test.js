@@ -60,6 +60,32 @@ describe('SkillStore', () => {
     expect(context).not.toContain('podcast-cleanup');
   });
 
+  test('matches dashed tool ids from natural spaced wording', () => {
+    const store = new SkillStore({ rootDir: makeTempSkillRoot() });
+    store.upsertSkill({
+      name: 'Diagram Builder',
+      description: 'Creates architectural diagrams.',
+      body: 'Use graph-diagram for architecture visuals.',
+      tools: ['graph-diagram'],
+      triggerPatterns: [],
+    });
+    store.upsertSkill({
+      name: 'Podcast Cleanup',
+      description: 'Prepare a speaker-only podcast.',
+      body: 'Use podcast tooling only.',
+      tools: ['podcast'],
+      triggerPatterns: ['podcast'],
+    });
+
+    const context = store.buildContextBlock({
+      text: 'Use the graph diagram helper for this architecture map',
+    });
+
+    expect(context).toContain('diagram-builder');
+    expect(context).toContain('graph-diagram');
+    expect(context).not.toContain('podcast-cleanup');
+  });
+
   test('updates existing skills without changing the registered folder', () => {
     const store = new SkillStore({ rootDir: makeTempSkillRoot() });
     store.upsertSkill({

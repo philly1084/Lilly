@@ -33,6 +33,25 @@ function normalizeWhitespace(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function normalizeSearchSlug(value = '') {
+  return slugifySkillId(value);
+}
+
+function includesSearchPhrase(normalizedText = '', textSlug = '', value = '') {
+  const normalizedValue = normalizeWhitespace(value).toLowerCase();
+  const valueSlug = normalizeSearchSlug(value);
+  return Boolean(
+    (normalizedValue && normalizedText.includes(normalizedValue))
+    || (valueSlug && textSlug.includes(valueSlug))
+  );
+}
+
+function splitSearchWords(value = '') {
+  return normalizeSearchSlug(value)
+    .split('-')
+    .filter((word) => word.length > 3);
+}
+
 function slugifySkillId(value = '') {
   const normalized = normalizeWhitespace(value)
     .toLowerCase()
@@ -240,6 +259,7 @@ class SkillStore {
 
   scoreSkill(skill = {}, text = '', options = {}) {
     const normalizedText = normalizeWhitespace(text).toLowerCase();
+    const textSlug = normalizeSearchSlug(text);
     const requestedTools = new Set(normalizeStringList(options.toolIds || []).map((tool) => tool.toLowerCase()));
     const surface = normalizeWhitespace(options.surface || options.clientSurface || '').toLowerCase();
     const taskType = normalizeWhitespace(options.taskType || options.activeMode || '').toLowerCase();
@@ -250,7 +270,7 @@ class SkillStore {
     const exactFields = [skill.id, skill.name, ...(skill.tools || [])];
     exactFields.forEach((field) => {
       const normalized = normalizeWhitespace(field).toLowerCase();
-      if (normalized && normalizedText.includes(normalized)) {
+      if (includesSearchPhrase(normalizedText, textSlug, field)) {
         score += 4;
         reasons.push(`matched ${normalized}`);
       }
@@ -261,12 +281,12 @@ class SkillStore {
       if (!normalized) {
         return;
       }
-      if (normalizedText.includes(normalized)) {
+      if (includesSearchPhrase(normalizedText, textSlug, trigger)) {
         score += 6;
         reasons.push(`trigger ${normalized}`);
       } else {
-        normalized.split(' ').forEach((word) => {
-          if (word.length > 3 && normalizedText.includes(word)) {
+        splitSearchWords(trigger).forEach((word) => {
+          if (normalizedText.includes(word) || textSlug.includes(word)) {
             score += 1;
             reasons.push(`keyword ${word}`);
           }
