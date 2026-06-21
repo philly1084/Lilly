@@ -83,7 +83,25 @@ function isPublicChatModel(modelOrId = '') {
 
 function inferModelCapabilities(model = {}) {
     if (Array.isArray(model.capabilities)) {
-        return [...new Set(model.capabilities.map((entry) => String(entry || '').trim()).filter(Boolean))];
+        const capabilities = [...new Set(model.capabilities.map((entry) => String(entry || '').trim()).filter(Boolean))];
+        const normalizedCapabilities = new Set(capabilities.map((entry) => entry.toLowerCase()));
+        const hasNonChatCapability = [...normalizedCapabilities].some((entry) => NON_CHAT_CAPABILITIES.has(entry));
+        const shouldAddChat = !normalizedCapabilities.has('chat')
+            && !hasNonChatCapability
+            && isPublicChatModel(model);
+
+        if (shouldAddChat) {
+            capabilities.unshift('chat');
+            normalizedCapabilities.add('chat');
+        }
+        if (normalizedCapabilities.has('chat')) {
+            if (!normalizedCapabilities.has('streaming')) {
+                capabilities.push('streaming');
+                normalizedCapabilities.add('streaming');
+            }
+        }
+
+        return capabilities;
     }
 
     const normalizedId = normalizeModelId(model.id).toLowerCase();

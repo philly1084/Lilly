@@ -1,5 +1,7 @@
 const {
+    buildModelContract,
     isPublicChatModel,
+    selectAutoModel,
     toPublicChatModelList,
     toPublicModelList,
 } = require('./model-catalog');
@@ -86,5 +88,34 @@ describe('model-catalog', () => {
                 capabilities: ['image_generation'],
             }),
         ]);
+    });
+
+    test('treats additive gateway capabilities as chat-capable for model contracts', () => {
+        const contract = buildModelContract({
+            id: 'gpt-5.5-tools',
+            owned_by: 'gateway',
+            capabilities: ['tools', 'streaming'],
+        });
+
+        expect(contract.capabilities).toEqual(['chat', 'tools', 'streaming']);
+        expect(contract.supports).toEqual(expect.objectContaining({
+            chat: true,
+            tools: true,
+            streaming: true,
+        }));
+    });
+
+    test('auto-selects gateway chat models that only advertise additive capabilities', () => {
+        const selected = selectAutoModel([
+            { id: 'gpt-image-2', owned_by: 'openai', capabilities: ['image_generation'] },
+            { id: 'gpt-5.5-tools', owned_by: 'gateway', capabilities: ['tools', 'streaming'] },
+        ], {
+            needsTools: true,
+            apiMode: 'chat',
+        });
+
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'gpt-5.5-tools',
+        }));
     });
 });
