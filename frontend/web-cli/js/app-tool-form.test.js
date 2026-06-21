@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { JSDOM } = require('jsdom');
 
 function loadWebCliToolFormHelpers() {
     const sourcePath = path.join(__dirname, 'app.js');
@@ -270,5 +271,97 @@ describe('web-cli tool form rendering', () => {
             verbose: true,
             confirm: false,
         });
+    });
+});
+
+describe('web-cli command drawer keyboard navigation', () => {
+    function createDrawerHarness() {
+        const app = createToolFormHarness();
+        const dom = new JSDOM(`
+            <button id="commandDrawerToggle" type="button"></button>
+            <div id="commandDrawer">
+                <button type="button" id="sessions">Sessions</button>
+                <button type="button" id="clear">Clear</button>
+                <a id="home" href="/">Home</a>
+            </div>
+        `);
+        global.window = dom.window;
+        global.document = dom.window.document;
+        app.commandDrawerToggle = document.getElementById('commandDrawerToggle');
+        app.commandDrawer = document.getElementById('commandDrawer');
+        app.commandDrawer.hidden = false;
+        return app;
+    }
+
+    afterEach(() => {
+        delete global.window;
+        delete global.document;
+    });
+
+    test('moves focus through drawer actions with arrow, Home, and End keys', () => {
+        const app = createDrawerHarness();
+        const sessions = document.getElementById('sessions');
+        const clear = document.getElementById('clear');
+        const home = document.getElementById('home');
+
+        sessions.focus();
+        app.handleCommandDrawerKeydown({
+            key: 'ArrowDown',
+            target: sessions,
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        });
+        expect(document.activeElement).toBe(clear);
+
+        app.handleCommandDrawerKeydown({
+            key: 'ArrowDown',
+            target: clear,
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        });
+        expect(document.activeElement).toBe(home);
+
+        app.handleCommandDrawerKeydown({
+            key: 'ArrowDown',
+            target: home,
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        });
+        expect(document.activeElement).toBe(sessions);
+
+        app.handleCommandDrawerKeydown({
+            key: 'End',
+            target: sessions,
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        });
+        expect(document.activeElement).toBe(home);
+
+        app.handleCommandDrawerKeydown({
+            key: 'Home',
+            target: home,
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        });
+        expect(document.activeElement).toBe(sessions);
+    });
+
+    test('closes the drawer and restores trigger focus on Escape', () => {
+        const app = createDrawerHarness();
+        const preventDefault = jest.fn();
+        const stopPropagation = jest.fn();
+
+        app.handleCommandDrawerKeydown({
+            key: 'Escape',
+            target: document.getElementById('sessions'),
+            preventDefault,
+            stopPropagation,
+        });
+
+        expect(app.commandDrawer.hidden).toBe(true);
+        expect(app.commandDrawerToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(app.commandDrawerToggle);
+        expect(preventDefault).toHaveBeenCalled();
+        expect(stopPropagation).toHaveBeenCalled();
     });
 });

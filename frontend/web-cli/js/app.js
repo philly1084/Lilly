@@ -3255,11 +3255,64 @@ class CodeCLIApp {
             }
         });
 
+        this.commandDrawer.addEventListener('keydown', (e) => {
+            this.handleCommandDrawerKeydown(e);
+        });
+
         document.addEventListener('click', (e) => {
             if (!this.commandDrawer.hidden && !e.target.closest('.toolbar')) {
                 this.closeCommandDrawer();
             }
         });
+    }
+
+    getCommandDrawerItems() {
+        if (!this.commandDrawer) return [];
+        return Array.from(this.commandDrawer.querySelectorAll('button:not(:disabled), a[href]'));
+    }
+
+    focusCommandDrawerItem(currentItem, direction) {
+        const items = this.getCommandDrawerItems();
+        if (items.length === 0) return;
+
+        const currentIndex = Math.max(0, items.indexOf(currentItem));
+        const nextIndex = (currentIndex + direction + items.length) % items.length;
+        items[nextIndex].focus({ preventScroll: true });
+    }
+
+    handleCommandDrawerKeydown(e) {
+        if (!this.commandDrawer || this.commandDrawer.hidden) return;
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.closeCommandDrawer({ restoreFocus: true });
+            return;
+        }
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            this.focusCommandDrawerItem(e.target, 1);
+            return;
+        }
+
+        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            this.focusCommandDrawerItem(e.target, -1);
+            return;
+        }
+
+        if (e.key === 'Home') {
+            e.preventDefault();
+            this.getCommandDrawerItems()[0]?.focus({ preventScroll: true });
+            return;
+        }
+
+        if (e.key === 'End') {
+            e.preventDefault();
+            const items = this.getCommandDrawerItems();
+            items[items.length - 1]?.focus({ preventScroll: true });
+        }
     }
 
     toggleCommandDrawer(forceOpen = null) {
@@ -3275,8 +3328,11 @@ class CodeCLIApp {
         }
     }
 
-    closeCommandDrawer() {
+    closeCommandDrawer(options = {}) {
         this.toggleCommandDrawer(false);
+        if (options.restoreFocus) {
+            this.commandDrawerToggle?.focus({ preventScroll: true });
+        }
     }
 
     // ==================== Voxel Pet System ====================
