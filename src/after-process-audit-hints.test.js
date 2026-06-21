@@ -129,4 +129,36 @@ describe('after-process audit chat-time hints', () => {
       nextAction: 'replan_with_validated_params',
     }));
   });
+
+  test('matches minimal saved failed-tool hints from structured fields', () => {
+    const session = {
+      metadata: {
+        afterProcessAuditToolHints: [{
+          id: 'minimal-remote-cli-agent',
+          auditId: 'after-audit-tool-minimal',
+          suggestionId: 'srs-minimal',
+          toolId: 'remote-cli-agent',
+          failureKind: 'bad_schema_or_missing_params',
+          nextAction: 'replan_with_validated_params',
+          approvedAt: '2026-01-01T00:00:00.000Z',
+          expiresAt: '2999-01-01T00:00:00.000Z',
+        }],
+      },
+    };
+
+    const decision = resolveChatTimeAfterProcessAuditHints({
+      session,
+      text: 'Use remote-cli-agent again, and validate params before retrying.',
+      orchestrationConfig: {},
+    });
+
+    expect(decision.hasToolRecoveryHints).toBe(true);
+    expect(decision.matchedToolFailureHints[0]).toEqual(expect.objectContaining({
+      auditId: 'after-audit-tool-minimal',
+      suggestionId: 'srs-minimal',
+      toolId: 'remote-cli-agent',
+      failureKind: 'bad_schema_or_missing_params',
+      nextAction: 'replan_with_validated_params',
+    }));
+  });
 });

@@ -213,9 +213,16 @@ function normalizeApprovedAfterProcessToolFailureHint(hint = {}) {
   const failureKind = normalizeInline(hint.failureKind || 'tool_failure', 120) || 'tool_failure';
   const nextAction = normalizeInline(hint.nextAction || 'replan_with_smaller_candidate_set', 180) || 'replan_with_smaller_candidate_set';
   const matchText = normalizeInline(hint.matchText || hint.reason || '', 1000);
+  const keywordSourceText = [
+    matchText,
+    toolId,
+    failureKind,
+    nextAction,
+    hint.reason,
+  ].filter(Boolean).join(' ');
   const keywords = Array.isArray(hint.keywords)
     ? hint.keywords.map((entry) => normalizeInline(entry, 80)).filter(Boolean).slice(0, 18)
-    : extractKeywords(matchText);
+    : extractKeywords(keywordSourceText);
   const approvedAt = hint.approvedAt || new Date().toISOString();
   const expiresAt = hint.expiresAt || new Date(Date.now() + DEFAULT_HINT_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   return {
