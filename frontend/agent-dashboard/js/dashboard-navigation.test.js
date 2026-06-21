@@ -78,6 +78,35 @@ function createSettingsHarness() {
     return { dashboard };
 }
 
+function createRuntimeListHarness() {
+    const dom = new JSDOM(`
+        <div id="promptList"></div>
+        <div id="tracesList"></div>
+        <table><tbody id="adminRunsTableBody"></tbody></table>
+    `, { url: 'http://localhost:3000/admin/?view=workloads' });
+    const Dashboard = loadDashboardClass(dom);
+    const dashboard = Object.create(Dashboard.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+    dom.window.dashboard = dashboard;
+
+    dashboard.state = {
+        prompts: [
+            { id: 'prompt-a', name: 'Default prompt', assignment: 'chat' },
+            { id: 'prompt-b', name: 'Research prompt', assignment: 'research' },
+        ],
+        selectedPrompt: { id: 'prompt-a' },
+        selectedTrace: { id: 'trace-a' },
+        selectedRun: { id: 'run-a' },
+    };
+    dashboard.formatPromptSurfaceMeta = Dashboard.prototype.formatPromptSurfaceMeta.bind(dashboard);
+    dashboard.formatDate = jest.fn((value) => value || '-');
+    dashboard.getRunStatusClass = jest.fn(() => 'healthy');
+
+    return { dom, dashboard };
+}
+
 describe('agent dashboard navigation accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -173,5 +202,40 @@ describe('agent dashboard navigation accessibility', () => {
         expect(apiTab.getAttribute('aria-selected')).toBe('true');
         expect(generalPanel.hidden).toBe(true);
         expect(apiPanel.hidden).toBe(false);
+    });
+
+    test('makes runtime list items keyboard-selectable with selected state', () => {
+        const { dom, dashboard } = createRuntimeListHarness();
+        dashboard.selectPromptById = jest.fn();
+        dashboard.selectTrace = jest.fn();
+        dashboard.selectAdminRun = jest.fn();
+
+        dashboard.renderPromptList(dashboard.state.prompts);
+        dashboard.renderTraces([
+            { id: 'trace-a', name: 'Trace A', status: 'success', startedAt: 'now', duration: 24, steps: [] },
+            { id: 'trace-b', name: 'Trace B', status: 'running', startedAt: 'later', duration: 12, steps: [] },
+        ]);
+        dashboard.renderAdminRuns([
+            { id: 'run-a', workloadTitle: 'Morning job', status: 'completed', reason: 'manual' },
+            { id: 'run-b', workloadTitle: 'Noon job', status: 'queued', reason: 'schedule' },
+        ]);
+
+        const prompt = document.querySelector('.prompt-item[data-id="prompt-b"]');
+        const trace = document.querySelector('.trace-item[data-id="trace-b"]');
+        const run = document.querySelector('.workload-run-row[data-id="run-b"]');
+        [prompt, trace, run].forEach((item) => {
+            item.addEventListener('keydown', (event) => dashboard.handleListItemKeydown(event));
+            expect(item.getAttribute('role')).toBe('button');
+            expect(item.getAttribute('tabindex')).toBe('0');
+            expect(item.getAttribute('aria-selected')).toBe('false');
+        });
+
+        prompt.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        trace.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+        run.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+
+        expect(dashboard.selectPromptById).toHaveBeenCalledWith('prompt-b');
+        expect(dashboard.selectTrace).toHaveBeenCalledWith('trace-b');
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('run-b');
     });
 });

@@ -2314,7 +2314,13 @@ class Dashboard {
         
         container.innerHTML = prompts.map(prompt => `
             <div class="prompt-item ${this.state.selectedPrompt?.id === prompt.id ? 'active' : ''}" 
-                 data-id="${prompt.id}" onclick="dashboard.selectPromptById('${prompt.id}')">
+                 data-id="${this.escapeHtml(prompt.id)}"
+                 data-dashboard-list-action="prompt"
+                 role="button"
+                 tabindex="0"
+                 aria-selected="${this.state.selectedPrompt?.id === prompt.id ? 'true' : 'false'}"
+                 onclick="dashboard.selectPromptById(this.dataset.id)"
+                 onkeydown="dashboard.handleListItemKeydown(event)">
                 <span class="prompt-item-name">${this.escapeHtml(prompt.name)}</span>
                 <span class="prompt-item-meta">${this.escapeHtml(this.formatPromptSurfaceMeta(prompt))}</span>
             </div>
@@ -2423,8 +2429,14 @@ class Dashboard {
         if (!container) return;
         
         container.innerHTML = traces.map(trace => `
-            <div class="trace-item ${this.state.selectedTrace?.id === trace.id ? 'active' : ''}" 
-                 onclick="dashboard.selectTrace('${trace.id}')">
+            <div class="trace-item ${this.state.selectedTrace?.id === trace.id ? 'active' : ''}"
+                 data-id="${this.escapeHtml(trace.id)}"
+                 data-dashboard-list-action="trace"
+                 role="button"
+                 tabindex="0"
+                 aria-selected="${this.state.selectedTrace?.id === trace.id ? 'true' : 'false'}"
+                 onclick="dashboard.selectTrace(this.dataset.id)"
+                 onkeydown="dashboard.handleListItemKeydown(event)">
                 <div class="trace-header">
                     <span class="trace-name">${trace.name}</span>
                     <span class="trace-status ${trace.status}"></span>
@@ -2514,7 +2526,14 @@ class Dashboard {
         }
 
         tbody.innerHTML = runs.map((run) => `
-            <tr class="workload-run-row ${this.state.selectedRun?.id === run.id ? 'selected' : ''}" onclick="dashboard.selectAdminRun('${run.id}')">
+            <tr class="workload-run-row ${this.state.selectedRun?.id === run.id ? 'selected' : ''}"
+                data-id="${this.escapeHtml(run.id)}"
+                data-dashboard-list-action="admin-run"
+                role="button"
+                tabindex="0"
+                aria-selected="${this.state.selectedRun?.id === run.id ? 'true' : 'false'}"
+                onclick="dashboard.selectAdminRun(this.dataset.id)"
+                onkeydown="dashboard.handleListItemKeydown(event)">
                 <td>${this.escapeHtml(run.id)}</td>
                 <td>${this.escapeHtml(run.workloadTitle || run.workloadId)}</td>
                 <td><span class="status-badge ${this.getRunStatusClass(run.status)}">${this.escapeHtml(run.status)}</span></td>
@@ -3000,7 +3019,9 @@ class Dashboard {
 
     updatePromptListActiveState(id) {
         document.querySelectorAll('.prompt-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.id === id);
+            const active = item.dataset.id === id;
+            item.classList.toggle('active', active);
+            item.setAttribute('aria-selected', active ? 'true' : 'false');
         });
     }
     
@@ -3019,7 +3040,9 @@ class Dashboard {
             
             // Update active state
             document.querySelectorAll('.trace-item').forEach(item => {
-                item.classList.toggle('active', item.dataset.id === id);
+                const active = item.dataset.id === id;
+                item.classList.toggle('active', active);
+                item.setAttribute('aria-selected', active ? 'true' : 'false');
             });
         }
     }
@@ -5277,6 +5300,33 @@ class Dashboard {
         return div.innerHTML;
     }
 
+    handleListItemKeydown(event) {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        if (event.target !== event.currentTarget) {
+            return;
+        }
+
+        const item = event.currentTarget;
+        const id = item.dataset.id;
+        event.preventDefault();
+
+        switch (item.dataset.dashboardListAction) {
+            case 'prompt':
+                this.selectPromptById(id);
+                break;
+            case 'trace':
+                this.selectTrace(id);
+                break;
+            case 'admin-run':
+                this.selectAdminRun(id);
+                break;
+            default:
+                break;
+        }
+    }
+
     setTextContent(id, value) {
         const element = document.getElementById(id);
         if (element) {
@@ -5351,8 +5401,14 @@ class Dashboard {
         if (!container) return;
 
         container.innerHTML = traces.map((trace) => `
-            <div class="trace-item ${this.state.selectedTrace?.id === trace.id ? 'active' : ''}" data-id="${trace.id}"
-                 onclick="dashboard.selectTrace('${trace.id}')">
+            <div class="trace-item ${this.state.selectedTrace?.id === trace.id ? 'active' : ''}"
+                 data-id="${this.escapeHtml(trace.id)}"
+                 data-dashboard-list-action="trace"
+                 role="button"
+                 tabindex="0"
+                 aria-selected="${this.state.selectedTrace?.id === trace.id ? 'true' : 'false'}"
+                 onclick="dashboard.selectTrace(this.dataset.id)"
+                 onkeydown="dashboard.handleListItemKeydown(event)">
                 <div class="trace-header">
                     <span class="trace-name">${trace.name}</span>
                     <span class="trace-status ${trace.status}"></span>

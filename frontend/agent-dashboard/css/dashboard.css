@@ -1623,21 +1623,25 @@ select.form-control,
     transition: all var(--transition-fast);
 }
 
-.prompt-item:hover {
+.prompt-item:hover,
+.prompt-item:focus-visible {
     background-color: var(--bg-tertiary);
+}
+
+.prompt-item:focus-visible,
+.trace-item:focus-visible,
+.workload-run-row:focus-visible {
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(121, 192, 255, 0.16);
 }
 
 .prompt-item.active {
     background-color: var(--accent-primary);
 }
 
-.prompt-item.active .prompt-item-name,
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-primary);
-    border-radius: var(--radius-lg);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+.prompt-item.active .prompt-item-name {
+    color: var(--bg-primary);
 }
 
 .prompt-item.active .prompt-item-meta {
@@ -2473,7 +2477,8 @@ select.form-control,
     margin-bottom: var(--space-xs);
 }
 
-.trace-item:hover {
+.trace-item:hover,
+.trace-item:focus-visible {
     background-color: var(--bg-tertiary);
 }
 
@@ -2492,6 +2497,10 @@ select.form-control,
 
 .workload-run-row {
     cursor: pointer;
+}
+
+.workload-run-row:focus-visible {
+    background-color: rgba(88, 166, 255, 0.16);
 }
 
 .workload-run-row.selected {
