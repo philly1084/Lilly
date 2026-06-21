@@ -23,6 +23,7 @@ const DEFAULT_REALTIME_TRIM_EDGE_SECONDS = 0.45;
 const DEFAULT_REALTIME_TRIM_TAIL_PADDING_SECONDS = 0.14;
 const DEFAULT_REALTIME_TRIM_THRESHOLD = 0.0015;
 const DEFAULT_REALTIME_EMERGENCY_PROVIDER = 'kokoro';
+const DEFAULT_TTS_FETCH_TIMEOUT_PADDING_MS = 3500;
 
 function getTtsProviderLabel(provider = '') {
     const normalizedProvider = String(provider || '').trim().toLowerCase();
@@ -1222,6 +1223,13 @@ class WebChatTtsManager extends EventTarget {
         return Math.round(baseTimeoutMs + lengthBudgetMs);
     }
 
+    getRealtimeChunkFetchTimeoutMs(timeoutMs = 0) {
+        return Math.max(
+            10000,
+            Math.round((Number(timeoutMs) || DEFAULT_REALTIME_PRIMARY_TIMEOUT_MS) + DEFAULT_TTS_FETCH_TIMEOUT_PADDING_MS),
+        );
+    }
+
     wait(ms) {
         return new Promise((resolve) => {
             const timer = setTimeout(resolve, Math.max(0, Number(ms) || 0));
@@ -1238,9 +1246,11 @@ class WebChatTtsManager extends EventTarget {
             primaryProvider,
             policy,
         );
+        const primaryTimeoutMs = this.getRealtimeChunkTimeoutMs(normalizedText, options);
         const primaryOptions = {
             ...options,
-            timeoutMs: this.getRealtimeChunkTimeoutMs(normalizedText, options),
+            timeoutMs: primaryTimeoutMs,
+            fetchTimeoutMs: this.getRealtimeChunkFetchTimeoutMs(primaryTimeoutMs),
             // Browser realtime playback owns failover with a separate hedged request.
             // Keeping backend fallback off here prevents a lower-quality provider
             // from hiding the primary Kokoro result or surfacing as the main failure.
@@ -1269,10 +1279,12 @@ class WebChatTtsManager extends EventTarget {
             }
 
             fallbackStarted = true;
+            const fallbackTimeoutMs = this.getRealtimeChunkTimeoutMs(normalizedText, { ...options, fallback: true });
             return this.synthesizeAndPrepareMessageAudio(normalizedText, messageId, {
                 ...options,
                 provider: emergencyProvider,
-                timeoutMs: this.getRealtimeChunkTimeoutMs(normalizedText, { ...options, fallback: true }),
+                timeoutMs: fallbackTimeoutMs,
+                fetchTimeoutMs: this.getRealtimeChunkFetchTimeoutMs(fallbackTimeoutMs),
                 allowProviderFallback: false,
                 showLoading: false,
             });
@@ -1512,6 +1524,7 @@ class WebChatTtsManager extends EventTarget {
                 voiceId: this.getSelectedVoiceId(),
                 provider: options.provider || '',
                 timeoutMs: options.timeoutMs,
+                fetchTimeoutMs: options.fetchTimeoutMs,
                 allowProviderFallback: options.allowProviderFallback,
             });
             if (!result?.blob) {

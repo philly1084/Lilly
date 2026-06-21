@@ -15,6 +15,8 @@ const API = (function() {
         : currentOrigin;
     const BASE_URL = `${apiOrigin}/v1`;
     const BASE_URL_WITHOUT_API = apiOrigin;
+    const DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS = 15000;
+    const TTS_SYNTHESIS_CLIENT_TIMEOUT_PADDING_MS = 3500;
     const notesGatewayHelpers = window.KimiBuiltGatewaySSE || {};
     const buildGatewayHeaders = notesGatewayHelpers.buildGatewayHeaders || ((headers = {}) => ({
         ...headers,
@@ -74,6 +76,40 @@ const API = (function() {
         }
         
         return response.json();
+    }
+
+    function resolveTtsSynthesisClientTimeoutMs(options = {}) {
+        const explicitTimeout = Number(options.fetchTimeoutMs);
+        if (Number.isFinite(explicitTimeout) && explicitTimeout > 0) {
+            return Math.max(1000, explicitTimeout);
+        }
+
+        const synthesisTimeout = Number(options.timeoutMs);
+        if (Number.isFinite(synthesisTimeout) && synthesisTimeout > 0) {
+            return Math.max(1000, synthesisTimeout + TTS_SYNTHESIS_CLIENT_TIMEOUT_PADDING_MS);
+        }
+
+        return DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS;
+    }
+
+    async function fetchTtsWithTimeout(url, options = {}, timeoutMs = DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS) {
+        const controller = new AbortController();
+        const timeout = Math.max(1000, Number(timeoutMs) || DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS);
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+            return await fetch(url, {
+                ...options,
+                signal: controller.signal,
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                throw new Error(`TTS synthesis timed out after ${timeout}ms`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
+        }
     }
 
     function filterModels(models = []) {
@@ -821,7 +857,7 @@ const API = (function() {
             payload.allowProviderFallback = options.allowProviderFallback;
         }
 
-        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
+        const response = await fetchTtsWithTimeout(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
             method: 'POST',
             headers: {
                 Accept: 'audio/wav, application/json',
@@ -829,7 +865,7 @@ const API = (function() {
             },
             credentials: 'same-origin',
             body: JSON.stringify(payload),
-        });
+        }, resolveTtsSynthesisClientTimeoutMs(options));
 
         if (!response.ok) {
             const errorText = await parseSpeechErrorResponse(response);

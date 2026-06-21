@@ -348,6 +348,30 @@ describe('splitTextIntoSpeechChunks', () => {
         expect(manager.realtimePolicy.chunkStallMs).toBe(2500);
     });
 
+    test('gives realtime chunk fetches a client timeout beyond the backend synthesis budget', async () => {
+        const manager = new WebChatTtsManager();
+        manager.decodeAudioBlob = jest.fn(async () => ({
+            context: 'ctx',
+            decodedBuffer: { duration: 0.8 },
+        }));
+
+        const requests = [];
+        manager.synthesizeMessageAudio = jest.fn((_text, _messageId, options) => {
+            requests.push(options);
+            return Promise.resolve({
+                blob: { provider: 'kokoro' },
+                provider: 'kokoro',
+            });
+        });
+
+        await manager.synthesizeRealtimeChunkAudio('Short sentence.', 'assistant-1', {
+            playbackContext: 'ctx',
+        });
+
+        expect(requests[0].timeoutMs).toBe(8000);
+        expect(requests[0].fetchTimeoutMs).toBe(11500);
+    });
+
     test('trims end-of-sentence silence while preserving a final speech tail pad', () => {
         const manager = new WebChatTtsManager();
         manager.realtimePolicy = {

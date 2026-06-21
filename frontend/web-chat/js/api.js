@@ -25,6 +25,8 @@ const WEB_CHAT_API_TASK_TYPE = 'chat';
 const WEB_CHAT_API_CLIENT_SURFACE = 'web-chat';
 const USER_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const REMOTE_BUILD_AUTONOMY_STORAGE_KEY = 'kimibuilt_remote_build_autonomy';
+const DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS = 15000;
+const TTS_SYNTHESIS_CLIENT_TIMEOUT_PADDING_MS = 3500;
 const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};
 const workspaceApiHelpers = window.KimiBuiltWebChatWorkspace || null;
 const DEFAULT_CHAT_MODEL = gatewayStreamHelpers.DEFAULT_CODEX_MODEL_ID || 'auto';
@@ -173,6 +175,40 @@ function buildClientClockMetadata() {
         timezone: USER_TIMEZONE,
         clientNow: getClientNowIso(),
     };
+}
+
+function resolveTtsSynthesisClientTimeoutMs(options = {}) {
+    const explicitTimeout = Number(options.fetchTimeoutMs);
+    if (Number.isFinite(explicitTimeout) && explicitTimeout > 0) {
+        return Math.max(1000, explicitTimeout);
+    }
+
+    const synthesisTimeout = Number(options.timeoutMs);
+    if (Number.isFinite(synthesisTimeout) && synthesisTimeout > 0) {
+        return Math.max(1000, synthesisTimeout + TTS_SYNTHESIS_CLIENT_TIMEOUT_PADDING_MS);
+    }
+
+    return DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS;
+}
+
+async function fetchTtsWithTimeout(url, options = {}, timeoutMs = DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeout = Math.max(1000, Number(timeoutMs) || DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+        return await fetch(url, {
+            ...options,
+            signal: controller.signal,
+        });
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw new Error(`TTS synthesis timed out after ${timeout}ms`);
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 function truncateNaturalContextText(value = '', limit = 1200) {
@@ -2261,7 +2297,7 @@ class OpenAIAPIClient extends EventTarget {
             payload.allowProviderFallback = options.allowProviderFallback;
         }
 
-        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
+        const response = await fetchTtsWithTimeout(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
             method: 'POST',
             headers: {
                 'Accept': 'audio/wav, application/json',
@@ -2269,7 +2305,7 @@ class OpenAIAPIClient extends EventTarget {
             },
             credentials: 'same-origin',
             body: JSON.stringify(payload),
-        });
+        }, resolveTtsSynthesisClientTimeoutMs(options));
 
         if (!response.ok) {
             const error = new Error(`HTTP ${response.status}`);

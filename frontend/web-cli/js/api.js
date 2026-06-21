@@ -13,6 +13,8 @@ const DEFAULT_TIMEOUT = 120000;
 const CHAT_STREAM_TIMEOUT = 180000;
 const LOCAL_MODEL_TIMEOUT = 300000;
 const IMAGE_TIMEOUT = 240000;
+const DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS = 15000;
+const TTS_SYNTHESIS_CLIENT_TIMEOUT_PADDING_MS = 3500;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
 const WEB_CLI_TASK_TYPE = 'chat';
@@ -176,6 +178,20 @@ class WebCLIAPI {
             return LOCAL_MODEL_TIMEOUT;
         }
         return stream ? CHAT_STREAM_TIMEOUT : DEFAULT_TIMEOUT;
+    }
+
+    getTtsSynthesisClientTimeout(options = {}) {
+        const explicitTimeout = Number(options.fetchTimeoutMs);
+        if (Number.isFinite(explicitTimeout) && explicitTimeout > 0) {
+            return Math.max(1000, explicitTimeout);
+        }
+
+        const synthesisTimeout = Number(options.timeoutMs);
+        if (Number.isFinite(synthesisTimeout) && synthesisTimeout > 0) {
+            return Math.max(1000, synthesisTimeout + TTS_SYNTHESIS_CLIENT_TIMEOUT_PADDING_MS);
+        }
+
+        return DEFAULT_TTS_SYNTHESIS_CLIENT_TIMEOUT_MS;
     }
 
     extractStreamSessionId(payload = {}) {
@@ -1123,7 +1139,7 @@ class WebCLIAPI {
             payload.allowProviderFallback = options.allowProviderFallback;
         }
 
-        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
+        const response = await this.fetchWithTimeout(`${BASE_URL_WITHOUT_API}/api/tts/synthesize`, {
             method: 'POST',
             headers: {
                 'Accept': 'audio/wav, application/json',
@@ -1131,7 +1147,7 @@ class WebCLIAPI {
             },
             credentials: 'same-origin',
             body: JSON.stringify(payload),
-        });
+        }, this.getTtsSynthesisClientTimeout(options));
 
         if (!response.ok) {
             const errorText = await this.parseErrorResponse(response);

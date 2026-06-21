@@ -437,7 +437,7 @@ metadata:
   labels:
     app: kokoro-tts
 spec:
-  replicas: 1
+  replicas: 6
   selector:
     matchLabels:
       app: kokoro-tts
@@ -471,7 +471,7 @@ spec:
             - name: NODE_OPTIONS
               value: "--max-old-space-size=1536"
             - name: UV_THREADPOOL_SIZE
-              value: "8"
+              value: "12"
           readinessProbe:
             httpGet:
               path: /ready

@@ -54,9 +54,9 @@ spec:
             - name: PODCAST_TTS_CONCURRENCY
               value: "2"
             - name: TTS_REALTIME_SYNTHESIS_LANES
-              value: "4"
-            - name: TTS_REALTIME_SYNTHESIS_LOOKAHEAD
               value: "6"
+            - name: TTS_REALTIME_SYNTHESIS_LOOKAHEAD
+              value: "10"
           volumeMounts:
             - name: backend-state
               mountPath: /home/kimibuilt/.kimibuilt
