@@ -1818,32 +1818,32 @@
                     <span aria-hidden="true">...</span>
                 </button>
                 <div id="commandDrawer" class="command-drawer" role="menu" aria-label="Frontend actions" hidden>
-                    <button class="btn btn-sm" data-short="Sess" onclick="app.listSessions()" title="List isolated chat sessions" aria-label="List isolated chat sessions">
+                    <button class="btn btn-sm" role="menuitem" data-short="Sess" onclick="app.listSessions()" title="List isolated chat sessions" aria-label="List isolated chat sessions">
                         <span>Sessions</span>
                     </button>
-                    <button class="btn btn-sm" data-short="Clr" onclick="app.clearOutput()" title="Clear (Ctrl+L)" aria-label="Clear terminal">
+                    <button class="btn btn-sm" role="menuitem" data-short="Clr" onclick="app.clearOutput()" title="Clear (Ctrl+L)" aria-label="Clear terminal">
                         <span>Clear</span>
                     </button>
-                    <button class="btn btn-sm" data-short="Exp" onclick="app.exportSession()" title="Export session" aria-label="Export session">
+                    <button class="btn btn-sm" role="menuitem" data-short="Exp" onclick="app.exportSession()" title="Export session" aria-label="Export session">
                         <span>Export</span>
                     </button>
-                    <button id="themeButton" class="btn btn-sm" data-short="Thm" onclick="app.cycleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                    <button id="themeButton" class="btn btn-sm" role="menuitem" data-short="Thm" onclick="app.cycleTheme()" title="Toggle theme" aria-label="Toggle theme">
                         <span>Theme</span>
                     </button>
-                    <button id="densityButton" class="btn btn-sm" data-short="Dns" onclick="app.cycleDensity()" title="Toggle density" aria-label="Toggle density">
+                    <button id="densityButton" class="btn btn-sm" role="menuitem" data-short="Dns" onclick="app.cycleDensity()" title="Toggle density" aria-label="Toggle density">
                         <span>Roomy</span>
                     </button>
-                    <button id="enterpriseButton" class="btn btn-sm" data-short="Ent" onclick="app.applyEnterpriseMode()" title="Enable Enterprise Mode" aria-label="Enable Enterprise Mode">
+                    <button id="enterpriseButton" class="btn btn-sm" role="menuitem" data-short="Ent" onclick="app.applyEnterpriseMode()" title="Enable Enterprise Mode" aria-label="Enable Enterprise Mode">
                         <span>Enterprise</span>
                     </button>
-                    <button id="ttsToggleButton" class="btn btn-sm" data-short="TTS" onclick="app.toggleTtsAutoPlayFromToolbar()" title="Read replies aloud" aria-label="Read replies aloud" disabled>
+                    <button id="ttsToggleButton" class="btn btn-sm" role="menuitem" data-short="TTS" onclick="app.toggleTtsAutoPlayFromToolbar()" title="Read replies aloud" aria-label="Read replies aloud" disabled>
                         <span>Voice</span>
                     </button>
-                    <button class="btn btn-sm voxel-only" data-short="Agent" onclick="app.focusVoxelCreator()" title="Agent companion console" aria-label="Open agent companion console">
+                    <button class="btn btn-sm voxel-only" role="menuitem" data-short="Agent" onclick="app.focusVoxelCreator()" title="Agent companion console" aria-label="Open agent companion console">
                         <span>Agent</span>
                     </button>
-                    <button class="btn btn-sm" onclick="app.showShortcuts()" title="Help (F1)" aria-label="Show keyboard shortcuts">?</button>
-                    <a href="/" class="btn btn-sm" aria-label="Go to home">Home</a>
+                    <button class="btn btn-sm" role="menuitem" onclick="app.showShortcuts()" title="Help (F1)" aria-label="Show keyboard shortcuts">?</button>
+                    <a href="/" class="btn btn-sm" role="menuitem" aria-label="Go to home">Home</a>
                 </div>
             </div>
         </header>

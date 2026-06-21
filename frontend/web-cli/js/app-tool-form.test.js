@@ -275,6 +275,17 @@ describe('web-cli tool form rendering', () => {
 });
 
 describe('web-cli command drawer keyboard navigation', () => {
+    test('matches menu semantics in the rendered toolbar markup', () => {
+        const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(indexMarkup);
+        const drawer = dom.window.document.getElementById('commandDrawer');
+        const items = Array.from(drawer.querySelectorAll('button, a[href]'));
+
+        expect(drawer.getAttribute('role')).toBe('menu');
+        expect(items.length).toBeGreaterThan(0);
+        expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
+    });
+
     function createDrawerHarness() {
         const app = createToolFormHarness();
         const dom = new JSDOM(`
