@@ -491,6 +491,27 @@ The strongest watchlist for tonight and Monday:
         expect(renderPlan.surveys[0].html).toContain('Cluster deployment');
     });
 
+    test('renders annotated fenced survey payloads without dropping nearby markdown', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.expandedReasoningMessageIds = new Set();
+        const content = `Answer this checkpoint before I continue.
+
+\`\`\`survey title="Next step" source="user-checkpoint"
+{"question":"Which direction should we take?","options":[{"label":"Dashboard UI"},{"label":"Cluster deployment"}]}
+\`\`\`
+
+I will continue once you answer.`;
+        const renderPlan = helper.buildSurveyRenderPlan(content, { id: 'choice-message-annotated' });
+
+        expect(renderPlan.markdown).toContain('Answer this checkpoint before I continue.');
+        expect(renderPlan.markdown).toContain('I will continue once you answer.');
+        expect(renderPlan.markdown).not.toContain('```survey title=');
+        expect(renderPlan.surveys).toHaveLength(1);
+        expect(renderPlan.surveys[0].html).toContain('data-survey-id="choice-message-annotated"');
+        expect(renderPlan.surveys[0].html).toContain('Dashboard UI');
+        expect(renderPlan.surveys[0].html).toContain('Cluster deployment');
+    });
+
     test('uses assistant source text for copy instead of rendered checkpoint chrome', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const content = `\`\`\`survey

@@ -1657,7 +1657,7 @@ class UIHelpers {
 
     unwrapJsonLikeCodeFence(value = '') {
         const normalized = this.normalizeJsonLikeText(value);
-        const match = normalized.match(/^```(?:json|survey|kb-survey)?\s*([\s\S]*?)\s*```$/i);
+        const match = normalized.match(/^```(?:(?:json|survey|kb-survey)(?:[^\n`]*)?)?\s*([\s\S]*?)\s*```$/i);
         return match ? match[1].trim() : normalized;
     }
 
@@ -2097,7 +2097,7 @@ class UIHelpers {
 
     extractPlainSurveyDefinition(content = '', fallbackId = '') {
         const source = this.normalizePlainSurveySource(content);
-        if (!source || /```(?:survey|kb-survey)/i.test(source)) {
+        if (!source || /```(?:survey|kb-survey)(?=[\s`]|$)/i.test(source)) {
             return null;
         }
 
@@ -2186,7 +2186,7 @@ class UIHelpers {
 
     extractSurveyDefinitionFromContent(content = '', fallbackId = '') {
         const source = String(content || '');
-        const fencedMatch = source.match(/```(?:survey|kb-survey)\s*([\s\S]*?)```/i);
+        const fencedMatch = source.match(/```(?:survey|kb-survey)(?=[\s`]|$)[^\n`]*\s*([\s\S]*?)```/i);
         if (fencedMatch?.[1]) {
             const parsed = this.parseJsonSafely(fencedMatch[1]);
             const normalized = this.normalizeSurveyDefinition(parsed, fallbackId);
@@ -2571,7 +2571,7 @@ class UIHelpers {
 
     buildSurveyRenderPlan(content = '', message = {}) {
         const source = String(content || '');
-        if (!/```(?:survey|kb-survey)/i.test(source)) {
+        if (!/```(?:survey|kb-survey)(?=[\s`]|$)/i.test(source)) {
             return {
                 markdown: source,
                 surveys: [],
@@ -2580,7 +2580,7 @@ class UIHelpers {
 
         let surveyIndex = 0;
         const surveys = [];
-        const markdown = source.replace(/```(?:survey|kb-survey)\s*([\s\S]*?)```/gi, (match) => {
+        const markdown = source.replace(/```(?:survey|kb-survey)(?=[\s`]|$)[^\n`]*\s*([\s\S]*?)```/gi, (match) => {
             const survey = this.extractSurveyDefinitionFromContent(match, message?.id || '');
             if (!survey) {
                 return match;
