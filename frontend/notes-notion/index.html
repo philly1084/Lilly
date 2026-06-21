@@ -4,18 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>Notes - Lilly Style</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/notion-refinements.css">
-    <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
+    <style>
+        html, body { margin: 0; min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .kb-fast-shell { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #f8fafc; color: #0f172a; }
+        .kb-fast-shell__inner { display: grid; gap: 10px; justify-items: center; }
+        .kb-fast-shell__mark { width: 34px; height: 34px; border-radius: 8px; background: #2563eb; box-shadow: 0 0 0 1px rgba(15,23,42,.08), 0 12px 32px rgba(37,99,235,.22); }
+        .kb-fast-shell__label { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #1e3a8a; }
+        body.kb-critical-loading > :not(.kb-fast-shell):not(script) { visibility: hidden; }
+        body:not(.kb-critical-loading) .kb-fast-shell { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+        body.kb-critical-loaded .kb-fast-shell { display: none; }
+    </style>
+    <script>
+        (function setupCriticalShellRelease() {
+            window.KimiBuiltReleaseCriticalShell = function releaseCriticalShell() {
+                document.body?.classList.remove('kb-critical-loading');
+                window.setTimeout(function hideCriticalShell() {
+                    document.body?.classList.add('kb-critical-loaded');
+                }, 160);
+            };
+            window.addEventListener('load', function () {
+                window.requestAnimationFrame(window.KimiBuiltReleaseCriticalShell);
+            }, { once: true });
+        })();
+    </script>
+</head>
+<body class="kb-critical-loading" data-ui-surface="notes">
+    <div class="kb-fast-shell" aria-label="Loading Notes">
+        <div class="kb-fast-shell__inner">
+            <div class="kb-fast-shell__mark" aria-hidden="true"></div>
+            <div class="kb-fast-shell__label">Notes</div>
+        </div>
+    </div>
+    <!-- kb-fast-shell-end -->
+    <link rel="preload" as="style" href="css/styles.css" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/notion-refinements.css" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-theme" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+        <link rel="stylesheet" href="css/styles.css">
+        <link rel="stylesheet" href="css/notion-refinements.css">
+        <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-</head>
-<body data-ui-surface="notes">
     <!-- App Container -->
     <div id="app">
         <!-- Sidebar -->

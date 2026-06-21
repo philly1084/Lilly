@@ -552,6 +552,12 @@ async function collectUiMetrics(page) {
       acc[entry.name] = Math.round(entry.startTime);
       return acc;
     }, {});
+    const frontendLoadMetrics = window.KimiBuiltFrontendLoadMetrics
+      && typeof window.KimiBuiltFrontendLoadMetrics === 'object'
+      ? Object.fromEntries(Object.entries(window.KimiBuiltFrontendLoadMetrics)
+        .filter((entry) => ['string', 'number', 'boolean'].includes(typeof entry[1])))
+      : null;
+    const criticalShellMark = performance.getEntriesByName('kimibuilt-critical-shell-ready')?.[0] || null;
     const navigationTiming = navigation ? {
       startTime: Math.round(navigation.startTime),
       responseStartMs: Math.round(navigation.responseStart),
@@ -569,6 +575,10 @@ async function collectUiMetrics(page) {
       url: window.location.href,
       navigationTiming,
       paintTiming,
+      frontendLoadMetrics,
+      criticalShellTiming: criticalShellMark ? {
+        startTimeMs: Math.round(criticalShellMark.startTime),
+      } : null,
       viewport: {
         width: viewportWidth,
         height: window.innerHeight,

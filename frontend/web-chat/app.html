@@ -7,6 +7,38 @@
     <meta name="theme-color" content="#0d0d0d">
     <link rel="icon" href="data:,">
     <title>Lilly Workspace</title>
+    <style>
+        html, body { margin: 0; min-height: 100%; background: #0b1020; color: #f8fafc; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .kb-fast-shell { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #0b1020; color: #f8fafc; }
+        .kb-fast-shell__inner { display: grid; gap: 10px; justify-items: center; }
+        .kb-fast-shell__mark { width: 34px; height: 34px; border-radius: 8px; background: #38bdf8; box-shadow: 0 0 0 1px rgba(255,255,255,.16), 0 12px 32px rgba(56,189,248,.28); }
+        .kb-fast-shell__label { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #dbeafe; }
+        body.kb-critical-loading > :not(.kb-fast-shell):not(script) { visibility: hidden; }
+        body:not(.kb-critical-loading) .kb-fast-shell { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+        body.kb-critical-loaded .kb-fast-shell { display: none; }
+    </style>
+    <script>
+        (function setupCriticalShellRelease() {
+            window.KimiBuiltReleaseCriticalShell = function releaseCriticalShell() {
+                document.body?.classList.remove('kb-critical-loading');
+                window.setTimeout(function hideCriticalShell() {
+                    document.body?.classList.add('kb-critical-loaded');
+                }, 160);
+            };
+            window.addEventListener('load', function () {
+                window.requestAnimationFrame(window.KimiBuiltReleaseCriticalShell);
+            }, { once: true });
+        })();
+    </script>
+</head>
+<body class="bg-bg-primary text-text-primary h-screen overflow-hidden kb-critical-loading" data-ui-surface="web-chat">
+    <div class="kb-fast-shell" aria-label="Loading Lilly Workspace">
+        <div class="kb-fast-shell__inner">
+            <div class="kb-fast-shell__mark" aria-hidden="true"></div>
+            <div class="kb-fast-shell__label">Lilly Workspace</div>
+        </div>
+    </div>
+    <!-- kb-fast-shell-end -->
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -100,10 +132,12 @@
 
     
     <!-- Custom styles -->
-    <link rel="stylesheet" href="css/styles.css?v=20260531a">
-    <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
-</head>
-<body class="bg-bg-primary text-text-primary h-screen overflow-hidden" data-ui-surface="web-chat">
+    <link rel="preload" as="style" href="css/styles.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link rel="stylesheet" href="css/styles.css?v=20260531a">
+        <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
+    </noscript>
     <!-- Skip to main content link for accessibility -->
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-accent focus:text-white focus:rounded-lg">
         Skip to main content

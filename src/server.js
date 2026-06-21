@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { WebSocketServer } = require('ws');
@@ -147,6 +148,9 @@ const frontendPath = process.env.FRONTEND_PATH || path.join(__dirname, '../front
 const FRONTEND_HTML_CACHE_CONTROL = 'no-store';
 const FRONTEND_VERSIONED_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const FRONTEND_SHORT_ASSET_CACHE_CONTROL = 'public, max-age=300, stale-while-revalidate=86400';
+const FRONTEND_EARLY_SHELL_MARKER = '<!-- kb-fast-shell-end -->';
+const FRONTEND_EARLY_SHELL_YIELD_MS = Number(process.env.FRONTEND_EARLY_SHELL_YIELD_MS || 16);
+const FRONTEND_FULL_ENTRY_QUERY = '__kb_full';
 
 function isVersionedFrontendAssetRequest(req = {}, filePath = '') {
     const requestUrl = String(req.originalUrl || req.url || '');
@@ -175,6 +179,133 @@ function buildFrontendStaticOptions() {
                 : FRONTEND_SHORT_ASSET_CACHE_CONTROL);
         },
     };
+}
+
+function splitFrontendHtmlForEarlyShell(html = '') {
+    const source = String(html);
+    const markerIndex = source.indexOf(FRONTEND_EARLY_SHELL_MARKER);
+    if (markerIndex === -1) {
+        return [source, ''];
+    }
+
+    const splitIndex = markerIndex + FRONTEND_EARLY_SHELL_MARKER.length;
+    return [source.slice(0, splitIndex), source.slice(splitIndex)];
+}
+
+function streamFrontendEntryHtml(filePath) {
+    return async (_req, res, next) => {
+        try {
+            const html = await fs.promises.readFile(filePath, 'utf8');
+            const [shellHtml, restHtml] = splitFrontendHtmlForEarlyShell(html);
+
+            res.status(200);
+            res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+            res.setHeader('Cache-Control', FRONTEND_HTML_CACHE_CONTROL);
+            res.write(shellHtml);
+
+            if (typeof res.flushHeaders === 'function') {
+                res.flushHeaders();
+            }
+
+            if (!restHtml) {
+                res.end();
+                return;
+            }
+
+            setTimeout(() => {
+                res.end(restHtml);
+            }, Math.max(0, FRONTEND_EARLY_SHELL_YIELD_MS));
+        } catch (error) {
+            next(error);
+        }
+    };
+}
+
+function escapeHtmlAttribute(value = '') {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function buildFrontendBootstrapHtml({
+    label,
+    fullPath,
+    background = '#0b1020',
+    text = '#f8fafc',
+    accent = '#38bdf8',
+} = {}) {
+    const safeLabel = escapeHtmlAttribute(label || 'KimiBuilt');
+    const safeFullPath = escapeHtmlAttribute(fullPath || '/');
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>${safeLabel}</title>
+    <style>
+        html, body { margin: 0; min-height: 100%; background: ${background}; color: ${text}; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        body { display: grid; place-items: center; min-height: 100vh; }
+        .kb-fast-shell { display: grid; gap: 10px; justify-items: center; }
+        .kb-fast-shell__mark { width: 34px; height: 34px; border-radius: 8px; background: ${accent}; box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 12px 32px color-mix(in srgb, ${accent} 30%, transparent); }
+        .kb-fast-shell__label { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <main class="kb-fast-shell" aria-label="Loading ${safeLabel}">
+        <div class="kb-fast-shell__mark" aria-hidden="true"></div>
+        <div class="kb-fast-shell__label">${safeLabel}</div>
+    </main>
+    <script>
+        (function loadFullFrontend() {
+            var fullUrl = ${JSON.stringify(safeFullPath)};
+            var shellReadyMs = Math.round(performance.now());
+            window.KimiBuiltFrontendLoadMetrics = {
+                label: ${JSON.stringify(safeLabel)},
+                criticalShellReadyMs: shellReadyMs,
+                fullFrontendDelayMs: 64
+            };
+            if (performance.mark) {
+                performance.mark('kimibuilt-critical-shell-ready');
+            }
+            window.KimiBuiltFrontendFullUrl = fullUrl;
+            function appendLoader() {
+                var script = document.createElement('script');
+                script.src = '/shared/frontend-entry-loader.js?v=20260621a';
+                document.body.appendChild(script);
+            }
+            setTimeout(appendLoader, 64);
+        })();
+    </script>
+</body>
+</html>`;
+}
+
+function sendFrontendBootstrapHtml(options) {
+    const bootstrapHtml = buildFrontendBootstrapHtml(options);
+
+    return (_req, res) => {
+        res.status(200);
+        res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+        res.setHeader('Cache-Control', FRONTEND_HTML_CACHE_CONTROL);
+        res.send(bootstrapHtml);
+    };
+}
+
+function registerFrontendEntryHtmlRoutes(targetApp, mountPath, filePath, bootstrapOptions = {}) {
+    const fullHandler = streamFrontendEntryHtml(filePath);
+    const bootstrapHandler = sendFrontendBootstrapHtml(bootstrapOptions);
+    const entryHandler = (req, res, next) => {
+        if (req.query?.[FRONTEND_FULL_ENTRY_QUERY] === '1') {
+            return fullHandler(req, res, next);
+        }
+        return bootstrapHandler(req, res, next);
+    };
+
+    targetApp.get(mountPath, entryHandler);
+    targetApp.get(`${mountPath}/`, entryHandler);
+    targetApp.get(`${mountPath}/index.html`, entryHandler);
 }
 
 app.get('/login', (req, res) => {
@@ -208,6 +339,35 @@ app.use(requireAuth);
 app.use('/api', apiRateLimit);
 
 // Serve only the 4 active frontends
+registerFrontendEntryHtmlRoutes(app, '/web-chat', path.join(frontendPath, 'web-chat', 'app.html'), {
+    label: 'Lilly Workspace',
+    fullPath: `/web-chat/app.html?${FRONTEND_FULL_ENTRY_QUERY}=1`,
+    background: '#0b1020',
+    text: '#f8fafc',
+    accent: '#38bdf8',
+});
+app.get('/web-chat/app.html', streamFrontendEntryHtml(path.join(frontendPath, 'web-chat', 'app.html')));
+registerFrontendEntryHtmlRoutes(app, '/web-cli', path.join(frontendPath, 'web-cli', 'index.html'), {
+    label: 'Web CLI',
+    fullPath: `/web-cli/index.html?${FRONTEND_FULL_ENTRY_QUERY}=1`,
+    background: '#0d1117',
+    text: '#e6edf3',
+    accent: '#58a6ff',
+});
+registerFrontendEntryHtmlRoutes(app, '/notes', path.join(frontendPath, 'notes-notion', 'index.html'), {
+    label: 'Notes',
+    fullPath: `/notes/index.html?${FRONTEND_FULL_ENTRY_QUERY}=1`,
+    background: '#f8fafc',
+    text: '#0f172a',
+    accent: '#2563eb',
+});
+registerFrontendEntryHtmlRoutes(app, '/canvas', path.join(frontendPath, 'canvas-excalidraw', 'index.html'), {
+    label: 'Canvas',
+    fullPath: `/canvas/index.html?${FRONTEND_FULL_ENTRY_QUERY}=1`,
+    background: '#f8fafc',
+    text: '#111827',
+    accent: '#7c3aed',
+});
 app.use('/web-chat', express.static(path.join(frontendPath, 'web-chat'), buildFrontendStaticOptions()));
 app.use('/web-cli', express.static(path.join(frontendPath, 'web-cli'), buildFrontendStaticOptions()));
 app.use('/notes', express.static(path.join(frontendPath, 'notes-notion'), buildFrontendStaticOptions()));
@@ -556,6 +716,7 @@ module.exports = {
     buildFrontendStaticOptions,
     initializeRuntimeServices,
     server,
+    splitFrontendHtmlForEarlyShell,
     start,
     startupPromise,
     startupState,

@@ -7,6 +7,10 @@ const {
   rewritePreviewUrlWithToken,
   waitForClientReady,
 } = require('./kimibuilt-ui-check');
+const {
+  buildUrl: buildFrontendLoadCheckUrl,
+  parseArgs: parseFrontendLoadCheckArgs,
+} = require('./kimibuilt-frontend-load-check');
 
 describe('kimibuilt-ui-check preview auth helpers', () => {
   const envKeys = [
@@ -105,5 +109,26 @@ describe('kimibuilt-ui-check preview auth helpers', () => {
     expect(String(readinessPredicate)).toContain('data-theme');
     expect(String(readinessPredicate)).toContain('preload');
     expect(page.evaluate).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  test('parses frontend load-check budget options', () => {
+    expect(parseFrontendLoadCheckArgs([
+      '--base-url',
+      'http://127.0.0.1:3013',
+      '--max-ms',
+      '50',
+      '--out',
+      'ui-checks/custom',
+    ])).toMatchObject({
+      baseUrl: 'http://127.0.0.1:3013',
+      maxMs: 50,
+      outDir: 'ui-checks/custom',
+    });
+  });
+
+  test('builds frontend load-check route URLs from the base URL', () => {
+    expect(buildFrontendLoadCheckUrl('http://127.0.0.1:3013', '/web-chat/')).toBe(
+      'http://127.0.0.1:3013/web-chat/',
+    );
   });
 });

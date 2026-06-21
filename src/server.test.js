@@ -91,4 +91,57 @@ describe('server readiness', () => {
             'public, max-age=300, stale-while-revalidate=86400',
         );
     });
+
+    test('splits frontend entry HTML after the fast shell marker', () => {
+        process.env = {
+            ...originalEnv,
+            NODE_ENV: 'test',
+            OPENAI_API_KEY: originalEnv.OPENAI_API_KEY || 'test-key',
+        };
+
+        const { splitFrontendHtmlForEarlyShell } = require('./server');
+        const [shell, rest] = splitFrontendHtmlForEarlyShell('<body>shell<!-- kb-fast-shell-end --><main>app</main>');
+
+        expect(shell).toBe('<body>shell<!-- kb-fast-shell-end -->');
+        expect(rest).toBe('<main>app</main>');
+    });
+
+    test('serves active frontend entry HTML as a tiny bootstrap shell', async () => {
+        process.env = {
+            ...originalEnv,
+            KIMIBUILT_AUTH_REQUIRED: 'false',
+            NODE_ENV: 'test',
+            OPENAI_API_KEY: originalEnv.OPENAI_API_KEY || 'test-key',
+        };
+
+        const { app } = require('./server');
+        const response = await request(app).get('/web-chat/');
+
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.text).toContain('loadFullFrontend');
+        expect(response.text).toContain('KimiBuiltFrontendLoadMetrics');
+        expect(response.text).toContain('kimibuilt-critical-shell-ready');
+        expect(response.text).toContain('/web-chat/app.html?__kb_full=1');
+        expect(response.text).toContain('/shared/frontend-entry-loader.js?v=20260621a');
+        expect(response.text).toContain('Lilly Workspace');
+        expect(response.text.length).toBeLessThan(2500);
+    });
+
+    test('serves full frontend entry HTML through the bootstrap full query', async () => {
+        process.env = {
+            ...originalEnv,
+            KIMIBUILT_AUTH_REQUIRED: 'false',
+            NODE_ENV: 'test',
+            OPENAI_API_KEY: originalEnv.OPENAI_API_KEY || 'test-key',
+        };
+
+        const { app } = require('./server');
+        const response = await request(app).get('/notes/index.html?__kb_full=1');
+
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.text).toContain('kb-fast-shell-end');
+        expect(response.text).toContain('LillyBuilt');
+    });
 });

@@ -20,6 +20,7 @@
         "test": "jest --coverage",
         "test:async-lab": "jest --coverage --runInBand src/async-lab/service.test.js src/routes/async-lab.test.js",
         "test:async-lab:valkey": "jest --runInBand src/async-lab/valkey-live-bus.integration.test.js",
+        "perf:frontend-load": "node bin/kimibuilt-frontend-load-check.js",
         "test:load": "node scripts/load-release-gate.js",
         "test:intelligence": "jest --runInBand src/session-scope.test.js src/perceived-intelligence-harness.test.js src/memory/memory-service.test.js src/conversation-orchestrator.test.js",
         "test:watch": "jest --watch",
