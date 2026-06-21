@@ -4148,8 +4148,9 @@ class ChatApp {
         }
 
         const relativePath = normalized.startsWith('/') ? normalized : `/${normalized}`;
-        const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
-        const base = isLocal ? 'http://localhost:3000' : `${window.location.protocol}//${window.location.host}`;
+        const base = window.location.protocol === 'file:'
+            ? 'http://localhost:3000'
+            : `${window.location.protocol}//${window.location.host}`;
         return `${base}${relativePath}`;
     }
 

@@ -348,7 +348,7 @@ class SessionManager extends EventTarget {
         this.sessions = [];
         this.currentSessionId = null;
         this.sessionMessages = new Map(); // sessionId -> messages array
-        this.apiBaseUrl = window.location.hostname === 'localhost'
+        this.apiBaseUrl = window.location.protocol === 'file:'
             ? 'http://localhost:3000/api'
             : `${window.location.protocol}//${window.location.host}/api`;
         this.workspaceContext = SESSION_WORKSPACE_CONTEXT;

@@ -4,8 +4,7 @@
  */
 
 (function() {
-    const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
-    const API_BASE = LOCAL_HOSTNAMES.has(window.location.hostname)
+    const API_BASE = window.location.protocol === 'file:'
         ? 'http://localhost:3000'
         : `${window.location.protocol}//${window.location.host}`;
     const gatewayStreamHelpers = window.KimiBuiltGatewaySSE || {};

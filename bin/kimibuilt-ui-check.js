@@ -546,10 +546,29 @@ async function collectUiMetrics(page) {
       }));
 
     const bodyText = normalize(document.body?.innerText || '');
+    const navigation = performance.getEntriesByType('navigation')?.[0] || null;
+    const paintEntries = performance.getEntriesByType('paint') || [];
+    const paintTiming = paintEntries.reduce((acc, entry) => {
+      acc[entry.name] = Math.round(entry.startTime);
+      return acc;
+    }, {});
+    const navigationTiming = navigation ? {
+      startTime: Math.round(navigation.startTime),
+      responseStartMs: Math.round(navigation.responseStart),
+      responseEndMs: Math.round(navigation.responseEnd),
+      domInteractiveMs: Math.round(navigation.domInteractive),
+      domContentLoadedMs: Math.round(navigation.domContentLoadedEventEnd),
+      loadMs: Math.round(navigation.loadEventEnd),
+      transferSize: Math.round(navigation.transferSize || 0),
+      encodedBodySize: Math.round(navigation.encodedBodySize || 0),
+      decodedBodySize: Math.round(navigation.decodedBodySize || 0),
+    } : null;
 
     return {
       title: normalize(document.title),
       url: window.location.href,
+      navigationTiming,
+      paintTiming,
       viewport: {
         width: viewportWidth,
         height: window.innerHeight,
@@ -664,14 +683,17 @@ async function run() {
       });
 
       try {
+        const startedAt = Date.now();
         await page.goto(target.url, {
           waitUntil: 'domcontentloaded',
           timeout: args.timeout,
         });
+        const domContentLoadedWallMs = Date.now() - startedAt;
         await page.waitForLoadState('networkidle', {
           timeout: Math.min(args.timeout, 8000),
         }).catch(() => {});
         await waitForClientReady(page, args.timeout);
+        const clientReadyWallMs = Date.now() - startedAt;
         if (args.waitForSelector) {
           await page.waitForSelector(args.waitForSelector, {
             timeout: args.timeout,
@@ -680,6 +702,11 @@ async function run() {
         }
 
         const metrics = await collectUiMetrics(page);
+        metrics.navigationTiming = {
+          ...(metrics.navigationTiming || {}),
+          domContentLoadedWallMs,
+          clientReadyWallMs,
+        };
         const titleSlug = slugify(metrics.title || new URL(page.url()).hostname);
         const screenshotPath = path.resolve(args.outDir, `${titleSlug}-${viewport.name}.png`);
         await page.screenshot({

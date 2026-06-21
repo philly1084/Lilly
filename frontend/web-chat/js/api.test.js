@@ -124,7 +124,7 @@ describe('web-chat API origin selection', () => {
         expect(fetchMock.mock.calls[0][0]).toContain('http://127.0.0.1:3000/api/tools/available');
     });
 
-    test('keeps the backend fallback for non-3000 local preview ports', async () => {
+    test('uses the current origin for served non-3000 local routes', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,
             json: async () => ({
@@ -137,6 +137,27 @@ describe('web-chat API origin selection', () => {
             host: '127.0.0.1:3100',
             port: '3100',
             href: 'http://127.0.0.1:3100/web-chat/app.html',
+        });
+
+        await apiClient.getAvailableTools(null, { includeAll: true });
+
+        expect(fetchMock.mock.calls[0][0]).toContain('http://127.0.0.1:3100/api/tools/available');
+    });
+
+    test('keeps the backend fallback for file previews', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                data: [],
+                meta: {},
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock, {
+            hostname: '',
+            protocol: 'file:',
+            host: '',
+            port: '',
+            href: 'file:///C:/Users/phill/KimiBuilt/frontend/web-chat/app.html',
         });
 
         await apiClient.getAvailableTools(null, { includeAll: true });

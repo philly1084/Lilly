@@ -142,11 +142,9 @@ const Storage = (function() {
     };
 
     function getApiBaseUrl() {
-        const localHostnames = new Set(['localhost', '127.0.0.1', '[::1]']);
-        const currentHost = window.location.hostname;
         const currentOrigin = `${window.location.protocol}//${window.location.host}`;
 
-        return localHostnames.has(currentHost)
+        return window.location.protocol === 'file:'
             ? 'http://localhost:3000/api'
             : `${currentOrigin}/api`;
     }

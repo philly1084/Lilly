@@ -4,19 +4,9 @@
  */
 
 // Configuration
-const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
-const CURRENT_HOSTNAME = window.location.hostname;
 const CURRENT_ORIGIN = `${window.location.protocol}//${window.location.host}`;
-const CURRENT_PORT = window.location.port || (() => {
-    try {
-        return new URL(window.location.href || CURRENT_ORIGIN).port;
-    } catch (_error) {
-        return '';
-    }
-})();
-const IS_LOCAL_HOSTNAME = LOCAL_HOSTNAMES.has(CURRENT_HOSTNAME);
 
-const API_BASE_URL = IS_LOCAL_HOSTNAME && CURRENT_PORT !== '3000'
+const API_BASE_URL = window.location.protocol === 'file:'
     ? 'http://localhost:3000/v1'
     : `${CURRENT_ORIGIN}/v1`;
 const API_KEY = 'any-key'; // Required by SDK but not validated by LillyBuilt

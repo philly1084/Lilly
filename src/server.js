@@ -144,15 +144,35 @@ app.get('/ready', (_req, res) => {
 
 const frontendPath = process.env.FRONTEND_PATH || path.join(__dirname, '../frontend');
 
+const FRONTEND_HTML_CACHE_CONTROL = 'no-store';
+const FRONTEND_VERSIONED_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+const FRONTEND_SHORT_ASSET_CACHE_CONTROL = 'public, max-age=300, stale-while-revalidate=86400';
+
+function isVersionedFrontendAssetRequest(req = {}, filePath = '') {
+    const requestUrl = String(req.originalUrl || req.url || '');
+    try {
+        const parsed = new URL(requestUrl, 'http://localhost');
+        if (parsed.searchParams.has('v')) {
+            return true;
+        }
+    } catch (_error) {
+        // Fall back to filename matching below.
+    }
+
+    return /[.-][a-f0-9]{8,}\.(?:css|js|mjs|png|jpe?g|webp|gif|svg|woff2?)$/i.test(String(filePath || ''));
+}
+
 function buildFrontendStaticOptions() {
     return {
         setHeaders(res, filePath) {
             if (String(filePath || '').toLowerCase().endsWith('.html')) {
-                res.setHeader('Cache-Control', 'no-store');
+                res.setHeader('Cache-Control', FRONTEND_HTML_CACHE_CONTROL);
                 return;
             }
 
-            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Cache-Control', isVersionedFrontendAssetRequest(res.req, filePath)
+                ? FRONTEND_VERSIONED_ASSET_CACHE_CONTROL
+                : FRONTEND_SHORT_ASSET_CACHE_CONTROL);
         },
     };
 }
@@ -533,6 +553,7 @@ const startupPromise = process.env.NODE_ENV === 'test'
 
 module.exports = {
     app,
+    buildFrontendStaticOptions,
     initializeRuntimeServices,
     server,
     start,
