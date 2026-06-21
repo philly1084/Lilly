@@ -44,6 +44,13 @@ describe('GitLocalTool', () => {
     tool.getCurrentBranch = jest.fn().mockResolvedValue('master');
     tool.spawnGit = jest.fn().mockImplementation(async (args) => {
       commands.push(args);
+      if (args.join(' ') === 'diff --cached --quiet --') {
+        const error = new Error('');
+        error.exitCode = 1;
+        error.stdout = '';
+        error.stderr = '';
+        throw error;
+      }
       return {
         exitCode: 0,
         stdout: 'ok',
@@ -62,6 +69,7 @@ describe('GitLocalTool', () => {
     expect(result.success).toBe(true);
     expect(commands).toEqual([
       ['add', '--', 'src/app.js'],
+      ['diff', '--cached', '--quiet', '--'],
       ['-c', 'user.name=KimiBuilt Agent', '-c', 'user.email=agent@example.com', 'commit', '-m', 'Update app'],
       ['push', 'origin', 'master'],
     ]);
@@ -69,6 +77,39 @@ describe('GitLocalTool', () => {
       repositoryPath: path.resolve('/repo'),
     }));
     expect(createGitCredentialSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('save-and-push skips commit when selected paths produce no staged changes', async () => {
+    const tool = new GitLocalTool();
+    const commands = [];
+
+    tool.resolveRepoRoot = jest.fn().mockResolvedValue('/repo');
+    tool.getCurrentBranch = jest.fn().mockResolvedValue('master');
+    tool.spawnGit = jest.fn().mockImplementation(async (args) => {
+      commands.push(args);
+      return {
+        exitCode: 0,
+        stdout: args[0] === 'push' ? 'Everything up-to-date' : '',
+        stderr: '',
+        duration: 5,
+      };
+    });
+
+    const result = await tool.execute({
+      action: 'save-and-push',
+      repositoryPath: '/repo',
+      paths: ['src/app.js'],
+      message: 'Update app',
+    });
+
+    expect(result.success).toBe(true);
+    expect(commands).toEqual([
+      ['add', '--', 'src/app.js'],
+      ['diff', '--cached', '--quiet', '--'],
+      ['push', 'origin', 'master'],
+    ]);
+    expect(result.data.stdout).toContain('No staged changes to commit.');
+    expect(result.data.stdout).toContain('Everything up-to-date');
   });
 
   test('rejects invalid pathspecs that look like flags', async () => {

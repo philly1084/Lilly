@@ -169,12 +169,32 @@ class GitLocalTool extends ToolBase {
     });
     tracker.recordExecution(`git add -- ${pathspecs.join(' ')}`, { repoRoot, action: 'add' });
 
-    const committed = await this.spawnGit(this.buildCommitArgs(commitMessage), {
+    const stagedDiff = await this.spawnGitAllowFailure(['diff', '--cached', '--quiet', '--'], {
       cwd: repoRoot,
       timeout,
       env,
     });
-    tracker.recordExecution(`git commit -m ${JSON.stringify(commitMessage)}`, { repoRoot, action: 'commit' });
+    tracker.recordExecution('git diff --cached --quiet --', { repoRoot, action: 'diff' });
+
+    let committed = {
+      exitCode: 0,
+      stdout: 'No staged changes to commit.',
+      stderr: '',
+      duration: stagedDiff.duration || 0,
+    };
+    if (stagedDiff.exitCode === 1) {
+      committed = await this.spawnGit(this.buildCommitArgs(commitMessage), {
+        cwd: repoRoot,
+        timeout,
+        env,
+      });
+      tracker.recordExecution(`git commit -m ${JSON.stringify(commitMessage)}`, { repoRoot, action: 'commit' });
+    } else if (stagedDiff.exitCode !== 0) {
+      const detail = stagedDiff.stderr || stagedDiff.stdout || 'unable to inspect staged changes';
+      throw new Error(`git-safe could not inspect staged changes before committing: ${detail}`);
+    } else {
+      tracker.recordExecution('git commit skipped: no staged changes', { repoRoot, action: 'commit' });
+    }
 
     const pushArgs = ['push'];
     if (setUpstream) {
@@ -439,6 +459,7 @@ class GitLocalTool extends ToolBase {
   }
 
   async spawnGitAllowFailure(args, options = {}) {
+    const startedAt = Date.now();
     try {
       return await this.spawnGit(args, options);
     } catch (error) {
@@ -446,7 +467,7 @@ class GitLocalTool extends ToolBase {
         exitCode: Number(error?.exitCode) || 1,
         stdout: String(error?.stdout || '').trim(),
         stderr: String(error?.stderr || error?.message || '').trim(),
-        duration: 0,
+        duration: Date.now() - startedAt,
       };
     }
   }
