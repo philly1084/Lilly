@@ -307,6 +307,86 @@ describe('WebSearchTool', () => {
     ]);
   });
 
+  test('upgrades headline requests to Perplexity pro-search with day recency', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'agent-headlines-123',
+        model: 'openai/gpt-5.2',
+        output: [
+          {
+            type: 'search_results',
+            queries: ['latest AI headlines'],
+            results: [{
+              title: 'AI headline roundup',
+              url: 'https://example.com/ai-headlines',
+              snippet: 'Today in AI: model releases and chip funding.',
+            }],
+          },
+          {
+            type: 'fetch_url_results',
+            contents: [{
+              title: 'AI headline roundup',
+              url: 'https://example.com/ai-headlines',
+              snippet: 'Fetched context for today\'s AI headlines.',
+            }],
+          },
+          {
+            type: 'message',
+            content: [{
+              type: 'output_text',
+              text: 'Today\'s AI headlines include model releases and chip funding updates.',
+            }],
+          },
+        ],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const tracker = {
+      recordNetworkCall: jest.fn(),
+    };
+
+    const result = await tool.handler({
+      query: 'latest AI headlines',
+      researchMode: 'search',
+    }, {}, tracker);
+
+    const [endpoint, request] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+
+    expect(endpoint).toBe('https://api.perplexity.ai/v1/agent');
+    expect(payload).toEqual(expect.objectContaining({
+      preset: 'pro-search',
+      input: 'latest AI headlines',
+    }));
+    expect(payload.tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'web_search',
+        filters: expect.objectContaining({
+          search_recency_filter: 'day',
+        }),
+      }),
+      expect.objectContaining({
+        type: 'fetch_url',
+      }),
+    ]));
+    expect(result.researchMode).toBe('pro-search');
+    expect(result.answer).toContain('AI headlines include');
+    expect(result.verifiedPages).toEqual([
+      expect.objectContaining({
+        title: 'AI headline roundup',
+        url: 'https://example.com/ai-headlines',
+      }),
+    ]);
+    expect(tracker.recordNetworkCall).toHaveBeenCalledWith(
+      'https://api.perplexity.ai/v1/agent',
+      'POST',
+      { results: 1, researchMode: 'pro-search' },
+    );
+  });
+
   test('admin regular research level caps explicit research at raw Perplexity search', async () => {
     settingsController.getEffectiveOrchestrationConfig.mockReturnValue({
       perplexityResearchLevel: 'regular',

@@ -44,9 +44,11 @@ describe('research freshness defaults', () => {
   test('routes explicit research to richer Perplexity modes while preserving raw discovery', () => {
     expect(inferPerplexityResearchMode('Please research managed Postgres providers')).toBe('pro-search');
     expect(inferPerplexityResearchMode('Gather article sources for Canadian AI regulation')).toBe('pro-search');
+    expect(inferPerplexityResearchMode('Latest AI headlines')).toBe('pro-search');
     expect(inferPerplexityResearchMode('Do deep research on managed Postgres providers')).toBe('sonar-deep-research');
     expect(inferPerplexityResearchMode('Find URLs for managed Postgres pricing pages')).toBe('search');
     expect(needsExpandedResearchEvidence('Please research managed Postgres providers')).toBe(true);
+    expect(needsExpandedResearchEvidence('Latest AI headlines')).toBe(true);
   });
 
   test('applies admin Perplexity research levels without escalating URL discovery', () => {
