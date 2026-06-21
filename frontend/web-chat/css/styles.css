@@ -5151,7 +5151,8 @@ body.layout-minimal #input-meta-row {
     margin-left: auto;
 }
 
-.message:hover .message-actions {
+.message:hover .message-actions,
+.message:focus-within .message-actions {
     opacity: 1;
 }
 
