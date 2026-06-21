@@ -3689,11 +3689,26 @@ class UIHelpers {
         }
     }
 
+    cleanAssistantEventLogPrefix(value = '') {
+        let text = String(value || '').trim();
+        for (let index = 0; index < 3; index += 1) {
+            const next = text
+                .replace(/^\s*\[[^\]\n]{1,80}\]\s*/, '')
+                .replace(/^\s*(?:remote[-_\s]*cli[-_\s]*agent|remote_code_(?:run|status)|tool|runner|agent)\s*(?:[:|-])\s*/i, '')
+                .replace(/^\s*(?:output|stdout|stderr|result|response|message|detail|summary|label|manual\s+label|step)\s*:\s*/i, '')
+                .trim();
+            if (next === text) {
+                break;
+            }
+            text = next;
+        }
+        return text;
+    }
+
     normalizeAssistantProgressStepTitle(value = null, fallback = '') {
         const rawTitle = this.extractDisplayText(value);
-        const cleanedTitle = rawTitle
+        const cleanedTitle = this.cleanAssistantEventLogPrefix(rawTitle)
             .replace(/\s*\[truncated\s+\d+\s+chars\]\s*$/i, '')
-            .replace(/^(?:output|stdout|stderr|result|response|message|detail|summary|label|manual\s+label|step)\s*:\s*/i, '')
             .replace(/`([^`]{1,120})`/g, '$1')
             .replace(/\s+([,.;:!?])/g, '$1')
             .trim();
@@ -3750,8 +3765,7 @@ class UIHelpers {
             return '';
         }
 
-        const withoutPrefix = rawText
-            .replace(/^\s*(?:output|stdout|stderr|result|response|message|detail|summary|label|manual\s+label|step)\s*:\s*/i, '')
+        const withoutPrefix = this.cleanAssistantEventLogPrefix(rawText)
             .replace(/^["'“”]+|["'“”]+$/g, '')
             .replace(/`([^`]{1,120})`/g, '$1')
             .replace(/\s+([,.;:!?])/g, '$1')

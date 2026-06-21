@@ -788,6 +788,55 @@ Options I ruled out:
         expect(html).not.toContain('assistant-progress-card__steps');
     });
 
+    test('cleans bracketed runner labels from progress card status text', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAssistantRenderPlan({
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            progressState: {
+                phase: 'checking-tools',
+                detail: '[remote-cli-agent] stdout: Public URL returned 200 from `index.html`.',
+                toolEvents: [{
+                    toolId: 'remote-cli-agent',
+                    stage: 'in_progress',
+                    detail: '[remote-cli-agent] stdout: Public URL returned 200 from `index.html`.',
+                }],
+            },
+        }, true).html;
+
+        expect(html).toContain('Public URL returned 200 from index.html.');
+        expect(html).not.toContain('[remote-cli-agent]');
+        expect(html).not.toContain('stdout:');
+        expect(html).not.toContain('`index.html`');
+        expect(html).not.toContain('assistant-progress-card__steps');
+    });
+
+    test('cleans bracketed runner labels from visible progress steps', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildAssistantRenderPlan({
+            role: 'assistant',
+            content: '',
+            isStreaming: true,
+            progressState: {
+                phase: 'executing',
+                source: 'tool-plan',
+                estimated: false,
+                steps: [
+                    { title: '[remote-cli-agent] output: Build image published.', status: 'completed' },
+                    { title: '[remote-cli-agent] stderr: Checking rollout status.', status: 'in_progress' },
+                    { title: 'Verify public endpoint', status: 'pending' },
+                ],
+            },
+        }, true).html;
+
+        expect(html).toContain('Build image published.');
+        expect(html).toContain('Checking rollout status.');
+        expect(html).not.toContain('[remote-cli-agent]');
+        expect(html).not.toContain('output:');
+        expect(html).not.toContain('stderr:');
+    });
+
     test('renders managed deployment progress as one card without raw remote SSE telemetry', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const message = {
@@ -854,7 +903,7 @@ Options I ruled out:
                 toolEvents: [{
                     toolId: 'remote-cli-agent',
                     stage: 'in_progress',
-                    detail: 'output: The public page is live from `index.html`; checking HTTPS.',
+                    detail: '[remote-cli-agent] output: The public page is live from `index.html`; checking HTTPS.',
                 }],
             },
         };
@@ -862,6 +911,7 @@ Options I ruled out:
         const html = helper.buildAssistantRenderPlan(message, true).html;
 
         expect(html).toContain('The public page is live from index.html; checking HTTPS.');
+        expect(html).not.toContain('[remote-cli-agent]');
         expect(html).not.toContain('output:');
         expect(html).not.toContain('`index.html`');
     });
