@@ -459,6 +459,24 @@ describe('openai-sse helpers', () => {
     expect(resolvePreferredChatModel(models, 'gpt-image-2')).toBe('auto');
   });
 
+  test('keeps vision and image-input chat models selectable', () => {
+    const models = [
+      { id: 'gpt-4-vision-preview' },
+      { id: 'gpt-4o-image-input-preview' },
+      { id: 'router-image-input-chat', capabilities: ['chat', 'image_input'] },
+      { id: 'custom-image-router', capabilities: ['image_generation'] },
+    ];
+
+    expect(isChatModel('gpt-4-vision-preview')).toBe(true);
+    expect(isChatModel('gpt-4o-image-input-preview')).toBe(true);
+    expect(filterChatModels(models).map((model) => model.id)).toEqual([
+      'gpt-4-vision-preview',
+      'gpt-4o-image-input-preview',
+      'router-image-input-chat',
+    ]);
+    expect(resolvePreferredChatModel(models, 'gpt-4o-image-input-preview')).toBe('gpt-4o-image-input-preview');
+  });
+
   test('keeps plain auto as a valid chat-model selection even when the catalog omits it', () => {
     const models = [
       { id: 'gpt-5.4-mini', capabilities: ['chat'] },

@@ -28,11 +28,34 @@ describe('model-catalog', () => {
             { id: 'gpt-4o', owned_by: 'openai' },
             { id: 'text-embedding-3-large', owned_by: 'openai' },
             { id: 'gpt-image-1', owned_by: 'openai' },
+            { id: 'custom-image-router', owned_by: 'gateway', capabilities: ['image_generation'] },
             { id: 'whisper-1', owned_by: 'openai' },
             { id: 'omni-moderation-latest', owned_by: 'openai' },
         ])).toEqual([
             expect.objectContaining({
                 id: 'gpt-4o',
+            }),
+        ]);
+    });
+
+    test('keeps multimodal image-input and vision chat models public', () => {
+        expect(isPublicChatModel('gpt-4-vision-preview')).toBe(true);
+        expect(isPublicChatModel('gpt-4o-image-input-preview')).toBe(true);
+        expect(isPublicChatModel({
+            id: 'router-image-input-chat',
+            owned_by: 'gateway',
+            capabilities: ['chat', 'image_input'],
+        })).toBe(true);
+        expect(toPublicChatModelList([
+            { id: 'gpt-4o-image-input-preview', owned_by: 'openai' },
+            { id: 'router-image-input-chat', owned_by: 'gateway', capabilities: ['chat', 'image_input'] },
+            { id: 'custom-image-router', owned_by: 'gateway', capabilities: ['image_generation'] },
+        ])).toEqual([
+            expect.objectContaining({
+                id: 'gpt-4o-image-input-preview',
+            }),
+            expect.objectContaining({
+                id: 'router-image-input-chat',
             }),
         ]);
     });

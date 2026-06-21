@@ -6,10 +6,18 @@ const NON_CHAT_MODEL_TOKENS = [
     'embed',
     'embedding',
     'text-embedding',
-    'image',
     'image-gen',
     'image_generation',
     'image-generation',
+    'image-edit',
+    'image_edit',
+    'image-model',
+    'image_model',
+    'image-router',
+    'image_router',
+    'image-generator',
+    'image_generator',
+    'text-to-image',
     'gpt-image',
     'dall-e',
     'dalle',
@@ -28,12 +36,45 @@ const NON_CHAT_MODEL_TOKENS = [
     'realtime',
     'moderation',
     'omni-moderation',
-    'vision-preview',
 ];
 
-function isPublicChatModel(modelId = '') {
-    const normalizedId = normalizeModelId(modelId).toLowerCase();
+const NON_CHAT_CAPABILITIES = new Set([
+    'image',
+    'image_generation',
+    'image-generation',
+    'images',
+    'embedding',
+    'embeddings',
+    'text-embedding',
+    'tts',
+    'speech',
+    'audio',
+    'transcription',
+    'transcribe',
+    'moderation',
+    'realtime',
+]);
+
+function normalizeCapabilities(model = {}) {
+    return Array.isArray(model?.capabilities)
+        ? model.capabilities.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+}
+
+function isPublicChatModel(modelOrId = '') {
+    const model = modelOrId && typeof modelOrId === 'object'
+        ? modelOrId
+        : { id: modelOrId };
+    const normalizedId = normalizeModelId(model.id).toLowerCase();
     if (!normalizedId) {
+        return false;
+    }
+
+    const capabilities = normalizeCapabilities(model);
+    if (capabilities.includes('chat')) {
+        return true;
+    }
+    if (capabilities.some((entry) => NON_CHAT_CAPABILITIES.has(entry))) {
         return false;
     }
 
@@ -216,7 +257,7 @@ function toPublicModelList(models = []) {
 }
 
 function toPublicChatModelList(models = []) {
-    return uniquePublicModelList(models.filter((model) => isPublicChatModel(model?.id)));
+    return uniquePublicModelList(models.filter((model) => isPublicChatModel(model)));
 }
 
 module.exports = {

@@ -145,6 +145,24 @@ describe('web-chat API origin selection', () => {
     });
 });
 
+describe('web-chat model filtering', () => {
+    test('keeps image-input chat models while excluding image generators', () => {
+        const { apiClient } = loadApiClient();
+
+        const models = apiClient.filterChatModels([
+            { id: 'gpt-4o-image-input-preview' },
+            { id: 'router-image-input-chat', capabilities: ['chat', 'image_input'] },
+            { id: 'custom-image-router', capabilities: ['image_generation'] },
+            { id: 'gpt-image-2', capabilities: ['image_generation'] },
+        ]);
+
+        expect(models.map((model) => model.id)).toEqual([
+            'gpt-4o-image-input-preview',
+            'router-image-input-chat',
+        ]);
+    });
+});
+
 describe('web-chat remote build metadata', () => {
     test('sends plugin menu execution profile and planned tools in chat requests', async () => {
         const fetchMock = jest.fn(async () => ({
