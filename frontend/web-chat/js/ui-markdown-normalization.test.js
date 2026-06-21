@@ -381,6 +381,48 @@ Overflow: none
         expect(plan.markdown).toContain('console.log("ok");');
     });
 
+    test('speaks chat presentation panels without raw fence syntax', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const text = helper.buildSpeakableMessageText({
+            id: 'assistant-panel',
+            role: 'assistant',
+            content: `Here is the current read.
+
+\`\`\`chat-panel title="Deployment Readout" tone="success" eyebrow="Status"
+The rollout is healthy and the public route is responding.
+\`\`\`
+
+Next I will keep the verification note short.`,
+        });
+
+        expect(text).toContain('Here is the current read.');
+        expect(text).toContain('Status');
+        expect(text).toContain('Deployment Readout');
+        expect(text).toContain('The rollout is healthy and the public route is responding.');
+        expect(text).toContain('Next I will keep the verification note short.');
+        expect(text).not.toContain('```chat-panel');
+        expect(text).not.toContain('tone="success"');
+    });
+
+    test('speaks chat presentation metric rows as readable labels', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const text = helper.buildSpeakableMessageText({
+            id: 'assistant-metrics',
+            role: 'assistant',
+            content: `\`\`\`chat-metrics title="Proof"
+Health: 200 OK
+Rollout: 1/1 ready
+Overflow: none
+\`\`\``,
+        });
+
+        expect(text).toContain('Proof');
+        expect(text).toContain('Health: 200 OK.');
+        expect(text).toContain('Rollout: 1/1 ready.');
+        expect(text).toContain('Overflow: none.');
+        expect(text).not.toContain('```chat-metrics');
+    });
+
     test('does not infer a survey card from long news briefs with watchlists', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const content = `Here is the in-depth news brief for Sunday, May 3.

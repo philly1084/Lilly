@@ -7450,6 +7450,81 @@ class UIHelpers {
         return parts.join('\n\n').trim();
     }
 
+    cleanAssistantSpeechText(value = '') {
+        return String(value || '')
+            .replace(/\r\n?/g, '\n')
+            .replace(/```[A-Za-z0-9_-]*\s*\n([\s\S]*?)```/g, '$1')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+            .replace(/^\s{0,3}>\s?/gm, '')
+            .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '')
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(/\*([^*]+)\*/g, '$1')
+            .replace(/__([^_]+)__/g, '$1')
+            .replace(/_([^_]+)_/g, '$1')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    buildChatPresentationSpeechSummary(language = '', rawOptions = '', body = '') {
+        const type = this.normalizeChatPresentationType(language);
+        const options = this.parseChatPresentationOptions(rawOptions);
+        const tone = this.normalizeChatPresentationTone(type, options);
+        const title = this.clipDisplayTextAtBoundary(
+            options.title || options.label || this.getChatPresentationDefaultTitle(type, tone),
+            84,
+        );
+        const label = this.clipDisplayTextAtBoundary(options.eyebrow || options.kicker || '', 36);
+        const parts = [label, title].filter(Boolean);
+
+        if (type === 'metrics') {
+            this.parseChatPresentationMetricRows(body).forEach((row) => {
+                parts.push(`${row.label}: ${row.value}.`);
+            });
+        } else if (type === 'steps') {
+            this.parseChatPresentationSteps(body).forEach((step) => {
+                parts.push(step.text);
+            });
+        } else {
+            const cleanedBody = this.cleanAssistantSpeechText(
+                this.normalizeHumanReadableMarkdownSegment(String(body || '').trim()),
+            );
+            if (cleanedBody) {
+                parts.push(cleanedBody);
+            }
+            const cite = this.clipDisplayTextAtBoundary(options.cite || options.source || '', 88);
+            if (type === 'quote' && cite) {
+                parts.push(`Source: ${cite}.`);
+            }
+        }
+
+        return parts
+            .map((part) => this.cleanAssistantSpeechText(part))
+            .filter(Boolean)
+            .join('\n\n')
+            .trim();
+    }
+
+    normalizeChatPresentationSpeechText(source = '') {
+        const text = String(source || '').replace(/\r\n?/g, '\n');
+        if (!text.trim()) {
+            return '';
+        }
+
+        const presentationFencePattern = /```([A-Za-z][\w-]*)([^\n`]*)\n([\s\S]*?)```/g;
+        return text.replace(presentationFencePattern, (match, language, options, body) => {
+            const normalizedLanguage = String(language || '').trim().toLowerCase();
+            if (!this.isChatPresentationLanguage(normalizedLanguage)) {
+                return match;
+            }
+
+            return this.buildChatPresentationSpeechSummary(normalizedLanguage, options, body);
+        });
+    }
+
     shouldPreferAssistantContentOverDisplayContent(message = null) {
         if (!message || message.role !== 'assistant') {
             return false;
@@ -7519,7 +7594,10 @@ class UIHelpers {
             return this.buildSurveySpeechSummary(survey, message);
         }
 
-        return source;
+        const speechText = this.cleanAssistantSpeechText(
+            this.normalizeChatPresentationSpeechText(source),
+        );
+        return speechText || source;
     }
 
     getMessageSpeechControlState(messageId = '', message = null) {
