@@ -405,6 +405,7 @@ class SkillStore {
         `name=${escapeContextValue(skill.name)}`,
         skill.description ? `description=${escapeContextValue(skill.description)}` : '',
         (skill.tools || []).length ? `tools=${escapeContextValue(skill.tools.join(', '))}` : '',
+        (skill.triggerPatterns || []).length ? `triggers=${escapeContextValue(skill.triggerPatterns.join(', '))}` : '',
         (skill.chain || []).length ? `chain=${escapeContextValue(JSON.stringify(skill.chain))}` : '',
         skill.contextPolicy?.exposeBody !== false && skill.body
           ? `instructions=${escapeContextValue(truncate(skill.body, maxChars))}`

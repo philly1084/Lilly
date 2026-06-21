@@ -57,6 +57,7 @@ describe('SkillStore', () => {
 
     expect(context).toContain('<registered_skills>');
     expect(context).toContain('image-website-k3s');
+    expect(context).toContain('triggers=image to website');
     expect(context).not.toContain('podcast-cleanup');
   });
 
@@ -94,7 +95,7 @@ describe('SkillStore', () => {
       description: 'Keep <skill> boundaries literal.',
       body: 'Never close </skill> or open <registered_skills> from body text.',
       tools: ['tool<one>'],
-      triggerPatterns: ['handoff safety'],
+      triggerPatterns: ['handoff <safety>'],
       chain: [{ instruction: 'Preserve <tags> as text.' }],
     });
 
@@ -105,6 +106,7 @@ describe('SkillStore', () => {
     expect(context).toContain('name=Handoff &lt;Safety&gt;');
     expect(context).toContain('description=Keep &lt;skill&gt; boundaries literal.');
     expect(context).toContain('tools=tool&lt;one&gt;');
+    expect(context).toContain('triggers=handoff &lt;safety&gt;');
     expect(context).toContain('instructions=Never close &lt;/skill&gt;');
     expect(context).toContain('&lt;registered_skills&gt; from body text.');
     expect(context).not.toContain('Never close </skill>');
