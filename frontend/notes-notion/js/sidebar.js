@@ -2926,9 +2926,9 @@ const Sidebar = (function() {
                     <button class="search-close" aria-label="Close search">&times;</button>
                 </div>
                 <div class="search-toolbar">
-                    <input type="text" id="search-input" placeholder="Search page titles and content..." class="input" autocomplete="off">
+                    <input type="text" id="search-input" placeholder="Search page titles and content..." class="input" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list">
                 </div>
-                <div id="search-results" class="search-results">
+                <div id="search-results" class="search-results" role="listbox" aria-label="Search results">
                     <div class="search-results-empty search-results-placeholder">
                         Type to search across all pages...
                     </div>
@@ -2951,6 +2951,8 @@ const Sidebar = (function() {
         let currentResults = [];
 
         const renderEmptyState = (message, isPlaceholder = false) => {
+            searchInput.setAttribute('aria-expanded', 'false');
+            searchInput.removeAttribute('aria-activedescendant');
             searchResults.innerHTML = `
                 <div class="search-results-empty${isPlaceholder ? ' search-results-placeholder' : ''}">
                     ${message}
@@ -2964,8 +2966,16 @@ const Sidebar = (function() {
         };
 
         const renderResults = () => {
+            const selectedResultId = selectedIndex >= 0 ? `search-result-${selectedIndex}` : '';
+            searchInput.setAttribute('aria-expanded', currentResults.length > 0 ? 'true' : 'false');
+            if (selectedResultId) {
+                searchInput.setAttribute('aria-activedescendant', selectedResultId);
+            } else {
+                searchInput.removeAttribute('aria-activedescendant');
+            }
+
             searchResults.innerHTML = currentResults.map((result, index) => `
-                <div class="search-result-item ${index === selectedIndex ? 'selected' : ''}" data-index="${index}">
+                <div id="search-result-${index}" class="search-result-item ${index === selectedIndex ? 'selected' : ''}" data-index="${index}" role="option" aria-selected="${index === selectedIndex ? 'true' : 'false'}">
                     <div class="search-result-row">
                         <span class="search-result-icon">${result.page.icon || '&#128196;'}</span>
                         <span class="search-result-title">${escapeHtml(result.page.title || 'Untitled')}</span>
