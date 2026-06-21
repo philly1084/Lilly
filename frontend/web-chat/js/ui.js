@@ -1599,6 +1599,36 @@ class UIHelpers {
         return this.extractDisplayText(value);
     }
 
+    buildCopyableMessageText(message = null, fallbackText = '') {
+        if (!message || typeof message !== 'object') {
+            return String(fallbackText || '').trim();
+        }
+
+        const source = message.role === 'assistant'
+            ? this.resolveAssistantVisibleContent(message)
+            : this.extractMessageContentText(message.content);
+        if (source) {
+            return source.trim();
+        }
+
+        return String(fallbackText || '').trim();
+    }
+
+    setCopyableMessageText(messageEl = null, message = null, fallbackText = '') {
+        if (!messageEl?.dataset) {
+            return '';
+        }
+
+        const copyText = this.buildCopyableMessageText(message, fallbackText);
+        if (copyText) {
+            messageEl.dataset.copyText = copyText;
+        } else {
+            delete messageEl.dataset.copyText;
+        }
+
+        return copyText;
+    }
+
     truncatePreviewText(text, maxLength = 180) {
         const normalized = String(text || '').replace(/\s+/g, ' ').trim();
         if (!normalized) {
@@ -4717,6 +4747,7 @@ class UIHelpers {
         const renderedContent = isUser ? 
             message.content :
             this.resolveAssistantVisibleContent(message);
+        this.setCopyableMessageText(messageEl, message, renderedContent);
 
         const inlineArtifacts = message.type !== 'artifact-gallery' && Array.isArray(message.artifacts)
             ? message.artifacts.filter((artifact) => artifact?.id && artifact?.downloadUrl)
@@ -5707,6 +5738,10 @@ class UIHelpers {
         const nextMessage = content && typeof content === 'object'
             ? { ...content, id: messageId }
             : { id: messageId, content };
+        const copyMessage = {
+            ...nextMessage,
+            role: isUser ? 'user' : 'assistant',
+        };
         const effectiveStreaming = isStreaming === true || nextMessage?.isStreaming === true;
         
         if (isUser) {
@@ -5721,6 +5756,7 @@ class UIHelpers {
             this.renderMermaidDiagrams(textEl);
             this.reinitializeIcons(textEl);
         }
+        this.setCopyableMessageText(messageEl, copyMessage, String(nextMessage.content || ''));
 
         messageEl.classList.toggle('message--streaming', !isUser && effectiveStreaming);
         messageEl.classList.toggle('message--has-reasoning', !isUser && this.hasMessageReasoning(nextMessage, effectiveStreaming));
@@ -5778,6 +5814,7 @@ class UIHelpers {
         this.renderHtmlPreviews(textEl);
         this.renderMermaidDiagrams(textEl);
         this.reinitializeIcons(textEl);
+        messageEl.dataset.copyText = newText.trim();
 
         return true;
     }
@@ -5789,7 +5826,7 @@ class UIHelpers {
         const textEl = messageEl.querySelector('.message-text');
         if (!textEl) return;
 
-        const text = textEl.textContent || '';
+        const text = messageEl.dataset.copyText || textEl.textContent || '';
         
         try {
             await navigator.clipboard.writeText(text.trim());

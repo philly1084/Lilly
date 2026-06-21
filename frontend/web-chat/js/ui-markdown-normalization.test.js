@@ -449,6 +449,30 @@ The strongest watchlist for tonight and Monday:
         expect(renderPlan.surveys[0].html).toContain('Cluster deployment');
     });
 
+    test('uses assistant source text for copy instead of rendered checkpoint chrome', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const content = `\`\`\`survey
+{"question":"Which direction should we take?","options":[{"label":"Dashboard UI"},{"label":"Cluster deployment"}]}
+\`\`\``;
+
+        expect(helper.buildCopyableMessageText({
+            role: 'assistant',
+            content,
+        }, 'Decision checkpoint\nQuick choice\nThe agent will continue once you answer.')).toBe(content);
+    });
+
+    test('stores clean copy text on message elements when source content exists', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const messageEl = { dataset: {} };
+
+        helper.setCopyableMessageText(messageEl, {
+            role: 'user',
+            content: 'Patch the web-chat copy button.',
+        }, 'You\nPatch the web-chat copy button.');
+
+        expect(messageEl.dataset.copyText).toBe('Patch the web-chat copy button.');
+    });
+
     test('does not infer a survey card from final-answer completion summaries', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const content = `Yes. I pushed the Minecraft web game update onto the existing k3s deployment path and verified the public route is now serving successfully over HTTPS.
