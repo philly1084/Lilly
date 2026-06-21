@@ -97,6 +97,26 @@ describe('token usage utilities', () => {
         });
     });
 
+    test('normalizes Gemini-style usage metadata counts', () => {
+        expect(normalizeUsageMetadata({
+            usageMetadata: {
+                promptTokenCount: 12,
+                candidatesTokenCount: 7,
+                totalTokenCount: 23,
+                thoughtsTokenCount: 4,
+                cachedContentTokenCount: 3,
+            },
+        })).toEqual({
+            promptTokens: 12,
+            inputTokens: 12,
+            completionTokens: 7,
+            outputTokens: 7,
+            totalTokens: 23,
+            reasoningTokens: 4,
+            cachedTokens: 3,
+        });
+    });
+
     test('distinguishes zeroed provider usage from measured token counts', () => {
         const zeroed = normalizeUsageMetadata({
             prompt_tokens: 0,
