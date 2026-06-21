@@ -4,7 +4,7 @@ jest.mock('./routes/admin/settings.controller', () => ({
         defaultModel: 'gpt-5.5',
         evaluatorModel: 'gpt-5.5',
         afterProcessAuditEnabled: true,
-        afterProcessAuditModel: 'gpt-5.5',
+        afterProcessAuditModel: 'codex-latest',
         afterProcessAuditReasoningEffort: 'medium',
         agentDirectedRuntime: true,
         neuralWaveResearchMode: true,
@@ -24,6 +24,7 @@ const { createResponse } = require('./openai-client');
 const {
     buildAuditEvidence,
     buildAuditSessionPatch,
+    collectRecentAuditFlagSignatures,
     resolveAfterProcessAuditConfig,
     runAfterProcessAudit,
 } = require('./after-process-audit');
@@ -65,6 +66,26 @@ describe('after-process audit', () => {
                 skillsUsed: ['agent-trace-eval-replay'],
                 verification: { toolEvents: 1, verifiedEvidence: 1 },
             },
+            existingMetadata: {
+                afterProcessAuditHistory: [{
+                    auditId: 'previous-audit',
+                    completedAt: '2026-06-06T00:00:00.000Z',
+                    audit: {
+                        auditDecision: 'watch',
+                        qualityScore: 0.62,
+                        summary: 'Previous pass suggested the same broad research flag.',
+                        recommendedFlagChanges: [{
+                            flag: 'neuralWaveResearchMode',
+                            currentValue: false,
+                            suggestedValue: true,
+                            reason: 'Prior generic suggestion.',
+                        }],
+                        learningReview: {
+                            roundImprovementPlan: ['Add a focused fixture instead of only toggling flags.'],
+                        },
+                    },
+                }],
+            },
             toolEvents: [{
                 toolCall: { function: { name: 'remote-cli-agent' } },
                 result: {
@@ -96,6 +117,18 @@ describe('after-process audit', () => {
             failureKind: 'bad_schema_or_missing_params',
             nextAction: 'replan_with_validated_params',
         }));
+        expect(evidence.recentAfterProcessAudits[0]).toEqual(expect.objectContaining({
+            auditId: 'previous-audit',
+            summary: 'Previous pass suggested the same broad research flag.',
+            roundImprovementPlan: ['Add a focused fixture instead of only toggling flags.'],
+        }));
+        expect(evidence.recentRepeatedFlagSignatures).toEqual(['neuralWaveResearchMode:true']);
+        expect(collectRecentAuditFlagSignatures({
+            afterProcessAuditHistory: evidence.recentAfterProcessAudits.map((audit) => ({
+                auditId: audit.auditId,
+                audit: { recommendedFlagChanges: audit.suggestedFlagChanges },
+            })),
+        })).toEqual(['neuralWaveResearchMode:true']);
     });
 
     test('runs model audit and normalizes review output', async () => {
@@ -124,8 +157,24 @@ describe('after-process audit', () => {
                     selfReflectionUpdateSuggestions: [{ action: 'model_card_note', note: 'Audit deploy proof.' }],
                     regressionFixtureCandidates: [],
                     outputQualityRisks: ['Verification was too shallow.'],
+                    roundImprovementPlan: ['Add a route-proof fixture before changing another orchestration flag.'],
                 },
-                recommendedFlagChanges: [],
+                recommendedFlagChanges: [
+                    {
+                        flag: 'neuralWaveResearchMode',
+                        currentValue: false,
+                        suggestedValue: true,
+                        reason: 'Repeat the previous broad research mode recommendation.',
+                        confidence: 0.62,
+                    },
+                    {
+                        flag: 'asyncRuntimeWebChatParallel',
+                        currentValue: false,
+                        suggestedValue: true,
+                        reason: 'New evidence shows the web-chat surface can benefit from parallel audit fetches.',
+                        confidence: 0.72,
+                    },
+                ],
                 followUpActions: [{ type: 'review', priority: 'medium', description: 'Inspect skill-context routing.' }],
             }),
         });
@@ -134,6 +183,19 @@ describe('after-process audit', () => {
             sessionId: 'session-1',
             objective: 'Deploy the site.',
             output: 'Done.',
+            existingMetadata: {
+                afterProcessAuditHistory: [{
+                    auditId: 'previous-audit',
+                    audit: {
+                        recommendedFlagChanges: [{
+                            flag: 'neuralWaveResearchMode',
+                            currentValue: false,
+                            suggestedValue: true,
+                            reason: 'Prior generic suggestion.',
+                        }],
+                    },
+                }],
+            },
             toolEvents: [{
                 toolCall: { function: { name: 'remote-cli-agent' } },
                 result: { toolId: 'remote-cli-agent', success: true },
@@ -150,6 +212,15 @@ describe('after-process audit', () => {
         expect(result.status).toBe('completed');
         expect(result.audit.auditDecision).toBe('needs_followup');
         expect(result.audit.toolSkillReview.missingTools).toEqual(['skill-context']);
+        expect(result.audit.learningReview.roundImprovementPlan).toEqual([
+            'Add a route-proof fixture before changing another orchestration flag.',
+        ]);
+        expect(result.audit.recommendedFlagChanges).toEqual([
+            expect.objectContaining({
+                flag: 'asyncRuntimeWebChatParallel',
+                suggestedValue: true,
+            }),
+        ]);
     });
 
     test('fallback audit turns failed tool calls into review-gated learning suggestions', () => {

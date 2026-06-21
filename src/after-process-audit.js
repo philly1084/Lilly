@@ -8,6 +8,7 @@ const settingsController = require('./routes/admin/settings.controller');
 
 const AUDIT_HISTORY_LIMIT = 12;
 const TEXT_LIMIT = 900;
+const RECENT_AUDIT_SUMMARY_LIMIT = 5;
 
 function trimText(value = '', limit = TEXT_LIMIT) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -43,6 +44,14 @@ function normalizeBooleanFlag(value, fallback = true) {
     if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) return true;
     if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) return false;
     return fallback;
+}
+
+function normalizeOptionalBoolean(value) {
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) return false;
+    return null;
 }
 
 function resolveAfterProcessAuditConfig(overrides = {}) {
@@ -178,6 +187,63 @@ function buildToolFailureLearningSuggestions(toolFailureReview = {}) {
     });
 }
 
+function getAuditPayload(entry = {}) {
+    return entry && typeof entry === 'object' && entry.audit && typeof entry.audit === 'object'
+        ? entry.audit
+        : {};
+}
+
+function buildFlagSignature(recommendation = {}) {
+    const flag = trimText(recommendation.flag || recommendation.name || '', 120);
+    const suggestedValue = normalizeOptionalBoolean(recommendation.suggestedValue);
+    if (!flag || suggestedValue === null) {
+        return '';
+    }
+    return `${flag}:${suggestedValue}`;
+}
+
+function collectRecentAuditFlagSignatures(existingMetadata = {}) {
+    const history = Array.isArray(existingMetadata?.afterProcessAuditHistory)
+        ? existingMetadata.afterProcessAuditHistory
+        : [];
+    return Array.from(new Set(history
+        .slice(-RECENT_AUDIT_SUMMARY_LIMIT)
+        .flatMap((entry) => {
+            const audit = getAuditPayload(entry);
+            return Array.isArray(audit.recommendedFlagChanges)
+                ? audit.recommendedFlagChanges
+                : [];
+        })
+        .map((recommendation) => buildFlagSignature(recommendation))
+        .filter(Boolean)));
+}
+
+function summarizeRecentAfterProcessAudits(existingMetadata = {}) {
+    const history = Array.isArray(existingMetadata?.afterProcessAuditHistory)
+        ? existingMetadata.afterProcessAuditHistory
+        : [];
+    return history
+        .slice(-RECENT_AUDIT_SUMMARY_LIMIT)
+        .map((entry) => {
+            const audit = getAuditPayload(entry);
+            const learningReview = audit.learningReview && typeof audit.learningReview === 'object'
+                ? audit.learningReview
+                : {};
+            return {
+                auditId: trimText(entry.auditId || '', 120),
+                completedAt: trimText(entry.completedAt || '', 80),
+                decision: trimText(audit.auditDecision || '', 80),
+                qualityScore: Number.isFinite(Number(audit.qualityScore)) ? Number(audit.qualityScore) : null,
+                summary: trimText(audit.summary || '', 260),
+                suggestedFlagChanges: normalizeArray(audit.recommendedFlagChanges || [], 4, 160),
+                roundImprovementPlan: normalizeArray(learningReview.roundImprovementPlan || [], 4, 220),
+                durableLessons: normalizeArray(learningReview.durableLessons || [], 3, 180),
+                outputQualityRisks: normalizeArray(learningReview.outputQualityRisks || [], 3, 180),
+                followUpActions: normalizeArray(audit.followUpActions || [], 4, 180),
+            };
+        });
+}
+
 function summarizeSelectedSkills(selectedSkills = []) {
     return (Array.isArray(selectedSkills) ? selectedSkills : []).slice(0, 12).map((skill) => ({
         id: String(skill?.id || skill?.skillId || '').trim(),
@@ -190,6 +256,9 @@ function summarizeSelectedSkills(selectedSkills = []) {
 function buildAuditEvidence(input = {}) {
     const trace = input.trace && typeof input.trace === 'object' ? input.trace : {};
     const metadata = input.responseMetadata && typeof input.responseMetadata === 'object' ? input.responseMetadata : {};
+    const existingMetadata = input.existingMetadata && typeof input.existingMetadata === 'object'
+        ? input.existingMetadata
+        : {};
     const orchestrationConfig = input.orchestrationConfig && typeof input.orchestrationConfig === 'object'
         ? input.orchestrationConfig
         : {};
@@ -251,6 +320,8 @@ function buildAuditEvidence(input = {}) {
             12,
             180,
         ),
+        recentAfterProcessAudits: summarizeRecentAfterProcessAudits(existingMetadata),
+        recentRepeatedFlagSignatures: collectRecentAuditFlagSignatures(existingMetadata),
     };
 }
 
@@ -262,24 +333,41 @@ function buildAfterProcessAuditPrompt(input = {}) {
         'Judge how the tools, skills, and orchestration flags interacted after the work finished.',
         'Pay special attention to whether the active orchestration flags made sense together: agent-directed runtime, neural-wave R&D, async Valkey lanes, alignment guidance, and this after-process audit flag.',
         'Review selected skills against actual tool events, tool readiness, verification depth, route decisions, model lanes, and durable-learning opportunities.',
+        'Compare against recentAfterProcessAudits before recommending anything. A new round must name what changes next time: different evidence, a different tool/skill lane, a regression fixture, a concrete recovery policy, or no durable change.',
         'Allowed auditDecision values: pass, watch, needs_followup.',
         'Return JSON keys: auditDecision, qualityScore, summary, orchestrationReview, toolSkillReview, toolFailureReview, learningReview, recommendedFlagChanges, followUpActions.',
         'orchestrationReview must include flagsConsidered, interactionFindings, routingFindings, and modelLaneFindings arrays.',
         'toolSkillReview must include selectedSkills, actualTools, missingTools, misusedTools, skillUpdates, and toolPolicyUpdates arrays.',
         'toolFailureReview must include failedToolCalls, repeatedFailureSignatures, recoveryPolicyUpdates, and noRepeatRules arrays when tool calls failed.',
-        'learningReview must include durableLessons, selfReflectionUpdateSuggestions, regressionFixtureCandidates, and outputQualityRisks arrays.',
-        'recommendedFlagChanges must be suggestions only with flag, currentValue, suggestedValue, reason, and confidence. Never say a flag was changed.',
+        'learningReview must include durableLessons, selfReflectionUpdateSuggestions, regressionFixtureCandidates, outputQualityRisks, and roundImprovementPlan arrays.',
+        'roundImprovementPlan must list the smallest concrete next-round changes that would improve the next similar run; avoid generic toggles and repeat the previous round only when the evidence is materially different.',
+        'recommendedFlagChanges must be suggestions only with flag, currentValue, suggestedValue, reason, and confidence. Never say a flag was changed. Do not repeat a flag+value pair from recentRepeatedFlagSignatures unless the reason names new evidence and a non-flag follow-up action.',
         '`selfReflectionUpdateSuggestions` may suggest `self-reflection-update` dry-run inputs for stable failed-tool lessons, model-card notes, small agent_notes_append lessons, or exact skill_patch actions.',
         'Each self-reflection suggestion must be review-gated: { toolId: "self-reflection-update", status: "suggested", appliesAutomatically: false, input: { source, trigger, reflection, dryRun: true, apply: false, actions: [...] } }.',
         'For failed tool calls, classify the failure, name the recovery policy, recommend a changed next attempt, and avoid repeating the same command/schema/source shape without changed inputs.',
         'Do not include secrets, raw logs, full transcripts, code dumps, or broad rewrites in self-reflection suggestions.',
-        'Prefer a small set of high-signal findings over generic praise.',
+        'Prefer a small set of high-signal findings over generic praise. If the audit finds no durable improvement, return pass/watch with empty recommendations instead of filler.',
         '',
         `[Audit evidence]\n${JSON.stringify(evidence)}`,
     ].join('\n');
 }
 
-function normalizeAuditResult(raw = {}, fallback = {}) {
+function normalizeRecommendedFlagChanges(value = [], options = {}) {
+    const recentFlagSignatures = new Set(Array.isArray(options.recentFlagSignatures) ? options.recentFlagSignatures : []);
+    return normalizeArray(value, 6, 220)
+        .filter((recommendation) => {
+            if (!recommendation || typeof recommendation !== 'object' || Array.isArray(recommendation)) {
+                return false;
+            }
+            const signature = buildFlagSignature(recommendation);
+            if (!signature) {
+                return false;
+            }
+            return !recentFlagSignatures.has(signature);
+        });
+}
+
+function normalizeAuditResult(raw = {}, fallback = {}, options = {}) {
     const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const decision = ['pass', 'watch', 'needs_followup'].includes(source.auditDecision)
         ? source.auditDecision
@@ -297,6 +385,9 @@ function normalizeAuditResult(raw = {}, fallback = {}) {
     const toolFailureReview = source.toolFailureReview && typeof source.toolFailureReview === 'object'
         ? source.toolFailureReview
         : {};
+    const recommendedFlagChanges = normalizeRecommendedFlagChanges(source.recommendedFlagChanges, {
+        recentFlagSignatures: options.recentFlagSignatures,
+    });
 
     return {
         auditDecision: decision,
@@ -327,8 +418,9 @@ function normalizeAuditResult(raw = {}, fallback = {}) {
             selfReflectionUpdateSuggestions: normalizeArray(learningReview.selfReflectionUpdateSuggestions, 2, 400),
             regressionFixtureCandidates: normalizeArray(learningReview.regressionFixtureCandidates, 4, 220),
             outputQualityRisks: normalizeArray(learningReview.outputQualityRisks, 6, 220),
+            roundImprovementPlan: normalizeArray(learningReview.roundImprovementPlan, 5, 260),
         },
-        recommendedFlagChanges: normalizeArray(source.recommendedFlagChanges, 6, 220),
+        recommendedFlagChanges,
         followUpActions: normalizeArray(source.followUpActions, 8, 220),
     };
 }
@@ -383,6 +475,9 @@ function buildFallbackAudit(input = {}) {
             selfReflectionUpdateSuggestions: failedToolLearningSuggestions,
             regressionFixtureCandidates: [],
             outputQualityRisks: hasVerification ? [] : ['Verification evidence is absent or indirect.'],
+            roundImprovementPlan: needsFollowup
+                ? ['Retry with a changed recovery plan and explicit verification evidence before marking the workflow complete.']
+                : [],
         },
         recommendedFlagChanges: [],
         followUpActions: needsFollowup
@@ -419,7 +514,9 @@ async function runAfterProcessAudit(input = {}, options = {}) {
         reasoningEffort: config.reasoningEffort,
     });
     const parsed = parseLenientJson(extractResponseText(response));
-    const audit = normalizeAuditResult(parsed, buildFallbackAudit(input));
+    const audit = normalizeAuditResult(parsed, buildFallbackAudit(input), {
+        recentFlagSignatures: collectRecentAuditFlagSignatures(input.existingMetadata || {}),
+    });
 
     return {
         auditId,
@@ -456,6 +553,7 @@ module.exports = {
     buildAuditEvidence,
     buildAuditSessionPatch,
     buildFallbackAudit,
+    collectRecentAuditFlagSignatures,
     normalizeAuditResult,
     resolveAfterProcessAuditConfig,
     runAfterProcessAudit,

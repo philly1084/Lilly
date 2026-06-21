@@ -250,7 +250,7 @@ function hasAgentJournalInstructions(instructions = '') {
     return /<kimi-agent-journal\b/i.test(String(instructions || ''));
 }
 
-function scheduleDirectAfterProcessAudit({
+async function scheduleDirectAfterProcessAudit({
     sessionId,
     ownerId = null,
     response = null,
@@ -293,6 +293,14 @@ function scheduleDirectAfterProcessAudit({
         tools: responseMetadata.plannedTools || metadata?.plannedTools || [],
         timestamp: new Date().toISOString(),
     };
+    let currentSession = null;
+    try {
+        currentSession = ownerId && sessionStore?.getOwned
+            ? await sessionStore.getOwned(sessionId, ownerId)
+            : (sessionStore?.get ? await sessionStore.get(sessionId) : null);
+    } catch (error) {
+        console.warn(`[RuntimeExecution] After-process audit session lookup failed: ${error.message}`);
+    }
 
     const promise = runAfterProcessAudit({
         sessionId,
@@ -309,14 +317,12 @@ function scheduleDirectAfterProcessAudit({
         trace,
         clientSurface,
         orchestrationConfig,
+        existingMetadata: currentSession?.metadata || {},
     })
         .then(async (result) => {
             if (!sessionStore?.update || result?.status === 'skipped') {
                 return result;
             }
-            const currentSession = ownerId && sessionStore?.getOwned
-                ? await sessionStore.getOwned(sessionId, ownerId)
-                : (sessionStore?.get ? await sessionStore.get(sessionId) : null);
             const patch = buildAuditSessionPatch(currentSession?.metadata || {}, result);
             if (Object.keys(patch).length > 0) {
                 await sessionStore.update(sessionId, { metadata: patch });

@@ -14557,18 +14557,19 @@ class ConversationOrchestrator extends EventEmitter {
         const orchestrationConfig = typeof settingsController.getEffectiveOrchestrationConfig === 'function'
             ? settingsController.getEffectiveOrchestrationConfig()
             : {};
+        const currentSession = input.ownerId && this.sessionStore?.getOwned
+            ? await this.sessionStore.getOwned(input.sessionId, input.ownerId)
+            : (this.sessionStore?.get ? await this.sessionStore.get(input.sessionId) : null);
         const result = await runAfterProcessAudit({
             ...input,
             orchestrationConfig,
+            existingMetadata: currentSession?.metadata || {},
         });
 
         if (!this.sessionStore?.update || result?.status === 'skipped') {
             return result;
         }
 
-        const currentSession = input.ownerId && this.sessionStore?.getOwned
-            ? await this.sessionStore.getOwned(input.sessionId, input.ownerId)
-            : (this.sessionStore?.get ? await this.sessionStore.get(input.sessionId) : null);
         const metadataPatch = buildAuditSessionPatch(currentSession?.metadata || {}, result);
         if (Object.keys(metadataPatch).length > 0) {
             await this.sessionStore.update(input.sessionId, { metadata: metadataPatch });
