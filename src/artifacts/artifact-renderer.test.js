@@ -268,6 +268,26 @@ describe('normalizeMermaidSource', () => {
         expect(parts.bodyContent).not.toContain('Hidden chain');
     });
 
+    test('drops internal thought comments from html documents', () => {
+        const parts = extractCompositeDocumentParts([
+            '```html',
+            '<!DOCTYPE html>',
+            '<html><head><title>Comment Clean</title></head><body><main>',
+            '<!-- analysis: private page plan should not render. -->',
+            '<h1>Comment Clean</h1>',
+            '<!-- START REASONING hidden layout note -->',
+            '</main></body></html>',
+            '```',
+        ].join('\n'));
+
+        expect(parts.headContent).toContain('<title>Comment Clean</title>');
+        expect(parts.bodyContent).toContain('<h1>Comment Clean</h1>');
+        expect(parts.bodyContent).not.toContain('analysis:');
+        expect(parts.bodyContent).not.toContain('private page plan');
+        expect(parts.bodyContent).not.toContain('START REASONING');
+        expect(parts.bodyContent).not.toContain('hidden layout note');
+    });
+
     test('drops explanatory prose before standalone html fragments', () => {
         const parts = extractCompositeDocumentParts([
             'Here is the finished page:',

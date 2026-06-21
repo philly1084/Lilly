@@ -94,6 +94,31 @@ describe('saveable document extractor', () => {
         expect(result.content).not.toContain('hidden reasoning');
     });
 
+    test('strips internal thought comments from saved html', () => {
+        const result = extractSaveableDocumentArtifact({
+            assistantText: [
+                'Save this as `comment-clean.html`.',
+                '```html',
+                '<!DOCTYPE html><html><head><title>Comment Clean</title></head><body>',
+                '<!-- analysis: private planning should not be stored. -->',
+                '<main><h1>Comment Clean</h1></main>',
+                '<!-- BEGIN REASONING hidden export note -->',
+                '</body></html>',
+                '```',
+            ].join('\n'),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            format: 'html',
+            filename: 'comment-clean.html',
+            content: expect.stringContaining('<h1>Comment Clean</h1>'),
+        }));
+        expect(result.content).not.toContain('analysis:');
+        expect(result.content).not.toContain('private planning');
+        expect(result.content).not.toContain('BEGIN REASONING');
+        expect(result.content).not.toContain('hidden export note');
+    });
+
     test('ignores short non-document snippets', () => {
         expect(extractSaveableDocumentArtifact({
             assistantText: 'Use `<div>Hello</div>` inside your page.',

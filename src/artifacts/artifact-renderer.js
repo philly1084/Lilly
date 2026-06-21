@@ -32,6 +32,7 @@ const HTML_FENCE_PATTERN = /([`']{3,})([a-z0-9_-]*)\s*([\s\S]*?)\1/ig;
 const INTERNAL_THOUGHT_TAG_PATTERN = /<\s*(?:think|thinking|thought|analysis|reasoning)(?:\s[^>]*)?>[\s\S]*?<\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*>/ig;
 const INTERNAL_THOUGHT_BRACKET_PATTERN = /\[\s*(?:think|thinking|thought|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*\]/ig;
 const INTERNAL_THOUGHT_MARKER_PATTERN = /(?:^|\n)\s*(?:begin|start)\s+(?:think|thinking|thought|analysis|reasoning)\s*\n[\s\S]*?\n\s*(?:end|stop)\s+(?:think|thinking|thought|analysis|reasoning)\s*(?=\n|$)/ig;
+const INTERNAL_THOUGHT_COMMENT_PATTERN = /<!--\s*(?:(?:begin|start)\s+)?(?:think|thinking|thought|analysis|reasoning)\b[\s\S]*?-->/ig;
 const NAMED_PDF_PAGE_SIZES = {
     a4: { width: '8.27in', height: '11.69in' },
     letter: { width: '8.5in', height: '11in' },
@@ -376,6 +377,7 @@ function stripInternalThoughtMarkup(text = '') {
         .replace(INTERNAL_THOUGHT_TAG_PATTERN, '')
         .replace(INTERNAL_THOUGHT_BRACKET_PATTERN, '')
         .replace(INTERNAL_THOUGHT_MARKER_PATTERN, '')
+        .replace(INTERNAL_THOUGHT_COMMENT_PATTERN, '')
         .trim();
 }
 
