@@ -115,6 +115,28 @@ describe('/api/tools routes', () => {
         ]));
     });
 
+    test('document-workflow tool details expose format and verification handoff guidance', async () => {
+        const app = buildApp();
+
+        const response = await request(app).get('/api/tools/document-workflow');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.docAvailable).toBe(true);
+        expect(response.body.data.runtime.supportedFormats).toEqual(['html', 'pdf', 'pptx', 'xlsx', 'md']);
+        expect(response.body.data.runtime.normalizedFormats).toEqual(expect.objectContaining({
+            docx: 'html',
+            doc: 'html',
+            word: 'html',
+        }));
+        expect(response.body.data.runtime.callerContract).toEqual(expect.arrayContaining([
+            expect.stringContaining('Use plan before generate'),
+            expect.stringContaining('DOCX/Word'),
+            expect.stringContaining('@page geometry'),
+            expect.stringContaining('PPTX/XLSX'),
+            expect.stringContaining('artifact IDs or URLs'),
+        ]));
+    });
+
     test('modern capability map details expose the eight agent upgrade lanes', async () => {
         const app = buildApp();
 

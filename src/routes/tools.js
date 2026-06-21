@@ -472,6 +472,26 @@ function buildToolRuntime(toolId, options = {}) {
     };
   }
 
+  if (toolId === 'document-workflow') {
+    return {
+      configured: true,
+      provider: 'local-document-service',
+      supportedFormats: ['html', 'pdf', 'pptx', 'xlsx', 'md'],
+      normalizedFormats: {
+        docx: 'html',
+        doc: 'html',
+        word: 'html',
+      },
+      callerContract: [
+        'Use plan before generate for broad, design-sensitive, or multi-surface document requests.',
+        'Do not present DOCX/Word as a native finished runtime format; it currently normalizes to HTML unless an external conversion path is named and verified.',
+        'For PDFs, preserve explicit @page geometry and verify rendered page breaks, contrast, tables, captions, and images.',
+        'For PPTX/XLSX, inspect or render the generated artifact with available office or spreadsheet tooling before delivery.',
+        'Handoff must include source files, artifact IDs or URLs, checks run, fixed issues, and remaining assumptions.',
+      ],
+    };
+  }
+
   if (toolId === 'image-from-url') {
     return {
       configured: true,
