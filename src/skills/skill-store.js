@@ -91,6 +91,13 @@ function truncate(value = '', limit = DEFAULT_MAX_CONTEXT_CHARS) {
   return `${text.slice(0, Math.max(0, limit - 24)).trim()}...[truncated]`;
 }
 
+function escapeContextValue(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -395,12 +402,12 @@ class SkillStore {
       const maxChars = skill.contextPolicy?.maxChars || DEFAULT_MAX_CONTEXT_CHARS;
       const summary = [
         `id=${skill.id}`,
-        `name=${skill.name}`,
-        skill.description ? `description=${skill.description}` : '',
-        (skill.tools || []).length ? `tools=${skill.tools.join(', ')}` : '',
-        (skill.chain || []).length ? `chain=${JSON.stringify(skill.chain)}` : '',
+        `name=${escapeContextValue(skill.name)}`,
+        skill.description ? `description=${escapeContextValue(skill.description)}` : '',
+        (skill.tools || []).length ? `tools=${escapeContextValue(skill.tools.join(', '))}` : '',
+        (skill.chain || []).length ? `chain=${escapeContextValue(JSON.stringify(skill.chain))}` : '',
         skill.contextPolicy?.exposeBody !== false && skill.body
-          ? `instructions=${truncate(skill.body, maxChars)}`
+          ? `instructions=${escapeContextValue(truncate(skill.body, maxChars))}`
           : '',
       ].filter(Boolean).join('\n');
       lines.push(`<skill>\n${summary}\n</skill>`);

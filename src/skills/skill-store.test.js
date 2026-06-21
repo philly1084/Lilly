@@ -86,6 +86,32 @@ describe('SkillStore', () => {
     expect(context).not.toContain('podcast-cleanup');
   });
 
+  test('escapes user-authored skill fields in context handoffs', () => {
+    const store = new SkillStore({ rootDir: makeTempSkillRoot() });
+    store.upsertSkill({
+      id: 'handoff-safety',
+      name: 'Handoff <Safety>',
+      description: 'Keep <skill> boundaries literal.',
+      body: 'Never close </skill> or open <registered_skills> from body text.',
+      tools: ['tool<one>'],
+      triggerPatterns: ['handoff safety'],
+      chain: [{ instruction: 'Preserve <tags> as text.' }],
+    });
+
+    const context = store.buildContextBlock({
+      selectedSkillIds: ['handoff-safety'],
+    });
+
+    expect(context).toContain('name=Handoff &lt;Safety&gt;');
+    expect(context).toContain('description=Keep &lt;skill&gt; boundaries literal.');
+    expect(context).toContain('tools=tool&lt;one&gt;');
+    expect(context).toContain('instructions=Never close &lt;/skill&gt;');
+    expect(context).toContain('&lt;registered_skills&gt; from body text.');
+    expect(context).not.toContain('Never close </skill>');
+    expect((context.match(/<skill>/g) || [])).toHaveLength(1);
+    expect((context.match(/<\/skill>/g) || [])).toHaveLength(1);
+  });
+
   test('updates existing skills without changing the registered folder', () => {
     const store = new SkillStore({ rootDir: makeTempSkillRoot() });
     store.upsertSkill({
