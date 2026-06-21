@@ -28,12 +28,17 @@ function loadDashboardClass(dom) {
 
 function createNavigationHarness() {
     const dom = new JSDOM(`
+        <button id="mobileMenuToggle" type="button" aria-expanded="false">Menu</button>
+        <aside id="sidebar">
         <nav>
             <ul>
                 <li class="nav-item active" data-view="overview"><span>Overview</span></li>
                 <li class="nav-item" data-view="logs"><span>Logs</span></li>
             </ul>
         </nav>
+        </aside>
+        <button id="sidebarToggle" type="button"></button>
+        <div id="sidebarBackdrop" hidden></div>
         <section id="overviewView" class="view active"></section>
         <section id="logsView" class="view"></section>
         <h1 id="pageTitle">Overview</h1>
@@ -44,9 +49,9 @@ function createNavigationHarness() {
 
     global.document = dom.window.document;
     global.window = dom.window;
+    dom.window.matchMedia = jest.fn().mockReturnValue({ matches: true });
 
-    dashboard.state = { currentView: 'overview' };
-    dashboard.closeMobileNavigation = jest.fn();
+    dashboard.state = { currentView: 'overview', sidebarCollapsed: false };
     dashboard.loadViewData = jest.fn();
     dashboard.setupNavigation();
 
@@ -77,6 +82,8 @@ describe('agent dashboard navigation accessibility', () => {
         const overview = document.querySelector('[data-view="overview"]');
         const logs = document.querySelector('[data-view="logs"]');
 
+        dashboard.openMobileNavigation();
+        logs.focus();
         logs.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: 'Enter',
             bubbles: true,
@@ -87,8 +94,11 @@ describe('agent dashboard navigation accessibility', () => {
         expect(logs.classList.contains('active')).toBe(true);
         expect(logs.getAttribute('aria-current')).toBe('page');
         expect(document.getElementById('logsView').classList.contains('active')).toBe(true);
-        expect(dashboard.closeMobileNavigation).toHaveBeenCalledTimes(1);
+        expect(document.getElementById('sidebar').classList.contains('open')).toBe(false);
+        expect(document.activeElement).toBe(document.getElementById('mobileMenuToggle'));
 
+        dashboard.openMobileNavigation();
+        overview.focus();
         overview.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: ' ',
             bubbles: true,
@@ -99,6 +109,26 @@ describe('agent dashboard navigation accessibility', () => {
         expect(overview.classList.contains('active')).toBe(true);
         expect(overview.getAttribute('aria-current')).toBe('page');
         expect(logs.getAttribute('aria-current')).toBe('false');
-        expect(dashboard.closeMobileNavigation).toHaveBeenCalledTimes(2);
+        expect(document.getElementById('sidebar').classList.contains('open')).toBe(false);
+    });
+
+    test('moves focus into the mobile sidebar and restores it on close', () => {
+        const { dashboard } = createNavigationHarness();
+        const sidebar = document.getElementById('sidebar');
+        const mobileToggle = document.getElementById('mobileMenuToggle');
+        const overview = document.querySelector('[data-view="overview"]');
+
+        mobileToggle.focus();
+        dashboard.openMobileNavigation();
+
+        expect(sidebar.classList.contains('open')).toBe(true);
+        expect(mobileToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(document.activeElement).toBe(overview);
+
+        dashboard.closeMobileNavigation();
+
+        expect(sidebar.classList.contains('open')).toBe(false);
+        expect(mobileToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(mobileToggle);
     });
 });

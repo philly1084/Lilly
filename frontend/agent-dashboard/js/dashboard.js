@@ -2930,15 +2930,30 @@ class Dashboard {
 
     openMobileNavigation() {
         this.syncMobileNavigationState(true);
+        const activeItem = document.querySelector('.nav-item.active');
+        const firstItem = document.querySelector('.nav-item');
+        (activeItem || firstItem)?.focus();
     }
 
     closeMobileNavigation() {
+        const sidebar = document.getElementById('sidebar');
+        const activeElement = document.activeElement;
+        const focusWasInSidebar = Boolean(sidebar && activeElement && sidebar.contains(activeElement));
+
         this.syncMobileNavigationState(false);
+
+        if (focusWasInSidebar) {
+            document.getElementById('mobileMenuToggle')?.focus();
+        }
     }
 
     toggleMobileNavigation() {
         const sidebar = document.getElementById('sidebar');
-        this.syncMobileNavigationState(!sidebar?.classList.contains('open'));
+        if (sidebar?.classList.contains('open')) {
+            this.closeMobileNavigation();
+        } else {
+            this.openMobileNavigation();
+        }
     }
 
     toggleSidebar() {
