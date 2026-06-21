@@ -2122,8 +2122,8 @@ describe('ArtifactService', () => {
                     content: [{ text: JSON.stringify({
                         title: 'Photo Brief',
                         sections: [
-                            { heading: 'Overview', content: 'This is the real overview content.', level: 1 },
-                            { heading: 'Gallery Notes', content: '- Verified Unsplash photos\n- Coherent sequence', level: 1 },
+                            { heading: 'Overview', content: 'TODO: replace this overview.\nThis is the real overview content.\nInsert citations here.', level: 1 },
+                            { heading: 'Gallery Notes', content: '- Verified Unsplash photos\nTBD\n- Coherent sequence\nThis section should explain the image order later.', level: 1 },
                         ],
                     }) }],
                 }],
@@ -2173,6 +2173,18 @@ describe('ArtifactService', () => {
         }));
         expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
             content: expect.stringContaining('This is the real overview content.'),
+        }));
+        expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.not.stringContaining('TODO'),
+        }));
+        expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.not.stringContaining('TBD'),
+        }));
+        expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.not.stringContaining('Insert citations here'),
+        }));
+        expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.not.stringContaining('This section should explain'),
         }));
         expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
             content: expect.stringContaining('https://images.unsplash.com/photo-321'),

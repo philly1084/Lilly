@@ -128,6 +128,11 @@ const COMPOSITION_OUTLINE_PATTERNS = [
 const DOCUMENT_CONTENT_NOISE_PATTERNS = [
     /^\[research workflow\]$/i,
     /^\[verified image references\]$/i,
+    /^(?:todo|tbd|tk|placeholder)(?:\b|[:\]-])/i,
+    /^(?:insert|add|write|draft)\s+(?:.+\s+)?(?:here|later)\.?$/i,
+    /^this section (?:should|will|needs to)\b/i,
+    /^section (?:to|should|will)\b/i,
+    /^\[(?:insert|add|write|draft|todo|tbd)[^\]]*\]$/i,
     /^current-information request should start with perplexity-backed web search\.?$/i,
     /^explicit research request should start with perplexity-backed web search\.?$/i,
     /^before drafting or composing, use available tools to ground current claims with web-search and web-fetch\.?$/i,
