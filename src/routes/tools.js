@@ -440,6 +440,12 @@ function buildToolRuntime(toolId, options = {}) {
     return {
       configured: Boolean(process.env.PERPLEXITY_API_KEY),
       provider: process.env.PERPLEXITY_API_KEY ? 'perplexity' : 'unconfigured',
+      callerContract: [
+        'Use raw search for URL discovery, scraping prep, and candidate page hotlists.',
+        'Use pro-search for researched synthesis, news roundups, source-backed briefings, and gathered research data.',
+        'When no timeframe is supplied, make searches freshness-aware with modern/recent phrasing or a month-level range for news and technology.',
+        'Verify selected result URLs with web-fetch before composing reports, documents, slides, or researched HTML.',
+      ],
     };
   }
 

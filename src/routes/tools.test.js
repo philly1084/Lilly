@@ -99,6 +99,22 @@ describe('/api/tools routes', () => {
         ]));
     });
 
+    test('web-search tool details expose research mode handoff guidance', async () => {
+        const app = buildApp();
+
+        const response = await request(app).get('/api/tools/web-search');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.docAvailable).toBe(true);
+        expect(response.body.data.runtime.provider).toMatch(/perplexity|unconfigured/);
+        expect(response.body.data.runtime.callerContract).toEqual(expect.arrayContaining([
+            expect.stringContaining('raw search for URL discovery'),
+            expect.stringContaining('pro-search for researched synthesis'),
+            expect.stringContaining('freshness-aware'),
+            expect.stringContaining('Verify selected result URLs with web-fetch'),
+        ]));
+    });
+
     test('modern capability map details expose the eight agent upgrade lanes', async () => {
         const app = buildApp();
 
