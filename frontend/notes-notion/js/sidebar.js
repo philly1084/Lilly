@@ -7,6 +7,7 @@ const Sidebar = (function() {
     let pageTreeEl = null;
     let outlineSectionEl = null;
     let outlineToggleEl = null;
+    let sidebarHandleEl = null;
     let expandedPages = new Set();
     let pageIconDelegationBound = false;
     let coverDelegationBound = false;
@@ -50,15 +51,14 @@ const Sidebar = (function() {
         pageTreeEl = document.getElementById('page-tree');
         outlineSectionEl = document.getElementById('sidebar-outline-section');
         outlineToggleEl = document.getElementById('sidebar-outline-toggle');
+        sidebarHandleEl = document.getElementById('sidebar-handle');
         
         setupEventListeners();
         refreshPageTree();
         
         // Restore sidebar state
         const isCollapsed = localStorage.getItem('notes_notion_sidebar_collapsed') === 'true';
-        if (isCollapsed) {
-            sidebarEl.classList.add('collapsed');
-        }
+        setSidebarCollapsed(isCollapsed);
 
         const isOutlineCollapsed = localStorage.getItem('notes_notion_sidebar_outline_collapsed') === 'true';
         setOutlineCollapsed(isOutlineCollapsed);
@@ -116,6 +116,11 @@ const Sidebar = (function() {
         const toggleBtn = document.getElementById('sidebar-toggle');
         if (toggleBtn) {
             toggleBtn.addEventListener('click', toggleSidebar);
+        }
+
+        if (sidebarHandleEl) {
+            sidebarHandleEl.addEventListener('click', () => setSidebarCollapsed(false));
+            sidebarHandleEl.addEventListener('keydown', handleSidebarHandleKeydown);
         }
 
         if (outlineToggleEl) {
@@ -969,8 +974,27 @@ const Sidebar = (function() {
      * Toggle sidebar collapse
      */
     function toggleSidebar() {
-        sidebarEl.classList.toggle('collapsed');
-        localStorage.setItem('notes_notion_sidebar_collapsed', sidebarEl.classList.contains('collapsed'));
+        if (!sidebarEl) return;
+
+        setSidebarCollapsed(!sidebarEl.classList.contains('collapsed'));
+    }
+
+    function setSidebarCollapsed(collapsed) {
+        if (!sidebarEl) return;
+
+        sidebarEl.classList.toggle('collapsed', Boolean(collapsed));
+        localStorage.setItem('notes_notion_sidebar_collapsed', collapsed ? 'true' : 'false');
+
+        if (sidebarHandleEl) {
+            sidebarHandleEl.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        }
+    }
+
+    function handleSidebarHandleKeydown(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+
+        e.preventDefault();
+        setSidebarCollapsed(false);
     }
 
     function setOutlineCollapsed(collapsed) {
