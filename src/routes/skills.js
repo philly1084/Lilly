@@ -208,17 +208,25 @@ router.get('/context', (req, res, next) => {
       .split(',')
       .map((entry) => entry.trim())
       .filter(Boolean);
-    const context = skillStore.buildContextBlock({
+    const capabilityNeeds = String(req.query.capabilityNeeds || req.query.capabilities || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const skillContext = skillStore.buildContext({
       text: req.query.q || req.query.text || '',
       toolIds,
       selectedSkillIds,
       limit: req.query.limit,
+      surface: req.query.surface || req.query.clientSurface || '',
+      taskType: req.query.taskType || req.query.activeMode || '',
+      capabilityNeeds,
     });
 
     res.json({
       success: true,
       data: {
-        context,
+        context: skillContext.block,
+        selectedSkills: skillContext.selectedSkills,
       },
     });
   } catch (error) {
