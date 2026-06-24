@@ -458,6 +458,13 @@ html, body {
     background: var(--bg-tertiary);
 }
 
+.top-bar-right button:focus-visible,
+.top-bar-right .dropdown-item:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+    background: var(--bg-secondary);
+}
+
 /* Model Selector in Top Bar */
 .model-selector {
     display: flex;

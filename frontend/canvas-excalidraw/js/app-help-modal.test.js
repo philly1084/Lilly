@@ -49,6 +49,39 @@ function createHelpModalHarness() {
     return { dom, app };
 }
 
+function createDropdownHarness() {
+    const dom = new JSDOM(`
+        <div id="themeDropdown" class="dropdown">
+            <button id="themePickerBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="themeMenu">Theme</button>
+            <div id="themeMenu" class="dropdown-menu" role="menu" aria-label="Canvas theme">
+                <button class="dropdown-item" type="button" role="menuitem" data-theme="dark">Dark</button>
+            </div>
+        </div>
+        <div id="exportDropdown" class="dropdown">
+            <button id="exportBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu">Export</button>
+            <div id="exportMenu" class="dropdown-menu" role="menu" aria-label="Export canvas">
+                <button class="dropdown-item" type="button" role="menuitem" data-export="json">JSON</button>
+            </div>
+        </div>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const App = loadAppClass(dom);
+    const app = Object.create(App.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+    global.localStorage = dom.window.localStorage;
+
+    app.setTheme = jest.fn();
+    app.showExportProgress = jest.fn();
+    app.hideExportProgress = jest.fn();
+
+    dom.window.importExportManager = {
+        export: jest.fn().mockResolvedValue(undefined),
+    };
+
+    return { dom, app };
+}
+
 describe('canvas help modal accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -107,5 +140,36 @@ describe('canvas help modal accessibility', () => {
 
         expect(reverseTab.defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(extra);
+    });
+});
+
+describe('canvas top-bar dropdown accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+        delete global.localStorage;
+    });
+
+    test('keeps export menu expanded state in sync for click and Escape', () => {
+        const { dom, app } = createDropdownHarness();
+        const trigger = document.getElementById('exportBtn');
+        const dropdown = document.getElementById('exportDropdown');
+
+        app.setupEventListeners();
+        trigger.click();
+
+        expect(dropdown.classList.contains('active')).toBe(true);
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(document.getElementById('exportMenu').getAttribute('role')).toBe('menu');
+
+        document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(dropdown.classList.contains('active')).toBe(false);
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
     });
 });

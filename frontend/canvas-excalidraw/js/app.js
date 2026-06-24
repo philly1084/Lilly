@@ -732,7 +732,7 @@ class App {
         
         themePickerBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
-            themeDropdown?.classList.toggle('active');
+            this.toggleDropdown(themeDropdown, themePickerBtn);
         });
         
         // Theme selection
@@ -741,13 +741,13 @@ class App {
                 e.stopPropagation();
                 const theme = btn.dataset.theme;
                 this.setTheme(theme);
-                themeDropdown?.classList.remove('active');
+                this.closeDropdown(themeDropdown, themePickerBtn);
             });
         });
         
         // Close theme dropdown when clicking outside
         document.addEventListener('click', () => {
-            themeDropdown?.classList.remove('active');
+            this.closeDropdown(themeDropdown, themePickerBtn);
         });
         
         // Export button - show new export dialog
@@ -757,7 +757,7 @@ class App {
         exportBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
             if (exportDropdown) {
-                exportDropdown.classList.toggle('active');
+                this.toggleDropdown(exportDropdown, exportBtn);
             } else {
                 window.importExportManager?.showExportDialog();
             }
@@ -782,7 +782,7 @@ class App {
                 }
                 
                 if (exportDropdown) {
-                    exportDropdown.classList.remove('active');
+                    this.closeDropdown(exportDropdown, exportBtn);
                 }
             });
         });
@@ -790,7 +790,16 @@ class App {
         // Close dropdown when clicking outside
         document.addEventListener('click', () => {
             if (exportDropdown) {
-                exportDropdown.classList.remove('active');
+                this.closeDropdown(exportDropdown, exportBtn);
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            const closedTheme = this.closeDropdown(themeDropdown, themePickerBtn);
+            const closedExport = this.closeDropdown(exportDropdown, exportBtn);
+            if (closedTheme || closedExport) {
+                event.preventDefault();
             }
         });
         
@@ -916,7 +925,25 @@ class App {
             }
         });
     }
-    
+
+    toggleDropdown(dropdown, trigger) {
+        if (!dropdown) return false;
+        const shouldOpen = !dropdown.classList.contains('active');
+        this.setDropdownOpen(dropdown, trigger, shouldOpen);
+        return shouldOpen;
+    }
+
+    closeDropdown(dropdown, trigger) {
+        if (!dropdown || !dropdown.classList.contains('active')) return false;
+        this.setDropdownOpen(dropdown, trigger, false);
+        return true;
+    }
+
+    setDropdownOpen(dropdown, trigger, isOpen) {
+        dropdown.classList.toggle('active', isOpen);
+        trigger?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    }
+
     setupMobileControls() {
         // Mobile toolbar toggle
         const mobileToolbarToggle = document.getElementById('mobileToolbarToggle');
