@@ -9392,6 +9392,9 @@ Silently verify the lead cluster, section order, and final polish before returni
             'llama',
             'mistral',
             'qwen',
+            'grok',
+            'cohere',
+            'command',
             'phi',
             'ollama',
             'antigravity',
@@ -9589,7 +9592,9 @@ Silently verify the lead cluster, section order, and final polish before returni
     function inferProvider(modelOrId) {
         const provider = String(modelOrId?.provider || modelOrId?.owned_by || '').toLowerCase();
         if (provider === 'openai' || provider === 'anthropic' || provider === 'google' ||
-            provider === 'meta' || provider === 'kimi' || provider === 'mistral') {
+            provider === 'meta' || provider === 'kimi' || provider === 'mistral' ||
+            provider === 'qwen' || provider === 'xai' || provider === 'deepseek' ||
+            provider === 'cohere') {
             return provider;
         }
 
@@ -9600,6 +9605,10 @@ Silently verify the lead cluster, section order, and final polish before returni
         if (id.includes('gemini') || id.includes('palm')) return 'google';
         if (id.includes('llama') || id.includes('meta')) return 'meta';
         if (id.includes('mistral')) return 'mistral';
+        if (id.includes('qwen') || id.includes('alibaba')) return 'qwen';
+        if (id.includes('grok') || id.includes('xai')) return 'xai';
+        if (id.includes('deepseek') || id.includes('deepseak')) return 'deepseek';
+        if (id.includes('cohere') || /^command(?:[-_/]|$)/.test(id)) return 'cohere';
         return 'other';
     }
 

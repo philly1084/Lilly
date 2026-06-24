@@ -1999,4 +1999,29 @@ Approved page plan:
             'html',
         )).toBe(false);
     });
+
+    test('normalizes current gateway chat model families for notes model selection', async () => {
+        const apiClient = {
+            getModels: jest.fn(async () => ({
+                data: [
+                    { id: 'grok-4.3', owned_by: 'gateway' },
+                    { id: 'qwen3-coder', owned_by: 'gateway' },
+                    { id: 'deepseek-chat', owned_by: 'gateway' },
+                    { id: 'command-r-plus', owned_by: 'gateway' },
+                ],
+            })),
+        };
+        const agent = loadAgent({ notesAPIClient: apiClient });
+
+        await agent.getModelsAsync();
+
+        expect(agent.getModelsByProvider()).toEqual(expect.objectContaining({
+            xai: [expect.objectContaining({ id: 'grok-4.3', provider: 'xai' })],
+            qwen: [expect.objectContaining({ id: 'qwen3-coder', provider: 'qwen' })],
+            deepseek: [expect.objectContaining({ id: 'deepseek-chat', provider: 'deepseek' })],
+            cohere: [expect.objectContaining({ id: 'command-r-plus', provider: 'cohere' })],
+        }));
+        expect(agent.setSelectedModel('grok-4.3')).toBe(true);
+        expect(agent.setSelectedModel('command-r-plus')).toBe(true);
+    });
 });
