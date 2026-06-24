@@ -8,6 +8,7 @@ const Sidebar = (function() {
     let outlineSectionEl = null;
     let outlineToggleEl = null;
     let sidebarHandleEl = null;
+    let mobileToggleEl = null;
     let expandedPages = new Set();
     let pageIconDelegationBound = false;
     let coverDelegationBound = false;
@@ -58,7 +59,7 @@ const Sidebar = (function() {
         
         // Restore sidebar state
         const isCollapsed = localStorage.getItem('notes_notion_sidebar_collapsed') === 'true';
-        setSidebarCollapsed(isCollapsed);
+        setSidebarCollapsed(window.innerWidth <= 768 ? false : isCollapsed, { persist: false });
 
         const isOutlineCollapsed = localStorage.getItem('notes_notion_sidebar_outline_collapsed') === 'true';
         setOutlineCollapsed(isOutlineCollapsed);
@@ -248,10 +249,13 @@ const Sidebar = (function() {
         // Listen for resize to add/remove mobile toggle
         window.addEventListener('resize', debounce(() => {
             if (window.innerWidth <= 768) {
+                setSidebarCollapsed(false, { persist: false });
                 createMobileToggleButton();
             } else {
                 removeMobileToggleButton();
+                setSidebarCollapsed(localStorage.getItem('notes_notion_sidebar_collapsed') === 'true', { persist: false });
             }
+            syncMobileSidebarState();
         }, 100));
     }
     
@@ -260,11 +264,17 @@ const Sidebar = (function() {
      */
     function createMobileToggleButton() {
         let mobileToggle = document.querySelector('.mobile-menu-toggle');
-        if (mobileToggle) return;
+        if (mobileToggle) {
+            mobileToggleEl = mobileToggle;
+            syncMobileSidebarState();
+            return;
+        }
         
         mobileToggle = document.createElement('button');
         mobileToggle.className = 'mobile-menu-toggle';
         mobileToggle.setAttribute('aria-label', 'Toggle menu');
+        mobileToggle.setAttribute('aria-controls', 'sidebar');
+        mobileToggle.setAttribute('aria-expanded', 'false');
         mobileToggle.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -274,6 +284,8 @@ const Sidebar = (function() {
         `;
         mobileToggle.addEventListener('click', toggleMobileSidebar);
         document.body.appendChild(mobileToggle);
+        mobileToggleEl = mobileToggle;
+        syncMobileSidebarState();
     }
     
     /**
@@ -284,10 +296,12 @@ const Sidebar = (function() {
         if (mobileToggle) {
             mobileToggle.remove();
         }
+        mobileToggleEl = null;
         // Also close sidebar and remove backdrop
         if (sidebarEl) {
             sidebarEl.classList.remove('open');
         }
+        syncMobileSidebarState();
         const backdrop = document.querySelector('.sidebar-backdrop');
         if (backdrop) {
             backdrop.remove();
@@ -301,6 +315,8 @@ const Sidebar = (function() {
         if (!sidebarEl) return;
         
         const isOpen = sidebarEl.classList.toggle('open');
+        sidebarEl.classList.remove('collapsed');
+        syncMobileSidebarState();
         
         // Create/remove backdrop
         let backdrop = document.querySelector('.sidebar-backdrop');
@@ -312,6 +328,7 @@ const Sidebar = (function() {
                 backdrop.setAttribute('aria-label', 'Close sidebar');
                 backdrop.addEventListener('click', () => {
                     sidebarEl.classList.remove('open');
+                    syncMobileSidebarState();
                     backdrop.classList.remove('active');
                     setTimeout(() => backdrop.remove(), 300);
                 });
@@ -850,6 +867,7 @@ const Sidebar = (function() {
         // On mobile, close sidebar
         if (window.innerWidth < 768) {
             sidebarEl.classList.remove('open');
+            syncMobileSidebarState();
             const backdrop = document.querySelector('.sidebar-backdrop');
             if (backdrop) backdrop.remove();
         }
@@ -976,18 +994,48 @@ const Sidebar = (function() {
     function toggleSidebar() {
         if (!sidebarEl) return;
 
+        if (window.innerWidth <= 768) {
+            toggleMobileSidebar();
+            return;
+        }
+
         setSidebarCollapsed(!sidebarEl.classList.contains('collapsed'));
     }
 
-    function setSidebarCollapsed(collapsed) {
+    function setSidebarCollapsed(collapsed, options = {}) {
         if (!sidebarEl) return;
 
+        const shouldPersist = options.persist !== false;
+        if (window.innerWidth <= 768) {
+            sidebarEl.classList.remove('collapsed');
+            if (shouldPersist) {
+                localStorage.setItem('notes_notion_sidebar_collapsed', 'false');
+            }
+            syncMobileSidebarState();
+            return;
+        }
+
         sidebarEl.classList.toggle('collapsed', Boolean(collapsed));
-        localStorage.setItem('notes_notion_sidebar_collapsed', collapsed ? 'true' : 'false');
+        if (shouldPersist) {
+            localStorage.setItem('notes_notion_sidebar_collapsed', collapsed ? 'true' : 'false');
+        }
 
         if (sidebarHandleEl) {
             sidebarHandleEl.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         }
+    }
+
+    function syncMobileSidebarState() {
+        if (!sidebarEl) return;
+
+        const isMobile = window.innerWidth <= 768;
+        const isOpen = isMobile && sidebarEl.classList.contains('open');
+        const toggle = mobileToggleEl || document.querySelector('.mobile-menu-toggle');
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            toggle.classList.toggle('is-open', isOpen);
+        }
+        document.body.classList.toggle('notes-sidebar-open', isOpen);
     }
 
     function handleSidebarHandleKeydown(e) {
