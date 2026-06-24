@@ -78,6 +78,25 @@ function createSettingsHarness() {
     return { dashboard };
 }
 
+function createPromptTabHarness() {
+    const dom = new JSDOM(`
+        <div class="editor-tabs">
+            <button class="tab-btn active" data-tab="editor">Editor</button>
+            <button class="tab-btn" data-tab="preview">Preview</button>
+        </div>
+    `, { url: 'http://localhost:3000/admin/?view=prompts' });
+    const Dashboard = loadDashboardClass(dom);
+    const dashboard = Object.create(Dashboard.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    dashboard.switchPromptTab = jest.fn();
+    dashboard.setupEventListeners();
+
+    return { dom, dashboard };
+}
+
 function createRuntimeListHarness() {
     const dom = new JSDOM(`
         <div id="promptList"></div>
@@ -130,6 +149,10 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('--focus-ring: rgba(121, 192, 255, 0.38)');
         expect(css).toContain('.btn:focus-visible');
         expect(css).toContain('.search-box input:focus-visible');
+        expect(css).toContain('.tab-btn:focus-visible');
+        expect(css).toContain('.toolbar-btn:focus-visible');
+        expect(css).toContain('.toggle input:focus-visible + .toggle-slider');
+        expect(css).toContain('.range-input input[type="range"]:focus-visible');
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     });
 
@@ -222,6 +245,25 @@ describe('agent dashboard navigation accessibility', () => {
         expect(apiTab.getAttribute('aria-selected')).toBe('true');
         expect(generalPanel.hidden).toBe(true);
         expect(apiPanel.hidden).toBe(false);
+    });
+
+    test('activates prompt editor tabs with keyboard commands', () => {
+        const { dom, dashboard } = createPromptTabHarness();
+        const previewTab = document.querySelector('[data-tab="preview"]');
+
+        previewTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true,
+        }));
+        previewTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: ' ',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(dashboard.switchPromptTab).toHaveBeenNthCalledWith(1, 'preview');
+        expect(dashboard.switchPromptTab).toHaveBeenNthCalledWith(2, 'preview');
     });
 
     test('makes runtime list items keyboard-selectable with selected state', () => {

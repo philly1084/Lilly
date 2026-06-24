@@ -633,7 +633,10 @@ body.admin-nav-open {
 .filter-group.search input:focus-visible,
 .prompt-name-input:focus-visible,
 .prompt-editor:focus-visible,
-.test-input:focus-visible {
+.test-input:focus-visible,
+.tab-btn:focus-visible,
+.toolbar-btn:focus-visible,
+.range-input input[type="range"]:focus-visible {
     outline: 2px solid var(--accent-secondary);
     outline-offset: 2px;
     box-shadow: 0 0 0 4px var(--focus-ring);
@@ -848,6 +851,12 @@ select.form-control,
 .toggle input:checked + .toggle-slider::before {
     transform: translateX(20px);
     background-color: white;
+}
+
+.toggle input:focus-visible + .toggle-slider {
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 /* Status Badges */

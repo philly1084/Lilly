@@ -259,6 +259,13 @@ class Dashboard {
             btn.addEventListener('click', (e) => {
                 this.switchPromptTab(e.target.dataset.tab);
             });
+            btn.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                event.preventDefault();
+                this.switchPromptTab(event.currentTarget.dataset.tab);
+            });
         });
         
         // Prompt editor toolbar
