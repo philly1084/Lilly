@@ -87,6 +87,46 @@ describe('SkillStore', () => {
     expect(context).not.toContain('podcast-cleanup');
   });
 
+  test('builds rich context blocks with match reasons and selected skill parity', () => {
+    const store = new SkillStore({ rootDir: makeTempSkillRoot() });
+    store.upsertSkill({
+      id: 'web-chat-verifier',
+      name: 'Web Chat Verifier',
+      description: 'Verify web-chat changes with browser checks.',
+      body: 'Run focused tests, then run the web-chat browser proof.',
+      tools: ['browser-check'],
+      triggerPatterns: ['web chat verification'],
+    });
+    store.upsertSkill({
+      id: 'generic-chat',
+      name: 'Generic Chat',
+      description: 'General chat response work.',
+      body: 'Improve chat copy.',
+      tools: [],
+      triggerPatterns: ['chat'],
+    });
+
+    const context = store.buildContext({
+      text: 'Need web chat verification',
+      surface: 'web-chat',
+      capabilityNeeds: ['browser'],
+      limit: 1,
+    });
+
+    expect(context.selectedSkills).toHaveLength(1);
+    expect(context.selectedSkills[0].id).toBe('web-chat-verifier');
+    expect(context.selectedSkills[0].reasons).toEqual(expect.arrayContaining([
+      'surface web-chat',
+      'capability browser',
+    ]));
+    expect(context.block).toContain('id=web-chat-verifier');
+    expect(context.block).toContain('match_score=');
+    expect(context.block).toContain('match_reasons=');
+    expect(context.block).toContain('surface web-chat');
+    expect(context.block).toContain('capability browser');
+    expect(context.block).not.toContain('id=generic-chat');
+  });
+
   test('escapes user-authored skill fields in context handoffs', () => {
     const store = new SkillStore({ rootDir: makeTempSkillRoot() });
     store.upsertSkill({
