@@ -113,6 +113,17 @@ describe('agent dashboard navigation accessibility', () => {
         delete global.window;
     });
 
+    test('labels global header icon controls for assistive tech', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+
+        expect(dom.window.document.getElementById('globalSearch').getAttribute('aria-label')).toBe('Search admin dashboard');
+        expect(dom.window.document.getElementById('notificationsBtn').getAttribute('aria-label')).toBe('Show notifications');
+        expect(dom.window.document.getElementById('notificationsBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-label')).toBe('Toggle color theme');
+        expect(dom.window.document.getElementById('themeToggle').getAttribute('type')).toBe('button');
+    });
+
     test('makes sidebar items keyboard targets with active page state', () => {
         createNavigationHarness();
         const overview = document.querySelector('[data-view="overview"]');
