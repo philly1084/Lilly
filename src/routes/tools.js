@@ -537,6 +537,18 @@ function buildToolRuntime(toolId, options = {}) {
     };
   }
 
+  if (toolId === 'tool-doc-read') {
+    return {
+      configured: true,
+      provider: 'local-tool-docs',
+      callerContract: [
+        'Use before invoking specialized or unfamiliar tools when parameters, setup, limits, or proof requirements are unclear.',
+        'Pass the exact toolId from the catalog so the returned docs match the tool the agent plans to call.',
+        'Keep detailed docs out of the normal context path; load them on demand for the active tool only.',
+      ],
+    };
+  }
+
   if ([
     'asset-search',
     'research-bucket-list',
@@ -550,7 +562,6 @@ function buildToolRuntime(toolId, options = {}) {
     'file-search',
     'file-mkdir',
     'git-safe',
-    'tool-doc-read',
     'security-scan',
     'architecture-design',
     'uml-generate',

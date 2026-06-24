@@ -192,6 +192,21 @@ describe('/api/tools routes', () => {
         ]));
     });
 
+    test('tool-doc-read details expose on-demand tool documentation guidance', async () => {
+        const app = buildApp();
+
+        const response = await request(app).get('/api/tools/tool-doc-read');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.docAvailable).toBe(true);
+        expect(response.body.data.runtime.provider).toBe('local-tool-docs');
+        expect(response.body.data.runtime.callerContract).toEqual(expect.arrayContaining([
+            expect.stringContaining('specialized or unfamiliar tools'),
+            expect.stringContaining('exact toolId from the catalog'),
+            expect.stringContaining('load them on demand'),
+        ]));
+    });
+
     test('remote-command tool details report runner target availability', async () => {
         const app = buildApp();
 
