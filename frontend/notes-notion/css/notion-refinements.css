@@ -1227,6 +1227,24 @@ button:focus-visible,
     50% { transform: translateX(4px) scale(1.03); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .agent-status.processing .agent-status-indicator,
+    .agent-widget-btn.processing,
+    .agent-widget-btn.processing .agent-avatar {
+        animation: none;
+    }
+
+    .agent-status.processing,
+    .agent-widget-btn,
+    .agent-widget-btn:hover {
+        transform: none;
+    }
+
+    .agent-widget-btn {
+        transition: box-shadow 0.01ms linear, filter 0.01ms linear;
+    }
+}
+
 /* Agent Chat Modal */
 .agent-chat-modal {
     position: fixed;
