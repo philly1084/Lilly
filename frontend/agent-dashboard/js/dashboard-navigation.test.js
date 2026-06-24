@@ -153,6 +153,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('.toolbar-btn:focus-visible');
         expect(css).toContain('.toggle input:focus-visible + .toggle-slider');
         expect(css).toContain('.range-input input[type="range"]:focus-visible');
+        expect(css).toContain('.prompt-item.active .prompt-item-meta {\n    color: var(--bg-primary);');
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     });
 
