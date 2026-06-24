@@ -20,6 +20,7 @@
     --accent-primary: #58a6ff;
     --accent-secondary: #79c0ff;
     --accent-hover: #388bfd;
+    --focus-ring: rgba(121, 192, 255, 0.38);
     
     --success: #238636;
     --success-light: #3fb950;
@@ -436,7 +437,12 @@ body.admin-nav-open {
     background-color: var(--bg-elevated);
     border-color: var(--accent-primary);
     color: var(--accent-secondary);
-    outline: none;
+}
+
+.mobile-menu-toggle:focus-visible {
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 .mobile-menu-toggle svg {
@@ -507,6 +513,10 @@ body.admin-nav-open {
     outline: none;
     border-color: var(--accent-primary);
     width: 320px;
+}
+
+.search-box input:focus-visible {
+    box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .search-box input::placeholder {
@@ -615,6 +625,18 @@ body.admin-nav-open {
     height: 36px;
     padding: 0;
     position: relative;
+}
+
+.btn:focus-visible,
+.form-control:focus-visible,
+.select-sm:focus-visible,
+.filter-group.search input:focus-visible,
+.prompt-name-input:focus-visible,
+.prompt-editor:focus-visible,
+.test-input:focus-visible {
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 .btn-sm {
@@ -4476,6 +4498,17 @@ code {
 
     .search-box {
         display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
     }
 }
 

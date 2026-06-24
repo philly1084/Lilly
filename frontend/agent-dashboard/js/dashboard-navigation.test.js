@@ -124,6 +124,15 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('themeToggle').getAttribute('type')).toBe('button');
     });
 
+    test('keeps dashboard focus and reduced-motion affordances in CSS', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toContain('--focus-ring: rgba(121, 192, 255, 0.38)');
+        expect(css).toContain('.btn:focus-visible');
+        expect(css).toContain('.search-box input:focus-visible');
+        expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+    });
+
     test('makes sidebar items keyboard targets with active page state', () => {
         createNavigationHarness();
         const overview = document.querySelector('[data-view="overview"]');
