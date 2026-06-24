@@ -366,6 +366,32 @@ describe('openai-client response threading', () => {
         expect(summary).toBe('Generated 2 image options. Select one below.');
     });
 
+    test('uses concise direct tool result messages before raw payload JSON', async () => {
+        const { __testUtils } = require('./openai-client');
+
+        const summary = __testUtils.formatDirectToolResultMessage({
+            toolCall: {
+                function: {
+                    name: 'skill-context',
+                },
+            },
+            result: {
+                success: true,
+                toolId: 'skill-context',
+                data: {
+                    message: 'Found 3 matching skills. Use the architecture skill first.',
+                    matches: [
+                        { id: 'interface-quality-architecture', score: 0.91 },
+                    ],
+                },
+            },
+        });
+
+        expect(summary).toBe('Found 3 matching skills. Use the architecture skill first.');
+        expect(summary).not.toContain('matches');
+        expect(summary).not.toContain('interface-quality-architecture');
+    });
+
     test('aggregates usage across responses tool-loop rounds', async () => {
         const { __testUtils } = require('./openai-client');
         const openai = {

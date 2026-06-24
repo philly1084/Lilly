@@ -75,6 +75,7 @@ const DIRECT_REMOTE_STDERR_CHARS = Math.max(
     6000,
     Math.min(MODEL_TOOL_RESULT_CHAR_LIMIT, parseInt(process.env.DIRECT_REMOTE_STDERR_CHARS, 10) || 12000),
 );
+const DIRECT_TOOL_MESSAGE_CHARS = 900;
 
 let chatClient = null;
 
@@ -5238,6 +5239,29 @@ function buildDirectImageToolSummary(result = {}) {
     return `Generated ${count} image options. Select one below.`;
 }
 
+function extractDirectToolMessageSummary(result = {}) {
+    const data = result?.data && typeof result.data === 'object' && !Array.isArray(result.data)
+        ? result.data
+        : {};
+    const candidates = [
+        result?.summary,
+        result?.message,
+        data.summary,
+        data.message,
+        data.result,
+        data.text,
+    ];
+
+    for (const candidate of candidates) {
+        const text = typeof candidate === 'string' ? candidate.trim() : '';
+        if (text) {
+            return trimString(text.replace(/\s+\n/g, '\n'), DIRECT_TOOL_MESSAGE_CHARS);
+        }
+    }
+
+    return '';
+}
+
 function formatDirectToolResultMessage(toolEvent = {}) {
     const toolId = toolEvent?.toolCall?.function?.name || toolEvent?.result?.toolId || 'tool';
     const result = toolEvent?.result || {};
@@ -5414,6 +5438,11 @@ function formatDirectToolResultMessage(toolEvent = {}) {
         if (result?.data?.checkpoint) {
             return buildUserCheckpointMessage(result.data.checkpoint);
         }
+    }
+
+    const messageSummary = extractDirectToolMessageSummary(result);
+    if (messageSummary) {
+        return messageSummary;
     }
 
     return JSON.stringify(result?.data || {}, null, 2);
