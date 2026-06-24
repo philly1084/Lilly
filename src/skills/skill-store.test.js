@@ -127,6 +127,66 @@ describe('SkillStore', () => {
     expect(context.block).not.toContain('id=generic-chat');
   });
 
+  test('includes matched tool ids in skill context handoffs', () => {
+    const store = new SkillStore({ rootDir: makeTempSkillRoot() });
+    store.upsertSkill({
+      id: 'remote-ops-proof',
+      name: 'Remote Ops Proof',
+      description: 'Inspect and verify remote k3s surfaces.',
+      body: 'Run baseline, inspect, fix, verify, and report primary evidence.',
+      tools: ['remote-command', 'k3s-deploy'],
+      triggerPatterns: ['remote verification'],
+    });
+    store.upsertSkill({
+      id: 'generic-proof',
+      name: 'Generic Proof',
+      description: 'General verification guidance.',
+      body: 'Run a nearby check.',
+      tools: ['browser-check'],
+      triggerPatterns: ['verification'],
+    });
+
+    const context = store.buildContext({
+      text: 'verify the remote deployment',
+      toolIds: ['remote-command'],
+      limit: 2,
+    });
+
+    expect(context.selectedSkills[0]).toEqual(expect.objectContaining({
+      id: 'remote-ops-proof',
+      matchedTools: ['remote-command'],
+      reasons: expect.arrayContaining(['tool affinity', 'tool remote-command']),
+    }));
+    expect(context.block).toContain('id=remote-ops-proof');
+    expect(context.block).toContain('matched_tools=remote-command');
+    expect(context.block).toContain('match_reasons=');
+    expect(context.block).toContain('tool remote-command');
+  });
+
+  test('reuses selected skill objects when rendering context blocks', () => {
+    const store = new SkillStore({ rootDir: '__unused__' });
+    store.listSkills = jest.fn(() => [
+      {
+        id: 'remote-ops-proof',
+        name: 'Remote Ops Proof',
+        description: 'Inspect and verify remote k3s surfaces.',
+        body: 'Run baseline, inspect, fix, verify, and report primary evidence.',
+        tools: ['remote-command'],
+        triggerPatterns: ['remote verification'],
+        enabled: true,
+      },
+    ]);
+
+    const context = store.buildContext({
+      text: 'verify the remote deployment',
+      toolIds: ['remote-command'],
+      limit: 1,
+    });
+
+    expect(context.block).toContain('id=remote-ops-proof');
+    expect(context.block).toContain('matched_tools=remote-command');
+  });
+
   test('escapes user-authored skill fields in context handoffs', () => {
     const store = new SkillStore({ rootDir: makeTempSkillRoot() });
     store.upsertSkill({

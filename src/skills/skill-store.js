@@ -301,9 +301,13 @@ class SkillStore {
       }
     });
 
-    if ((skill.tools || []).some((tool) => requestedTools.has(String(tool || '').toLowerCase()))) {
+    const matchedTools = (skill.tools || [])
+      .map((tool) => normalizeWhitespace(tool))
+      .filter((tool) => tool && requestedTools.has(tool.toLowerCase()));
+    if (matchedTools.length > 0) {
       score += 5;
       reasons.push('tool affinity');
+      reasons.push(`tool ${matchedTools.slice(0, 4).join(', ')}`);
     }
 
     const skillText = [
@@ -339,6 +343,7 @@ class SkillStore {
       return {
         score,
         reasons: Array.from(new Set(reasons)).slice(0, 8),
+        matchedTools: Array.from(new Set(matchedTools)).slice(0, 8),
       };
     }
 
@@ -369,6 +374,7 @@ class SkillStore {
           skill,
           score: details.score,
           reasons: details.reasons,
+          matchedTools: details.matchedTools || [],
         };
       })
       .filter((entry) => entry.score > 0)
@@ -388,8 +394,13 @@ class SkillStore {
     selectedSkillMatches = [],
     includeAdditionalMatches = true,
   } = {}) {
+    const matchedSkillById = new Map(
+      selectedSkillMatches
+        .filter((entry) => entry?.skill?.id)
+        .map((entry) => [entry.skill.id, entry.skill])
+    );
     const explicitSkills = normalizeStringList(selectedSkillIds)
-      .map((id) => this.readSkill(id, { includeBody: true }))
+      .map((id) => matchedSkillById.get(id) || this.readSkill(id, { includeBody: true }))
       .filter(Boolean);
     const explicitIds = new Set(explicitSkills.map((skill) => skill.id));
     const matchedSkills = includeAdditionalMatches
@@ -416,12 +427,14 @@ class SkillStore {
       const maxChars = skill.contextPolicy?.maxChars || DEFAULT_MAX_CONTEXT_CHARS;
       const match = matchMetadata.get(skill.id) || {};
       const matchReasons = normalizeStringList(match.reasons || []);
+      const matchedTools = normalizeStringList(match.matchedTools || []);
       const summary = [
         `id=${skill.id}`,
         `name=${escapeContextValue(skill.name)}`,
         skill.description ? `description=${escapeContextValue(skill.description)}` : '',
         (skill.tools || []).length ? `tools=${escapeContextValue(skill.tools.join(', '))}` : '',
         (skill.triggerPatterns || []).length ? `triggers=${escapeContextValue(skill.triggerPatterns.join(', '))}` : '',
+        matchedTools.length ? `matched_tools=${escapeContextValue(matchedTools.join(', '))}` : '',
         Number.isFinite(match.score) && match.score !== Number.MAX_SAFE_INTEGER ? `match_score=${Number(match.score.toFixed(2))}` : '',
         matchReasons.length ? `match_reasons=${escapeContextValue(matchReasons.join(', '))}` : '',
         (skill.chain || []).length ? `chain=${escapeContextValue(JSON.stringify(skill.chain))}` : '',
@@ -461,6 +474,7 @@ class SkillStore {
       skill,
       score: Number.MAX_SAFE_INTEGER,
       reasons: ['explicitly selected'],
+      matchedTools: [],
     }));
     const selected = [...explicitMatches, ...matches].slice(0, Math.max(1, Math.min(Number(limit) || DEFAULT_MATCH_LIMIT, 8)));
     const block = this.buildContextBlock({
@@ -469,9 +483,11 @@ class SkillStore {
       selectedSkillIds: selected.map((entry) => entry.skill.id),
       limit,
       selectedSkillMatches: selected.map((entry) => ({
+        skill: entry.skill,
         id: entry.skill.id,
         score: entry.score,
         reasons: entry.reasons || [],
+        matchedTools: entry.matchedTools || [],
       })),
       includeAdditionalMatches: false,
     });
@@ -486,6 +502,7 @@ class SkillStore {
           ? Number(entry.score.toFixed(2))
           : null,
         reasons: entry.reasons || [],
+        matchedTools: entry.matchedTools || [],
       })),
     };
   }
