@@ -82,6 +82,16 @@ describe('ai-route-utils', () => {
             .toBe('Created the PDF artifact (space-zine.pdf).');
     });
 
+    test('buildArtifactCompletionMessage includes direct downloads for non-site artifacts', () => {
+        expect(buildArtifactCompletionMessage('pdf', {
+            filename: 'space-zine.pdf',
+            downloadUrl: '/api/artifacts/artifact-pdf-1/download',
+        })).toBe([
+            'Created the PDF artifact (space-zine.pdf).',
+            'Download: /api/artifacts/artifact-pdf-1/download',
+        ].join('\n'));
+    });
+
     test('buildArtifactCompletionMessage gives site bundles the normal preview URL first', () => {
         expect(buildArtifactCompletionMessage('html', {
             filename: 'site.html',

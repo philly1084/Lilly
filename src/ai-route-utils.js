@@ -415,7 +415,11 @@ function buildArtifactCompletionMessage(outputFormat, artifact) {
         ].filter(Boolean).join('\n');
     }
 
-    return `Created the ${formatLabel} artifact${filename}.`;
+    const download = artifact?.downloadUrl || '';
+    return [
+        `Created the ${formatLabel} artifact${filename}.`,
+        download ? `Download: ${download}` : '',
+    ].filter(Boolean).join('\n');
 }
 
 function shouldDeferArtifactGenerationToWorkload(text = '', outputFormat = null, options = {}) {
