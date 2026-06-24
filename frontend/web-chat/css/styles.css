@@ -4729,6 +4729,7 @@ body.layout-minimal #input-meta-row {
 }
 
 .composer-send-btn {
+    flex: 0 0 auto;
     position: relative;
 }
 
@@ -7539,9 +7540,11 @@ code[class*="language-"] {
 
 /* iOS zoom fix - font-size 16px on inputs to prevent zoom */
 #message-input {
+    flex: 1 1 14rem;
     font-family: inherit;
     font-size: 16px;
     line-height: 1.5;
+    min-width: 8rem;
     padding-top: 0.95rem;
     padding-bottom: 0.95rem;
 }
@@ -7557,7 +7560,10 @@ code[class*="language-"] {
 }
 
 .composer-shell__actions {
+    align-items: center;
+    flex: 0 0 auto;
     flex-shrink: 0;
+    min-width: max-content;
 }
 
 .composer-shell__counter {
@@ -8046,6 +8052,7 @@ code[class*="language-"] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex: 0 0 auto;
     width: 2.3rem;
     height: 2.3rem;
     border: 1px solid rgba(255, 255, 255, 0.06);
@@ -9639,8 +9646,7 @@ code[class*="language-"] {
         padding-bottom: 0.15rem !important;
     }
 
-    .composer-shell__counter,
-    #voice-output-btn {
+    .composer-shell__counter {
         display: none !important;
     }
 
@@ -9894,7 +9900,9 @@ code[class*="language-"] {
     }
 
     #message-input {
+        flex-basis: 7rem;
         min-height: 58px;
+        min-width: 5.5rem;
         padding: 0.8rem 0.35rem 0.8rem 0.45rem;
     }
 
