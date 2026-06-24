@@ -42,6 +42,23 @@ describe('Planner', () => {
     expect(prompt).toContain('Still use only the listed tools');
   });
 
+  test('parses annotated lenient JSON conversation plans', () => {
+    const planner = new Planner(null, null);
+
+    const plan = planner.parseConversationPlan('```json title="conversation plan" source="planner"\n{steps:[{type:"tool-call", tool:"web-search", description:"Find references", estimatedTokens:900,},]}\n```');
+
+    expect(plan).toEqual({
+      steps: [
+        {
+          type: 'tool-call',
+          tool: 'web-search',
+          description: 'Find references',
+          estimatedTokens: 900,
+        },
+      ],
+    });
+  });
+
   test('normalizes and constrains conversation plans by quota and follow-through checkpoints', () => {
     const planner = new Planner(null, null, {
       planningLimits: {

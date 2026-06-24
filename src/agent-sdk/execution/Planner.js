@@ -1,4 +1,5 @@
 const { randomUUID } = require('crypto');
+const { parseLenientJson } = require('../../utils/lenient-json');
 /**
  * Step status values.
  * @typedef {('pending'|'running'|'completed'|'failed'|'skipped')} StepStatus
@@ -779,9 +780,12 @@ class Planner {
       return {};
     }
 
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidate = fenced ? fenced[1].trim() : raw;
-    return JSON.parse(candidate);
+    const parsed = parseLenientJson(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Conversation plan response did not contain a JSON object.');
+    }
+
+    return parsed;
   }
 
   buildConversationPlanningPrompt(task, availableTools = [], quota = null) {
