@@ -944,6 +944,14 @@ class App {
         trigger?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     }
 
+    setMobilePanelOpen(panel, trigger, isOpen, { restoreFocus = false } = {}) {
+        panel?.classList.toggle('active', isOpen);
+        trigger?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        if (!isOpen && restoreFocus) {
+            trigger?.focus?.();
+        }
+    }
+
     setupMobileControls() {
         // Mobile toolbar toggle
         const mobileToolbarToggle = document.getElementById('mobileToolbarToggle');
@@ -951,16 +959,16 @@ class App {
         const mobileToolbarClose = document.getElementById('mobileToolbarClose');
         
         mobileToolbarToggle?.addEventListener('click', () => {
-            document.getElementById('propertiesPanel')?.classList.remove('active');
+            this.setMobilePanelOpen(propertiesPanel, mobilePropertiesToggle, false);
             window.aiAssistant?.hidePanel();
-            toolbar?.classList.add('active');
+            this.setMobilePanelOpen(toolbar, mobileToolbarToggle, true);
             if (!this.activeDockGroup) {
                 this.openToolDockGroup('shapes');
             }
         });
         
         mobileToolbarClose?.addEventListener('click', () => {
-            toolbar?.classList.remove('active');
+            this.setMobilePanelOpen(toolbar, mobileToolbarToggle, false, { restoreFocus: true });
         });
         
         // Mobile properties panel toggle
@@ -969,13 +977,13 @@ class App {
         const mobilePropertiesClose = document.getElementById('mobilePropertiesClose');
         
         mobilePropertiesToggle?.addEventListener('click', () => {
-            document.getElementById('toolbar')?.classList.remove('active');
+            this.setMobilePanelOpen(toolbar, mobileToolbarToggle, false);
             window.aiAssistant?.hidePanel();
-            propertiesPanel?.classList.add('active');
+            this.setMobilePanelOpen(propertiesPanel, mobilePropertiesToggle, true);
         });
         
         mobilePropertiesClose?.addEventListener('click', () => {
-            propertiesPanel?.classList.remove('active');
+            this.setMobilePanelOpen(propertiesPanel, mobilePropertiesToggle, false, { restoreFocus: true });
         });
     }
 

@@ -82,6 +82,34 @@ function createDropdownHarness() {
     return { dom, app };
 }
 
+function createMobilePanelHarness() {
+    const dom = new JSDOM(`
+        <button id="mobileToolbarToggle" type="button" aria-controls="toolbar" aria-expanded="false">Tools</button>
+        <aside id="toolbar">
+            <button id="mobileToolbarClose" type="button">Close tools</button>
+            <button class="tool-dock-btn" type="button" data-dock-group="shapes">Shapes</button>
+            <div class="tool-category" data-tool-group="shapes"></div>
+        </aside>
+        <button id="mobilePropertiesToggle" type="button" aria-controls="propertiesPanel" aria-expanded="false">Properties</button>
+        <aside id="propertiesPanel">
+            <button id="mobilePropertiesClose" type="button">Close properties</button>
+        </aside>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const App = loadAppClass(dom);
+    const app = Object.create(App.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    app.activeDockGroup = '';
+    app.currentTool = 'selection';
+    dom.window.aiAssistant = {
+        hidePanel: jest.fn(),
+    };
+
+    return { dom, app };
+}
+
 describe('canvas help modal accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -171,6 +199,47 @@ describe('canvas top-bar dropdown accessibility', () => {
 
         expect(dropdown.classList.contains('active')).toBe(false);
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    });
+});
+
+describe('canvas mobile panel accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+    });
+
+    test('syncs mobile panel expanded state and restores focus when closed', () => {
+        const { app } = createMobilePanelHarness();
+        const toolToggle = document.getElementById('mobileToolbarToggle');
+        const toolClose = document.getElementById('mobileToolbarClose');
+        const toolbar = document.getElementById('toolbar');
+        const propertiesToggle = document.getElementById('mobilePropertiesToggle');
+        const propertiesClose = document.getElementById('mobilePropertiesClose');
+        const propertiesPanel = document.getElementById('propertiesPanel');
+
+        app.setupMobileControls();
+
+        toolToggle.click();
+        expect(toolbar.classList.contains('active')).toBe(true);
+        expect(toolToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(propertiesPanel.classList.contains('active')).toBe(false);
+        expect(propertiesToggle.getAttribute('aria-expanded')).toBe('false');
+
+        toolClose.click();
+        expect(toolbar.classList.contains('active')).toBe(false);
+        expect(toolToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(toolToggle);
+
+        propertiesToggle.click();
+        expect(propertiesPanel.classList.contains('active')).toBe(true);
+        expect(propertiesToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toolbar.classList.contains('active')).toBe(false);
+        expect(toolToggle.getAttribute('aria-expanded')).toBe('false');
+
+        propertiesClose.click();
+        expect(propertiesPanel.classList.contains('active')).toBe(false);
+        expect(propertiesToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(propertiesToggle);
     });
 });
 
