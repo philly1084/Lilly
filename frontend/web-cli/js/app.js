@@ -67,9 +67,10 @@ function formatWebCliSkillTaskPrompt(skillId = '', taskPrompt = '') {
     const normalizedPrompt = String(taskPrompt || '').trim();
     const skillLabel = normalizedSkillId ? `\`${normalizedSkillId}\`` : 'the selected';
     const prefix = `Use the ${skillLabel} skill for this task.`;
+    const handoff = 'Read the skill instructions first, then follow its required workflow and verification steps.';
     return normalizedPrompt
-        ? `${prefix}\n\nTask:\n${normalizedPrompt}`
-        : `${prefix}\n\nTask:\nDescribe the task here.`;
+        ? `${prefix}\n${handoff}\n\nTask:\n${normalizedPrompt}`
+        : `${prefix}\n${handoff}\n\nTask:\nDescribe the task here.`;
 }
 
 class CodeCLIApp {
