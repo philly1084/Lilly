@@ -5833,6 +5833,51 @@ class UIHelpers {
         return true;
     }
 
+    copyTextWithTextareaFallback(text = '') {
+        const dom = typeof document !== 'undefined' ? document : null;
+        if (
+            !dom?.createElement
+            || !dom?.body?.appendChild
+            || typeof dom.execCommand !== 'function'
+        ) {
+            throw new Error('Clipboard API is unavailable.');
+        }
+
+        const textarea = dom.createElement('textarea');
+        textarea.value = String(text || '');
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        textarea.style.opacity = '0';
+
+        dom.body.appendChild(textarea);
+        textarea.select?.();
+        textarea.setSelectionRange?.(0, textarea.value.length);
+
+        try {
+            const copied = dom.execCommand('copy');
+            if (!copied) {
+                throw new Error('Copy command was rejected.');
+            }
+        } finally {
+            textarea.remove?.();
+            if (textarea.parentNode?.removeChild) {
+                textarea.parentNode.removeChild(textarea);
+            }
+        }
+    }
+
+    async writeClipboardText(text = '') {
+        const value = String(text || '');
+        const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : null;
+        if (clipboard?.writeText) {
+            await clipboard.writeText(value);
+            return;
+        }
+
+        this.copyTextWithTextareaFallback(value);
+    }
+
     async copyMessage(messageId) {
         const messageEl = document.getElementById(messageId);
         if (!messageEl) return;
@@ -5843,7 +5888,7 @@ class UIHelpers {
         const text = messageEl.dataset.copyText || textEl.textContent || '';
         
         try {
-            await navigator.clipboard.writeText(text.trim());
+            await this.writeClipboardText(text.trim());
             this.showToast('Message copied to clipboard', 'success');
         } catch (err) {
             console.error('Failed to copy message:', err);
@@ -8238,7 +8283,7 @@ class UIHelpers {
         const code = button?.dataset?.code || '';
         
         try {
-            await navigator.clipboard.writeText(code);
+            await this.writeClipboardText(code);
             
             // Show copied state
             const originalHTML = button.innerHTML;
@@ -8288,7 +8333,7 @@ class UIHelpers {
         }
 
         try {
-            await navigator.clipboard.writeText(source);
+            await this.writeClipboardText(source);
 
             const originalHTML = button.innerHTML;
             button.classList.add('copied');

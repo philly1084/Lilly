@@ -2,10 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadUIHelpersPrototype() {
+function loadUIHelpersPrototype(options = {}) {
     const sourcePath = path.join(__dirname, 'ui.js');
     const source = fs.readFileSync(sourcePath, 'utf8')
         .replace(/const uiHelpers = new UIHelpers\(\);[\s\S]*$/, 'globalThis.UIHelpers = UIHelpers;');
+    const appendedElements = [];
     const escapeHtml = (value) => String(value == null ? '' : value)
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
@@ -19,9 +20,12 @@ function loadUIHelpersPrototype() {
             createElement: () => {
                 const element = {
                     dataset: {},
+                    style: {},
                     attributes: {},
+                    parentNode: null,
                     classList: {
                         add: () => {},
+                        remove: () => {},
                         toggle: () => {},
                     },
                     setAttribute(name, value) {
@@ -29,6 +33,13 @@ function loadUIHelpersPrototype() {
                     },
                     getAttribute(name) {
                         return this.attributes[name];
+                    },
+                    select: jest.fn(),
+                    setSelectionRange: jest.fn(),
+                    remove() {
+                        if (this.parentNode?.removeChild) {
+                            this.parentNode.removeChild(this);
+                        }
                     },
                 };
                 Object.defineProperty(element, 'textContent', {
@@ -46,7 +57,24 @@ function loadUIHelpersPrototype() {
                 });
                 return element;
             },
+            body: {
+                appendChild: (element) => {
+                    element.parentNode = context.document.body;
+                    appendedElements.push(element);
+                    return element;
+                },
+                removeChild: (element) => {
+                    const index = appendedElements.indexOf(element);
+                    if (index >= 0) {
+                        appendedElements.splice(index, 1);
+                    }
+                    element.parentNode = null;
+                    return element;
+                },
+            },
+            execCommand: jest.fn(() => true),
         },
+        navigator: {},
         localStorage: {
             getItem: () => null,
             setItem: () => {},
@@ -60,10 +88,21 @@ function loadUIHelpersPrototype() {
         },
         DOMPurify: { sanitize: (html) => html },
         console,
+        setTimeout: (callback) => {
+            callback();
+            return 0;
+        },
     };
 
+    context.document.appendedElements = appendedElements;
     vm.createContext(context);
     vm.runInContext(source, context);
+    if (options.withContext === true) {
+        return {
+            prototype: context.UIHelpers.prototype,
+            context,
+        };
+    }
     return context.UIHelpers.prototype;
 }
 
@@ -534,6 +573,48 @@ I will continue once you answer.`;
         }, 'You\nPatch the web-chat copy button.');
 
         expect(messageEl.dataset.copyText).toBe('Patch the web-chat copy button.');
+    });
+
+    test('uses the Clipboard API when copying text is supported', async () => {
+        const { prototype, context } = loadUIHelpersPrototype({ withContext: true });
+        const helper = Object.create(prototype);
+        const writeText = jest.fn().mockResolvedValue(undefined);
+        context.navigator.clipboard = { writeText };
+
+        await helper.writeClipboardText('Copied through clipboard.');
+
+        expect(writeText).toHaveBeenCalledWith('Copied through clipboard.');
+        expect(context.document.execCommand).not.toHaveBeenCalled();
+    });
+
+    test('falls back to a temporary textarea when clipboard is unavailable', async () => {
+        const { prototype, context } = loadUIHelpersPrototype({ withContext: true });
+        const helper = Object.create(prototype);
+
+        await helper.writeClipboardText('Copied through fallback.');
+
+        expect(context.document.execCommand).toHaveBeenCalledWith('copy');
+        expect(context.document.appendedElements).toHaveLength(0);
+    });
+
+    test('code copy keeps copied button feedback with fallback clipboard support', async () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const classList = {
+            add: jest.fn(),
+            remove: jest.fn(),
+        };
+        helper.reinitializeIcons = jest.fn();
+        const button = {
+            dataset: { code: 'console.log("hello");' },
+            innerHTML: '<span>Copy</span>',
+            classList,
+        };
+
+        await helper.copyCode(button);
+
+        expect(button.innerHTML).toBe('<span>Copy</span>');
+        expect(classList.add).toHaveBeenCalledWith('copied');
+        expect(classList.remove).toHaveBeenCalledWith('copied');
     });
 
     test('does not infer a survey card from final-answer completion summaries', () => {
