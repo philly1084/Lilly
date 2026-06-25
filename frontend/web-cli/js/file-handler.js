@@ -573,7 +573,7 @@ class FileHandler {
     async copyContent(button) {
         const content = button.getAttribute('data-content');
         try {
-            await navigator.clipboard.writeText(content);
+            await this.app.writeClipboardText(content);
             const originalText = button.textContent;
             button.textContent = '✓ Copied!';
             setTimeout(() => button.textContent = originalText, 2000);

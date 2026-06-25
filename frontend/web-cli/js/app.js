@@ -2139,10 +2139,35 @@ class CodeCLIApp {
         this.scrollToBottom();
     }
 
+    async writeClipboardText(text) {
+        const value = String(text == null ? '' : text);
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(value);
+            return;
+        }
+
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-1000px';
+        textarea.style.left = '-1000px';
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+            if (!document.execCommand || !document.execCommand('copy')) {
+                throw new Error('Copy command unavailable');
+            }
+        } finally {
+            textarea.remove();
+        }
+    }
+
     async copySessionBrief() {
         const text = this.lastSessionBriefText || this.buildSessionBriefText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Session brief copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use /export md for a saved transcript.');
@@ -2152,7 +2177,7 @@ class CodeCLIApp {
     async copySessionAudit() {
         const text = this.lastSessionAuditText || this.buildSessionAuditText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Session audit trail copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use /export md for a saved transcript.');
@@ -2267,7 +2292,7 @@ class CodeCLIApp {
     async copySessionPacket() {
         const text = this.lastSessionPacketText || this.buildSessionPacketText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Continuation packet copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use Download md instead.');
@@ -2424,7 +2449,7 @@ class CodeCLIApp {
     async copySessionRegister() {
         const text = this.lastSessionRegisterText || this.buildSessionRegisterText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Decision register copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
@@ -2565,7 +2590,7 @@ class CodeCLIApp {
     async copySessionGates() {
         const text = this.lastSessionGateText || this.buildSessionGateText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Quality gates copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
@@ -2725,7 +2750,7 @@ class CodeCLIApp {
     async copyOpsSnapshot() {
         const text = this.lastOpsSnapshotText || this.buildOpsSnapshotText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Ops snapshot copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
@@ -2910,7 +2935,7 @@ class CodeCLIApp {
     async copyEvidencePack() {
         const text = this.lastEvidencePackText || this.buildEvidencePackText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Evidence pack copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
@@ -3088,7 +3113,7 @@ class CodeCLIApp {
     async copyReviewQueue() {
         const text = this.lastReviewQueueText || this.buildReviewQueueText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.printSystem('Review queue copied to clipboard');
         } catch (_error) {
             this.printWarning('Clipboard unavailable. Use /packet for a broader saved handoff.');
@@ -10801,21 +10826,29 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         this.enterpriseButton.setAttribute('aria-label', active ? 'Enterprise Mode active' : 'Enable Enterprise Mode');
     }
     
-    copyLastOutput() {
+    async copyLastOutput() {
         if (this.lastResponse) {
-            navigator.clipboard.writeText(this.lastResponse);
-            this.printSystem('Last response copied to clipboard');
+            try {
+                await this.writeClipboardText(this.lastResponse);
+                this.printSystem('Last response copied to clipboard');
+            } catch (_error) {
+                this.printWarning('Clipboard unavailable. Use /export md for a saved transcript.');
+            }
         } else {
             this.printWarning('No response to copy');
         }
     }
     
-    copyCode(btn) {
+    async copyCode(btn) {
         const code = btn.closest('.code-block').querySelector('code').textContent;
-        navigator.clipboard.writeText(code);
-        const originalText = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = originalText, 2000);
+        try {
+            await this.writeClipboardText(code);
+            const originalText = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = originalText, 2000);
+        } catch (_error) {
+            this.printWarning('Clipboard unavailable. Select and copy the code manually.');
+        }
     }
     
     showShortcuts() {
