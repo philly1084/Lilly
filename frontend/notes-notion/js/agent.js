@@ -9392,6 +9392,7 @@ Silently verify the lead cluster, section order, and final polish before returni
             'llama',
             'mistral',
             'qwen',
+            'gemma',
             'grok',
             'cohere',
             'command',
@@ -9602,7 +9603,7 @@ Silently verify the lead cluster, section order, and final polish before returni
         if (id.includes('claude')) return 'anthropic';
         if (id.includes('gpt') || id.includes('o1') || id.includes('o3') || id.includes('o4')) return 'openai';
         if (id.includes('kimi')) return 'kimi';
-        if (id.includes('gemini') || id.includes('palm')) return 'google';
+        if (id.includes('gemini') || id.includes('gemma') || id.includes('palm')) return 'google';
         if (id.includes('llama') || id.includes('meta')) return 'meta';
         if (id.includes('mistral')) return 'mistral';
         if (id.includes('qwen') || id.includes('alibaba')) return 'qwen';

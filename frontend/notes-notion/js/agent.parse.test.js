@@ -2006,6 +2006,8 @@ Approved page plan:
                 data: [
                     { id: 'grok-4.3', owned_by: 'gateway' },
                     { id: 'qwen3-coder', owned_by: 'gateway' },
+                    { id: 'gemma-3-27b-it', owned_by: 'gateway' },
+                    { id: 'google/gemma-3-27b-it', owned_by: 'gateway' },
                     { id: 'deepseek-chat', owned_by: 'gateway' },
                     { id: 'command-r-plus', owned_by: 'gateway' },
                 ],
@@ -2018,10 +2020,15 @@ Approved page plan:
         expect(agent.getModelsByProvider()).toEqual(expect.objectContaining({
             xai: [expect.objectContaining({ id: 'grok-4.3', provider: 'xai' })],
             qwen: [expect.objectContaining({ id: 'qwen3-coder', provider: 'qwen' })],
+            google: [
+                expect.objectContaining({ id: 'gemma-3-27b-it', provider: 'google' }),
+                expect.objectContaining({ id: 'google/gemma-3-27b-it', provider: 'google' }),
+            ],
             deepseek: [expect.objectContaining({ id: 'deepseek-chat', provider: 'deepseek' })],
             cohere: [expect.objectContaining({ id: 'command-r-plus', provider: 'cohere' })],
         }));
         expect(agent.setSelectedModel('grok-4.3')).toBe(true);
+        expect(agent.setSelectedModel('gemma-3-27b-it')).toBe(true);
         expect(agent.setSelectedModel('command-r-plus')).toBe(true);
     });
 });
