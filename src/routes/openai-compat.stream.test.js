@@ -35,6 +35,7 @@ jest.mock('../runtime-execution', () => ({
     executeConversationRuntime: jest.fn(),
     resolveConversationExecutorFlag: jest.fn(() => false),
     inferExecutionProfile: jest.fn(() => 'default'),
+    scheduleDirectAfterProcessAudit: jest.fn(),
 }));
 
 jest.mock('../ai-route-utils', () => ({
@@ -89,10 +90,14 @@ jest.mock('../admin/runtime-monitor', () => ({
     failRuntimeTask: jest.fn(),
 }));
 
-jest.mock('../project-memory', () => ({
-    buildProjectMemoryUpdate: jest.fn(() => ({})),
-    mergeProjectMemory: jest.fn((_existing, update) => update || {}),
-}));
+jest.mock('../project-memory', () => {
+    const actual = jest.requireActual('../project-memory');
+    return {
+        buildActiveProjectPreviewUpdate: jest.fn(actual.buildActiveProjectPreviewUpdate),
+        buildProjectMemoryUpdate: jest.fn(() => ({})),
+        mergeProjectMemory: jest.fn((_existing, update) => update || {}),
+    };
+});
 
 jest.mock('../generated-image-artifacts', () => ({
     persistGeneratedImages: jest.fn(async () => ({ artifacts: [] })),
@@ -628,6 +633,16 @@ describe('/v1/chat/completions stream forwarding', () => {
                 }),
             }),
         );
+        expect(sessionStore.update).toHaveBeenCalledWith('web-chat-stream-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                activeProject: expect.objectContaining({
+                    type: 'sandbox',
+                    artifactId: 'artifact-singular-1',
+                    previewUrl: '/api/artifacts/artifact-singular-1/preview',
+                    url: '/api/artifacts/artifact-singular-1/preview',
+                }),
+            }),
+        }));
     });
 
     test('infers PDF artifact revision output from selected uploaded artifacts on web-chat updates', async () => {

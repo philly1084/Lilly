@@ -1,4 +1,5 @@
 const {
+    buildActiveProjectPreviewUpdate,
     buildProjectMemoryUpdate,
     mergeProjectMemory,
     buildProjectMemoryInstructions,
@@ -66,6 +67,46 @@ describe('project-memory', () => {
         expect(update.tasks[0].summary).toMatch(/Created the file/i);
     });
 
+    test('promotes previewable HTML artifacts into an active project preview', () => {
+        const activeProject = buildActiveProjectPreviewUpdate({
+            assistantText: 'Created a dashboard preview.',
+            artifacts: [{
+                id: 'artifact-html-1',
+                filename: 'dashboard.html',
+                format: 'html',
+                downloadUrl: '/api/artifacts/artifact-html-1/download',
+                previewUrl: '/api/artifacts/artifact-html-1/preview',
+                sandboxUrl: '/api/artifacts/artifact-html-1/sandbox',
+            }],
+        });
+
+        expect(activeProject).toEqual(expect.objectContaining({
+            type: 'sandbox',
+            key: 'artifact:artifact-html-1',
+            title: 'dashboard.html',
+            status: 'live',
+            previewUrl: '/api/artifacts/artifact-html-1/preview',
+            sandboxUrl: '/api/artifacts/artifact-html-1/sandbox',
+            url: '/api/artifacts/artifact-html-1/preview',
+        }));
+    });
+
+    test('does not promote document previews into the website live view', () => {
+        const activeProject = buildActiveProjectPreviewUpdate({
+            assistantText: 'Created the deck.',
+            artifacts: [{
+                id: 'artifact-pptx-1',
+                filename: 'launch-plan.pptx',
+                format: 'pptx',
+                downloadUrl: '/api/artifacts/artifact-pptx-1/download',
+                previewUrl: '/api/artifacts/artifact-pptx-1/preview',
+                sandboxUrl: '/api/artifacts/artifact-pptx-1/sandbox',
+            }],
+        });
+
+        expect(activeProject).toBeNull();
+    });
+
     test('merges and deduplicates project memory for prompt instructions', () => {
         const merged = mergeProjectMemory(
             {
@@ -88,7 +129,7 @@ describe('project-memory', () => {
             },
         });
 
-        expect(instructions).toContain('[Project working memory]');
+        expect(instructions).toContain('[Project carryover memory]');
         expect(instructions).toContain('https://example.com/spec');
         expect(instructions).toContain('brief.html');
         expect(instructions).toContain('Researched the brief structure.');

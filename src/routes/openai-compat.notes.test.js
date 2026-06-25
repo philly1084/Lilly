@@ -88,6 +88,7 @@ jest.mock('../admin/runtime-monitor', () => ({
 }));
 
 jest.mock('../project-memory', () => ({
+    buildActiveProjectPreviewUpdate: jest.fn(() => null),
     buildProjectMemoryUpdate: jest.fn(() => ({})),
     mergeProjectMemory: jest.fn((_existing, update) => update || {}),
 }));

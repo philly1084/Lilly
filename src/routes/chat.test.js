@@ -38,6 +38,7 @@ jest.mock('../runtime-execution', () => ({
     executeConversationRuntime: jest.fn(),
     inferExecutionProfile: jest.fn(() => 'default'),
     resolveConversationExecutorFlag: jest.fn(() => false),
+    scheduleDirectAfterProcessAudit: jest.fn(),
 }));
 
 jest.mock('../pii', () => ({
@@ -102,10 +103,14 @@ jest.mock('../admin/runtime-monitor', () => ({
     failRuntimeTask: jest.fn(),
 }));
 
-jest.mock('../project-memory', () => ({
-    buildProjectMemoryUpdate: jest.fn(() => ({})),
-    mergeProjectMemory: jest.fn((_existing, update) => update || {}),
-}));
+jest.mock('../project-memory', () => {
+    const actual = jest.requireActual('../project-memory');
+    return {
+        buildActiveProjectPreviewUpdate: jest.fn(actual.buildActiveProjectPreviewUpdate),
+        buildProjectMemoryUpdate: jest.fn(() => ({})),
+        mergeProjectMemory: jest.fn((_existing, update) => update || {}),
+    };
+});
 
 jest.mock('../runtime-prompts', () => ({
     buildContinuityInstructions: jest.fn(() => 'continuity instructions'),
@@ -1239,11 +1244,13 @@ describe('/api/chat route', () => {
                 id: 'html-artifact-1',
                 filename: 'questionnaire.html',
                 downloadUrl: '/api/artifacts/html-artifact-1/download',
+                previewUrl: '/api/artifacts/html-artifact-1/preview',
             },
             artifacts: [{
                 id: 'html-artifact-1',
                 filename: 'questionnaire.html',
                 downloadUrl: '/api/artifacts/html-artifact-1/download',
+                previewUrl: '/api/artifacts/html-artifact-1/preview',
             }],
             assistantMessage: 'Created the HTML artifact (questionnaire.html).',
         });
@@ -1278,8 +1285,19 @@ describe('/api/chat route', () => {
                 id: 'html-artifact-1',
                 filename: 'questionnaire.html',
                 downloadUrl: '/api/artifacts/html-artifact-1/download',
+                previewUrl: '/api/artifacts/html-artifact-1/preview',
             }),
         ]);
+        expect(sessionStore.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                activeProject: expect.objectContaining({
+                    type: 'sandbox',
+                    artifactId: 'html-artifact-1',
+                    previewUrl: '/api/artifacts/html-artifact-1/preview',
+                    url: '/api/artifacts/html-artifact-1/preview',
+                }),
+            }),
+        }));
     });
 
     test('routes selected uploaded PDF update turns through artifact revision even without explicit output format', async () => {
@@ -1405,6 +1423,16 @@ describe('/api/chat route', () => {
                 }),
             ]),
         );
+        expect(sessionStore.update).toHaveBeenCalledWith('session-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                activeProject: expect.objectContaining({
+                    type: 'sandbox',
+                    artifactId: 'artifact-skydiving-html',
+                    previewUrl: '/api/artifacts/artifact-skydiving-html/preview',
+                    url: '/api/artifacts/artifact-skydiving-html/preview',
+                }),
+            }),
+        }));
 
         storeSpy.mockRestore();
     });

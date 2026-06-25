@@ -37,7 +37,11 @@ const {
     isAuthEnabled,
 } = require('../auth/service');
 const { resolveTranscriptObjectiveFromSession } = require('../conversation-continuity');
-const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-memory');
+const {
+    buildActiveProjectPreviewUpdate,
+    buildProjectMemoryUpdate,
+    mergeProjectMemory,
+} = require('../project-memory');
 const { buildContinuityInstructions } = require('../runtime-prompts');
 const { buildHumanCentricResponseInstructions } = require('../session-instructions');
 const { buildFrontendAssistantMetadata, buildWebChatSessionMessages } = require('../web-chat-message-state');
@@ -244,12 +248,15 @@ async function updateSessionProjectMemory(sessionId, updates = {}, ownerId = nul
         return null;
     }
 
+    const activeProject = buildActiveProjectPreviewUpdate(updates);
+
     return sessionStore.update(sessionId, {
         metadata: {
             projectMemory: mergeProjectMemory(
                 session?.metadata?.projectMemory || {},
                 buildProjectMemoryUpdate(updates),
             ),
+            ...(activeProject ? { activeProject } : {}),
         },
     });
 }

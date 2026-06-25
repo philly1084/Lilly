@@ -43,7 +43,11 @@ const {
 } = require('../artifacts/artifact-service');
 const { stripNullCharacters } = require('../utils/text');
 const { startRuntimeTask, completeRuntimeTask, failRuntimeTask } = require('../admin/runtime-monitor');
-const { buildProjectMemoryUpdate, mergeProjectMemory } = require('../project-memory');
+const {
+    buildActiveProjectPreviewUpdate,
+    buildProjectMemoryUpdate,
+    mergeProjectMemory,
+} = require('../project-memory');
 const { persistGeneratedImages } = require('../generated-image-artifacts');
 const {
     buildImageGenerationDiagnostics,
@@ -1292,10 +1296,12 @@ async function updateSessionProjectMemory(sessionId, updates = {}, ownerId = nul
         session?.metadata?.projectMemory || {},
         buildProjectMemoryUpdate(updates),
     );
+    const activeProject = buildActiveProjectPreviewUpdate(updates);
 
     return sessionStore.update(sessionId, {
         metadata: {
             projectMemory,
+            ...(activeProject ? { activeProject } : {}),
         },
     });
 }

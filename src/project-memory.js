@@ -3,6 +3,15 @@ const MAX_PROJECT_TASKS = 24;
 const MAX_PROJECT_ARTIFACTS = 24;
 const MAX_PROJECT_IMAGE_URL_INSTRUCTIONS = 20;
 const MAX_PROJECT_REFERENCE_URL_INSTRUCTIONS = 8;
+const SITE_ARTIFACT_FORMATS = new Set([
+    'html',
+    'htm',
+    'site',
+    'website',
+    'web',
+    'frontend',
+    'sandbox',
+]);
 
 function sanitizeText(value = '', limit = 280) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -126,6 +135,86 @@ function buildArtifactRefs(artifacts = [], capturedAt = new Date().toISOString()
             };
         })
         .filter(Boolean);
+}
+
+function normalizeArtifactPreviewUrl(url = '') {
+    const normalized = normalizeUrl(url);
+    return normalized || '';
+}
+
+function isPreviewableSiteArtifact(artifact = {}) {
+    if (!artifact || typeof artifact !== 'object') {
+        return false;
+    }
+
+    const previewUrl = normalizeArtifactPreviewUrl(artifact.previewUrl || artifact.preview_url || '');
+    const sandboxUrl = normalizeArtifactPreviewUrl(artifact.sandboxUrl || artifact.sandbox_url || '');
+    if (!previewUrl && !sandboxUrl) {
+        return false;
+    }
+
+    const format = String(artifact.format || artifact.extension || artifact.metadata?.format || '').trim().toLowerCase();
+    const filename = String(artifact.filename || '').trim().toLowerCase();
+    const mimeType = String(artifact.mimeType || artifact.mime_type || artifact.metadata?.mimeType || '').trim().toLowerCase();
+    return SITE_ARTIFACT_FORMATS.has(format)
+        || filename.endsWith('.html')
+        || filename.endsWith('.htm')
+        || mimeType === 'text/html'
+        || artifact.metadata?.previewMode === 'iframe'
+        || artifact.metadata?.frameworkTarget === 'static'
+        || artifact.metadata?.frameworkTarget === 'vite'
+        || artifact.metadata?.frameworkTarget === 'react'
+        || artifact.metadata?.frameworkTarget === 'nextjs';
+}
+
+function buildActiveProjectPreviewUpdate({ assistantText = '', toolEvents = [], artifacts = [] } = {}) {
+    const derivedArtifacts = (Array.isArray(toolEvents) ? toolEvents : [])
+        .flatMap((event) => extractArtifactsFromValue(event?.result?.data));
+    const combinedArtifacts = [...(Array.isArray(artifacts) ? artifacts : []), ...derivedArtifacts]
+        .filter((artifact) => artifact && typeof artifact === 'object');
+    const artifact = [...combinedArtifacts].reverse().find(isPreviewableSiteArtifact);
+    if (!artifact?.id) {
+        return null;
+    }
+
+    const previewUrl = normalizeArtifactPreviewUrl(artifact.previewUrl || artifact.preview_url || '');
+    const sandboxUrl = normalizeArtifactPreviewUrl(artifact.sandboxUrl || artifact.sandbox_url || '');
+    const viewportUrl = previewUrl || sandboxUrl;
+    if (!viewportUrl) {
+        return null;
+    }
+
+    const filename = sanitizeText(artifact.filename || '', 120);
+    const title = sanitizeText(
+        artifact.metadata?.title
+        || artifact.metadata?.name
+        || filename
+        || 'Generated site preview',
+        120,
+    );
+    const summary = sanitizeText(
+        assistantText
+        || artifact.metadata?.sourcePrompt
+        || (filename ? `Created ${filename}` : 'Generated a previewable site artifact.'),
+        180,
+    );
+
+    return {
+        type: 'sandbox',
+        key: `artifact:${artifact.id}`,
+        title,
+        summary,
+        phase: 'preview',
+        status: 'live',
+        artifactId: String(artifact.id).trim(),
+        artifactFilename: filename,
+        artifactFormat: String(artifact.format || artifact.extension || artifact.metadata?.format || '').trim(),
+        previewUrl,
+        sandboxUrl,
+        artifactPreviewUrl: viewportUrl,
+        url: viewportUrl,
+        updatedAt: new Date().toISOString(),
+    };
 }
 
 function extractArtifactsFromValue(value, depth = 0) {
@@ -373,6 +462,7 @@ module.exports = {
     extractUrlsFromText,
     extractUrlsFromValue,
     buildProjectMemoryUpdate,
+    buildActiveProjectPreviewUpdate,
     mergeProjectMemory,
     buildProjectMemoryInstructions,
 };
