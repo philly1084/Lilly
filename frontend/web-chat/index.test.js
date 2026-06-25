@@ -43,12 +43,16 @@ describe('web-chat index redirect', () => {
     test('mobile chat controls expose dialog ownership and open-close labels', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
 
         expect(html).toContain('id="mobile-chat-menu-btn"');
         expect(html).toContain('aria-controls="mobile-chat-menu"');
         expect(html).toContain('aria-label="Open chat controls"');
+        expect(html).toContain('css/styles.css?v=20260625b');
         expect(html).toContain('js/ui.js?v=20260625a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
+        expect(css).toContain('.mobile-chat-menu__header {\n    position: sticky;');
+        expect(css).toContain('backdrop-filter: blur(12px);');
     });
 });

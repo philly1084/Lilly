@@ -3619,11 +3619,19 @@ body.mobile-chat-menu-open {
 }
 
 .mobile-chat-menu__header {
+    position: sticky;
+    top: -1rem;
+    z-index: 1;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 1rem;
+    margin: -1rem -1rem 1rem;
+    padding: 1rem 1rem 0.85rem;
+    background:
+        linear-gradient(180deg, rgba(20, 29, 43, 0.98), rgba(20, 29, 43, 0.94) 72%, rgba(20, 29, 43, 0));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
 .mobile-chat-menu__eyebrow {
