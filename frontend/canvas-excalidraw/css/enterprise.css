@@ -3177,12 +3177,26 @@ body.canvas-core-mode .canvas-command-item-main small {
 body.canvas-core-mode .canvas-command-empty {
     min-height: 80px;
     display: grid;
-    place-items: center;
+    gap: 6px;
+    align-content: center;
     color: var(--enterprise-muted);
     background: #17202a;
     border: 1px dashed rgba(167, 180, 194, 0.22);
     border-radius: 8px;
     font-size: 12px;
+    line-height: 1.35;
+    padding: 16px;
+    text-align: center;
+}
+
+body.canvas-core-mode .canvas-command-empty strong {
+    color: var(--enterprise-text);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+body.canvas-core-mode .canvas-command-empty span {
+    color: var(--enterprise-muted);
 }
 
 @media (max-width: 768px) {

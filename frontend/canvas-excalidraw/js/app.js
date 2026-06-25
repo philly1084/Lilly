@@ -1572,7 +1572,16 @@ class App {
         const selectedCount = this.getCanvasCommandSelection().length;
         const commands = this.getFilteredCanvasCommands();
         if (commands.length === 0) {
-            list.innerHTML = '<div class="canvas-command-empty">No matching commands</div>';
+            const query = this.commandSearchValue.trim();
+            const message = query
+                ? `No commands match "${query}". Try AI, scene, Mermaid, or objects.`
+                : 'No commands are available right now.';
+            list.innerHTML = `
+                <div class="canvas-command-empty" role="status" aria-live="polite">
+                    <strong>${this.escapeHtml(message)}</strong>
+                    <span>Search by action, content type, or panel name.</span>
+                </div>
+            `;
             return;
         }
 

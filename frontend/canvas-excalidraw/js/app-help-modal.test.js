@@ -423,6 +423,42 @@ describe('canvas command rail accessibility', () => {
         delete global.document;
         delete global.window;
     });
+
+    test('announces no-match command searches with useful recovery copy', () => {
+        const dom = new JSDOM(`
+            <button type="button" id="canvasCommandBtn" aria-expanded="false" aria-controls="canvasCommandPalette">Commands</button>
+            <div id="canvasCommandPalette" hidden>
+                <input id="canvasCommandSearch" type="search" aria-controls="canvasCommandList">
+                <div id="canvasCommandList" role="listbox"></div>
+            </div>
+        `, { url: 'http://localhost:3000/canvas/' });
+        const App = loadAppClass(dom);
+        const app = Object.create(App.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        app.commandSearchValue = 'zebra';
+        app.commandPaletteCommands = [{
+            id: 'scene-pack',
+            label: 'Scene Pack',
+            meta: 'Three storyboard frames',
+            group: 'Create',
+            keywords: 'scene',
+        }];
+        app.getCanvasCommandSelection = jest.fn(() => []);
+
+        app.renderCanvasCommandPalette();
+
+        const empty = document.querySelector('.canvas-command-empty');
+        expect(empty.getAttribute('role')).toBe('status');
+        expect(empty.getAttribute('aria-live')).toBe('polite');
+        expect(empty.textContent).toContain('No commands match "zebra"');
+        expect(empty.textContent).toContain('Try AI, scene, Mermaid, or objects');
+
+        delete global.document;
+        delete global.window;
+    });
 });
 
 describe('canvas side panel tabs accessibility', () => {
