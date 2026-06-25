@@ -1118,6 +1118,7 @@ class App {
             tab.addEventListener('click', () => {
                 this.selectCanvasPanel(tab.dataset.canvasPanelTab);
             });
+            tab.addEventListener('keydown', (event) => this.handleCanvasPanelTabKeydown(event));
         });
 
         document.querySelectorAll('[data-object-action]').forEach((button) => {
@@ -1260,7 +1261,8 @@ class App {
         document.querySelectorAll('[data-canvas-panel-tab]').forEach((tab) => {
             const active = tab.dataset.canvasPanelTab === panelName;
             tab.classList.toggle('active', active);
-            tab.setAttribute('aria-pressed', active ? 'true' : 'false');
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            tab.setAttribute('tabindex', active ? '0' : '-1');
         });
 
         document.querySelectorAll('[data-canvas-panel]').forEach((panel) => {
@@ -1278,6 +1280,32 @@ class App {
         } else if (panelName === 'library') {
             this.renderSavedBlockShelf();
         }
+    }
+
+    handleCanvasPanelTabKeydown(event) {
+        const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+        if (!keys.includes(event.key)) return;
+
+        const tabs = Array.from(document.querySelectorAll('[data-canvas-panel-tab]'));
+        const currentIndex = tabs.indexOf(event.currentTarget);
+        if (currentIndex === -1) return;
+
+        event.preventDefault();
+
+        let nextIndex = currentIndex;
+        if (event.key === 'Home') {
+            nextIndex = 0;
+        } else if (event.key === 'End') {
+            nextIndex = tabs.length - 1;
+        } else {
+            const offset = event.key === 'ArrowRight' ? 1 : -1;
+            nextIndex = (currentIndex + offset + tabs.length) % tabs.length;
+        }
+
+        const nextTab = tabs[nextIndex];
+        if (!nextTab) return;
+        this.selectCanvasPanel(nextTab.dataset.canvasPanelTab);
+        nextTab.focus();
     }
 
     setupCanvasCommandPalette() {

@@ -138,6 +138,34 @@ function createContextMenuHarness() {
     return { dom, app };
 }
 
+function createPanelTabsHarness() {
+    const dom = new JSDOM(`
+        <nav class="canvas-panel-tabs" aria-label="Canvas side panel" role="tablist">
+            <button class="canvas-panel-tab active" id="canvasPanelTabInspector" type="button" role="tab" data-canvas-panel-tab="inspector" aria-selected="true" aria-controls="canvasPanelInspector" tabindex="0">Inspect</button>
+            <button class="canvas-panel-tab" id="canvasPanelTabObjects" type="button" role="tab" data-canvas-panel-tab="objects" aria-selected="false" aria-controls="canvasPanelObjects" tabindex="-1">Objects</button>
+            <button class="canvas-panel-tab" id="canvasPanelTabCreative" type="button" role="tab" data-canvas-panel-tab="creative" aria-selected="false" aria-controls="canvasPanelCreative" tabindex="-1">Create</button>
+            <button class="canvas-panel-tab" id="canvasPanelTabLibrary" type="button" role="tab" data-canvas-panel-tab="library" aria-selected="false" aria-controls="canvasPanelLibrary" tabindex="-1">Blocks</button>
+        </nav>
+        <div id="canvasPanelInspector" role="tabpanel" aria-labelledby="canvasPanelTabInspector" data-canvas-panel="inspector"></div>
+        <div id="canvasPanelObjects" role="tabpanel" aria-labelledby="canvasPanelTabObjects" data-canvas-panel="objects" hidden></div>
+        <div id="canvasPanelCreative" role="tabpanel" aria-labelledby="canvasPanelTabCreative" data-canvas-panel="creative" hidden></div>
+        <div id="canvasPanelLibrary" role="tabpanel" aria-labelledby="canvasPanelTabLibrary" data-canvas-panel="library" hidden></div>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const App = loadAppClass(dom);
+    const app = Object.create(App.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    app.renderObjectLibrary = jest.fn();
+    app.renderProductionTimeline = jest.fn();
+    app.renderSelectedMermaidEditor = jest.fn();
+    app.renderConnectionBuilder = jest.fn();
+    app.renderSavedBlockShelf = jest.fn();
+
+    return { dom, app };
+}
+
 describe('canvas help modal accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -337,6 +365,67 @@ describe('canvas command rail accessibility', () => {
 
         delete global.document;
         delete global.window;
+    });
+});
+
+describe('canvas side panel tabs accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+    });
+
+    test('marks the properties panel switcher as real tabs and tabpanels', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const tablist = dom.window.document.querySelector('.canvas-panel-tabs');
+        const tabs = Array.from(dom.window.document.querySelectorAll('[data-canvas-panel-tab]'));
+
+        expect(tablist.getAttribute('role')).toBe('tablist');
+        expect(tabs.map((tab) => tab.getAttribute('role'))).toEqual(['tab', 'tab', 'tab', 'tab']);
+        expect(tabs.map((tab) => tab.getAttribute('aria-controls'))).toEqual([
+            'canvasPanelInspector',
+            'canvasPanelObjects',
+            'canvasPanelCreative',
+            'canvasPanelLibrary',
+        ]);
+
+        tabs.forEach((tab) => {
+            const panel = dom.window.document.getElementById(tab.getAttribute('aria-controls'));
+            expect(panel.getAttribute('role')).toBe('tabpanel');
+            expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
+        });
+    });
+
+    test('supports arrow and edge-key tab navigation with roving focus', () => {
+        const { dom, app } = createPanelTabsHarness();
+        const inspector = document.getElementById('canvasPanelTabInspector');
+        const objects = document.getElementById('canvasPanelTabObjects');
+        const library = document.getElementById('canvasPanelTabLibrary');
+
+        app.setupCanvasSideRail();
+        inspector.focus();
+
+        inspector.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'ArrowRight',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.activeElement).toBe(objects);
+        expect(objects.getAttribute('aria-selected')).toBe('true');
+        expect(objects.getAttribute('tabindex')).toBe('0');
+        expect(document.getElementById('canvasPanelObjects').hidden).toBe(false);
+        expect(document.getElementById('canvasPanelInspector').hidden).toBe(true);
+
+        objects.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'End',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.activeElement).toBe(library);
+        expect(library.getAttribute('aria-selected')).toBe('true');
+        expect(document.getElementById('canvasPanelLibrary').hidden).toBe(false);
     });
 });
 

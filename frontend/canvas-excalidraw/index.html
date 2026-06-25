@@ -597,13 +597,13 @@
         <div class="panel-header">
             <h3>Properties</h3>
         </div>
-        <nav class="canvas-panel-tabs" aria-label="Canvas side panel">
-            <button class="canvas-panel-tab active" type="button" data-canvas-panel-tab="inspector" aria-pressed="true">Inspect</button>
-            <button class="canvas-panel-tab" type="button" data-canvas-panel-tab="objects" aria-pressed="false">Objects</button>
-            <button class="canvas-panel-tab" type="button" data-canvas-panel-tab="creative" aria-pressed="false">Create</button>
-            <button class="canvas-panel-tab" type="button" data-canvas-panel-tab="library" aria-pressed="false">Blocks</button>
+        <nav class="canvas-panel-tabs" aria-label="Canvas side panel" role="tablist">
+            <button class="canvas-panel-tab active" id="canvasPanelTabInspector" type="button" role="tab" data-canvas-panel-tab="inspector" aria-selected="true" aria-controls="canvasPanelInspector" tabindex="0">Inspect</button>
+            <button class="canvas-panel-tab" id="canvasPanelTabObjects" type="button" role="tab" data-canvas-panel-tab="objects" aria-selected="false" aria-controls="canvasPanelObjects" tabindex="-1">Objects</button>
+            <button class="canvas-panel-tab" id="canvasPanelTabCreative" type="button" role="tab" data-canvas-panel-tab="creative" aria-selected="false" aria-controls="canvasPanelCreative" tabindex="-1">Create</button>
+            <button class="canvas-panel-tab" id="canvasPanelTabLibrary" type="button" role="tab" data-canvas-panel-tab="library" aria-selected="false" aria-controls="canvasPanelLibrary" tabindex="-1">Blocks</button>
         </nav>
-        <div class="panel-content canvas-panel-view active" data-canvas-panel="inspector">
+        <div class="panel-content canvas-panel-view active" id="canvasPanelInspector" role="tabpanel" aria-labelledby="canvasPanelTabInspector" data-canvas-panel="inspector">
             <!-- Grid Snap Toggle -->
             <div class="property-group">
                 <button id="snapToGridBtn" class="action-btn" title="Toggle Grid Snapping">
@@ -1331,7 +1331,7 @@
                 <button id="sendToBackBtn" class="action-btn">Send to Back</button>
             </div>
         </div>
-        <div class="panel-content canvas-panel-view" data-canvas-panel="objects" hidden>
+        <div class="panel-content canvas-panel-view" id="canvasPanelObjects" role="tabpanel" aria-labelledby="canvasPanelTabObjects" data-canvas-panel="objects" hidden>
             <div class="canvas-rail-intro">
                 <strong>Board Objects</strong>
                 <span id="objectLibrarySummary">No objects yet</span>
@@ -1372,7 +1372,7 @@
                 <div class="object-library-empty">Create shapes, frames, audio cues, storyboard panels, or AI diagrams and they will appear here.</div>
             </div>
         </div>
-        <div class="panel-content canvas-panel-view" data-canvas-panel="creative" hidden>
+        <div class="panel-content canvas-panel-view" id="canvasPanelCreative" role="tabpanel" aria-labelledby="canvasPanelTabCreative" data-canvas-panel="creative" hidden>
             <div class="canvas-rail-intro">
                 <strong>Creative Studio</strong>
                 <span>Storyboard, motion, audio, diagrams, and AI composition blocks.</span>
@@ -1534,7 +1534,7 @@
             <input type="file" id="canvasAudioInput" accept="audio/*" hidden>
             <input type="file" id="selectedAudioInput" accept="audio/*" hidden>
         </div>
-        <div class="panel-content canvas-panel-view" data-canvas-panel="library" hidden>
+        <div class="panel-content canvas-panel-view" id="canvasPanelLibrary" role="tabpanel" aria-labelledby="canvasPanelTabLibrary" data-canvas-panel="library" hidden>
             <div class="canvas-rail-intro">
                 <strong>Reusable Blocks</strong>
                 <span>Drop structured starting points onto the canvas.</span>
