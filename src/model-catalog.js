@@ -147,6 +147,7 @@ function inferProviderFamily(model = {}) {
     if (text.includes('openai') || /^gpt-|^o\d|^chatgpt/.test(id)) return 'openai';
     if (text.includes('xai') || text.includes('grok')) return 'xai';
     if (text.includes('groq')) return 'groq';
+    if (text.includes('gemma')) return 'google';
     if (text.includes('gemini') || text.includes('google')) return 'gemini';
     if (text.includes('anthropic') || text.includes('claude')) return 'anthropic';
     if (text.includes('mistral') || text.includes('mixtral')) return 'mistral';

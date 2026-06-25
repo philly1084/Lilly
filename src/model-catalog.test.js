@@ -123,6 +123,12 @@ describe('model-catalog', () => {
         expect(buildModelContract({ id: 'mistral-large-latest' })).toEqual(expect.objectContaining({
             provider: 'mistral',
         }));
+        expect(buildModelContract({ id: 'gemma-3-27b-it', owned_by: 'gateway' })).toEqual(expect.objectContaining({
+            provider: 'google',
+        }));
+        expect(buildModelContract({ id: 'google/gemma-3-27b-it', owned_by: 'gateway' })).toEqual(expect.objectContaining({
+            provider: 'google',
+        }));
         expect(buildModelContract({ id: 'qwen3-coder', owned_by: 'gateway' })).toEqual(expect.objectContaining({
             provider: 'qwen',
         }));
