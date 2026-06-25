@@ -132,6 +132,13 @@ describe('web-chat stream stability', () => {
         expect(source).toContain('reconcileVisibleMessages(previousMessages, messages);');
     });
 
+    test('keeps generated progress fallback copy user-facing', () => {
+        const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+
+        expect(source).toContain('Keeping a clear progress summary while the response continues.');
+        expect(source).not.toContain('Waiting for real reasoning data');
+    });
+
     test('reconstructs streamed user-checkpoint tool-call arguments into a survey', () => {
         const app = Object.create(loadChatAppPrototype());
         app.pendingCheckpointToolCallBuffers = new Map();

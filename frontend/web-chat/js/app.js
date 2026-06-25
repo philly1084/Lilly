@@ -411,7 +411,7 @@ const AMBIENT_REASONING_LINES = [
     'Separating known facts from assumptions before drafting the answer.',
     'Updating the working plan as new progress arrives.',
     'Reviewing the active task list and keeping the next action in focus.',
-    'Waiting for real reasoning data; showing a local progress summary for now.',
+    'Keeping a clear progress summary while the response continues.',
     'Scanning the current response path for missing details.',
     'Condensing the live work into the clearest visible update.',
     'Tracking completed steps while the final response comes together.',
