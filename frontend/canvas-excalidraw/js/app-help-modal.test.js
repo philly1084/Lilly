@@ -166,6 +166,24 @@ function createPanelTabsHarness() {
     return { dom, app };
 }
 
+function createToolCategoryHarness() {
+    const dom = new JSDOM(`
+        <div class="tool-category expanded" data-tool-group="basic">
+            <button class="tool-category-header" type="button" aria-expanded="true" aria-controls="toolGroupBasic">
+                <span>Basic</span>
+            </button>
+            <div class="tool-category-content" id="toolGroupBasic"></div>
+        </div>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const App = loadAppClass(dom);
+    const app = Object.create(App.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    return { app };
+}
+
 describe('canvas help modal accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -224,6 +242,45 @@ describe('canvas help modal accessibility', () => {
 
         expect(reverseTab.defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(extra);
+    });
+});
+
+describe('canvas tool group header accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+    });
+
+    test('uses buttons with controlled regions for collapsible tool groups', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const headers = Array.from(dom.window.document.querySelectorAll('.tool-category-header'));
+
+        expect(headers.length).toBeGreaterThan(0);
+        headers.forEach((header) => {
+            expect(header.tagName).toBe('BUTTON');
+            expect(header.getAttribute('type')).toBe('button');
+            expect(header.hasAttribute('onclick')).toBe(false);
+            expect(header.getAttribute('aria-expanded')).toMatch(/^(true|false)$/);
+            expect(dom.window.document.getElementById(header.getAttribute('aria-controls'))).not.toBeNull();
+        });
+    });
+
+    test('syncs expanded state when a tool group header is toggled', () => {
+        const { app } = createToolCategoryHarness();
+        const category = document.querySelector('.tool-category');
+        const header = document.querySelector('.tool-category-header');
+
+        app.setupToolCategoryHeaders();
+        header.click();
+
+        expect(category.classList.contains('expanded')).toBe(false);
+        expect(header.getAttribute('aria-expanded')).toBe('false');
+
+        header.click();
+
+        expect(category.classList.contains('expanded')).toBe(true);
+        expect(header.getAttribute('aria-expanded')).toBe('true');
     });
 });
 

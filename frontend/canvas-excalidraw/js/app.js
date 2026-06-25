@@ -60,6 +60,7 @@ class App {
             this.setupKeyboardShortcuts();
             this.setupAutoSave();
             this.setupMobileControls();
+            this.setupToolCategoryHeaders();
             this.setupToolDock();
             this.setupCanvasSideRail();
             this.setupSimplifiedInspector();
@@ -984,6 +985,28 @@ class App {
         
         mobilePropertiesClose?.addEventListener('click', () => {
             this.setMobilePanelOpen(propertiesPanel, mobilePropertiesToggle, false, { restoreFocus: true });
+        });
+    }
+
+    setupToolCategoryHeaders() {
+        document.querySelectorAll('.tool-category-header').forEach((header) => {
+            const category = header.closest('.tool-category');
+            const content = category?.querySelector('.tool-category-content');
+            if (!category || !content) return;
+
+            const syncExpandedState = () => {
+                header.setAttribute('aria-expanded', category.classList.contains('expanded') ? 'true' : 'false');
+            };
+
+            if (content.id) {
+                header.setAttribute('aria-controls', content.id);
+            }
+
+            syncExpandedState();
+            header.addEventListener('click', () => {
+                category.classList.toggle('expanded');
+                syncExpandedState();
+            });
         });
     }
 
