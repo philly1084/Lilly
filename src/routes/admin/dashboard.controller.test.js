@@ -428,6 +428,80 @@ describe('DashboardController', () => {
     }));
   });
 
+  test('normalizes snake_case runtime metadata for admin tool and skill traces', () => {
+    const controller = new DashboardController(null);
+    const task = controller.recordRuntimeTaskStart({
+      sessionId: 'session-snake-runtime-metadata',
+      input: 'Use the selected research skill and fetch the source.',
+      model: 'gpt-test',
+      mode: 'openai-chat',
+      transport: 'http',
+      metadata: {},
+    });
+
+    controller.recordRuntimeTaskComplete(task.id, {
+      responseId: 'resp-snake-runtime-metadata',
+      output: 'Fetched and summarized the source.',
+      model: 'gpt-test',
+      duration: 900,
+      metadata: {
+        selected_skills: [
+          { skill_id: 'income-opportunity-research', name: 'Income Opportunity Research' },
+        ],
+        decision_trace: {
+          selected_skills: ['browser-qa'],
+        },
+        execution_trace: [
+          {
+            type: 'tool_call',
+            name: 'Tool call (web-fetch)',
+            status: 'completed',
+            start_time: '2026-06-25T20:00:00.000Z',
+            end_time: '2026-06-25T20:00:01.000Z',
+            details: {
+              reason: 'Fetch source page',
+            },
+          },
+        ],
+        tool_events: [{
+          tool_call: {
+            function: {
+              name: 'web-fetch',
+              arguments: JSON.stringify({ url: 'https://example.test/source' }),
+            },
+          },
+          tool_result: {
+            success: true,
+            duration_ms: 1000,
+            started_at: '2026-06-25T20:00:00.000Z',
+            ended_at: '2026-06-25T20:00:01.000Z',
+          },
+          reason: 'Fetch source page',
+        }],
+      },
+    });
+
+    const storedTask = controller.taskStore.get(task.id);
+    expect(storedTask.result.toolsUsed).toEqual(['web-fetch']);
+    expect(storedTask.result.toolEvents[0]).toMatchObject({
+      toolId: 'web-fetch',
+      duration: 1000,
+      paramKeys: ['url'],
+    });
+    expect(storedTask.result.skillsUsed).toEqual([
+      'income-opportunity-research',
+      'browser-qa',
+    ]);
+
+    const trace = tracesController.addTrace.mock.calls[0][0];
+    expect(trace.timeline.map((entry) => entry.name)).toContain('Tool call (web-fetch)');
+    expect(trace.timeline.filter((entry) => entry.name === 'Tool call (web-fetch)')).toHaveLength(1);
+    expect(logsController.addLog).toHaveBeenCalledWith(expect.objectContaining({
+      toolsUsed: ['web-fetch'],
+      skillsUsed: ['income-opportunity-research', 'browser-qa'],
+    }));
+  });
+
   test('keeps synthesized model timeline entries after the request start', () => {
     const controller = new DashboardController(null);
     const task = controller.recordRuntimeTaskStart({

@@ -57,6 +57,10 @@ function extractToolDataPreview(data = null) {
   return direct ? previewText(direct, TRACE_DATA_PREVIEW_CHARS) : '';
 }
 
+function firstArray(...values) {
+  return values.find((value) => Array.isArray(value)) || [];
+}
+
 class DashboardController {
   constructor(agentOrchestrator) {
     this.orchestrator = agentOrchestrator;
@@ -153,21 +157,31 @@ class DashboardController {
   }
 
   normalizeToolEvent(event = {}) {
-    const rawArgs = parseLenientJson(event?.toolCall?.function?.arguments || '{}') || {};
+    const toolCall = event?.toolCall || event?.tool_call || {};
+    const result = event?.result || event?.toolResult || event?.tool_result || {};
+    const toolFunction = toolCall?.function || toolCall?.function_call || {};
+    const rawArgs = parseLenientJson(toolFunction?.arguments || event?.arguments || '{}') || {};
 
-    const toolId = event?.toolCall?.function?.name
-      || event?.result?.toolId
+    const toolId = toolFunction?.name
+      || result?.toolId
+      || result?.tool_id
       || event?.toolId
+      || event?.tool_id
+      || event?.name
       || 'unknown-tool';
-    const duration = Number(event?.result?.duration || event?.duration || 0);
-    const success = event?.result?.success !== false && event?.success !== false;
-    const endTime = event?.result?.endedAt
-      || event?.result?.timestamp
+    const duration = Number(result?.duration || result?.duration_ms || event?.duration || event?.duration_ms || 0);
+    const success = result?.success !== false && event?.success !== false;
+    const endTime = result?.endedAt
+      || result?.ended_at
+      || result?.timestamp
       || event?.endedAt
+      || event?.ended_at
       || event?.timestamp
       || new Date().toISOString();
-    const startTime = event?.result?.startedAt
+    const startTime = result?.startedAt
+      || result?.started_at
       || event?.startedAt
+      || event?.started_at
       || new Date(new Date(endTime).getTime() - Math.max(0, duration)).toISOString();
 
     return {
@@ -178,17 +192,16 @@ class DashboardController {
       timestamp: endTime,
       startTime,
       endTime,
-      error: event?.result?.error || event?.error || null,
-      diagnostics: event?.result?.diagnostics || event?.diagnostics || null,
+      error: result?.error || event?.error || null,
+      diagnostics: result?.diagnostics || event?.diagnostics || null,
       paramKeys: Object.keys(rawArgs).sort(),
-      dataPreview: extractToolDataPreview(event?.result?.data),
+      dataPreview: extractToolDataPreview(result?.data),
     };
   }
 
   extractToolUsage(metadata = {}) {
-    const toolEvents = Array.isArray(metadata?.toolEvents)
-      ? metadata.toolEvents.map((event) => this.normalizeToolEvent(event))
-      : [];
+    const toolEvents = firstArray(metadata?.toolEvents, metadata?.tool_events)
+      .map((event) => this.normalizeToolEvent(event));
     const toolsUsed = Array.from(new Set(toolEvents.map((event) => event.toolId).filter(Boolean)));
     const skillUsage = this.extractSkillUsage(metadata);
 
@@ -215,7 +228,7 @@ class DashboardController {
       return null;
     }
 
-    const id = String(entry.id || entry.skillId || entry.name || '').trim();
+    const id = String(entry.id || entry.skillId || entry.skill_id || entry.name || '').trim();
     const name = String(entry.name || entry.label || id || '').trim();
     if (!id && !name) {
       return null;
@@ -263,12 +276,14 @@ class DashboardController {
   }
 
   extractSkillUsage(metadata = {}) {
+    const decisionTrace = metadata?.decisionTrace || metadata?.decision_trace || {};
+    const context = metadata?.context || {};
     const directEntries = [
-      ...(Array.isArray(metadata?.selectedSkills) ? metadata.selectedSkills : []),
-      ...(Array.isArray(metadata?.skillsUsed) ? metadata.skillsUsed : []),
-      ...(Array.isArray(metadata?.skillUsage) ? metadata.skillUsage : []),
-      ...(Array.isArray(metadata?.decisionTrace?.selectedSkills) ? metadata.decisionTrace.selectedSkills : []),
-      ...this.parseSkillContextUsage(metadata?.skillContext || metadata?.context?.skillContext || ''),
+      ...firstArray(metadata?.selectedSkills, metadata?.selected_skills),
+      ...firstArray(metadata?.skillsUsed, metadata?.skills_used),
+      ...firstArray(metadata?.skillUsage, metadata?.skill_usage),
+      ...firstArray(decisionTrace?.selectedSkills, decisionTrace?.selected_skills),
+      ...this.parseSkillContextUsage(metadata?.skillContext || metadata?.skill_context || context?.skillContext || context?.skill_context || ''),
     ];
     const skillEvents = [];
     const seen = new Set();
@@ -293,24 +308,22 @@ class DashboardController {
   }
 
   normalizeExecutionTraceStep(step = {}, fallbackStartTime = null, fallbackEndTime = null) {
-    const startTime = step?.startTime || fallbackStartTime || new Date().toISOString();
-    const endTime = step?.endTime || fallbackEndTime || startTime;
+    const startTime = step?.startTime || step?.start_time || fallbackStartTime || new Date().toISOString();
+    const endTime = step?.endTime || step?.end_time || fallbackEndTime || startTime;
 
     return {
       type: step?.type || 'runtime',
       name: step?.name || 'Runtime step',
       startTime,
       endTime,
-      duration: Number(step?.duration || Math.max(0, new Date(endTime).getTime() - new Date(startTime).getTime()) || 0),
+      duration: Number(step?.duration || step?.duration_ms || Math.max(0, new Date(endTime).getTime() - new Date(startTime).getTime()) || 0),
       status: step?.status || 'completed',
       details: step?.details && typeof step.details === 'object' ? step.details : {},
     };
   }
 
   extractExecutionTrace(metadata = {}, fallbackStartTime = null, fallbackEndTime = null) {
-    const steps = Array.isArray(metadata?.executionTrace)
-      ? metadata.executionTrace
-      : [];
+    const steps = firstArray(metadata?.executionTrace, metadata?.execution_trace);
 
     return steps.map((step) => this.normalizeExecutionTraceStep(step, fallbackStartTime, fallbackEndTime));
   }
