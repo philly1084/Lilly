@@ -110,19 +110,38 @@ function normalizeToolIds(values = []) {
         });
 }
 
+function asToolHintList(value = []) {
+    if (Array.isArray(value)) {
+        return value;
+    }
+    return value ? [value] : [];
+}
+
 function collectCandidateToolIds({ metadata = {}, executionProfile = 'default' } = {}) {
-    const preferredTool = metadata?.requestFrame?.preferredTool
-        || metadata?.routingDecision?.preferredTool
+    const requestFrame = metadata?.requestFrame || {};
+    const routingDecision = metadata?.routingDecision || {};
+    const orchestrationHints = requestFrame?.orchestrationHints || {};
+    const preferredTool = requestFrame?.preferredTool
+        || routingDecision?.preferredTool
         || metadata?.preferredTool
         || null;
     const hintedToolIds = normalizeToolIds([
         preferredTool,
-        ...(metadata?.requestFrame?.orchestrationHints?.selectedToolLane
-            ? [metadata.requestFrame.orchestrationHints.selectedToolLane]
-            : []),
-        ...(metadata?.plannedTools || []),
-        ...(metadata?.toolIds || []),
-        ...(metadata?.tools || []),
+        metadata?.directToolId,
+        requestFrame?.directToolId,
+        routingDecision?.directToolId,
+        orchestrationHints?.selectedToolLane,
+        orchestrationHints?.preferredTool,
+        ...asToolHintList(requestFrame?.plannedTools),
+        ...asToolHintList(routingDecision?.plannedTools),
+        ...asToolHintList(metadata?.plannedTools),
+        ...asToolHintList(requestFrame?.toolIds),
+        ...asToolHintList(routingDecision?.toolIds),
+        ...asToolHintList(metadata?.toolIds),
+        ...asToolHintList(requestFrame?.userSelectedToolIds),
+        ...asToolHintList(routingDecision?.userSelectedToolIds),
+        ...asToolHintList(metadata?.userSelectedToolIds),
+        ...asToolHintList(metadata?.tools),
     ]);
     const allowed = new Set(getAllowedToolIdsForProfile(executionProfile));
 
