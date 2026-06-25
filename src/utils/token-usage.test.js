@@ -2,6 +2,7 @@ const {
     createEstimatedUsageMetadata,
     extractUsageMetadataFromTrace,
     hasMeasuredTokenCounts,
+    mergeUsageMetadata,
     normalizeUsageMetadata,
 } = require('./token-usage');
 
@@ -114,6 +115,54 @@ describe('token usage utilities', () => {
             totalTokens: 23,
             reasoningTokens: 4,
             cachedTokens: 3,
+        });
+    });
+
+    test('normalizes provider split input-cache accounting', () => {
+        expect(normalizeUsageMetadata({
+            input_tokens: 40,
+            output_tokens: 12,
+            input_tokens_details: {
+                cache_read_input_tokens: 9,
+                cache_creation_input_tokens: 4,
+            },
+        })).toEqual({
+            promptTokens: 40,
+            inputTokens: 40,
+            completionTokens: 12,
+            outputTokens: 12,
+            totalTokens: 52,
+            cachedTokens: 13,
+            cacheReadInputTokens: 9,
+            cacheCreationInputTokens: 4,
+        });
+    });
+
+    test('aggregates split cache usage across model calls', () => {
+        expect(mergeUsageMetadata([
+            {
+                prompt_tokens: 10,
+                completion_tokens: 2,
+                input_tokens_details: {
+                    cache_read_input_tokens: 3,
+                },
+            },
+            {
+                prompt_tokens: 6,
+                completion_tokens: 4,
+                input_tokens_details: {
+                    cache_creation_input_tokens: 5,
+                },
+            },
+        ])).toEqual({
+            promptTokens: 16,
+            inputTokens: 16,
+            completionTokens: 6,
+            outputTokens: 6,
+            totalTokens: 22,
+            cachedTokens: 8,
+            cacheReadInputTokens: 3,
+            cacheCreationInputTokens: 5,
         });
     });
 

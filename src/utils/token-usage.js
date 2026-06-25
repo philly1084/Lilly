@@ -40,6 +40,21 @@ function firstStringValue(source = {}, paths = []) {
     return '';
 }
 
+function sumFiniteValues(source = {}, paths = []) {
+    let total = 0;
+    let found = false;
+
+    for (const path of paths) {
+        const value = toFiniteNumber(getNestedValue(source, path));
+        if (value !== null) {
+            total += value;
+            found = true;
+        }
+    }
+
+    return found ? total : null;
+}
+
 function normalizeUsageMetadata(usage = {}) {
     if (!usage || typeof usage !== 'object') {
         return null;
@@ -209,6 +224,46 @@ function normalizeUsageMetadata(usage = {}) {
         'payload.tokenUsage.cachedTokens',
         'payload.total_token_usage.cached_tokens',
     ];
+    const cacheReadPaths = [
+        'cacheReadInputTokens',
+        'cache_read_input_tokens',
+        'inputTokenDetails.cacheReadInputTokens',
+        'input_tokens_details.cache_read_input_tokens',
+        'prompt_tokens_details.cache_read_input_tokens',
+        'usage.cache_read_input_tokens',
+        'usage.input_tokens_details.cache_read_input_tokens',
+        'usage.prompt_tokens_details.cache_read_input_tokens',
+        'usageMetadata.cacheReadInputTokens',
+        'usage_metadata.cache_read_input_tokens',
+        'tokenUsage.cacheReadInputTokens',
+        'token_usage.cache_read_input_tokens',
+        'total_token_usage.cache_read_input_tokens',
+        'payload.usage.cache_read_input_tokens',
+        'payload.usage.input_tokens_details.cache_read_input_tokens',
+        'payload.usage.prompt_tokens_details.cache_read_input_tokens',
+        'payload.tokenUsage.cacheReadInputTokens',
+        'payload.total_token_usage.cache_read_input_tokens',
+    ];
+    const cacheCreationPaths = [
+        'cacheCreationInputTokens',
+        'cache_creation_input_tokens',
+        'inputTokenDetails.cacheCreationInputTokens',
+        'input_tokens_details.cache_creation_input_tokens',
+        'prompt_tokens_details.cache_creation_input_tokens',
+        'usage.cache_creation_input_tokens',
+        'usage.input_tokens_details.cache_creation_input_tokens',
+        'usage.prompt_tokens_details.cache_creation_input_tokens',
+        'usageMetadata.cacheCreationInputTokens',
+        'usage_metadata.cache_creation_input_tokens',
+        'tokenUsage.cacheCreationInputTokens',
+        'token_usage.cache_creation_input_tokens',
+        'total_token_usage.cache_creation_input_tokens',
+        'payload.usage.cache_creation_input_tokens',
+        'payload.usage.input_tokens_details.cache_creation_input_tokens',
+        'payload.usage.prompt_tokens_details.cache_creation_input_tokens',
+        'payload.tokenUsage.cacheCreationInputTokens',
+        'payload.total_token_usage.cache_creation_input_tokens',
+    ];
     const modelCallPaths = [
         'modelCalls',
         'model_calls',
@@ -252,7 +307,14 @@ function normalizeUsageMetadata(usage = {}) {
     const completionTokens = firstFiniteValue(usage, completionPaths);
     const totalTokens = firstFiniteValue(usage, totalPaths);
     const reasoningTokens = firstFiniteValue(usage, reasoningPaths);
-    const cachedTokens = firstFiniteValue(usage, cachedPaths);
+    const explicitCachedTokens = firstFiniteValue(usage, cachedPaths);
+    const cacheReadTokens = firstFiniteValue(usage, cacheReadPaths);
+    const cacheCreationTokens = firstFiniteValue(usage, cacheCreationPaths);
+    const splitCachedTokens = sumFiniteValues(usage, [
+        ...cacheReadPaths,
+        ...cacheCreationPaths,
+    ]);
+    const cachedTokens = explicitCachedTokens !== null ? explicitCachedTokens : splitCachedTokens;
     const modelCalls = firstFiniteValue(usage, modelCallPaths);
 
     const hasExplicitUsage = [
@@ -261,6 +323,8 @@ function normalizeUsageMetadata(usage = {}) {
         hasUsagePath(usage, totalPaths),
         hasUsagePath(usage, reasoningPaths),
         hasUsagePath(usage, cachedPaths),
+        hasUsagePath(usage, cacheReadPaths),
+        hasUsagePath(usage, cacheCreationPaths),
         hasUsagePath(usage, modelCallPaths),
     ].some(Boolean);
 
@@ -288,6 +352,12 @@ function normalizeUsageMetadata(usage = {}) {
     if (cachedTokens !== null) {
         normalized.cachedTokens = cachedTokens;
     }
+    if (cacheReadTokens !== null) {
+        normalized.cacheReadInputTokens = cacheReadTokens;
+    }
+    if (cacheCreationTokens !== null) {
+        normalized.cacheCreationInputTokens = cacheCreationTokens;
+    }
     if (modelCalls !== null) {
         normalized.modelCalls = modelCalls;
     }
@@ -312,6 +382,8 @@ function mergeUsageMetadata(...entries) {
         outputTokens: 0,
         reasoningTokens: 0,
         cachedTokens: 0,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
         modelCalls: 0,
     };
     let hasUsage = false;
@@ -320,6 +392,8 @@ function mergeUsageMetadata(...entries) {
     let hasTotal = false;
     let hasReasoning = false;
     let hasCached = false;
+    let hasCacheRead = false;
+    let hasCacheCreation = false;
     let hasModelCalls = false;
     let hasEstimated = false;
     const sources = new Set();
@@ -353,6 +427,14 @@ function mergeUsageMetadata(...entries) {
         if (Object.prototype.hasOwnProperty.call(normalized, 'cachedTokens')) {
             totals.cachedTokens += normalized.cachedTokens;
             hasCached = true;
+        }
+        if (Object.prototype.hasOwnProperty.call(normalized, 'cacheReadInputTokens')) {
+            totals.cacheReadInputTokens += normalized.cacheReadInputTokens;
+            hasCacheRead = true;
+        }
+        if (Object.prototype.hasOwnProperty.call(normalized, 'cacheCreationInputTokens')) {
+            totals.cacheCreationInputTokens += normalized.cacheCreationInputTokens;
+            hasCacheCreation = true;
         }
         if (Object.prototype.hasOwnProperty.call(normalized, 'modelCalls')) {
             totals.modelCalls += normalized.modelCalls;
@@ -389,6 +471,12 @@ function mergeUsageMetadata(...entries) {
     }
     if (hasCached) {
         normalizedTotals.cachedTokens = totals.cachedTokens;
+    }
+    if (hasCacheRead) {
+        normalizedTotals.cacheReadInputTokens = totals.cacheReadInputTokens;
+    }
+    if (hasCacheCreation) {
+        normalizedTotals.cacheCreationInputTokens = totals.cacheCreationInputTokens;
     }
     if (hasModelCalls) {
         normalizedTotals.modelCalls = totals.modelCalls;
