@@ -39,4 +39,16 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<span class="tool-menu-choice__label">IDE</span>');
         expect(html).toContain('<span class="tool-menu-choice__hint">Patch source</span>');
     });
+
+    test('mobile chat controls expose dialog ownership and open-close labels', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('id="mobile-chat-menu-btn"');
+        expect(html).toContain('aria-controls="mobile-chat-menu"');
+        expect(html).toContain('aria-label="Open chat controls"');
+        expect(html).toContain('js/ui.js?v=20260625a');
+        expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
+        expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
+    });
 });

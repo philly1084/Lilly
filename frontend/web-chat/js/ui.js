@@ -10592,6 +10592,8 @@ class UIHelpers {
         menu.setAttribute('aria-hidden', 'false');
         document.body.classList.add('mobile-chat-menu-open');
         trigger?.setAttribute('aria-expanded', 'true');
+        trigger?.setAttribute('aria-label', 'Close chat controls');
+        trigger?.setAttribute('title', 'Close chat controls');
         this.playMenuCue('menu-open');
         this.trapFocus(sheet);
     }
@@ -10607,6 +10609,8 @@ class UIHelpers {
         menu.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('mobile-chat-menu-open');
         trigger?.setAttribute('aria-expanded', 'false');
+        trigger?.setAttribute('aria-label', 'Open chat controls');
+        trigger?.setAttribute('title', 'Open chat controls');
 
         if (options?.silent !== true) {
             this.playMenuCue('menu-close');
