@@ -2234,6 +2234,12 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer-toggle
     padding: 0;
 }
 
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer-toggle.is-active {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--accent) 18%, #1b242d);
+    border-color: rgba(123, 200, 190, 0.62);
+}
+
 body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer-toggle span {
     transform: translateY(-2px);
     font: 700 18px/1 var(--font-mono, 'JetBrains Mono', Consolas, monospace);
@@ -2249,6 +2255,9 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
     padding: 8px;
+    max-height: min(420px, calc(100vh - 120px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background: color-mix(in srgb, var(--bg-secondary) 96%, #05070a);
     border: 1px solid var(--border-color);
     border-radius: 10px;
@@ -2263,6 +2272,16 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer .btn {
     width: 100%;
     justify-content: center;
     min-width: 0;
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer .btn:focus {
+    border-color: rgba(123, 200, 190, 0.82);
+    box-shadow: 0 0 0 3px rgba(95, 179, 169, 0.2);
+}
+
+body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.56;
 }
 
 body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer a.btn {
@@ -2317,6 +2336,8 @@ body[data-ui-surface="web-cli"]:not([data-theme="voxel"]) .command-drawer a.btn 
         top: auto;
         bottom: calc(10px + env(safe-area-inset-bottom, 0px));
         width: auto;
+        max-height: min(62vh, 360px);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
