@@ -384,6 +384,53 @@ describe('web-chat stream stability', () => {
         }));
     });
 
+    test('supports arrow key navigation through the plus menu controls', () => {
+        const app = Object.create(loadChatAppPrototype());
+        const focused = [];
+        const makeItem = (name) => ({
+            name,
+            disabled: false,
+            contains: (target) => target?.name === name,
+            closest: () => null,
+            focus: jest.fn(() => focused.push(name)),
+        });
+        const items = [
+            makeItem('research'),
+            makeItem('images'),
+            makeItem('skill'),
+            makeItem('clear'),
+        ];
+        app.toolMenuPanel = {
+            classList: { contains: () => false },
+            querySelectorAll: () => items,
+        };
+
+        const firstEvent = {
+            key: 'ArrowDown',
+            target: items[0],
+            preventDefault: jest.fn(),
+        };
+        expect(app.handleToolMenuKeydown(firstEvent)).toBe(true);
+        expect(firstEvent.preventDefault).toHaveBeenCalled();
+        expect(items[1].focus).toHaveBeenCalled();
+
+        const wrapEvent = {
+            key: 'ArrowUp',
+            target: items[0],
+            preventDefault: jest.fn(),
+        };
+        expect(app.handleToolMenuKeydown(wrapEvent)).toBe(true);
+        expect(items[3].focus).toHaveBeenCalled();
+
+        const endEvent = {
+            key: 'End',
+            target: items[1],
+            preventDefault: jest.fn(),
+        };
+        expect(app.handleToolMenuKeydown(endEvent)).toBe(true);
+        expect(focused).toEqual(['images', 'clear', 'clear']);
+    });
+
     test('builds selected tool chip metadata around clean chat content', () => {
         const app = Object.create(loadChatAppPrototype());
         app.selectedToolIntentIds = new Set();

@@ -7699,6 +7699,12 @@ code[class*="language-"] {
     background: var(--tool-picker-surface-hover-background);
 }
 
+.tool-menu-choice:focus-within {
+    border-color: var(--accent);
+    background: var(--tool-picker-surface-hover-background);
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.22);
+}
+
 .tool-menu-choice:hover {
     transform: translateY(-1px);
 }

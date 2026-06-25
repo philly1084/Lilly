@@ -863,6 +863,9 @@ class ChatApp {
                 this.clearToolIntentSelections();
             }
         });
+        this.toolMenuPanel?.addEventListener('keydown', (event) => {
+            this.handleToolMenuKeydown(event);
+        });
         this.toolCommandSearch?.addEventListener('input', () => {
             this.renderToolCommandPicker();
         });
@@ -1311,6 +1314,65 @@ class ChatApp {
         this.toolMenuPanel.classList.add('hidden');
         this.toolCommandPicker?.classList.add('hidden');
         this.syncToolMenuState();
+    }
+
+    getToolMenuFocusableItems() {
+        if (!this.toolMenuPanel?.querySelectorAll) {
+            return [];
+        }
+
+        return Array.from(this.toolMenuPanel.querySelectorAll([
+            '[data-tool-intent-checkbox]',
+            '[data-tool-menu-action]',
+            '[data-tool-command-id]',
+        ].join(','))).filter((element) => {
+            if (!element || element.disabled) {
+                return false;
+            }
+            return !element.closest?.('.hidden');
+        });
+    }
+
+    focusToolMenuItem(index) {
+        const items = this.getToolMenuFocusableItems();
+        if (!items.length) {
+            return false;
+        }
+        const nextIndex = ((index % items.length) + items.length) % items.length;
+        items[nextIndex]?.focus?.();
+        return true;
+    }
+
+    handleToolMenuKeydown(event) {
+        if (!event || !this.toolMenuPanel || this.toolMenuPanel.classList.contains('hidden')) {
+            return false;
+        }
+
+        const key = event.key;
+        if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'].includes(key)) {
+            return false;
+        }
+
+        const items = this.getToolMenuFocusableItems();
+        if (!items.length) {
+            return false;
+        }
+
+        const currentIndex = items.findIndex((item) => item === event.target || item.contains?.(event.target));
+        let nextIndex = currentIndex;
+        if (key === 'Home') {
+            nextIndex = 0;
+        } else if (key === 'End') {
+            nextIndex = items.length - 1;
+        } else if (key === 'ArrowDown' || key === 'ArrowRight') {
+            nextIndex = currentIndex < 0 ? 0 : currentIndex + 1;
+        } else if (key === 'ArrowUp' || key === 'ArrowLeft') {
+            nextIndex = currentIndex < 0 ? items.length - 1 : currentIndex - 1;
+        }
+
+        event.preventDefault?.();
+        this.focusToolMenuItem(nextIndex);
+        return true;
     }
 
     handleToolIntentCheckboxChange(checkbox) {
