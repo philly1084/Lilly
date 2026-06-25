@@ -3006,13 +3006,15 @@ const Sidebar = (function() {
                     </div>
                 </div>
                 <div class="search-results-footer">
-                    Press Enter to open selected page • Esc to close
+                    <span id="search-results-status" role="status" aria-live="polite">Type to search across all pages</span>
+                    <span class="search-results-shortcuts">Enter opens selected &middot; Esc closes</span>
                 </div>
             </div>
         `;
 
         const searchInput = modal.querySelector('#search-input');
         const searchResults = modal.querySelector('#search-results');
+        const searchResultsStatus = modal.querySelector('#search-results-status');
 
         modal.querySelector('.search-close').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => {
@@ -3025,6 +3027,7 @@ const Sidebar = (function() {
         const renderEmptyState = (message, isPlaceholder = false) => {
             searchInput.setAttribute('aria-expanded', 'false');
             searchInput.removeAttribute('aria-activedescendant');
+            searchResultsStatus.textContent = isPlaceholder ? 'Type to search across all pages' : message;
             searchResults.innerHTML = `
                 <div class="search-results-empty${isPlaceholder ? ' search-results-placeholder' : ''}">
                     ${message}
@@ -3039,6 +3042,8 @@ const Sidebar = (function() {
 
         const renderResults = () => {
             const selectedResultId = selectedIndex >= 0 ? `search-result-${selectedIndex}` : '';
+            const resultLabel = currentResults.length === 1 ? '1 result' : `${currentResults.length} results`;
+            searchResultsStatus.textContent = `${resultLabel} found`;
             searchInput.setAttribute('aria-expanded', currentResults.length > 0 ? 'true' : 'false');
             if (selectedResultId) {
                 searchInput.setAttribute('aria-activedescendant', selectedResultId);
@@ -3208,4 +3213,3 @@ const Sidebar = (function() {
     
     return window.Sidebar;
 })();
-

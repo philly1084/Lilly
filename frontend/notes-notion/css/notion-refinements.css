@@ -3338,10 +3338,20 @@ button:focus-visible,
 }
 
 .search-results-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   padding: 0.75rem 1rem;
   border-top: 1px solid var(--nb-border-soft);
   font-size: 12px;
   color: var(--nb-text-muted);
+}
+
+.search-results-shortcuts {
+  color: var(--nb-text-secondary);
+  white-space: nowrap;
 }
 
 .search-result-item {

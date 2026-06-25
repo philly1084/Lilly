@@ -13,6 +13,7 @@ describe('Notes search modal accessibility semantics', () => {
         expect(source).toContain('aria-controls="search-results"');
         expect(source).toContain('aria-autocomplete="list"');
         expect(source).toContain('role="listbox" aria-label="Search results"');
+        expect(source).toContain('id="search-results-status" role="status" aria-live="polite"');
     });
 
     test('renders search results as selectable options with active descendant state', () => {
@@ -22,6 +23,14 @@ describe('Notes search modal accessibility semantics', () => {
         expect(source).toContain('searchInput.removeAttribute(\'aria-activedescendant\')');
         expect(source).toContain('role="option"');
         expect(source).toContain('aria-selected="${index === selectedIndex ? \'true\' : \'false\'}"');
+    });
+
+    test('announces search result state without stealing combobox focus', () => {
+        const source = readSidebarSource();
+
+        expect(source).toContain("searchResultsStatus.textContent = isPlaceholder ? 'Type to search across all pages' : message");
+        expect(source).toContain("const resultLabel = currentResults.length === 1 ? '1 result' : `${currentResults.length} results`");
+        expect(source).toContain('searchResultsStatus.textContent = `${resultLabel} found`');
     });
 });
 
