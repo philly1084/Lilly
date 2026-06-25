@@ -149,6 +149,9 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('--focus-ring: rgba(121, 192, 255, 0.38)');
         expect(css).toContain('.btn:focus-visible');
         expect(css).toContain('.search-box input:focus-visible');
+        expect(css).toContain('body[data-ui-surface="admin"] .sidebar-toggle:focus-visible');
+        expect(css).toContain('body[data-ui-surface="admin"] .modal-close:focus-visible');
+        expect(css).toContain('body[data-ui-surface="admin"] .toast-close:focus-visible');
         expect(css).toContain('.tab-btn:focus-visible');
         expect(css).toContain('.toolbar-btn:focus-visible');
         expect(css).toContain('.toggle input:focus-visible + .toggle-slider');

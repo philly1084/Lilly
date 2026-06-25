@@ -176,9 +176,18 @@ body.admin-nav-open {
     transition: all var(--transition-fast);
 }
 
-.sidebar-toggle:hover {
+.sidebar-toggle:hover,
+.sidebar-toggle:focus-visible {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
+}
+
+body[data-ui-surface="admin"] .sidebar-toggle:focus-visible,
+body[data-ui-surface="admin"] .modal-close:focus-visible,
+body[data-ui-surface="admin"] .toast-close:focus-visible {
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 .sidebar-toggle svg {
@@ -3963,7 +3972,8 @@ a.lilly-pulse-chip:hover {
     transition: all var(--transition-fast);
 }
 
-.modal-close:hover {
+.modal-close:hover,
+.modal-close:focus-visible {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
 }
@@ -4208,7 +4218,8 @@ a.lilly-pulse-chip:hover {
     justify-content: center;
 }
 
-.toast-close:hover {
+.toast-close:hover,
+.toast-close:focus-visible {
     color: var(--text-primary);
 }
 
