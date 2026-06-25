@@ -36,6 +36,30 @@ describe('model-output-parser', () => {
         expect(normalized).not.toContain('Reasoning: draft the sections');
     });
 
+    test('extracts nested Responses output message parts without leaking reasoning summaries', () => {
+        const normalized = parser.normalizeModelOutputMarkdown({
+            output: [
+                {
+                    type: 'reasoning',
+                    summary: [
+                        { type: 'summary_text', text: 'Private plan: inspect hidden chain of thought.' },
+                    ],
+                },
+                {
+                    type: 'message',
+                    content: [
+                        { type: 'output_text', text: 'Short answer: Nested payloads now render.' },
+                    ],
+                },
+            ],
+        });
+
+        expect(normalized).toContain('Short answer:');
+        expect(normalized).toContain('Nested payloads now render.');
+        expect(normalized).not.toContain('Private plan');
+        expect(normalized).not.toContain('chain of thought');
+    });
+
     test('keeps fenced code blocks intact while repairing surrounding prose', () => {
         const normalized = parser.normalizeModelOutputMarkdown('Summary: useful\n\n```js\nconst table = \"| not markdown |\";\n```\n\nIngredients | Item | Quantity | |---|---| | A | B |');
 

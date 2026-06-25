@@ -56,6 +56,12 @@
                 if (isInternalReasoningPart(part)) {
                     return '';
                 }
+                if (Array.isArray(part.content)) {
+                    return extractTextFromContentParts(part.content);
+                }
+                if (Array.isArray(part.output)) {
+                    return extractTextFromContentParts(part.output);
+                }
                 if (typeof part.text === 'string') {
                     return part.text;
                 }
@@ -86,6 +92,7 @@
             'reasoning',
             'reasoning_summary',
             'reasoning_summary_text',
+            'summary_text',
             'thinking',
             'think',
         ].includes(type);
