@@ -3611,6 +3611,7 @@ class App {
             e.preventDefault();
             this.runCanvasContextAction(actionButton.dataset.contextAction);
         });
+        menu.addEventListener('keydown', (e) => this.handleCanvasContextMenuKeydown(e));
 
         document.addEventListener('click', (e) => {
             if (!menu.hidden && !menu.contains(e.target)) {
@@ -3689,13 +3690,65 @@ class App {
         menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
         menu.style.visibility = '';
-        menu.querySelector('button:not([hidden])')?.focus({ preventScroll: true });
+        this.getVisibleCanvasContextMenuItems(menu)[0]?.focus({ preventScroll: true });
     }
 
     hideCanvasContextMenu() {
         const menu = document.getElementById('canvasContextMenu');
         if (menu) {
             menu.hidden = true;
+        }
+    }
+
+    getVisibleCanvasContextMenuItems(menu = document.getElementById('canvasContextMenu')) {
+        if (!menu) return [];
+        return Array.from(menu.querySelectorAll('[data-context-action]'))
+            .filter((item) => !item.disabled && !item.hidden && !item.closest('[hidden]'));
+    }
+
+    handleCanvasContextMenuKeydown(event) {
+        const menu = document.getElementById('canvasContextMenu');
+        if (!menu || menu.hidden) return;
+
+        const items = this.getVisibleCanvasContextMenuItems(menu);
+        if (items.length === 0) return;
+
+        const currentIndex = Math.max(0, items.indexOf(document.activeElement));
+        const focusItem = (index) => {
+            const normalizedIndex = (index + items.length) % items.length;
+            items[normalizedIndex]?.focus({ preventScroll: true });
+        };
+
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                focusItem(currentIndex + 1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                focusItem(currentIndex - 1);
+                break;
+            case 'Home':
+                event.preventDefault();
+                focusItem(0);
+                break;
+            case 'End':
+                event.preventDefault();
+                focusItem(items.length - 1);
+                break;
+            case 'Enter':
+            case ' ':
+                {
+                    const actionButton = document.activeElement?.closest?.('[data-context-action]');
+                    if (!actionButton || !menu.contains(actionButton)) return;
+                    event.preventDefault();
+                    this.runCanvasContextAction(actionButton.dataset.contextAction);
+                }
+                break;
+            case 'Escape':
+                event.preventDefault();
+                this.hideCanvasContextMenu();
+                break;
         }
     }
 

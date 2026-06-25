@@ -111,6 +111,33 @@ function createMobilePanelHarness() {
     return { dom, app };
 }
 
+function createContextMenuHarness() {
+    const dom = new JSDOM(`
+        <div id="canvasContainer" tabindex="0"></div>
+        <div id="canvasContextMenu" role="menu" hidden>
+            <div data-context-section="empty">
+                <button type="button" role="menuitem" data-context-action="tool:selection">Select</button>
+                <button type="button" role="menuitem" data-context-action="tool:text">Text</button>
+                <button type="button" role="menuitem" data-context-action="create:storyboard">Storyboard</button>
+            </div>
+            <div data-context-section="selection" hidden>
+                <button type="button" role="menuitem" data-context-action="duplicate">Duplicate</button>
+                <button type="button" role="menuitem" data-context-action="delete">Delete</button>
+                <button type="button" role="menuitem" data-context-action="ai:selection">Ask AI</button>
+            </div>
+        </div>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const App = loadAppClass(dom);
+    const app = Object.create(App.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    app.runCanvasContextAction = jest.fn();
+
+    return { dom, app };
+}
+
 describe('canvas help modal accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -310,5 +337,61 @@ describe('canvas command rail accessibility', () => {
 
         delete global.document;
         delete global.window;
+    });
+});
+
+describe('canvas context menu accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+    });
+
+    test('supports menu-style keyboard navigation and activation', () => {
+        const { dom, app } = createContextMenuHarness();
+        const menu = document.getElementById('canvasContextMenu');
+
+        app.setupCanvasContextMenu();
+        app.showCanvasContextMenu(40, 50, false);
+
+        expect(menu.hidden).toBe(false);
+        expect(document.activeElement.dataset.contextAction).toBe('tool:selection');
+
+        menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement.dataset.contextAction).toBe('tool:text');
+
+        menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'End',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement.dataset.contextAction).toBe('create:storyboard');
+
+        menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(app.runCanvasContextAction).toHaveBeenCalledWith('create:storyboard');
+
+        app.showCanvasContextMenu(40, 50, true);
+        expect(document.activeElement.dataset.contextAction).toBe('duplicate');
+
+        menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement.dataset.contextAction).toBe('ai:selection');
+
+        menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(menu.hidden).toBe(true);
     });
 });
