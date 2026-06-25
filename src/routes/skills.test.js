@@ -31,6 +31,11 @@ describe('/api/skills routes', () => {
           id: 'remote-proof',
           name: 'Remote Proof',
           tools: ['remote-command'],
+          callerContract: [
+            'Read and follow the matched skill instructions before acting.',
+            'Use matched tools only for concrete effects after the skill workflow is selected.',
+            'Report the selected skill id and verification evidence in the handoff.',
+          ],
           score: 9,
           reasons: ['tool affinity', 'surface web-chat'],
         },
@@ -65,6 +70,11 @@ describe('/api/skills routes', () => {
         id: 'remote-proof',
         name: 'Remote Proof',
         tools: ['remote-command'],
+        callerContract: [
+          'Read and follow the matched skill instructions before acting.',
+          'Use matched tools only for concrete effects after the skill workflow is selected.',
+          'Report the selected skill id and verification evidence in the handoff.',
+        ],
         score: 9,
         reasons: ['tool affinity', 'surface web-chat'],
       },

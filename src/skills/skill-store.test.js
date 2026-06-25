@@ -120,6 +120,7 @@ describe('SkillStore', () => {
       'capability browser',
     ]));
     expect(context.block).toContain('id=web-chat-verifier');
+    expect(context.block).toContain('caller_contract=Read and follow the matched skill instructions before acting.');
     expect(context.block).toContain('match_score=');
     expect(context.block).toContain('match_reasons=');
     expect(context.block).toContain('surface web-chat');
@@ -155,6 +156,10 @@ describe('SkillStore', () => {
     expect(context.selectedSkills[0]).toEqual(expect.objectContaining({
       id: 'remote-ops-proof',
       matchedTools: ['remote-command'],
+      callerContract: expect.arrayContaining([
+        'Read and follow the matched skill instructions before acting.',
+        'Use matched tools only for concrete effects after the skill workflow is selected.',
+      ]),
       reasons: expect.arrayContaining(['tool affinity', 'tool remote-command']),
     }));
     expect(context.block).toContain('id=remote-ops-proof');

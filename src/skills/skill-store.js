@@ -4,6 +4,11 @@ const path = require('path');
 const DEFAULT_SKILL_ROOT = path.join(__dirname, '..', '..', 'data', 'skills');
 const DEFAULT_MAX_CONTEXT_CHARS = 1800;
 const DEFAULT_MATCH_LIMIT = 4;
+const SKILL_CALLER_CONTRACT = [
+  'Read and follow the matched skill instructions before acting.',
+  'Use matched tools only for concrete effects after the skill workflow is selected.',
+  'Report the selected skill id and verification evidence in the handoff.',
+];
 const RESERVED_WINDOWS_NAMES = new Set([
   'con',
   'prn',
@@ -421,6 +426,7 @@ class SkillStore {
     const lines = [
       '<registered_skills>',
       'Use these compact, registered skills as reusable low-context procedures. They complement tools: choose the skill for the workflow shape, then call tools only for concrete effects. Do not expose unrelated skills.',
+      `caller_contract=${escapeContextValue(SKILL_CALLER_CONTRACT.join(' | '))}`,
     ];
 
     skills.forEach((skill) => {
@@ -498,6 +504,7 @@ class SkillStore {
         id: entry.skill.id,
         name: entry.skill.name,
         tools: entry.skill.tools || [],
+        callerContract: SKILL_CALLER_CONTRACT,
         score: Number.isFinite(entry.score) && entry.score !== Number.MAX_SAFE_INTEGER
           ? Number(entry.score.toFixed(2))
           : null,
