@@ -184,6 +184,53 @@ describe('web-chat model filtering', () => {
     });
 });
 
+describe('web-chat artifact metadata normalization', () => {
+    test('normalizes snake_case artifact URLs from stream done payloads', () => {
+        const { apiClient } = loadApiClient();
+
+        const events = apiClient.normalizeStreamPayload({
+            type: 'done',
+            session_id: 'session-1',
+            artifacts: [{
+                id: 'artifact-1',
+                filename: 'report.pdf',
+                format: 'pdf',
+                download_url: '/api/artifacts/artifact-1/download',
+                preview_url: '/api/artifacts/artifact-1/preview',
+                bundle_download_url: '/api/artifacts/artifact-1/bundle',
+            }],
+            metadata: {
+                artifacts: [{
+                    id: 'artifact-1',
+                    filename: 'report.pdf',
+                    format: 'pdf',
+                    download_url: '/api/artifacts/artifact-1/download',
+                    preview_url: '/api/artifacts/artifact-1/preview',
+                    bundle_download_url: '/api/artifacts/artifact-1/bundle',
+                }],
+            },
+        }, {});
+
+        const done = events.find((event) => event.type === 'done');
+        expect(done.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-1',
+                downloadUrl: '/api/artifacts/artifact-1/download',
+                previewUrl: '/api/artifacts/artifact-1/preview',
+                bundleDownloadUrl: '/api/artifacts/artifact-1/bundle',
+            }),
+        ]);
+        expect(done.assistantMetadata.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-1',
+                downloadUrl: '/api/artifacts/artifact-1/download',
+                previewUrl: '/api/artifacts/artifact-1/preview',
+                bundleDownloadUrl: '/api/artifacts/artifact-1/bundle',
+            }),
+        ]);
+    });
+});
+
 describe('web-chat remote build metadata', () => {
     test('sends plugin menu execution profile and planned tools in chat requests', async () => {
         const fetchMock = jest.fn(async () => ({

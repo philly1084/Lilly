@@ -532,17 +532,8 @@ function normalizeAssistantMetadata(value) {
     }
 
     const artifacts = (Array.isArray(value.artifacts) ? value.artifacts : [])
-        .filter((artifact) => artifact && typeof artifact === 'object')
-        .map((artifact) => ({
-            ...artifact,
-            id: String(artifact.id || '').trim(),
-            filename: String(artifact.filename || '').trim(),
-            format: String(artifact.format || '').trim(),
-            downloadUrl: String(artifact.downloadUrl || '').trim(),
-            previewUrl: String(artifact.previewUrl || '').trim(),
-            sandboxUrl: String(artifact.sandboxUrl || '').trim(),
-            bundleDownloadUrl: String(artifact.bundleDownloadUrl || '').trim(),
-        }))
+        .map(normalizeArtifactMetadata)
+        .filter(Boolean)
         .filter((artifact) => artifact.id && artifact.downloadUrl);
     if (artifacts.length > 0) {
         nextMetadata.artifacts = artifacts;
@@ -605,6 +596,28 @@ function normalizeAssistantMetadata(value) {
     }
 
     return Object.keys(nextMetadata).length > 0 ? nextMetadata : null;
+}
+
+function normalizeArtifactMetadata(artifact) {
+    if (!artifact || typeof artifact !== 'object') {
+        return null;
+    }
+
+    return {
+        ...artifact,
+        id: String(artifact.id || '').trim(),
+        filename: String(artifact.filename || '').trim(),
+        format: String(artifact.format || '').trim(),
+        downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+        previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
+        sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
+        bundleDownloadUrl: String(
+            artifact.bundleDownloadUrl
+            || artifact.bundle_download_url
+            || artifact.bundle_download
+            || '',
+        ).trim(),
+    };
 }
 
 function extractReasoningSummary(value) {
@@ -956,7 +969,9 @@ class OpenAIAPIClient extends EventTarget {
         return {
             type: 'done',
             sessionId: pendingDone.sessionId || this.currentSessionId,
-            artifacts: Array.isArray(pendingDone.artifacts) ? pendingDone.artifacts : [],
+            artifacts: Array.isArray(pendingDone.artifacts)
+                ? pendingDone.artifacts.map(normalizeArtifactMetadata).filter(Boolean)
+                : [],
             toolEvents: Array.isArray(pendingDone.toolEvents) ? pendingDone.toolEvents : [],
             assistantMetadata: pendingDone.assistantMetadata || null,
         };
