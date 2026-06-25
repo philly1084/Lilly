@@ -59,3 +59,26 @@ describe('Notes collapsed sidebar handle accessibility', () => {
         expect(source).toContain('setSidebarCollapsed(false);');
     });
 });
+
+describe('Notes export menu accessibility', () => {
+    test('wires the export dropdown as an announced keyboard menu', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = readSidebarSource();
+
+        expect(html).toContain('id="export-btn"');
+        expect(html).toContain('aria-haspopup="menu"');
+        expect(html).toContain('aria-expanded="false"');
+        expect(html).toContain('aria-controls="export-menu"');
+        expect(html).toContain('id="export-menu"');
+        expect(html).toContain('role="menu"');
+        expect(html).toContain('aria-label="Export formats"');
+        expect(html).toContain('role="menuitem"');
+        expect(html).toContain('tabindex="-1"');
+
+        expect(source).toContain('const setExportMenuOpen = (isOpen, focusFirst = false) => {');
+        expect(source).toContain('exportBtn.setAttribute(\'aria-expanded\', isOpen ? \'true\' : \'false\')');
+        expect(source).toContain('if (e.key !== \'ArrowDown\' && e.key !== \'ArrowUp\') return;');
+        expect(source).toContain('if (e.key === \'Escape\')');
+        expect(source).toContain('moveExportFocus(item, e.key === \'ArrowDown\' ? 1 : -1)');
+    });
+});

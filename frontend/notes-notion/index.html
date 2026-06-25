@@ -246,28 +246,28 @@
                         <span id="notes-tts-label">Read</span>
                     </button>
                     <div class="export-dropdown">
-                        <button id="export-btn" class="export-btn" title="Export page" aria-label="Export page">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <button id="export-btn" class="export-btn" title="Export page" aria-label="Export page" aria-haspopup="menu" aria-expanded="false" aria-controls="export-menu">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="7 10 12 15 17 10"></polyline>
                                 <line x1="12" y1="15" x2="12" y2="3"></line>
                             </svg>
                             Export
                         </button>
-                        <div id="export-menu" class="export-menu" style="display: none;">
-                            <div class="export-item" data-format="docx">
+                        <div id="export-menu" class="export-menu" role="menu" aria-label="Export formats" style="display: none;">
+                            <div class="export-item" data-format="docx" role="menuitem" tabindex="-1">
                                 <span class="export-icon">📄</span>
                                 <span>Word Document (.docx)</span>
                             </div>
-                            <div class="export-item" data-format="pdf">
+                            <div class="export-item" data-format="pdf" role="menuitem" tabindex="-1">
                                 <span class="export-icon">📑</span>
                                 <span>PDF Document (.pdf)</span>
                             </div>
-                            <div class="export-item" data-format="html">
+                            <div class="export-item" data-format="html" role="menuitem" tabindex="-1">
                                 <span class="export-icon">🌐</span>
                                 <span>HTML Document (.html)</span>
                             </div>
-                            <div class="export-item" data-format="md">
+                            <div class="export-item" data-format="md" role="menuitem" tabindex="-1">
                                 <span class="export-icon">📝</span>
                                 <span>Markdown (.md)</span>
                             </div>

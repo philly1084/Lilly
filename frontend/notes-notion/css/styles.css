@@ -3723,6 +3723,11 @@ body {
     color: var(--text-primary);
 }
 
+.export-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-color) 60%, transparent);
+    outline-offset: 2px;
+}
+
 .notes-tts-btn {
     display: flex;
     align-items: center;
@@ -3823,6 +3828,12 @@ body {
 
 .export-item:hover {
     background: var(--bg-hover);
+}
+
+.export-item:focus-visible {
+    background: var(--bg-hover);
+    outline: 2px solid color-mix(in srgb, var(--accent-color) 60%, transparent);
+    outline-offset: -2px;
 }
 
 .export-icon {

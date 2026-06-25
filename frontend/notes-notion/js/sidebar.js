@@ -1882,24 +1882,77 @@ const Sidebar = (function() {
         const exportMenu = document.getElementById('export-menu');
         
         if (!exportBtn || !exportMenu) return;
+
+        const exportItems = Array.from(exportMenu.querySelectorAll('.export-item'));
+        const setExportMenuOpen = (isOpen, focusFirst = false) => {
+            exportMenu.style.display = isOpen ? 'block' : 'none';
+            exportBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+
+            if (isOpen && focusFirst && exportItems[0]) {
+                exportItems[0].focus();
+            }
+        };
+
+        const moveExportFocus = (currentItem, direction) => {
+            const currentIndex = exportItems.indexOf(currentItem);
+            const nextIndex = currentIndex < 0
+                ? 0
+                : (currentIndex + direction + exportItems.length) % exportItems.length;
+            exportItems[nextIndex]?.focus();
+        };
         
         exportBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isVisible = exportMenu.style.display === 'block';
-            exportMenu.style.display = isVisible ? 'none' : 'block';
+            setExportMenuOpen(!isVisible, !isVisible);
+        });
+
+        exportBtn.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+            e.preventDefault();
+            setExportMenuOpen(true, true);
         });
         
         // Close menu when clicking outside
         document.addEventListener('click', () => {
-            exportMenu.style.display = 'none';
+            setExportMenuOpen(false);
         });
         
         // Handle export format selection
-        exportMenu.querySelectorAll('.export-item').forEach(item => {
+        exportItems.forEach(item => {
             item.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const format = item.dataset.format;
-                exportMenu.style.display = 'none';
+                setExportMenuOpen(false);
+                exportBtn.focus();
+                await exportCurrentPage(format);
+            });
+
+            item.addEventListener('keydown', async (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setExportMenuOpen(false);
+                    exportBtn.focus();
+                    return;
+                }
+
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    moveExportFocus(item, e.key === 'ArrowDown' ? 1 : -1);
+                    return;
+                }
+
+                if (e.key === 'Home' || e.key === 'End') {
+                    e.preventDefault();
+                    exportItems[e.key === 'Home' ? 0 : exportItems.length - 1]?.focus();
+                    return;
+                }
+
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                const format = item.dataset.format;
+                setExportMenuOpen(false);
+                exportBtn.focus();
                 await exportCurrentPage(format);
             });
         });
