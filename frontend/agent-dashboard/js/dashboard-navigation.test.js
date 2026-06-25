@@ -73,6 +73,7 @@ function createSettingsHarness() {
     global.document = dom.window.document;
     global.window = dom.window;
 
+    dashboard.setupEventListeners();
     dashboard.setupSettingsNavigation();
 
     return { dashboard };
@@ -248,6 +249,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.querySelector('.settings-nav').getAttribute('role')).toBe('tablist');
         expect(generalTab.getAttribute('role')).toBe('tab');
         expect(generalTab.getAttribute('aria-selected')).toBe('true');
+        expect(generalTab.getAttribute('tabindex')).toBe('0');
         expect(generalTab.getAttribute('aria-controls')).toBe('generalSettings');
         expect(generalPanel.getAttribute('role')).toBe('tabpanel');
         expect(generalPanel.getAttribute('aria-labelledby')).toBe(generalTab.id);
@@ -256,9 +258,46 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.switchSettingsSection('api');
 
         expect(generalTab.getAttribute('aria-selected')).toBe('false');
+        expect(generalTab.getAttribute('tabindex')).toBe('-1');
         expect(apiTab.getAttribute('aria-selected')).toBe('true');
+        expect(apiTab.getAttribute('tabindex')).toBe('0');
         expect(generalPanel.hidden).toBe(true);
         expect(apiPanel.hidden).toBe(false);
+    });
+
+    test('moves through settings tabs with arrow and edge keys', () => {
+        createSettingsHarness();
+        const generalTab = document.querySelector('[data-settings="general"]');
+        const apiTab = document.querySelector('[data-settings="api"]');
+
+        generalTab.focus();
+        generalTab.dispatchEvent(new window.KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.activeElement).toBe(apiTab);
+        expect(apiTab.getAttribute('aria-selected')).toBe('true');
+        expect(apiTab.getAttribute('tabindex')).toBe('0');
+
+        apiTab.dispatchEvent(new window.KeyboardEvent('keydown', {
+            key: 'Home',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.activeElement).toBe(generalTab);
+        expect(generalTab.getAttribute('aria-selected')).toBe('true');
+
+        generalTab.dispatchEvent(new window.KeyboardEvent('keydown', {
+            key: 'End',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.activeElement).toBe(apiTab);
+        expect(apiTab.getAttribute('aria-selected')).toBe('true');
     });
 
     test('activates prompt editor tabs with keyboard commands', () => {

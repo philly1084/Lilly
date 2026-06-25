@@ -404,7 +404,10 @@ class Dashboard {
         // Settings navigation
         document.querySelectorAll('.settings-nav-item').forEach(item => {
             item.addEventListener('click', (e) => {
-                this.switchSettingsSection(e.target.dataset.settings);
+                this.switchSettingsSection(e.currentTarget.dataset.settings);
+            });
+            item.addEventListener('keydown', (event) => {
+                this.handleSettingsNavKeydown(event);
             });
         });
         
@@ -3815,11 +3818,43 @@ class Dashboard {
 
             item.setAttribute('role', 'tab');
             item.setAttribute('aria-controls', panel.id);
-            item.setAttribute('aria-selected', item.classList.contains('active') ? 'true' : 'false');
+            const active = item.classList.contains('active');
+            item.setAttribute('aria-selected', active ? 'true' : 'false');
+            item.setAttribute('tabindex', active ? '0' : '-1');
             panel.setAttribute('role', 'tabpanel');
             panel.setAttribute('aria-labelledby', item.id);
             panel.hidden = !panel.classList.contains('active');
         });
+    }
+
+    handleSettingsNavKeydown(event) {
+        const navigationKeys = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'];
+        if (!navigationKeys.includes(event.key)) {
+            return;
+        }
+
+        const items = Array.from(document.querySelectorAll('.settings-nav-item[role="tab"]'))
+            .filter(item => !item.disabled && item.dataset.settings);
+        const currentIndex = items.indexOf(event.currentTarget);
+        if (!items.length || currentIndex < 0) {
+            return;
+        }
+
+        event.preventDefault();
+
+        let nextIndex = currentIndex;
+        if (event.key === 'Home') {
+            nextIndex = 0;
+        } else if (event.key === 'End') {
+            nextIndex = items.length - 1;
+        } else {
+            const direction = event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1;
+            nextIndex = (currentIndex + direction + items.length) % items.length;
+        }
+
+        const nextItem = items[nextIndex];
+        this.switchSettingsSection(nextItem.dataset.settings);
+        nextItem.focus();
     }
     
     switchSettingsSection(section) {
@@ -3827,6 +3862,7 @@ class Dashboard {
             const active = item.dataset.settings === section;
             item.classList.toggle('active', active);
             item.setAttribute('aria-selected', active ? 'true' : 'false');
+            item.setAttribute('tabindex', active ? '0' : '-1');
         });
         
         document.querySelectorAll('.settings-section').forEach(s => {
