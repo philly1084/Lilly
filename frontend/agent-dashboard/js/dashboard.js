@@ -104,7 +104,9 @@ class Dashboard {
         await this.loadInitialData();
         
         const connected = document.querySelector('#connectionStatus .status-dot')?.classList.contains('online');
-        this.showToast(connected ? 'Dashboard connected' : 'Dashboard loaded in degraded mode', connected ? 'success' : 'warning');
+        if (!connected) {
+            this.showToast('Dashboard loaded in degraded mode', 'warning');
+        }
     }
     
     /**
