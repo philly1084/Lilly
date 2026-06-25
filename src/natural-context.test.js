@@ -81,6 +81,12 @@ describe('natural-context', () => {
         );
     });
 
+    test('extracts common edit referents without quoted labels', () => {
+        expect(_private.extractTargetsFromText('Tighten selected text, then rewrite second section and that paragraph.')).toEqual(
+            expect.arrayContaining(['selected text', 'second section', 'that paragraph']),
+        );
+    });
+
     test('selects the remote operations system skill for remote lane planning', () => {
         const context = buildRegisteredSkillsContext({
             userText: 'Unify remote-cli-agent, k3s-deploy, managed-app, remote-workbench, and remote-command as one remote tool system.',

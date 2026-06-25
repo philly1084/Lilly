@@ -85,8 +85,8 @@ function extractTargetsFromText(text = '') {
         targets.push(match[1]);
     }
 
-    const nounPattern = /\b(?:the|this|that|current|last|second|first|third)\s+([a-z][a-z0-9 -]{2,50}?(?:section|paragraph|line|title|heading|button|card|table|list|canvas|page|document|answer|response|block))\b/gi;
-    while ((match = nounPattern.exec(source))) {
+    const referentPattern = /\b(?:(?:the|this|that)\s+)?(?:current|last|second|first|third|selected|highlighted|active|open|visible|named|this|that)\s+(?:(?!(?:and|or|then)\b)[a-z][a-z0-9-]*\s+){0,6}(?:section|paragraph|line|title|heading|button|card|table|list|canvas|page|document|answer|response|block|selection|text|range|part)\b/gi;
+    while ((match = referentPattern.exec(source))) {
         targets.push(match[0]);
     }
 
