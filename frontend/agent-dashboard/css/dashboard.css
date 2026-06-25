@@ -491,12 +491,15 @@ body[data-ui-surface="admin"] .toast-close:focus-visible {
     display: flex;
     align-items: center;
     gap: var(--space-md);
+    min-width: 0;
 }
 
 .search-box {
     position: relative;
     display: flex;
     align-items: center;
+    flex: 0 1 320px;
+    min-width: 0;
 }
 
 .search-box svg {
@@ -508,7 +511,8 @@ body[data-ui-surface="admin"] .toast-close:focus-visible {
 }
 
 .search-box input {
-    width: 240px;
+    width: clamp(180px, 24vw, 320px);
+    max-width: 100%;
     padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-xl);
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-primary);
@@ -521,7 +525,6 @@ body[data-ui-surface="admin"] .toast-close:focus-visible {
 .search-box input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    width: 320px;
 }
 
 .search-box input:focus-visible {
@@ -4461,11 +4464,7 @@ code {
     }
     
     .search-box input {
-        width: 150px;
-    }
-    
-    .search-box input:focus {
-        width: 180px;
+        width: clamp(120px, 28vw, 180px);
     }
     
     .content-wrapper {

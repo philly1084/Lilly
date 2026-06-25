@@ -160,6 +160,16 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     });
 
+    test('keeps global search focus from shifting header controls', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toContain('.header-right {\n    display: flex;\n    align-items: center;\n    gap: var(--space-md);\n    min-width: 0;');
+        expect(css).toContain('.search-box {\n    position: relative;\n    display: flex;\n    align-items: center;\n    flex: 0 1 320px;\n    min-width: 0;');
+        expect(css).toContain('width: clamp(180px, 24vw, 320px);');
+        expect(css).toContain('width: clamp(120px, 28vw, 180px);');
+        expect(css).not.toContain('.search-box input:focus {\n    outline: none;\n    border-color: var(--accent-primary);\n    width:');
+    });
+
     test('makes sidebar items keyboard targets with active page state', () => {
         createNavigationHarness();
         const overview = document.querySelector('[data-view="overview"]');
