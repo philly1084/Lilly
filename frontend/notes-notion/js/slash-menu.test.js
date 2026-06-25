@@ -1,0 +1,78 @@
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const { JSDOM } = require('jsdom');
+
+function loadSlashMenu({ width = 1024, height = 768 } = {}) {
+    const source = fs.readFileSync(path.join(__dirname, 'slash-menu.js'), 'utf8');
+    const dom = new JSDOM(`
+        <!doctype html>
+        <html>
+            <body>
+                <main id="editor"></main>
+                <div id="slash-menu">
+                    <div class="slash-menu-items">
+                        <button class="slash-item" data-type="text"></button>
+                    </div>
+                </div>
+            </body>
+        </html>
+    `, {
+        url: 'http://localhost:3000/notes/',
+    });
+
+    Object.defineProperty(dom.window, 'innerWidth', {
+        configurable: true,
+        value: width,
+    });
+    Object.defineProperty(dom.window, 'innerHeight', {
+        configurable: true,
+        value: height,
+    });
+
+    const context = {
+        console,
+        window: dom.window,
+        document: dom.window.document,
+        setTimeout: (callback) => callback(),
+        CustomEvent: dom.window.CustomEvent,
+        Blocks: {
+            getBlockTypes: () => ({
+                text: {
+                    name: 'Text',
+                    hint: 'Plain paragraph',
+                },
+            }),
+        },
+    };
+    context.global = context;
+    context.globalThis = context;
+
+    vm.runInNewContext(source, context, { filename: 'slash-menu.js' });
+    dom.window.SlashMenu.init();
+
+    return { dom, SlashMenu: dom.window.SlashMenu };
+}
+
+describe('Notes slash menu positioning', () => {
+    test('clamps width and x position inside a narrow mobile viewport', () => {
+        const { dom, SlashMenu } = loadSlashMenu({ width: 280, height: 640 });
+        const menu = dom.window.document.getElementById('slash-menu');
+
+        SlashMenu.show(260, 120, 'block-1');
+
+        expect(menu.style.left).toBe('16px');
+        expect(menu.style.width).toBe('248px');
+        expect(parseFloat(menu.style.left) + parseFloat(menu.style.width)).toBeLessThanOrEqual(264);
+    });
+
+    test('places the menu above the cursor when lower viewport space is tight', () => {
+        const { dom, SlashMenu } = loadSlashMenu({ width: 390, height: 360 });
+        const menu = dom.window.document.getElementById('slash-menu');
+
+        SlashMenu.show(120, 330, 'block-1');
+
+        expect(menu.style.top).toBe('16px');
+        expect(menu.style.maxHeight).toBe('328px');
+    });
+});

@@ -2194,8 +2194,8 @@ body {
 /* ===== Slash Menu - Lilly-style command palette ===== */
 .slash-menu {
     position: fixed;
-    width: 324px;
-    max-height: 420px;
+    width: min(324px, calc(100vw - 32px));
+    max-height: min(420px, calc(100vh - 32px));
     background: var(--bg-primary);
     border: 1px solid rgba(55, 53, 47, 0.12);
     border-radius: 8px;
@@ -2230,7 +2230,7 @@ body {
 
 .slash-menu-items {
     overflow-y: auto;
-    max-height: 350px;
+    max-height: min(350px, calc(100vh - 86px));
     padding: 6px;
 }
 

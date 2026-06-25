@@ -67,37 +67,36 @@ const SlashMenu = (function() {
         selectedIndex = 0;
         isVisible = true;
         
-        // Position menu
-        const menuWidth = 320;
-        const menuHeight = 400;
-        
-        // Get editor container for boundary checking
-        const editor = document.getElementById('editor');
-        const editorRect = editor ? editor.getBoundingClientRect() : { left: 0, width: window.innerWidth };
+        // Position menu within the visible viewport, including narrow mobile screens.
+        const viewportPadding = 16;
+        const menuWidth = Math.max(0, Math.min(324, window.innerWidth - (viewportPadding * 2)));
+        const menuHeight = Math.max(0, Math.min(420, window.innerHeight - (viewportPadding * 2)));
         
         // Calculate position relative to viewport
         let posX = x;
         let posY = y + 20; // Add some offset below cursor
         
         // Ensure menu stays on screen horizontally
-        if (posX + menuWidth > window.innerWidth - 20) {
-            posX = window.innerWidth - menuWidth - 20;
+        if (posX + menuWidth > window.innerWidth - viewportPadding) {
+            posX = window.innerWidth - menuWidth - viewportPadding;
         }
-        if (posX < 20) {
-            posX = 20;
+        if (posX < viewportPadding) {
+            posX = viewportPadding;
         }
         
         // Ensure menu stays on screen vertically
-        if (posY + menuHeight > window.innerHeight - 20) {
+        if (posY + menuHeight > window.innerHeight - viewportPadding) {
             // Show above cursor if not enough space below
             posY = y - menuHeight - 10;
         }
-        if (posY < 20) {
-            posY = 20;
+        if (posY < viewportPadding) {
+            posY = viewportPadding;
         }
         
         menu.style.left = `${posX}px`;
         menu.style.top = `${posY}px`;
+        menu.style.width = `${menuWidth}px`;
+        menu.style.maxHeight = `${menuHeight}px`;
         menu.style.display = 'block';
         
         // Filter and render items
