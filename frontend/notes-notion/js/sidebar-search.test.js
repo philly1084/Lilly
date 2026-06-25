@@ -72,8 +72,9 @@ describe('Notes export menu accessibility', () => {
         expect(html).toContain('id="export-menu"');
         expect(html).toContain('role="menu"');
         expect(html).toContain('aria-label="Export formats"');
-        expect(html).toContain('role="menuitem"');
-        expect(html).toContain('tabindex="-1"');
+        ['docx', 'pdf', 'html', 'md', 'json', 'txt'].forEach((format) => {
+            expect(html).toContain(`data-format="${format}" role="menuitem" tabindex="-1"`);
+        });
 
         expect(source).toContain('const setExportMenuOpen = (isOpen, focusFirst = false) => {');
         expect(source).toContain('exportBtn.setAttribute(\'aria-expanded\', isOpen ? \'true\' : \'false\')');
