@@ -104,6 +104,19 @@ describe('ai-route-utils', () => {
         ].join('\n'));
     });
 
+    test('buildArtifactCompletionMessage falls back to sandbox previews when preview aliases download', () => {
+        expect(buildArtifactCompletionMessage('html', {
+            filename: 'brief.html',
+            previewUrl: '/api/artifacts/artifact-html-1/download',
+            sandboxUrl: '/api/artifacts/artifact-html-1/sandbox',
+            downloadUrl: '/api/artifacts/artifact-html-1/download',
+        })).toBe([
+            'Created the HTML document artifact (brief.html).',
+            'Preview: /api/artifacts/artifact-html-1/sandbox',
+            'Download: /api/artifacts/artifact-html-1/download',
+        ].join('\n'));
+    });
+
     test('buildArtifactCompletionMessage gives site bundles the normal preview URL first', () => {
         expect(buildArtifactCompletionMessage('html', {
             filename: 'site.html',

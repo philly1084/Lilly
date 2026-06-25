@@ -415,11 +415,12 @@ function buildArtifactCompletionMessage(outputFormat, artifact) {
         ].filter(Boolean).join('\n');
     }
 
-    const preview = artifact?.previewUrl || artifact?.sandboxUrl || '';
     const download = artifact?.downloadUrl || '';
+    const preview = [artifact?.previewUrl, artifact?.sandboxUrl]
+        .find((url) => url && url !== download) || '';
     return [
         `Created the ${formatLabel} artifact${filename}.`,
-        preview && preview !== download ? `Preview: ${preview}` : '',
+        preview ? `Preview: ${preview}` : '',
         download ? `Download: ${download}` : '',
     ].filter(Boolean).join('\n');
 }
