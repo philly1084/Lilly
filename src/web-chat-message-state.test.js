@@ -24,6 +24,18 @@ describe('buildWebChatSessionMessages', () => {
         }])).toBe('Created research-deck.pptx. Use Download below.');
     });
 
+    test('normalizes snake_case artifact URLs before building summaries', () => {
+        expect(buildArtifactSummary([{
+            id: 'artifact-html-snake-1',
+            filename: 'site-preview.html',
+            format: 'html',
+            download_url: '/api/artifacts/artifact-html-snake-1/download',
+            preview_url: '/api/artifacts/artifact-html-snake-1/preview',
+            sandbox_url: '/api/artifacts/artifact-html-snake-1/sandbox',
+            bundle_download_url: '/api/artifacts/artifact-html-snake-1/bundle',
+        }])).toBe('Created site-preview.html. Preview and Download below.');
+    });
+
     test('stores artifacts inline on the assistant message without a separate gallery message', () => {
         const messages = buildWebChatSessionMessages({
             userText: 'Question first',
@@ -299,6 +311,36 @@ describe('buildWebChatSessionMessages', () => {
                     previewUrl: '/api/artifacts/artifact-html-1/preview',
                     sandboxUrl: '/api/artifacts/artifact-html-1/sandbox',
                     bundleDownloadUrl: '/api/artifacts/artifact-html-1/bundle',
+                }),
+            ],
+        }));
+    });
+
+    test('keeps snake_case assistant artifact URLs in frontend metadata', () => {
+        const metadata = buildFrontendAssistantMetadata({
+            taskType: 'chat',
+            artifacts: [{
+                id: 'artifact-html-snake-2',
+                filename: 'dashboard.html',
+                format: 'html',
+                download_url: '/api/artifacts/artifact-html-snake-2/download',
+                preview_url: '/api/artifacts/artifact-html-snake-2/preview',
+                sandbox_url: '/api/artifacts/artifact-html-snake-2/sandbox',
+                bundle_download_url: '/api/artifacts/artifact-html-snake-2/bundle',
+            }],
+        });
+
+        expect(metadata).toEqual(expect.objectContaining({
+            taskType: 'chat',
+            displayContent: 'Created dashboard.html. Preview and Download below.',
+            artifacts: [
+                expect.objectContaining({
+                    id: 'artifact-html-snake-2',
+                    filename: 'dashboard.html',
+                    downloadUrl: '/api/artifacts/artifact-html-snake-2/download',
+                    previewUrl: '/api/artifacts/artifact-html-snake-2/preview',
+                    sandboxUrl: '/api/artifacts/artifact-html-snake-2/sandbox',
+                    bundleDownloadUrl: '/api/artifacts/artifact-html-snake-2/bundle',
                 }),
             ],
         }));

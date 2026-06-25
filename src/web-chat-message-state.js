@@ -116,17 +116,17 @@ function shouldCollapseArtifactTranscript(artifact) {
 
 function normalizeAssistantArtifacts(artifacts = []) {
     return (Array.isArray(artifacts) ? artifacts : [])
-        .filter((artifact) => artifact && typeof artifact === 'object' && artifact.id && artifact.downloadUrl)
+        .filter((artifact) => artifact && typeof artifact === 'object' && artifact.id && (artifact.downloadUrl || artifact.download_url))
         .filter((artifact) => !shouldHideArtifactFromDefaultLists(artifact))
         .map((artifact) => ({
             ...artifact,
             id: String(artifact.id).trim(),
             filename: String(artifact.filename || '').trim(),
             format: String(artifact.format || '').trim(),
-            downloadUrl: String(artifact.downloadUrl || '').trim(),
-            previewUrl: String(artifact.previewUrl || '').trim(),
-            sandboxUrl: String(artifact.sandboxUrl || '').trim(),
-            bundleDownloadUrl: String(artifact.bundleDownloadUrl || '').trim(),
+            downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+            previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
+            sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
+            bundleDownloadUrl: String(artifact.bundleDownloadUrl || artifact.bundle_download_url || '').trim(),
         }));
 }
 
