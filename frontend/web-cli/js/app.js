@@ -4255,7 +4255,33 @@ class CodeCLIApp {
             .filter(([name]) => Boolean(name));
     }
 
+    normalizeToolFieldSchema(schema = {}) {
+        const source = schema && typeof schema === 'object' ? schema : {};
+        const directType = Array.isArray(source.type)
+            ? source.type.find((value) => String(value || '').trim().toLowerCase() !== 'null')
+            : source.type;
+        if (directType) {
+            return { ...source, type: String(directType).toLowerCase() };
+        }
+
+        const composite = ['oneOf', 'anyOf', 'allOf']
+            .flatMap((key) => Array.isArray(source[key]) ? source[key] : [])
+            .find((candidate) => candidate && typeof candidate === 'object' && candidate.type);
+        if (composite) {
+            return this.normalizeToolFieldSchema({ ...composite, ...source, type: composite.type });
+        }
+
+        if (source.properties && typeof source.properties === 'object') {
+            return { ...source, type: 'object' };
+        }
+        if (source.items && typeof source.items === 'object') {
+            return { ...source, type: 'array' };
+        }
+        return { ...source, type: 'string' };
+    }
+
     renderToolField(name = '', schema = {}, required = false) {
+        schema = this.normalizeToolFieldSchema(schema);
         const type = String(schema.type || 'string').toLowerCase();
         const description = schema.description || schema.title || '';
         const requiredAttr = required ? ' required' : '';

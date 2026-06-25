@@ -134,6 +134,41 @@ describe('web-cli tool form rendering', () => {
         expect(markup).toContain('placeholder="integer" step="1" value="3"');
     });
 
+    test('normalizes nullable schema types before rendering controls', () => {
+        const app = createToolFormHarness();
+
+        const objectMarkup = app.renderToolField('sitePolicy', {
+            type: ['object', 'null'],
+            description: 'Optional crawl policy.',
+        }, false);
+        const integerMarkup = app.renderToolField('limit', {
+            type: ['null', 'integer'],
+            default: 5,
+        }, false);
+
+        expect(objectMarkup).toContain('data-tool-type="object"');
+        expect(objectMarkup).toContain('placeholder="{&quot;key&quot;:&quot;value&quot;}"');
+        expect(integerMarkup).toContain('type="number"');
+        expect(integerMarkup).toContain('data-tool-type="integer"');
+        expect(integerMarkup).toContain('placeholder="integer" step="1" value="5"');
+    });
+
+    test('unwraps simple oneOf schemas for tool form rendering', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('choice', {
+            oneOf: [
+                { type: 'string' },
+                { type: 'object', properties: { id: { type: 'string' } } },
+            ],
+            description: 'Choice value.',
+        }, true);
+
+        expect(markup).toContain('data-tool-type="string"');
+        expect(markup).toContain('placeholder="string" required>');
+        expect(markup).toContain('Choice value.');
+    });
+
     test('renders object and array parameters as JSON textareas', () => {
         const app = createToolFormHarness();
 
