@@ -83,6 +83,54 @@ function mergeAssistantMetadata(currentValue, nextValue) {
     return Object.keys(mergedMetadata).length > 0 ? mergedMetadata : null;
 }
 
+function normalizeArtifactMetadata(artifact) {
+    if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+        return null;
+    }
+
+    const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
+    const sizeBytes = Number(sizeValue);
+
+    return {
+        ...artifact,
+        id: String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim(),
+        filename: String(artifact.filename || artifact.name || '').trim(),
+        format: String(artifact.format || artifact.extension || '').trim(),
+        mimeType: String(artifact.mimeType || artifact.mime_type || '').trim(),
+        sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+        downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+        previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
+        sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
+        bundleDownloadUrl: String(
+            artifact.bundleDownloadUrl
+            || artifact.bundle_download_url
+            || artifact.bundle_download
+            || '',
+        ).trim(),
+    };
+}
+
+function normalizeArtifacts(artifacts = []) {
+    return (Array.isArray(artifacts) ? artifacts : [])
+        .map(normalizeArtifactMetadata)
+        .filter(Boolean);
+}
+
+function normalizeAssistantArtifactsMetadata(metadata) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        return metadata || null;
+    }
+
+    if (!Array.isArray(metadata.artifacts)) {
+        return metadata;
+    }
+
+    return {
+        ...metadata,
+        artifacts: normalizeArtifacts(metadata.artifacts),
+    };
+}
+
 function appendReasoningSummary(currentValue = '', nextValue = '') {
     const current = normalizeReasoningSummary(currentValue);
     const next = normalizeReasoningSummary(nextValue);
@@ -310,7 +358,7 @@ class WebCLIAPI {
     }
 
     extractArtifacts(payload = {}) {
-        return Array.isArray(payload?.artifacts) ? payload.artifacts : [];
+        return normalizeArtifacts(payload?.artifacts);
     }
 
     isTerminalStreamPayload(payload = {}) {
@@ -335,7 +383,7 @@ class WebCLIAPI {
         }
 
         if (Array.isArray(event.artifacts) && event.artifacts.length > 0) {
-            pendingDone.artifacts = event.artifacts;
+            pendingDone.artifacts = normalizeArtifacts(event.artifacts);
         }
 
         if (Array.isArray(event.toolEvents) && event.toolEvents.length > 0) {
@@ -345,7 +393,7 @@ class WebCLIAPI {
         if (event.assistantMetadata) {
             pendingDone.assistantMetadata = mergeAssistantMetadata(
                 pendingDone.assistantMetadata,
-                event.assistantMetadata,
+                normalizeAssistantArtifactsMetadata(event.assistantMetadata),
             );
         }
     }
@@ -1604,7 +1652,7 @@ class WebCLIAPI {
         }
 
         const data = await response.json();
-        return Array.isArray(data.artifacts) ? data.artifacts : [];
+        return normalizeArtifacts(data.artifacts);
     }
 
     setModel(model) {
