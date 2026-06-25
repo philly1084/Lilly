@@ -369,6 +369,13 @@
      * Show help modal
      */
     function showHelp() {
+        const existingModal = document.querySelector('.ai-modal[data-help-modal="true"]');
+        if (existingModal) {
+            existingModal.querySelector('[data-help-close]')?.focus();
+            return existingModal;
+        }
+
+        const previouslyFocusedElement = document.activeElement;
         const helpContent = `
 # Keyboard Shortcuts
 
@@ -413,27 +420,54 @@
         
         const modal = document.createElement('div');
         modal.className = 'ai-modal';
+        modal.dataset.helpModal = 'true';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'notes-help-modal-title');
         modal.style.display = 'flex';
         modal.innerHTML = `
-            <div class="ai-modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <div class="ai-modal-content" tabindex="-1" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
                 <div class="ai-modal-header">
-                    <span>Keys</span>
-                    <span>Keyboard Shortcuts</span>
-                    <button class="icon-btn" style="margin-left: auto; background: transparent; border: none; color: white; cursor: pointer;">X</button>
+                    <span aria-hidden="true">Keys</span>
+                    <span id="notes-help-modal-title">Keyboard Shortcuts</span>
+                    <button class="icon-btn" type="button" data-help-close aria-label="Close keyboard shortcuts" style="margin-left: auto; background: transparent; border: none; color: white; cursor: pointer;">X</button>
                 </div>
                 <div style="padding: 20px; white-space: pre-wrap; font-family: var(--font-mono); font-size: 14px; line-height: 1.6;">
                     ${helpContent}
                 </div>
             </div>
         `;
+
+        const restoreFocus = () => {
+            if (previouslyFocusedElement && typeof previouslyFocusedElement.focus === 'function' && document.contains(previouslyFocusedElement)) {
+                previouslyFocusedElement.focus();
+            }
+        };
+
+        const closeHelp = () => {
+            document.removeEventListener('keydown', handleHelpKeydown);
+            modal.remove();
+            restoreFocus();
+        };
+
+        function handleHelpKeydown(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeHelp();
+            }
+        }
         
         modal.addEventListener('click', (e) => {
-            if (e.target === modal || e.target.closest('.icon-btn')) {
-                modal.remove();
+            if (e.target === modal || e.target.closest('[data-help-close]')) {
+                closeHelp();
             }
         });
         
         document.body.appendChild(modal);
+        document.addEventListener('keydown', handleHelpKeydown);
+        modal.querySelector('[data-help-close]')?.focus();
+
+        return modal;
     }
     
     /**
