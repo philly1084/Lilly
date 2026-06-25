@@ -65,6 +65,33 @@ describe('WebSearchTool', () => {
     })).toBe(45000);
   });
 
+  test('returns structured diagnostics for aborted provider requests', async () => {
+    const tool = new WebSearchTool();
+    const abortError = new Error('The operation was aborted.');
+    abortError.name = 'AbortError';
+    tool.handler = jest.fn(async () => {
+      throw abortError;
+    });
+
+    const result = await tool.execute({
+      query: 'slow web research',
+      timeout: 45000,
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      error: 'Perplexity request aborted after 45000ms',
+      errorCode: 'web_search_timeout',
+      statusCode: 504,
+      toolId: 'web-search',
+      diagnostics: {
+        provider: 'perplexity',
+        timeoutMs: 45000,
+        aborted: true,
+      },
+    }));
+  });
+
   test('passes normalized filters to the Perplexity Search API', async () => {
     global.fetch.mockResolvedValue({
       ok: true,

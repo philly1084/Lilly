@@ -579,7 +579,15 @@ class WebSearchTool extends ToolBase {
 
   formatProviderError(error, timeoutMs) {
     if (isAbortLikeError(error)) {
-      return new Error(`Perplexity request aborted after ${timeoutMs}ms`);
+      const timeoutError = new Error(`Perplexity request aborted after ${timeoutMs}ms`);
+      timeoutError.code = 'web_search_timeout';
+      timeoutError.statusCode = 504;
+      timeoutError.diagnostics = {
+        provider: 'perplexity',
+        timeoutMs,
+        aborted: true,
+      };
+      return timeoutError;
     }
     return error;
   }
