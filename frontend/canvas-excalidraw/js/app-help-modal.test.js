@@ -173,3 +173,20 @@ describe('canvas top-bar dropdown accessibility', () => {
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
     });
 });
+
+describe('canvas command rail accessibility', () => {
+    test('names every quick-command button, including icon-only shortcuts', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const buttons = Array.from(dom.window.document.querySelectorAll('.canvas-command-rail button'));
+
+        expect(buttons.length).toBeGreaterThan(0);
+        expect(buttons.map((button) => button.getAttribute('aria-label') || button.textContent.trim()))
+            .toEqual([
+                'Open canvas command palette',
+                'Ask Canvas AI',
+                'Add scene pack',
+                'Connect selected objects',
+            ]);
+    });
+});

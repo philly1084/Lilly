@@ -3007,8 +3007,14 @@ body.canvas-core-mode .canvas-command-btn:focus-visible,
 body.canvas-core-mode .canvas-rail-action:hover,
 body.canvas-core-mode .canvas-rail-action:focus-visible {
     border-color: var(--accent-color);
-    outline: none;
     box-shadow: 0 0 0 3px rgba(95, 179, 169, 0.16);
+}
+
+body.canvas-core-mode .canvas-command-btn:focus-visible,
+body.canvas-core-mode .canvas-rail-action:focus-visible {
+    outline: 2px solid rgba(114, 195, 186, 0.82);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(95, 179, 169, 0.2);
 }
 
 body.canvas-core-mode .canvas-command-palette {
