@@ -1281,6 +1281,32 @@
             gap: 6px;
         }
 
+        .header-model-select {
+            min-height: 30px;
+            max-width: min(260px, 36vw);
+            padding: 6px 28px 6px 10px;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 12px;
+            line-height: 1.2;
+            text-overflow: ellipsis;
+        }
+
+        .header-model-select:hover {
+            border-color: var(--text-muted);
+            background: var(--bg-hover);
+        }
+
+        .header-model-select:focus,
+        .header-model-select:focus-visible {
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.22);
+        }
+
         .btn {
             display: inline-flex;
             align-items: center;
@@ -1573,6 +1599,13 @@
                 width: 100%;
                 justify-content: flex-end;
             }
+
+            .header-model-select {
+                flex: 1 1 150px;
+                min-width: 0;
+                max-width: 100%;
+                min-height: 44px;
+            }
             
             .btn {
                 padding: 8px 10px;
@@ -1842,7 +1875,7 @@
                 <span id="headerModelDisplay" class="header-model" title="Current AI model">--</span>
             </div>
             <div class="toolbar" data-command-toolbar>
-                <select id="modelSelect" style="padding: 6px 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-family: inherit; font-size: 12px;">
+                <select id="modelSelect" class="header-model-select" aria-label="Current AI model" title="Current AI model">
                     <option>Loading models...</option>
                 </select>
                 <button class="btn btn-sm btn-primary" data-short="New" onclick="app.startNewSession('', { clear: true })" title="Start a new isolated chat session" aria-label="Start new isolated chat session">

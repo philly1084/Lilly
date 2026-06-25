@@ -313,9 +313,12 @@ describe('web-cli command drawer keyboard navigation', () => {
     test('matches menu semantics in the rendered toolbar markup', () => {
         const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(indexMarkup);
+        const modelSelect = dom.window.document.getElementById('modelSelect');
         const drawer = dom.window.document.getElementById('commandDrawer');
         const items = Array.from(drawer.querySelectorAll('button, a[href]'));
 
+        expect(modelSelect.getAttribute('aria-label')).toBe('Current AI model');
+        expect(modelSelect.classList.contains('header-model-select')).toBe(true);
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
         expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
