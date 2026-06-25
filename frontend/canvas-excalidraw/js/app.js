@@ -1530,8 +1530,9 @@ class App {
             const reason = enabled
                 ? command.meta
                 : (selectedCount === 0 ? 'Select canvas objects first' : 'Select at least two objects');
+            const optionId = `canvas-command-option-${String(command.id).replace(/[^a-z0-9_-]/gi, '-')}`;
             return `
-                <button type="button" role="option" class="canvas-command-item" data-command-id="${command.id}" ${enabled ? '' : 'disabled'}>
+                <button type="button" role="option" id="${this.escapeHtml(optionId)}" aria-selected="false" class="canvas-command-item" data-command-id="${this.escapeHtml(command.id)}" ${enabled ? '' : 'disabled'}>
                     <span class="canvas-command-item-main">
                         <strong>${this.escapeHtml(command.label)}</strong>
                         <small>${this.escapeHtml(reason)}</small>

@@ -19,6 +19,7 @@ function loadAppClass(dom) {
         localStorage: dom.window.localStorage,
         setTimeout,
         clearTimeout,
+        requestAnimationFrame: (callback) => callback(),
     };
 
     vm.runInNewContext(source, sandbox, { filename: sourcePath });
@@ -257,5 +258,57 @@ describe('canvas command rail accessibility', () => {
                 'Add scene pack',
                 'Connect selected objects',
             ]);
+    });
+
+    test('wires the command palette trigger and search to controlled regions', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const trigger = dom.window.document.getElementById('canvasCommandBtn');
+        const palette = dom.window.document.getElementById('canvasCommandPalette');
+        const search = dom.window.document.getElementById('canvasCommandSearch');
+        const list = dom.window.document.getElementById('canvasCommandList');
+
+        expect(trigger.getAttribute('aria-controls')).toBe('canvasCommandPalette');
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(palette.getAttribute('role')).toBe('dialog');
+        expect(search.getAttribute('aria-label')).toBe('Search canvas commands');
+        expect(search.getAttribute('aria-controls')).toBe('canvasCommandList');
+        expect(list.getAttribute('role')).toBe('listbox');
+    });
+
+    test('renders command options with stable accessible option state', () => {
+        const dom = new JSDOM(`
+            <button type="button" id="canvasCommandBtn" aria-expanded="false" aria-controls="canvasCommandPalette">Commands</button>
+            <div id="canvasCommandPalette" hidden>
+                <input id="canvasCommandSearch" type="search" aria-controls="canvasCommandList">
+                <div id="canvasCommandList" role="listbox"></div>
+            </div>
+        `, { url: 'http://localhost:3000/canvas/' });
+        const App = loadAppClass(dom);
+        const app = Object.create(App.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        app.commandSearchValue = '';
+        app.commandPaletteCommands = [{
+            id: 'scene-pack',
+            label: 'Scene Pack',
+            meta: 'Three storyboard frames',
+            group: 'Create',
+            keywords: 'scene',
+        }];
+        app.getCanvasCommandSelection = jest.fn(() => []);
+
+        app.renderCanvasCommandPalette();
+
+        const option = document.querySelector('.canvas-command-item');
+        expect(option.id).toBe('canvas-command-option-scene-pack');
+        expect(option.getAttribute('role')).toBe('option');
+        expect(option.getAttribute('aria-selected')).toBe('false');
+        expect(option.dataset.commandId).toBe('scene-pack');
+
+        delete global.document;
+        delete global.window;
     });
 });
