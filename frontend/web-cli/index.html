@@ -1933,6 +1933,10 @@
                             id="commandInput" 
                             name="cli-command"
                             placeholder="Ask KimiBuilt, open /files, list /tools, or type /help..."
+                            aria-label="Web CLI command input"
+                            aria-describedby="commandAssist"
+                            aria-autocomplete="list"
+                            aria-controls="autocomplete"
                             autocomplete="new-password"
                             autocorrect="off"
                             autocapitalize="off"
@@ -1959,7 +1963,7 @@
                         <span id="cliStatus" class="cli-status ready">Ready</span>
                         <span id="voxelPetStatus" class="voxel-pet-status">Agent companion available</span>
                         <span id="queueIndicator" class="queue-indicator hidden" title="Commands queued"></span>
-                        <span id="commandAssist" class="command-assist is-ready">Type /help for the command menu, or / for autocomplete.</span>
+                        <span id="commandAssist" class="command-assist is-ready" role="status" aria-live="polite">Type /help for the command menu, or / for autocomplete.</span>
                         <span class="shortcut-hint">Ctrl+L=Clear | ↑↓=History | F1=Help</span>
                     </div>
                     <div id="autocomplete" class="autocomplete hidden"></div>

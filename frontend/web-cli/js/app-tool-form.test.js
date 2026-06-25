@@ -314,11 +314,19 @@ describe('web-cli command drawer keyboard navigation', () => {
         const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(indexMarkup);
         const modelSelect = dom.window.document.getElementById('modelSelect');
+        const commandInput = dom.window.document.getElementById('commandInput');
+        const commandAssist = dom.window.document.getElementById('commandAssist');
         const drawer = dom.window.document.getElementById('commandDrawer');
         const items = Array.from(drawer.querySelectorAll('button, a[href]'));
 
         expect(modelSelect.getAttribute('aria-label')).toBe('Current AI model');
         expect(modelSelect.classList.contains('header-model-select')).toBe(true);
+        expect(commandInput.getAttribute('aria-label')).toBe('Web CLI command input');
+        expect(commandInput.getAttribute('aria-describedby')).toBe('commandAssist');
+        expect(commandInput.getAttribute('aria-autocomplete')).toBe('list');
+        expect(commandInput.getAttribute('aria-controls')).toBe('autocomplete');
+        expect(commandAssist.getAttribute('role')).toBe('status');
+        expect(commandAssist.getAttribute('aria-live')).toBe('polite');
         expect(drawer.getAttribute('role')).toBe('menu');
         expect(items.length).toBeGreaterThan(0);
         expect(items.every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
