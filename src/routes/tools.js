@@ -443,6 +443,7 @@ function buildToolRuntime(toolId, options = {}) {
       callerContract: [
         'Use raw search for URL discovery, scraping prep, and candidate page hotlists.',
         'Use pro-search for researched synthesis, news roundups, source-backed briefings, and gathered research data.',
+        'For daily news, article roundups, and source-backed briefings, avoid headline-only snippets; request enough extraction context to compare dates, claims, and sources.',
         'When no timeframe is supplied, make searches freshness-aware with modern/recent phrasing or a month-level range for news and technology.',
         'Verify selected result URLs with web-fetch before composing reports, documents, slides, or researched HTML.',
       ],

@@ -110,6 +110,7 @@ describe('/api/tools routes', () => {
         expect(response.body.data.runtime.callerContract).toEqual(expect.arrayContaining([
             expect.stringContaining('raw search for URL discovery'),
             expect.stringContaining('pro-search for researched synthesis'),
+            expect.stringContaining('avoid headline-only snippets'),
             expect.stringContaining('freshness-aware'),
             expect.stringContaining('Verify selected result URLs with web-fetch'),
         ]));
