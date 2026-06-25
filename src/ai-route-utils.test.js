@@ -92,6 +92,18 @@ describe('ai-route-utils', () => {
         ].join('\n'));
     });
 
+    test('buildArtifactCompletionMessage includes preview links for non-site artifacts', () => {
+        expect(buildArtifactCompletionMessage('html', {
+            filename: 'brief.html',
+            previewUrl: '/api/artifacts/artifact-html-1/preview',
+            downloadUrl: '/api/artifacts/artifact-html-1/download',
+        })).toBe([
+            'Created the HTML document artifact (brief.html).',
+            'Preview: /api/artifacts/artifact-html-1/preview',
+            'Download: /api/artifacts/artifact-html-1/download',
+        ].join('\n'));
+    });
+
     test('buildArtifactCompletionMessage gives site bundles the normal preview URL first', () => {
         expect(buildArtifactCompletionMessage('html', {
             filename: 'site.html',

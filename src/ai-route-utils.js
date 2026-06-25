@@ -415,9 +415,11 @@ function buildArtifactCompletionMessage(outputFormat, artifact) {
         ].filter(Boolean).join('\n');
     }
 
+    const preview = artifact?.previewUrl || artifact?.sandboxUrl || '';
     const download = artifact?.downloadUrl || '';
     return [
         `Created the ${formatLabel} artifact${filename}.`,
+        preview && preview !== download ? `Preview: ${preview}` : '',
         download ? `Download: ${download}` : '',
     ].filter(Boolean).join('\n');
 }
