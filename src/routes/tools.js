@@ -497,6 +497,19 @@ function buildToolRuntime(toolId, options = {}) {
     };
   }
 
+  if (toolId === 'news-scraper') {
+    return {
+      configured: true,
+      provider: 'local-news-extractor',
+      callerContract: [
+        'Use for news digests, article roundups, and source-backed sites that need full article bodies rather than search-result snippets.',
+        'Provide known article URLs when available; otherwise pass a query so the tool can discover sources through web-search before extraction.',
+        'Keep public site output excerpt-focused by default while preserving extracted article text for research, citations, and structured injection.',
+        'Escalate to browser rendering only when static extraction returns a shell or too little readable article text.',
+      ],
+    };
+  }
+
   if (toolId === 'document-workflow') {
     return {
       configured: true,

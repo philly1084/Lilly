@@ -139,6 +139,21 @@ describe('/api/tools routes', () => {
         ]));
     });
 
+    test('news-scraper tool details expose article extraction handoff guidance', async () => {
+        const app = buildApp();
+
+        const response = await request(app).get('/api/tools/news-scraper');
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.runtime.provider).toBe('local-news-extractor');
+        expect(response.body.data.runtime.callerContract).toEqual(expect.arrayContaining([
+            expect.stringContaining('full article bodies'),
+            expect.stringContaining('known article URLs'),
+            expect.stringContaining('excerpt-focused by default'),
+            expect.stringContaining('browser rendering'),
+        ]));
+    });
+
     test('document-workflow tool details expose format and verification handoff guidance', async () => {
         const app = buildApp();
 
