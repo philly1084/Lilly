@@ -55,6 +55,14 @@ function buildFallbackDownloadUrl(id = '') {
     return normalizedId ? `/api/artifacts/${encodeURIComponent(normalizedId)}/download` : null;
 }
 
+function normalizeSizeBytes(value = {}) {
+    return Number.isFinite(Number(value.size))
+        ? Number(value.size)
+        : (Number.isFinite(Number(value.sizeBytes))
+            ? Number(value.sizeBytes)
+            : (Number.isFinite(Number(value.size_bytes)) ? Number(value.size_bytes) : 0));
+}
+
 function normalizeArtifactEntry(value = null) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return null;
@@ -87,9 +95,7 @@ function normalizeArtifactEntry(value = null) {
         || value.extension
         || inferFormat(filename, mimeType),
     );
-    const size = Number.isFinite(Number(value.size))
-        ? Number(value.size)
-        : (Number.isFinite(Number(value.sizeBytes)) ? Number(value.sizeBytes) : 0);
+    const size = normalizeSizeBytes(value);
     const metadata = value.metadata && typeof value.metadata === 'object' && !Array.isArray(value.metadata)
         ? value.metadata
         : {};
@@ -216,6 +222,8 @@ function mergeRuntimeArtifacts(...artifactSets) {
             mimeType: String(artifact.mimeType || '').trim(),
             downloadUrl: normalizeDownloadUrl(artifact.downloadUrl || artifact.inlinePath || '')
                 || buildFallbackDownloadUrl(artifact.id),
+            size: normalizeSizeBytes(artifact),
+            sizeBytes: normalizeSizeBytes(artifact),
             ...(normalizePreviewUrl(artifact.previewUrl || artifact.preview_url || '')
                 ? { previewUrl: normalizePreviewUrl(artifact.previewUrl || artifact.preview_url || '') }
                 : {}),

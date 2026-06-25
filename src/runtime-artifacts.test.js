@@ -228,6 +228,29 @@ describe('runtime artifact helpers', () => {
         ]);
     });
 
+    test('preserves snake_case artifact byte counts from tool and store payloads', () => {
+        const merged = mergeRuntimeArtifacts([{
+            artifact_id: 'artifact-snake-1',
+            filename: 'generated-brief.html',
+            mime_type: 'text/html',
+            size_bytes: 4312,
+            download_url: '/api/artifacts/artifact-snake-1/download',
+            preview_url: '/api/artifacts/artifact-snake-1/preview',
+        }]);
+
+        expect(merged).toEqual([
+            expect.objectContaining({
+                id: 'artifact-snake-1',
+                filename: 'generated-brief.html',
+                mimeType: 'text/html',
+                size: 4312,
+                sizeBytes: 4312,
+                downloadUrl: '/api/artifacts/artifact-snake-1/download',
+                previewUrl: '/api/artifacts/artifact-snake-1/preview',
+            }),
+        ]);
+    });
+
     test('extracts sandbox urls from sandbox tool artifacts', () => {
         const artifacts = extractArtifactsFromToolEvents([{
             toolCall: {
