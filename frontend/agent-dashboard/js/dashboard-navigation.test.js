@@ -127,6 +127,136 @@ function createRuntimeListHarness() {
     return { dom, dashboard };
 }
 
+function createAgentCompanyHarness() {
+    const dom = new JSDOM(`
+        <p id="agentCompanyGoalSummary"></p>
+        <span id="companyHeartbeatStatus"></span>
+        <span id="companyNextHeartbeat"></span>
+        <span id="companyRunningCount"></span>
+        <span id="companyQueuedCount"></span>
+        <span id="companyWorkloadCount"></span>
+        <span id="companyWeeklyLimit"></span>
+        <span id="companyFailedCount"></span>
+        <span id="companyAlignmentStatus"></span>
+        <span id="agentCompanyBadge"></span>
+        <span id="companyScheduleStatus"></span>
+        <span id="companyRunStatus"></span>
+        <span id="companyAlignmentNext"></span>
+        <span id="companyModelPolicy"></span>
+        <div id="companyRoleList"></div>
+        <div id="companyScheduleList"></div>
+        <table><tbody id="companyWorkloadsTableBody"></tbody></table>
+        <table><tbody id="companyRunsTableBody"></tbody></table>
+        <div id="companyAlignmentPanel"></div>
+        <div id="adminRunDetails"></div>
+        <div id="companyRunDetails"></div>
+    `, { url: 'http://localhost:3000/admin/?view=agentCompany' });
+    const Dashboard = loadDashboardClass(dom);
+    const dashboard = Object.create(Dashboard.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+    dom.window.dashboard = dashboard;
+
+    dashboard.state = {
+        settings: {},
+        agentCompanyStatus: {
+            available: true,
+            config: {
+                companyGoal: 'Run a research studio that ships weekly outputs.',
+                weeklyWorkloadLimit: 3,
+                primaryModel: 'gpt-5.5',
+                escalationModels: ['codex-latest'],
+                sessionId: 'agent-company',
+            },
+            state: {
+                companyGoalHash: 'goal-hash',
+                heartbeat: {
+                    status: 'scheduled',
+                    nextAt: '2026-06-26T15:00:00.000Z',
+                    failedWorkloads: 1,
+                },
+                runningWork: {
+                    running: 1,
+                    queued: 1,
+                    companyWorkloads: 1,
+                },
+                roles: [
+                    { id: 'strategy', name: 'Strategy Lead', mission: 'Plan the week.' },
+                ],
+                shortTermSchedule: [
+                    {
+                        title: 'Company weekly plan',
+                        objective: 'Set operating priorities.',
+                        roleName: 'Strategy Lead',
+                        plannedFor: '2026-06-26T16:00:00.000Z',
+                    },
+                ],
+                dailyAlignment: {
+                    status: 'applied',
+                    nextAt: '2026-06-27T15:00:00.000Z',
+                    applied: [{ id: 'daily-proof-note' }],
+                    evidence: {
+                        logs: { count: 2 },
+                        suggestions: { count: 1, safeCandidates: 1 },
+                    },
+                },
+            },
+        },
+        workloads: [
+            {
+                id: 'company-workload',
+                title: 'Strategy Lead: Company weekly plan',
+                sessionId: 'agent-company',
+                prompt: 'Plan the operating week.',
+                enabled: true,
+                trigger: { type: 'once', runAt: '2026-06-26T16:00:00.000Z' },
+                metadata: {
+                    agentCompany: {
+                        enabled: true,
+                        companyGoalHash: 'goal-hash',
+                        roleName: 'Strategy Lead',
+                        planItemId: 'plan-1',
+                    },
+                },
+                workloadSummary: { queued: 1, running: 1, failed: 0 },
+            },
+            {
+                id: 'other-workload',
+                title: 'Unrelated job',
+                sessionId: 'general',
+                prompt: 'Ignore me.',
+                enabled: true,
+                trigger: { type: 'manual' },
+                metadata: {},
+                workloadSummary: { queued: 0, running: 0, failed: 0 },
+            },
+        ],
+        runs: [
+            {
+                id: 'company-run',
+                workloadId: 'company-workload',
+                workloadTitle: 'Strategy Lead: Company weekly plan',
+                status: 'running',
+                reason: 'heartbeat',
+                scheduledFor: '2026-06-26T16:00:00.000Z',
+            },
+            {
+                id: 'other-run',
+                workloadId: 'other-workload',
+                workloadTitle: 'Unrelated job',
+                status: 'queued',
+                reason: 'manual',
+            },
+        ],
+        selectedRun: null,
+    };
+    dashboard.formatDate = jest.fn((value) => value || '-');
+    dashboard.getRunStatusClass = jest.fn(() => 'healthy');
+
+    return { dom, dashboard };
+}
+
 describe('agent dashboard navigation accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -144,6 +274,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('themeToggle').getAttribute('type')).toBe('button');
     });
 
+    test('exposes the agent company operations console in navigation and markup', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+
+        expect(dom.window.document.querySelector('[data-view="agentCompany"] span').textContent).toBe('Agent Company');
+        expect(dom.window.document.getElementById('agentCompanyView')).not.toBeNull();
+        expect(dom.window.document.getElementById('companyHeartbeatBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('companyDailyAlignmentBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('companyRunDetails')).not.toBeNull();
+    });
+
     test('keeps dashboard focus and reduced-motion affordances in CSS', () => {
         const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
 
@@ -159,6 +300,15 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('.range-input input[type="range"]:focus-visible');
         expect(css).toContain('.prompt-item.active .prompt-item-meta {\n    color: var(--bg-primary);');
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+    });
+
+    test('keeps workload run JSON previews scroll-contained', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toContain('.workload-detail-code--json');
+        expect(css).toContain('max-height: min(42vh, 420px);');
+        expect(css).toContain('overflow: auto;');
+        expect(css).toContain('overscroll-behavior: contain;');
     });
 
     test('keeps global search focus from shifting header controls', () => {
@@ -352,5 +502,45 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dashboard.selectPromptById).toHaveBeenCalledWith('prompt-b');
         expect(dashboard.selectTrace).toHaveBeenCalledWith('trace-b');
         expect(dashboard.selectAdminRun).toHaveBeenCalledWith('run-b');
+    });
+
+    test('renders backend-shaped agent company status, work, and output filters', () => {
+        const { dashboard } = createAgentCompanyHarness();
+
+        dashboard.renderAgentCompanyDashboard();
+
+        expect(document.getElementById('agentCompanyGoalSummary').textContent).toBe('Run a research studio that ships weekly outputs.');
+        expect(document.getElementById('companyHeartbeatStatus').textContent).toBe('scheduled');
+        expect(document.getElementById('companyRunningCount').textContent).toBe('1');
+        expect(document.getElementById('companyQueuedCount').textContent).toBe('1 queued');
+        expect(document.getElementById('agentCompanyBadge').textContent).toBe('1');
+        expect(document.getElementById('companyRoleList').textContent).toContain('Strategy Lead');
+        expect(document.getElementById('companyScheduleList').textContent).toContain('Company weekly plan');
+        expect(document.getElementById('companyWorkloadsTableBody').textContent).toContain('Strategy Lead: Company weekly plan');
+        expect(document.getElementById('companyWorkloadsTableBody').textContent).not.toContain('Unrelated job');
+        expect(document.getElementById('companyRunsTableBody').textContent).toContain('company-run');
+        expect(document.getElementById('companyRunsTableBody').textContent).not.toContain('other-run');
+        expect(document.getElementById('companyAlignmentPanel').textContent).toContain('daily-proof-note');
+    });
+
+    test('renders selected run details into workload and company output panes', () => {
+        const { dashboard } = createAgentCompanyHarness();
+        const run = {
+            id: 'run-json',
+            workloadId: 'company-workload',
+            workloadTitle: 'Strategy Lead: Company weekly plan',
+            status: 'completed',
+            reason: 'heartbeat',
+            metadata: { agentCompany: { enabled: true } },
+            error: null,
+            trace: { steps: Array.from({ length: 20 }, (_, index) => ({ index })) },
+            prompt: 'Long prompt text',
+        };
+
+        dashboard.renderAdminRunDetails(run);
+
+        expect(document.getElementById('adminRunDetails').querySelectorAll('.workload-detail-code--json')).toHaveLength(3);
+        expect(document.getElementById('companyRunDetails').querySelectorAll('.workload-detail-code--json')).toHaveLength(3);
+        expect(document.getElementById('companyRunDetails').textContent).toContain('run-json');
     });
 });

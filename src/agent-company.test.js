@@ -3,7 +3,7 @@
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const { AgentCompanyService, normalizeConfig } = require('./agent-company');
+const { AgentCompanyService, hashGoal, normalizeConfig } = require('./agent-company');
 
 function buildConfig(overrides = {}) {
     return {
@@ -166,7 +166,9 @@ describe('AgentCompanyService', () => {
             statePath,
             now: () => new Date('2026-06-22T12:00:00.000Z'),
             settingsController: {
-                getEffectiveAgentCompanyConfig: () => buildConfig(),
+                getEffectiveAgentCompanyConfig: () => buildConfig({
+                    maxConcurrentWorkloads: 4,
+                }),
             },
             workloadService,
             sessionStore: {
@@ -183,5 +185,118 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].metadata.longAgent.enabled).toBe(true);
         expect(createdWorkloads[0].metadata.requestedModel).toBe('gpt-5.5');
         expect(createdWorkloads[0].metadata.agentCompany.heartbeatManaged).toBe(true);
+    });
+
+    test('expands schedule across configured roles and templates', () => {
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+        });
+        const schedule = service.buildWeeklySchedule(buildConfig({
+            weeklyWorkloadLimit: 6,
+            roles: [
+                { id: 'strategy', name: 'Strategy Lead', mission: 'Plan the company week.' },
+                { id: 'production', name: 'Production Lead', mission: 'Create the core deliverable.' },
+                { id: 'operations', name: 'Operations Lead', mission: 'Verify and update the schedule.' },
+                { id: 'growth', name: 'Growth Lead', mission: 'Find audience growth opportunities.' },
+            ],
+        }));
+
+        expect(schedule).toHaveLength(6);
+        expect(new Set(schedule.map((item) => item.id)).size).toBe(6);
+        expect(schedule.map((item) => item.roleId)).toContain('growth');
+        expect(new Set(schedule.map((item) => item.title)).size).toBeGreaterThan(1);
+    });
+
+    test('respects queued workload capacity before scheduling more work', async () => {
+        const now = new Date('2026-06-22T12:00:00.000Z');
+        const config = buildConfig({
+            maxConcurrentWorkloads: 2,
+        });
+        const goalHash = hashGoal(config.companyGoal);
+        const weekKey = '2026-06-22';
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => now,
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => config,
+            },
+            workloadService: {
+                isAvailable: () => true,
+                listAdminWorkloads: jest.fn(async () => [{
+                    id: 'existing-workload',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            companyGoalHash: goalHash,
+                            weekKey,
+                            planItemId: service.buildWeeklySchedule(config, now, goalHash)[0].id,
+                        },
+                    },
+                    workloadSummary: {
+                        queued: 1,
+                        running: 0,
+                        failed: 0,
+                    },
+                }]),
+                createWorkload: jest.fn(async (payload, ownerId) => ({
+                    id: 'new-workload',
+                    ownerId,
+                    title: payload.title,
+                    trigger: payload.trigger,
+                    metadata: payload.metadata,
+                })),
+            },
+            sessionStore: {
+                getOrCreateOwned: jest.fn(async () => ({ id: 'agent-company' })),
+            },
+        });
+
+        const result = await service.tick({ force: true, reason: 'capacity-test' });
+
+        expect(result.createdWorkloads).toHaveLength(1);
+        expect(result.state.heartbeat.status).toBe('scheduled');
+        expect(result.state.runningWork.queued).toBe(1);
+        expect(service.workloadService.createWorkload).toHaveBeenCalledTimes(1);
+    });
+
+    test('records failed scheduled items and continues with the next open slot', async () => {
+        const createWorkload = jest.fn()
+            .mockRejectedValueOnce(new Error('scheduler rejected invalid trigger'))
+            .mockImplementationOnce(async (payload, ownerId) => ({
+                id: 'workload-after-failure',
+                ownerId,
+                title: payload.title,
+                trigger: payload.trigger,
+                metadata: payload.metadata,
+            }));
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig({
+                    maxConcurrentWorkloads: 2,
+                }),
+            },
+            workloadService: {
+                isAvailable: () => true,
+                listAdminWorkloads: jest.fn(async () => []),
+                createWorkload,
+            },
+            sessionStore: {
+                getOrCreateOwned: jest.fn(async () => ({ id: 'agent-company' })),
+            },
+        });
+
+        const result = await service.tick({ force: true, reason: 'partial-failure-test' });
+
+        expect(createWorkload).toHaveBeenCalledTimes(2);
+        expect(result.createdWorkloads).toHaveLength(1);
+        expect(result.state.heartbeat.status).toBe('scheduled_with_errors');
+        expect(result.state.heartbeat.failedWorkloads).toBe(1);
+        expect(result.state.heartbeat.createFailures).toEqual([expect.objectContaining({
+            message: 'scheduler rejected invalid trigger',
+        })]);
+        expect(JSON.parse(await fs.readFile(statePath, 'utf8')).heartbeat.createFailures).toHaveLength(1);
     });
 });

@@ -22,6 +22,7 @@ class Dashboard {
             workloads: [],
             runs: [],
             selectedRun: null,
+            agentCompanyStatus: null,
             workloadsAvailable: true,
             workloadsSupported: null,
             workloadErrorMessage: '',
@@ -166,6 +167,18 @@ class Dashboard {
         document.getElementById('refreshWorkloadsBtn')?.addEventListener('click', () => {
             this.loadWorkloads();
         });
+        document.getElementById('refreshAgentCompanyBtn')?.addEventListener('click', () => {
+            this.loadAgentCompanyDashboard({ force: true });
+        });
+        document.getElementById('companyHeartbeatBtn')?.addEventListener('click', () => {
+            this.runAgentCompanyHeartbeat({ source: 'company-console' });
+        });
+        document.getElementById('companyDailyAlignmentBtn')?.addEventListener('click', () => {
+            this.runAgentCompanyDailyAlignment();
+        });
+        document.getElementById('companyViewAllWorkloadsBtn')?.addEventListener('click', () => {
+            this.navigateTo('workloads');
+        });
         document.getElementById('refreshSelfReflectionBtn')?.addEventListener('click', () => {
             this.loadSelfReflectionUpdates({ force: true });
         });
@@ -305,7 +318,7 @@ class Dashboard {
             this.saveAgentRuntimeSettings();
         });
         document.getElementById('agentCompanyHeartbeatBtn')?.addEventListener('click', () => {
-            this.runAgentCompanyHeartbeat();
+            this.runAgentCompanyHeartbeat({ source: 'settings' });
         });
         document.getElementById('settingsAgentDirectedRuntime')?.addEventListener('change', (e) => {
             this.setInputValue('orchestrationAgentDirectedRuntime', String(e.target.checked));
@@ -643,6 +656,7 @@ class Dashboard {
             tokens: 'Token Analyzer',
             logs: 'Logs',
             workloads: 'Workloads',
+            agentCompany: 'Agent Company',
             skills: 'Tools',
             traces: 'Traces',
             lillyWiki: 'Lilly Wiki',
@@ -715,6 +729,9 @@ class Dashboard {
                 break;
             case 'workloads':
                 await this.loadWorkloads();
+                break;
+            case 'agentCompany':
+                await this.loadAgentCompanyDashboard();
                 break;
             case 'traces':
                 await this.loadTraces();
@@ -1310,6 +1327,7 @@ class Dashboard {
             this.renderAdminWorkloads(workloads);
             this.renderAdminRuns(runs);
             this.renderAdminRunDetails(this.state.selectedRun);
+            this.renderAgentCompanyDashboard();
             this.updateWorkloadControls();
         } catch (error) {
             const unavailable = this.isPersistenceUnavailableError(error);
@@ -1331,6 +1349,7 @@ class Dashboard {
             this.renderAdminWorkloads([], this.state.workloadErrorMessage);
             this.renderAdminRuns([], this.state.workloadErrorMessage);
             this.renderAdminRunDetails(null, error, this.state.workloadErrorMessage);
+            this.renderAgentCompanyDashboard();
             this.updateWorkloadControls();
         }
     }
@@ -1371,6 +1390,7 @@ class Dashboard {
         this.renderAdminWorkloads([], message);
         this.renderAdminRuns([], message);
         this.renderAdminRunDetails(null, null, message);
+        this.renderAgentCompanyDashboard();
         this.updateWorkloadControls();
     }
 
@@ -2567,16 +2587,24 @@ class Dashboard {
     }
 
     renderAdminRunDetails(run = null, error = null, emptyMessage = 'Select a run to inspect lifecycle details.') {
-        const container = document.getElementById('adminRunDetails');
-        if (!container) return;
+        const containers = ['adminRunDetails', 'companyRunDetails']
+            .map((id) => document.getElementById(id))
+            .filter(Boolean);
+        if (!containers.length) return;
+
+        const setContainers = (html) => {
+            containers.forEach((container) => {
+                container.innerHTML = html;
+            });
+        };
 
         if (error) {
-            container.innerHTML = `<p class="empty-state">Failed to load run details: ${this.escapeHtml(error.message || 'unknown error')}</p>`;
+            setContainers(`<p class="empty-state">Failed to load run details: ${this.escapeHtml(error.message || 'unknown error')}</p>`);
             return;
         }
 
         if (!run) {
-            container.innerHTML = `<p class="empty-state">${this.escapeHtml(emptyMessage)}</p>`;
+            setContainers(`<p class="empty-state">${this.escapeHtml(emptyMessage)}</p>`);
             return;
         }
 
@@ -2584,7 +2612,7 @@ class Dashboard {
         const errorPayload = this.stringifyAdminPayload(run.error);
         const tracePayload = this.stringifyAdminPayload(run.trace);
 
-        container.innerHTML = `
+        setContainers(`
             <div>
                 <div class="workload-detail-title">${this.escapeHtml(run.workloadTitle || run.workloadId)}</div>
                 <div class="workload-detail-subtitle">${this.escapeHtml(run.id)} | ${this.escapeHtml(run.reason || 'manual')} | ${this.escapeHtml(this.formatRunStageLabel(run.stageIndex))}</div>
@@ -2617,15 +2645,15 @@ class Dashboard {
             </div>
             <div class="workload-detail-block">
                 <h4>Prompt</h4>
-                <div class="workload-detail-code">${this.escapeHtml(run.prompt || '')}</div>
+                <div class="workload-detail-code workload-detail-code--prompt">${this.escapeHtml(run.prompt || '')}</div>
             </div>
             <div class="workload-detail-block">
                 <h4>Metadata</h4>
-                <div class="workload-detail-code">${this.escapeHtml(metadata)}</div>
+                <div class="workload-detail-code workload-detail-code--json">${this.escapeHtml(metadata)}</div>
             </div>
             <div class="workload-detail-block">
                 <h4>Error</h4>
-                <div class="workload-detail-code">${this.escapeHtml(errorPayload)}</div>
+                <div class="workload-detail-code workload-detail-code--json">${this.escapeHtml(errorPayload)}</div>
             </div>
             <div class="workload-detail-block">
                 <div class="workload-detail-block__header">
@@ -2638,8 +2666,256 @@ class Dashboard {
                         Download trace JSON
                     </button>
                 </div>
-                <div class="workload-detail-code">${this.escapeHtml(tracePayload)}</div>
+                <div class="workload-detail-code workload-detail-code--json">${this.escapeHtml(tracePayload)}</div>
             </div>
+        `);
+    }
+
+    renderAgentCompanyDashboard() {
+        const status = this.state.agentCompanyStatus || null;
+        const state = status?.state || {};
+        const config = status?.config || this.state.settings?.agentCompany || {};
+        const heartbeat = state.heartbeat || {};
+        const runningWork = state.runningWork || {};
+        const dailyAlignment = state.dailyAlignment || {};
+        const companyWorkloads = this.getAgentCompanyWorkloads(this.state.workloads, status);
+        const companyRuns = this.getAgentCompanyRuns(this.state.runs, companyWorkloads, status);
+
+        this.setTextContent('agentCompanyGoalSummary', config.companyGoal || state.companyGoal || 'No company goal configured yet.');
+        this.setTextContent('companyHeartbeatStatus', heartbeat.status || (status?.available ? 'ready' : 'standby'));
+        this.setTextContent('companyNextHeartbeat', heartbeat.nextAt ? `next ${this.formatDate(heartbeat.nextAt)}` : 'not scheduled');
+        this.setTextContent('companyRunningCount', Number(runningWork.running ?? this.countRunsByStatus(companyRuns, 'running')));
+        this.setTextContent('companyQueuedCount', `${Number(runningWork.queued ?? this.countRunsByStatus(companyRuns, 'queued'))} queued`);
+        this.setTextContent('companyWorkloadCount', Number(runningWork.companyWorkloads ?? companyWorkloads.length));
+        this.setTextContent('companyWeeklyLimit', `${Number(config.weeklyWorkloadLimit || 0)} weekly slots`);
+        this.setTextContent('companyFailedCount', Number(heartbeat.failedWorkloads ?? this.countRunsByStatus(companyRuns, 'failed')));
+        this.setTextContent('companyAlignmentStatus', `alignment ${dailyAlignment.status || 'idle'}`);
+        this.setTextContent('agentCompanyBadge', companyRuns.filter((run) => ['queued', 'running'].includes(run.status)).length);
+        this.setTextContent('companyScheduleStatus', `${(state.shortTermSchedule || []).length} planned`);
+        this.setTextContent('companyRunStatus', `${companyRuns.length} run${companyRuns.length === 1 ? '' : 's'}`);
+        this.setTextContent('companyAlignmentNext', dailyAlignment.nextAt ? `next ${this.formatDate(dailyAlignment.nextAt)}` : 'not scheduled');
+
+        const modelPolicy = [config.primaryModel || state.modelPolicy?.primaryModel || 'default model']
+            .concat(config.escalationModels || state.modelPolicy?.escalationModels || [])
+            .filter(Boolean)
+            .join(' -> ');
+        this.setTextContent('companyModelPolicy', modelPolicy || 'Default model');
+
+        this.renderCompanyRoles(state.roles || config.roles || []);
+        this.renderCompanySchedule(state.shortTermSchedule || []);
+        this.renderCompanyWorkloads(companyWorkloads);
+        this.renderCompanyRuns(companyRuns);
+        this.renderCompanyAlignment(dailyAlignment);
+
+        if (this.state.selectedRun?.id && !companyRuns.some((run) => run.id === this.state.selectedRun.id)) {
+            this.renderAdminRunDetails(null, null, 'Select a company run to inspect its output.');
+        }
+    }
+
+    setTextContent(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = String(value ?? '');
+        }
+    }
+
+    countRunsByStatus(runs = [], status = '') {
+        return runs.filter((run) => run.status === status).length;
+    }
+
+    getAgentCompanyMetadata(entry = {}) {
+        return entry?.metadata?.agentCompany
+            || entry?.workload?.metadata?.agentCompany
+            || {};
+    }
+
+    isAgentCompanyEntry(entry = {}, status = this.state.agentCompanyStatus) {
+        const metadata = this.getAgentCompanyMetadata(entry);
+        const companyHash = status?.state?.companyGoalHash || status?.config?.companyGoalHash || '';
+        return metadata.enabled === true
+            || metadata.heartbeatManaged === true
+            || Boolean(metadata.planItemId)
+            || (companyHash && metadata.companyGoalHash === companyHash)
+            || entry.sessionId === (status?.config?.sessionId || 'agent-company');
+    }
+
+    getAgentCompanyWorkloads(workloads = [], status = this.state.agentCompanyStatus) {
+        return (Array.isArray(workloads) ? workloads : [])
+            .filter((workload) => this.isAgentCompanyEntry(workload, status));
+    }
+
+    getAgentCompanyRuns(runs = [], workloads = this.getAgentCompanyWorkloads(), status = this.state.agentCompanyStatus) {
+        const workloadIds = new Set((workloads || []).map((workload) => workload.id).filter(Boolean));
+        return (Array.isArray(runs) ? runs : [])
+            .filter((run) => workloadIds.has(run.workloadId) || this.isAgentCompanyEntry(run, status));
+    }
+
+    renderCompanyRoles(roles = []) {
+        const container = document.getElementById('companyRoleList');
+        if (!container) return;
+
+        if (!roles.length) {
+            container.innerHTML = '<p class="empty-state">No company roles loaded yet.</p>';
+            return;
+        }
+
+        container.innerHTML = roles.map((role) => `
+            <div class="company-role-item">
+                <div>
+                    <strong>${this.escapeHtml(role.name || role.id || 'Company Agent')}</strong>
+                    <span>${this.escapeHtml(role.mission || 'No mission recorded.')}</span>
+                </div>
+                <span class="company-role-id">${this.escapeHtml(role.id || 'agent')}</span>
+            </div>
+        `).join('');
+    }
+
+    renderCompanySchedule(schedule = []) {
+        const container = document.getElementById('companyScheduleList');
+        if (!container) return;
+
+        if (!schedule.length) {
+            container.innerHTML = '<p class="empty-state">No scheduled company work loaded yet.</p>';
+            return;
+        }
+
+        container.innerHTML = schedule.map((item) => `
+            <div class="company-schedule-item">
+                <div>
+                    <strong>${this.escapeHtml(item.title || 'Company work')}</strong>
+                    <span>${this.escapeHtml(item.objective || '')}</span>
+                </div>
+                <div class="company-schedule-meta">
+                    <span>${this.escapeHtml(item.roleName || item.roleId || 'agent')}</span>
+                    <span>${this.escapeHtml(this.formatDate(item.plannedFor))}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderCompanyWorkloads(workloads = []) {
+        const tbody = document.getElementById('companyWorkloadsTableBody');
+        if (!tbody) return;
+
+        if (!workloads.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-state">No company-managed workloads are persisted yet.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = workloads.map((workload) => {
+            const metadata = this.getAgentCompanyMetadata(workload);
+            return `
+                <tr>
+                    <td>
+                        <div>${this.escapeHtml(workload.title || 'Company workload')}</div>
+                        <div class="workload-trigger">${this.escapeHtml(this.truncate(workload.prompt || '', 72))}</div>
+                    </td>
+                    <td>${this.escapeHtml(metadata.roleName || metadata.roleId || '-')}</td>
+                    <td><span class="workload-trigger">${this.escapeHtml(this.describeAdminTrigger(workload.trigger))}</span></td>
+                    <td><span class="status-badge ${workload.enabled ? 'healthy' : 'warning'}">${workload.enabled ? 'active' : 'paused'}</span></td>
+                    <td class="col-tokens">${Number(workload.workloadSummary?.queued || 0)}</td>
+                    <td class="col-tokens">${Number(workload.workloadSummary?.running || 0)}</td>
+                    <td>
+                        <div class="workload-row-actions">
+                            ${workload.enabled
+                                ? `<button class="btn btn-sm btn-secondary" onclick="dashboard.pauseAdminWorkload(event, '${workload.id}')">Pause</button>`
+                                : `<button class="btn btn-sm btn-ghost" onclick="dashboard.resumeAdminWorkload(event, '${workload.id}')">Resume</button>`}
+                            <button class="btn btn-sm btn-secondary" onclick="dashboard.openAdminWorkloadModal(event, '${workload.id}')">Direct</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    renderCompanyRuns(runs = []) {
+        const tbody = document.getElementById('companyRunsTableBody');
+        if (!tbody) return;
+
+        if (!runs.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-state">No company runs have been recorded yet.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = runs.map((run) => `
+            <tr class="workload-run-row ${this.state.selectedRun?.id === run.id ? 'selected' : ''}"
+                data-id="${this.escapeHtml(run.id)}"
+                data-dashboard-list-action="admin-run"
+                role="button"
+                tabindex="0"
+                aria-selected="${this.state.selectedRun?.id === run.id ? 'true' : 'false'}"
+                onclick="dashboard.selectAdminRun(this.dataset.id)"
+                onkeydown="dashboard.handleListItemKeydown(event)">
+                <td>${this.escapeHtml(run.id)}</td>
+                <td>${this.escapeHtml(run.workloadTitle || run.workloadId)}</td>
+                <td><span class="status-badge ${this.getRunStatusClass(run.status)}">${this.escapeHtml(run.status)}</span></td>
+                <td>${this.escapeHtml(run.reason || 'manual')}</td>
+                <td>${this.escapeHtml(this.formatDate(run.scheduledFor))}</td>
+                <td>${this.escapeHtml(this.formatDate(run.finishedAt))}</td>
+                <td class="workload-run-export-cell">
+                    <button
+                        class="btn btn-secondary btn-sm"
+                        onclick="dashboard.downloadAdminRunTraceJson(event, '${run.id}')"
+                        title="Download this run trace as JSON"
+                    >
+                        JSON
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    renderCompanyAlignment(alignment = {}) {
+        const container = document.getElementById('companyAlignmentPanel');
+        if (!container) return;
+
+        if (!alignment || !Object.keys(alignment).length || alignment.status === 'idle') {
+            container.innerHTML = '<p class="empty-state">No daily alignment state has been recorded yet.</p>';
+            return;
+        }
+
+        const evidence = alignment.evidence || {};
+        const suggestions = evidence.suggestions || {};
+        const logs = evidence.logs || {};
+        const applied = Array.isArray(alignment.applied) ? alignment.applied : [];
+        const rejected = Array.isArray(alignment.rejected) ? alignment.rejected : [];
+
+        container.innerHTML = `
+            <div class="company-alignment-grid">
+                <div>
+                    <span class="workload-detail-label">Status</span>
+                    <strong>${this.escapeHtml(alignment.status || 'steady')}</strong>
+                </div>
+                <div>
+                    <span class="workload-detail-label">Log Evidence</span>
+                    <strong>${Number(logs.count || 0).toLocaleString()} events</strong>
+                </div>
+                <div>
+                    <span class="workload-detail-label">Suggestions</span>
+                    <strong>${Number(suggestions.count || 0).toLocaleString()} found</strong>
+                </div>
+                <div>
+                    <span class="workload-detail-label">Safe Candidates</span>
+                    <strong>${Number(suggestions.safeCandidates || 0).toLocaleString()}</strong>
+                </div>
+            </div>
+            <div class="company-alignment-list">
+                ${applied.length ? applied.map((item) => `
+                    <span class="status-badge healthy">${this.escapeHtml(item.id || 'applied')}</span>
+                `).join('') : '<span class="text-muted">No updates applied in the last alignment.</span>'}
+                ${rejected.length ? rejected.map((item) => `
+                    <span class="status-badge warning">${this.escapeHtml(item.id || 'rejected')}</span>
+                `).join('') : ''}
+            </div>
+            ${evidence.collectionError ? `<p class="workload-edit-error">${this.escapeHtml(evidence.collectionError)}</p>` : ''}
         `;
     }
     
@@ -3566,12 +3842,27 @@ class Dashboard {
         }
     }
 
+    async loadAgentCompanyDashboard({ force = false } = {}) {
+        await Promise.all([
+            this.loadAgentCompanyStatus(),
+            this.loadWorkloads(),
+        ]);
+
+        if (force) {
+            this.showToast('Agent company console refreshed', 'success');
+        }
+    }
+
     async loadAgentCompanyStatus() {
         try {
             const response = await apiClient.get('/api/admin/agent-company');
-            this.renderAgentCompanyStatus(this.unwrapApiPayload(response, null));
+            const status = this.unwrapApiPayload(response, null);
+            this.state.agentCompanyStatus = status;
+            this.renderAgentCompanyStatus(status);
+            this.renderAgentCompanyDashboard();
+            return status;
         } catch (error) {
-            this.renderAgentCompanyStatus({
+            const fallback = {
                 available: false,
                 state: {
                     heartbeat: {
@@ -3579,22 +3870,47 @@ class Dashboard {
                         reason: error.message || 'status_failed',
                     },
                 },
-            });
+            };
+            this.state.agentCompanyStatus = fallback;
+            this.renderAgentCompanyStatus(fallback);
+            this.renderAgentCompanyDashboard();
+            return fallback;
         }
     }
 
-    async runAgentCompanyHeartbeat() {
+    async runAgentCompanyHeartbeat({ source = 'admin' } = {}) {
         try {
             const response = await apiClient.post('/api/admin/agent-company/heartbeat', {
-                reason: 'admin',
+                reason: source,
             });
             const status = this.unwrapApiPayload(response, null);
+            this.state.agentCompanyStatus = status;
             this.renderAgentCompanyStatus(status);
+            this.renderAgentCompanyDashboard();
             const created = status?.createdWorkloads?.length || status?.state?.heartbeat?.createdWorkloads || 0;
             this.showToast(created > 0 ? `Heartbeat scheduled ${created} workload${created === 1 ? '' : 's'}` : 'Heartbeat checked current work', 'success');
+            await this.loadWorkloads();
         } catch (error) {
             console.error('Error running agent company heartbeat:', error);
             this.showToast('Failed to run company heartbeat', 'error');
+        }
+    }
+
+    async runAgentCompanyDailyAlignment() {
+        try {
+            const response = await apiClient.post('/api/admin/agent-company/daily-alignment', {
+                reason: 'company-console-alignment',
+            });
+            const payload = this.unwrapApiPayload(response, {});
+            const status = payload.status || payload;
+            this.state.agentCompanyStatus = status;
+            this.renderAgentCompanyStatus(status);
+            this.renderAgentCompanyDashboard();
+            const alignment = payload.dailyAlignment || status?.state?.dailyAlignment || {};
+            this.showToast(`Daily alignment ${alignment.status || 'checked'}`, 'success');
+        } catch (error) {
+            console.error('Error running agent company alignment:', error);
+            this.showToast(error.userMessage || error.message || 'Failed to run company alignment', 'error');
         }
     }
     
@@ -6546,10 +6862,10 @@ class Dashboard {
     }
 
     renderAgentCompanyStatus(status = null) {
+        this.state.agentCompanyStatus = status;
         const label = document.getElementById('settingsAgentCompanyStatus');
-        if (!label) {
-            return;
-        }
+        this.renderAgentCompanyDashboard();
+        if (!label) return;
 
         const heartbeat = status?.state?.heartbeat || {};
         const running = status?.state?.runningWork || {};
@@ -6557,9 +6873,12 @@ class Dashboard {
         const statusText = heartbeat.status || (available ? 'ready' : 'standby');
         const nextAt = heartbeat.nextAt ? this.formatDate(heartbeat.nextAt) : 'not scheduled';
         const workText = `${Number(running.running || 0)} running, ${Number(running.queued || 0)} queued`;
+        const failedText = Number(heartbeat.failedWorkloads || 0) > 0
+            ? `; ${Number(heartbeat.failedWorkloads || 0)} failed`
+            : '';
         const reason = heartbeat.reason ? `; ${heartbeat.reason}` : '';
 
-        label.textContent = `Heartbeat ${statusText}; next ${nextAt}; ${workText}${reason}.`;
+        label.textContent = `Heartbeat ${statusText}; next ${nextAt}; ${workText}${failedText}${reason}.`;
     }
 
     applySettings(settings = {}, { preserveDirty = false } = {}) {

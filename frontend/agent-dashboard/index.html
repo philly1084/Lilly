@@ -94,6 +94,19 @@
                             <span>Workloads</span>
                             <span class="badge" id="workloadsBadge">0</span>
                         </li>
+                        <li class="nav-item" data-view="agentCompany">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 21h18"/>
+                                <path d="M5 21V7l7-4 7 4v14"/>
+                                <path d="M9 21v-6h6v6"/>
+                                <path d="M9 9h.01"/>
+                                <path d="M15 9h.01"/>
+                                <path d="M9 12h.01"/>
+                                <path d="M15 12h.01"/>
+                            </svg>
+                            <span>Agent Company</span>
+                            <span class="badge" id="agentCompanyBadge">0</span>
+                        </li>
                     </ul>
                 </div>
                 
@@ -1035,6 +1048,206 @@
                                         <!-- Populated by JS -->
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Agent Company View -->
+                <section class="view" id="agentCompanyView">
+                    <div class="page-header">
+                        <div>
+                            <h2 class="section-title">Agent Business Console</h2>
+                            <p class="section-subtitle" id="agentCompanyGoalSummary">Loading company operating goal...</p>
+                        </div>
+                        <div class="page-actions">
+                            <button class="btn btn-secondary" id="companyDailyAlignmentBtn" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 20v-6"/>
+                                    <path d="M6 20V10"/>
+                                    <path d="M18 20V4"/>
+                                </svg>
+                                Run Alignment
+                            </button>
+                            <button class="btn btn-secondary" id="refreshAgentCompanyBtn" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M23 4v6h-6"/>
+                                    <path d="M1 20v-6h6"/>
+                                    <path d="M3.51 9a9 9 0 0114.13-3.36L23 10"/>
+                                    <path d="M20.49 15a9 9 0 01-14.13 3.36L1 14"/>
+                                </svg>
+                                Refresh
+                            </button>
+                            <button class="btn btn-primary" id="companyHeartbeatBtn" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 12h-4l-3 8L9 4l-3 8H2"/>
+                                </svg>
+                                Heartbeat Now
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid company-summary-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon primary">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 12h-4l-3 8L9 4l-3 8H2"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-value" id="companyHeartbeatStatus">Idle</span>
+                                <span class="stat-label">Heartbeat</span>
+                                <span class="stat-change neutral" id="companyNextHeartbeat">not scheduled</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon info">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 2v4"/>
+                                    <path d="M12 18v4"/>
+                                    <path d="M4.93 4.93l2.83 2.83"/>
+                                    <path d="M16.24 16.24l2.83 2.83"/>
+                                    <path d="M2 12h4"/>
+                                    <path d="M18 12h4"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-value" id="companyRunningCount">0</span>
+                                <span class="stat-label">Running</span>
+                                <span class="stat-change neutral" id="companyQueuedCount">0 queued</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon success">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                    <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-value" id="companyWorkloadCount">0</span>
+                                <span class="stat-label">Company Workloads</span>
+                                <span class="stat-change neutral" id="companyWeeklyLimit">0 weekly slots</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon warning">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 9v4"/>
+                                    <path d="M12 17h.01"/>
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                                </svg>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-value" id="companyFailedCount">0</span>
+                                <span class="stat-label">Failed</span>
+                                <span class="stat-change neutral" id="companyAlignmentStatus">alignment idle</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid company-dashboard-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Operating Roles</h3>
+                                <span class="status-badge neutral" id="companyModelPolicy">Default model</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="company-role-list" id="companyRoleList">
+                                    <p class="empty-state">No company roles loaded yet.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Weekly Schedule</h3>
+                                <span class="status-badge neutral" id="companyScheduleStatus">0 planned</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="company-schedule-list" id="companyScheduleList">
+                                    <p class="empty-state">No scheduled company work loaded yet.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid company-dashboard-grid mt-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Company Workloads</h3>
+                                <button class="btn btn-sm btn-ghost" id="companyViewAllWorkloadsBtn" type="button">View All</button>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-wrapper">
+                                    <table class="logs-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Agent Work</th>
+                                                <th>Role</th>
+                                                <th>Trigger</th>
+                                                <th>Status</th>
+                                                <th>Queued</th>
+                                                <th>Running</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="companyWorkloadsTableBody">
+                                            <!-- Populated by JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Selected Output</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="workload-run-detail" id="companyRunDetails">
+                                    <p class="empty-state">Select a company run to inspect its output.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h3>Recent Company Runs</h3>
+                            <span class="status-badge neutral" id="companyRunStatus">0 runs</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-wrapper">
+                                <table class="logs-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Run</th>
+                                            <th>Agent Work</th>
+                                            <th>Status</th>
+                                            <th>Reason</th>
+                                            <th>Scheduled</th>
+                                            <th>Finished</th>
+                                            <th>Export</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="companyRunsTableBody">
+                                        <!-- Populated by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h3>Alignment Notes</h3>
+                            <span class="status-badge neutral" id="companyAlignmentNext">not scheduled</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="company-alignment-panel" id="companyAlignmentPanel">
+                                <p class="empty-state">No daily alignment state has been recorded yet.</p>
                             </div>
                         </div>
                     </div>

@@ -2538,6 +2538,95 @@ select.form-control,
     grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
 }
 
+.company-summary-grid .stat-card {
+    min-width: 0;
+}
+
+.company-dashboard-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+}
+
+.company-role-list,
+.company-schedule-list,
+.company-alignment-panel {
+    display: grid;
+    gap: var(--space-sm);
+}
+
+.company-role-item,
+.company-schedule-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-md);
+    align-items: start;
+    padding: var(--space-md);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-tertiary);
+}
+
+.company-role-item strong,
+.company-schedule-item strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    margin-bottom: var(--space-xs);
+}
+
+.company-role-item span,
+.company-schedule-item span {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+.company-role-id,
+.company-schedule-meta {
+    justify-self: end;
+    text-align: right;
+}
+
+.company-role-id {
+    padding: 2px var(--space-sm);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-primary);
+    color: var(--accent-secondary) !important;
+    font-family: var(--font-mono);
+}
+
+.company-schedule-meta {
+    display: grid;
+    gap: var(--space-xs);
+    min-width: 120px;
+}
+
+.company-alignment-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-md);
+}
+
+.company-alignment-grid > div {
+    padding: var(--space-md);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-tertiary);
+}
+
+.company-alignment-grid strong {
+    display: block;
+    margin-top: var(--space-xs);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+}
+
+.company-alignment-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
 .workload-run-row {
     cursor: pointer;
 }
@@ -2688,6 +2777,21 @@ select.form-control,
     color: var(--text-secondary);
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.workload-detail-code--prompt,
+.workload-detail-code--json {
+    max-height: min(42vh, 420px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-sm);
+    border-radius: var(--radius-sm);
+    background-color: rgba(13, 17, 23, 0.32);
+}
+
+.workload-detail-code--json {
+    white-space: pre;
+    word-break: normal;
 }
 
 .workload-run-export-cell {

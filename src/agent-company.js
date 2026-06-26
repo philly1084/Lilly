@@ -19,6 +19,10 @@ function sanitizeText(value = '') {
     return String(value || '').trim();
 }
 
+function sanitizeErrorMessage(error) {
+    return sanitizeText(error?.message || error || 'Unknown error').slice(0, 240);
+}
+
 function clampInteger(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) {
@@ -120,7 +124,9 @@ function defaultState() {
             nextAt: null,
             reason: 'not_started',
             createdWorkloads: 0,
+            failedWorkloads: 0,
             skipped: 0,
+            createFailures: [],
         },
         modelPolicy: {
             primaryModel: '',
@@ -328,7 +334,12 @@ class AgentCompanyService {
             return { available: false, config, state: saved };
         }
 
-        if (!this.workloadService?.isAvailable?.() || !this.sessionStore?.getOrCreateOwned) {
+        if (
+            !this.workloadService?.isAvailable?.()
+            || !this.workloadService?.listAdminWorkloads
+            || !this.workloadService?.createWorkload
+            || !this.sessionStore?.getOrCreateOwned
+        ) {
             const heartbeat = {
                 status: 'standby',
                 lastAt: now.toISOString(),
@@ -364,38 +375,110 @@ class AgentCompanyService {
 
         const weekKey = getWeekKey(now);
         const schedule = this.buildWeeklySchedule(config, now, goalHash);
-        const companyWorkloads = await this.listCompanyWorkloads(goalHash, weekKey);
+        let companyWorkloads = [];
+        try {
+            companyWorkloads = await this.listCompanyWorkloads(goalHash, weekKey);
+        } catch (error) {
+            const heartbeat = {
+                status: 'workload_list_failed',
+                lastAt: now.toISOString(),
+                nextAt,
+                reason: 'workload_list_failed',
+                createdWorkloads: 0,
+                failedWorkloads: 1,
+                skipped: schedule.length,
+                createFailures: [{
+                    stage: 'list',
+                    message: sanitizeErrorMessage(error),
+                }],
+            };
+            const dailyAlignment = await this.buildDailyAlignmentState(config, currentState, heartbeat, { force, reason });
+            const saved = await this.writeState({
+                ...currentState,
+                enabled: true,
+                companyGoal: config.companyGoal,
+                companyGoalHash: goalHash,
+                roles: config.roles,
+                shortTermSchedule: schedule,
+                longTermGoals: this.buildLongTermGoals(config, goalHash),
+                modelPolicy: {
+                    primaryModel: config.primaryModel,
+                    escalationModels: config.escalationModels,
+                },
+                runningWork: {
+                    running: 0,
+                    queued: 0,
+                    companyWorkloads: 0,
+                },
+                heartbeat,
+                dailyAlignment,
+            });
+            return { available: false, config, state: saved };
+        }
         const existingPlanIds = new Set(companyWorkloads
             .map((workload) => sanitizeText(workload?.metadata?.agentCompany?.planItemId))
             .filter(Boolean));
         const runningWork = this.summarizeRunningWork(companyWorkloads);
         const created = [];
-        const canCreateWork = runningWork.running < config.maxConcurrentWorkloads;
+        const createFailures = [];
+        const activeWorkCount = runningWork.running + runningWork.queued;
+        const availableSlots = Math.max(0, config.maxConcurrentWorkloads - activeWorkCount);
 
-        if (canCreateWork) {
-            for (const item of schedule.slice(0, config.weeklyWorkloadLimit)) {
-                if (existingPlanIds.has(item.id)) {
-                    continue;
+        if (availableSlots > 0) {
+            const pendingItems = schedule
+                .slice(0, config.weeklyWorkloadLimit)
+                .filter((item) => !existingPlanIds.has(item.id))
+                .slice(0, availableSlots);
+            for (const item of pendingItems) {
+                try {
+                    const workload = await this.createScheduledWorkload(config, item, weekKey, goalHash);
+                    if (!workload?.id) {
+                        throw new Error('Workload service returned no workload id.');
+                    }
+                    created.push({
+                        id: workload.id,
+                        title: workload.title,
+                        planItemId: item.id,
+                        scheduledFor: item.plannedFor,
+                    });
+                    existingPlanIds.add(item.id);
+                } catch (error) {
+                    createFailures.push({
+                        planItemId: item.id,
+                        title: item.title,
+                        roleId: item.roleId,
+                        roleName: item.roleName,
+                        message: sanitizeErrorMessage(error),
+                    });
                 }
-                const workload = await this.createScheduledWorkload(config, item, weekKey, goalHash);
-                created.push({
-                    id: workload.id,
-                    title: workload.title,
-                    planItemId: item.id,
-                    scheduledFor: item.plannedFor,
-                });
-                existingPlanIds.add(item.id);
             }
         }
         const createdIds = new Set(created.map((entry) => entry.id));
+        const heartbeatStatus = (() => {
+            if (availableSlots <= 0) {
+                return 'active_limit';
+            }
+            if (created.length > 0 && createFailures.length > 0) {
+                return 'scheduled_with_errors';
+            }
+            if (created.length > 0) {
+                return 'scheduled';
+            }
+            if (createFailures.length > 0) {
+                return 'creation_failed';
+            }
+            return 'steady';
+        })();
 
         const heartbeat = {
-            status: !canCreateWork ? 'active_limit' : (created.length > 0 ? 'scheduled' : 'steady'),
+            status: heartbeatStatus,
             lastAt: now.toISOString(),
             nextAt,
             reason,
             createdWorkloads: created.length,
+            failedWorkloads: createFailures.length,
             skipped: schedule.length - created.length,
+            createFailures,
         };
         const dailyAlignment = await this.buildDailyAlignmentState(config, currentState, heartbeat, { force, reason });
 
@@ -459,27 +542,36 @@ class AgentCompanyService {
                 hour: 10,
             },
         ];
-        const limit = Math.min(config.weeklyWorkloadLimit, roles.length, templates.length);
+        const limit = Math.min(config.weeklyWorkloadLimit, roles.length * templates.length);
+        const schedule = [];
 
-        return templates.slice(0, limit).map((template, index) => {
-            const role = roles[index] || roles[roles.length - 1] || normalizeRole({ name: 'Company Agent' });
-            const plannedFor = addDays(start, template.dayOffset);
-            plannedFor.setUTCHours(template.hour, 0, 0, 0);
-            if (plannedFor.getTime() < now.getTime()) {
-                plannedFor.setTime(now.getTime() + (index + 1) * 2 * 60 * 1000);
+        for (let round = 0; schedule.length < limit && round < templates.length; round += 1) {
+            for (let roleIndex = 0; roleIndex < roles.length && schedule.length < limit; roleIndex += 1) {
+                const role = roles[roleIndex] || normalizeRole({ name: 'Company Agent' });
+                const template = templates[(roleIndex + round) % templates.length];
+                const plannedFor = addDays(start, Math.min(
+                    template.dayOffset + round,
+                    config.scheduleHorizonDays - 1,
+                ));
+                plannedFor.setUTCHours(template.hour, roleIndex * 5, 0, 0);
+                if (plannedFor.getTime() < now.getTime()) {
+                    plannedFor.setTime(now.getTime() + (schedule.length + 1) * 2 * 60 * 1000);
+                }
+
+                schedule.push({
+                    id: `${weekKey}-${goalHash}-${role.id}-${template.suffix}`,
+                    weekKey,
+                    roleId: role.id,
+                    roleName: role.name,
+                    title: template.title,
+                    objective: template.objective,
+                    plannedFor: plannedFor.toISOString(),
+                    status: 'planned',
+                });
             }
+        }
 
-            return {
-                id: `${weekKey}-${goalHash}-${role.id}-${template.suffix}`,
-                weekKey,
-                roleId: role.id,
-                roleName: role.name,
-                title: template.title,
-                objective: template.objective,
-                plannedFor: plannedFor.toISOString(),
-                status: 'planned',
-            };
-        });
+        return schedule;
     }
 
     buildLongTermGoals(config = {}, goalHash = hashGoal(config.companyGoal)) {
