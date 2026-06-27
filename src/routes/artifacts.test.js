@@ -66,7 +66,7 @@ describe('/api/artifacts route', () => {
         };
         app.locals.asyncLabService = options.asyncLabService || null;
         app.use((req, _res, next) => {
-            req.user = { username: 'phill' };
+            req.user = options.user || { username: 'phill' };
             next();
         });
         if (options.frameOptions) {
@@ -115,6 +115,28 @@ describe('/api/artifacts route', () => {
 
         expect(response.status).toBe(200);
         expect(response.text).toBe('hello');
+    });
+
+    test('allows open-mode artifact downloads without anonymous owner scoping', async () => {
+        artifactService.getArtifact.mockResolvedValue({
+            id: 'artifact-company-1',
+            sessionId: 'agent-company',
+            filename: 'company.md',
+            mimeType: 'text/markdown',
+            contentBuffer: Buffer.from('company artifact'),
+        });
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'agent-company',
+            metadata: { ownerId: 'system' },
+        });
+
+        const response = await request(buildApp({
+            user: { username: 'anonymous', role: 'open' },
+        })).get('/api/artifacts/artifact-company-1/download');
+
+        expect(response.status).toBe(200);
+        expect(response.text).toBe('company artifact');
+        expect(sessionStore.getOwned).toHaveBeenCalledWith('agent-company', null);
     });
 
     test('serves local generated audio fallback downloads without Postgres artifacts', async () => {

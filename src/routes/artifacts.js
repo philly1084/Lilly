@@ -268,6 +268,9 @@ function appendAccessTokenToInternalArtifactUrls(content = '', previewAccessToke
 }
 
 function getRequestOwnerId(req) {
+    if (String(req.user?.role || '').trim().toLowerCase() === 'open') {
+        return null;
+    }
     return String(req.user?.username || '').trim() || null;
 }
 

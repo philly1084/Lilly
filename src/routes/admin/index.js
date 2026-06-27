@@ -37,6 +37,13 @@ const getDashboardController = (req) => {
 const callController = (controller, method) => (req, res, next) =>
   controller[method](req, res, next);
 
+function getRequestOwnerId(req) {
+  if (String(req.user?.role || '').trim().toLowerCase() === 'open') {
+    return null;
+  }
+  return String(req.user?.username || req.user?.id || '').trim() || null;
+}
+
 function getAgentCompanyMetadata(entry = {}) {
   return entry?.metadata?.agentCompany
     || entry?.workload?.metadata?.agentCompany
@@ -493,7 +500,7 @@ router.get('/agent-company/files', async (req, res, next) => {
       limit,
     }, {
       sessionId,
-      ownerId: String(req.user?.username || req.user?.id || '').trim() || null,
+      ownerId: getRequestOwnerId(req),
       sessionIsolation: false,
     });
     const sourceCounts = results.results.reduce((counts, item) => {

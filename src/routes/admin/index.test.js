@@ -33,11 +33,17 @@ const { memoryService } = require('../../memory/memory-service');
 const adminRouter = require('./index');
 
 describe('/api/admin workload routes', () => {
-    function buildApp(service, opencodeService = null) {
+    function buildApp(service, opencodeService = null, options = {}) {
         const app = express();
         app.use(express.json());
         app.locals.agentWorkloadService = service;
         app.locals.opencodeService = opencodeService;
+        if (options.user) {
+            app.use((req, _res, next) => {
+                req.user = options.user;
+                next();
+            });
+        }
         app.use('/api/admin', adminRouter);
         app.use((err, _req, res, _next) => {
             res.status(err.statusCode || 500).json({
@@ -375,6 +381,60 @@ describe('/api/admin workload routes', () => {
             expect(response.body.data.results[0]).toEqual(expect.objectContaining({
                 filename: 'weekly-plan.pdf',
                 contentPreview: 'Operating plan text',
+            }));
+        } finally {
+            searchSpy.mockRestore();
+        }
+    });
+
+    test('does not owner-filter company artifacts for open-mode admin file search', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+        };
+        const searchSpy = jest.spyOn(assetManager, 'searchAssets').mockResolvedValue({
+            query: '',
+            kind: 'document',
+            sourceType: 'artifact',
+            sessionId: 'agent-company',
+            count: 1,
+            refreshed: { workspace: false, artifacts: true },
+            results: [
+                {
+                    id: 'artifact:company-plan',
+                    sourceType: 'artifact',
+                    kind: 'document',
+                    title: 'Company Plan',
+                    filename: 'company-plan.md',
+                    artifactId: 'company-plan',
+                    sessionId: 'agent-company',
+                    downloadUrl: '/api/artifacts/company-plan/download',
+                },
+            ],
+        });
+        const app = buildApp(service, null, {
+            user: { username: 'anonymous', role: 'open' },
+        });
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                config: { sessionId: 'agent-company' },
+                state: {},
+            })),
+        };
+
+        try {
+            const response = await request(app)
+                .get('/api/admin/agent-company/files?sourceType=artifact&refresh=true');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.sourceCounts).toEqual({ artifact: 1 });
+            expect(searchSpy).toHaveBeenCalledWith(expect.objectContaining({
+                sourceType: 'artifact',
+                sessionId: 'agent-company',
+                refresh: true,
+            }), expect.objectContaining({
+                sessionId: 'agent-company',
+                ownerId: null,
+                sessionIsolation: false,
             }));
         } finally {
             searchSpy.mockRestore();
