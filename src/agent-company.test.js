@@ -183,11 +183,34 @@ describe('AgentCompanyService', () => {
         expect(second.createdWorkloads).toHaveLength(0);
         expect(workloadService.createWorkload).toHaveBeenCalledTimes(3);
         expect(createdWorkloads[0].metadata.longAgent.enabled).toBe(true);
+        expect(createdWorkloads[0].metadata.longAgent.sharedWhiteboardFile).toBe('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
         expect(createdWorkloads[0].metadata.requestedModel).toBe('gpt-5.5');
         expect(createdWorkloads[0].metadata.agentCompany.heartbeatManaged).toBe(true);
+        expect(createdWorkloads[0].metadata.agentCompany.sharedWhiteboard).toEqual(expect.objectContaining({
+            path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+            purpose: 'agent-to-agent weekly coordination',
+            sections: expect.arrayContaining([
+                'Claims checked',
+                'Files/artifacts changed',
+                'Deployment/DNS state',
+                'Next agent task',
+            ]),
+        }));
+        expect(createdWorkloads[0].metadata.agentCompany.outputContract).toEqual(expect.objectContaining({
+            communication: 'scratch-markdown',
+            rejectPlanningOnlyHtml: true,
+            productionWebHostRoot: 'demoserver2.buzz',
+        }));
         expect(createdWorkloads.map((workload) => workload.title)).toContain('Operations Lead: Recursive improvement review');
         expect(createdWorkloads.find((workload) => workload.title.includes('Recursive improvement review')).prompt)
             .toContain('sense, plan, act, verify, learn');
+        expect(createdWorkloads[0].prompt).toContain('Separate communication from deliverables');
+        expect(createdWorkloads[0].prompt).toContain('Do not count an HTML file as a deliverable if it is only a plan');
+        expect(createdWorkloads[0].prompt).toContain('Use managed-app create/iterate/reconcile/doctor');
+        expect(createdWorkloads[0].prompt).toContain('Use a stable concrete hostname under demoserver2.buzz');
+        expect(createdWorkloads[0].prompt).toContain('Shared whiteboard:');
+        expect(createdWorkloads[0].prompt).toContain('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
+        expect(createdWorkloads[0].prompt).toContain('Claims checked, Decisions made, Files/artifacts changed, Deployment/DNS state, Blockers, Next agent task');
     });
 
     test('expands schedule across configured roles and templates', () => {

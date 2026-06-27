@@ -219,6 +219,7 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
     const previewRun = completedRunsWithoutDeliverables[0];
     actions.push({
       id: 'review-completed-output',
+      actionKey: `review-completed-output:${previewRun.id || 'latest'}`,
       label: 'Review completed work',
       detail: `${completedRunsWithoutDeliverables.length} completed run${completedRunsWithoutDeliverables.length === 1 ? '' : 's'} produced text output but no packaged file yet.`,
       target: 'runs',

@@ -679,6 +679,7 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.renderCompanyActionQueue([
             {
                 id: 'review-completed-output',
+                actionKey: 'review-completed-output:company-run',
                 label: 'Review completed work',
                 detail: '1 completed run produced text output but no packaged file yet.',
                 target: 'runs',
@@ -692,10 +693,14 @@ describe('agent dashboard navigation accessibility', () => {
         expect(queue.textContent).toContain('Verified cycle <script>alert("x")</script> and found the next packaging step.');
         expect(queue.querySelector('script')).toBeNull();
         expect(queue.querySelector('.company-action-preview')).not.toBeNull();
-        expect(queue.querySelector('button').getAttribute('onclick')).toBe("dashboard.handleCompanyAction('runs', 'company-run')");
+        expect(queue.querySelector('button').getAttribute('onclick')).toBe("dashboard.handleCompanyAction('runs', 'company-run', 'review-completed-output:company-run')");
         expect(dashboard.state.companyActionContexts['company-run']).toEqual(expect.objectContaining({
             label: 'Review completed work',
             detail: '1 completed run produced text output but no packaged file yet.',
+            outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
+        }));
+        expect(dashboard.state.companyActionContextsById['review-completed-output:company-run']).toEqual(expect.objectContaining({
+            label: 'Review completed work',
             outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
         }));
     });
@@ -762,6 +767,7 @@ describe('agent dashboard navigation accessibility', () => {
         const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
         const actionContext = {
             id: 'review-completed-output',
+            actionKey: 'review-completed-output:company-run',
             label: 'Review completed work',
             detail: 'Inspect the completed text-only output.',
             outputPreview: 'Found a weekly planning brief.',
@@ -776,12 +782,14 @@ describe('agent dashboard navigation accessibility', () => {
             expect(dom.window.location.search).toContain('view=agentCompany');
             expect(dom.window.location.search).toContain('companyAction=1');
             expect(dom.window.location.search).toContain('companyRun=company-run');
+            expect(dom.window.location.search).toContain('companyActionId=review-completed-output%3Acompany-run');
             expect(JSON.parse(dom.window.sessionStorage.getItem('kb.companyActionContext.company-run'))).toEqual(actionContext);
 
             await dashboard.selectAdminRun('other-run', { source: 'table' });
 
             expect(dom.window.location.search).not.toContain('companyAction=1');
             expect(dom.window.location.search).not.toContain('companyRun=');
+            expect(dom.window.location.search).not.toContain('companyActionId=');
             expect(dashboard.state.companyActionRunId).toBeNull();
             expect(dashboard.state.companyActionContext).toBeNull();
         } finally {
@@ -795,6 +803,7 @@ describe('agent dashboard navigation accessibility', () => {
         });
         const persistedContext = {
             id: 'review-completed-output',
+            actionKey: 'review-completed-output:company-run',
             label: 'Review completed work',
             detail: 'Inspect the completed text-only output.',
             outputPreview: 'Found a weekly planning brief.',
@@ -807,6 +816,31 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run', {
             source: 'company-action',
             actionContext: persistedContext,
+            persistSelection: false,
+        });
+    });
+
+    test('restores shared CEO action context from workspace action id', async () => {
+        const { dashboard } = createAgentCompanyHarness({
+            url: 'http://localhost:3000/admin/?view=agentCompany&companyAction=1&companyRun=company-run&companyActionId=review-completed-output%3Acompany-run',
+        });
+        const actionContext = {
+            id: 'review-completed-output',
+            actionKey: 'review-completed-output:company-run',
+            label: 'Review completed work',
+            detail: 'Inspect the completed text-only output.',
+            outputPreview: 'Found a weekly planning brief.',
+        };
+        dashboard.state.companyActionContextsById = {
+            'review-completed-output:company-run': actionContext,
+        };
+        dashboard.selectAdminRun = jest.fn().mockResolvedValue(undefined);
+
+        await dashboard.restoreCompanyActionSelectionFromUrl();
+
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run', {
+            source: 'company-action',
+            actionContext,
             persistSelection: false,
         });
     });

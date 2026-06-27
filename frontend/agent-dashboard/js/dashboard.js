@@ -28,6 +28,7 @@ class Dashboard {
             companyActionRunId: null,
             companyActionContext: null,
             companyActionContexts: {},
+            companyActionContextsById: {},
             companyFileSearch: '',
             companyFileSourceFilter: 'any',
             companyWorkSearch: '',
@@ -132,13 +133,14 @@ class Dashboard {
             }
 
             const runId = String(params.get('companyRun') || '').trim();
-            return runId ? { runId } : null;
+            const actionId = String(params.get('companyActionId') || '').trim();
+            return runId ? { runId, actionId } : null;
         } catch (error) {
             return null;
         }
     }
 
-    updateCompanyActionSelectionUrl(runId = '') {
+    updateCompanyActionSelectionUrl(runId = '', actionId = '') {
         if (!window.history?.replaceState) return;
 
         try {
@@ -147,9 +149,15 @@ class Dashboard {
                 url.searchParams.set('view', 'agentCompany');
                 url.searchParams.set('companyAction', '1');
                 url.searchParams.set('companyRun', runId);
+                if (actionId) {
+                    url.searchParams.set('companyActionId', actionId);
+                } else {
+                    url.searchParams.delete('companyActionId');
+                }
             } else {
                 url.searchParams.delete('companyAction');
                 url.searchParams.delete('companyRun');
+                url.searchParams.delete('companyActionId');
             }
             window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
         } catch (error) {
@@ -167,6 +175,7 @@ class Dashboard {
             if (!parsed || typeof parsed !== 'object') return null;
             return {
                 id: parsed.id || '',
+                actionKey: parsed.actionKey || parsed.id || '',
                 label: parsed.label || 'Opened from CEO action queue',
                 detail: parsed.detail || '',
                 outputPreview: parsed.outputPreview || '',
@@ -182,6 +191,7 @@ class Dashboard {
         try {
             window.sessionStorage.setItem(`kb.companyActionContext.${runId}`, JSON.stringify({
                 id: context.id || '',
+                actionKey: context.actionKey || context.id || '',
                 label: context.label || 'Opened from CEO action queue',
                 detail: context.detail || '',
                 outputPreview: context.outputPreview || '',
@@ -197,7 +207,8 @@ class Dashboard {
 
         await this.selectAdminRun(selection.runId, {
             source: 'company-action',
-            actionContext: this.state.companyActionContexts?.[selection.runId]
+            actionContext: this.state.companyActionContextsById?.[selection.actionId]
+                || this.state.companyActionContexts?.[selection.runId]
                 || this.getPersistedCompanyActionContext(selection.runId),
             persistSelection: false,
         });
@@ -3147,6 +3158,7 @@ class Dashboard {
         if (!container) return;
 
         this.state.companyActionContexts = {};
+        this.state.companyActionContextsById = {};
 
         if (!actions.length) {
             container.innerHTML = '<p class="empty-state">No CEO actions are waiting right now.</p>';
@@ -3155,17 +3167,21 @@ class Dashboard {
 
         container.innerHTML = actions.map((action, index) => {
             const actionId = String(action.id || `company-action-${index}`);
+            const actionKey = String(action.actionKey || actionId);
             if (action.runId) {
-                this.state.companyActionContexts[action.runId] = {
+                const actionContext = {
                     id: actionId,
+                    actionKey,
                     label: action.label || 'Opened from CEO action queue',
                     detail: action.detail || '',
                     outputPreview: action.outputPreview || '',
                 };
+                this.state.companyActionContexts[action.runId] = actionContext;
+                this.state.companyActionContextsById[actionKey] = actionContext;
             }
 
             return `
-            <div class="company-action-item company-action-item--${this.escapeHtml(action.priority || 'low')}" data-action-id="${this.escapeHtml(actionId)}">
+            <div class="company-action-item company-action-item--${this.escapeHtml(action.priority || 'low')}" data-action-id="${this.escapeHtml(actionKey)}">
                 <div>
                     <strong>${this.escapeHtml(action.label || 'Company action')}</strong>
                     <span>${this.escapeHtml(action.detail || '')}</span>
@@ -3174,7 +3190,7 @@ class Dashboard {
                 <button
                     class="btn btn-sm btn-secondary"
                     type="button"
-                    onclick="dashboard.handleCompanyAction('${this.escapeHtml(action.target || '')}', '${this.escapeHtml(action.runId || '')}')"
+                    onclick="dashboard.handleCompanyAction('${this.escapeHtml(action.target || '')}', '${this.escapeHtml(action.runId || '')}', '${this.escapeHtml(actionKey)}')"
                 >
                     Open
                 </button>
@@ -3916,7 +3932,7 @@ class Dashboard {
             this.state.companyActionContext = actionContext;
             this.persistCompanyActionContext(id, actionContext);
             if (options.persistSelection !== false) {
-                this.updateCompanyActionSelectionUrl(id);
+                this.updateCompanyActionSelectionUrl(id, actionContext.actionKey || actionContext.id || '');
             }
         } else if (this.state.companyActionRunId) {
             this.state.companyActionRunId = null;
@@ -4613,7 +4629,7 @@ class Dashboard {
         }
     }
 
-    handleCompanyAction(target = '', runId = '') {
+    handleCompanyAction(target = '', runId = '', actionId = '') {
         switch (target) {
             case 'settings':
                 this.configureAgentCompany();
@@ -4625,7 +4641,9 @@ class Dashboard {
                 if (runId) {
                     this.selectAdminRun(runId, {
                         source: 'company-action',
-                        actionContext: this.state.companyActionContexts?.[runId] || null,
+                        actionContext: this.state.companyActionContextsById?.[actionId]
+                            || this.state.companyActionContexts?.[runId]
+                            || null,
                     });
                 }
                 document.getElementById('companyRunsTableBody')?.scrollIntoView({ block: 'center', behavior: 'smooth' });

@@ -499,6 +499,7 @@ describe('/api/admin workload routes', () => {
             expect(response.body.data.actionQueue).toEqual(expect.arrayContaining([
                 expect.objectContaining({
                     id: 'review-completed-output',
+                    actionKey: 'review-completed-output:company-run',
                     target: 'runs',
                     priority: 'medium',
                     runId: 'company-run',

@@ -23,6 +23,25 @@ function sanitizeErrorMessage(error) {
     return sanitizeText(error?.message || error || 'Unknown error').slice(0, 240);
 }
 
+function buildOutputQualityContract() {
+    return [
+        'Output quality contract:',
+        '- Separate communication from deliverables: use the long-agent scratch Markdown only for status, reasoning summaries, blockers, and handoff notes.',
+        '- Final work must be a real deliverable in the right file family: Markdown for briefs/runbooks, PDF/PPTX/XLSX through the document/export path, source files for code, and index.html plus CSS/JS/assets for web previews.',
+        '- Do not count an HTML file as a deliverable if it is only a plan, outline, placeholder page, TODO list, or prose about what should be built. HTML deliverables must render the requested finished content or usable interface.',
+        '- For design or site work, include concrete visual structure, subject-specific copy, relevant assets or asset slots, responsive styling, and browser/UI verification evidence.',
+        '- For production website/app/dashboard work, inventory existing managed apps, GitLab projects, k3s namespaces/services/ingresses, and candidate hostnames before creating anything new.',
+        '- Use managed-app create/iterate/reconcile/doctor for explicit managed-app control-plane work; when deeper build/deploy work is needed, run it with executor:"remote-cli-agent" inside that evidence loop.',
+        '- Use a stable concrete hostname under demoserver2.buzz for production web work unless a different domain is explicitly required; avoid wildcard ingress and verify DNS/TLS/public URL after deploy.',
+        '- If the needed tool, export path, or deployment lane is unavailable, do not fake the final artifact. Return a blocker plus the exact next command/tool needed.',
+    ].join('\n');
+}
+
+function getCompanyWhiteboardPath(weekKey = '') {
+    const safeWeek = sanitizeText(weekKey).replace(/[^0-9-]/g, '') || 'current';
+    return `.kimibuilt/agent-company/${safeWeek}-whiteboard.md`;
+}
+
 function clampInteger(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) {
@@ -630,6 +649,7 @@ class AgentCompanyService {
         const escalation = config.escalationModels.length > 0
             ? config.escalationModels.join(', ')
             : 'no configured escalation models';
+        const whiteboardFile = getCompanyWhiteboardPath(weekKey);
 
         return [
             '[Agent company work item]',
@@ -646,12 +666,20 @@ class AgentCompanyService {
             '- If the selected model cannot complete the task because of context length, tool capability, or provider failure, record the smallest model-switch recommendation using the configured escalation models.',
             `- Escalation models: ${escalation}.`,
             '- Do not create duplicate recurring jobs; inspect current work first and update the schedule or scratch summary instead.',
+            buildOutputQualityContract(),
+            '',
+            'Shared whiteboard:',
+            `- Use ${whiteboardFile} as the agent-to-agent whiteboard for this company week.`,
+            '- Read it before acting if file tools are available; update it after acting so the next agent can continue without re-discovering the same facts.',
+            '- Keep whiteboard entries structured as: Claims checked, Decisions made, Files/artifacts changed, Deployment/DNS state, Blockers, Next agent task.',
+            '- Keep plans in the whiteboard short and actionable; do not use it as the final deliverable or as a replacement for real files/artifacts.',
             '- End with "Stage scratch summary" containing done, verification, blockers, next step, and schedule impact.',
         ].filter(Boolean).join('\n');
     }
 
     async createScheduledWorkload(config = {}, item = {}, weekKey = '', goalHash = '') {
         const requestedModel = this.selectModelForItem(config, item);
+        const whiteboardFile = getCompanyWhiteboardPath(weekKey);
         return this.workloadService.createWorkload({
             sessionId: config.sessionId,
             title: `${item.roleName}: ${item.title}`,
@@ -676,6 +704,7 @@ class AgentCompanyService {
                     enabled: true,
                     goal: config.companyGoal,
                     scratchFile: `.kimibuilt/agent-company/${weekKey}-${item.roleId}.md`,
+                    sharedWhiteboardFile: whiteboardFile,
                     maxAutoSteps: 6,
                     reviewPolicy: 'auto',
                     compaction: {
@@ -693,6 +722,25 @@ class AgentCompanyService {
                     roleName: item.roleName,
                     plannedFor: item.plannedFor,
                     heartbeatManaged: true,
+                    sharedWhiteboard: {
+                        path: whiteboardFile,
+                        purpose: 'agent-to-agent weekly coordination',
+                        sections: [
+                            'Claims checked',
+                            'Decisions made',
+                            'Files/artifacts changed',
+                            'Deployment/DNS state',
+                            'Blockers',
+                            'Next agent task',
+                        ],
+                    },
+                    outputContract: {
+                        communication: 'scratch-markdown',
+                        deliverables: ['md', 'html-css-js-assets', 'pdf', 'pptx', 'xlsx', 'source'],
+                        rejectPlanningOnlyHtml: true,
+                        productionWebHostRoot: 'demoserver2.buzz',
+                        productionWebRequires: ['managed-app-inventory', 'stable-hostname', 'dns-tls-public-proof'],
+                    },
                     modelPolicy: {
                         primaryModel: config.primaryModel || null,
                         escalationModels: config.escalationModels,
