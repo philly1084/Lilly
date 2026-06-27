@@ -433,6 +433,8 @@ describe('web-cli command drawer keyboard navigation', () => {
             <div id="commandDrawer">
                 <button type="button" id="sessions">Sessions</button>
                 <button type="button" id="clear">Clear</button>
+                <button type="button" id="voice" disabled>Voice</button>
+                <button type="button" id="agent" style="display: none;">Agent</button>
                 <a id="home" href="/">Home</a>
             </div>
         `);
@@ -454,6 +456,8 @@ describe('web-cli command drawer keyboard navigation', () => {
         const sessions = document.getElementById('sessions');
         const clear = document.getElementById('clear');
         const home = document.getElementById('home');
+
+        expect(app.getCommandDrawerItems()).toEqual([sessions, clear, home]);
 
         sessions.focus();
         app.handleCommandDrawerKeydown({

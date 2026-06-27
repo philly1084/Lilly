@@ -3294,7 +3294,33 @@ class CodeCLIApp {
 
     getCommandDrawerItems() {
         if (!this.commandDrawer) return [];
-        return Array.from(this.commandDrawer.querySelectorAll('button:not(:disabled), a[href]'));
+        return Array.from(this.commandDrawer.querySelectorAll('button:not(:disabled), a[href]'))
+            .filter((item) => this.isCommandDrawerItemVisible(item));
+    }
+
+    isCommandDrawerItemVisible(item) {
+        if (!item || item.hidden || item.getAttribute('aria-hidden') === 'true') {
+            return false;
+        }
+
+        if (item.style?.display === 'none' || item.style?.visibility === 'hidden') {
+            return false;
+        }
+
+        if (typeof item.getClientRects === 'function' && item.getClientRects().length > 0) {
+            return true;
+        }
+
+        if ('offsetParent' in item && item.offsetParent !== null) {
+            return true;
+        }
+
+        if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+            return true;
+        }
+
+        const styles = window.getComputedStyle(item);
+        return styles.display !== 'none' && styles.visibility !== 'hidden';
     }
 
     focusCommandDrawerItem(currentItem, direction) {
@@ -3350,7 +3376,7 @@ class CodeCLIApp {
         this.commandDrawerToggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
 
         if (shouldOpen) {
-            this.commandDrawer.querySelector('button, a')?.focus({ preventScroll: true });
+            this.getCommandDrawerItems()[0]?.focus({ preventScroll: true });
         }
     }
 
