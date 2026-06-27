@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent SDK Admin Dashboard</title>
-    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/dashboard.css?v=agent-company-recursive-loop">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
 </head>
 <body data-ui-surface="admin">
@@ -1061,6 +1061,13 @@
                             <p class="section-subtitle" id="agentCompanyGoalSummary">Loading company operating goal...</p>
                         </div>
                         <div class="page-actions">
+                            <button class="btn btn-secondary" id="configureAgentCompanyBtn" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="3"/>
+                                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1 .6l-.09.09a2 2 0 01-3.82 0L10 20a1.65 1.65 0 00-1-.6 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-.6-1l-.09-.09a2 2 0 010-3.82L4 10a1.65 1.65 0 00.6-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-.6l.09-.09a2 2 0 013.82 0L14 4a1.65 1.65 0 001 .6 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.14.34.34.65.6 1l.09.09a2 2 0 010 3.82L20 14a1.65 1.65 0 00-.6 1z"/>
+                                </svg>
+                                Configure
+                            </button>
                             <button class="btn btn-secondary" id="companyDailyAlignmentBtn" type="button">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M12 20v-6"/>
@@ -1147,6 +1154,78 @@
                         </div>
                     </div>
 
+                    <div class="dashboard-grid company-dashboard-grid mt-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>CEO Direction</h3>
+                                <span class="status-badge neutral" id="companyWorkspaceStatus">workspace loading</span>
+                            </div>
+                            <div class="card-body">
+                                <textarea class="company-ceo-direction" id="companyCeoDirection" rows="5" placeholder="Tell the business what to build, research, maintain, or improve next."></textarea>
+                                <div class="company-ceo-actions">
+                                    <button class="btn btn-primary" id="saveCompanyDirectionBtn" type="button">Save Direction</button>
+                                    <button class="btn btn-secondary" id="companyStartCycleBtn" type="button">Start Work Cycle</button>
+                                </div>
+                                <div class="company-action-list" id="companyActionQueue">
+                                    <p class="empty-state">No CEO actions loaded yet.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Business Deliverables</h3>
+                                <span class="status-badge neutral" id="companyDeliverableStatus">0 files</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="company-deliverable-list" id="companyDeliverableList">
+                                    <p class="empty-state">No company files or documents have been produced yet.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h3>Company File Room</h3>
+                            <span class="status-badge neutral" id="companyFileManagerStatus">index loading</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="company-file-toolbar" aria-label="Company file search">
+                                <label class="company-filter-field" for="companyFileSearch">
+                                    <span>Find documents</span>
+                                    <input id="companyFileSearch" type="search" placeholder="Search files, artifacts, notes, or document text">
+                                </label>
+                                <label class="company-filter-field" for="companyFileSourceFilter">
+                                    <span>Source</span>
+                                    <select id="companyFileSourceFilter">
+                                        <option value="any">All sources</option>
+                                        <option value="artifact">Artifacts</option>
+                                        <option value="workspace">Workspace</option>
+                                        <option value="research-bucket">Research bucket</option>
+                                    </select>
+                                </label>
+                                <button class="btn btn-secondary" id="refreshCompanyFilesBtn" type="button">Refresh Index</button>
+                            </div>
+                            <div class="company-file-list" id="companyFileList">
+                                <p class="empty-state">Search or refresh the file index to find company documents.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h3>Recursive Improvement Loop</h3>
+                            <span class="status-badge neutral" id="companyImprovementLoopStatus">loop loading</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="company-loop-summary" id="companyImprovementLoopSummary">Waiting for company workspace state.</div>
+                            <div class="company-loop-phases" id="companyImprovementLoopPhases">
+                                <p class="empty-state">No improvement loop state loaded yet.</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="dashboard-grid company-dashboard-grid">
                         <div class="card">
                             <div class="card-header">
@@ -1180,6 +1259,30 @@
                                 <button class="btn btn-sm btn-ghost" id="companyViewAllWorkloadsBtn" type="button">View All</button>
                             </div>
                             <div class="card-body">
+                                <div class="company-work-toolbar" aria-label="Company work filters">
+                                    <label class="company-filter-field" for="companyWorkSearch">
+                                        <span>Search</span>
+                                        <input id="companyWorkSearch" type="search" placeholder="Work, prompt, run, or role">
+                                    </label>
+                                    <label class="company-filter-field" for="companyWorkStatusFilter">
+                                        <span>State</span>
+                                        <select id="companyWorkStatusFilter">
+                                            <option value="all">All states</option>
+                                            <option value="active">Active work</option>
+                                            <option value="paused">Paused work</option>
+                                            <option value="queued">Queued runs</option>
+                                            <option value="running">Running runs</option>
+                                            <option value="failed">Failed runs</option>
+                                            <option value="completed">Completed runs</option>
+                                        </select>
+                                    </label>
+                                    <label class="company-filter-field" for="companyRoleFilter">
+                                        <span>Role</span>
+                                        <select id="companyRoleFilter">
+                                            <option value="all">All roles</option>
+                                        </select>
+                                    </label>
+                                </div>
                                 <div class="table-wrapper">
                                     <table class="logs-table">
                                         <thead>

@@ -143,6 +143,29 @@ function createAgentCompanyHarness() {
         <span id="companyRunStatus"></span>
         <span id="companyAlignmentNext"></span>
         <span id="companyModelPolicy"></span>
+        <span id="companyWorkspaceStatus"></span>
+        <span id="companyDeliverableStatus"></span>
+        <span id="companyFileManagerStatus"></span>
+        <span id="companyImprovementLoopStatus"></span>
+        <textarea id="companyCeoDirection"></textarea>
+        <input id="companyWorkSearch" type="search">
+        <select id="companyWorkStatusFilter">
+            <option value="all">All states</option>
+            <option value="active">Active work</option>
+            <option value="paused">Paused work</option>
+            <option value="queued">Queued runs</option>
+            <option value="running">Running runs</option>
+            <option value="failed">Failed runs</option>
+            <option value="completed">Completed runs</option>
+        </select>
+        <select id="companyRoleFilter">
+            <option value="all">All roles</option>
+        </select>
+        <div id="companyActionQueue"></div>
+        <div id="companyDeliverableList"></div>
+        <div id="companyFileList"></div>
+        <div id="companyImprovementLoopSummary"></div>
+        <div id="companyImprovementLoopPhases"></div>
         <div id="companyRoleList"></div>
         <div id="companyScheduleList"></div>
         <table><tbody id="companyWorkloadsTableBody"></tbody></table>
@@ -250,6 +273,63 @@ function createAgentCompanyHarness() {
             },
         ],
         selectedRun: null,
+        agentCompanyWorkspace: {
+            workspace: {
+                workloadAvailable: true,
+                workloadCount: 1,
+            },
+            deliverables: [
+                {
+                    id: 'artifact-plan',
+                    title: 'Weekly Plan',
+                    filename: 'weekly-plan.pdf',
+                    roleName: 'Strategy Lead',
+                    workloadTitle: 'Strategy Lead: Company weekly plan',
+                    updatedAt: '2026-06-26T18:00:00.000Z',
+                    sizeBytes: 2048,
+                    downloadUrl: '/api/artifacts/artifact-plan/download',
+                    previewUrl: '/api/artifacts/artifact-plan/preview',
+                },
+            ],
+            actionQueue: [
+                {
+                    id: 'review-deliverables',
+                    label: 'Review business outputs',
+                    detail: '1 deliverable ready for preview or download.',
+                    target: 'deliverables',
+                    priority: 'medium',
+                },
+            ],
+            improvementLoop: {
+                health: 'looping',
+                cadence: {
+                    nextHeartbeat: '2026-06-26T15:00:00.000Z',
+                    dailyAlignment: '2026-06-27T15:00:00.000Z',
+                },
+                metrics: {
+                    workloads: 1,
+                    runs: 1,
+                    running: 1,
+                    queued: 1,
+                    failed: 0,
+                    deliverables: 1,
+                    appliedLearning: 1,
+                },
+                phases: [
+                    { id: 'sense', label: 'Sense', status: 'ready', detail: '1 company file available for review.' },
+                    { id: 'plan', label: 'Plan', status: 'ready', detail: '1 planned work item in the current horizon.' },
+                    { id: 'act', label: 'Act', status: 'ready', detail: '1 running and 1 queued company runs.' },
+                    { id: 'verify', label: 'Verify', status: 'ready', detail: '1 deliverable ready for review.' },
+                    { id: 'learn', label: 'Learn', status: 'ready', detail: '1 alignment update applied from recent evidence.' },
+                ],
+            },
+        },
+        agentCompanyFiles: null,
+        companyWorkSearch: '',
+        companyWorkStatusFilter: 'all',
+        companyRoleFilter: 'all',
+        companyFileSearch: '',
+        companyFileSourceFilter: 'any',
     };
     dashboard.formatDate = jest.fn((value) => value || '-');
     dashboard.getRunStatusClass = jest.fn(() => 'healthy');
@@ -282,6 +362,13 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('agentCompanyView')).not.toBeNull();
         expect(dom.window.document.getElementById('companyHeartbeatBtn').getAttribute('type')).toBe('button');
         expect(dom.window.document.getElementById('companyDailyAlignmentBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('configureAgentCompanyBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('companyWorkSearch').getAttribute('type')).toBe('search');
+        expect(dom.window.document.getElementById('companyWorkStatusFilter')).not.toBeNull();
+        expect(dom.window.document.getElementById('companyRoleFilter')).not.toBeNull();
+        expect(dom.window.document.getElementById('companyCeoDirection')).not.toBeNull();
+        expect(dom.window.document.getElementById('companyFileSearch').getAttribute('type')).toBe('search');
+        expect(dom.window.document.getElementById('companyFileSourceFilter')).not.toBeNull();
         expect(dom.window.document.getElementById('companyRunDetails')).not.toBeNull();
     });
 
@@ -515,12 +602,122 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companyQueuedCount').textContent).toBe('1 queued');
         expect(document.getElementById('agentCompanyBadge').textContent).toBe('1');
         expect(document.getElementById('companyRoleList').textContent).toContain('Strategy Lead');
+        expect(document.getElementById('companyRoleList').textContent).toContain('1 work');
+        expect(document.getElementById('companyRoleList').textContent).toContain('1 running');
         expect(document.getElementById('companyScheduleList').textContent).toContain('Company weekly plan');
         expect(document.getElementById('companyWorkloadsTableBody').textContent).toContain('Strategy Lead: Company weekly plan');
         expect(document.getElementById('companyWorkloadsTableBody').textContent).not.toContain('Unrelated job');
         expect(document.getElementById('companyRunsTableBody').textContent).toContain('company-run');
         expect(document.getElementById('companyRunsTableBody').textContent).not.toContain('other-run');
         expect(document.getElementById('companyAlignmentPanel').textContent).toContain('daily-proof-note');
+        expect(document.getElementById('companyCeoDirection').value).toBe('Run a research studio that ships weekly outputs.');
+        expect(document.getElementById('companyDeliverableStatus').textContent).toBe('1 file');
+        expect(document.getElementById('companyDeliverableList').textContent).toContain('Weekly Plan');
+        expect(document.getElementById('companyActionQueue').textContent).toContain('Review business outputs');
+        expect(document.getElementById('companyWorkspaceStatus').textContent).toBe('1 workstream');
+        expect(document.getElementById('companyImprovementLoopStatus').textContent).toBe('looping');
+        expect(document.getElementById('companyImprovementLoopSummary').textContent).toContain('1 workstreams');
+        expect(document.getElementById('companyImprovementLoopPhases').textContent).toContain('Sense');
+        expect(document.getElementById('companyImprovementLoopPhases').textContent).toContain('Learn');
+    });
+
+    test('renders shared company file manager search results', () => {
+        const { dashboard } = createAgentCompanyHarness();
+
+        dashboard.renderCompanyFileManager({
+            count: 2,
+            refreshed: { workspace: true, artifacts: false },
+            results: [
+                {
+                    id: 'artifact:weekly-plan',
+                    sourceType: 'artifact',
+                    title: 'Weekly Plan',
+                    filename: 'weekly-plan.pdf',
+                    artifactId: 'weekly-plan',
+                    downloadUrl: '/api/artifacts/weekly-plan/download',
+                    inlineUrl: '/api/artifacts/weekly-plan/download?inline=1',
+                    contentPreview: 'Operating priorities and next steps.',
+                },
+                {
+                    id: 'workspace:docs/plan.md',
+                    sourceType: 'workspace',
+                    title: 'Plan Notes',
+                    filename: 'plan.md',
+                    relativePath: 'docs/plan.md',
+                    contentPreview: 'Workspace planning notes.',
+                },
+            ],
+        });
+
+        expect(document.getElementById('companyFileManagerStatus').textContent).toBe('2 documents refreshed');
+        expect(document.getElementById('companyFileList').textContent).toContain('Weekly Plan');
+        expect(document.getElementById('companyFileList').textContent).toContain('Artifact');
+        expect(document.getElementById('companyFileList').textContent).toContain('docs/plan.md');
+        expect(document.getElementById('companyFileList').textContent).toContain('Workspace planning notes.');
+        expect(document.getElementById('companyFileList').querySelector('a[href="/api/artifacts/weekly-plan/download"]')).not.toBeNull();
+    });
+
+    test('filters agent company work and runs by search, state, and role', () => {
+        const { dashboard } = createAgentCompanyHarness();
+
+        dashboard.state.workloads.push({
+            id: 'company-paused-workload',
+            title: 'Editorial Lead: Draft site update',
+            sessionId: 'agent-company',
+            prompt: 'Write the public update.',
+            enabled: false,
+            trigger: { type: 'manual' },
+            metadata: {
+                agentCompany: {
+                    enabled: true,
+                    roleName: 'Editorial Lead',
+                    roleId: 'editorial',
+                    planItemId: 'plan-2',
+                },
+            },
+            workloadSummary: { queued: 0, running: 0, failed: 0 },
+        });
+        dashboard.state.runs.push({
+            id: 'editorial-run',
+            workloadId: 'company-paused-workload',
+            workloadTitle: 'Editorial Lead: Draft site update',
+            status: 'failed',
+            reason: 'heartbeat',
+        });
+
+        dashboard.renderAgentCompanyDashboard();
+        expect(document.getElementById('companyRoleFilter').textContent).toContain('Editorial Lead');
+
+        dashboard.state.companyWorkSearch = 'editorial';
+        dashboard.state.companyWorkStatusFilter = 'failed';
+        dashboard.state.companyRoleFilter = 'editorial';
+        dashboard.renderAgentCompanyDashboard();
+
+        expect(document.getElementById('companyWorkloadsTableBody').textContent).toContain('Editorial Lead: Draft site update');
+        expect(document.getElementById('companyWorkloadsTableBody').textContent).not.toContain('Strategy Lead: Company weekly plan');
+        expect(document.getElementById('companyRunsTableBody').textContent).toContain('editorial-run');
+        expect(document.getElementById('companyRunsTableBody').textContent).not.toContain('company-run');
+        expect(document.getElementById('companyRunStatus').textContent).toBe('1 of 2 runs');
+    });
+
+    test('jumps from agent company console to orchestration settings', () => {
+        const dom = new JSDOM(`
+            <textarea id="settingsAgentCompanyGoal"></textarea>
+        `, { url: 'http://localhost:3000/admin/?view=agentCompany' });
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.navigateTo = jest.fn();
+        dashboard.switchSettingsSection = jest.fn();
+        document.getElementById('settingsAgentCompanyGoal').scrollIntoView = jest.fn();
+
+        dashboard.configureAgentCompany();
+
+        expect(dashboard.navigateTo).toHaveBeenCalledWith('settings');
+        expect(dashboard.switchSettingsSection).toHaveBeenCalledWith('orchestration');
+        expect(document.activeElement).toBe(document.getElementById('settingsAgentCompanyGoal'));
     });
 
     test('renders selected run details into workload and company output panes', () => {

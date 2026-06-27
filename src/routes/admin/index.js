@@ -20,6 +20,9 @@ const afterProcessAuditsController = require('./after-process-audits.controller'
 const DashboardController = require('./dashboard.controller');
 const { setDashboardController } = require('../../admin/runtime-monitor');
 const { buildLillyHistory } = require('../../admin/lilly-history');
+const { artifactService } = require('../../artifacts/artifact-service');
+const { artifactStore } = require('../../artifacts/artifact-store');
+const { assetManager } = require('../../asset-manager');
 
 // Dashboard controller is initialized with orchestrator in server.js
 const getDashboardController = (req) => {
@@ -33,6 +36,268 @@ const getDashboardController = (req) => {
 };
 const callController = (controller, method) => (req, res, next) =>
   controller[method](req, res, next);
+
+function getAgentCompanyMetadata(entry = {}) {
+  return entry?.metadata?.agentCompany
+    || entry?.workload?.metadata?.agentCompany
+    || {};
+}
+
+function isAgentCompanyEntry(entry = {}, status = {}) {
+  const metadata = getAgentCompanyMetadata(entry);
+  const companyHash = status?.state?.companyGoalHash || status?.config?.companyGoalHash || '';
+  return metadata.enabled === true
+    || metadata.heartbeatManaged === true
+    || Boolean(metadata.planItemId)
+    || (companyHash && metadata.companyGoalHash === companyHash)
+    || entry.sessionId === (status?.config?.sessionId || 'agent-company');
+}
+
+function extractRunOutputArtifacts(run = {}) {
+  const output = run?.metadata?.output || {};
+  const directArtifacts = Array.isArray(run.artifacts) ? run.artifacts : [];
+  const outputArtifacts = Array.isArray(output.artifacts) ? output.artifacts : [];
+  return [...directArtifacts, ...outputArtifacts]
+    .filter((artifact) => artifact && (artifact.id || artifact.filename || artifact.downloadUrl))
+    .map((artifact) => ({
+      id: artifact.id || null,
+      filename: artifact.filename || artifact.name || artifact.id || 'business-output',
+      mimeType: artifact.mimeType || artifact.mime_type || null,
+      downloadUrl: artifact.downloadUrl || artifact.download_url || (artifact.id ? `/api/artifacts/${encodeURIComponent(artifact.id)}/download` : null),
+      previewUrl: artifact.previewUrl || artifact.preview_url || null,
+      sandboxUrl: artifact.sandboxUrl || artifact.sandbox_url || null,
+      bundleDownloadUrl: artifact.bundleDownloadUrl || artifact.bundle_download_url || null,
+      metadata: artifact.metadata || {},
+    }));
+}
+
+function normalizeBusinessDeliverable(artifact = {}, context = {}) {
+  const id = String(artifact.id || `${context.runId || 'run'}:${artifact.filename || 'output'}`).trim();
+  const filename = String(artifact.filename || artifact.name || id).trim();
+  const previewUrl = artifact.previewUrl || artifact.sandboxUrl || null;
+
+  return {
+    id,
+    filename,
+    title: String(artifact.metadata?.title || artifact.title || filename).trim(),
+    mimeType: artifact.mimeType || null,
+    format: artifact.format || artifact.extension || '',
+    sizeBytes: Number(artifact.sizeBytes || 0),
+    roleName: context.roleName || artifact.metadata?.agentCompany?.roleName || artifact.metadata?.roleName || '',
+    workloadId: context.workloadId || artifact.workloadId || '',
+    workloadTitle: context.workloadTitle || artifact.workloadTitle || '',
+    runId: context.runId || artifact.runId || '',
+    runStatus: context.runStatus || '',
+    createdAt: artifact.createdAt || context.createdAt || null,
+    updatedAt: artifact.updatedAt || artifact.createdAt || context.updatedAt || null,
+    downloadUrl: artifact.downloadUrl || (artifact.id ? `/api/artifacts/${encodeURIComponent(artifact.id)}/download` : null),
+    previewUrl,
+    sandboxUrl: artifact.sandboxUrl || null,
+    bundleDownloadUrl: artifact.bundleDownloadUrl || null,
+    source: context.source || artifact.sourceMode || 'run-output',
+  };
+}
+
+function dedupeBusinessDeliverables(deliverables = []) {
+  const seen = new Set();
+  return deliverables.filter((deliverable) => {
+    const key = String(deliverable.id || deliverable.downloadUrl || deliverable.filename || '').trim();
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+async function listAgentCompanyStoredArtifacts(sessionId = '') {
+  if (!sessionId || !artifactService.isEnabled()) {
+    return [];
+  }
+
+  try {
+    const artifacts = await artifactStore.listBySession(sessionId);
+    return artifacts
+      .map((artifact) => artifactService.serializeArtifact(artifact))
+      .filter(Boolean)
+      .map((artifact) => normalizeBusinessDeliverable(artifact, {
+        source: 'session-artifact',
+        createdAt: artifact.createdAt,
+        updatedAt: artifact.updatedAt || artifact.createdAt,
+      }));
+  } catch (error) {
+    console.warn('[AdminAgentCompany] Failed to list company artifacts:', error.message);
+    return [];
+  }
+}
+
+function buildCompanyRunDeliverables(runs = [], workloads = []) {
+  const workloadsById = new Map(workloads.map((workload) => [workload.id, workload]));
+  return runs.flatMap((run) => {
+    const workload = run.workload || workloadsById.get(run.workloadId) || {};
+    const runMetadata = getAgentCompanyMetadata(run);
+    const workloadMetadata = getAgentCompanyMetadata(workload);
+    const metadata = Object.keys(runMetadata).length > 0 ? runMetadata : workloadMetadata;
+    return extractRunOutputArtifacts(run).map((artifact) => normalizeBusinessDeliverable(artifact, {
+      source: 'run-output',
+      runId: run.id,
+      runStatus: run.status,
+      workloadId: run.workloadId || workload.id || '',
+      workloadTitle: workload.title || run.workloadTitle || '',
+      roleName: metadata.roleName || metadata.roleId || '',
+      createdAt: run.finishedAt || run.updatedAt || run.createdAt,
+      updatedAt: run.updatedAt || run.finishedAt || run.createdAt,
+    }));
+  });
+}
+
+function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverables = []) {
+  const state = status?.state || {};
+  const config = status?.config || {};
+  const heartbeat = state.heartbeat || {};
+  const dailyAlignment = state.dailyAlignment || {};
+  const actions = [];
+
+  if (!config.enabled || !String(config.companyGoal || state.companyGoal || '').trim()) {
+    actions.push({
+      id: 'configure-goal',
+      label: 'Set the company goal',
+      detail: 'Define what this autonomous business should create and maintain.',
+      target: 'settings',
+      priority: 'high',
+    });
+  }
+  if (status?.available === true && workloads.length === 0 && config.enabled) {
+    actions.push({
+      id: 'run-heartbeat',
+      label: 'Start the first work cycle',
+      detail: 'Use Heartbeat Now to schedule role-based work from the company goal.',
+      target: 'heartbeat',
+      priority: 'high',
+    });
+  }
+  if (runs.some((run) => run.status === 'failed') || Number(heartbeat.failedWorkloads || 0) > 0) {
+    actions.push({
+      id: 'review-failures',
+      label: 'Review failed work',
+      detail: 'Inspect failed runs before asking the company to continue.',
+      target: 'runs',
+      priority: 'medium',
+    });
+  }
+  if (deliverables.length > 0) {
+    actions.push({
+      id: 'review-deliverables',
+      label: 'Review business outputs',
+      detail: `${deliverables.length} deliverable${deliverables.length === 1 ? '' : 's'} ready for preview or download.`,
+      target: 'deliverables',
+      priority: 'medium',
+    });
+  }
+  if (dailyAlignment.status && dailyAlignment.status !== 'steady' && dailyAlignment.status !== 'idle') {
+    actions.push({
+      id: 'read-alignment',
+      label: 'Read alignment notes',
+      detail: `Latest alignment state: ${dailyAlignment.status}.`,
+      target: 'alignment',
+      priority: 'low',
+    });
+  }
+
+  return actions.slice(0, 6);
+}
+
+function buildRecursiveImprovementLoop(status = {}, workloads = [], runs = [], deliverables = []) {
+  const state = status?.state || {};
+  const config = status?.config || {};
+  const heartbeat = state.heartbeat || {};
+  const dailyAlignment = state.dailyAlignment || {};
+  const schedule = Array.isArray(state.shortTermSchedule) ? state.shortTermSchedule : [];
+  const running = runs.filter((run) => run.status === 'running').length;
+  const queued = runs.filter((run) => run.status === 'queued').length;
+  const failed = runs.filter((run) => run.status === 'failed').length + Number(heartbeat.failedWorkloads || 0);
+  const completed = runs.filter((run) => run.status === 'completed').length;
+  const appliedLearning = Array.isArray(dailyAlignment.applied) ? dailyAlignment.applied.length : 0;
+  const goalReady = Boolean(config.enabled && String(config.companyGoal || state.companyGoal || '').trim());
+  const workloadReady = status?.available === true;
+
+  const phase = (id, label, ready, detail, blocked = false) => ({
+    id,
+    label,
+    status: blocked ? 'blocked' : (ready ? 'ready' : 'waiting'),
+    detail,
+  });
+
+  const phases = [
+    phase(
+      'sense',
+      'Sense',
+      deliverables.length > 0 || runs.length > 0 || workloads.length > 0,
+      deliverables.length > 0
+        ? `${deliverables.length} company file${deliverables.length === 1 ? '' : 's'} available for review.`
+        : 'Waiting for company files, runs, or workload evidence.',
+      !goalReady,
+    ),
+    phase(
+      'plan',
+      'Plan',
+      schedule.length > 0,
+      schedule.length > 0
+        ? `${schedule.length} planned work item${schedule.length === 1 ? '' : 's'} in the current horizon.`
+        : 'Run a heartbeat after setting the CEO goal to create a plan.',
+      !goalReady,
+    ),
+    phase(
+      'act',
+      'Act',
+      running + queued > 0 || completed > 0,
+      running + queued > 0
+        ? `${running} running and ${queued} queued company run${running + queued === 1 ? '' : 's'}.`
+        : 'No active company runs are moving right now.',
+      goalReady && !workloadReady,
+    ),
+    phase(
+      'verify',
+      'Verify',
+      deliverables.length > 0 || completed > 0,
+      failed > 0
+        ? `${failed} failure${failed === 1 ? '' : 's'} need review before the next loop.`
+        : `${completed} completed run${completed === 1 ? '' : 's'} and ${deliverables.length} deliverable${deliverables.length === 1 ? '' : 's'} ready for review.`,
+      failed > 0,
+    ),
+    phase(
+      'learn',
+      'Learn',
+      appliedLearning > 0 || dailyAlignment.status === 'steady',
+      appliedLearning > 0
+        ? `${appliedLearning} alignment update${appliedLearning === 1 ? '' : 's'} applied from recent evidence.`
+        : `Alignment state is ${dailyAlignment.status || 'idle'}.`,
+      false,
+    ),
+  ];
+
+  return {
+    goal: config.companyGoal || state.companyGoal || '',
+    cadence: {
+      heartbeatMinutes: Number(config.heartbeatMinutes || 0),
+      dailyAlignment: dailyAlignment.nextAt || null,
+      nextHeartbeat: heartbeat.nextAt || null,
+    },
+    metrics: {
+      workloads: workloads.length,
+      runs: runs.length,
+      running,
+      queued,
+      failed,
+      deliverables: deliverables.length,
+      appliedLearning,
+    },
+    phases,
+    health: phases.some((item) => item.status === 'blocked')
+      ? 'blocked'
+      : (phases.every((item) => item.status === 'ready') ? 'looping' : 'forming'),
+  };
+}
 
 // API Routes
 
@@ -120,6 +385,113 @@ router.get('/agent-company', async (req, res, next) => {
 
     const status = await service.getStatus();
     res.json({ success: true, data: status });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/agent-company/workspace', async (req, res, next) => {
+  try {
+    const companyService = req.app.locals.agentCompanyService;
+    if (!companyService?.getStatus) {
+      return res.status(503).json({ success: false, error: 'Agent company service is not initialized' });
+    }
+
+    const status = await companyService.getStatus();
+    const workloadService = req.app.locals.agentWorkloadService;
+    const workloadAvailable = Boolean(workloadService?.isAvailable?.());
+    let workloads = [];
+    let runs = [];
+
+    if (workloadAvailable) {
+      const [allWorkloads, allRuns] = await Promise.all([
+        workloadService.listAdminWorkloads(200),
+        workloadService.listAdminRuns(200),
+      ]);
+      workloads = (Array.isArray(allWorkloads) ? allWorkloads : [])
+        .filter((workload) => isAgentCompanyEntry(workload, status));
+      const workloadIds = new Set(workloads.map((workload) => workload.id).filter(Boolean));
+      runs = (Array.isArray(allRuns) ? allRuns : [])
+        .filter((run) => workloadIds.has(run.workloadId) || isAgentCompanyEntry(run, status));
+    }
+
+    const sessionId = status?.config?.sessionId || 'agent-company';
+    const deliverables = dedupeBusinessDeliverables([
+      ...buildCompanyRunDeliverables(runs, workloads),
+      ...await listAgentCompanyStoredArtifacts(sessionId),
+    ]).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''));
+    const actionQueue = buildCeoActionQueue(status, workloads, runs, deliverables);
+    const improvementLoop = buildRecursiveImprovementLoop(status, workloads, runs, deliverables);
+
+    res.json({
+      success: true,
+      data: {
+        status,
+        workloads,
+        runs,
+        deliverables,
+        actionQueue,
+        improvementLoop,
+        workspace: {
+          sessionId,
+          workloadAvailable,
+          deliverableCount: deliverables.length,
+          runCount: runs.length,
+          workloadCount: workloads.length,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/agent-company/files', async (req, res, next) => {
+  try {
+    const companyService = req.app.locals.agentCompanyService;
+    const status = companyService?.getStatus ? await companyService.getStatus() : null;
+    const sessionId = status?.config?.sessionId || 'agent-company';
+    const sourceType = ['artifact', 'workspace', 'research-bucket'].includes(String(req.query.sourceType || '').trim())
+      ? String(req.query.sourceType).trim()
+      : 'any';
+    const limit = Number.isFinite(Number(req.query.limit))
+      ? Math.max(1, Math.min(Number(req.query.limit), 50))
+      : 25;
+    const results = await assetManager.searchAssets({
+      query: String(req.query.query || '').trim(),
+      kind: 'document',
+      sourceType,
+      sessionId,
+      includeContent: req.query.includeContent !== 'false',
+      refresh: req.query.refresh === 'true',
+      limit,
+    }, {
+      sessionId,
+      ownerId: String(req.user?.username || req.user?.id || '').trim() || null,
+      sessionIsolation: false,
+    });
+    const sourceCounts = results.results.reduce((counts, item) => {
+      const key = item.sourceType || 'unknown';
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
+
+    res.json({
+      success: true,
+      data: {
+        ...results,
+        sessionId,
+        sourceCounts,
+        fileManager: {
+          status: 'ready',
+          grepExamples: [
+            'asset-search kind=document query="<words>" includeContent=true',
+            'file-search pattern="**/*.{md,pdf,html,docx,txt}" cwd="."',
+            'research-bucket-search query="<words>"',
+          ],
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }

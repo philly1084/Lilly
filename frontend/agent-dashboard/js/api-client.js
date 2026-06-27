@@ -538,6 +538,20 @@ class ApiClient {
     }
 
     /**
+     * Get the CEO-facing agent company workspace
+     */
+    async getAgentCompanyWorkspace() {
+        return this.get('/api/admin/agent-company/workspace');
+    }
+
+    /**
+     * Search company-visible documents and artifacts
+     */
+    async searchAgentCompanyFiles(params = {}) {
+        return this.get('/api/admin/agent-company/files', params);
+    }
+
+    /**
      * Get a single deferred workload run
      */
     async getAdminRun(id) {

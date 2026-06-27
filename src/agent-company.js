@@ -536,8 +536,8 @@ class AgentCompanyService {
             },
             {
                 suffix: 'operations-review',
-                title: 'Operations review',
-                objective: 'Review running work, verify outputs, update next schedule, and stop duplicate loops.',
+                title: 'Recursive improvement review',
+                objective: 'Inspect recent company work, choose one small improvement, verify it, and update the next loop without creating duplicate automation.',
                 dayOffset: 4,
                 hour: 10,
             },
@@ -641,6 +641,7 @@ class AgentCompanyService {
             '',
             'Operating rules:',
             '- Do one concrete, useful company step and verify it as far as the available tools allow.',
+            '- Use a sense, plan, act, verify, learn rhythm: inspect existing work first, choose one bounded action, test the result, and record the next improvement.',
             '- Keep side effects conservative unless the task explicitly has admin-approved tools.',
             '- If the selected model cannot complete the task because of context length, tool capability, or provider failure, record the smallest model-switch recommendation using the configured escalation models.',
             `- Escalation models: ${escalation}.`,

@@ -185,6 +185,9 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].metadata.longAgent.enabled).toBe(true);
         expect(createdWorkloads[0].metadata.requestedModel).toBe('gpt-5.5');
         expect(createdWorkloads[0].metadata.agentCompany.heartbeatManaged).toBe(true);
+        expect(createdWorkloads.map((workload) => workload.title)).toContain('Operations Lead: Recursive improvement review');
+        expect(createdWorkloads.find((workload) => workload.title.includes('Recursive improvement review')).prompt)
+            .toContain('sense, plan, act, verify, learn');
     });
 
     test('expands schedule across configured roles and templates', () => {
@@ -206,6 +209,7 @@ describe('AgentCompanyService', () => {
         expect(new Set(schedule.map((item) => item.id)).size).toBe(6);
         expect(schedule.map((item) => item.roleId)).toContain('growth');
         expect(new Set(schedule.map((item) => item.title)).size).toBeGreaterThan(1);
+        expect(schedule.map((item) => item.title)).toContain('Recursive improvement review');
     });
 
     test('respects queued workload capacity before scheduling more work', async () => {

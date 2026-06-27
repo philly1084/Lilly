@@ -23,6 +23,13 @@ class Dashboard {
             runs: [],
             selectedRun: null,
             agentCompanyStatus: null,
+            agentCompanyWorkspace: null,
+            agentCompanyFiles: null,
+            companyFileSearch: '',
+            companyFileSourceFilter: 'any',
+            companyWorkSearch: '',
+            companyWorkStatusFilter: 'all',
+            companyRoleFilter: 'all',
             workloadsAvailable: true,
             workloadsSupported: null,
             workloadErrorMessage: '',
@@ -61,6 +68,8 @@ class Dashboard {
         this.storageSelection = new Set();
         this.dirtyInputIds = new Set();
         this.promptEditorDirty = false;
+        this.companyRoleFilterAliases = new Map();
+        this.companyFileSearchTimer = null;
         this.piiDetectorDefinitions = [
             { id: 'email', label: 'Email' },
             { id: 'phone', label: 'Phone' },
@@ -167,17 +176,53 @@ class Dashboard {
         document.getElementById('refreshWorkloadsBtn')?.addEventListener('click', () => {
             this.loadWorkloads();
         });
+        document.getElementById('configureAgentCompanyBtn')?.addEventListener('click', () => {
+            this.configureAgentCompany();
+        });
         document.getElementById('refreshAgentCompanyBtn')?.addEventListener('click', () => {
             this.loadAgentCompanyDashboard({ force: true });
         });
         document.getElementById('companyHeartbeatBtn')?.addEventListener('click', () => {
             this.runAgentCompanyHeartbeat({ source: 'company-console' });
         });
+        document.getElementById('companyStartCycleBtn')?.addEventListener('click', () => {
+            this.runAgentCompanyHeartbeat({ source: 'company-ceo-start-cycle' });
+        });
         document.getElementById('companyDailyAlignmentBtn')?.addEventListener('click', () => {
             this.runAgentCompanyDailyAlignment();
         });
+        document.getElementById('saveCompanyDirectionBtn')?.addEventListener('click', () => {
+            this.saveAgentCompanyDirection();
+        });
+        document.getElementById('companyCeoDirection')?.addEventListener('input', () => {
+            this.markInputDirty('companyCeoDirection');
+        });
+        document.getElementById('companyFileSearch')?.addEventListener('input', (event) => {
+            this.state.companyFileSearch = event.target.value || '';
+            clearTimeout(this.companyFileSearchTimer);
+            this.companyFileSearchTimer = setTimeout(() => this.searchAgentCompanyFiles(), 250);
+        });
+        document.getElementById('companyFileSourceFilter')?.addEventListener('change', (event) => {
+            this.state.companyFileSourceFilter = event.target.value || 'any';
+            this.searchAgentCompanyFiles();
+        });
+        document.getElementById('refreshCompanyFilesBtn')?.addEventListener('click', () => {
+            this.searchAgentCompanyFiles({ refresh: true });
+        });
         document.getElementById('companyViewAllWorkloadsBtn')?.addEventListener('click', () => {
             this.navigateTo('workloads');
+        });
+        document.getElementById('companyWorkSearch')?.addEventListener('input', (event) => {
+            this.state.companyWorkSearch = event.target.value || '';
+            this.renderAgentCompanyDashboard();
+        });
+        document.getElementById('companyWorkStatusFilter')?.addEventListener('change', (event) => {
+            this.state.companyWorkStatusFilter = event.target.value || 'all';
+            this.renderAgentCompanyDashboard();
+        });
+        document.getElementById('companyRoleFilter')?.addEventListener('change', (event) => {
+            this.state.companyRoleFilter = event.target.value || 'all';
+            this.renderAgentCompanyDashboard();
         });
         document.getElementById('refreshSelfReflectionBtn')?.addEventListener('click', () => {
             this.loadSelfReflectionUpdates({ force: true });
@@ -2678,22 +2723,36 @@ class Dashboard {
         const heartbeat = state.heartbeat || {};
         const runningWork = state.runningWork || {};
         const dailyAlignment = state.dailyAlignment || {};
-        const companyWorkloads = this.getAgentCompanyWorkloads(this.state.workloads, status);
-        const companyRuns = this.getAgentCompanyRuns(this.state.runs, companyWorkloads, status);
+        const workspace = this.state.agentCompanyWorkspace || {};
+        const deliverables = Array.isArray(workspace.deliverables) ? workspace.deliverables : [];
+        const actionQueue = Array.isArray(workspace.actionQueue) ? workspace.actionQueue : [];
+        const allCompanyWorkloads = this.getAgentCompanyWorkloads(this.state.workloads, status);
+        const allCompanyRuns = this.getAgentCompanyRuns(this.state.runs, allCompanyWorkloads, status);
+        this.syncCompanyRoleFilterOptions(state.roles || config.roles || [], allCompanyWorkloads);
+        const companyWorkloads = this.getFilteredCompanyWorkloads(allCompanyWorkloads, allCompanyRuns);
+        const companyRuns = this.getFilteredCompanyRuns(allCompanyRuns, allCompanyWorkloads);
 
         this.setTextContent('agentCompanyGoalSummary', config.companyGoal || state.companyGoal || 'No company goal configured yet.');
         this.setTextContent('companyHeartbeatStatus', heartbeat.status || (status?.available ? 'ready' : 'standby'));
         this.setTextContent('companyNextHeartbeat', heartbeat.nextAt ? `next ${this.formatDate(heartbeat.nextAt)}` : 'not scheduled');
-        this.setTextContent('companyRunningCount', Number(runningWork.running ?? this.countRunsByStatus(companyRuns, 'running')));
-        this.setTextContent('companyQueuedCount', `${Number(runningWork.queued ?? this.countRunsByStatus(companyRuns, 'queued'))} queued`);
-        this.setTextContent('companyWorkloadCount', Number(runningWork.companyWorkloads ?? companyWorkloads.length));
+        this.setTextContent('companyRunningCount', Number(runningWork.running ?? this.countRunsByStatus(allCompanyRuns, 'running')));
+        this.setTextContent('companyQueuedCount', `${Number(runningWork.queued ?? this.countRunsByStatus(allCompanyRuns, 'queued'))} queued`);
+        this.setTextContent('companyWorkloadCount', Number(runningWork.companyWorkloads ?? allCompanyWorkloads.length));
         this.setTextContent('companyWeeklyLimit', `${Number(config.weeklyWorkloadLimit || 0)} weekly slots`);
-        this.setTextContent('companyFailedCount', Number(heartbeat.failedWorkloads ?? this.countRunsByStatus(companyRuns, 'failed')));
+        this.setTextContent('companyFailedCount', Number(heartbeat.failedWorkloads ?? this.countRunsByStatus(allCompanyRuns, 'failed')));
         this.setTextContent('companyAlignmentStatus', `alignment ${dailyAlignment.status || 'idle'}`);
-        this.setTextContent('agentCompanyBadge', companyRuns.filter((run) => ['queued', 'running'].includes(run.status)).length);
+        this.setTextContent('agentCompanyBadge', allCompanyRuns.filter((run) => ['queued', 'running'].includes(run.status)).length);
         this.setTextContent('companyScheduleStatus', `${(state.shortTermSchedule || []).length} planned`);
-        this.setTextContent('companyRunStatus', `${companyRuns.length} run${companyRuns.length === 1 ? '' : 's'}`);
+        this.setTextContent('companyRunStatus', this.isCompanyWorkFiltered()
+            ? `${companyRuns.length} of ${allCompanyRuns.length} runs`
+            : `${companyRuns.length} run${companyRuns.length === 1 ? '' : 's'}`);
         this.setTextContent('companyAlignmentNext', dailyAlignment.nextAt ? `next ${this.formatDate(dailyAlignment.nextAt)}` : 'not scheduled');
+        const workspaceWorkloadCount = Number(workspace.workspace?.workloadCount ?? allCompanyWorkloads.length);
+        this.setTextContent('companyWorkspaceStatus', workspace.workspace?.workloadAvailable === false
+            ? 'workloads offline'
+            : `${workspaceWorkloadCount} workstream${workspaceWorkloadCount === 1 ? '' : 's'}`);
+        this.setTextContent('companyDeliverableStatus', `${deliverables.length} file${deliverables.length === 1 ? '' : 's'}`);
+        this.setInputValue('companyCeoDirection', config.companyGoal || state.companyGoal || '', { preserveDirty: true });
 
         const modelPolicy = [config.primaryModel || state.modelPolicy?.primaryModel || 'default model']
             .concat(config.escalationModels || state.modelPolicy?.escalationModels || [])
@@ -2701,13 +2760,16 @@ class Dashboard {
             .join(' -> ');
         this.setTextContent('companyModelPolicy', modelPolicy || 'Default model');
 
-        this.renderCompanyRoles(state.roles || config.roles || []);
+        this.renderCompanyRoles(state.roles || config.roles || [], allCompanyWorkloads, allCompanyRuns);
         this.renderCompanySchedule(state.shortTermSchedule || []);
         this.renderCompanyWorkloads(companyWorkloads);
         this.renderCompanyRuns(companyRuns);
         this.renderCompanyAlignment(dailyAlignment);
+        this.renderCompanyActionQueue(actionQueue);
+        this.renderCompanyDeliverables(deliverables);
+        this.renderCompanyImprovementLoop(workspace.improvementLoop || null);
 
-        if (this.state.selectedRun?.id && !companyRuns.some((run) => run.id === this.state.selectedRun.id)) {
+        if (this.state.selectedRun?.id && !allCompanyRuns.some((run) => run.id === this.state.selectedRun.id)) {
             this.renderAdminRunDetails(null, null, 'Select a company run to inspect its output.');
         }
     }
@@ -2750,7 +2812,184 @@ class Dashboard {
             .filter((run) => workloadIds.has(run.workloadId) || this.isAgentCompanyEntry(run, status));
     }
 
-    renderCompanyRoles(roles = []) {
+    isCompanyWorkFiltered() {
+        return Boolean(String(this.state.companyWorkSearch || '').trim())
+            || (this.state.companyWorkStatusFilter || 'all') !== 'all'
+            || (this.state.companyRoleFilter || 'all') !== 'all';
+    }
+
+    normalizeCompanyFilterValue(value = '') {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    getCompanyRoleLabel(role = {}) {
+        return role.name || role.id || role.roleName || role.roleId || 'Company Agent';
+    }
+
+    getCompanyRoleKeyFromMetadata(metadata = {}) {
+        return this.normalizeCompanyFilterValue(metadata.roleId || metadata.roleName || '');
+    }
+
+    getCompanyRoleKeys(role = {}) {
+        return new Set([
+            role.id,
+            role.name,
+            role.roleId,
+            role.roleName,
+        ].map((value) => this.normalizeCompanyFilterValue(value)).filter(Boolean));
+    }
+
+    getCompanyWorkloadRoleKey(workload = {}) {
+        return this.getCompanyRoleKeyFromMetadata(this.getAgentCompanyMetadata(workload));
+    }
+
+    syncCompanyRoleFilterOptions(roles = [], workloads = []) {
+        const select = document.getElementById('companyRoleFilter');
+        if (!select) return;
+
+        const options = new Map();
+        const aliases = new Map();
+        roles.forEach((role) => {
+            const key = this.normalizeCompanyFilterValue(role.id || role.name);
+            if (key && !options.has(key)) {
+                options.set(key, this.getCompanyRoleLabel(role));
+            }
+            if (key) {
+                aliases.set(key, this.getCompanyRoleKeys(role));
+            }
+        });
+
+        workloads.forEach((workload) => {
+            const metadata = this.getAgentCompanyMetadata(workload);
+            const metadataAliases = new Set([
+                metadata.roleId,
+                metadata.roleName,
+            ].map((value) => this.normalizeCompanyFilterValue(value)).filter(Boolean));
+            let key = this.getCompanyRoleKeyFromMetadata(metadata);
+            for (const [candidateKey, candidateAliases] of aliases.entries()) {
+                if (Array.from(metadataAliases).some((alias) => candidateAliases.has(alias))) {
+                    key = candidateKey;
+                    metadataAliases.forEach((alias) => candidateAliases.add(alias));
+                    break;
+                }
+            }
+
+            const label = metadata.roleName || metadata.roleId || key;
+            if (key && !options.has(key)) {
+                options.set(key, label);
+            }
+            if (key && !aliases.has(key)) {
+                aliases.set(key, metadataAliases);
+            }
+        });
+
+        const current = options.has(this.state.companyRoleFilter) ? this.state.companyRoleFilter : 'all';
+        this.state.companyRoleFilter = current;
+        this.companyRoleFilterAliases = aliases;
+        select.innerHTML = '<option value="all">All roles</option>' + Array.from(options.entries())
+            .sort((a, b) => a[1].localeCompare(b[1]))
+            .map(([value, label]) => `<option value="${this.escapeHtml(value)}">${this.escapeHtml(label)}</option>`)
+            .join('');
+        select.value = current;
+    }
+
+    matchesCompanyRoleFilter(roleKey = '') {
+        const selectedRole = this.state.companyRoleFilter || 'all';
+        if (selectedRole === 'all') return true;
+        const aliases = this.companyRoleFilterAliases.get(selectedRole) || new Set([selectedRole]);
+        return aliases.has(this.normalizeCompanyFilterValue(roleKey));
+    }
+
+    matchesCompanySearch(parts = [], search = '') {
+        const query = this.normalizeCompanyFilterValue(search);
+        if (!query) return true;
+        return parts.some((part) => this.normalizeCompanyFilterValue(part).includes(query));
+    }
+
+    getFilteredCompanyWorkloads(workloads = [], runs = []) {
+        const search = this.state.companyWorkSearch || '';
+        const status = this.state.companyWorkStatusFilter || 'all';
+        const role = this.state.companyRoleFilter || 'all';
+        const runsByWorkload = new Map();
+        runs.forEach((run) => {
+            const list = runsByWorkload.get(run.workloadId) || [];
+            list.push(run);
+            runsByWorkload.set(run.workloadId, list);
+        });
+
+        return (workloads || []).filter((workload) => {
+            const metadata = this.getAgentCompanyMetadata(workload);
+            const workloadRole = this.getCompanyWorkloadRoleKey(workload);
+            const relatedRuns = runsByWorkload.get(workload.id) || [];
+            const summary = workload.workloadSummary || {};
+            const matchesRole = role === 'all' || this.matchesCompanyRoleFilter(workloadRole);
+            const matchesSearch = this.matchesCompanySearch([
+                workload.id,
+                workload.title,
+                workload.prompt,
+                metadata.roleName,
+                metadata.roleId,
+                ...relatedRuns.flatMap((run) => [run.id, run.status, run.reason]),
+            ], search);
+            const matchesStatus = status === 'all'
+                || (status === 'active' && workload.enabled !== false)
+                || (status === 'paused' && workload.enabled === false)
+                || Number(summary[status] || 0) > 0
+                || relatedRuns.some((run) => run.status === status);
+
+            return matchesRole && matchesSearch && matchesStatus;
+        });
+    }
+
+    getFilteredCompanyRuns(runs = [], workloads = []) {
+        const search = this.state.companyWorkSearch || '';
+        const status = this.state.companyWorkStatusFilter || 'all';
+        const role = this.state.companyRoleFilter || 'all';
+        const workloadsById = new Map((workloads || []).map((workload) => [workload.id, workload]));
+
+        return (runs || []).filter((run) => {
+            const workload = workloadsById.get(run.workloadId) || {};
+            const runMetadata = this.getAgentCompanyMetadata(run);
+            const workloadMetadata = this.getAgentCompanyMetadata(workload);
+            const metadata = Object.keys(runMetadata).length ? runMetadata : workloadMetadata;
+            const runRole = this.getCompanyRoleKeyFromMetadata(metadata) || this.getCompanyWorkloadRoleKey(workload);
+            const matchesRole = role === 'all' || this.matchesCompanyRoleFilter(runRole);
+            const matchesSearch = this.matchesCompanySearch([
+                run.id,
+                run.workloadId,
+                run.workloadTitle,
+                run.status,
+                run.reason,
+                metadata.roleName,
+                metadata.roleId,
+            ], search);
+            const matchesStatus = status === 'all'
+                || run.status === status
+                || (status === 'active' && workload.enabled !== false)
+                || (status === 'paused' && workload.enabled === false);
+
+            return matchesRole && matchesSearch && matchesStatus;
+        });
+    }
+
+    getCompanyRoleActivity(role = {}, workloads = [], runs = []) {
+        const roleKeys = this.getCompanyRoleKeys(role);
+        const roleWorkloads = (workloads || []).filter((workload) => roleKeys.has(this.getCompanyWorkloadRoleKey(workload)));
+        const workloadIds = new Set(roleWorkloads.map((workload) => workload.id).filter(Boolean));
+        const roleRuns = (runs || []).filter((run) => {
+            const metadata = this.getAgentCompanyMetadata(run);
+            return workloadIds.has(run.workloadId) || roleKeys.has(this.getCompanyRoleKeyFromMetadata(metadata));
+        });
+
+        return {
+            workloads: roleWorkloads.length,
+            queued: roleRuns.filter((run) => run.status === 'queued').length,
+            running: roleRuns.filter((run) => run.status === 'running').length,
+            failed: roleRuns.filter((run) => run.status === 'failed').length,
+        };
+    }
+
+    renderCompanyRoles(roles = [], workloads = [], runs = []) {
         const container = document.getElementById('companyRoleList');
         if (!container) return;
 
@@ -2764,6 +3003,17 @@ class Dashboard {
                 <div>
                     <strong>${this.escapeHtml(role.name || role.id || 'Company Agent')}</strong>
                     <span>${this.escapeHtml(role.mission || 'No mission recorded.')}</span>
+                    <div class="company-role-metrics">
+                        ${(() => {
+                            const activity = this.getCompanyRoleActivity(role, workloads, runs);
+                            return `
+                                <span>${activity.workloads} work</span>
+                                <span>${activity.running} running</span>
+                                <span>${activity.queued} queued</span>
+                                <span>${activity.failed} failed</span>
+                            `;
+                        })()}
+                    </div>
                 </div>
                 <span class="company-role-id">${this.escapeHtml(role.id || 'agent')}</span>
             </div>
@@ -2789,6 +3039,151 @@ class Dashboard {
                     <span>${this.escapeHtml(item.roleName || item.roleId || 'agent')}</span>
                     <span>${this.escapeHtml(this.formatDate(item.plannedFor))}</span>
                 </div>
+            </div>
+        `).join('');
+    }
+
+    renderCompanyActionQueue(actions = []) {
+        const container = document.getElementById('companyActionQueue');
+        if (!container) return;
+
+        if (!actions.length) {
+            container.innerHTML = '<p class="empty-state">No CEO actions are waiting right now.</p>';
+            return;
+        }
+
+        container.innerHTML = actions.map((action) => `
+            <div class="company-action-item company-action-item--${this.escapeHtml(action.priority || 'low')}">
+                <div>
+                    <strong>${this.escapeHtml(action.label || 'Company action')}</strong>
+                    <span>${this.escapeHtml(action.detail || '')}</span>
+                </div>
+                <button
+                    class="btn btn-sm btn-secondary"
+                    type="button"
+                    onclick="dashboard.handleCompanyAction('${this.escapeHtml(action.target || '')}')"
+                >
+                    Open
+                </button>
+            </div>
+        `).join('');
+    }
+
+    renderCompanyDeliverables(deliverables = []) {
+        const container = document.getElementById('companyDeliverableList');
+        if (!container) return;
+
+        if (!deliverables.length) {
+            container.innerHTML = '<p class="empty-state">No company files or documents have been produced yet.</p>';
+            return;
+        }
+
+        container.innerHTML = deliverables.map((deliverable) => {
+            const previewUrl = deliverable.sandboxUrl || deliverable.previewUrl || '';
+            const downloadUrl = deliverable.downloadUrl || deliverable.bundleDownloadUrl || '';
+            const meta = [
+                deliverable.roleName,
+                deliverable.workloadTitle,
+                deliverable.updatedAt ? this.formatDate(deliverable.updatedAt) : '',
+                deliverable.sizeBytes ? this.formatBytes(deliverable.sizeBytes) : '',
+            ].filter(Boolean).join(' | ');
+            return `
+                <div class="company-deliverable-item">
+                    <div>
+                        <strong>${this.escapeHtml(deliverable.title || deliverable.filename || 'Business deliverable')}</strong>
+                        <span>${this.escapeHtml(meta || deliverable.filename || deliverable.id || '')}</span>
+                    </div>
+                    <div class="company-deliverable-actions">
+                        ${previewUrl ? `<a class="btn btn-sm btn-secondary" href="${this.escapeHtml(previewUrl)}" target="_blank" rel="noopener">Preview</a>` : ''}
+                        ${downloadUrl ? `<a class="btn btn-sm btn-ghost" href="${this.escapeHtml(downloadUrl)}" target="_blank" rel="noopener">Download</a>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderCompanyFileManager(fileState = this.state.agentCompanyFiles || {}) {
+        const container = document.getElementById('companyFileList');
+        if (!container) return;
+
+        const results = Array.isArray(fileState.results) ? fileState.results : [];
+        const count = Number(fileState.count ?? results.length);
+        const refreshed = fileState.refreshed || {};
+        const statusText = fileState.error
+            ? 'index unavailable'
+            : `${count} document${count === 1 ? '' : 's'}${refreshed.workspace || refreshed.artifacts ? ' refreshed' : ''}`;
+        this.setTextContent('companyFileManagerStatus', statusText);
+
+        if (!results.length) {
+            const message = fileState.error
+                ? 'The file manager could not reach the document index.'
+                : 'No documents matched this search yet.';
+            container.innerHTML = `<p class="empty-state">${this.escapeHtml(message)}</p>`;
+            return;
+        }
+
+        container.innerHTML = results.map((file) => {
+            const sourceLabel = {
+                artifact: 'Artifact',
+                workspace: 'Workspace',
+                'research-bucket': 'Research',
+            }[file.sourceType] || file.sourceType || 'File';
+            const location = file.relativePath || file.filename || file.artifactId || file.id || '';
+            const preview = String(file.contentPreview || '').trim();
+            return `
+                <div class="company-file-item">
+                    <div class="company-file-main">
+                        <div class="company-file-title-row">
+                            <strong>${this.escapeHtml(file.title || file.filename || 'Document')}</strong>
+                            <span class="company-file-source">${this.escapeHtml(sourceLabel)}</span>
+                        </div>
+                        <span class="company-file-location">${this.escapeHtml(location)}</span>
+                        ${preview ? `<p>${this.escapeHtml(this.truncate(preview, 220))}</p>` : ''}
+                    </div>
+                    <div class="company-file-actions">
+                        ${file.downloadUrl ? `<a class="btn btn-sm btn-secondary" href="${this.escapeHtml(file.downloadUrl)}" target="_blank" rel="noopener">Download</a>` : ''}
+                        ${file.inlineUrl ? `<a class="btn btn-sm btn-ghost" href="${this.escapeHtml(file.inlineUrl)}" target="_blank" rel="noopener">Open</a>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderCompanyImprovementLoop(loop = null) {
+        const phaseContainer = document.getElementById('companyImprovementLoopPhases');
+        const summary = document.getElementById('companyImprovementLoopSummary');
+        if (!phaseContainer) return;
+
+        if (!loop || !Array.isArray(loop.phases)) {
+            this.setTextContent('companyImprovementLoopStatus', 'loop unavailable');
+            if (summary) {
+                summary.textContent = 'Workspace evidence has not loaded yet.';
+            }
+            phaseContainer.innerHTML = '<p class="empty-state">No improvement loop state loaded yet.</p>';
+            return;
+        }
+
+        const metrics = loop.metrics || {};
+        const cadence = loop.cadence || {};
+        const health = loop.health || 'forming';
+        this.setTextContent('companyImprovementLoopStatus', health);
+        if (summary) {
+            const parts = [
+                `${Number(metrics.workloads || 0)} workstreams`,
+                `${Number(metrics.deliverables || 0)} files`,
+                cadence.nextHeartbeat ? `heartbeat ${this.formatDate(cadence.nextHeartbeat)}` : null,
+                cadence.dailyAlignment ? `alignment ${this.formatDate(cadence.dailyAlignment)}` : null,
+            ].filter(Boolean);
+            summary.textContent = parts.join(' | ') || 'No operating evidence yet.';
+        }
+
+        phaseContainer.innerHTML = loop.phases.map((phase) => `
+            <div class="company-loop-phase company-loop-phase--${this.escapeHtml(phase.status || 'waiting')}">
+                <div>
+                    <strong>${this.escapeHtml(phase.label || phase.id || 'Loop phase')}</strong>
+                    <span>${this.escapeHtml(phase.detail || '')}</span>
+                </div>
+                <span class="company-loop-phase-status">${this.escapeHtml(phase.status || 'waiting')}</span>
             </div>
         `).join('');
     }
@@ -3339,6 +3734,7 @@ class Dashboard {
         const existing = this.state.runs.find((run) => run.id === id) || null;
         this.state.selectedRun = existing;
         this.renderAdminRuns(this.state.runs);
+        this.renderAgentCompanyDashboard();
         this.renderAdminRunDetails(existing);
 
         try {
@@ -3346,6 +3742,7 @@ class Dashboard {
             const detailedRun = this.normalizeAdminRun(this.unwrapApiPayload(response, existing || {}), this.state.workloads);
             this.replaceAdminRunInState(detailedRun);
             this.renderAdminRuns(this.state.runs);
+            this.renderAgentCompanyDashboard();
             this.renderAdminRunDetails(detailedRun);
         } catch (error) {
             console.error('Error loading run details:', error);
@@ -3844,12 +4241,80 @@ class Dashboard {
 
     async loadAgentCompanyDashboard({ force = false } = {}) {
         await Promise.all([
-            this.loadAgentCompanyStatus(),
+            this.loadAgentCompanyWorkspace(),
+            this.searchAgentCompanyFiles(),
             this.loadWorkloads(),
         ]);
 
         if (force) {
             this.showToast('Agent company console refreshed', 'success');
+        }
+    }
+
+    async loadAgentCompanyWorkspace() {
+        try {
+            const response = typeof apiClient.getAgentCompanyWorkspace === 'function'
+                ? await apiClient.getAgentCompanyWorkspace()
+                : await apiClient.get('/api/admin/agent-company/workspace');
+            const workspace = this.unwrapApiPayload(response, {});
+            this.state.agentCompanyWorkspace = workspace;
+            if (workspace.status) {
+                this.state.agentCompanyStatus = workspace.status;
+                this.renderAgentCompanyStatus(workspace.status);
+            }
+            if (Array.isArray(workspace.workloads) && Array.isArray(workspace.runs)) {
+                const knownWorkloads = new Map(this.state.workloads.map((workload) => [workload.id, workload]));
+                workspace.workloads.forEach((workload) => knownWorkloads.set(workload.id, this.normalizeAdminWorkload(workload)));
+                this.state.workloads = Array.from(knownWorkloads.values());
+
+                const knownRuns = new Map(this.state.runs.map((run) => [run.id, run]));
+                workspace.runs.forEach((run) => knownRuns.set(run.id, this.normalizeAdminRun(run, this.state.workloads)));
+                this.state.runs = Array.from(knownRuns.values());
+            }
+            this.renderAgentCompanyDashboard();
+            return workspace;
+        } catch (error) {
+            console.warn('Error loading agent company workspace:', error.message || error);
+            this.state.agentCompanyWorkspace = {
+                deliverables: [],
+                actionQueue: [],
+                workspace: {
+                    workloadAvailable: false,
+                },
+            };
+            return this.loadAgentCompanyStatus();
+        }
+    }
+
+    async searchAgentCompanyFiles({ refresh = false } = {}) {
+        try {
+            const params = {
+                query: this.state.companyFileSearch || '',
+                sourceType: this.state.companyFileSourceFilter || 'any',
+                limit: 25,
+                includeContent: true,
+                ...(refresh ? { refresh: true } : {}),
+            };
+            const response = typeof apiClient.searchAgentCompanyFiles === 'function'
+                ? await apiClient.searchAgentCompanyFiles(params)
+                : await apiClient.get('/api/admin/agent-company/files', params);
+            const payload = this.unwrapApiPayload(response, {});
+            this.state.agentCompanyFiles = payload;
+            this.renderCompanyFileManager(payload);
+            if (refresh) {
+                this.showToast('Company file index refreshed', 'success');
+            }
+            return payload;
+        } catch (error) {
+            console.warn('Error searching company files:', error.message || error);
+            const fallback = {
+                count: 0,
+                results: [],
+                error: error.message || 'file_search_failed',
+            };
+            this.state.agentCompanyFiles = fallback;
+            this.renderCompanyFileManager(fallback);
+            return fallback;
         }
     }
 
@@ -3889,7 +4354,7 @@ class Dashboard {
             this.renderAgentCompanyDashboard();
             const created = status?.createdWorkloads?.length || status?.state?.heartbeat?.createdWorkloads || 0;
             this.showToast(created > 0 ? `Heartbeat scheduled ${created} workload${created === 1 ? '' : 's'}` : 'Heartbeat checked current work', 'success');
-            await this.loadWorkloads();
+            await this.loadAgentCompanyDashboard();
         } catch (error) {
             console.error('Error running agent company heartbeat:', error);
             this.showToast('Failed to run company heartbeat', 'error');
@@ -3908,9 +4373,73 @@ class Dashboard {
             this.renderAgentCompanyDashboard();
             const alignment = payload.dailyAlignment || status?.state?.dailyAlignment || {};
             this.showToast(`Daily alignment ${alignment.status || 'checked'}`, 'success');
+            await this.loadAgentCompanyWorkspace();
         } catch (error) {
             console.error('Error running agent company alignment:', error);
             this.showToast(error.userMessage || error.message || 'Failed to run company alignment', 'error');
+        }
+    }
+
+    async saveAgentCompanyDirection() {
+        const goal = String(document.getElementById('companyCeoDirection')?.value || '').trim();
+        if (!goal) {
+            this.showToast('Add a company direction before saving', 'warning');
+            return;
+        }
+
+        const current = this.state.settings?.agentCompany
+            || this.state.agentCompanyStatus?.config
+            || {};
+        const settings = {
+            agentCompany: {
+                ...current,
+                enabled: true,
+                companyGoal: goal,
+                heartbeatMinutes: Number(current.heartbeatMinutes || 60),
+                weeklyWorkloadLimit: Number(current.weeklyWorkloadLimit || 3),
+                maxConcurrentWorkloads: Number(current.maxConcurrentWorkloads || 1),
+                sessionId: current.sessionId || 'agent-company',
+                escalationModels: Array.isArray(current.escalationModels)
+                    ? current.escalationModels
+                    : String(current.escalationModels || '')
+                        .split(',')
+                        .map((model) => model.trim())
+                        .filter(Boolean),
+            },
+        };
+
+        try {
+            const response = await apiClient.put('/api/admin/settings', settings);
+            this.applySettings(this.unwrapApiPayload(response, settings), { preserveDirty: true });
+            this.dirtyInputIds.delete('companyCeoDirection');
+            await this.loadAgentCompanyDashboard({ force: true });
+            this.showToast('Company direction saved', 'success');
+        } catch (error) {
+            console.error('Error saving company direction:', error);
+            this.showToast(error.userMessage || error.message || 'Failed to save company direction', 'error');
+        }
+    }
+
+    handleCompanyAction(target = '') {
+        switch (target) {
+            case 'settings':
+                this.configureAgentCompany();
+                break;
+            case 'heartbeat':
+                this.runAgentCompanyHeartbeat({ source: 'company-action-queue' });
+                break;
+            case 'runs':
+                document.getElementById('companyRunsTableBody')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                break;
+            case 'deliverables':
+                document.getElementById('companyDeliverableList')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                break;
+            case 'alignment':
+                document.getElementById('companyAlignmentPanel')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                break;
+            default:
+                document.getElementById('agentCompanyView')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                break;
         }
     }
     
@@ -4117,6 +4646,16 @@ class Dashboard {
         }
         
         this.renderTraces(filtered);
+    }
+
+    configureAgentCompany() {
+        this.navigateTo('settings');
+        this.switchSettingsSection('orchestration');
+        const target = document.getElementById('settingsAgentCompanyGoal')
+            || document.getElementById('settingsAgentCompanyEnabled')
+            || document.getElementById('orchestrationSettings');
+        target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+        target?.focus?.();
     }
 
     setupSettingsNavigation() {

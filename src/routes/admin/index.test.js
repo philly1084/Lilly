@@ -27,6 +27,7 @@ const { setDashboardController } = require('../../admin/runtime-monitor');
 const settingsController = require('./settings.controller');
 const { artifactService } = require('../../artifacts/artifact-service');
 const { artifactStore } = require('../../artifacts/artifact-store');
+const { assetManager } = require('../../asset-manager');
 const { sessionStore } = require('../../session-store');
 const { memoryService } = require('../../memory/memory-service');
 const adminRouter = require('./index');
@@ -152,6 +153,232 @@ describe('/api/admin workload routes', () => {
             reason: 'test',
         });
         expect(heartbeatResponse.body.data.createdWorkloads).toHaveLength(1);
+    });
+
+    test('exposes an agent company workspace with CEO actions and deliverables', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => [
+                {
+                    id: 'company-workload',
+                    sessionId: 'agent-company',
+                    title: 'Strategy Lead: Weekly plan',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            roleName: 'Strategy Lead',
+                            companyGoalHash: 'goal-hash',
+                        },
+                    },
+                },
+                {
+                    id: 'other-workload',
+                    sessionId: 'general',
+                    title: 'Other work',
+                    metadata: {},
+                },
+            ]),
+            listAdminRuns: jest.fn(async () => [
+                {
+                    id: 'company-run',
+                    workloadId: 'company-workload',
+                    sessionId: 'agent-company',
+                    status: 'completed',
+                    finishedAt: '2026-06-26T12:00:00.000Z',
+                    metadata: {
+                        output: {
+                            text: 'Created the weekly plan.',
+                            artifacts: [{
+                                id: 'artifact-run-plan',
+                                filename: 'weekly-plan.pdf',
+                                mimeType: 'application/pdf',
+                            }],
+                        },
+                    },
+                },
+                {
+                    id: 'other-run',
+                    workloadId: 'other-workload',
+                    sessionId: 'general',
+                    status: 'completed',
+                    metadata: {
+                        output: {
+                            artifacts: [{ id: 'artifact-other', filename: 'ignore.pdf' }],
+                        },
+                    },
+                },
+            ]),
+        };
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(true);
+        const listBySessionSpy = jest.spyOn(artifactStore, 'listBySession').mockResolvedValue([
+            {
+                id: 'artifact-session-brief',
+                sessionId: 'agent-company',
+                filename: 'ceo-brief.html',
+                extension: 'html',
+                mimeType: 'text/html',
+                sizeBytes: 1024,
+                sourceMode: 'document',
+                previewHtml: '<h1>CEO Brief</h1>',
+                metadata: { title: 'CEO Brief' },
+                createdAt: '2026-06-26T13:00:00.000Z',
+                updatedAt: '2026-06-26T13:00:00.000Z',
+            },
+        ]);
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                available: true,
+                config: {
+                    enabled: true,
+                    sessionId: 'agent-company',
+                    companyGoal: 'Run a useful research studio.',
+                },
+                state: {
+                    companyGoalHash: 'goal-hash',
+                    heartbeat: { status: 'steady' },
+                    dailyAlignment: { status: 'steady' },
+                    shortTermSchedule: [{ id: 'plan-1', title: 'Company weekly plan' }],
+                },
+            })),
+        };
+
+        try {
+            const response = await request(app).get('/api/admin/agent-company/workspace');
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(service.listAdminWorkloads).toHaveBeenCalledWith(200);
+            expect(service.listAdminRuns).toHaveBeenCalledWith(200);
+            expect(listBySessionSpy).toHaveBeenCalledWith('agent-company');
+            expect(response.body.data.workspace).toEqual(expect.objectContaining({
+                sessionId: 'agent-company',
+                workloadAvailable: true,
+                workloadCount: 1,
+                runCount: 1,
+                deliverableCount: 2,
+            }));
+            expect(response.body.data.workloads.map((workload) => workload.id)).toEqual(['company-workload']);
+            expect(response.body.data.runs.map((run) => run.id)).toEqual(['company-run']);
+            expect(response.body.data.deliverables).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'artifact-run-plan',
+                    filename: 'weekly-plan.pdf',
+                    roleName: 'Strategy Lead',
+                    runId: 'company-run',
+                    downloadUrl: '/api/artifacts/artifact-run-plan/download',
+                }),
+                expect.objectContaining({
+                    id: 'artifact-session-brief',
+                    filename: 'ceo-brief.html',
+                    previewUrl: '/api/artifacts/artifact-session-brief/preview',
+                }),
+            ]));
+            expect(response.body.data.actionQueue).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'review-deliverables',
+                    target: 'deliverables',
+                }),
+            ]));
+            expect(response.body.data.improvementLoop).toEqual(expect.objectContaining({
+                health: 'looping',
+                metrics: expect.objectContaining({
+                    workloads: 1,
+                    runs: 1,
+                    deliverables: 2,
+                }),
+                phases: expect.arrayContaining([
+                    expect.objectContaining({
+                        id: 'sense',
+                        status: 'ready',
+                    }),
+                    expect.objectContaining({
+                        id: 'verify',
+                        status: 'ready',
+                    }),
+                    expect.objectContaining({
+                        id: 'learn',
+                        status: 'ready',
+                    }),
+                ]),
+            }));
+        } finally {
+            listBySessionSpy.mockRestore();
+            isEnabledSpy.mockRestore();
+        }
+    });
+
+    test('exposes a shared agent company file manager backed by asset search', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+        };
+        const searchSpy = jest.spyOn(assetManager, 'searchAssets').mockResolvedValue({
+            query: 'plan',
+            kind: 'document',
+            sourceType: 'any',
+            sessionId: 'agent-company',
+            count: 2,
+            refreshed: { workspace: false, artifacts: true },
+            results: [
+                {
+                    id: 'artifact:weekly-plan',
+                    sourceType: 'artifact',
+                    kind: 'document',
+                    title: 'Weekly Plan',
+                    filename: 'weekly-plan.pdf',
+                    artifactId: 'weekly-plan',
+                    sessionId: 'agent-company',
+                    downloadUrl: '/api/artifacts/weekly-plan/download',
+                    contentPreview: 'Operating plan text',
+                },
+                {
+                    id: 'workspace:docs/plan.md',
+                    sourceType: 'workspace',
+                    kind: 'document',
+                    title: 'Plan Notes',
+                    filename: 'plan.md',
+                    relativePath: 'docs/plan.md',
+                    contentPreview: 'Workspace notes text',
+                },
+            ],
+        });
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                config: { sessionId: 'agent-company' },
+                state: {},
+            })),
+        };
+
+        try {
+            const response = await request(app)
+                .get('/api/admin/agent-company/files?query=plan&sourceType=any&refresh=true');
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(searchSpy).toHaveBeenCalledWith(expect.objectContaining({
+                query: 'plan',
+                kind: 'document',
+                sourceType: 'any',
+                sessionId: 'agent-company',
+                includeContent: true,
+                refresh: true,
+            }), expect.objectContaining({
+                sessionId: 'agent-company',
+                sessionIsolation: false,
+            }));
+            expect(response.body.data.sourceCounts).toEqual({
+                artifact: 1,
+                workspace: 1,
+            });
+            expect(response.body.data.fileManager.grepExamples.join(' ')).toContain('asset-search');
+            expect(response.body.data.results[0]).toEqual(expect.objectContaining({
+                filename: 'weekly-plan.pdf',
+                contentPreview: 'Operating plan text',
+            }));
+        } finally {
+            searchSpy.mockRestore();
+        }
     });
 
     test('creates a fallback dashboard controller when startup did not initialize one', async () => {
