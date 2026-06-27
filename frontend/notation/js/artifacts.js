@@ -10,6 +10,50 @@
         outputFormat: '',
     };
 
+    function normalizeArtifactRecord(artifact) {
+        if (!artifact || typeof artifact !== 'object') {
+            return null;
+        }
+
+        const id = String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim();
+        if (!id) {
+            return null;
+        }
+
+        const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
+        const sizeBytes = Number.isFinite(Number(sizeValue)) ? Number(sizeValue) : 0;
+        const filename = String(artifact.filename || artifact.name || id).trim() || id;
+        const mimeType = String(artifact.mimeType || artifact.mime_type || '').trim();
+        const extension = String(artifact.extension || '').trim();
+        const format = String(
+            artifact.format
+            || extension
+            || (mimeType.includes('/') ? mimeType.split('/').pop() : '')
+            || ''
+        ).trim();
+
+        return {
+            ...artifact,
+            id,
+            artifactId: id,
+            filename,
+            format,
+            mimeType,
+            size: sizeBytes,
+            sizeBytes,
+            downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+            previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
+            sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
+            bundleDownloadUrl: String(artifact.bundleDownloadUrl || artifact.bundle_download_url || '').trim(),
+        };
+    }
+
+    function normalizeArtifacts(artifacts) {
+        return (Array.isArray(artifacts) ? artifacts : [])
+            .map(normalizeArtifactRecord)
+            .filter(Boolean);
+    }
+
     function injectStyles() {
         const style = document.createElement('style');
         style.textContent = `
@@ -46,7 +90,7 @@
         const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/artifacts`);
         if (!response.ok) return;
         const data = await response.json();
-        state.artifacts = data.artifacts || [];
+        state.artifacts = normalizeArtifacts(data.artifacts);
         renderArtifacts();
     }
 
@@ -77,13 +121,16 @@
         state.artifacts.forEach((artifact) => {
             const item = document.createElement('div');
             item.className = `artifact-item${state.selectedArtifactIds.includes(artifact.id) ? ' active' : ''}`;
+            const formatLabel = artifact.format || artifact.mimeType || 'file';
+            const previewUrl = artifact.sandboxUrl || artifact.previewUrl;
+            const downloadUrl = artifact.downloadUrl || artifact.bundleDownloadUrl;
             item.innerHTML = `
                 <strong>${artifact.filename}</strong>
-                <div>${artifact.format} | ${artifact.sizeBytes} bytes</div>
+                <div>${formatLabel} | ${artifact.sizeBytes} bytes</div>
                 <div class="artifact-actions">
                     <button type="button" data-action="toggle">${state.selectedArtifactIds.includes(artifact.id) ? 'Detach' : 'Attach'}</button>
-                    ${(artifact.sandboxUrl || artifact.previewUrl) ? `<a href="${artifact.sandboxUrl || artifact.previewUrl}" target="_blank" rel="noopener">Preview</a>` : ''}
-                    <a href="${artifact.downloadUrl}" target="_blank" rel="noopener">Download</a>
+                    ${previewUrl ? `<a href="${previewUrl}" target="_blank" rel="noopener">Preview</a>` : ''}
+                    ${downloadUrl ? `<a href="${downloadUrl}" target="_blank" rel="noopener">Download</a>` : ''}
                 </div>
             `;
             item.querySelector('[data-action="toggle"]').addEventListener('click', () => {
@@ -197,7 +244,7 @@
         const originalHandleResponse = app._handleResponse.bind(app);
         app._handleResponse = function(data) {
             originalHandleResponse(data);
-            const artifacts = data.content?.artifacts || data.artifacts || [];
+            const artifacts = normalizeArtifacts(data.content?.artifacts || data.artifacts || []);
             if (Array.isArray(artifacts) && artifacts.length > 0) {
                 state.artifacts = [...artifacts, ...state.artifacts.filter((artifact) => !artifacts.find((next) => next.id === artifact.id))];
                 renderArtifacts();
@@ -216,5 +263,10 @@
             fetchArtifacts();
         }, 50);
     });
-})();
 
+    window.notationArtifactPanel = {
+        normalizeArtifactRecord,
+        normalizeArtifacts,
+        getState: () => state,
+    };
+})();

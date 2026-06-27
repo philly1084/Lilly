@@ -257,7 +257,7 @@ const NotationAPI = {
         try {
             const response = await fetch(`${this.config.baseUrl}/health`, {
                 method: 'GET',
-                signal: AbortSignal.timeout(5000)
+                signal: AbortSignal.timeout(10000)
             });
             return response.ok;
         } catch {
