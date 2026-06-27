@@ -23,6 +23,13 @@ function loadBlocks(overrides = {}) {
     context.global = context;
     context.globalThis = context;
     vm.runInNewContext(`${source}\nglobalThis.__Blocks = window.Blocks;`, context, { filename: 'blocks.js' });
+    if (overrides.withContext) {
+        return {
+            Blocks: context.__Blocks,
+            window: windowObject,
+            document: windowObject.document,
+        };
+    }
     return context.__Blocks;
 }
 
@@ -158,5 +165,61 @@ describe('Notes Blocks image rendering', () => {
         expect(searchUnsplash).not.toHaveBeenCalled();
         expect(image).not.toBeNull();
         expect(image.getAttribute('src')).toBe('https://images.unsplash.com/photo-12345');
+    });
+});
+
+describe('Notes Blocks code copy', () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    test('copies code blocks through the Clipboard API when available', async () => {
+        const writeText = jest.fn().mockResolvedValue(undefined);
+        const { Blocks, window, document } = loadBlocks({ withContext: true });
+        Object.defineProperty(window.navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+        });
+        document.execCommand = jest.fn(() => true);
+
+        const rendered = Blocks.render.code({
+            id: 'code-1',
+            type: 'code',
+            content: { language: 'javascript', text: 'console.log("ready");' },
+        }, false);
+
+        rendered.querySelector('.code-copy').click();
+        await writeText.mock.results[0].value;
+        await Promise.resolve();
+
+        expect(writeText).toHaveBeenCalledWith('console.log("ready");');
+        expect(document.execCommand).not.toHaveBeenCalled();
+    });
+
+    test('falls back to a temporary textarea when Clipboard API is unavailable', async () => {
+        const { Blocks, window, document } = loadBlocks({ withContext: true });
+        Object.defineProperty(window.navigator, 'clipboard', {
+            value: undefined,
+            configurable: true,
+        });
+        document.execCommand = jest.fn(() => true);
+
+        const rendered = Blocks.render.code({
+            id: 'code-2',
+            type: 'code',
+            content: { language: 'bash', text: 'npm test' },
+        }, false);
+
+        rendered.querySelector('.code-copy').click();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(document.execCommand).toHaveBeenCalledWith('copy');
+        expect(document.querySelector('textarea')).toBeNull();
+        expect(rendered.querySelector('.code-copy').textContent).toBe('Copied!');
     });
 });

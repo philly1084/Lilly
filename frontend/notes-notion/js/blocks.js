@@ -924,7 +924,32 @@ const Blocks = (function() {
         
         return wrapper;
     }
-    
+
+    async function writeClipboardText(text) {
+        const value = String(text == null ? '' : text);
+        if (window.navigator?.clipboard?.writeText) {
+            await window.navigator.clipboard.writeText(value);
+            return;
+        }
+
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-1000px';
+        textarea.style.left = '-1000px';
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+            if (!document.execCommand || !document.execCommand('copy')) {
+                throw new Error('Copy command unavailable');
+            }
+        } finally {
+            textarea.remove();
+        }
+    }
+
     /**
      * Render a code block
      */
@@ -962,8 +987,8 @@ const Blocks = (function() {
         const copyBtn = document.createElement('button');
         copyBtn.className = 'code-copy';
         copyBtn.textContent = 'Copy';
-        copyBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(content.text || '');
+        copyBtn.addEventListener('click', async () => {
+            await writeClipboardText(content.text || '');
             copyBtn.textContent = 'Copied!';
             setTimeout(() => copyBtn.textContent = 'Copy', 2000);
         });
