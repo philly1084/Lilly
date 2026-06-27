@@ -6,14 +6,19 @@ const INTERNAL_SANDBOX_PATH_PATTERN = /\/api\/artifacts\/[^/?#]+\/sandbox(?:\b|\
 const INTERNAL_BUNDLE_PATH_PATTERN = /\/api\/artifacts\/[^/?#]+\/bundle\b/i;
 const ARTIFACT_RESULT_KEYS = [
     'artifact',
+    'artifact_result',
     'artifacts',
     'document',
     'documents',
     'generatedArtifact',
+    'generated_artifact',
     'generatedArtifacts',
+    'generated_artifacts',
     'sandboxBuild',
+    'sandbox_build',
     'video',
     'videoArtifact',
+    'video_artifact',
 ];
 
 function normalizeDownloadUrl(value = '') {

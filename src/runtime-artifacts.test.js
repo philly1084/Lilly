@@ -329,6 +329,47 @@ describe('runtime artifact helpers', () => {
         ]);
     });
 
+    test('extracts snake_case nested artifact containers from gateway tool payloads', () => {
+        const artifacts = extractArtifactsFromToolEvents([{
+            tool_call: {
+                function: {
+                    name: 'document-workflow',
+                },
+            },
+            result: {
+                success: true,
+                tool_id: 'document-workflow',
+                data: {
+                    sandbox_build: {
+                        generated_artifacts: [{
+                            artifact_id: 'artifact-snake-sandbox-1',
+                            filename: 'brief-sandbox.zip',
+                            mime_type: 'application/zip',
+                            size_bytes: 8192,
+                            download_url: '/api/artifacts/artifact-snake-sandbox-1/download',
+                            preview_url: '/api/artifacts/artifact-snake-sandbox-1/preview',
+                            sandbox_url: '/api/artifacts/artifact-snake-sandbox-1/sandbox',
+                            bundle_download_url: '/api/artifacts/artifact-snake-sandbox-1/bundle',
+                        }],
+                    },
+                },
+            },
+        }]);
+
+        expect(artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-snake-sandbox-1',
+                filename: 'brief-sandbox.zip',
+                mimeType: 'application/zip',
+                sizeBytes: 8192,
+                downloadUrl: '/api/artifacts/artifact-snake-sandbox-1/download',
+                previewUrl: '/api/artifacts/artifact-snake-sandbox-1/preview',
+                sandboxUrl: '/api/artifacts/artifact-snake-sandbox-1/sandbox',
+                bundleDownloadUrl: '/api/artifacts/artifact-snake-sandbox-1/bundle',
+            }),
+        ]);
+    });
+
     test('extracts artifacts from stringified JSON tool result payloads', () => {
         const artifacts = extractArtifactsFromToolEvents([{
             toolCall: {
