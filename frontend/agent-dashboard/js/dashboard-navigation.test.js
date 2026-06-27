@@ -764,6 +764,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(runsTable.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
     });
 
+    test('routes shared whiteboard CEO actions through a focused heartbeat reason', () => {
+        const { dashboard } = createAgentCompanyHarness();
+        dashboard.runAgentCompanyHeartbeat = jest.fn();
+
+        dashboard.handleCompanyAction('whiteboard-refresh');
+
+        expect(dashboard.runAgentCompanyHeartbeat).toHaveBeenCalledWith({
+            source: 'shared-whiteboard-refresh',
+        });
+    });
+
     test('marks the company run opened from a CEO action', () => {
         const { dashboard } = createAgentCompanyHarness();
         dashboard.state.selectedRun = dashboard.state.runs[0];

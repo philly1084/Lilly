@@ -4693,6 +4693,9 @@ class Dashboard {
             case 'heartbeat':
                 this.runAgentCompanyHeartbeat({ source: 'company-action-queue' });
                 break;
+            case 'whiteboard-refresh':
+                this.runAgentCompanyHeartbeat({ source: 'shared-whiteboard-refresh' });
+                break;
             case 'runs':
                 if (runId) {
                     this.selectAdminRun(runId, {

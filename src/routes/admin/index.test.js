@@ -440,7 +440,9 @@ describe('/api/admin workload routes', () => {
                     actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
                     label: 'Refresh shared whiteboard',
                     detail: '.kimibuilt/agent-company/2026-06-22-whiteboard.md needs current coordination notes before scheduling more company work.',
-                    target: 'heartbeat',
+                    target: 'whiteboard-refresh',
+                    workloadReason: 'shared-whiteboard-refresh',
+                    workloadFocus: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
                     priority: 'medium',
                 }),
             ]));

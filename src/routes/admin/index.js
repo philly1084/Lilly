@@ -259,7 +259,9 @@ function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}) {
     detail: current
       ? `${current.path} needs current coordination notes before scheduling more company work.`
       : 'No shared coordination whiteboard is attached to current company workloads yet.',
-    target: 'heartbeat',
+    target: 'whiteboard-refresh',
+    workloadReason: 'shared-whiteboard-refresh',
+    workloadFocus: current?.path || '.kimibuilt/agent-company/shared-whiteboard.md',
     priority: current ? 'medium' : 'high',
   });
 
