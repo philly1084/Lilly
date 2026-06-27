@@ -10,6 +10,7 @@ describe('Notes search modal accessibility semantics', () => {
         const source = readSidebarSource();
 
         expect(source).toContain('showSearchModal(triggerElement = document.activeElement)');
+        expect(source).toContain("e.key?.toLowerCase() === 'f'");
         expect(source).toContain("modal.setAttribute('role', 'dialog')");
         expect(source).toContain("modal.setAttribute('aria-modal', 'true')");
         expect(source).toContain("modal.setAttribute('aria-labelledby', 'search-modal-title')");

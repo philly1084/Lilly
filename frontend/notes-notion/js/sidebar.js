@@ -107,7 +107,7 @@ const Sidebar = (function() {
         
         // Search functionality - Ctrl/Cmd + Shift + F
         document.addEventListener('keydown', (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'F') {
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key?.toLowerCase() === 'f') {
                 e.preventDefault();
                 showSearchModal(document.activeElement);
             }
