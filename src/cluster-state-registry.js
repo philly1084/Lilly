@@ -121,6 +121,37 @@ function parseJsonObject(value = '') {
     }
 }
 
+function getToolEventFunction(event = {}) {
+    const camelFunction = event?.toolCall?.function;
+    if (isPlainObject(camelFunction)) {
+        return camelFunction;
+    }
+
+    const snakeFunction = event?.tool_call?.function;
+    if (isPlainObject(snakeFunction)) {
+        return snakeFunction;
+    }
+
+    return {};
+}
+
+function getToolEventToolId(event = {}) {
+    const toolFunction = getToolEventFunction(event);
+    return normalizeLowerText(
+        event?.result?.toolId
+        || event?.result?.tool_id
+        || toolFunction.name
+        || event?.toolCall?.name
+        || event?.tool_call?.name
+        || '',
+    );
+}
+
+function getToolEventArguments(event = {}) {
+    const toolFunction = getToolEventFunction(event);
+    return toolFunction.arguments || event?.toolCall?.arguments || event?.tool_call?.arguments || '';
+}
+
 function parseHostPort(value = '') {
     const normalized = normalizeText(value);
     if (!normalized) {
@@ -1481,12 +1512,12 @@ class ClusterStateRegistry {
         let mutated = false;
 
         for (const event of events) {
-            const toolId = normalizeLowerText(event?.result?.toolId || event?.toolCall?.function?.name || '');
+            const toolId = getToolEventToolId(event);
             if (!REMOTE_TOOL_IDS.has(toolId)) {
                 continue;
             }
 
-            const params = parseJsonObject(event?.toolCall?.function?.arguments || '');
+            const params = parseJsonObject(getToolEventArguments(event));
             const result = isPlainObject(event?.result?.data)
                 ? {
                     ...event.result.data,

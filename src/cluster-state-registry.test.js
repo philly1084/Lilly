@@ -151,6 +151,60 @@ describe('ClusterStateRegistry', () => {
     }));
   });
 
+  test('records snake_case remote tool events from gateway metadata', () => {
+    registry.recordToolEvents({
+      objective: 'Verify the notes app deployment after a gateway-shaped remote command.',
+      controlState: {
+        lastSshTarget: {
+          host: 'ubuntu-32gb-fsn1-2',
+          username: 'ubuntu',
+          port: 22,
+        },
+      },
+      toolEvents: [{
+        tool_call: {
+          function: {
+            name: 'remote-command',
+            arguments: JSON.stringify({
+              workflowAction: 'verify-deployment',
+              command: 'kubectl rollout status deployment/notes -n web && curl -fsSIL https://notes.demoserver2.buzz',
+              namespace: 'web',
+              deployment: 'notes',
+              publicDomain: 'notes.demoserver2.buzz',
+            }),
+          },
+        },
+        result: {
+          success: true,
+          tool_id: 'remote-command',
+          timestamp: '2026-04-18T12:10:00.000Z',
+          data: {
+            host: 'ubuntu-32gb-fsn1-2:22',
+            stdout: [
+              'deployment "notes" successfully rolled out',
+              'HTTP/2 200',
+              'notes.demoserver2.buzz',
+            ].join('\n'),
+          },
+        },
+      }],
+    });
+
+    const deployments = registry.listDeployments();
+    expect(deployments).toHaveLength(1);
+    expect(deployments[0]).toEqual(expect.objectContaining({
+      host: 'ubuntu-32gb-fsn1-2',
+      namespace: 'web',
+      deployment: 'notes',
+      publicDomain: 'notes.demoserver2.buzz',
+      lastVerificationAt: '2026-04-18T12:10:00.000Z',
+    }));
+    expect(deployments[0].verification).toEqual(expect.objectContaining({
+      rollout: true,
+      https: true,
+    }));
+  });
+
   test('does not mark HTTPS as trusted when verification only passed with insecure TLS', () => {
     registry.recordToolEvents({
       objective: 'Verify the game deployment after a self-signed certificate error.',
