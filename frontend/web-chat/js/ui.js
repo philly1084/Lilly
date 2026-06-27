@@ -10939,6 +10939,13 @@ class UIHelpers {
             }
         });
 
+        document.getElementById('mobile-chat-menu')?.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeMobileActionSheet();
+            }
+        });
+
         document.getElementById('theme-gallery-grid')?.addEventListener('click', (event) => {
             const presetButton = event.target.closest('[data-theme-preset]');
             if (!presetButton) {

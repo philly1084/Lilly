@@ -48,10 +48,17 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="mobile-chat-menu-btn"');
         expect(html).toContain('aria-controls="mobile-chat-menu"');
         expect(html).toContain('aria-label="Open chat controls"');
+        expect(html).toContain('aria-describedby="mobile-chat-menu-description"');
+        expect(html).toContain('id="mobile-chat-menu-description"');
+        expect(html).toContain('<button type="button" class="btn-icon mobile-chat-menu__close"');
+        expect(html).toContain('<button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">');
+        expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
         expect(html).toContain('css/styles.css?v=20260625b');
         expect(html).toContain('js/ui.js?v=20260627b');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
+        expect(uiSource).toContain("if (event.key === 'Escape')");
+        expect(uiSource).toContain('this.closeMobileActionSheet();');
         expect(css).toContain('.mobile-chat-menu__header {\n    position: sticky;');
         expect(css).toContain('backdrop-filter: blur(12px);');
     });

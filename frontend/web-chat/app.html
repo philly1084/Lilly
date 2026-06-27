@@ -1112,67 +1112,67 @@
 
     <div id="mobile-chat-menu" class="mobile-chat-menu hidden" aria-hidden="true">
         <div class="mobile-chat-menu__overlay" data-mobile-menu-close="true"></div>
-        <div class="mobile-chat-menu__sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-chat-menu-title">
+        <div class="mobile-chat-menu__sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-chat-menu-title" aria-describedby="mobile-chat-menu-description">
             <div class="mobile-chat-menu__header">
                 <div>
-                    <p class="mobile-chat-menu__eyebrow">Quick controls</p>
+                    <p id="mobile-chat-menu-description" class="mobile-chat-menu__eyebrow">Quick controls</p>
                     <h2 id="mobile-chat-menu-title">Chat actions</h2>
                 </div>
-                <button class="btn-icon mobile-chat-menu__close" data-mobile-menu-close="true" aria-label="Close chat controls">
+                <button type="button" class="btn-icon mobile-chat-menu__close" data-mobile-menu-close="true" aria-label="Close chat controls">
                     <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="mobile-chat-menu__actions">
-                <button class="mobile-chat-menu__action" data-mobile-menu-action="search">
+                <button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Search messages</span>
                     </span>
                     <span class="mobile-chat-menu__action-value">Find in thread</span>
                 </button>
-                <button class="mobile-chat-menu__action" data-mobile-menu-action="models">
+                <button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="models">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="cpu" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Assistant</span>
                     </span>
                     <span class="mobile-chat-menu__action-value" id="mobile-chat-menu-model-value">GPT-5.4 Mini</span>
                 </button>
-                <button class="mobile-chat-menu__action" data-mobile-menu-action="workloads">
+                <button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="workloads">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="calendar-clock" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Workloads</span>
                     </span>
                     <span class="mobile-chat-menu__action-value">Schedules and follow-ups</span>
                 </button>
-                <button class="mobile-chat-menu__action" data-mobile-menu-action="files">
+                <button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="files">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="folder-open" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Files</span>
                     </span>
                     <span class="mobile-chat-menu__action-value">Attachments and local files</span>
                 </button>
-                <button class="mobile-chat-menu__action" data-mobile-menu-action="export">
+                <button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="export">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Export chat</span>
                     </span>
                     <span class="mobile-chat-menu__action-value">Save this conversation</span>
                 </button>
-                <button class="mobile-chat-menu__action" data-mobile-menu-action="theme">
+                <button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="theme">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="palette" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Appearance</span>
                     </span>
                     <span class="mobile-chat-menu__action-value" id="mobile-chat-menu-theme-value">Obsidian</span>
                 </button>
-                <button class="mobile-chat-menu__action" data-mobile-menu-action="layout">
+                <button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="layout">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="minimize-2" class="w-4 h-4" id="mobile-chat-menu-layout-icon" aria-hidden="true"></i>
                         <span id="mobile-chat-menu-layout-label">Focus mode</span>
                     </span>
                     <span class="mobile-chat-menu__action-value" id="mobile-chat-menu-layout-value">Chat only</span>
                 </button>
-                <button class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">
+                <button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">
                     <span class="mobile-chat-menu__action-main">
                         <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
                         <span>Clear chat</span>
