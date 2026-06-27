@@ -6,6 +6,22 @@ function readSidebarSource() {
 }
 
 describe('Notes search modal accessibility semantics', () => {
+    test('opens search as a labeled dialog and restores focus when closed', () => {
+        const source = readSidebarSource();
+
+        expect(source).toContain('showSearchModal(triggerElement = document.activeElement)');
+        expect(source).toContain("modal.setAttribute('role', 'dialog')");
+        expect(source).toContain("modal.setAttribute('aria-modal', 'true')");
+        expect(source).toContain("modal.setAttribute('aria-labelledby', 'search-modal-title')");
+        expect(source).toContain("modal.setAttribute('aria-describedby', 'search-modal-description')");
+        expect(source).toContain('id="search-modal-title"');
+        expect(source).toContain('id="search-modal-description" class="sr-only"');
+        expect(source).toContain('type="button" aria-label="Close search"');
+        expect(source).toContain('function closeSearchModal()');
+        expect(source).toContain("document.querySelector('#page-title, #editor .block-input, #editor [contenteditable=\"true\"], #editor')");
+        expect(source).toContain('focusTarget?.focus?.({ preventScroll: true })');
+    });
+
     test('keeps the search input and results wired as a combobox listbox', () => {
         const source = readSidebarSource();
 

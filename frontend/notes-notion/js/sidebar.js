@@ -109,7 +109,7 @@ const Sidebar = (function() {
         document.addEventListener('keydown', (e) => {
             if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'F') {
                 e.preventDefault();
-                showSearchModal();
+                showSearchModal(document.activeElement);
             }
         });
         
@@ -3068,20 +3068,25 @@ const Sidebar = (function() {
     /**
      * Show search modal for finding content across pages
      */
-    function showSearchModal() {
+    function showSearchModal(triggerElement = document.activeElement) {
         const pages = Storage.getPages();
 
         const modal = document.createElement('div');
         modal.id = 'search-modal';
         modal.className = 'ai-modal is-open';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'search-modal-title');
+        modal.setAttribute('aria-describedby', 'search-modal-description');
         modal.innerHTML = `
             <div class="ai-modal-content search-content search-modal-content">
                 <div class="ai-modal-header search-header">
                     <span>&#128269;</span>
-                    <span>Search Pages</span>
-                    <button class="search-close" aria-label="Close search">&times;</button>
+                    <span id="search-modal-title">Search Pages</span>
+                    <button class="search-close" type="button" aria-label="Close search">&times;</button>
                 </div>
                 <div class="search-toolbar">
+                    <p id="search-modal-description" class="sr-only">Search page titles and content, then use arrow keys to review results.</p>
                     <input type="text" id="search-input" placeholder="Search page titles and content..." class="input" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list">
                 </div>
                 <div id="search-results" class="search-results" role="listbox" aria-label="Search results">
@@ -3100,9 +3105,17 @@ const Sidebar = (function() {
         const searchResults = modal.querySelector('#search-results');
         const searchResultsStatus = modal.querySelector('#search-results-status');
 
-        modal.querySelector('.search-close').addEventListener('click', () => modal.remove());
+        function closeSearchModal() {
+            modal.remove();
+            const focusTarget = triggerElement && document.contains(triggerElement)
+                ? triggerElement
+                : document.querySelector('#page-title, #editor .block-input, #editor [contenteditable="true"], #editor');
+            focusTarget?.focus?.({ preventScroll: true });
+        }
+
+        modal.querySelector('.search-close').addEventListener('click', closeSearchModal);
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal) closeSearchModal();
         });
 
         let selectedIndex = -1;
@@ -3150,7 +3163,7 @@ const Sidebar = (function() {
                 item.addEventListener('click', () => {
                     const index = parseInt(item.dataset.index, 10);
                     openResult(currentResults[index]);
-                    modal.remove();
+                    closeSearchModal();
                 });
                 item.addEventListener('mouseenter', () => {
                     selectedIndex = parseInt(item.dataset.index, 10);
@@ -3237,12 +3250,12 @@ const Sidebar = (function() {
                     e.preventDefault();
                     if (selectedIndex >= 0 && currentResults[selectedIndex]) {
                         openResult(currentResults[selectedIndex]);
-                        modal.remove();
+                        closeSearchModal();
                     }
                     break;
                 case 'Escape':
                     e.preventDefault();
-                    modal.remove();
+                    closeSearchModal();
                     break;
             }
         });
