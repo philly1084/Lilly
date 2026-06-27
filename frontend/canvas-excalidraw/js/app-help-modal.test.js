@@ -375,6 +375,42 @@ describe('canvas top-bar dropdown accessibility', () => {
         }));
         expect(document.activeElement).toBe(exportItems[0]);
     });
+
+    test('returns focus to top-bar dropdown triggers after menu item selection', async () => {
+        const { dom, app } = createDropdownHarness();
+        const themeTrigger = document.getElementById('themePickerBtn');
+        const themeDropdown = document.getElementById('themeDropdown');
+        const themeItem = document.querySelector('#themeMenu [data-theme="dark"]');
+        const exportTrigger = document.getElementById('exportBtn');
+        const exportDropdown = document.getElementById('exportDropdown');
+        const exportItem = document.querySelector('#exportMenu [data-export="json"]');
+
+        app.setupEventListeners();
+
+        app.setDropdownOpen(themeDropdown, themeTrigger, true);
+        themeItem.focus();
+        themeItem.dispatchEvent(new dom.window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(themeDropdown.classList.contains('active')).toBe(false);
+        expect(themeTrigger.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(themeTrigger);
+
+        app.setDropdownOpen(exportDropdown, exportTrigger, true);
+        exportItem.focus();
+        exportItem.dispatchEvent(new dom.window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(exportDropdown.classList.contains('active')).toBe(false);
+        expect(exportTrigger.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(exportTrigger);
+        expect(dom.window.importExportManager.export).toHaveBeenCalledWith('json');
+    });
 });
 
 describe('canvas mobile panel accessibility', () => {

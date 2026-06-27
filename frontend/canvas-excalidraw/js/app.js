@@ -744,6 +744,7 @@ class App {
                 const theme = btn.dataset.theme;
                 this.setTheme(theme);
                 this.closeDropdown(themeDropdown, themePickerBtn);
+                themePickerBtn?.focus?.();
             });
         });
         
@@ -786,6 +787,7 @@ class App {
                 
                 if (exportDropdown) {
                     this.closeDropdown(exportDropdown, exportBtn);
+                    exportBtn?.focus?.();
                 }
             });
         });
