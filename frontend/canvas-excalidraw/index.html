@@ -1605,45 +1605,46 @@
     </aside>
 
     <!-- Templates Modal -->
-    <div id="templatesModal" class="modal" style="display: none;">
+    <div id="templatesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="templatesModalTitle" aria-describedby="templatesModalDescription" aria-hidden="true" style="display: none;">
         <div class="modal-content templates-content">
             <div class="modal-header">
-                <h2>Templates</h2>
-                <button class="close-btn" id="closeTemplates">&times;</button>
+                <h2 id="templatesModalTitle">Templates</h2>
+                <button class="close-btn" id="closeTemplates" type="button" aria-label="Close templates">&times;</button>
             </div>
+            <p class="modal-description" id="templatesModalDescription">Choose a starter board to add editable shapes to the canvas.</p>
             <div class="templates-grid">
-                <div class="template-card" data-template="flowchart">
+                <button class="template-card" type="button" data-template="flowchart">
                     <div class="template-preview">📊</div>
                     <span>Flowchart</span>
-                </div>
-                <div class="template-card" data-template="wireframe">
+                </button>
+                <button class="template-card" type="button" data-template="wireframe">
                     <div class="template-preview">📱</div>
                     <span>Wireframe</span>
-                </div>
-                <div class="template-card" data-template="mindmap">
+                </button>
+                <button class="template-card" type="button" data-template="mindmap">
                     <div class="template-preview">🧠</div>
                     <span>Mind Map</span>
-                </div>
-                <div class="template-card" data-template="orgchart">
+                </button>
+                <button class="template-card" type="button" data-template="orgchart">
                     <div class="template-preview">🏢</div>
                     <span>Org Chart</span>
-                </div>
-                <div class="template-card" data-template="kanban">
+                </button>
+                <button class="template-card" type="button" data-template="kanban">
                     <div class="template-preview">📋</div>
                     <span>Kanban Board</span>
-                </div>
-                <div class="template-card" data-template="swot">
+                </button>
+                <button class="template-card" type="button" data-template="swot">
                     <div class="template-preview">📈</div>
                     <span>SWOT Analysis</span>
-                </div>
-                <div class="template-card" data-template="timeline">
+                </button>
+                <button class="template-card" type="button" data-template="timeline">
                     <div class="template-preview">⏱️</div>
                     <span>Timeline</span>
-                </div>
-                <div class="template-card" data-template="gantt">
+                </button>
+                <button class="template-card" type="button" data-template="gantt">
                     <div class="template-preview">📅</div>
                     <span>Gantt Chart</span>
-                </div>
+                </button>
             </div>
         </div>
     </div>

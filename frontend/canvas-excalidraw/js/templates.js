@@ -6,6 +6,7 @@
 class TemplatesManager {
     constructor() {
         this.templates = this.defineTemplates();
+        this.previousFocus = null;
         this.init();
     }
     
@@ -42,13 +43,20 @@ class TemplatesManager {
                 this.hideTemplatesModal();
             }
         });
+
+        document.getElementById('templatesModal')?.addEventListener('keydown', (e) => {
+            this.handleTemplatesModalKeydown(e);
+        });
     }
     
     showTemplatesModal() {
         const modal = document.getElementById('templatesModal');
         if (modal) {
+            this.previousFocus = document.activeElement?.focus ? document.activeElement : null;
             modal.style.display = 'flex';
             modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+            document.getElementById('closeTemplates')?.focus({ preventScroll: true });
         }
     }
     
@@ -57,6 +65,35 @@ class TemplatesManager {
         if (modal) {
             modal.style.display = 'none';
             modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            if (this.previousFocus && document.contains(this.previousFocus)) {
+                this.previousFocus.focus({ preventScroll: true });
+            }
+            this.previousFocus = null;
+        }
+    }
+
+    handleTemplatesModalKeydown(event) {
+        if (event.key !== 'Tab') return;
+
+        const modal = document.getElementById('templatesModal');
+        if (!modal || !modal.classList.contains('active')) return;
+
+        const focusable = Array.from(modal.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )).filter((element) => !element.disabled && element.getAttribute('aria-hidden') !== 'true');
+
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus({ preventScroll: true });
         }
     }
     

@@ -26,6 +26,60 @@ function loadAppClass(dom) {
     return sandbox.module.exports.App;
 }
 
+function loadTemplatesManagerClass(dom) {
+    const sourcePath = path.join(__dirname, 'templates.js');
+    const source = fs.readFileSync(sourcePath, 'utf8')
+        .replace(
+            /\/\/ Create global instance\s*window\.templatesManager = new TemplatesManager\(\);\s*$/,
+            'module.exports = { TemplatesManager };'
+        );
+    const sandbox = {
+        module: { exports: {} },
+        exports: {},
+        console,
+        document: dom.window.document,
+        window: dom.window,
+        localStorage: dom.window.localStorage,
+    };
+
+    vm.runInNewContext(source, sandbox, { filename: sourcePath });
+    return sandbox.module.exports.TemplatesManager;
+}
+
+function createTemplatesModalHarness() {
+    const dom = new JSDOM(`
+        <button id="templatesBtn" type="button">Templates</button>
+        <div id="templatesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="templatesModalTitle" aria-describedby="templatesModalDescription" aria-hidden="true" style="display: none;">
+            <div class="modal-content templates-content">
+                <div class="modal-header">
+                    <h2 id="templatesModalTitle">Templates</h2>
+                    <button class="close-btn" id="closeTemplates" type="button" aria-label="Close templates">Close</button>
+                </div>
+                <p class="modal-description" id="templatesModalDescription">Choose a starter board to add editable shapes to the canvas.</p>
+                <div class="templates-grid">
+                    <button class="template-card" type="button" data-template="flowchart">Flowchart</button>
+                    <button class="template-card" type="button" data-template="wireframe">Wireframe</button>
+                </div>
+            </div>
+        </div>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const TemplatesManager = loadTemplatesManagerClass(dom);
+    const manager = Object.create(TemplatesManager.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    manager.previousFocus = null;
+    manager.templates = {
+        flowchart: {
+            name: 'Flowchart',
+            generator: () => [],
+        },
+    };
+
+    return { dom, manager };
+}
+
 function createHelpModalHarness() {
     const dom = new JSDOM(`
         <button id="helpBtn" type="button">Help</button>
@@ -246,6 +300,69 @@ describe('canvas help modal accessibility', () => {
 
         expect(reverseTab.defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(extra);
+    });
+});
+
+describe('canvas templates modal accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+    });
+
+    test('marks template cards as keyboard-reachable dialog actions', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const modal = dom.window.document.getElementById('templatesModal');
+        const close = dom.window.document.getElementById('closeTemplates');
+        const cards = Array.from(dom.window.document.querySelectorAll('.template-card'));
+
+        expect(modal.getAttribute('role')).toBe('dialog');
+        expect(modal.getAttribute('aria-modal')).toBe('true');
+        expect(modal.getAttribute('aria-hidden')).toBe('true');
+        expect(modal.getAttribute('aria-describedby')).toBe('templatesModalDescription');
+        expect(close.getAttribute('type')).toBe('button');
+        expect(close.getAttribute('aria-label')).toBe('Close templates');
+        expect(cards.length).toBe(8);
+        cards.forEach((card) => {
+            expect(card.tagName).toBe('BUTTON');
+            expect(card.getAttribute('type')).toBe('button');
+            expect(card.dataset.template).toBeTruthy();
+        });
+    });
+
+    test('opens with focus, traps Tab, and restores focus after close', () => {
+        const { dom, manager } = createTemplatesModalHarness();
+        const opener = document.getElementById('templatesBtn');
+        const modal = document.getElementById('templatesModal');
+        const close = document.getElementById('closeTemplates');
+        const lastCard = document.querySelector('[data-template="wireframe"]');
+
+        opener.focus();
+        manager.showTemplatesModal();
+
+        expect(modal.classList.contains('active')).toBe(true);
+        expect(modal.style.display).toBe('flex');
+        expect(modal.getAttribute('aria-hidden')).toBe('false');
+        expect(document.activeElement).toBe(close);
+
+        const reverseTab = new dom.window.KeyboardEvent('keydown', {
+            key: 'Tab',
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        close.dispatchEvent(reverseTab);
+        manager.handleTemplatesModalKeydown(reverseTab);
+
+        expect(reverseTab.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(lastCard);
+
+        manager.hideTemplatesModal();
+
+        expect(modal.classList.contains('active')).toBe(false);
+        expect(modal.style.display).toBe('none');
+        expect(modal.getAttribute('aria-hidden')).toBe('true');
+        expect(document.activeElement).toBe(opener);
     });
 });
 
