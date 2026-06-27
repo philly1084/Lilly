@@ -85,3 +85,32 @@ describe('web-cli copy helpers', () => {
         expect(setTimeout).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('web-cli file manager modal', () => {
+    test('opens as a labeled dialog and restores focus after Escape', async () => {
+        const { app, document } = createCopyHarness();
+        document.body.innerHTML = '<button id="filesButton" type="button">Files</button>';
+        const filesButton = document.getElementById('filesButton');
+        filesButton.focus();
+        app.sessionFiles = [];
+        app.syncStoredSessionArtifacts = jest.fn().mockResolvedValue([]);
+
+        await app.openFileManager();
+
+        const modal = document.getElementById('file-manager-modal');
+        const dialog = modal.querySelector('.file-manager-content');
+        const closeButton = modal.querySelector('.file-manager-close');
+
+        expect(dialog.getAttribute('role')).toBe('dialog');
+        expect(dialog.getAttribute('aria-modal')).toBe('true');
+        expect(dialog.getAttribute('aria-labelledby')).toBe('file-manager-title');
+        expect(dialog.getAttribute('aria-describedby')).toBe('file-manager-description');
+        expect(document.getElementById('file-manager-title').textContent).toContain('Session Files');
+        expect(document.activeElement).toBe(closeButton);
+
+        modal.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+        expect(document.getElementById('file-manager-modal')).toBeNull();
+        expect(document.activeElement).toBe(filesButton);
+    });
+});

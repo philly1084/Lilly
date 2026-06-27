@@ -10370,7 +10370,11 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
      * Open file manager modal
      */
     openFileManager() {
-        this.syncStoredSessionArtifacts().then(() => this.renderFileManager()).catch(() => this.renderFileManager());
+        const activeElement = document.activeElement;
+        this.fileManagerReturnFocus = activeElement && activeElement !== document.body && typeof activeElement.focus === 'function'
+            ? activeElement
+            : null;
+        return this.syncStoredSessionArtifacts().then(() => this.renderFileManager()).catch(() => this.renderFileManager());
     }
 
     renderFileManager() {
@@ -10382,12 +10386,15 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         modal.id = 'file-manager-modal';
         modal.className = 'file-manager-modal';
         modal.innerHTML = `
-            <div class="file-manager-overlay" onclick="app.closeFileManager()"></div>
-            <div class="file-manager-content">
+            <div class="file-manager-overlay" onclick="app.closeFileManager()" aria-hidden="true"></div>
+            <div class="file-manager-content" role="dialog" aria-modal="true" aria-labelledby="file-manager-title" aria-describedby="file-manager-description">
                 <div class="file-manager-header">
-                    <h3>Session Files (${this.sessionFiles.length})</h3>
-                    <button class="file-manager-close" onclick="app.closeFileManager()" aria-label="Close file manager">&times;</button>
+                    <h3 id="file-manager-title">Session Files (${this.sessionFiles.length})</h3>
+                    <button class="file-manager-close" type="button" onclick="app.closeFileManager()" aria-label="Close file manager">&times;</button>
                 </div>
+                <p id="file-manager-description" class="file-manager-description">
+                    Review generated session files and download individual files or the full set.
+                </p>
                 <div class="file-manager-body">
                     ${this.sessionFiles.length === 0 ? 
                         '<div class="file-manager-empty">No files yet. Generate files with /diagram, /image, or ask the AI.</div>' :
@@ -10402,13 +10409,20 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                     }
                 </div>
                 <div class="file-manager-footer">
-                    <button class="btn" onclick="app.closeFileManager()">Close</button>
-                    <button class="btn" onclick="app.downloadAllFiles()">Download All</button>
+                    <button class="btn" type="button" onclick="app.closeFileManager()">Close</button>
+                    <button class="btn" type="button" onclick="app.downloadAllFiles()">Download All</button>
                 </div>
             </div>
         `;
+        modal.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeFileManager();
+            }
+        });
         
         document.body.appendChild(modal);
+        modal.querySelector('.file-manager-close')?.focus();
     }
     
     /**
@@ -10417,6 +10431,10 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     closeFileManager() {
         const modal = document.getElementById('file-manager-modal');
         if (modal) modal.remove();
+        if (this.fileManagerReturnFocus && document.contains(this.fileManagerReturnFocus)) {
+            this.fileManagerReturnFocus.focus();
+        }
+        this.fileManagerReturnFocus = null;
     }
     
     cancelDrag() {
