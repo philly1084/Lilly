@@ -167,6 +167,29 @@ describe('model-output-parser', () => {
         }));
     });
 
+    test('detects snake_case tool_call wrappers with remote command arguments', () => {
+        const payload = parser.detectToolPayload(JSON.stringify({
+            tool_call: {
+                type: 'function_call',
+                function: {
+                    name: 'remote-command',
+                    arguments: JSON.stringify({
+                        command: 'kubectl rollout status deployment/kimibuilt',
+                        host: 'primary.k3s.local',
+                        username: 'root',
+                    }),
+                },
+            },
+        }));
+
+        expect(payload).toEqual(expect.objectContaining({
+            toolId: 'remote-command',
+            command: 'kubectl rollout status deployment/kimibuilt',
+            host: 'primary.k3s.local',
+            username: 'root',
+        }));
+    });
+
     test('does not flag ordinary command examples as remote payloads', () => {
         expect(parser.detectToolPayload(JSON.stringify({
             command: 'npm test',

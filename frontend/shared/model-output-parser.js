@@ -655,15 +655,17 @@
             return null;
         }
 
+        const toolCall = value.toolCall || value.tool_call || {};
         const directToolId = normalizeToolId(
             value.tool
             || value.toolId
             || value.name
             || value.function?.name
-            || value.toolCall?.function?.name
+            || toolCall.function?.name
+            || toolCall.name
             || '',
         );
-        const parsedArguments = parseJsonLikeValue(value.arguments || value.function?.arguments || value.toolCall?.function?.arguments);
+        const parsedArguments = parseJsonLikeValue(value.arguments || value.function?.arguments || toolCall.function?.arguments || toolCall.arguments);
         const params = parseJsonLikeValue(value.params || value.parameters) || {};
         const argumentParams = parsedArguments && typeof parsedArguments === 'object' ? parsedArguments : {};
         const merged = {
@@ -704,7 +706,7 @@
             };
         }
 
-        const nestedKeys = ['tool_calls', 'toolCalls', 'calls', 'items', 'output'];
+        const nestedKeys = ['tool_calls', 'toolCalls', 'tool_call', 'toolCall', 'calls', 'items', 'output'];
         for (const key of nestedKeys) {
             const match = findRemotePayloadObject(value[key], visited);
             if (match) {
