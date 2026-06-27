@@ -646,8 +646,13 @@ class Dashboard {
      */
     setupNavigation() {
         document.querySelectorAll('.nav-item').forEach(item => {
-            item.setAttribute('role', 'button');
-            item.setAttribute('tabindex', '0');
+            const isNativeButton = item.tagName === 'BUTTON';
+            if (isNativeButton) {
+                item.setAttribute('type', item.getAttribute('type') || 'button');
+            } else {
+                item.setAttribute('role', 'button');
+                item.setAttribute('tabindex', '0');
+            }
             item.setAttribute('aria-current', item.classList.contains('active') ? 'page' : 'false');
 
             const activateItem = () => {

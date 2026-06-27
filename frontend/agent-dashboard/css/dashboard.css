@@ -231,14 +231,20 @@ body[data-ui-surface="admin"] .toast-close:focus-visible {
 }
 
 .nav-item {
+    width: calc(100% - (var(--space-sm) * 2));
     display: flex;
     align-items: center;
+    appearance: none;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-lg);
     margin: 0 var(--space-sm);
+    background: transparent;
+    border: 0;
     color: var(--text-secondary);
     cursor: pointer;
     border-radius: var(--radius-md);
+    font: inherit;
+    text-align: left;
     transition: all var(--transition-fast);
     position: relative;
 }

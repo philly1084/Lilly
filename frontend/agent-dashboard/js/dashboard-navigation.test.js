@@ -32,8 +32,8 @@ function createNavigationHarness() {
         <aside id="sidebar">
         <nav>
             <ul>
-                <li class="nav-item active" data-view="overview"><span>Overview</span></li>
-                <li class="nav-item" data-view="logs"><span>Logs</span></li>
+                <li><button class="nav-item active" data-view="overview" type="button"><span>Overview</span></button></li>
+                <li><button class="nav-item" data-view="logs" type="button"><span>Logs</span></button></li>
             </ul>
         </nav>
         </aside>
@@ -408,16 +408,18 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).not.toContain('.search-box input:focus {\n    outline: none;\n    border-color: var(--accent-primary);\n    width:');
     });
 
-    test('makes sidebar items keyboard targets with active page state', () => {
+    test('makes sidebar items native buttons with active page state', () => {
         createNavigationHarness();
         const overview = document.querySelector('[data-view="overview"]');
         const logs = document.querySelector('[data-view="logs"]');
 
-        expect(overview.getAttribute('role')).toBe('button');
-        expect(overview.getAttribute('tabindex')).toBe('0');
+        expect(overview.tagName).toBe('BUTTON');
+        expect(overview.getAttribute('type')).toBe('button');
+        expect(overview.hasAttribute('role')).toBe(false);
         expect(overview.getAttribute('aria-current')).toBe('page');
-        expect(logs.getAttribute('role')).toBe('button');
-        expect(logs.getAttribute('tabindex')).toBe('0');
+        expect(logs.tagName).toBe('BUTTON');
+        expect(logs.getAttribute('type')).toBe('button');
+        expect(logs.hasAttribute('role')).toBe(false);
         expect(logs.getAttribute('aria-current')).toBe('false');
     });
 
