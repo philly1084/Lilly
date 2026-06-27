@@ -644,6 +644,16 @@ describe('/api/admin workload routes', () => {
                     outputPreview: 'Verified the latest work cycle. Recommended packaging <script>alert("x")</script> the research brief.',
                 }),
             ]));
+            expect(response.body.data.improvementLoop).toEqual(expect.objectContaining({
+                health: 'looping',
+                phases: expect.arrayContaining([
+                    expect.objectContaining({
+                        id: 'sense',
+                        status: 'ready',
+                        detail: '1 completed text output available for CEO review before packaging.',
+                    }),
+                ]),
+            }));
         } finally {
             isEnabledSpy.mockRestore();
         }

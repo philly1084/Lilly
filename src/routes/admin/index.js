@@ -168,17 +168,19 @@ function normalizeRunOutputPreview(run = {}, maxLength = 220) {
   return raw.length > maxLength ? `${raw.slice(0, maxLength - 1).trimEnd()}...` : raw;
 }
 
+function hasCompletedTextOutputWithoutDeliverables(run = {}) {
+  return run?.status === 'completed'
+    && extractRunOutputArtifacts(run).length === 0
+    && String(run?.metadata?.output?.text || run?.output || '').trim();
+}
+
 function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverables = []) {
   const state = status?.state || {};
   const config = status?.config || {};
   const heartbeat = state.heartbeat || {};
   const dailyAlignment = state.dailyAlignment || {};
   const actions = [];
-  const completedRunsWithoutDeliverables = runs.filter((run) => (
-    run?.status === 'completed'
-    && extractRunOutputArtifacts(run).length === 0
-    && String(run?.metadata?.output?.text || run?.output || '').trim()
-  ));
+  const completedRunsWithoutDeliverables = runs.filter(hasCompletedTextOutputWithoutDeliverables);
 
   if (!config.enabled || !String(config.companyGoal || state.companyGoal || '').trim()) {
     actions.push({
@@ -278,9 +280,18 @@ function buildRecursiveImprovementLoop(status = {}, workloads = [], runs = [], d
   const queued = runs.filter((run) => run.status === 'queued').length;
   const failed = runs.filter((run) => run.status === 'failed').length + Number(heartbeat.failedWorkloads || 0);
   const completed = runs.filter((run) => run.status === 'completed').length;
+  const completedTextOutputs = runs.filter(hasCompletedTextOutputWithoutDeliverables).length;
   const appliedLearning = Array.isArray(dailyAlignment.applied) ? dailyAlignment.applied.length : 0;
   const goalReady = Boolean(config.enabled && String(config.companyGoal || state.companyGoal || '').trim());
   const workloadReady = status?.available === true;
+  let senseDetail = 'Waiting for company files, runs, or workload evidence.';
+  if (deliverables.length > 0) {
+    senseDetail = `${deliverables.length} company file${deliverables.length === 1 ? '' : 's'} available for review.`;
+  } else if (completedTextOutputs > 0) {
+    senseDetail = `${completedTextOutputs} completed text output${completedTextOutputs === 1 ? '' : 's'} available for CEO review before packaging.`;
+  } else if (runs.length > 0 || workloads.length > 0) {
+    senseDetail = `${runs.length} run${runs.length === 1 ? '' : 's'} and ${workloads.length} workload${workloads.length === 1 ? '' : 's'} available for inspection.`;
+  }
 
   const phase = (id, label, ready, detail, blocked = false) => ({
     id,
@@ -294,9 +305,7 @@ function buildRecursiveImprovementLoop(status = {}, workloads = [], runs = [], d
       'sense',
       'Sense',
       deliverables.length > 0 || runs.length > 0 || workloads.length > 0,
-      deliverables.length > 0
-        ? `${deliverables.length} company file${deliverables.length === 1 ? '' : 's'} available for review.`
-        : 'Waiting for company files, runs, or workload evidence.',
+      senseDetail,
       !goalReady,
     ),
     phase(
