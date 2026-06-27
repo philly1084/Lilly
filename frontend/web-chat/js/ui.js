@@ -10084,7 +10084,7 @@ class UIHelpers {
 
     openImportModal() {
         // Remove any existing import modal
-        this.closeImportModal();
+        this.closeImportModal({ restoreFocus: false });
         this.closeThemeGallery({ silent: true });
         
         // Show the new import modal from HTML
@@ -10155,6 +10155,7 @@ class UIHelpers {
         preview?.classList.add('hidden');
         error?.classList.add('hidden');
         progress?.classList.add('hidden');
+        progress?.setAttribute('aria-busy', 'false');
         if (confirmBtn) confirmBtn.disabled = true;
     }
 
@@ -10167,6 +10168,7 @@ class UIHelpers {
         
         // Show progress
         progress?.classList.remove('hidden');
+        progress?.setAttribute('aria-busy', 'true');
         errorDiv?.classList.add('hidden');
         
         try {
@@ -10180,6 +10182,7 @@ class UIHelpers {
             this.showImportPreview(result, file.name);
         } catch (error) {
             progress?.classList.add('hidden');
+            progress?.setAttribute('aria-busy', 'false');
             if (errorText) errorText.textContent = error.message;
             errorDiv?.classList.remove('hidden');
         }
@@ -10197,6 +10200,7 @@ class UIHelpers {
         if (!preview) return;
         
         progress?.classList.add('hidden');
+        progress?.setAttribute('aria-busy', 'false');
         
         // Update filename
         if (filenameEl) filenameEl.textContent = filename;
@@ -10307,7 +10311,7 @@ class UIHelpers {
         }
     }
 
-    closeImportModal() {
+    closeImportModal({ restoreFocus = true } = {}) {
         const modal = document.getElementById('import-modal');
         if (modal) {
             modal.classList.add('hidden');
@@ -10319,6 +10323,11 @@ class UIHelpers {
         // Reset file input
         const fileInput = modal?.querySelector('#import-file-input');
         if (fileInput) fileInput.value = '';
+
+        if (restoreFocus && this.lastFocusedElement && typeof this.lastFocusedElement.focus === 'function') {
+            this.lastFocusedElement.focus();
+            this.lastFocusedElement = null;
+        }
     }
 
     // ============================================

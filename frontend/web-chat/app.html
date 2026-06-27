@@ -215,7 +215,7 @@
     </div>
 
     <!-- Import Modal -->
-    <div id="import-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div id="import-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="import-title" aria-describedby="import-description">
         <div class="modal-overlay" onclick="uiHelpers.closeImportModal()"></div>
         <div class="modal-content">
             <div class="modal-header">
@@ -225,7 +225,7 @@
                 </button>
             </div>
             <div class="modal-body">
-                <p class="text-text-secondary mb-4">Import from various file formats:</p>
+                <p id="import-description" class="text-text-secondary mb-4">Import from various file formats:</p>
                 
                 <!-- Drag & Drop Zone -->
                 <div id="import-dropzone" class="import-dropzone">
@@ -270,7 +270,7 @@
                 </div>
 
                 <!-- Progress Section -->
-                <div id="import-progress" class="import-progress hidden mt-4">
+                <div id="import-progress" class="import-progress hidden mt-4" role="status" aria-live="polite" aria-atomic="true" aria-busy="false">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-sm text-text-secondary" id="import-progress-text">Processing...</span>
                     </div>
@@ -280,8 +280,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-secondary" onclick="uiHelpers.closeImportModal()">Cancel</button>
-                <button class="btn-primary" id="import-confirm-btn" onclick="uiHelpers.confirmImport()" disabled>
+                <button type="button" class="btn-secondary" onclick="uiHelpers.closeImportModal()">Cancel</button>
+                <button type="button" class="btn-primary" id="import-confirm-btn" onclick="uiHelpers.confirmImport()" disabled>
                     Import Conversation
                 </button>
             </div>
@@ -1345,7 +1345,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260424a"></script>
-    <script defer src="js/ui.js?v=20260627a"></script>
+    <script defer src="js/ui.js?v=20260627b"></script>
     <script defer src="js/app.js?v=20260531a"></script>
     <script defer src="js/artifacts.js?v=20260509a"></script>
 </body>

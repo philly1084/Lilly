@@ -49,7 +49,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-controls="mobile-chat-menu"');
         expect(html).toContain('aria-label="Open chat controls"');
         expect(html).toContain('css/styles.css?v=20260625b');
-        expect(html).toContain('js/ui.js?v=20260627a');
+        expect(html).toContain('js/ui.js?v=20260627b');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(css).toContain('.mobile-chat-menu__header {\n    position: sticky;');
@@ -69,6 +69,23 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
+        expect(uiSource).toContain('this.lastFocusedElement.focus();');
+    });
+
+    test('import modal exposes instructions, status progress, and focus return hooks', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('aria-describedby="import-description"');
+        expect(html).toContain('id="import-description"');
+        expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
+        expect(html).toContain('aria-live="polite"');
+        expect(html).toContain('aria-busy="false"');
+        expect(html).toContain('js/ui.js?v=20260627b');
+        expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
+        expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
+        expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
+        expect(uiSource).toContain('restoreFocus && this.lastFocusedElement');
         expect(uiSource).toContain('this.lastFocusedElement.focus();');
     });
 });
