@@ -75,6 +75,10 @@ function extractToolNames(toolEvents = []) {
         .map((event) => (
             event?.toolCall?.function?.name
             || event?.toolCall?.name
+            || event?.tool_call?.function?.name
+            || event?.tool_call?.name
+            || event?.tool_name
+            || event?.tool_id
             || event?.tool
             || event?.name
         ))
@@ -90,7 +94,12 @@ function extractArtifactLabels(artifacts = []) {
             artifact?.filename
             || artifact?.title
             || artifact?.id
+            || artifact?.artifactId
+            || artifact?.artifact_id
+            || artifact?.name
             || artifact?.format
+            || artifact?.mimeType
+            || artifact?.mime_type
         ))
         .map((label) => normalizeText(label, 80))
         .filter(Boolean)

@@ -57,4 +57,29 @@ describe('agent journal', () => {
         expect(instructions).toContain('Do not quote, summarize, or expose this block');
         expect(instructions).toContain('</kimi-agent-journal>');
     });
+
+    test('records snake_case tool and artifact metadata in compact entries', () => {
+        const entry = buildJournalEntry({
+            sessionId: 'session-1',
+            responseId: 'response-1',
+            userText: 'Research and generate a briefing',
+            assistantText: 'Created the briefing artifact.',
+            toolEvents: [
+                { tool_call: { function: { name: 'web-search' } } },
+                { tool_name: 'artifact-create' },
+                { tool_id: 'web-search' },
+            ],
+            artifacts: [
+                {
+                    artifact_id: 'artifact-briefing-1',
+                    mime_type: 'text/html',
+                },
+            ],
+        });
+
+        expect(entry.tools).toEqual(['web-search', 'artifact-create']);
+        expect(entry.artifacts).toEqual(['artifact-briefing-1']);
+        expect(entry.note).toContain('Tools: web-search, artifact-create');
+        expect(entry.note).toContain('Artifacts: artifact-briefing-1');
+    });
 });
