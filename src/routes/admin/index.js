@@ -242,6 +242,30 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
   return actions.slice(0, 6);
 }
 
+function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}) {
+  const nextActions = Array.isArray(actions) ? [...actions] : [];
+  const current = sharedWhiteboard?.current || null;
+  const previewStatus = String(current?.filePreview?.status || '').trim();
+  const needsRefresh = !current || ['missing', 'empty', 'unavailable'].includes(previewStatus);
+
+  if (!needsRefresh) {
+    return nextActions.slice(0, 6);
+  }
+
+  nextActions.push({
+    id: 'refresh-shared-whiteboard',
+    actionKey: current?.path ? `refresh-shared-whiteboard:${current.path}` : 'refresh-shared-whiteboard:missing',
+    label: 'Refresh shared whiteboard',
+    detail: current
+      ? `${current.path} needs current coordination notes before scheduling more company work.`
+      : 'No shared coordination whiteboard is attached to current company workloads yet.',
+    target: 'heartbeat',
+    priority: current ? 'medium' : 'high',
+  });
+
+  return nextActions.slice(0, 6);
+}
+
 function buildRecursiveImprovementLoop(status = {}, workloads = [], runs = [], deliverables = []) {
   const state = status?.state || {};
   const config = status?.config || {};
@@ -578,7 +602,6 @@ router.get('/agent-company/workspace', async (req, res, next) => {
       ...buildCompanyRunDeliverables(runs, workloads),
       ...await listAgentCompanyStoredArtifacts(sessionId),
     ]).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''));
-    const actionQueue = buildCeoActionQueue(status, workloads, runs, deliverables);
     const improvementLoop = buildRecursiveImprovementLoop(status, workloads, runs, deliverables);
     const sharedWhiteboard = await attachSharedWhiteboardPreview(
       buildSharedWhiteboardStatus(status, workloads),
@@ -587,6 +610,10 @@ router.get('/agent-company/workspace', async (req, res, next) => {
         sessionId,
         ownerId: getRequestOwnerId(req),
       },
+    );
+    const actionQueue = appendSharedWhiteboardAction(
+      buildCeoActionQueue(status, workloads, runs, deliverables),
+      sharedWhiteboard,
     );
 
     res.json({

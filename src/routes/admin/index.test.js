@@ -373,6 +373,83 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('surfaces a CEO action when the shared whiteboard file is missing from the file room', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => [
+                {
+                    id: 'company-workload',
+                    sessionId: 'agent-company',
+                    title: 'Strategy Lead: Weekly plan',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            roleName: 'Strategy Lead',
+                            companyGoalHash: 'goal-hash',
+                            weekKey: '2026-06-22',
+                            sharedWhiteboard: {
+                                path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                                purpose: 'agent-to-agent weekly coordination',
+                                sections: ['Claims checked', 'Next agent task'],
+                            },
+                        },
+                    },
+                },
+            ]),
+            listAdminRuns: jest.fn(async () => []),
+        };
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
+        const searchSpy = jest.spyOn(assetManager, 'searchAssets').mockResolvedValue({
+            query: '2026-06-22-whiteboard.md',
+            kind: 'document',
+            sourceType: 'workspace',
+            sessionId: 'agent-company',
+            count: 0,
+            refreshed: { workspace: false, artifacts: false },
+            results: [],
+        });
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                available: true,
+                config: {
+                    enabled: true,
+                    sessionId: 'agent-company',
+                    companyGoal: 'Run a useful research studio.',
+                },
+                state: {
+                    companyGoalHash: 'goal-hash',
+                    heartbeat: { status: 'steady' },
+                    dailyAlignment: { status: 'steady' },
+                    shortTermSchedule: [{ id: 'plan-1', title: 'Company weekly plan' }],
+                },
+            })),
+        };
+
+        try {
+            const response = await request(app).get('/api/admin/agent-company/workspace');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.sharedWhiteboard.current.filePreview).toEqual(expect.objectContaining({
+                status: 'missing',
+                detail: 'Whiteboard file is not in the indexed company file room yet.',
+            }));
+            expect(response.body.data.actionQueue).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'refresh-shared-whiteboard',
+                    actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    label: 'Refresh shared whiteboard',
+                    detail: '.kimibuilt/agent-company/2026-06-22-whiteboard.md needs current coordination notes before scheduling more company work.',
+                    target: 'heartbeat',
+                    priority: 'medium',
+                }),
+            ]));
+        } finally {
+            searchSpy.mockRestore();
+            isEnabledSpy.mockRestore();
+        }
+    });
+
     test('exposes a shared agent company file manager backed by asset search', async () => {
         const service = {
             isAvailable: jest.fn(() => true),
