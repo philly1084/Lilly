@@ -381,6 +381,73 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('queues CEO review action for completed company output without packaged deliverables', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => [
+                {
+                    id: 'company-workload',
+                    sessionId: 'agent-company',
+                    title: 'Operations Lead: Recursive improvement review',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            roleName: 'Operations Lead',
+                            companyGoalHash: 'goal-hash',
+                        },
+                    },
+                },
+            ]),
+            listAdminRuns: jest.fn(async () => [
+                {
+                    id: 'company-run',
+                    workloadId: 'company-workload',
+                    sessionId: 'agent-company',
+                    status: 'completed',
+                    metadata: {
+                        output: {
+                            text: 'Verified the latest work cycle and recommended packaging the research brief.',
+                        },
+                    },
+                },
+            ]),
+        };
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                available: true,
+                config: {
+                    enabled: true,
+                    sessionId: 'agent-company',
+                    companyGoal: 'Run a useful research studio.',
+                },
+                state: {
+                    companyGoalHash: 'goal-hash',
+                    heartbeat: { status: 'steady' },
+                    dailyAlignment: { status: 'steady' },
+                    shortTermSchedule: [{ id: 'plan-1', title: 'Recursive improvement review' }],
+                },
+            })),
+        };
+
+        try {
+            const response = await request(app).get('/api/admin/agent-company/workspace');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.deliverables).toEqual([]);
+            expect(response.body.data.actionQueue).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'review-completed-output',
+                    target: 'runs',
+                    priority: 'medium',
+                }),
+            ]));
+        } finally {
+            isEnabledSpy.mockRestore();
+        }
+    });
+
     test('creates a fallback dashboard controller when startup did not initialize one', async () => {
         const service = {
             isAvailable: jest.fn(() => true),

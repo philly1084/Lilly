@@ -157,6 +157,11 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
   const heartbeat = state.heartbeat || {};
   const dailyAlignment = state.dailyAlignment || {};
   const actions = [];
+  const completedRunsWithoutDeliverables = runs.filter((run) => (
+    run?.status === 'completed'
+    && extractRunOutputArtifacts(run).length === 0
+    && String(run?.metadata?.output?.text || run?.output || '').trim()
+  ));
 
   if (!config.enabled || !String(config.companyGoal || state.companyGoal || '').trim()) {
     actions.push({
@@ -191,6 +196,15 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
       label: 'Review business outputs',
       detail: `${deliverables.length} deliverable${deliverables.length === 1 ? '' : 's'} ready for preview or download.`,
       target: 'deliverables',
+      priority: 'medium',
+    });
+  }
+  if (deliverables.length === 0 && completedRunsWithoutDeliverables.length > 0) {
+    actions.push({
+      id: 'review-completed-output',
+      label: 'Review completed work',
+      detail: `${completedRunsWithoutDeliverables.length} completed run${completedRunsWithoutDeliverables.length === 1 ? '' : 's'} produced text output but no packaged file yet.`,
+      target: 'runs',
       priority: 'medium',
     });
   }
