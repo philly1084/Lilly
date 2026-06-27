@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 
 // Controllers
@@ -379,6 +380,83 @@ function buildSharedWhiteboardStatus(status = {}, workloads = []) {
   };
 }
 
+function normalizeWorkspaceRelativePath(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .toLowerCase();
+}
+
+async function attachSharedWhiteboardPreview(whiteboard = {}, options = {}) {
+  const current = whiteboard?.current || null;
+  const whiteboardPath = String(current?.path || '').trim();
+  if (!whiteboardPath || !options.assetManager?.searchAssets) {
+    return whiteboard;
+  }
+
+  const expectedPath = normalizeWorkspaceRelativePath(whiteboardPath);
+  const query = path.basename(whiteboardPath) || whiteboardPath;
+  let results;
+  try {
+    results = await options.assetManager.searchAssets({
+      query,
+      kind: 'document',
+      sourceType: 'workspace',
+      includeContent: true,
+      refresh: false,
+      limit: 10,
+    }, {
+      sessionId: options.sessionId || null,
+      ownerId: options.ownerId || null,
+      sessionIsolation: false,
+    });
+  } catch (error) {
+    return {
+      ...whiteboard,
+      current: {
+        ...current,
+        filePreview: {
+          status: 'unavailable',
+          detail: `Whiteboard file index unavailable: ${error.message || 'unknown error'}`,
+        },
+      },
+    };
+  }
+  const match = (Array.isArray(results?.results) ? results.results : [])
+    .find((item) => normalizeWorkspaceRelativePath(item.relativePath || item.filename || '') === expectedPath);
+
+  if (!match) {
+    return {
+      ...whiteboard,
+      current: {
+        ...current,
+        filePreview: {
+          status: 'missing',
+          detail: 'Whiteboard file is not in the indexed company file room yet.',
+        },
+      },
+    };
+  }
+
+  const preview = normalizeRunOutputPreview({ metadata: { output: { text: match.contentPreview || '' } } }, 420);
+  return {
+    ...whiteboard,
+    current: {
+      ...current,
+      filePreview: {
+        status: preview ? 'ready' : 'empty',
+        detail: preview ? 'Indexed whiteboard preview is available.' : 'Whiteboard file is indexed but has no text preview yet.',
+        sourceType: match.sourceType || 'workspace',
+        relativePath: match.relativePath || whiteboardPath,
+        updatedAt: match.updatedAt || null,
+        sizeBytes: Number(match.sizeBytes || 0),
+        preview,
+      },
+    },
+  };
+}
+
 // API Routes
 
 // Dashboard Overview
@@ -502,7 +580,14 @@ router.get('/agent-company/workspace', async (req, res, next) => {
     ]).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''));
     const actionQueue = buildCeoActionQueue(status, workloads, runs, deliverables);
     const improvementLoop = buildRecursiveImprovementLoop(status, workloads, runs, deliverables);
-    const sharedWhiteboard = buildSharedWhiteboardStatus(status, workloads);
+    const sharedWhiteboard = await attachSharedWhiteboardPreview(
+      buildSharedWhiteboardStatus(status, workloads),
+      {
+        assetManager,
+        sessionId,
+        ownerId: getRequestOwnerId(req),
+      },
+    );
 
     res.json({
       success: true,

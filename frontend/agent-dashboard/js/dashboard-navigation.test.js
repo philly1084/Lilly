@@ -360,6 +360,14 @@ function createAgentCompanyHarness(options = {}) {
                     workloadCount: 1,
                     roleNames: ['Strategy Lead'],
                     sections: ['Claims checked', 'Decisions made', 'Next agent task'],
+                    filePreview: {
+                        status: 'ready',
+                        detail: 'Indexed whiteboard preview is available.',
+                        relativePath: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                        updatedAt: '2026-06-26T14:00:00.000Z',
+                        sizeBytes: 512,
+                        preview: 'Claims checked: public route works. Decisions made: keep DNS stable. Next agent task: verify deploy proof <script>alert("x")</script>.',
+                    },
                 },
             },
         },
@@ -465,6 +473,15 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('max-height: min(42vh, 420px);');
         expect(css).toContain('overflow: auto;');
         expect(css).toContain('overscroll-behavior: contain;');
+    });
+
+    test('keeps shared whiteboard previews readable', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toContain('.company-whiteboard-preview');
+        expect(css).toContain('.company-whiteboard-preview--ready');
+        expect(css).toContain('.company-whiteboard-preview p');
+        expect(css).toContain('overflow-wrap: anywhere;');
     });
 
     test('keeps global search focus from shifting header controls', () => {
@@ -694,6 +711,10 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Week 2026-06-22');
         expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Strategy Lead');
         expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Next agent task');
+        expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Whiteboard preview');
+        expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Claims checked: public route works.');
+        expect(document.getElementById('companySharedWhiteboard').querySelector('script')).toBeNull();
+        expect(document.getElementById('companySharedWhiteboard').querySelector('.company-whiteboard-preview--ready')).not.toBeNull();
     });
 
     test('renders escaped output previews in company action cards', () => {

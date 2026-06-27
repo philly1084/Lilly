@@ -241,6 +241,27 @@ describe('/api/admin workload routes', () => {
                 updatedAt: '2026-06-26T13:00:00.000Z',
             },
         ]);
+        const searchSpy = jest.spyOn(assetManager, 'searchAssets').mockResolvedValue({
+            query: '2026-06-22-whiteboard.md',
+            kind: 'document',
+            sourceType: 'workspace',
+            sessionId: 'agent-company',
+            count: 1,
+            refreshed: { workspace: false, artifacts: false },
+            results: [
+                {
+                    id: 'workspace:whiteboard',
+                    sourceType: 'workspace',
+                    kind: 'document',
+                    title: '2026-06-22 whiteboard',
+                    filename: '2026-06-22-whiteboard.md',
+                    relativePath: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    sizeBytes: 512,
+                    updatedAt: '2026-06-26T14:00:00.000Z',
+                    contentPreview: 'Claims checked: public route works. Decisions made: keep DNS stable. Next agent task: verify deploy proof.',
+                },
+            ],
+        });
         const app = buildApp(service);
         app.locals.agentCompanyService = {
             getStatus: jest.fn(async () => ({
@@ -267,6 +288,16 @@ describe('/api/admin workload routes', () => {
             expect(service.listAdminWorkloads).toHaveBeenCalledWith(200);
             expect(service.listAdminRuns).toHaveBeenCalledWith(200);
             expect(listBySessionSpy).toHaveBeenCalledWith('agent-company');
+            expect(searchSpy).toHaveBeenCalledWith(expect.objectContaining({
+                query: '2026-06-22-whiteboard.md',
+                kind: 'document',
+                sourceType: 'workspace',
+                includeContent: true,
+                refresh: false,
+            }), expect.objectContaining({
+                sessionId: 'agent-company',
+                sessionIsolation: false,
+            }));
             expect(response.body.data.workspace).toEqual(expect.objectContaining({
                 sessionId: 'agent-company',
                 workloadAvailable: true,
@@ -327,9 +358,16 @@ describe('/api/admin workload routes', () => {
                     workloadCount: 1,
                     roleNames: ['Strategy Lead'],
                     sections: expect.arrayContaining(['Claims checked', 'Decisions made']),
+                    filePreview: expect.objectContaining({
+                        status: 'ready',
+                        relativePath: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                        preview: 'Claims checked: public route works. Decisions made: keep DNS stable. Next agent task: verify deploy proof.',
+                        sizeBytes: 512,
+                    }),
                 }),
             }));
         } finally {
+            searchSpy.mockRestore();
             listBySessionSpy.mockRestore();
             isEnabledSpy.mockRestore();
         }

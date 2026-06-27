@@ -2934,6 +2934,45 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     background-color: var(--bg-secondary);
 }
 
+.company-whiteboard-preview {
+    display: grid;
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    border: 1px solid rgba(121, 192, 255, 0.28);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+}
+
+.company-whiteboard-preview--missing {
+    border-color: rgba(210, 153, 34, 0.38);
+}
+
+.company-whiteboard-preview--ready {
+    border-color: rgba(63, 185, 80, 0.34);
+}
+
+.company-whiteboard-preview-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-xs);
+}
+
+.company-whiteboard-preview-head strong {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+}
+
+.company-whiteboard-preview p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
 .company-role-id,
 .company-schedule-meta {
     justify-self: end;

@@ -3252,6 +3252,12 @@ class Dashboard {
 
         const sections = Array.isArray(current.sections) ? current.sections.filter(Boolean) : [];
         const roles = Array.isArray(current.roleNames) ? current.roleNames.filter(Boolean) : [];
+        const filePreview = current.filePreview || null;
+        const previewMeta = filePreview ? [
+            filePreview.status ? `File ${filePreview.status}` : '',
+            filePreview.updatedAt ? this.formatDate(filePreview.updatedAt) : '',
+            filePreview.sizeBytes ? this.formatBytes(filePreview.sizeBytes) : '',
+        ].filter(Boolean).join(' | ') : '';
         container.innerHTML = `
             <div class="company-whiteboard-card">
                 <div class="company-whiteboard-main">
@@ -3267,6 +3273,15 @@ class Dashboard {
                 ${sections.length ? `
                     <div class="company-whiteboard-sections" aria-label="Shared whiteboard sections">
                         ${sections.slice(0, 8).map((section) => `<span>${this.escapeHtml(section)}</span>`).join('')}
+                    </div>
+                ` : ''}
+                ${filePreview ? `
+                    <div class="company-whiteboard-preview company-whiteboard-preview--${this.escapeHtml(filePreview.status || 'missing')}">
+                        <div class="company-whiteboard-preview-head">
+                            <strong>Whiteboard preview</strong>
+                            ${previewMeta ? `<span>${this.escapeHtml(previewMeta)}</span>` : ''}
+                        </div>
+                        <p>${this.escapeHtml(filePreview.preview ? this.truncate(filePreview.preview, 420) : (filePreview.detail || 'No whiteboard text preview is available yet.'))}</p>
                     </div>
                 ` : ''}
             </div>
