@@ -653,8 +653,23 @@ describe('agent dashboard navigation accessibility', () => {
 
         dashboard.handleCompanyAction('runs', 'company-run');
 
-        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run');
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run', { source: 'company-action' });
         expect(runsTable.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+    });
+
+    test('marks the company run opened from a CEO action', () => {
+        const { dashboard } = createAgentCompanyHarness();
+        dashboard.state.selectedRun = dashboard.state.runs[0];
+        dashboard.state.companyActionRunId = 'company-run';
+
+        dashboard.renderCompanyRuns(dashboard.state.runs);
+
+        const rows = document.querySelectorAll('#companyRunsTableBody .workload-run-row');
+        expect(rows[0].classList.contains('selected')).toBe(true);
+        expect(rows[0].classList.contains('company-run-row--action-selected')).toBe(true);
+        expect(rows[0].textContent).toContain('CEO action');
+        expect(rows[1].classList.contains('company-run-row--action-selected')).toBe(false);
+        expect(rows[1].textContent).not.toContain('CEO action');
     });
 
     test('renders shared company file manager search results', () => {

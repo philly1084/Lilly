@@ -25,6 +25,7 @@ class Dashboard {
             agentCompanyStatus: null,
             agentCompanyWorkspace: null,
             agentCompanyFiles: null,
+            companyActionRunId: null,
             companyFileSearch: '',
             companyFileSourceFilter: 'any',
             companyWorkSearch: '',
@@ -2614,7 +2615,7 @@ class Dashboard {
                 role="button"
                 tabindex="0"
                 aria-selected="${this.state.selectedRun?.id === run.id ? 'true' : 'false'}"
-                onclick="dashboard.selectAdminRun(this.dataset.id)"
+                onclick="dashboard.selectAdminRun(this.dataset.id, { source: 'table' })"
                 onkeydown="dashboard.handleListItemKeydown(event)">
                 <td>${this.escapeHtml(run.id)}</td>
                 <td>${this.escapeHtml(run.workloadTitle || run.workloadId)}</td>
@@ -3246,16 +3247,23 @@ class Dashboard {
             return;
         }
 
-        tbody.innerHTML = runs.map((run) => `
-            <tr class="workload-run-row ${this.state.selectedRun?.id === run.id ? 'selected' : ''}"
+        tbody.innerHTML = runs.map((run) => {
+            const isSelected = this.state.selectedRun?.id === run.id;
+            const isActionSelected = this.state.companyActionRunId === run.id;
+
+            return `
+            <tr class="workload-run-row ${isSelected ? 'selected' : ''} ${isActionSelected ? 'company-run-row--action-selected' : ''}"
                 data-id="${this.escapeHtml(run.id)}"
                 data-dashboard-list-action="admin-run"
                 role="button"
                 tabindex="0"
-                aria-selected="${this.state.selectedRun?.id === run.id ? 'true' : 'false'}"
-                onclick="dashboard.selectAdminRun(this.dataset.id)"
+                aria-selected="${isSelected ? 'true' : 'false'}"
+                onclick="dashboard.selectAdminRun(this.dataset.id, { source: 'table' })"
                 onkeydown="dashboard.handleListItemKeydown(event)">
-                <td>${this.escapeHtml(run.id)}</td>
+                <td>
+                    <span>${this.escapeHtml(run.id)}</span>
+                    ${isActionSelected ? '<span class="company-run-action-marker">CEO action</span>' : ''}
+                </td>
                 <td>${this.escapeHtml(run.workloadTitle || run.workloadId)}</td>
                 <td><span class="status-badge ${this.getRunStatusClass(run.status)}">${this.escapeHtml(run.status)}</span></td>
                 <td>${this.escapeHtml(run.reason || 'manual')}</td>
@@ -3271,7 +3279,8 @@ class Dashboard {
                     </button>
                 </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     }
 
     renderCompanyAlignment(alignment = {}) {
@@ -3736,7 +3745,13 @@ class Dashboard {
         }
     }
 
-    async selectAdminRun(id) {
+    async selectAdminRun(id, options = {}) {
+        if (options?.source === 'company-action') {
+            this.state.companyActionRunId = id;
+        } else if (this.state.companyActionRunId) {
+            this.state.companyActionRunId = null;
+        }
+
         const existing = this.state.runs.find((run) => run.id === id) || null;
         this.state.selectedRun = existing;
         this.renderAdminRuns(this.state.runs);
@@ -4436,7 +4451,7 @@ class Dashboard {
                 break;
             case 'runs':
                 if (runId) {
-                    this.selectAdminRun(runId);
+                    this.selectAdminRun(runId, { source: 'company-action' });
                 }
                 document.getElementById('companyRunsTableBody')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
                 break;

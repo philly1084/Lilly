@@ -2871,6 +2871,24 @@ select.form-control,
     background-color: rgba(88, 166, 255, 0.12);
 }
 
+.workload-run-row.company-run-row--action-selected {
+    box-shadow: inset 4px 0 0 var(--accent-primary);
+}
+
+.company-run-action-marker {
+    display: inline-flex;
+    align-items: center;
+    margin-left: var(--space-xs);
+    padding: 2px var(--space-xs);
+    border: 1px solid var(--accent-primary);
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary);
+    background-color: var(--bg-primary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 .workload-trigger {
     display: inline-flex;
     align-items: center;
