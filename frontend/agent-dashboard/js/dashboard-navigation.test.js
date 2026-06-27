@@ -675,6 +675,23 @@ describe('agent dashboard navigation accessibility', () => {
         expect(rows[1].textContent).not.toContain('CEO action');
     });
 
+    test('shows CEO action context in the selected company run details', () => {
+        const { dashboard } = createAgentCompanyHarness();
+        dashboard.state.companyActionRunId = 'company-run';
+
+        dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
+
+        const companyDetails = document.getElementById('companyRunDetails');
+        expect(companyDetails.querySelector('.workload-action-context')).not.toBeNull();
+        expect(companyDetails.textContent).toContain('Opened from CEO action queue');
+        expect(companyDetails.textContent).toContain("Review this run's output evidence");
+
+        dashboard.state.companyActionRunId = null;
+        dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
+
+        expect(companyDetails.querySelector('.workload-action-context')).toBeNull();
+    });
+
     test('renders shared company file manager search results', () => {
         const { dashboard } = createAgentCompanyHarness();
 

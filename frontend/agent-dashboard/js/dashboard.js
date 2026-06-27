@@ -2662,8 +2662,16 @@ class Dashboard {
         const metadata = this.stringifyAdminPayload(run.metadata);
         const errorPayload = this.stringifyAdminPayload(run.error);
         const tracePayload = this.stringifyAdminPayload(run.trace);
+        const actionContextHtml = this.state.companyActionRunId === run.id
+            ? `
+            <div class="workload-action-context">
+                <strong>Opened from CEO action queue</strong>
+                <span>Review this run's output evidence before continuing or packaging company work.</span>
+            </div>`
+            : '';
 
         setContainers(`
+            ${actionContextHtml}
             <div>
                 <div class="workload-detail-title">${this.escapeHtml(run.workloadTitle || run.workloadId)}</div>
                 <div class="workload-detail-subtitle">${this.escapeHtml(run.id)} | ${this.escapeHtml(run.reason || 'manual')} | ${this.escapeHtml(this.formatRunStageLabel(run.stageIndex))}</div>
