@@ -100,6 +100,7 @@ class Dashboard {
      * Initialize the dashboard
      */
     async init() {
+        this.initializeTheme();
         this.setupEventListeners();
         this.setupNavigation();
         this.setupSettingsNavigation();
@@ -3704,6 +3705,56 @@ class Dashboard {
         this.state.sidebarCollapsed = !this.state.sidebarCollapsed;
         document.getElementById('sidebar').classList.toggle('collapsed', this.state.sidebarCollapsed);
         document.getElementById('sidebarToggle')?.setAttribute('aria-expanded', String(!this.state.sidebarCollapsed));
+    }
+
+    getStoredTheme() {
+        try {
+            return window.localStorage?.getItem('kimibuilt_admin_theme') || '';
+        } catch (error) {
+            return '';
+        }
+    }
+
+    setStoredTheme(theme) {
+        try {
+            window.localStorage?.setItem('kimibuilt_admin_theme', theme);
+        } catch (error) {
+            // Theme persistence is a convenience; the active page state still updates.
+        }
+    }
+
+    resolvePreferredTheme(theme = '') {
+        if (theme === 'light' || theme === 'dark') {
+            return theme;
+        }
+
+        return window.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'dark';
+    }
+
+    applyTheme(theme = '') {
+        const resolvedTheme = this.resolvePreferredTheme(theme);
+        document.body.dataset.adminTheme = resolvedTheme;
+
+        const toggle = document.getElementById('themeToggle');
+        if (toggle) {
+            const nextTheme = resolvedTheme === 'light' ? 'dark' : 'light';
+            toggle.setAttribute('aria-label', `Switch to ${nextTheme} color theme`);
+            toggle.setAttribute('aria-pressed', String(resolvedTheme === 'light'));
+            toggle.title = `Switch to ${nextTheme} color theme`;
+        }
+
+        return resolvedTheme;
+    }
+
+    initializeTheme() {
+        this.applyTheme(this.getStoredTheme());
+    }
+
+    toggleTheme() {
+        const currentTheme = document.body.dataset.adminTheme || this.resolvePreferredTheme(this.getStoredTheme());
+        const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
+        this.setStoredTheme(nextTheme);
+        return this.applyTheme(nextTheme);
     }
     
     selectPrompt(prompt) {

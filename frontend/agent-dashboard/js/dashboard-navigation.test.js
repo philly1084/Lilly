@@ -79,6 +79,26 @@ function createSettingsHarness() {
     return { dashboard };
 }
 
+function createThemeHarness({ prefersLight = false, storedTheme = '' } = {}) {
+    const dom = new JSDOM(`
+        <body data-ui-surface="admin">
+            <button id="themeToggle" type="button" aria-label="Toggle color theme"></button>
+        </body>
+    `, { url: 'http://localhost:3000/admin/' });
+    const Dashboard = loadDashboardClass(dom);
+    const dashboard = Object.create(Dashboard.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+    dom.window.matchMedia = jest.fn().mockReturnValue({ matches: prefersLight });
+
+    if (storedTheme) {
+        dom.window.localStorage.setItem('kimibuilt_admin_theme', storedTheme);
+    }
+
+    return { dom, dashboard };
+}
+
 function createPromptTabHarness() {
     const dom = new JSDOM(`
         <div class="editor-tabs">
@@ -390,6 +410,32 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('.range-input input[type="range"]:focus-visible');
         expect(css).toContain('.prompt-item.active .prompt-item-meta {\n    color: var(--bg-primary);');
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+    });
+
+    test('keeps admin select menus themed instead of browser-white', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+
+        expect(css).toContain('body[data-ui-surface="admin"][data-admin-theme="light"]');
+        expect(css).toContain('--admin-menu-bg: #dbeafe');
+        expect(css).toContain('--admin-menu-option-bg: #cfe0f7');
+        expect(css).toContain('body[data-ui-surface="admin"] select.form-control option');
+        expect(css).toContain('background-color: var(--admin-menu-bg)');
+    });
+
+    test('toggles and persists the admin light and dark theme state', () => {
+        const { dom, dashboard } = createThemeHarness({ prefersLight: true });
+
+        dashboard.initializeTheme();
+
+        expect(dom.window.document.body.dataset.adminTheme).toBe('light');
+        expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-label')).toBe('Switch to dark color theme');
+        expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-pressed')).toBe('true');
+
+        expect(dashboard.toggleTheme()).toBe('dark');
+        expect(dom.window.document.body.dataset.adminTheme).toBe('dark');
+        expect(dom.window.localStorage.getItem('kimibuilt_admin_theme')).toBe('dark');
+        expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-label')).toBe('Switch to light color theme');
+        expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-pressed')).toBe('false');
     });
 
     test('keeps workload run JSON previews scroll-contained', () => {

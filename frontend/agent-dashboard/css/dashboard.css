@@ -95,6 +95,52 @@ body {
     min-height: 100vh;
 }
 
+body[data-ui-surface="admin"] {
+    color-scheme: dark;
+    --admin-menu-bg: var(--bg-secondary);
+    --admin-menu-option-bg: var(--bg-tertiary);
+    --admin-menu-option-hover: rgba(88, 166, 255, 0.18);
+    --admin-menu-border: var(--border-primary);
+}
+
+body[data-ui-surface="admin"][data-admin-theme="light"] {
+    color-scheme: light;
+    --bg-primary: #eaf3ff;
+    --bg-secondary: #dbeafe;
+    --bg-tertiary: #cfe0f7;
+    --bg-elevated: #f4f8ff;
+
+    --border-primary: #9cb8dd;
+    --border-secondary: #b9ccec;
+
+    --text-primary: #10223f;
+    --text-secondary: #2f4663;
+    --text-muted: #334a68;
+
+    --accent-primary: #185abc;
+    --accent-secondary: #164ea6;
+    --accent-hover: #123f85;
+    --focus-ring: rgba(24, 90, 188, 0.24);
+
+    --success: #147d3f;
+    --success-light: #0a5c32;
+    --warning: #9a6700;
+    --warning-light: #b7791f;
+    --danger: #c53030;
+    --danger-light: #e53e3e;
+    --info: #1f6feb;
+    --info-light: #2b7fff;
+
+    --shadow-sm: 0 1px 2px rgba(15, 35, 65, 0.12);
+    --shadow-md: 0 4px 12px rgba(15, 35, 65, 0.16);
+    --shadow-lg: 0 16px 36px rgba(15, 35, 65, 0.2);
+
+    --admin-menu-bg: #dbeafe;
+    --admin-menu-option-bg: #cfe0f7;
+    --admin-menu-option-hover: #b8d3f5;
+    --admin-menu-border: #8fb1dc;
+}
+
 body.admin-nav-open {
     overflow: hidden;
 }
@@ -265,6 +311,11 @@ body[data-ui-surface="admin"] .toast-close:focus-visible {
     color: var(--bg-primary);
 }
 
+body[data-ui-surface="admin"][data-admin-theme="light"] .nav-item.active,
+body[data-ui-surface="admin"][data-admin-theme="light"] .settings-nav-item.active {
+    color: #ffffff;
+}
+
 .nav-item.active:focus-visible {
     outline-color: var(--text-primary);
 }
@@ -369,6 +420,12 @@ body[data-ui-surface="admin"] .toast-close:focus-visible {
     font-size: var(--text-sm);
     color: #ffffff;
     flex-shrink: 0;
+}
+
+body[data-ui-surface="admin"][data-admin-theme="light"] .user-avatar {
+    background: #b8d3f5;
+    border: 1px solid var(--admin-menu-border);
+    color: var(--text-primary);
 }
 
 .user-details {
@@ -768,16 +825,35 @@ textarea.form-control {
 select.form-control,
 .select-sm {
     appearance: none;
+    background-color: var(--admin-menu-option-bg, var(--bg-tertiary));
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right var(--space-sm) center;
     padding-right: var(--space-xl);
 }
 
+body[data-ui-surface="admin"] select.form-control,
+body[data-ui-surface="admin"] .select-sm {
+    background-color: var(--admin-menu-option-bg);
+    border-color: var(--admin-menu-border);
+    color: var(--text-primary);
+}
+
+body[data-ui-surface="admin"] select.form-control option,
+body[data-ui-surface="admin"] .select-sm option {
+    background-color: var(--admin-menu-bg);
+    color: var(--text-primary);
+}
+
+body[data-ui-surface="admin"] select.form-control option:checked,
+body[data-ui-surface="admin"] .select-sm option:checked {
+    background-color: var(--admin-menu-option-hover);
+    color: var(--text-primary);
+}
+
 .select-sm {
     padding: var(--space-xs) var(--space-lg) var(--space-xs) var(--space-sm);
     font-size: var(--text-xs);
-    background-color: var(--bg-tertiary);
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-md);
     color: var(--text-primary);
