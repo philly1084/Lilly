@@ -330,8 +330,29 @@ const OutputManager = {
      * @returns {Promise<boolean>} Success status
      */
     async copyToClipboard() {
+        const text = String(this.currentResult || '');
         try {
-            await navigator.clipboard.writeText(this.currentResult);
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.top = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            textarea.setSelectionRange(0, textarea.value.length);
+
+            const copied = document.execCommand?.('copy') === true;
+            document.body.removeChild(textarea);
+            if (!copied) {
+                throw new Error('Clipboard fallback copy command failed');
+            }
             return true;
         } catch (error) {
             console.error('Failed to copy:', error);
