@@ -117,6 +117,7 @@ const SlashMenu = (function() {
         
         isVisible = false;
         menu.style.display = 'none';
+        menu.removeAttribute('aria-activedescendant');
         filterInput = '';
         selectedIndex = 0;
         currentBlockId = null;
@@ -137,6 +138,7 @@ const SlashMenu = (function() {
         switch (e.key) {
             case 'ArrowDown':
                 e.preventDefault();
+                if (items.length === 0) return;
                 selectedIndex = (selectedIndex + 1) % items.length;
                 updateSelection(items);
                 scrollIntoView(items[selectedIndex]);
@@ -144,7 +146,24 @@ const SlashMenu = (function() {
                 
             case 'ArrowUp':
                 e.preventDefault();
+                if (items.length === 0) return;
                 selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+                updateSelection(items);
+                scrollIntoView(items[selectedIndex]);
+                break;
+
+            case 'Home':
+                e.preventDefault();
+                if (items.length === 0) return;
+                selectedIndex = 0;
+                updateSelection(items);
+                scrollIntoView(items[selectedIndex]);
+                break;
+
+            case 'End':
+                e.preventDefault();
+                if (items.length === 0) return;
+                selectedIndex = items.length - 1;
                 updateSelection(items);
                 scrollIntoView(items[selectedIndex]);
                 break;
@@ -204,6 +223,9 @@ const SlashMenu = (function() {
             const blockType = blockTypes[type];
             if (!blockType) {
                 item.classList.add('hidden');
+                item.classList.remove('selected');
+                item.setAttribute('aria-selected', 'false');
+                item.setAttribute('tabindex', '-1');
                 return;
             }
             
@@ -220,26 +242,38 @@ const SlashMenu = (function() {
             } else {
                 item.classList.add('hidden');
                 item.classList.remove('selected');
+                item.setAttribute('aria-selected', 'false');
+                item.setAttribute('tabindex', '-1');
             }
         });
         
         // Reset selection if out of bounds
         if (selectedIndex >= visibleCount) {
             selectedIndex = 0;
-            updateSelection(menu.querySelectorAll('.slash-item:not(.hidden)'));
         }
+
+        updateSelection(menu.querySelectorAll('.slash-item:not(.hidden)'));
     }
     
     /**
      * Update visual selection and ARIA attributes
      */
     function updateSelection(items) {
+        if (!items.length) {
+            menu.removeAttribute('aria-activedescendant');
+            return;
+        }
+
         items.forEach((item, index) => {
+            if (!item.id) {
+                item.id = `slash-item-${item.dataset.type || index}`;
+            }
+
             if (index === selectedIndex) {
                 item.classList.add('selected');
                 item.setAttribute('aria-selected', 'true');
-                // Focus the selected item for screen readers
                 item.setAttribute('tabindex', '0');
+                menu.setAttribute('aria-activedescendant', item.id);
             } else {
                 item.classList.remove('selected');
                 item.setAttribute('aria-selected', 'false');

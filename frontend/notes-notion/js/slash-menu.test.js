@@ -10,9 +10,11 @@ function loadSlashMenu({ width = 1024, height = 768 } = {}) {
         <html>
             <body>
                 <main id="editor"></main>
-                <div id="slash-menu">
+                <div id="slash-menu" role="listbox">
                     <div class="slash-menu-items">
                         <button class="slash-item" data-type="text"></button>
+                        <button class="slash-item" data-type="heading_1"></button>
+                        <button class="slash-item" data-type="quote"></button>
                     </div>
                 </div>
             </body>
@@ -42,6 +44,14 @@ function loadSlashMenu({ width = 1024, height = 768 } = {}) {
                     name: 'Text',
                     hint: 'Plain paragraph',
                 },
+                heading_1: {
+                    name: 'Heading 1',
+                    hint: 'Big section heading',
+                },
+                quote: {
+                    name: 'Quote',
+                    hint: 'Capture a quote',
+                },
             }),
         },
     };
@@ -49,6 +59,7 @@ function loadSlashMenu({ width = 1024, height = 768 } = {}) {
     context.globalThis = context;
 
     vm.runInNewContext(source, context, { filename: 'slash-menu.js' });
+    dom.window.HTMLElement.prototype.scrollIntoView = jest.fn();
     dom.window.SlashMenu.init();
 
     return { dom, SlashMenu: dom.window.SlashMenu };
@@ -74,5 +85,48 @@ describe('Notes slash menu positioning', () => {
 
         expect(menu.style.top).toBe('16px');
         expect(menu.style.maxHeight).toBe('328px');
+    });
+
+    test('exposes one active option when the menu opens', () => {
+        const { dom, SlashMenu } = loadSlashMenu();
+        const menu = dom.window.document.getElementById('slash-menu');
+        const items = Array.from(menu.querySelectorAll('.slash-item'));
+
+        SlashMenu.show(120, 120, 'block-1');
+
+        expect(menu.getAttribute('aria-activedescendant')).toBe(items[0].id);
+        expect(items.map((item) => item.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
+        expect(items.map((item) => item.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
+    });
+
+    test('supports Home and End keyboard movement through visible options', () => {
+        const { dom, SlashMenu } = loadSlashMenu();
+        const menu = dom.window.document.getElementById('slash-menu');
+        const items = Array.from(menu.querySelectorAll('.slash-item'));
+
+        SlashMenu.show(120, 120, 'block-1');
+        dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+
+        expect(menu.getAttribute('aria-activedescendant')).toBe(items[2].id);
+        expect(items[2].getAttribute('aria-selected')).toBe('true');
+
+        dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+
+        expect(menu.getAttribute('aria-activedescendant')).toBe(items[0].id);
+        expect(items[0].getAttribute('aria-selected')).toBe('true');
+    });
+
+    test('clears active option state when filtering has no matches', () => {
+        const { dom, SlashMenu } = loadSlashMenu();
+        const menu = dom.window.document.getElementById('slash-menu');
+        const items = Array.from(menu.querySelectorAll('.slash-item'));
+
+        SlashMenu.show(120, 120, 'block-1');
+        dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'z', bubbles: true }));
+
+        expect(menu.hasAttribute('aria-activedescendant')).toBe(false);
+        expect(items.every((item) => item.classList.contains('hidden'))).toBe(true);
+        expect(items.map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1']);
+        expect(items.map((item) => item.getAttribute('aria-selected'))).toEqual(['false', 'false', 'false']);
     });
 });
