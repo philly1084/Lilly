@@ -56,9 +56,35 @@ const NON_CHAT_CAPABILITIES = new Set([
 ]);
 
 function normalizeCapabilities(model = {}) {
-    return Array.isArray(model?.capabilities)
-        ? model.capabilities.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean)
-        : [];
+    return getCapabilityEntries(model)
+        .map((entry) => String(entry || '').trim().toLowerCase())
+        .filter(Boolean);
+}
+
+function parseCapabilityEntries(value = null) {
+    if (Array.isArray(value)) {
+        return value.flatMap((entry) => parseCapabilityEntries(entry));
+    }
+
+    if (typeof value === 'string') {
+        return value.split(/[,\s;|]+/).map((entry) => entry.trim()).filter(Boolean);
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.entries(value)
+            .filter(([, enabled]) => enabled === true)
+            .map(([name]) => name);
+    }
+
+    return [];
+}
+
+function getCapabilityEntries(model = {}) {
+    return parseCapabilityEntries(
+        model?.capabilities
+        || model?.metadata?.capabilities
+        || model?.contract?.capabilities,
+    );
 }
 
 function isPublicChatModel(modelOrId = '') {
@@ -82,8 +108,9 @@ function isPublicChatModel(modelOrId = '') {
 }
 
 function inferModelCapabilities(model = {}) {
-    if (Array.isArray(model.capabilities)) {
-        const capabilities = [...new Set(model.capabilities.map((entry) => String(entry || '').trim()).filter(Boolean))];
+    const providedCapabilities = getCapabilityEntries(model);
+    if (providedCapabilities.length > 0) {
+        const capabilities = [...new Set(providedCapabilities.map((entry) => String(entry || '').trim()).filter(Boolean))];
         const normalizedCapabilities = new Set(capabilities.map((entry) => entry.toLowerCase()));
         const hasNonChatCapability = [...normalizedCapabilities].some((entry) => NON_CHAT_CAPABILITIES.has(entry));
         const shouldAddChat = !normalizedCapabilities.has('chat')

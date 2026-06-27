@@ -182,6 +182,21 @@ describe('web-chat model filtering', () => {
             'router-image-input-chat',
         ]);
     });
+
+    test('normalizes string and nested capability metadata in the fallback filter', () => {
+        const { apiClient } = loadApiClient();
+
+        const models = apiClient.filterChatModels([
+            { id: 'gpt-image-2', capabilities: 'image_generation' },
+            { id: 'gpt-5.5-tools', metadata: { capabilities: 'tools, streaming' } },
+            { id: 'custom-basic-chat', contract: { capabilities: { chat: true } } },
+        ]);
+
+        expect(models.map((model) => model.id)).toEqual([
+            'gpt-5.5-tools',
+            'custom-basic-chat',
+        ]);
+    });
 });
 
 describe('web-chat artifact metadata normalization', () => {

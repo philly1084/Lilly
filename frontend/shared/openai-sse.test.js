@@ -479,6 +479,21 @@ describe('openai-sse helpers', () => {
     expect(resolvePreferredChatModel(models, 'gpt-image-2')).toBe('auto');
   });
 
+  test('normalizes string and nested capability metadata for chat selection', () => {
+    const models = [
+      { id: 'gpt-image-2', capabilities: 'image_generation' },
+      { id: 'gpt-5.5-tools', metadata: { capabilities: 'tools, streaming' } },
+      { id: 'custom-basic-chat', contract: { capabilities: { chat: true } } },
+    ];
+
+    expect(isChatModel(models[0])).toBe(false);
+    expect(filterChatModels(models).map((model) => model.id)).toEqual([
+      'gpt-5.5-tools',
+      'custom-basic-chat',
+    ]);
+    expect(resolvePreferredChatModel(models, 'gpt-5.5-tools')).toBe('gpt-5.5-tools');
+  });
+
   test('keeps vision and image-input chat models selectable', () => {
     const models = [
       { id: 'gpt-4-vision-preview' },

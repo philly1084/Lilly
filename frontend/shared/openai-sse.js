@@ -92,9 +92,31 @@
   }
 
   function getModelCapabilities(model = {}) {
-    return Array.isArray(model?.capabilities)
-      ? model.capabilities.map((capability) => String(capability || '').trim().toLowerCase()).filter(Boolean)
-      : [];
+    return parseModelCapabilityEntries(
+      model?.capabilities
+      || model?.metadata?.capabilities
+      || model?.contract?.capabilities,
+    )
+      .map((capability) => String(capability || '').trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  function parseModelCapabilityEntries(value = null) {
+    if (Array.isArray(value)) {
+      return value.flatMap((entry) => parseModelCapabilityEntries(entry));
+    }
+
+    if (typeof value === 'string') {
+      return value.split(/[,\s;|]+/).map((entry) => entry.trim()).filter(Boolean);
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.entries(value)
+        .filter(([, enabled]) => enabled === true)
+        .map(([capability]) => capability);
+    }
+
+    return [];
   }
 
   function hasExplicitNonChatCapability(capabilities = []) {
