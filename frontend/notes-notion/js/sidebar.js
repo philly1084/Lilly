@@ -143,7 +143,7 @@ const Sidebar = (function() {
         // Import button
         const importBtn = document.getElementById('import-btn');
         if (importBtn) {
-            importBtn.addEventListener('click', showImportModal);
+            importBtn.addEventListener('click', (e) => showImportModal(e.currentTarget));
         }
         
         // Export button
@@ -1716,7 +1716,7 @@ const Sidebar = (function() {
                 
             // Import
             case 'import-file':
-                showImportModal();
+                showImportModal(document.getElementById('import-btn'));
                 break;
             case 'import-md':
                 importFromMarkdown();
@@ -1961,22 +1961,26 @@ const Sidebar = (function() {
     /**
      * Show import modal
      */
-    function showImportModal() {
+    function showImportModal(triggerElement = document.activeElement) {
         const formats = ImportExport.getFormats().import;
         
         const modal = document.createElement('div');
         modal.className = 'import-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-label', 'Import page');
+        modal.setAttribute('aria-describedby', 'import-modal-description');
         modal.innerHTML = `
             <div class="import-modal-content">
                 <div class="import-modal-header">
                     <span class="import-modal-title">📥 Import Page</span>
-                    <button class="import-modal-close">&times;</button>
+                    <button class="import-modal-close" type="button" aria-label="Close import dialog">&times;</button>
                 </div>
                 <div class="import-modal-body">
-                    <div class="file-drop-zone" id="file-drop-zone">
+                    <div class="file-drop-zone" id="file-drop-zone" role="button" tabindex="0" aria-describedby="import-modal-description">
                         <div class="file-drop-zone-icon">📁</div>
                         <div class="file-drop-zone-text">Drop a file here or click to browse</div>
-                        <div class="file-drop-zone-hint">Supports DOCX, PDF, HTML, Markdown, Lilly JSON, and TXT</div>
+                        <div class="file-drop-zone-hint" id="import-modal-description">Supports DOCX, PDF, HTML, Markdown, Lilly JSON, and TXT</div>
                         <input type="file" class="file-input" id="file-input" accept=".docx,.pdf,.html,.md,.json,.txt">
                     </div>
                     
@@ -2013,17 +2017,36 @@ const Sidebar = (function() {
             </div>
         `;
         
+        function closeImportModal() {
+            modal.remove();
+            if (triggerElement && document.contains(triggerElement) && typeof triggerElement.focus === 'function') {
+                triggerElement.focus();
+            }
+        }
+
+        function handleImportModalKeydown(e) {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            closeImportModal();
+        }
+
         // Close handlers
-        modal.querySelector('.import-modal-close').addEventListener('click', () => modal.remove());
+        modal.querySelector('.import-modal-close').addEventListener('click', closeImportModal);
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal) closeImportModal();
         });
+        modal.addEventListener('keydown', handleImportModalKeydown);
         
         // File drop zone handlers
         const dropZone = modal.querySelector('#file-drop-zone');
         const fileInput = modal.querySelector('#file-input');
         
         dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            fileInput.click();
+        });
         
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
@@ -2051,12 +2074,20 @@ const Sidebar = (function() {
         
         // Format item click handlers
         modal.querySelectorAll('.import-format-item').forEach(item => {
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
             item.addEventListener('click', () => {
+                fileInput.click();
+            });
+            item.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
                 fileInput.click();
             });
         });
         
         document.body.appendChild(modal);
+        modal.querySelector('.import-modal-close')?.focus({ preventScroll: true });
     }
     
     /**

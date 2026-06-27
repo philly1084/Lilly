@@ -3901,6 +3901,13 @@ body {
     background: var(--bg-hover);
 }
 
+.import-modal-close:focus-visible,
+.file-drop-zone:focus-visible,
+.import-format-item:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
 .import-modal-body {
     padding: 20px;
     overflow-y: auto;
@@ -3973,15 +3980,18 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 8px;
+    font: inherit;
     padding: 16px 12px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
+    color: inherit;
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
-.import-format-item:hover {
+.import-format-item:hover,
+.import-format-item:focus-visible {
     border-color: var(--accent-color);
     background: var(--bg-hover);
 }

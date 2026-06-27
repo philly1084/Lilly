@@ -83,3 +83,31 @@ describe('Notes export menu accessibility', () => {
         expect(source).toContain('moveExportFocus(item, e.key === \'ArrowDown\' ? 1 : -1)');
     });
 });
+
+describe('Notes import modal accessibility', () => {
+    test('opens import as a described keyboard-friendly dialog', () => {
+        const source = readSidebarSource();
+
+        expect(source).toContain('showImportModal(triggerElement = document.activeElement)');
+        expect(source).toContain("modal.setAttribute('role', 'dialog')");
+        expect(source).toContain("modal.setAttribute('aria-modal', 'true')");
+        expect(source).toContain("modal.setAttribute('aria-label', 'Import page')");
+        expect(source).toContain("modal.setAttribute('aria-describedby', 'import-modal-description')");
+        expect(source).toContain('type="button" aria-label="Close import dialog"');
+        expect(source).toContain('id="file-drop-zone" role="button" tabindex="0" aria-describedby="import-modal-description"');
+        expect(source).toContain('id="import-modal-description"');
+    });
+
+    test('supports Escape close, focus return, and keyboard file browsing', () => {
+        const source = readSidebarSource();
+
+        expect(source).toContain('function closeImportModal()');
+        expect(source).toContain('triggerElement.focus()');
+        expect(source).toContain('function handleImportModalKeydown(e)');
+        expect(source).toContain("if (e.key !== 'Escape') return;");
+        expect(source).toContain("if (e.key !== 'Enter' && e.key !== ' ') return;");
+        expect(source).toContain("item.setAttribute('role', 'button')");
+        expect(source).toContain("item.setAttribute('tabindex', '0')");
+        expect(source).toContain("modal.querySelector('.import-modal-close')?.focus({ preventScroll: true })");
+    });
+});
