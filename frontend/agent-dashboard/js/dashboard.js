@@ -2878,6 +2878,7 @@ class Dashboard {
         this.renderCompanyActionQueue(actionQueue);
         this.renderCompanyDeliverables(deliverables);
         this.renderCompanyImprovementLoop(workspace.improvementLoop || null);
+        this.renderCompanySharedWhiteboard(workspace.sharedWhiteboard || null);
 
         if (this.state.selectedRun?.id && !allCompanyRuns.some((run) => run.id === this.state.selectedRun.id)) {
             this.renderAdminRunDetails(null, null, 'Select a company run to inspect its output.');
@@ -3230,6 +3231,46 @@ class Dashboard {
                 </div>
             `;
         }).join('');
+    }
+
+    renderCompanySharedWhiteboard(whiteboard = null) {
+        const container = document.getElementById('companySharedWhiteboard');
+        if (!container) return;
+
+        const current = whiteboard?.current || null;
+        if (!current?.path) {
+            container.innerHTML = `
+                <div class="company-whiteboard-card company-whiteboard-card--missing">
+                    <div>
+                        <strong>Shared whiteboard not attached yet</strong>
+                        <span>${this.escapeHtml(whiteboard?.detail || 'Run a heartbeat to attach the weekly coordination whiteboard to new company workloads.')}</span>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const sections = Array.isArray(current.sections) ? current.sections.filter(Boolean) : [];
+        const roles = Array.isArray(current.roleNames) ? current.roleNames.filter(Boolean) : [];
+        container.innerHTML = `
+            <div class="company-whiteboard-card">
+                <div class="company-whiteboard-main">
+                    <span class="company-whiteboard-kicker">Shared whiteboard</span>
+                    <strong>${this.escapeHtml(current.path)}</strong>
+                    <span>${this.escapeHtml(whiteboard.detail || current.purpose || 'Agent-to-agent weekly coordination is attached.')}</span>
+                </div>
+                <div class="company-whiteboard-meta">
+                    ${current.weekKey ? `<span>Week ${this.escapeHtml(current.weekKey)}</span>` : ''}
+                    <span>${Number(current.workloadCount || 0)} workload${Number(current.workloadCount || 0) === 1 ? '' : 's'}</span>
+                    ${roles.length ? `<span>${this.escapeHtml(roles.slice(0, 3).join(', '))}</span>` : ''}
+                </div>
+                ${sections.length ? `
+                    <div class="company-whiteboard-sections" aria-label="Shared whiteboard sections">
+                        ${sections.slice(0, 8).map((section) => `<span>${this.escapeHtml(section)}</span>`).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
     }
 
     renderCompanyFileManager(fileState = this.state.agentCompanyFiles || {}) {

@@ -333,6 +333,52 @@ function buildRecursiveImprovementLoop(status = {}, workloads = [], runs = [], d
   };
 }
 
+function buildSharedWhiteboardStatus(status = {}, workloads = []) {
+  const state = status?.state || {};
+  const schedule = Array.isArray(state.shortTermSchedule) ? state.shortTermSchedule : [];
+  const whiteboards = new Map();
+
+  (Array.isArray(workloads) ? workloads : []).forEach((workload) => {
+    const metadata = getAgentCompanyMetadata(workload);
+    const whiteboard = metadata.sharedWhiteboard || {};
+    const path = String(whiteboard.path || workload?.metadata?.longAgent?.sharedWhiteboardFile || '').trim();
+    if (!path) {
+      return;
+    }
+    const existing = whiteboards.get(path) || {
+      path,
+      purpose: String(whiteboard.purpose || 'agent-to-agent weekly coordination'),
+      sections: Array.isArray(whiteboard.sections) ? whiteboard.sections.filter(Boolean).slice(0, 12) : [],
+      workloadCount: 0,
+      roleNames: [],
+      weekKey: metadata.weekKey || '',
+    };
+    existing.workloadCount += 1;
+    const roleName = String(metadata.roleName || metadata.roleId || '').trim();
+    if (roleName && !existing.roleNames.includes(roleName)) {
+      existing.roleNames.push(roleName);
+    }
+    if (!existing.weekKey && metadata.weekKey) {
+      existing.weekKey = metadata.weekKey;
+    }
+    whiteboards.set(path, existing);
+  });
+
+  const items = Array.from(whiteboards.values())
+    .sort((a, b) => String(b.weekKey || '').localeCompare(String(a.weekKey || '')));
+  const current = items[0] || null;
+
+  return {
+    status: current ? 'ready' : 'missing',
+    detail: current
+      ? `${current.workloadCount} workload${current.workloadCount === 1 ? '' : 's'} carrying the shared whiteboard contract.`
+      : 'No shared whiteboard metadata is attached to current company workloads yet.',
+    current,
+    count: items.length,
+    plannedWorkCount: schedule.length,
+  };
+}
+
 // API Routes
 
 // Dashboard Overview
@@ -456,6 +502,7 @@ router.get('/agent-company/workspace', async (req, res, next) => {
     ]).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''));
     const actionQueue = buildCeoActionQueue(status, workloads, runs, deliverables);
     const improvementLoop = buildRecursiveImprovementLoop(status, workloads, runs, deliverables);
+    const sharedWhiteboard = buildSharedWhiteboardStatus(status, workloads);
 
     res.json({
       success: true,
@@ -466,6 +513,7 @@ router.get('/agent-company/workspace', async (req, res, next) => {
         deliverables,
         actionQueue,
         improvementLoop,
+        sharedWhiteboard,
         workspace: {
           sessionId,
           workloadAvailable,

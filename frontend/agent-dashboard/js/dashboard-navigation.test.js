@@ -187,6 +187,7 @@ function createAgentCompanyHarness(options = {}) {
         <div id="companyFileList"></div>
         <div id="companyImprovementLoopSummary"></div>
         <div id="companyImprovementLoopPhases"></div>
+        <div id="companySharedWhiteboard"></div>
         <div id="companyRoleList"></div>
         <div id="companyScheduleList"></div>
         <table><tbody id="companyWorkloadsTableBody"></tbody></table>
@@ -260,7 +261,12 @@ function createAgentCompanyHarness(options = {}) {
                         enabled: true,
                         companyGoalHash: 'goal-hash',
                         roleName: 'Strategy Lead',
+                        weekKey: '2026-06-22',
                         planItemId: 'plan-1',
+                        sharedWhiteboard: {
+                            path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                            sections: ['Claims checked', 'Decisions made', 'Next agent task'],
+                        },
                     },
                 },
                 workloadSummary: { queued: 1, running: 1, failed: 0 },
@@ -344,6 +350,18 @@ function createAgentCompanyHarness(options = {}) {
                     { id: 'learn', label: 'Learn', status: 'ready', detail: '1 alignment update applied from recent evidence.' },
                 ],
             },
+            sharedWhiteboard: {
+                status: 'ready',
+                detail: '1 workload carrying the shared whiteboard contract.',
+                current: {
+                    path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    purpose: 'agent-to-agent weekly coordination',
+                    weekKey: '2026-06-22',
+                    workloadCount: 1,
+                    roleNames: ['Strategy Lead'],
+                    sections: ['Claims checked', 'Decisions made', 'Next agent task'],
+                },
+            },
         },
         agentCompanyFiles: null,
         companyWorkSearch: '',
@@ -392,6 +410,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('companyCeoDirection')).not.toBeNull();
         expect(dom.window.document.getElementById('companyFileSearch').getAttribute('type')).toBe('search');
         expect(dom.window.document.getElementById('companyFileSourceFilter')).not.toBeNull();
+        expect(dom.window.document.getElementById('companySharedWhiteboard')).not.toBeNull();
         expect(dom.window.document.getElementById('companyRunDetails')).not.toBeNull();
     });
 
@@ -671,6 +690,10 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companyImprovementLoopSummary').textContent).toContain('1 workstreams');
         expect(document.getElementById('companyImprovementLoopPhases').textContent).toContain('Sense');
         expect(document.getElementById('companyImprovementLoopPhases').textContent).toContain('Learn');
+        expect(document.getElementById('companySharedWhiteboard').textContent).toContain('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
+        expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Week 2026-06-22');
+        expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Strategy Lead');
+        expect(document.getElementById('companySharedWhiteboard').textContent).toContain('Next agent task');
     });
 
     test('renders escaped output previews in company action cards', () => {

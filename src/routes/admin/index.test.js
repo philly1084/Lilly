@@ -174,6 +174,16 @@ describe('/api/admin workload routes', () => {
                             enabled: true,
                             roleName: 'Strategy Lead',
                             companyGoalHash: 'goal-hash',
+                            weekKey: '2026-06-22',
+                            sharedWhiteboard: {
+                                path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                                purpose: 'agent-to-agent weekly coordination',
+                                sections: [
+                                    'Claims checked',
+                                    'Decisions made',
+                                    'Files/artifacts changed',
+                                ],
+                            },
                         },
                     },
                 },
@@ -307,6 +317,17 @@ describe('/api/admin workload routes', () => {
                         status: 'ready',
                     }),
                 ]),
+            }));
+            expect(response.body.data.sharedWhiteboard).toEqual(expect.objectContaining({
+                status: 'ready',
+                detail: '1 workload carrying the shared whiteboard contract.',
+                current: expect.objectContaining({
+                    path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    weekKey: '2026-06-22',
+                    workloadCount: 1,
+                    roleNames: ['Strategy Lead'],
+                    sections: expect.arrayContaining(['Claims checked', 'Decisions made']),
+                }),
             }));
         } finally {
             listBySessionSpy.mockRestore();

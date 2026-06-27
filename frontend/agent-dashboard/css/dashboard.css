@@ -2678,7 +2678,8 @@ body[data-ui-surface="admin"] .select-sm option:checked {
 .company-action-list,
 .company-deliverable-list,
 .company-file-list,
-.company-loop-phases {
+.company-loop-phases,
+.company-whiteboard {
     display: grid;
     gap: var(--space-sm);
 }
@@ -2869,6 +2870,68 @@ body[data-ui-surface="admin"] .select-sm option:checked {
 
 .company-loop-phase--waiting {
     border-color: rgba(210, 153, 34, 0.35);
+}
+
+.company-whiteboard {
+    margin-top: var(--space-md);
+}
+
+.company-whiteboard-card {
+    display: grid;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    border: 1px solid rgba(121, 192, 255, 0.36);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-tertiary);
+}
+
+.company-whiteboard-card--missing {
+    border-color: rgba(210, 153, 34, 0.35);
+}
+
+.company-whiteboard-main {
+    display: grid;
+    gap: var(--space-xs);
+    min-width: 0;
+}
+
+.company-whiteboard-kicker,
+.company-whiteboard-meta span,
+.company-whiteboard-sections span {
+    font-size: var(--text-xs);
+    font-weight: 700;
+}
+
+.company-whiteboard-kicker {
+    color: var(--accent-secondary);
+    text-transform: uppercase;
+}
+
+.company-whiteboard-card strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+}
+
+.company-whiteboard-card span {
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.company-whiteboard-meta,
+.company-whiteboard-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+}
+
+.company-whiteboard-meta span,
+.company-whiteboard-sections span {
+    padding: 2px var(--space-sm);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
 }
 
 .company-role-id,
