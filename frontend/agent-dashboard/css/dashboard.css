@@ -4505,6 +4505,11 @@ a.lilly-pulse-chip:hover {
     pointer-events: auto;
 }
 
+.toast:focus-within {
+    border-color: var(--accent-secondary);
+    box-shadow: var(--shadow-lg), 0 0 0 4px var(--focus-ring);
+}
+
 .toast.hiding {
     animation: toastSlideOut 0.3s ease forwards;
 }

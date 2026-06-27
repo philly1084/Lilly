@@ -6143,6 +6143,9 @@ class Dashboard {
         
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+        toast.setAttribute('aria-atomic', 'true');
         
         const icons = {
             success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -6154,22 +6157,45 @@ class Dashboard {
         toast.innerHTML = `
             <div class="toast-icon">${icons[type]}</div>
             <div class="toast-content">
-                <span class="toast-title">${message}</span>
+                <span class="toast-title"></span>
             </div>
-            <button class="toast-close">&times;</button>
+            <button class="toast-close" type="button" aria-label="Dismiss ${this.escapeHtml(type)} notification">&times;</button>
         `;
-        
-        toast.querySelector('.toast-close').addEventListener('click', () => {
+
+        toast.querySelector('.toast-title').textContent = message;
+
+        let dismissTimer = null;
+        const dismissToast = () => {
+            if (!toast.isConnected || toast.classList.contains('hiding')) {
+                return;
+            }
             toast.classList.add('hiding');
             setTimeout(() => toast.remove(), 300);
+        };
+        const startDismissTimer = () => {
+            if (duration <= 0) {
+                return;
+            }
+            dismissTimer = setTimeout(dismissToast, duration);
+        };
+
+        toast.querySelector('.toast-close').addEventListener('click', dismissToast);
+        toast.querySelector('.toast-close').addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                dismissToast();
+            }
         });
+        toast.addEventListener('focusin', () => {
+            if (dismissTimer) {
+                clearTimeout(dismissTimer);
+                dismissTimer = null;
+            }
+        });
+        toast.addEventListener('focusout', startDismissTimer);
         
         container.appendChild(toast);
-        
-        setTimeout(() => {
-            toast.classList.add('hiding');
-            setTimeout(() => toast.remove(), 300);
-        }, duration);
+        startDismissTimer();
     }
     
     // ==================== UTILITY METHODS ====================

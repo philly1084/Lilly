@@ -350,6 +350,8 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('globalSearch').getAttribute('aria-label')).toBe('Search admin dashboard');
         expect(dom.window.document.getElementById('notificationsBtn').getAttribute('aria-label')).toBe('Show notifications');
         expect(dom.window.document.getElementById('notificationsBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('toastContainer').getAttribute('aria-live')).toBe('polite');
+        expect(dom.window.document.getElementById('toastContainer').getAttribute('aria-atomic')).toBe('false');
         expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-label')).toBe('Toggle color theme');
         expect(dom.window.document.getElementById('themeToggle').getAttribute('type')).toBe('button');
     });
@@ -381,6 +383,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('body[data-ui-surface="admin"] .sidebar-toggle:focus-visible');
         expect(css).toContain('body[data-ui-surface="admin"] .modal-close:focus-visible');
         expect(css).toContain('body[data-ui-surface="admin"] .toast-close:focus-visible');
+        expect(css).toContain('.toast:focus-within');
         expect(css).toContain('.tab-btn:focus-visible');
         expect(css).toContain('.toolbar-btn:focus-visible');
         expect(css).toContain('.toggle input:focus-visible + .toggle-slider');
@@ -790,5 +793,40 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('adminRunDetails').querySelectorAll('.workload-detail-code--json')).toHaveLength(3);
         expect(document.getElementById('companyRunDetails').querySelectorAll('.workload-detail-code--json')).toHaveLength(3);
         expect(document.getElementById('companyRunDetails').textContent).toContain('run-json');
+    });
+
+    test('announces and safely dismisses dashboard toasts', () => {
+        jest.useFakeTimers();
+        const dom = new JSDOM('<div id="toastContainer" aria-live="polite" aria-atomic="false"></div>');
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.showToast('No new <notifications>', 'info', 3000);
+
+        const toast = document.querySelector('.toast');
+        const close = toast.querySelector('.toast-close');
+        expect(toast.getAttribute('role')).toBe('status');
+        expect(toast.getAttribute('aria-live')).toBe('polite');
+        expect(toast.textContent).toContain('No new <notifications>');
+        expect(toast.querySelector('notifications')).toBeNull();
+        expect(close.getAttribute('type')).toBe('button');
+        expect(close.getAttribute('aria-label')).toBe('Dismiss info notification');
+
+        close.focus();
+        jest.advanceTimersByTime(3100);
+        expect(document.querySelector('.toast')).not.toBeNull();
+
+        close.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(toast.classList.contains('hiding')).toBe(true);
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
     });
 });
