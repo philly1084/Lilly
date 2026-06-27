@@ -116,11 +116,91 @@ class Dashboard {
         
         // Load initial data
         await this.loadInitialData();
+        await this.restoreCompanyActionSelectionFromUrl();
         
         const connected = document.querySelector('#connectionStatus .status-dot')?.classList.contains('online');
         if (!connected) {
             this.showToast('Dashboard loaded in degraded mode', 'warning');
         }
+    }
+
+    getCompanyActionSelectionFromUrl() {
+        try {
+            const params = new window.URLSearchParams(window.location.search);
+            if (params.get('view') !== 'agentCompany' || params.get('companyAction') !== '1') {
+                return null;
+            }
+
+            const runId = String(params.get('companyRun') || '').trim();
+            return runId ? { runId } : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    updateCompanyActionSelectionUrl(runId = '') {
+        if (!window.history?.replaceState) return;
+
+        try {
+            const url = new window.URL(window.location.href);
+            if (runId) {
+                url.searchParams.set('view', 'agentCompany');
+                url.searchParams.set('companyAction', '1');
+                url.searchParams.set('companyRun', runId);
+            } else {
+                url.searchParams.delete('companyAction');
+                url.searchParams.delete('companyRun');
+            }
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        } catch (error) {
+            // Ignore malformed test URLs or locked-down browser contexts.
+        }
+    }
+
+    getPersistedCompanyActionContext(runId = '') {
+        if (!runId || !window.sessionStorage) return null;
+
+        try {
+            const raw = window.sessionStorage.getItem(`kb.companyActionContext.${runId}`);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return null;
+            return {
+                id: parsed.id || '',
+                label: parsed.label || 'Opened from CEO action queue',
+                detail: parsed.detail || '',
+                outputPreview: parsed.outputPreview || '',
+            };
+        } catch (error) {
+            return null;
+        }
+    }
+
+    persistCompanyActionContext(runId = '', context = null) {
+        if (!runId || !context || !window.sessionStorage) return;
+
+        try {
+            window.sessionStorage.setItem(`kb.companyActionContext.${runId}`, JSON.stringify({
+                id: context.id || '',
+                label: context.label || 'Opened from CEO action queue',
+                detail: context.detail || '',
+                outputPreview: context.outputPreview || '',
+            }));
+        } catch (error) {
+            // Session persistence is a convenience, not a blocker for review.
+        }
+    }
+
+    async restoreCompanyActionSelectionFromUrl() {
+        const selection = this.getCompanyActionSelectionFromUrl();
+        if (!selection?.runId) return;
+
+        await this.selectAdminRun(selection.runId, {
+            source: 'company-action',
+            actionContext: this.state.companyActionContexts?.[selection.runId]
+                || this.getPersistedCompanyActionContext(selection.runId),
+            persistSelection: false,
+        });
     }
     
     /**
@@ -3824,15 +3904,24 @@ class Dashboard {
 
     async selectAdminRun(id, options = {}) {
         if (options?.source === 'company-action') {
+            const actionContext = options.actionContext
+                || this.state.companyActionContexts?.[id]
+                || this.getPersistedCompanyActionContext(id)
+                || {
+                    label: 'Opened from CEO action queue',
+                    detail: "Review this run's output evidence before continuing or packaging company work.",
+                    outputPreview: '',
+                };
             this.state.companyActionRunId = id;
-            this.state.companyActionContext = options.actionContext || this.state.companyActionContexts?.[id] || {
-                label: 'Opened from CEO action queue',
-                detail: "Review this run's output evidence before continuing or packaging company work.",
-                outputPreview: '',
-            };
+            this.state.companyActionContext = actionContext;
+            this.persistCompanyActionContext(id, actionContext);
+            if (options.persistSelection !== false) {
+                this.updateCompanyActionSelectionUrl(id);
+            }
         } else if (this.state.companyActionRunId) {
             this.state.companyActionRunId = null;
             this.state.companyActionContext = null;
+            this.updateCompanyActionSelectionUrl('');
         }
 
         const existing = this.state.runs.find((run) => run.id === id) || null;

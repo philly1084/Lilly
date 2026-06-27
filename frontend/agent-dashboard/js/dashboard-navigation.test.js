@@ -147,7 +147,8 @@ function createRuntimeListHarness() {
     return { dom, dashboard };
 }
 
-function createAgentCompanyHarness() {
+function createAgentCompanyHarness(options = {}) {
+    const url = options.url || 'http://localhost:3000/admin/?view=agentCompany';
     const dom = new JSDOM(`
         <p id="agentCompanyGoalSummary"></p>
         <span id="companyHeartbeatStatus"></span>
@@ -193,7 +194,7 @@ function createAgentCompanyHarness() {
         <div id="companyAlignmentPanel"></div>
         <div id="adminRunDetails"></div>
         <div id="companyRunDetails"></div>
-    `, { url: 'http://localhost:3000/admin/?view=agentCompany' });
+    `, { url });
     const Dashboard = loadDashboardClass(dom);
     const dashboard = Object.create(Dashboard.prototype);
 
@@ -753,6 +754,61 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
 
         expect(companyDetails.querySelector('.workload-action-context')).toBeNull();
+    });
+
+    test('persists CEO action run selection in the URL and session storage', async () => {
+        const { dom, dashboard } = createAgentCompanyHarness();
+        dashboard.showToast = jest.fn();
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const actionContext = {
+            id: 'review-completed-output',
+            label: 'Review completed work',
+            detail: 'Inspect the completed text-only output.',
+            outputPreview: 'Found a weekly planning brief.',
+        };
+
+        try {
+            await dashboard.selectAdminRun('company-run', {
+                source: 'company-action',
+                actionContext,
+            });
+
+            expect(dom.window.location.search).toContain('view=agentCompany');
+            expect(dom.window.location.search).toContain('companyAction=1');
+            expect(dom.window.location.search).toContain('companyRun=company-run');
+            expect(JSON.parse(dom.window.sessionStorage.getItem('kb.companyActionContext.company-run'))).toEqual(actionContext);
+
+            await dashboard.selectAdminRun('other-run', { source: 'table' });
+
+            expect(dom.window.location.search).not.toContain('companyAction=1');
+            expect(dom.window.location.search).not.toContain('companyRun=');
+            expect(dashboard.state.companyActionRunId).toBeNull();
+            expect(dashboard.state.companyActionContext).toBeNull();
+        } finally {
+            consoleSpy.mockRestore();
+        }
+    });
+
+    test('restores CEO action run selection from the URL and persisted context', async () => {
+        const { dom, dashboard } = createAgentCompanyHarness({
+            url: 'http://localhost:3000/admin/?view=agentCompany&companyAction=1&companyRun=company-run',
+        });
+        const persistedContext = {
+            id: 'review-completed-output',
+            label: 'Review completed work',
+            detail: 'Inspect the completed text-only output.',
+            outputPreview: 'Found a weekly planning brief.',
+        };
+        dom.window.sessionStorage.setItem('kb.companyActionContext.company-run', JSON.stringify(persistedContext));
+        dashboard.selectAdminRun = jest.fn().mockResolvedValue(undefined);
+
+        await dashboard.restoreCompanyActionSelectionFromUrl();
+
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run', {
+            source: 'company-action',
+            actionContext: persistedContext,
+            persistSelection: false,
+        });
     });
 
     test('renders shared company file manager search results', () => {
