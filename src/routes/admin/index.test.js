@@ -406,7 +406,7 @@ describe('/api/admin workload routes', () => {
                     status: 'completed',
                     metadata: {
                         output: {
-                            text: 'Verified the latest work cycle and recommended packaging the research brief.',
+                            text: 'Verified the latest work cycle.\n\nRecommended packaging <script>alert("x")</script> the research brief.',
                         },
                     },
                 },
@@ -441,6 +441,8 @@ describe('/api/admin workload routes', () => {
                     id: 'review-completed-output',
                     target: 'runs',
                     priority: 'medium',
+                    runId: 'company-run',
+                    outputPreview: 'Verified the latest work cycle. Recommended packaging <script>alert("x")</script> the research brief.',
                 }),
             ]));
         } finally {

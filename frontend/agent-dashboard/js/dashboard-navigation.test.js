@@ -621,6 +621,26 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companyImprovementLoopPhases').textContent).toContain('Learn');
     });
 
+    test('renders escaped output previews in company action cards', () => {
+        const { dashboard } = createAgentCompanyHarness();
+
+        dashboard.renderCompanyActionQueue([
+            {
+                id: 'review-completed-output',
+                label: 'Review completed work',
+                detail: '1 completed run produced text output but no packaged file yet.',
+                target: 'runs',
+                priority: 'medium',
+                outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
+            },
+        ]);
+
+        const queue = document.getElementById('companyActionQueue');
+        expect(queue.textContent).toContain('Verified cycle <script>alert("x")</script> and found the next packaging step.');
+        expect(queue.querySelector('script')).toBeNull();
+        expect(queue.querySelector('.company-action-preview')).not.toBeNull();
+    });
+
     test('renders shared company file manager search results', () => {
         const { dashboard } = createAgentCompanyHarness();
 

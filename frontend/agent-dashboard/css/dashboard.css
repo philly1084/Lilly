@@ -2645,6 +2645,18 @@ select.form-control,
     overflow-wrap: anywhere;
 }
 
+.company-action-preview {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
 .company-ceo-direction {
     width: 100%;
     min-height: 120px;

@@ -3057,6 +3057,7 @@ class Dashboard {
                 <div>
                     <strong>${this.escapeHtml(action.label || 'Company action')}</strong>
                     <span>${this.escapeHtml(action.detail || '')}</span>
+                    ${action.outputPreview ? `<div class="company-action-preview">${this.escapeHtml(action.outputPreview)}</div>` : ''}
                 </div>
                 <button
                     class="btn btn-sm btn-secondary"

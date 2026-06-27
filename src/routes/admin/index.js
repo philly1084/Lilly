@@ -151,6 +151,15 @@ function buildCompanyRunDeliverables(runs = [], workloads = []) {
   });
 }
 
+function normalizeRunOutputPreview(run = {}, maxLength = 220) {
+  const raw = String(run?.metadata?.output?.text || run?.output || '').replace(/\s+/g, ' ').trim();
+  if (!raw) {
+    return '';
+  }
+
+  return raw.length > maxLength ? `${raw.slice(0, maxLength - 1).trimEnd()}...` : raw;
+}
+
 function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverables = []) {
   const state = status?.state || {};
   const config = status?.config || {};
@@ -200,12 +209,15 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
     });
   }
   if (deliverables.length === 0 && completedRunsWithoutDeliverables.length > 0) {
+    const previewRun = completedRunsWithoutDeliverables[0];
     actions.push({
       id: 'review-completed-output',
       label: 'Review completed work',
       detail: `${completedRunsWithoutDeliverables.length} completed run${completedRunsWithoutDeliverables.length === 1 ? '' : 's'} produced text output but no packaged file yet.`,
       target: 'runs',
       priority: 'medium',
+      runId: previewRun.id || null,
+      outputPreview: normalizeRunOutputPreview(previewRun),
     });
   }
   if (dailyAlignment.status && dailyAlignment.status !== 'steady' && dailyAlignment.status !== 'idle') {
