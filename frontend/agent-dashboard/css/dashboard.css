@@ -2989,6 +2989,17 @@ select.form-control,
     line-height: 1.5;
 }
 
+.workload-action-preview {
+    padding: var(--space-sm);
+    border: 1px solid rgba(210, 153, 34, 0.35);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
 .workload-detail-grid {
     display: grid;
     gap: var(--space-sm);

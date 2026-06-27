@@ -26,6 +26,8 @@ class Dashboard {
             agentCompanyWorkspace: null,
             agentCompanyFiles: null,
             companyActionRunId: null,
+            companyActionContext: null,
+            companyActionContexts: {},
             companyFileSearch: '',
             companyFileSourceFilter: 'any',
             companyWorkSearch: '',
@@ -2662,11 +2664,13 @@ class Dashboard {
         const metadata = this.stringifyAdminPayload(run.metadata);
         const errorPayload = this.stringifyAdminPayload(run.error);
         const tracePayload = this.stringifyAdminPayload(run.trace);
-        const actionContextHtml = this.state.companyActionRunId === run.id
+        const actionContext = this.state.companyActionRunId === run.id ? this.state.companyActionContext : null;
+        const actionContextHtml = actionContext
             ? `
             <div class="workload-action-context">
-                <strong>Opened from CEO action queue</strong>
-                <span>Review this run's output evidence before continuing or packaging company work.</span>
+                <strong>${this.escapeHtml(actionContext.label || 'Opened from CEO action queue')}</strong>
+                <span>${this.escapeHtml(actionContext.detail || "Review this run's output evidence before continuing or packaging company work.")}</span>
+                ${actionContext.outputPreview ? `<div class="workload-action-preview">${this.escapeHtml(actionContext.outputPreview)}</div>` : ''}
             </div>`
             : '';
 
@@ -3061,13 +3065,26 @@ class Dashboard {
         const container = document.getElementById('companyActionQueue');
         if (!container) return;
 
+        this.state.companyActionContexts = {};
+
         if (!actions.length) {
             container.innerHTML = '<p class="empty-state">No CEO actions are waiting right now.</p>';
             return;
         }
 
-        container.innerHTML = actions.map((action) => `
-            <div class="company-action-item company-action-item--${this.escapeHtml(action.priority || 'low')}">
+        container.innerHTML = actions.map((action, index) => {
+            const actionId = String(action.id || `company-action-${index}`);
+            if (action.runId) {
+                this.state.companyActionContexts[action.runId] = {
+                    id: actionId,
+                    label: action.label || 'Opened from CEO action queue',
+                    detail: action.detail || '',
+                    outputPreview: action.outputPreview || '',
+                };
+            }
+
+            return `
+            <div class="company-action-item company-action-item--${this.escapeHtml(action.priority || 'low')}" data-action-id="${this.escapeHtml(actionId)}">
                 <div>
                     <strong>${this.escapeHtml(action.label || 'Company action')}</strong>
                     <span>${this.escapeHtml(action.detail || '')}</span>
@@ -3081,7 +3098,8 @@ class Dashboard {
                     Open
                 </button>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     renderCompanyDeliverables(deliverables = []) {
@@ -3756,8 +3774,14 @@ class Dashboard {
     async selectAdminRun(id, options = {}) {
         if (options?.source === 'company-action') {
             this.state.companyActionRunId = id;
+            this.state.companyActionContext = options.actionContext || this.state.companyActionContexts?.[id] || {
+                label: 'Opened from CEO action queue',
+                detail: "Review this run's output evidence before continuing or packaging company work.",
+                outputPreview: '',
+            };
         } else if (this.state.companyActionRunId) {
             this.state.companyActionRunId = null;
+            this.state.companyActionContext = null;
         }
 
         const existing = this.state.runs.find((run) => run.id === id) || null;
@@ -4459,7 +4483,10 @@ class Dashboard {
                 break;
             case 'runs':
                 if (runId) {
-                    this.selectAdminRun(runId, { source: 'company-action' });
+                    this.selectAdminRun(runId, {
+                        source: 'company-action',
+                        actionContext: this.state.companyActionContexts?.[runId] || null,
+                    });
                 }
                 document.getElementById('companyRunsTableBody')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
                 break;

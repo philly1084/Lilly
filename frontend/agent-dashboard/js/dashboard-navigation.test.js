@@ -646,6 +646,11 @@ describe('agent dashboard navigation accessibility', () => {
         expect(queue.querySelector('script')).toBeNull();
         expect(queue.querySelector('.company-action-preview')).not.toBeNull();
         expect(queue.querySelector('button').getAttribute('onclick')).toBe("dashboard.handleCompanyAction('runs', 'company-run')");
+        expect(dashboard.state.companyActionContexts['company-run']).toEqual(expect.objectContaining({
+            label: 'Review completed work',
+            detail: '1 completed run produced text output but no packaged file yet.',
+            outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
+        }));
     });
 
     test('opens the referenced company run from CEO action cards', () => {
@@ -656,7 +661,10 @@ describe('agent dashboard navigation accessibility', () => {
 
         dashboard.handleCompanyAction('runs', 'company-run');
 
-        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run', { source: 'company-action' });
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run', {
+            source: 'company-action',
+            actionContext: null,
+        });
         expect(runsTable.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
     });
 
@@ -678,15 +686,24 @@ describe('agent dashboard navigation accessibility', () => {
     test('shows CEO action context in the selected company run details', () => {
         const { dashboard } = createAgentCompanyHarness();
         dashboard.state.companyActionRunId = 'company-run';
+        dashboard.state.companyActionContext = {
+            label: 'Review completed work <script>alert("x")</script>',
+            detail: '1 completed run produced text output but no packaged file yet.',
+            outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
+        };
 
         dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
 
         const companyDetails = document.getElementById('companyRunDetails');
         expect(companyDetails.querySelector('.workload-action-context')).not.toBeNull();
-        expect(companyDetails.textContent).toContain('Opened from CEO action queue');
-        expect(companyDetails.textContent).toContain("Review this run's output evidence");
+        expect(companyDetails.textContent).toContain('Review completed work <script>alert("x")</script>');
+        expect(companyDetails.textContent).toContain('1 completed run produced text output but no packaged file yet.');
+        expect(companyDetails.textContent).toContain('Verified cycle <script>alert("x")</script> and found the next packaging step.');
+        expect(companyDetails.querySelector('script')).toBeNull();
+        expect(companyDetails.querySelector('.workload-action-preview')).not.toBeNull();
 
         dashboard.state.companyActionRunId = null;
+        dashboard.state.companyActionContext = null;
         dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
 
         expect(companyDetails.querySelector('.workload-action-context')).toBeNull();
