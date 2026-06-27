@@ -154,7 +154,7 @@
 
         <!-- Floating Agent Widget -->
         <div id="agent-widget" class="agent-widget">
-            <button id="agent-widget-btn" class="agent-widget-btn" title="Ask AI about this page">
+            <button id="agent-widget-btn" class="agent-widget-btn" type="button" title="Ask AI about this page" aria-label="Ask AI about this page" aria-haspopup="dialog" aria-expanded="false" aria-controls="agent-chat-modal">
                 <span class="agent-avatar">✨</span>
                 <span class="agent-label">Ask AI</span>
             </button>
@@ -731,15 +731,15 @@
     <script defer src="js/app.js"></script>
 
     <!-- Agent Chat Modal -->
-    <div id="agent-chat-modal" class="agent-chat-modal" style="display: none;">
-        <div class="agent-chat-overlay" onclick="AgentUI.closeChat()"></div>
+    <div id="agent-chat-modal" class="agent-chat-modal" role="dialog" aria-modal="true" aria-labelledby="agent-chat-model-name" aria-hidden="true" style="display: none;">
+        <div class="agent-chat-overlay" onclick="AgentUI.closeChat()" aria-hidden="true"></div>
         <div class="agent-chat-container">
             <div class="agent-chat-header">
                 <div class="agent-chat-title">
                     <span class="agent-avatar">✨</span>
                     <span id="agent-chat-model-name">AI Assistant</span>
                 </div>
-                <button class="agent-chat-close" onclick="AgentUI.closeChat()">✕</button>
+                <button class="agent-chat-close" type="button" onclick="AgentUI.closeChat()" aria-label="Close AI assistant">✕</button>
             </div>
             <div id="agent-chat-messages" class="agent-chat-messages">
                 <!-- Messages will be rendered here -->

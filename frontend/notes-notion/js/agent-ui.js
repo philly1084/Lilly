@@ -34,6 +34,7 @@ const AgentUI = (function() {
     let selectedPageReferences = [];
     let referencePopoverOpen = false;
     let referenceSearchQuery = '';
+    let lastFocusedBeforeChat = null;
     const MAX_SELECTED_REFERENCES = 6;
     const MAX_REFERENCE_RESULTS = 5;
     const MAX_REFERENCE_SEARCH_HITS = 12;
@@ -54,6 +55,15 @@ const AgentUI = (function() {
                     <span class="agent-motion-text">Ready to work this page</span>
                 </span>
             `;
+        }
+        if (widgetBtn) {
+            widgetBtn.type = 'button';
+            widgetBtn.setAttribute('aria-label', 'Ask AI about this page');
+            widgetBtn.setAttribute('aria-haspopup', 'dialog');
+            widgetBtn.setAttribute('aria-controls', 'agent-chat-modal');
+            if (!widgetBtn.hasAttribute('aria-expanded')) {
+                widgetBtn.setAttribute('aria-expanded', 'false');
+            }
         }
 
         const contextIndicator = document.querySelector('.context-indicator');
@@ -147,6 +157,12 @@ const AgentUI = (function() {
         if (elements.modal) {
             elements.modal.addEventListener('click', (event) => {
                 if (event.target === elements.modal) {
+                    closeChat();
+                }
+            });
+            elements.modal.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
                     closeChat();
                 }
             });
@@ -337,9 +353,13 @@ const AgentUI = (function() {
     function openChat() {
         if (!elements.modal) return;
 
+        lastFocusedBeforeChat = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : elements.widgetBtn;
         document.body.classList.add('agent-chat-open');
         elements.modal.style.display = 'flex';
         elements.modal.setAttribute('aria-hidden', 'false');
+        elements.widgetBtn?.setAttribute('aria-expanded', 'true');
 
         requestAnimationFrame(() => {
             elements.modal.classList.add('active');
@@ -366,6 +386,7 @@ const AgentUI = (function() {
         document.body.classList.remove('agent-chat-open');
         elements.modal.classList.remove('active');
         elements.modal.setAttribute('aria-hidden', 'true');
+        elements.widgetBtn?.setAttribute('aria-expanded', 'false');
         if (elements.modalContent) {
             elements.modalContent.style.opacity = '0';
             elements.modalContent.style.transform = 'scale(0.98)';
@@ -375,6 +396,12 @@ const AgentUI = (function() {
             if (elements.modal) {
                 elements.modal.style.display = 'none';
             }
+            if (lastFocusedBeforeChat && typeof lastFocusedBeforeChat.focus === 'function') {
+                lastFocusedBeforeChat.focus();
+            } else if (elements.widgetBtn && typeof elements.widgetBtn.focus === 'function') {
+                elements.widgetBtn.focus();
+            }
+            lastFocusedBeforeChat = null;
         }, 180);
     }
 
