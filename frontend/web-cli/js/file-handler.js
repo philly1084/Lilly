@@ -7,6 +7,8 @@
 class FileHandler {
     constructor(app) {
         this.app = app;
+        this.importedContentById = new Map();
+        this.nextImportedContentId = 1;
         this.supportedImportFormats = {
             // Documents
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
@@ -529,13 +531,28 @@ class FileHandler {
         
         container.appendChild(contentDiv);
         
+        const importId = String(this.nextImportedContentId++);
+        this.importedContentById.set(importId, { content, filename });
+
         // Actions
         const actions = document.createElement('div');
         actions.className = 'file-import-actions';
-        actions.innerHTML = `
-            <button onclick="fileHandler.copyContent(this)" class="toolbar-btn" data-content="${this.app.escapeHtml(content)}">📋 Copy</button>
-            <button onclick="fileHandler.sendToAI('${this.app.escapeHtml(filename)}')" class="toolbar-btn">🤖 Send to AI</button>
-        `;
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'toolbar-btn';
+        copyButton.dataset.importId = importId;
+        copyButton.textContent = 'Copy';
+        copyButton.addEventListener('click', () => this.copyContent(copyButton));
+        actions.appendChild(copyButton);
+
+        const sendButton = document.createElement('button');
+        sendButton.type = 'button';
+        sendButton.className = 'toolbar-btn';
+        sendButton.dataset.importId = importId;
+        sendButton.textContent = 'Send to AI';
+        sendButton.addEventListener('click', () => this.sendToAI(filename, importId));
+        actions.appendChild(sendButton);
         container.appendChild(actions);
         
         this.app.terminalOutput.appendChild(container);
@@ -571,7 +588,8 @@ class FileHandler {
      * Copy content to clipboard
      */
     async copyContent(button) {
-        const content = button.getAttribute('data-content');
+        const record = this.getImportedContentRecord(button?.dataset?.importId);
+        const content = record?.content ?? button?.getAttribute?.('data-content') ?? '';
         try {
             await this.app.writeClipboardText(content);
             const originalText = button.textContent;
@@ -585,23 +603,34 @@ class FileHandler {
     /**
      * Send imported content to AI
      */
-    sendToAI(filename) {
-        if (!this.lastImportedContent) {
+    sendToAI(filename, importId = '') {
+        const record = this.getImportedContentRecord(importId);
+        const importedContent = record?.content || this.lastImportedContent;
+        const importedFilename = record?.filename || filename;
+        if (!importedContent) {
             this.app.printError('No content to send');
             return;
         }
         
         // Truncate if too long
         const maxLength = 8000;
-        let content = this.lastImportedContent;
+        let content = importedContent;
         if (content.length > maxLength) {
             content = content.slice(0, maxLength) + '\n\n[Content truncated...]';
         }
         
-        const message = `Here's the content of "${filename}":\n\n\`\`\`\n${content}\n\`\`\`\n\nPlease analyze this file.`;
+        const message = `Here's the content of "${importedFilename}":\n\n\`\`\`\n${content}\n\`\`\`\n\nPlease analyze this file.`;
         this.app.commandInput.value = message;
         this.app.commandInput.focus();
         this.app.printSystem('Content loaded into input. Press Enter to send to AI.');
+    }
+
+    getImportedContentRecord(importId = '') {
+        const normalizedId = String(importId || '').trim();
+        if (!normalizedId || !this.importedContentById?.has(normalizedId)) {
+            return null;
+        }
+        return this.importedContentById.get(normalizedId);
     }
 
     /**
