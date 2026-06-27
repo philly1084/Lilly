@@ -3,7 +3,7 @@ const path = require('path');
 const vm = require('vm');
 const { JSDOM } = require('jsdom');
 
-function loadWebCliToolFormHelpers() {
+function loadWebCliToolFormHelpers(overrides = {}) {
     const sourcePath = path.join(__dirname, 'app.js');
     const source = fs.readFileSync(sourcePath, 'utf8')
         .replace(
@@ -13,6 +13,7 @@ function loadWebCliToolFormHelpers() {
     const sandbox = {
         module: { exports: {} },
         exports: {},
+        ...overrides,
     };
 
     vm.runInNewContext(source, sandbox, { filename: sourcePath });
@@ -33,6 +34,22 @@ function createToolFormHarness() {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
     return app;
+}
+
+function createSandboxCommandHarness({ api = { invokeTool: jest.fn() } } = {}) {
+    const { CodeCLIApp } = loadWebCliToolFormHelpers({ api });
+    const app = Object.create(CodeCLIApp.prototype);
+    app.setActiveVoxelTool = jest.fn();
+    app.setStatus = jest.fn();
+    app.reactVoxelPet = jest.fn();
+    app.recordVoxelToolUse = jest.fn();
+    app.collectArtifactsFromValue = jest.fn(() => []);
+    app.syncArtifactsToSessionFiles = jest.fn(() => []);
+    app.printAI = jest.fn();
+    app.printError = jest.fn();
+    app.handlePetAction = jest.fn();
+    app.formatFileSize = (size) => `${size} B`;
+    return { app, api };
 }
 
 describe('web-cli tool form rendering', () => {
@@ -306,6 +323,83 @@ describe('web-cli tool form rendering', () => {
             verbose: true,
             confirm: false,
         });
+    });
+});
+
+describe('web-cli sandbox command routing', () => {
+    test('routes prompt-only project sandbox requests through document-workflow generation', async () => {
+        const api = {
+            invokeTool: jest.fn().mockResolvedValue({
+                result: {
+                    data: {
+                        sandboxBuild: {
+                            mode: 'project',
+                            artifact: {
+                                id: 'artifact-1',
+                                filename: 'gallery.zip',
+                                sandboxUrl: '/sandbox/gallery',
+                                bundleDownloadUrl: '/download/gallery.zip',
+                            },
+                        },
+                    },
+                },
+            }),
+        };
+        const { app } = createSandboxCommandHarness({ api });
+
+        await app.invokeSandboxCommand([
+            'project',
+            JSON.stringify({
+                projectName: 'Gallery',
+                prompt: 'Build a playable React art gallery.',
+            }),
+        ]);
+
+        expect(api.invokeTool).toHaveBeenCalledWith('document-workflow', expect.objectContaining({
+            action: 'generate-suite',
+            prompt: 'Build a playable React art gallery.',
+            formats: ['html'],
+            buildMode: 'sandbox',
+            useSandbox: true,
+            includeContent: true,
+            title: 'Gallery',
+            documentType: 'website',
+        }));
+        expect(app.printError).not.toHaveBeenCalled();
+        expect(app.printAI.mock.calls[0][0]).toContain('Tool: `document-workflow`');
+    });
+
+    test('keeps concrete project files on the code-sandbox persistence path', async () => {
+        const api = {
+            invokeTool: jest.fn().mockResolvedValue({
+                result: {
+                    data: {
+                        exitCode: 0,
+                        files: [{ path: 'index.html', sizeBytes: 14 }],
+                        stdout: 'Project workspace created',
+                    },
+                },
+            }),
+        };
+        const { app } = createSandboxCommandHarness({ api });
+
+        await app.invokeSandboxCommand([
+            'project',
+            JSON.stringify({
+                language: 'html',
+                projectName: 'Concrete',
+                files: [{ path: 'index.html', content: '<h1>Hi</h1>' }],
+            }),
+        ]);
+
+        expect(api.invokeTool).toHaveBeenCalledWith('code-sandbox', expect.objectContaining({
+            mode: 'project',
+            language: 'html',
+            projectName: 'Concrete',
+            files: [{ path: 'index.html', content: '<h1>Hi</h1>' }],
+        }));
+        expect(app.printError).not.toHaveBeenCalled();
+        expect(app.printAI.mock.calls[0][0]).toContain('Tool: `code-sandbox`');
     });
 });
 

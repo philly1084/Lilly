@@ -7786,6 +7786,7 @@ Examples:
         this.recordVoxelToolUse('sandbox');
 
         try {
+            let toolId = 'code-sandbox';
             let params = {
                 language,
                 code,
@@ -7798,14 +7799,45 @@ Examples:
             if (language === 'project') {
                 try {
                     const projectParams = JSON.parse(code);
-                    params = {
-                        mode: 'project',
-                        language: projectParams.language || 'vite',
-                        code: projectParams.code || '',
-                        projectName: projectParams.projectName || projectParams.name || '',
-                        entry: projectParams.entry || 'index.html',
-                        files: Array.isArray(projectParams.files) ? projectParams.files : [],
-                    };
+                    const files = Array.isArray(projectParams.files) ? projectParams.files : [];
+                    const hasFiles = files.some((file) => (
+                        file
+                        && typeof file === 'object'
+                        && String(file.path || file.name || '').trim()
+                        && (
+                            String(file.content || file.contents || '').trim()
+                            || String(file.contentBase64 || file.dataBase64 || '').trim()
+                        )
+                    ));
+                    const hasCode = String(projectParams.code || '').trim();
+                    const prompt = String(projectParams.prompt || projectParams.request || '').trim();
+                    if (!hasFiles && !hasCode && prompt) {
+                        toolId = 'document-workflow';
+                        params = {
+                            action: 'generate-suite',
+                            prompt,
+                            formats: Array.isArray(projectParams.formats) && projectParams.formats.length
+                                ? projectParams.formats
+                                : ['html'],
+                            buildMode: 'sandbox',
+                            useSandbox: true,
+                            includeContent: true,
+                            ...(projectParams.title || projectParams.projectName || projectParams.name
+                                ? { title: projectParams.title || projectParams.projectName || projectParams.name }
+                                : {}),
+                            ...(projectParams.documentType ? { documentType: projectParams.documentType } : { documentType: 'website' }),
+                            ...(projectParams.model ? { model: projectParams.model } : {}),
+                        };
+                    } else {
+                        params = {
+                            mode: 'project',
+                            language: projectParams.language || 'vite',
+                            code: projectParams.code || '',
+                            projectName: projectParams.projectName || projectParams.name || '',
+                            entry: projectParams.entry || 'index.html',
+                            files,
+                        };
+                    }
                 } catch (error) {
                     throw new Error(`Project sandbox expects JSON after /sandbox project: ${error.message}`);
                 }
@@ -7819,7 +7851,7 @@ Examples:
                 };
             }
 
-            const invocation = await api.invokeTool('code-sandbox', params);
+            const invocation = await api.invokeTool(toolId, params);
             const envelope = invocation?.result || {};
             const result = envelope?.data || envelope || {};
             const exitCode = Number.isFinite(Number(result.exitCode)) ? Number(result.exitCode) : 'unknown';
@@ -7829,7 +7861,7 @@ Examples:
             const artifacts = this.collectArtifactsFromValue(result);
             const artifactFiles = this.syncArtifactsToSessionFiles(artifacts, 'sandbox-artifact');
             const artifact = artifacts[0] || result.artifact || (Array.isArray(result.artifacts) ? result.artifacts[0] : null);
-            const lines = [`## Sandbox Result: \`${language}\``, '', `Exit code: \`${exitCode}\``];
+            const lines = [`## Sandbox Result: \`${language}\``, '', `Tool: \`${toolId}\``, `Exit code: \`${exitCode}\``];
 
             if (stdout) {
                 lines.push('', 'STDOUT:', '', '```text', stdout, '```');
