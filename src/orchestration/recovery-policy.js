@@ -89,7 +89,14 @@ function buildRecoveryPolicy({ toolId = '', failureKind = 'tool_failure' } = {})
 }
 
 function classifyToolEventFailure(event = {}) {
-  const toolId = normalizeText(event?.toolCall?.function?.name || event?.result?.toolId || '');
+  const toolId = normalizeText(
+    event?.toolCall?.function?.name
+    || event?.tool_call?.function?.name
+    || event?.tool_call?.name
+    || event?.result?.toolId
+    || event?.result?.tool_id
+    || '',
+  );
   const errorText = [
     event?.result?.error,
     event?.result?.errorCode,

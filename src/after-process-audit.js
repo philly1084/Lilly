@@ -54,6 +54,18 @@ function normalizeOptionalBoolean(value) {
     return null;
 }
 
+function getToolEventId(event = {}) {
+    return String(
+        event?.toolCall?.function?.name
+        || event?.tool_call?.function?.name
+        || event?.tool_call?.name
+        || event?.result?.toolId
+        || event?.result?.tool_id
+        || event?.tool
+        || '',
+    ).trim();
+}
+
 function resolveAfterProcessAuditConfig(overrides = {}) {
     const orchestration = typeof settingsController.getEffectiveOrchestrationConfig === 'function'
         ? settingsController.getEffectiveOrchestrationConfig()
@@ -86,7 +98,7 @@ function resolveAfterProcessAuditConfig(overrides = {}) {
 
 function summarizeToolEvents(toolEvents = []) {
     return (Array.isArray(toolEvents) ? toolEvents : []).slice(-12).map((event) => {
-        const toolId = String(event?.toolCall?.function?.name || event?.result?.toolId || event?.tool || '').trim();
+        const toolId = getToolEventId(event);
         const result = event?.result && typeof event.result === 'object' ? event.result : {};
         return {
             toolId,
@@ -103,10 +115,6 @@ function summarizeToolEvents(toolEvents = []) {
             ),
         };
     }).filter((entry) => entry.toolId);
-}
-
-function getToolEventId(event = {}) {
-    return String(event?.toolCall?.function?.name || event?.result?.toolId || event?.tool || '').trim();
 }
 
 function getToolEventErrorText(event = {}, limit = 260) {

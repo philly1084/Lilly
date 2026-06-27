@@ -131,6 +131,33 @@ describe('after-process audit', () => {
         })).toEqual(['neuralWaveResearchMode:true']);
     });
 
+    test('normalizes snake_case failed tool events in audit evidence', () => {
+        const evidence = buildAuditEvidence({
+            objective: 'Run a remote health check.',
+            output: 'The remote command failed before verification.',
+            toolEvents: [{
+                tool_call: { function: { name: 'remote-command' } },
+                result: {
+                    tool_id: 'remote-command',
+                    success: false,
+                    error: 'permission denied reading kubeconfig',
+                    verification: { status: 'failed' },
+                },
+            }],
+        });
+
+        expect(evidence.toolEvents[0]).toEqual(expect.objectContaining({
+            toolId: 'remote-command',
+            success: false,
+            verificationStatus: 'failed',
+        }));
+        expect(evidence.toolFailureReview.failedToolCalls[0]).toEqual(expect.objectContaining({
+            toolId: 'remote-command',
+            failureKind: 'auth_or_secret',
+            nextAction: 'request_missing_credential_or_use_readonly_path',
+        }));
+    });
+
     test('runs model audit and normalizes review output', async () => {
         createResponse.mockResolvedValue({
             model: 'codex-latest',
