@@ -735,6 +735,7 @@ class App {
             e.stopPropagation();
             this.toggleDropdown(themeDropdown, themePickerBtn);
         });
+        this.setupDropdownKeyboard(themeDropdown, themePickerBtn);
         
         // Theme selection
         document.querySelectorAll('[data-theme]').forEach(btn => {
@@ -763,6 +764,7 @@ class App {
                 window.importExportManager?.showExportDialog();
             }
         });
+        this.setupDropdownKeyboard(exportDropdown, exportBtn);
         
         // Export dropdown items - auto-close on selection
         document.querySelectorAll('[data-export]').forEach(btn => {
@@ -943,6 +945,60 @@ class App {
     setDropdownOpen(dropdown, trigger, isOpen) {
         dropdown.classList.toggle('active', isOpen);
         trigger?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    }
+
+    getDropdownMenuItems(dropdown) {
+        return Array.from(dropdown?.querySelectorAll('[role="menuitem"]:not([disabled])') || []);
+    }
+
+    focusDropdownMenuItem(dropdown, nextIndex = 0) {
+        const items = this.getDropdownMenuItems(dropdown);
+        if (!items.length) return false;
+        const normalizedIndex = ((nextIndex % items.length) + items.length) % items.length;
+        items[normalizedIndex].focus();
+        return true;
+    }
+
+    setupDropdownKeyboard(dropdown, trigger) {
+        if (!dropdown || !trigger) return;
+        const menu = dropdown.querySelector('[role="menu"]');
+        if (!menu) return;
+
+        trigger.addEventListener('keydown', (event) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            this.setDropdownOpen(dropdown, trigger, true);
+            const items = this.getDropdownMenuItems(dropdown);
+            const lastIndex = Math.max(0, items.length - 1);
+            this.focusDropdownMenuItem(dropdown, event.key === 'ArrowUp' || event.key === 'End' ? lastIndex : 0);
+        });
+
+        menu.addEventListener('keydown', (event) => {
+            const items = this.getDropdownMenuItems(dropdown);
+            if (!items.length) return;
+            const currentIndex = Math.max(0, items.indexOf(document.activeElement));
+            let nextIndex = currentIndex;
+
+            if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+                nextIndex = currentIndex + 1;
+            } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+                nextIndex = currentIndex - 1;
+            } else if (event.key === 'Home') {
+                nextIndex = 0;
+            } else if (event.key === 'End') {
+                nextIndex = items.length - 1;
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeDropdown(dropdown, trigger);
+                trigger.focus();
+                return;
+            } else {
+                return;
+            }
+
+            event.preventDefault();
+            this.focusDropdownMenuItem(dropdown, nextIndex);
+        });
     }
 
     setMobilePanelOpen(panel, trigger, isOpen, { restoreFocus = false } = {}) {

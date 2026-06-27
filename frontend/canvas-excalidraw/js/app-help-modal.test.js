@@ -55,13 +55,17 @@ function createDropdownHarness() {
         <div id="themeDropdown" class="dropdown">
             <button id="themePickerBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="themeMenu">Theme</button>
             <div id="themeMenu" class="dropdown-menu" role="menu" aria-label="Canvas theme">
+                <button class="dropdown-item" type="button" role="menuitem" data-theme="light">Light</button>
                 <button class="dropdown-item" type="button" role="menuitem" data-theme="dark">Dark</button>
+                <button class="dropdown-item" type="button" role="menuitem" data-theme="contrast">High contrast</button>
             </div>
         </div>
         <div id="exportDropdown" class="dropdown">
             <button id="exportBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu">Export</button>
             <div id="exportMenu" class="dropdown-menu" role="menu" aria-label="Export canvas">
+                <button class="dropdown-item" type="button" role="menuitem" data-export="png">PNG</button>
                 <button class="dropdown-item" type="button" role="menuitem" data-export="json">JSON</button>
+                <button class="dropdown-item" type="button" role="menuitem" data-export="html">HTML</button>
             </div>
         </div>
     `, { url: 'http://localhost:3000/canvas/' });
@@ -312,6 +316,64 @@ describe('canvas top-bar dropdown accessibility', () => {
 
         expect(dropdown.classList.contains('active')).toBe(false);
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    test('supports menu-style keyboard focus for top-bar dropdowns', () => {
+        const { dom, app } = createDropdownHarness();
+        const themeTrigger = document.getElementById('themePickerBtn');
+        const themeDropdown = document.getElementById('themeDropdown');
+        const themeItems = Array.from(document.querySelectorAll('#themeMenu [role="menuitem"]'));
+        const exportTrigger = document.getElementById('exportBtn');
+        const exportMenu = document.getElementById('exportMenu');
+        const exportItems = Array.from(document.querySelectorAll('#exportMenu [role="menuitem"]'));
+
+        app.setupEventListeners();
+
+        themeTrigger.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(themeDropdown.classList.contains('active')).toBe(true);
+        expect(themeTrigger.getAttribute('aria-expanded')).toBe('true');
+        expect(document.activeElement).toBe(themeItems[0]);
+
+        document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'End',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement).toBe(themeItems[2]);
+
+        document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement).toBe(themeItems[0]);
+
+        document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(themeDropdown.classList.contains('active')).toBe(false);
+        expect(themeTrigger.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(themeTrigger);
+
+        exportTrigger.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement).toBe(exportItems[2]);
+
+        exportMenu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Home',
+            bubbles: true,
+            cancelable: true,
+        }));
+        expect(document.activeElement).toBe(exportItems[0]);
     });
 });
 
