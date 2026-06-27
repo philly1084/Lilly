@@ -3067,7 +3067,7 @@ class Dashboard {
                 <button
                     class="btn btn-sm btn-secondary"
                     type="button"
-                    onclick="dashboard.handleCompanyAction('${this.escapeHtml(action.target || '')}')"
+                    onclick="dashboard.handleCompanyAction('${this.escapeHtml(action.target || '')}', '${this.escapeHtml(action.runId || '')}')"
                 >
                     Open
                 </button>
@@ -4426,7 +4426,7 @@ class Dashboard {
         }
     }
 
-    handleCompanyAction(target = '') {
+    handleCompanyAction(target = '', runId = '') {
         switch (target) {
             case 'settings':
                 this.configureAgentCompany();
@@ -4435,6 +4435,9 @@ class Dashboard {
                 this.runAgentCompanyHeartbeat({ source: 'company-action-queue' });
                 break;
             case 'runs':
+                if (runId) {
+                    this.selectAdminRun(runId);
+                }
                 document.getElementById('companyRunsTableBody')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
                 break;
             case 'deliverables':

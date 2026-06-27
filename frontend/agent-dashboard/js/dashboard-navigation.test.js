@@ -633,6 +633,7 @@ describe('agent dashboard navigation accessibility', () => {
                 detail: '1 completed run produced text output but no packaged file yet.',
                 target: 'runs',
                 priority: 'medium',
+                runId: 'company-run',
                 outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
             },
         ]);
@@ -641,6 +642,19 @@ describe('agent dashboard navigation accessibility', () => {
         expect(queue.textContent).toContain('Verified cycle <script>alert("x")</script> and found the next packaging step.');
         expect(queue.querySelector('script')).toBeNull();
         expect(queue.querySelector('.company-action-preview')).not.toBeNull();
+        expect(queue.querySelector('button').getAttribute('onclick')).toBe("dashboard.handleCompanyAction('runs', 'company-run')");
+    });
+
+    test('opens the referenced company run from CEO action cards', () => {
+        const { dashboard } = createAgentCompanyHarness();
+        const runsTable = document.getElementById('companyRunsTableBody');
+        runsTable.scrollIntoView = jest.fn();
+        dashboard.selectAdminRun = jest.fn();
+
+        dashboard.handleCompanyAction('runs', 'company-run');
+
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('company-run');
+        expect(runsTable.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
     });
 
     test('renders shared company file manager search results', () => {
