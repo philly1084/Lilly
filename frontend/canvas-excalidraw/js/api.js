@@ -589,7 +589,43 @@ class OpenAICanvasAPI {
         }
 
         const data = await response.json();
-        return Array.isArray(data.artifacts) ? data.artifacts : [];
+        return this.normalizeArtifacts(data.artifacts);
+    }
+
+    normalizeArtifactMetadata(artifact = null) {
+        if (!artifact || typeof artifact !== 'object') {
+            return null;
+        }
+
+        const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
+        const sizeBytes = Number.isFinite(Number(sizeValue)) ? Number(sizeValue) : 0;
+        const id = String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim();
+
+        return {
+            ...artifact,
+            id,
+            artifactId: id,
+            filename: String(artifact.filename || artifact.name || artifact.title || '').trim(),
+            mimeType: String(artifact.mimeType || artifact.mime_type || '').trim(),
+            size: sizeBytes,
+            sizeBytes,
+            downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+            previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
+            sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
+            bundleDownloadUrl: String(
+                artifact.bundleDownloadUrl
+                || artifact.bundle_download_url
+                || artifact.bundleUrl
+                || artifact.bundle_url
+                || ''
+            ).trim(),
+        };
+    }
+
+    normalizeArtifacts(artifacts = []) {
+        return (Array.isArray(artifacts) ? artifacts : [])
+            .map((artifact) => this.normalizeArtifactMetadata(artifact))
+            .filter((artifact) => artifact && artifact.id);
     }
 
     // Health check (custom)
