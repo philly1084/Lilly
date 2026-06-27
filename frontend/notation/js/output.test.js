@@ -18,16 +18,19 @@ describe('notation OutputManager clipboard copy', () => {
     const originalNavigator = global.navigator;
     const originalDocument = global.document;
     const originalConsoleError = console.error;
+    const originalConsoleWarn = console.warn;
 
     beforeEach(() => {
         OutputManager.currentResult = 'expanded notation result';
         console.error = jest.fn();
+        console.warn = jest.fn();
     });
 
     afterEach(() => {
         global.navigator = originalNavigator;
         global.document = originalDocument;
         console.error = originalConsoleError;
+        console.warn = originalConsoleWarn;
         jest.restoreAllMocks();
     });
 
@@ -48,6 +51,31 @@ describe('notation OutputManager clipboard copy', () => {
         expect(writeText).toHaveBeenCalledWith('expanded notation result');
         expect(global.document.createElement).not.toHaveBeenCalled();
         expect(global.document.execCommand).not.toHaveBeenCalled();
+    });
+
+    test('falls back when Clipboard API rejects', async () => {
+        const textarea = createElement();
+        const writeText = jest.fn().mockRejectedValue(new Error('NotAllowedError'));
+        global.navigator = { clipboard: { writeText } };
+        global.document = {
+            createElement: jest.fn(() => textarea),
+            body: {
+                appendChild: jest.fn(),
+                removeChild: jest.fn(),
+            },
+            execCommand: jest.fn(() => true),
+        };
+
+        await expect(OutputManager.copyToClipboard()).resolves.toBe(true);
+
+        expect(writeText).toHaveBeenCalledWith('expanded notation result');
+        expect(global.document.createElement).toHaveBeenCalledWith('textarea');
+        expect(global.document.execCommand).toHaveBeenCalledWith('copy');
+        expect(global.document.body.removeChild).toHaveBeenCalledWith(textarea);
+        expect(console.warn).toHaveBeenCalledWith(
+            'Clipboard API copy failed, trying fallback:',
+            expect.any(Error),
+        );
     });
 
     test('falls back to a temporary textarea when Clipboard API is unavailable', async () => {

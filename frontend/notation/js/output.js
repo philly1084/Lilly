@@ -333,8 +333,12 @@ const OutputManager = {
         const text = String(this.currentResult || '');
         try {
             if (navigator.clipboard?.writeText) {
-                await navigator.clipboard.writeText(text);
-                return true;
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (clipboardError) {
+                    console.warn('Clipboard API copy failed, trying fallback:', clipboardError);
+                }
             }
 
             const textarea = document.createElement('textarea');
@@ -348,10 +352,13 @@ const OutputManager = {
             textarea.select();
             textarea.setSelectionRange(0, textarea.value.length);
 
-            const copied = document.execCommand?.('copy') === true;
-            document.body.removeChild(textarea);
-            if (!copied) {
-                throw new Error('Clipboard fallback copy command failed');
+            try {
+                const copied = document.execCommand?.('copy') === true;
+                if (!copied) {
+                    throw new Error('Clipboard fallback copy command failed');
+                }
+            } finally {
+                document.body.removeChild(textarea);
             }
             return true;
         } catch (error) {
