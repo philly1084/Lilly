@@ -24,11 +24,25 @@ function loadArtifactManager() {
         },
         document: {
             addEventListener: () => {},
-            createElement: () => ({
-                textContent: '',
-                appendChild: () => {},
-                remove: () => {},
-            }),
+            createElement: () => {
+                const element = {
+                    textContent: '',
+                    appendChild: () => {},
+                    remove: () => {},
+                };
+                Object.defineProperty(element, 'innerHTML', {
+                    get() {
+                        return String(this.textContent || '')
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;');
+                    },
+                    set(value) {
+                        this.textContent = String(value || '');
+                    },
+                });
+                return element;
+            },
             head: { appendChild: () => {} },
             body: { appendChild: () => {}, classList: { add: () => {}, remove: () => {} } },
             getElementById: () => null,
@@ -89,6 +103,29 @@ describe('web-chat artifact PDF previews', () => {
 
         expect(markup).toContain('artifact-html-preview');
         expect(markup).toContain('Loading page preview');
+    });
+
+    test('normalizes snake case artifact metadata before rendering cards', () => {
+        const artifactManager = loadArtifactManager();
+
+        const markup = artifactManager.buildGalleryMarkup([{
+            artifact_id: 'html-snake-1',
+            filename: 'generated-site.html',
+            format: 'html',
+            mime_type: 'text/html',
+            size_bytes: 4096,
+            download_url: '/api/artifacts/html-snake-1/download',
+            preview_url: '/api/artifacts/html-snake-1/preview',
+            sandbox_url: '/api/artifacts/html-snake-1/sandbox',
+            bundle_download_url: '/api/artifacts/html-snake-1/bundle',
+        }]);
+
+        expect(markup).toContain('generated-site.html');
+        expect(markup).toContain('Open Site');
+        expect(markup).toContain('Bundle Zip');
+        expect(markup).toContain('4.0 KB');
+        expect(markup).toContain('html-snake-1');
+        expect(markup).not.toContain('undefined');
     });
 
     test('hides uploaded artifact previews when PII preview suppression is flagged', () => {

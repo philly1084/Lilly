@@ -55,6 +55,42 @@
         return absolute ? `${API_BASE}${relativePath}` : relativePath;
     }
 
+    function normalizeArtifactRecord(artifact = null) {
+        if (!artifact || typeof artifact !== 'object') {
+            return null;
+        }
+        const id = String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim();
+        if (!id) {
+            return null;
+        }
+        const normalized = {
+            ...artifact,
+            id,
+            filename: artifact.filename || artifact.fileName || artifact.file_name || artifact.name || id,
+        };
+        const fieldPairs = [
+            ['artifactId', 'artifact_id'],
+            ['mimeType', 'mime_type'],
+            ['sizeBytes', 'size_bytes'],
+            ['downloadUrl', 'download_url'],
+            ['previewUrl', 'preview_url'],
+            ['sandboxUrl', 'sandbox_url'],
+            ['bundleDownloadUrl', 'bundle_download_url'],
+        ];
+        fieldPairs.forEach(([camelKey, snakeKey]) => {
+            if (normalized[camelKey] === undefined && artifact[snakeKey] !== undefined) {
+                normalized[camelKey] = artifact[snakeKey];
+            }
+        });
+        return normalized;
+    }
+
+    function normalizeArtifactList(artifacts = []) {
+        return (Array.isArray(artifacts) ? artifacts : [])
+            .map((artifact) => normalizeArtifactRecord(artifact))
+            .filter(Boolean);
+    }
+
     async function getPreviewAccessToken() {
         const now = Date.now();
         if (
@@ -578,7 +614,7 @@
             if (!isCurrentSessionId(sessionId)) {
                 return;
             }
-            state.artifacts = data.artifacts || [];
+            state.artifacts = normalizeArtifactList(data.artifacts);
 
             // Sync with file manager if available
             if (window.fileManager) {
@@ -707,7 +743,7 @@
             throw new Error(error.error?.message || `Upload failed (${response.status})`);
         }
 
-        const artifact = await response.json().catch(() => null);
+        const artifact = normalizeArtifactRecord(await response.json().catch(() => null));
         await fetchArtifacts();
         if (artifact?.id) {
             upsertArtifact(artifact);
@@ -718,13 +754,14 @@
     }
 
     function upsertArtifact(artifact) {
-        if (!artifact?.id) return;
+        const normalizedArtifact = normalizeArtifactRecord(artifact);
+        if (!normalizedArtifact?.id) return;
         state.artifacts = [
-            artifact,
-            ...state.artifacts.filter((entry) => entry?.id !== artifact.id),
+            normalizedArtifact,
+            ...state.artifacts.filter((entry) => entry?.id !== normalizedArtifact.id),
         ];
         if (window.fileManager) {
-            window.fileManager.addFile(artifact, { sessionId: getCurrentSessionId() });
+            window.fileManager.addFile(normalizedArtifact, { sessionId: getCurrentSessionId() });
         }
     }
 
@@ -1092,7 +1129,7 @@
         const directArtifact = state.artifacts.find((entry) => entry?.id === artifactId)
             || state.lastDone?.artifacts?.find((entry) => entry?.id === artifactId);
         if (directArtifact) {
-            return directArtifact;
+            return normalizeArtifactRecord(directArtifact);
         }
 
         const sessionId = getCurrentSessionId();
@@ -1103,13 +1140,15 @@
                 ...(Array.isArray(message.artifacts) ? message.artifacts : []),
                 ...(Array.isArray(message.metadata?.artifacts) ? message.metadata.artifacts : []),
             ];
-            const messageArtifact = messageArtifacts.find((entry) => entry?.id === artifactId);
+            const messageArtifact = messageArtifacts
+                .map((entry) => normalizeArtifactRecord(entry))
+                .find((entry) => entry?.id === artifactId);
             if (messageArtifact) {
                 return messageArtifact;
             }
         }
 
-        return window.fileManager?.files?.find?.((entry) => entry?.id === artifactId) || null;
+        return normalizeArtifactRecord(window.fileManager?.files?.find?.((entry) => entry?.id === artifactId)) || null;
     }
 
     function isFullSitePreviewArtifact(artifact) {
@@ -1169,11 +1208,14 @@
     }
 
     function buildArtifactCardMarkup(artifact) {
-        const iconClass = getFileIconClass(artifact.filename, artifact);
-        const iconName = getFileIcon(artifact.filename, artifact);
+        const normalizedArtifact = normalizeArtifactRecord(artifact) || {};
+        artifact = normalizedArtifact;
+        const artifactFilename = artifact.filename || artifact.fileName || artifact.file_name || artifact.name || artifact.id || 'artifact';
+        const iconClass = getFileIconClass(artifactFilename, artifact);
+        const iconName = getFileIcon(artifactFilename, artifact);
         const mermaidArtifact = isMermaidArtifact(artifact);
         const mermaidSource = mermaidArtifact ? getMermaidSourceFromArtifact(artifact) : '';
-        const mermaidBaseName = getArtifactBaseName(artifact.filename);
+        const mermaidBaseName = getArtifactBaseName(artifactFilename);
         const mermaidDownloadUrl = mermaidArtifact && artifact?.downloadUrl
             ? resolveApiUrl(artifact.downloadUrl, { absolute: true })
             : '';
@@ -1195,7 +1237,7 @@
             : '';
         const htmlPreview = inlineHtmlPreview
             ? `
-                <div class="artifact-html-preview" data-preview-url="${escapeHtmlAttr(htmlPreviewUrl)}" data-preview-title="${escapeHtmlAttr(artifact.filename || 'Artifact preview')}">
+                <div class="artifact-html-preview" data-preview-url="${escapeHtmlAttr(htmlPreviewUrl)}" data-preview-title="${escapeHtmlAttr(artifactFilename || 'Artifact preview')}">
                     <div class="artifact-html-preview-toolbar">
                         <span>${escapeHtml(getArtifactPreviewLabel(artifact))}</span>
                         <span class="artifact-html-preview-status">Loading</span>
@@ -1212,7 +1254,7 @@
                 <div class="artifact-image-preview">
                     <img
                         src="${escapeHtmlAttr(imagePreviewUrl)}"
-                        alt="${escapeHtmlAttr(artifact.filename || 'Uploaded image')}"
+                        alt="${escapeHtmlAttr(artifactFilename || 'Uploaded image')}"
                         loading="lazy"
                         onerror="uiHelpers.handleImageLoadError(this)"
                         referrerpolicy="no-referrer"
@@ -1274,7 +1316,7 @@
                 <div class="file-icon ${iconClass}">
                     <i data-lucide="${iconName}" class="w-5 h-5"></i>
                 </div>
-                <h4>${escapeHtml(artifact.filename)}</h4>
+                <h4>${escapeHtml(artifactFilename)}</h4>
                 <div class="file-meta">
                     ${artifact.format?.toUpperCase() || 'FILE'} | ${formatFileSize(artifact.sizeBytes)}
                 </div>
@@ -1285,7 +1327,7 @@
                 ${privacyPreviewNote}
                 <div class="file-actions">
                     ${htmlActions}
-                    <button class="${htmlPreviewUrl ? 'is-secondary' : 'primary'}" onclick="artifactManager.downloadArtifact('${artifact.id}', '${escapeHtml(artifact.filename)}')">
+                    <button class="${htmlPreviewUrl ? 'is-secondary' : 'primary'}" onclick="artifactManager.downloadArtifact('${artifact.id}', '${escapeHtml(artifactFilename)}')">
                         ${downloadLabel}
                     </button>
                     ${mermaidActions}
@@ -1298,13 +1340,13 @@
     }
 
     function buildArtifactGalleryMarkup(artifacts = []) {
-        return (Array.isArray(artifacts) ? artifacts : [])
+        return normalizeArtifactList(artifacts)
             .map((artifact) => buildArtifactCardMarkup(artifact))
             .join('');
     }
 
     function buildArtifactGalleryMessage(artifacts = [], parentMessageId = '') {
-        const files = (Array.isArray(artifacts) ? artifacts : []).filter((artifact) => artifact?.id);
+        const files = normalizeArtifactList(artifacts);
         if (files.length === 0) {
             return null;
         }
@@ -1332,7 +1374,7 @@
         const container = document.getElementById('messages-container');
         if (!container) return;
 
-        (Array.isArray(artifacts) ? artifacts : []).forEach((artifact) => {
+        normalizeArtifactList(artifacts).forEach((artifact) => {
             const wrapper = document.createElement('div');
             wrapper.innerHTML = buildArtifactCardMarkup(artifact);
             const card = wrapper.firstElementChild;
@@ -1483,7 +1525,7 @@
                 if (chunk.type === 'done') {
                     state.lastDone = {
                         sessionId: chunk.sessionId || window.apiClient.currentSessionId || null,
-                        artifacts: Array.isArray(chunk.artifacts) ? chunk.artifacts : [],
+                        artifacts: normalizeArtifactList(chunk.artifacts),
                     };
                 }
 
