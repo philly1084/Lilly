@@ -49,10 +49,26 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-controls="mobile-chat-menu"');
         expect(html).toContain('aria-label="Open chat controls"');
         expect(html).toContain('css/styles.css?v=20260625b');
-        expect(html).toContain('js/ui.js?v=20260625a');
+        expect(html).toContain('js/ui.js?v=20260627a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(css).toContain('.mobile-chat-menu__header {\n    position: sticky;');
         expect(css).toContain('backdrop-filter: blur(12px);');
+    });
+
+    test('export modal exposes instructions, progress, and focus return hooks', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('aria-describedby="export-description"');
+        expect(html).toContain('id="export-description"');
+        expect(html).toContain('id="export-progress-bar"');
+        expect(html).toContain('role="progressbar"');
+        expect(html).toContain('aria-labelledby="export-progress-text"');
+        expect(html).toContain('aria-describedby="export-progress-percent"');
+        expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
+        expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
+        expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
+        expect(uiSource).toContain('this.lastFocusedElement.focus();');
     });
 });

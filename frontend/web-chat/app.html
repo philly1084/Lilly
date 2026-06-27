@@ -163,7 +163,7 @@
     </div>
 
     <!-- Export Modal -->
-    <div id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-title">
+    <div id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-title" aria-describedby="export-description">
         <div class="modal-overlay" onclick="uiHelpers.closeExportModal()"></div>
         <div class="modal-content">
             <div class="modal-header">
@@ -173,29 +173,29 @@
                 </button>
             </div>
             <div class="modal-body">
-                <p class="text-text-secondary mb-4">Choose a format to export your conversation:</p>
+                <p id="export-description" class="text-text-secondary mb-4">Choose a format to export your conversation:</p>
                 <div class="export-options">
-                    <button class="export-option" onclick="app.exportConversation('markdown')">
+                    <button type="button" class="export-option" onclick="app.exportConversation('markdown')">
                         <i data-lucide="file-text" class="w-8 h-8 text-blue-500" aria-hidden="true"></i>
                         <span class="export-name">Markdown</span>
                         <span class="export-desc">.md with formatting</span>
                     </button>
-                    <button class="export-option" onclick="app.exportConversation('json')">
+                    <button type="button" class="export-option" onclick="app.exportConversation('json')">
                         <i data-lucide="file-json" class="w-8 h-8 text-green-500" aria-hidden="true"></i>
                         <span class="export-name">JSON</span>
                         <span class="export-desc">Structured data</span>
                     </button>
-                    <button class="export-option" onclick="app.exportConversation('txt')">
+                    <button type="button" class="export-option" onclick="app.exportConversation('txt')">
                         <i data-lucide="file" class="w-8 h-8 text-gray-500" aria-hidden="true"></i>
                         <span class="export-name">Plain Text</span>
                         <span class="export-desc">Simple text</span>
                     </button>
-                    <button class="export-option" onclick="app.exportConversation('html')">
+                    <button type="button" class="export-option" onclick="app.exportConversation('html')">
                         <i data-lucide="globe" class="w-8 h-8 text-orange-500" aria-hidden="true"></i>
                         <span class="export-name">HTML</span>
                         <span class="export-desc">Web page format</span>
                     </button>
-                    <button class="export-option" onclick="app.exportConversation('pdf')">
+                    <button type="button" class="export-option" onclick="app.exportConversation('pdf')">
                         <i data-lucide="file-box" class="w-8 h-8 text-red-500" aria-hidden="true"></i>
                         <span class="export-name">PDF</span>
                         <span class="export-desc">Portable Document</span>
@@ -206,7 +206,7 @@
                         <span class="text-sm text-text-secondary" id="export-progress-text">Generating...</span>
                         <span class="text-sm text-accent font-medium" id="export-progress-percent">0%</span>
                     </div>
-                    <div class="progress-bar">
+                    <div id="export-progress-bar" class="progress-bar" role="progressbar" aria-labelledby="export-progress-text" aria-describedby="export-progress-percent" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Generating export, 0 percent">
                         <div class="progress-bar-fill" id="export-progress-fill" style="width: 0%"></div>
                     </div>
                 </div>
@@ -1345,7 +1345,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260424a"></script>
-    <script defer src="js/ui.js?v=20260625a"></script>
+    <script defer src="js/ui.js?v=20260627a"></script>
     <script defer src="js/app.js?v=20260531a"></script>
     <script defer src="js/artifacts.js?v=20260509a"></script>
 </body>

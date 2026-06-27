@@ -10333,12 +10333,18 @@ class UIHelpers {
         
         const modal = document.getElementById('export-modal');
         this.closeThemeGallery({ silent: true });
+        this.lastFocusedElement = document.activeElement;
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
         
         // Hide progress
         const progress = modal.querySelector('#export-progress');
         if (progress) progress.classList.add('hidden');
+        const progressBar = modal.querySelector('#export-progress-bar');
+        if (progressBar) {
+            progressBar.setAttribute('aria-valuenow', '0');
+            progressBar.setAttribute('aria-valuetext', 'Generating export, 0 percent');
+        }
         
         // Check if we need to add export all option
         const exportOptions = modal.querySelector('.export-options');
@@ -10346,10 +10352,11 @@ class UIHelpers {
             if (!exportOptions.querySelector('[data-action="export-all"]')) {
                 const exportAllBtn = document.createElement('button');
                 exportAllBtn.className = 'export-option';
+                exportAllBtn.type = 'button';
                 exportAllBtn.setAttribute('data-action', 'export-all');
                 exportAllBtn.setAttribute('onclick', 'app.exportAllConversations()');
                 exportAllBtn.innerHTML = `
-                    <i data-lucide="archive" class="w-8 h-8 text-orange-500"></i>
+                    <i data-lucide="archive" class="w-8 h-8 text-orange-500" aria-hidden="true"></i>
                     <span class="export-name">All Conversations</span>
                     <span class="export-desc">Export all sessions as JSON</span>
                 `;
@@ -10367,11 +10374,18 @@ class UIHelpers {
         const progressText = modal?.querySelector('#export-progress-text');
         const progressPercent = modal?.querySelector('#export-progress-percent');
         const progressFill = modal?.querySelector('#export-progress-fill');
+        const progressBar = modal?.querySelector('#export-progress-bar');
+        const normalizedPercent = Math.max(0, Math.min(100, Number(percent) || 0));
+        const normalizedMessage = message || 'Exporting...';
         
         if (progress) progress.classList.remove('hidden');
-        if (progressText) progressText.textContent = message || 'Exporting...';
-        if (progressPercent) progressPercent.textContent = `${percent}%`;
-        if (progressFill) progressFill.style.width = `${percent}%`;
+        if (progressText) progressText.textContent = normalizedMessage;
+        if (progressPercent) progressPercent.textContent = `${normalizedPercent}%`;
+        if (progressFill) progressFill.style.width = `${normalizedPercent}%`;
+        if (progressBar) {
+            progressBar.setAttribute('aria-valuenow', String(normalizedPercent));
+            progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);
+        }
     }
 
     hideExportProgress() {
@@ -10385,6 +10399,10 @@ class UIHelpers {
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
         this.hideExportProgress();
+        if (this.lastFocusedElement && typeof this.lastFocusedElement.focus === 'function') {
+            this.lastFocusedElement.focus();
+            this.lastFocusedElement = null;
+        }
     }
 
     // ============================================
