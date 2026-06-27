@@ -213,6 +213,65 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].prompt).toContain('Claims checked, Decisions made, Files/artifacts changed, Deployment/DNS state, Blockers, Next agent task');
     });
 
+    test('schedules one focused shared whiteboard refresh workload for the refresh reason', async () => {
+        const createdWorkloads = [];
+        const workloadService = {
+            isAvailable: () => true,
+            listAdminWorkloads: jest.fn(async () => createdWorkloads),
+            createWorkload: jest.fn(async (payload, ownerId) => {
+                const workload = {
+                    id: `workload-${createdWorkloads.length + 1}`,
+                    ownerId,
+                    title: payload.title,
+                    prompt: payload.prompt,
+                    trigger: payload.trigger,
+                    metadata: payload.metadata,
+                    workloadSummary: {
+                        queued: 1,
+                        running: 0,
+                        failed: 0,
+                    },
+                };
+                createdWorkloads.push(workload);
+                return workload;
+            }),
+        };
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig({
+                    maxConcurrentWorkloads: 2,
+                }),
+            },
+            workloadService,
+            sessionStore: {
+                getOrCreateOwned: jest.fn(async () => ({ id: 'agent-company' })),
+            },
+        });
+
+        const first = await service.tick({ force: true, reason: 'shared-whiteboard-refresh' });
+        const second = await service.tick({ force: true, reason: 'shared-whiteboard-refresh' });
+
+        expect(first.createdWorkloads).toHaveLength(1);
+        expect(second.createdWorkloads).toHaveLength(0);
+        expect(workloadService.createWorkload).toHaveBeenCalledTimes(1);
+        expect(first.state.heartbeat.status).toBe('scheduled');
+        expect(first.state.shortTermSchedule).toEqual([expect.objectContaining({
+            id: `2026-06-22-${first.state.companyGoalHash}-shared-whiteboard-refresh`,
+            title: 'Refresh shared whiteboard',
+            roleName: 'Operations Lead',
+            workloadReason: 'shared-whiteboard-refresh',
+            workloadFocus: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+        })]);
+        expect(createdWorkloads[0].title).toBe('Operations Lead: Refresh shared whiteboard');
+        expect(createdWorkloads[0].metadata.agentCompany.planItemId).toBe(`2026-06-22-${first.state.companyGoalHash}-shared-whiteboard-refresh`);
+        expect(createdWorkloads[0].metadata.agentCompany.workloadReason).toBe('shared-whiteboard-refresh');
+        expect(createdWorkloads[0].metadata.agentCompany.workloadFocus).toBe('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
+        expect(createdWorkloads[0].prompt).toContain('Whiteboard refresh focus:');
+        expect(createdWorkloads[0].prompt).toContain('Do not start a broad company cycle or create an unrelated deliverable.');
+    });
+
     test('expands schedule across configured roles and templates', () => {
         const service = new AgentCompanyService({
             statePath,

@@ -14,6 +14,7 @@ const DEFAULT_STATE_FILENAME = 'agent-company-state.json';
 const DEFAULT_OWNER_ID = 'system';
 const DEFAULT_SESSION_ID = 'agent-company';
 const MIN_HEARTBEAT_MINUTES = 15;
+const SHARED_WHITEBOARD_REFRESH_REASON = 'shared-whiteboard-refresh';
 
 function sanitizeText(value = '') {
     return String(value || '').trim();
@@ -74,6 +75,10 @@ function addDays(date, days) {
     const next = new Date(date);
     next.setUTCDate(next.getUTCDate() + days);
     return next;
+}
+
+function isSharedWhiteboardRefresh(reason = '') {
+    return sanitizeText(reason) === SHARED_WHITEBOARD_REFRESH_REASON;
 }
 
 function normalizeRole(role = {}, index = 0) {
@@ -393,7 +398,10 @@ class AgentCompanyService {
         }, config.ownerId);
 
         const weekKey = getWeekKey(now);
-        const schedule = this.buildWeeklySchedule(config, now, goalHash);
+        const refreshWhiteboard = isSharedWhiteboardRefresh(reason);
+        const schedule = refreshWhiteboard
+            ? [this.buildSharedWhiteboardRefreshItem(config, weekKey, goalHash, now)]
+            : this.buildWeeklySchedule(config, now, goalHash);
         let companyWorkloads = [];
         try {
             companyWorkloads = await this.listCompanyWorkloads(goalHash, weekKey);
@@ -610,6 +618,28 @@ class AgentCompanyService {
         ];
     }
 
+    buildSharedWhiteboardRefreshItem(config = {}, weekKey = '', goalHash = '', now = this.now()) {
+        const operationsRole = config.roles.find((role) => role.id === 'operations') || config.roles[0] || normalizeRole({
+            id: 'operations',
+            name: 'Operations Lead',
+        });
+        const plannedFor = new Date(now.getTime() + 60 * 1000);
+        const whiteboardFile = getCompanyWhiteboardPath(weekKey);
+
+        return {
+            id: `${weekKey}-${goalHash}-shared-whiteboard-refresh`,
+            weekKey,
+            roleId: operationsRole.id,
+            roleName: operationsRole.name,
+            title: 'Refresh shared whiteboard',
+            objective: `Inspect current Agent Company status, recent runs, and file/artifact evidence, then update ${whiteboardFile} with current coordination notes only.`,
+            plannedFor: plannedFor.toISOString(),
+            status: 'planned',
+            workloadReason: SHARED_WHITEBOARD_REFRESH_REASON,
+            workloadFocus: whiteboardFile,
+        };
+    }
+
     async listCompanyWorkloads(goalHash = '', weekKey = '') {
         const workloads = await this.workloadService.listAdminWorkloads(200);
         return workloads.filter((workload) => {
@@ -650,6 +680,16 @@ class AgentCompanyService {
             ? config.escalationModels.join(', ')
             : 'no configured escalation models';
         const whiteboardFile = getCompanyWhiteboardPath(weekKey);
+        const whiteboardRefreshLines = item.workloadReason === SHARED_WHITEBOARD_REFRESH_REASON
+            ? [
+                '',
+                'Whiteboard refresh focus:',
+                `- This workload is a dedicated coordination repair for ${item.workloadFocus || whiteboardFile}.`,
+                '- Do not start a broad company cycle or create an unrelated deliverable.',
+                '- Read current Agent Company status, recent run evidence, deliverables, and file/artifact signals, then update the shared whiteboard with concise current facts.',
+                '- Make the next agent task specific enough that the following workload can continue without repeating discovery.',
+            ]
+            : [];
 
         return [
             '[Agent company work item]',
@@ -673,6 +713,7 @@ class AgentCompanyService {
             '- Read it before acting if file tools are available; update it after acting so the next agent can continue without re-discovering the same facts.',
             '- Keep whiteboard entries structured as: Claims checked, Decisions made, Files/artifacts changed, Deployment/DNS state, Blockers, Next agent task.',
             '- Keep plans in the whiteboard short and actionable; do not use it as the final deliverable or as a replacement for real files/artifacts.',
+            ...whiteboardRefreshLines,
             '- End with "Stage scratch summary" containing done, verification, blockers, next step, and schedule impact.',
         ].filter(Boolean).join('\n');
     }
@@ -722,6 +763,8 @@ class AgentCompanyService {
                     roleName: item.roleName,
                     plannedFor: item.plannedFor,
                     heartbeatManaged: true,
+                    ...(item.workloadReason ? { workloadReason: item.workloadReason } : {}),
+                    ...(item.workloadFocus ? { workloadFocus: item.workloadFocus } : {}),
                     sharedWhiteboard: {
                         path: whiteboardFile,
                         purpose: 'agent-to-agent weekly coordination',
