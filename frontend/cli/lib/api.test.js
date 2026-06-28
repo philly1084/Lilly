@@ -16,7 +16,7 @@ jest.mock('./config', () => ({
 
 jest.mock('openai', () => mockOpenAI);
 
-const { OpenAIClient } = require('./api');
+const { OpenAIClient, chat } = require('./api');
 
 describe('OpenAIClient provider sessions', () => {
   beforeEach(() => {
@@ -210,6 +210,66 @@ describe('OpenAIClient provider sessions', () => {
         clientSurface: 'cli',
         enableConversationExecutor: true,
         remoteBuildAutonomyApproved: true,
+      }),
+    }));
+  });
+
+  test('exported streaming chat forwards caller metadata to the gateway', async () => {
+    global.fetch.mockResolvedValue(new Response([
+      'data: {"type":"response.completed","session_id":"session-1","response":{"id":"resp-1","output_text":"done"}}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n'), {
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'X-Session-Id': 'session-1',
+      },
+    }));
+
+    const onDelta = jest.fn();
+    const onDone = jest.fn();
+
+    const result = await chat(
+      'ship this',
+      'session-1',
+      onDelta,
+      onDone,
+      'gpt-5.4-mini',
+      null,
+      null,
+      { metadata: { workflowAction: 'cli-workbench-command', traceId: 'trace-1' } },
+    );
+
+    expect(result).toEqual(expect.objectContaining({
+      sessionId: 'session-1',
+      responseId: 'resp-1',
+    }));
+    expect(onDelta).toHaveBeenCalledWith('done');
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-1',
+      responseId: 'resp-1',
+    }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:8080/v1/chat/completions',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer config-front-key',
+        }),
+      }),
+    );
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual(expect.objectContaining({
+      model: 'gpt-5.4-mini',
+      session_id: 'session-1',
+      metadata: expect.objectContaining({
+        clientSurface: 'cli',
+        enableConversationExecutor: true,
+        remoteBuildAutonomyApproved: true,
+        workflowAction: 'cli-workbench-command',
+        traceId: 'trace-1',
       }),
     }));
   });

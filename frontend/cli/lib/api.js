@@ -1328,7 +1328,7 @@ module.exports = {
   APIError,
   request: (path, options) => client._legacyRequest(path, options),
   apiRequest: (path, options) => client.apiRequest(path, options),
-  chat: (message, sessionId, onDelta, onDone, model, outputFormat, onReasoning) => client.chat(message, sessionId, onDelta, onDone, model, outputFormat, onReasoning),
+  chat: (message, sessionId, onDelta, onDone, model, outputFormat, onReasoning, options) => client.chat(message, sessionId, onDelta, onDone, model, outputFormat, onReasoning, options),
   chatNonStreaming: (message, sessionId, model) => client.chatNonStreaming(message, sessionId, model),
   canvas: (message, sessionId, canvasType, existingContent, model) => 
     client.canvas(message, sessionId, canvasType, existingContent, model),
