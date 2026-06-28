@@ -55,7 +55,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
         expect(html).toContain('css/styles.css?v=20260625b');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
-        expect(html).toContain('js/ui.js?v=20260628c');
+        expect(html).toContain('js/ui.js?v=20260628d');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(uiSource).toContain("if (event.key === 'Escape')");
@@ -75,7 +75,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="progressbar"');
         expect(html).toContain('aria-labelledby="export-progress-text"');
         expect(html).toContain('aria-describedby="export-progress-percent"');
-        expect(html).toContain('js/ui.js?v=20260628c');
+        expect(html).toContain('js/ui.js?v=20260628d');
         expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
@@ -93,11 +93,23 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-busy="false"');
-        expect(html).toContain('js/ui.js?v=20260628c');
+        expect(html).toContain('js/ui.js?v=20260628d');
         expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
         expect(uiSource).toContain('restoreFocus && this.lastFocusedElement');
         expect(uiSource).toContain('this.lastFocusedElement.focus();');
+    });
+
+    test('assistant model list exposes keyboard-operable options', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('id="model-list-label"');
+        expect(html).toContain('id="model-list" class="model-list hidden" role="listbox" aria-labelledby="model-list-label"');
+        expect(uiSource).toContain('tabindex="${isActive ? \'0\' : \'-1\'}"');
+        expect(uiSource).toContain('handleModelListItemKeydown(event)');
+        expect(uiSource).toContain("case 'ArrowDown':");
+        expect(uiSource).toContain('this.selectModel(item.dataset.modelId);');
     });
 });

@@ -6603,6 +6603,9 @@ class UIHelpers {
                 const modelId = item.dataset.modelId;
                 this.selectModel(modelId);
             });
+            item.addEventListener('keydown', (event) => {
+                this.handleModelListItemKeydown(event);
+            });
         });
         
         this.reinitializeIcons(listContainer);
@@ -6615,19 +6618,62 @@ class UIHelpers {
         const description = this.getModelDescription(model);
         
         return `
-            <div class="model-item ${isActive ? 'active' : ''}" data-model-id="${model.id}" role="option" aria-selected="${isActive}">
+            <div class="model-item ${isActive ? 'active' : ''}" data-model-id="${this.escapeHtmlAttr(model.id)}" role="option" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}">
                 <div class="model-item-icon ${provider}">
                     <i data-lucide="cpu" class="w-4 h-4" aria-hidden="true"></i>
                 </div>
                 <div class="model-item-info">
-                    <div class="model-item-name">${displayName}</div>
-                    <div class="model-item-desc">${description}</div>
+                    <div class="model-item-name">${this.escapeHtml(displayName)}</div>
+                    <div class="model-item-desc">${this.escapeHtml(description)}</div>
                 </div>
                 <div class="model-item-check" aria-hidden="true">
                     <i data-lucide="check" class="w-4 h-4"></i>
                 </div>
             </div>
         `;
+    }
+
+    handleModelListItemKeydown(event) {
+        const item = event?.currentTarget;
+        const items = Array.from(document.querySelectorAll('#model-list .model-item'));
+        const currentIndex = items.indexOf(item);
+        if (!item || currentIndex < 0 || items.length === 0) {
+            return;
+        }
+
+        let nextIndex = currentIndex;
+        switch (event.key) {
+            case 'ArrowDown':
+            case 'ArrowRight':
+                event.preventDefault();
+                nextIndex = (currentIndex + 1) % items.length;
+                break;
+            case 'ArrowUp':
+            case 'ArrowLeft':
+                event.preventDefault();
+                nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+                break;
+            case 'Home':
+                event.preventDefault();
+                nextIndex = 0;
+                break;
+            case 'End':
+                event.preventDefault();
+                nextIndex = items.length - 1;
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                this.selectModel(item.dataset.modelId);
+                return;
+            default:
+                return;
+        }
+
+        items.forEach((entry, index) => {
+            entry.tabIndex = index === nextIndex ? 0 : -1;
+        });
+        items[nextIndex]?.focus();
     }
 
     groupModelsByProvider(models) {
