@@ -1618,6 +1618,75 @@ describe('AgentWorkloadService', () => {
         }));
     });
 
+    test('retries provider rate limit code failures without an HTTP status', async () => {
+        const workload = {
+            id: 'subagent-workload-rate-code',
+            ownerId: 'phill',
+            sessionId: 'session-1',
+            title: 'Research pass',
+            prompt: 'Research the topic and write the summary.',
+            trigger: { type: 'manual' },
+            policy: {
+                executionProfile: 'default',
+                toolIds: ['web-search', 'file-write'],
+                maxRounds: 4,
+                maxToolCalls: 12,
+                maxDurationMs: 180000,
+                allowSideEffects: true,
+            },
+            stages: [],
+            metadata: {
+                requestedModel: 'gpt-5.4',
+                subAgent: {
+                    enabled: true,
+                    orchestrationId: 'subagent-rate-code',
+                    depth: 1,
+                    maxRetries: 2,
+                },
+            },
+        };
+        const run = {
+            id: 'run-subagent-rate-code-1',
+            workload,
+            stageIndex: -1,
+            attempt: 0,
+            scheduledFor: '2026-04-01T09:00:00.000Z',
+            prompt: workload.prompt,
+            metadata: {
+                subAgentDepth: 1,
+            },
+        };
+        const rateLimitError = new Error('Provider throttled the request.');
+        rateLimitError.code = 'rate_limit_exceeded';
+
+        conversationRunService.runChatTurn.mockRejectedValue(rateLimitError);
+        store.failRun.mockResolvedValue({ id: run.id, status: 'failed' });
+        store.enqueueRun.mockResolvedValue({
+            id: 'run-subagent-rate-code-2',
+            workloadId: workload.id,
+            status: 'queued',
+            scheduledFor: '2026-04-01T09:00:15.000Z',
+        });
+
+        await service.executeClaimedRun(run, 'worker-1');
+
+        expect(store.failRun).toHaveBeenCalledWith(run.id, 'worker-1', expect.objectContaining({
+            error: expect.objectContaining({
+                classification: 'rate_limit',
+            }),
+        }));
+        expect(store.enqueueRun).toHaveBeenCalledWith(expect.objectContaining({
+            workloadId: workload.id,
+            reason: 'retry',
+            attempt: 1,
+            parentRunId: run.id,
+        }));
+        expect(store.addRunEvent).toHaveBeenCalledWith(run.id, 'retry-enqueued', expect.objectContaining({
+            retryRunId: 'run-subagent-rate-code-2',
+            classification: 'rate_limit',
+        }));
+    });
+
     test('does not retry terminal sub-agent model or billing failures', async () => {
         const workload = {
             id: 'subagent-workload-terminal',

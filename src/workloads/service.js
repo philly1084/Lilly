@@ -103,7 +103,7 @@ function classifySubAgentFailure(error = {}) {
     }
 
     const isRateLimited = status === 429
-        || code === 'rate_limit'
+        || ['rate_limit', 'rate_limit_exceeded', 'too_many_requests'].includes(code)
         || /rate limit|too many requests/.test(message);
     if (isRateLimited) {
         return {
