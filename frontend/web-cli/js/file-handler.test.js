@@ -51,9 +51,14 @@ describe('web-cli imported file actions', () => {
         fileHandler.displayImportedContent('quoted "file".txt', content, 'txt');
 
         const copyButton = document.querySelector('.file-import-actions button');
+        const sendButton = document.querySelectorAll('.file-import-actions button')[1];
         expect(copyButton.dataset.importId).toBe('1');
         expect(copyButton.getAttribute('data-content')).toBeNull();
-        expect(copyButton.outerHTML).not.toContain('quoted');
+        expect(copyButton.getAttribute('aria-label')).toBe('Copy imported file quoted "file".txt');
+        expect(copyButton.getAttribute('title')).toBe('Copy quoted "file".txt');
+        expect(sendButton.getAttribute('aria-label')).toBe('Send imported file quoted "file".txt to AI');
+        expect(sendButton.getAttribute('title')).toBe('Send quoted "file".txt to AI');
+        expect(copyButton.outerHTML).not.toContain('value=');
         expect(fileHandler.getImportedContentRecord('1').content).toBe(content);
     });
 

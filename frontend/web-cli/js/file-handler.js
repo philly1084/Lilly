@@ -542,6 +542,8 @@ class FileHandler {
         copyButton.type = 'button';
         copyButton.className = 'toolbar-btn';
         copyButton.dataset.importId = importId;
+        copyButton.setAttribute('aria-label', `Copy imported file ${filename}`);
+        copyButton.title = `Copy ${filename}`;
         copyButton.textContent = 'Copy';
         copyButton.addEventListener('click', () => this.copyContent(copyButton));
         actions.appendChild(copyButton);
@@ -550,6 +552,8 @@ class FileHandler {
         sendButton.type = 'button';
         sendButton.className = 'toolbar-btn';
         sendButton.dataset.importId = importId;
+        sendButton.setAttribute('aria-label', `Send imported file ${filename} to AI`);
+        sendButton.title = `Send ${filename} to AI`;
         sendButton.textContent = 'Send to AI';
         sendButton.addEventListener('click', () => this.sendToAI(filename, importId));
         actions.appendChild(sendButton);
