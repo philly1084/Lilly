@@ -880,8 +880,11 @@ describe('agent dashboard navigation accessibility', () => {
         expect(history.textContent).toContain('Reviewable run');
         expect(history.textContent).toContain('Reference only');
         expect(history.querySelector('script')).toBeNull();
-        expect(history.querySelectorAll('button')).toHaveLength(1);
-        expect(history.querySelector('button').getAttribute('onclick'))
+        expect(history.querySelectorAll('.company-action-history__filter')).toHaveLength(3);
+        expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('All 2');
+        expect(history.querySelectorAll('.company-action-history__item')).toHaveLength(2);
+        expect(history.querySelectorAll('.company-action-history__item button')).toHaveLength(1);
+        expect(history.querySelector('.company-action-history__item button').getAttribute('onclick'))
             .toBe('dashboard.handleCompanyAction("runs", "historical-run", "review-completed-output:historical-run")');
         expect(dashboard.state.companyActionContexts['historical-run']).toEqual(expect.objectContaining({
             label: 'Review saved output <script>alert("x")</script>',
@@ -890,6 +893,22 @@ describe('agent dashboard navigation accessibility', () => {
             contextSource: 'saved-history',
             snapshotAt: '2026-06-28T05:12:00.000Z',
         }));
+
+        dashboard.setCompanyActionHistoryFilter('reviewable');
+        expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('Reviewable 1');
+        expect(history.textContent).toContain('Review saved output <script>alert("x")</script>');
+        expect(history.textContent).not.toContain('Review archived deliverables');
+        expect(history.querySelectorAll('.company-action-history__item')).toHaveLength(1);
+
+        dashboard.setCompanyActionHistoryFilter('reference');
+        expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('Reference 1');
+        expect(history.textContent).not.toContain('Review saved output <script>alert("x")</script>');
+        expect(history.textContent).toContain('Review archived deliverables');
+        expect(history.querySelectorAll('.company-action-history__item')).toHaveLength(1);
+
+        dashboard.setCompanyActionHistoryFilter('reviewable');
+        dashboard.setCompanyActionHistoryFilter('unknown');
+        expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('All 2');
     });
 
     test('marks the company run opened from a CEO action', () => {

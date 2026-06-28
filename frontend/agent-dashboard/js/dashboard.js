@@ -29,6 +29,8 @@ class Dashboard {
             companyActionContext: null,
             companyActionContexts: {},
             companyActionContextsById: {},
+            companyActionHistory: [],
+            companyActionHistoryFilter: 'all',
             companyFileSearch: '',
             companyFileSourceFilter: 'any',
             companyWorkSearch: '',
@@ -3304,6 +3306,7 @@ class Dashboard {
         if (!container) return;
         this.state.companyActionContexts = this.state.companyActionContexts || {};
         this.state.companyActionContextsById = this.state.companyActionContextsById || {};
+        this.state.companyActionHistory = Array.isArray(actions) ? actions : [];
 
         const history = actions
             .filter((action) => action && (action.actionKey || action.id))
@@ -3316,6 +3319,15 @@ class Dashboard {
 
         const reviewableCount = history.filter((action) => action.runId || action.refreshStatus?.runId).length;
         const referenceCount = history.length - reviewableCount;
+        const activeFilter = ['all', 'reviewable', 'reference'].includes(this.state.companyActionHistoryFilter)
+            ? this.state.companyActionHistoryFilter
+            : 'all';
+        const visibleHistory = history.filter((action) => {
+            const hasRunEvidence = Boolean(action.runId || action.refreshStatus?.runId);
+            if (activeFilter === 'reviewable') return hasRunEvidence;
+            if (activeFilter === 'reference') return !hasRunEvidence;
+            return true;
+        });
         const historySummary = [
             `${reviewableCount} reviewable`,
             referenceCount ? `${referenceCount} reference` : '',
@@ -3326,7 +3338,23 @@ class Dashboard {
                 <strong>Recent saved CEO actions</strong>
                 <span>${this.escapeHtml(historySummary)}</span>
             </div>
-            ${history.map((action, index) => {
+            <div class="company-action-history__filters" role="group" aria-label="Saved CEO action filter">
+                ${[
+                    ['all', `All ${history.length}`],
+                    ['reviewable', `Reviewable ${reviewableCount}`],
+                    ['reference', `Reference ${referenceCount}`],
+                ].map(([value, label]) => `
+                    <button
+                        class="company-action-history__filter${activeFilter === value ? ' company-action-history__filter--active' : ''}"
+                        type="button"
+                        aria-pressed="${activeFilter === value ? 'true' : 'false'}"
+                        onclick="dashboard.setCompanyActionHistoryFilter('${value}')"
+                    >
+                        ${this.escapeHtml(label)}
+                    </button>
+                `).join('')}
+            </div>
+            ${visibleHistory.length ? visibleHistory.map((action, index) => {
                 const actionId = String(action.id || `company-action-history-${index}`);
                 const actionKey = String(action.actionKey || actionId);
                 const runId = action.runId || action.refreshStatus?.runId || '';
@@ -3359,8 +3387,17 @@ class Dashboard {
                     ` : ''}
                 </div>
             `;
-            }).join('')}
+            }).join('') : '<p class="empty-state">No saved CEO actions match this filter.</p>'}
         `;
+    }
+
+    setCompanyActionHistoryFilter(filter = 'all') {
+        const nextFilter = ['all', 'reviewable', 'reference'].includes(filter) ? filter : 'all';
+        this.state.companyActionHistoryFilter = nextFilter;
+        const actions = this.state.companyActionHistory
+            || this.state.agentCompanyWorkspace?.actionHistory
+            || [];
+        this.renderCompanyActionHistory(actions);
     }
 
     renderCompanyDeliverables(deliverables = []) {

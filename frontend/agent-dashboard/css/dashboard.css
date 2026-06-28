@@ -2828,6 +2828,37 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     color: var(--text-primary);
 }
 
+.company-action-history__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin: var(--space-sm) 0;
+}
+
+.company-action-history__filter {
+    min-height: 28px;
+    padding: 4px 9px;
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.company-action-history__filter:hover,
+.company-action-history__filter:focus-visible {
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+}
+
+.company-action-history__filter--active {
+    border-color: rgba(99, 102, 241, 0.55);
+    background-color: rgba(99, 102, 241, 0.18);
+    color: var(--text-primary);
+}
+
 .company-action-history__header strong,
 .company-action-history__item strong {
     font-size: var(--text-xs);
