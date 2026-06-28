@@ -46,6 +46,27 @@ function loadTemplatesManagerClass(dom) {
     return sandbox.module.exports.TemplatesManager;
 }
 
+function loadImportExportManagerClass(dom) {
+    const sourcePath = path.join(__dirname, 'import-export.js');
+    const source = fs.readFileSync(sourcePath, 'utf8')
+        .replace(
+            /\/\/ Create global instance\s*window\.importExportManager = new ImportExportManager\(\);\s*$/,
+            'module.exports = { ImportExportManager };'
+        );
+    const sandbox = {
+        module: { exports: {} },
+        exports: {},
+        console,
+        document: dom.window.document,
+        window: dom.window,
+        setTimeout,
+        clearTimeout,
+    };
+
+    vm.runInNewContext(source, sandbox, { filename: sourcePath });
+    return sandbox.module.exports.ImportExportManager;
+}
+
 function createTemplatesModalHarness() {
     const dom = new JSDOM(`
         <button id="templatesBtn" type="button">Templates</button>
@@ -527,6 +548,49 @@ describe('canvas top-bar dropdown accessibility', () => {
         expect(exportTrigger.getAttribute('aria-expanded')).toBe('false');
         expect(document.activeElement).toBe(exportTrigger);
         expect(dom.window.importExportManager.export).toHaveBeenCalledWith('json');
+    });
+});
+
+describe('canvas export dialog accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+    });
+
+    test('opens as a labeled modal and restores focus when closed', () => {
+        const dom = new JSDOM('<button id="exportLauncher" type="button">Export</button>', {
+            url: 'http://localhost:3000/canvas/',
+        });
+        const ImportExportManager = loadImportExportManagerClass(dom);
+        const manager = new ImportExportManager();
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        const launcher = document.getElementById('exportLauncher');
+        launcher.focus();
+
+        manager.showExportDialog();
+
+        const dialog = document.getElementById('exportDialog');
+        const closeButton = document.getElementById('closeExportDialog');
+
+        expect(dialog.getAttribute('role')).toBe('dialog');
+        expect(dialog.getAttribute('aria-modal')).toBe('true');
+        expect(dialog.getAttribute('aria-labelledby')).toBe('exportDialogTitle');
+        expect(document.getElementById('exportDialogTitle').textContent).toBe('Export Canvas');
+        expect(closeButton.getAttribute('type')).toBe('button');
+        expect(closeButton.getAttribute('aria-label')).toBe('Close export dialog');
+        expect(document.activeElement).toBe(closeButton);
+
+        dialog.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.getElementById('exportDialog')).toBeNull();
+        expect(document.activeElement).toBe(launcher);
     });
 });
 

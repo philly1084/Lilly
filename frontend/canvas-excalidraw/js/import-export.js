@@ -1473,14 +1473,18 @@ class ImportExportManager {
      * Show export options dialog
      */
     showExportDialog() {
+        const previousFocus = document.activeElement;
         const dialog = document.createElement('div');
         dialog.className = 'modal active';
         dialog.id = 'exportDialog';
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', 'exportDialogTitle');
         dialog.innerHTML = `
             <div class="modal-content" style="max-width: 600px;">
                 <div class="modal-header">
-                    <h3>Export Canvas</h3>
-                    <button class="close-btn" id="closeExportDialog">
+                    <h3 id="exportDialogTitle">Export Canvas</h3>
+                    <button class="close-btn" id="closeExportDialog" type="button" aria-label="Close export dialog">
                         <svg viewBox="0 0 24 24" width="18" height="18">
                             <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                         </svg>
@@ -1548,13 +1552,27 @@ class ImportExportManager {
         document.body.appendChild(dialog);
         
         // Setup event listeners
-        dialog.querySelector('#closeExportDialog').addEventListener('click', () => {
+        const closeDialog = () => {
             dialog.remove();
-        });
+            if (previousFocus && typeof previousFocus.focus === 'function') {
+                previousFocus.focus();
+            }
+        };
+
+        dialog.querySelector('#closeExportDialog').addEventListener('click', closeDialog);
         
         dialog.addEventListener('click', (e) => {
-            if (e.target === dialog) dialog.remove();
+            if (e.target === dialog) closeDialog();
         });
+
+        dialog.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeDialog();
+            }
+        });
+
+        dialog.querySelector('#closeExportDialog')?.focus();
         
         // Scale slider
         const scaleSlider = dialog.querySelector('#exportScale');
