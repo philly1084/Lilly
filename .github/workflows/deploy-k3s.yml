@@ -248,6 +248,72 @@ jobs:
               --ignore-not-found=true
           }
 
+          cleanup_stale_webchat_state_refresh_hotfix_mount() {
+            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # Earlier live repairs mounted a ConfigMap copy over the web chat UI.
+            # Remove that override so the read-aloud controls and highlighting
+            # ship from the verified image instead of a stale hotfix snapshot.
+            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
+              --type=strategic \
+              -p='{
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "name": "backend",
+                          "volumeMounts": [
+                            {
+                              "name": "web-chat-state-refresh-hotfix",
+                              "mountPath": "/app/frontend/web-chat/index.html",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "web-chat-state-refresh-hotfix",
+                              "mountPath": "/app/frontend/web-chat/js/app.js",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "web-chat-state-refresh-hotfix",
+                              "mountPath": "/app/frontend/web-chat/js/session.js",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "web-chat-state-refresh-hotfix",
+                              "mountPath": "/app/frontend/web-chat/js/workspace-host.js",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "web-chat-state-refresh-hotfix",
+                              "mountPath": "/app/src/routes/preferences.js",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "web-chat-state-refresh-hotfix",
+                              "mountPath": "/app/frontend/web-chat/js/ui.js",
+                              "$patch": "delete"
+                            }
+                          ]
+                        }
+                      ],
+                      "volumes": [
+                        {
+                          "name": "web-chat-state-refresh-hotfix",
+                          "$patch": "delete"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }' >/dev/null 2>&1 || true
+            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
+              web-chat-state-refresh-hotfix \
+              --ignore-not-found=true
+          }
+
           cleanup_stale_backend_config_hotfix_mount() {
             if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
               return 0
@@ -393,6 +459,7 @@ jobs:
           kubectl apply -f k8s/backend-deployment.yaml
           cleanup_stale_notes_index_hotfix_mount
           cleanup_stale_webchat_tts_manager_hotfix_mount
+          cleanup_stale_webchat_state_refresh_hotfix_mount
           
           # Apply production ingress for the Rancher/k3s domain
           kubectl apply -f k8s/rancher-ingress.yaml
