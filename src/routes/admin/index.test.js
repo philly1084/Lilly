@@ -781,6 +781,13 @@ describe('/api/admin workload routes', () => {
                     outputPreview: 'Captured the CEO review brief before packaging.',
                 }),
             ]));
+            expect(workspaceResponse.body.data.actionHistory).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    actionKey: 'review-completed-output:historical-run',
+                    runId: 'historical-run',
+                    snapshotAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+                }),
+            ]));
 
             service.listAdminRuns.mockResolvedValue([]);
             const actionResponse = await request(app)

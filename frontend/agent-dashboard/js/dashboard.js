@@ -2914,6 +2914,7 @@ class Dashboard {
         const workspace = this.state.agentCompanyWorkspace || {};
         const deliverables = Array.isArray(workspace.deliverables) ? workspace.deliverables : [];
         const actionQueue = Array.isArray(workspace.actionQueue) ? workspace.actionQueue : [];
+        const actionHistory = Array.isArray(workspace.actionHistory) ? workspace.actionHistory : [];
         const allCompanyWorkloads = this.getAgentCompanyWorkloads(this.state.workloads, status);
         const allCompanyRuns = this.getAgentCompanyRuns(this.state.runs, allCompanyWorkloads, status);
         this.syncCompanyRoleFilterOptions(state.roles || config.roles || [], allCompanyWorkloads);
@@ -2954,6 +2955,7 @@ class Dashboard {
         this.renderCompanyRuns(companyRuns);
         this.renderCompanyAlignment(dailyAlignment);
         this.renderCompanyActionQueue(actionQueue);
+        this.renderCompanyActionHistory(actionHistory);
         this.renderCompanyDeliverables(deliverables);
         this.renderCompanyImprovementLoop(workspace.improvementLoop || null);
         this.renderCompanySharedWhiteboard(workspace.sharedWhiteboard || null);
@@ -3295,6 +3297,61 @@ class Dashboard {
             </div>
         `;
         }).join('');
+    }
+
+    renderCompanyActionHistory(actions = []) {
+        const container = document.getElementById('companyActionHistory');
+        if (!container) return;
+        this.state.companyActionContexts = this.state.companyActionContexts || {};
+        this.state.companyActionContextsById = this.state.companyActionContextsById || {};
+
+        const history = actions
+            .filter((action) => action && (action.actionKey || action.id))
+            .slice(0, 6);
+
+        if (!history.length) {
+            container.innerHTML = '<p class="empty-state">No saved CEO actions yet.</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="company-action-history__header">
+                <strong>Recent saved CEO actions</strong>
+                <span>${history.length} saved</span>
+            </div>
+            ${history.map((action, index) => {
+                const actionId = String(action.id || `company-action-history-${index}`);
+                const actionKey = String(action.actionKey || actionId);
+                const runId = action.runId || action.refreshStatus?.runId || '';
+                const handler = runId
+                    ? this.formatCompanyActionHandler('runs', runId, actionKey)
+                    : '';
+                if (runId) {
+                    const actionContext = this.buildCompanyActionContext(action, runId, { contextSource: 'saved-history' });
+                    this.state.companyActionContexts[runId] = actionContext;
+                    this.state.companyActionContextsById[actionKey] = actionContext;
+                }
+
+                return `
+                <div class="company-action-history__item" data-action-id="${this.escapeHtml(actionKey)}">
+                    <div>
+                        <strong>${this.escapeHtml(action.label || 'Saved CEO action')}</strong>
+                        <span>${this.escapeHtml(action.detail || '')}</span>
+                        ${action.snapshotAt ? `<small>Saved ${this.escapeHtml(this.formatDate(action.snapshotAt))}</small>` : ''}
+                    </div>
+                    ${runId ? `
+                        <button
+                            class="btn btn-sm btn-ghost"
+                            type="button"
+                            onclick="${handler}"
+                        >
+                            Review
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+            }).join('')}
+        `;
     }
 
     renderCompanyDeliverables(deliverables = []) {

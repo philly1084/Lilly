@@ -253,6 +253,20 @@ async function snapshotCeoActions(actions = []) {
   }
 }
 
+async function listRecentCeoActionHistory(limit = 6) {
+  const seen = new Set();
+  return (await readCeoActionHistory())
+    .filter((action) => {
+      const actionKey = getActionLookupKey(action);
+      if (!actionKey || seen.has(actionKey)) {
+        return false;
+      }
+      seen.add(actionKey);
+      return true;
+    })
+    .slice(0, limit);
+}
+
 function findCeoAction(actions = [], actionKey = '') {
   const targetKey = String(actionKey || '').trim();
   if (!targetKey) {
@@ -454,6 +468,7 @@ async function buildAgentCompanyWorkspacePayload(req) {
     runs,
   );
   await snapshotCeoActions(actionQueue);
+  const actionHistory = await listRecentCeoActionHistory();
 
   return {
     status,
@@ -461,6 +476,7 @@ async function buildAgentCompanyWorkspacePayload(req) {
     runs,
     deliverables,
     actionQueue,
+    actionHistory,
     improvementLoop,
     sharedWhiteboard,
     workspace: {

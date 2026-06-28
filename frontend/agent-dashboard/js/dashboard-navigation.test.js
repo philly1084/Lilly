@@ -183,6 +183,7 @@ function createAgentCompanyHarness(options = {}) {
             <option value="all">All roles</option>
         </select>
         <div id="companyActionQueue"></div>
+        <div id="companyActionHistory"></div>
         <div id="companyDeliverableList"></div>
         <div id="companyFileList"></div>
         <div id="companyImprovementLoopSummary"></div>
@@ -325,6 +326,18 @@ function createAgentCompanyHarness(options = {}) {
                     detail: '1 deliverable ready for preview or download.',
                     target: 'deliverables',
                     priority: 'medium',
+                },
+            ],
+            actionHistory: [
+                {
+                    id: 'review-completed-output',
+                    actionKey: 'review-completed-output:historical-run',
+                    label: 'Review saved output <script>alert("x")</script>',
+                    detail: 'Saved run context from a previous company cycle.',
+                    target: 'runs',
+                    runId: 'historical-run',
+                    outputPreview: 'Saved output preview.',
+                    snapshotAt: '2026-06-28T05:12:00.000Z',
                 },
             ],
             improvementLoop: {
@@ -702,6 +715,9 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companyDeliverableStatus').textContent).toBe('1 file');
         expect(document.getElementById('companyDeliverableList').textContent).toContain('Weekly Plan');
         expect(document.getElementById('companyActionQueue').textContent).toContain('Review business outputs');
+        expect(document.getElementById('companyActionHistory').textContent).toContain('Recent saved CEO actions');
+        expect(document.getElementById('companyActionHistory').textContent).toContain('Review saved output <script>alert("x")</script>');
+        expect(document.getElementById('companyActionHistory').querySelector('script')).toBeNull();
         expect(document.getElementById('companyWorkspaceStatus').textContent).toBe('1 workstream');
         expect(document.getElementById('companyImprovementLoopStatus').textContent).toBe('looping');
         expect(document.getElementById('companyImprovementLoopSummary').textContent).toContain('1 workstreams');
@@ -831,6 +847,37 @@ describe('agent dashboard navigation accessibility', () => {
                 detail: 'Latest repair: Operations Lead: Refresh <script>alert("x")</script>',
             }),
         });
+    });
+
+    test('renders saved CEO action history with review handoff context', () => {
+        const { dashboard } = createAgentCompanyHarness();
+
+        dashboard.renderCompanyActionHistory([
+            {
+                id: 'review-completed-output',
+                actionKey: 'review-completed-output:historical-run',
+                label: 'Review saved output <script>alert("x")</script>',
+                detail: 'Saved run context from a previous company cycle.',
+                target: 'runs',
+                runId: 'historical-run',
+                outputPreview: 'Saved output preview.',
+                snapshotAt: '2026-06-28T05:12:00.000Z',
+            },
+        ]);
+
+        const history = document.getElementById('companyActionHistory');
+        expect(history.textContent).toContain('Recent saved CEO actions');
+        expect(history.textContent).toContain('Review saved output <script>alert("x")</script>');
+        expect(history.querySelector('script')).toBeNull();
+        expect(history.querySelector('button').getAttribute('onclick'))
+            .toBe('dashboard.handleCompanyAction("runs", "historical-run", "review-completed-output:historical-run")');
+        expect(dashboard.state.companyActionContexts['historical-run']).toEqual(expect.objectContaining({
+            label: 'Review saved output <script>alert("x")</script>',
+            detail: 'Saved run context from a previous company cycle.',
+            outputPreview: 'Saved output preview.',
+            contextSource: 'saved-history',
+            snapshotAt: '2026-06-28T05:12:00.000Z',
+        }));
     });
 
     test('marks the company run opened from a CEO action', () => {
