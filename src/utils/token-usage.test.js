@@ -118,6 +118,50 @@ describe('token usage utilities', () => {
         });
     });
 
+    test('normalizes provider response metadata token usage wrappers', () => {
+        expect(normalizeUsageMetadata({
+            response_metadata: {
+                tokenUsage: {
+                    promptTokens: 31,
+                    completionTokens: 11,
+                    totalTokens: 42,
+                    reasoningTokens: 5,
+                    cachedTokens: 7,
+                    source: 'provider-response-metadata',
+                },
+            },
+        })).toEqual({
+            promptTokens: 31,
+            inputTokens: 31,
+            completionTokens: 11,
+            outputTokens: 11,
+            totalTokens: 42,
+            reasoningTokens: 5,
+            cachedTokens: 7,
+            source: 'provider-response-metadata',
+        });
+    });
+
+    test('normalizes nested response metadata usage wrappers', () => {
+        expect(normalizeUsageMetadata({
+            response: {
+                response_metadata: {
+                    usage: {
+                        prompt_tokens: 14,
+                        completion_tokens: 9,
+                        total_tokens: 23,
+                    },
+                },
+            },
+        })).toEqual({
+            promptTokens: 14,
+            inputTokens: 14,
+            completionTokens: 9,
+            outputTokens: 9,
+            totalTokens: 23,
+        });
+    });
+
     test('normalizes provider split input-cache accounting', () => {
         expect(normalizeUsageMetadata({
             input_tokens: 40,
