@@ -482,11 +482,13 @@ describe('openai-sse helpers', () => {
   test('normalizes string and nested capability metadata for chat selection', () => {
     const models = [
       { id: 'gpt-image-2', capabilities: 'image_generation' },
-      { id: 'gpt-5.5-tools', metadata: { capabilities: 'tools, streaming' } },
+      { id: 'custom-render-router', capabilities: [], metadata: { capabilities: { image_generation: { supported: true } } } },
+      { id: 'gpt-5.5-tools', capabilities: [], metadata: { capabilities: { tools: { supported: true }, streaming: 'available' } } },
       { id: 'custom-basic-chat', contract: { capabilities: { chat: true } } },
     ];
 
     expect(isChatModel(models[0])).toBe(false);
+    expect(isChatModel(models[1])).toBe(false);
     expect(filterChatModels(models).map((model) => model.id)).toEqual([
       'gpt-5.5-tools',
       'custom-basic-chat',

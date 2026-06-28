@@ -96,20 +96,34 @@ const filterChatModelsForWebChat = gatewayStreamHelpers.filterChatModels
             }
             if (value && typeof value === 'object') {
                 return Object.entries(value)
-                    .filter(([, enabled]) => enabled === true)
+                    .filter(([, enabled]) => isCapabilityEnabled(enabled))
                     .map(([capability]) => capability);
             }
             return [];
+        };
+        const isCapabilityEnabled = (value) => {
+            if (value === true || value === 1) {
+                return true;
+            }
+            if (typeof value === 'string') {
+                return /^(true|yes|supported|enabled|available|1)$/i.test(value.trim());
+            }
+            if (value && typeof value === 'object') {
+                return isCapabilityEnabled(value.enabled)
+                    || isCapabilityEnabled(value.supported)
+                    || isCapabilityEnabled(value.available);
+            }
+            return false;
         };
 
         return (Array.isArray(models) ? models : []).filter((model) => {
             const id = String(model?.id || '').trim();
             const lower = id.toLowerCase();
-            const capabilities = parseCapabilityEntries(
-                model?.capabilities
-                || model?.metadata?.capabilities
-                || model?.contract?.capabilities,
-            ).map((capability) => String(capability || '').trim().toLowerCase()).filter(Boolean);
+            const capabilities = [
+                ...parseCapabilityEntries(model?.capabilities),
+                ...parseCapabilityEntries(model?.metadata?.capabilities),
+                ...parseCapabilityEntries(model?.contract?.capabilities),
+            ].map((capability) => String(capability || '').trim().toLowerCase()).filter(Boolean);
             const chatCapable = capabilities.includes('chat')
                 || (!capabilities.some((capability) => nonChatCapabilities.has(capability))
                     && !nonChatTokens.some((token) => lower.includes(token)));

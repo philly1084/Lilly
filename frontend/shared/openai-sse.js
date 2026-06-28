@@ -92,11 +92,11 @@
   }
 
   function getModelCapabilities(model = {}) {
-    return parseModelCapabilityEntries(
-      model?.capabilities
-      || model?.metadata?.capabilities
-      || model?.contract?.capabilities,
-    )
+    return [
+      ...parseModelCapabilityEntries(model?.capabilities),
+      ...parseModelCapabilityEntries(model?.metadata?.capabilities),
+      ...parseModelCapabilityEntries(model?.contract?.capabilities),
+    ]
       .map((capability) => String(capability || '').trim().toLowerCase())
       .filter(Boolean);
   }
@@ -112,11 +112,26 @@
 
     if (value && typeof value === 'object') {
       return Object.entries(value)
-        .filter(([, enabled]) => enabled === true)
+        .filter(([, enabled]) => isModelCapabilityEnabled(enabled))
         .map(([capability]) => capability);
     }
 
     return [];
+  }
+
+  function isModelCapabilityEnabled(value) {
+    if (value === true || value === 1) {
+      return true;
+    }
+    if (typeof value === 'string') {
+      return /^(true|yes|supported|enabled|available|1)$/i.test(value.trim());
+    }
+    if (value && typeof value === 'object') {
+      return isModelCapabilityEnabled(value.enabled)
+        || isModelCapabilityEnabled(value.supported)
+        || isModelCapabilityEnabled(value.available);
+    }
+    return false;
   }
 
   function hasExplicitNonChatCapability(capabilities = []) {

@@ -122,7 +122,7 @@ describe('model-catalog', () => {
     test('normalizes string and object capability metadata before chat selection', () => {
         const selected = selectAutoModel([
             { id: 'gpt-image-2', owned_by: 'openai', capabilities: 'image_generation' },
-            { id: 'gpt-5.5-tools', owned_by: 'gateway', metadata: { capabilities: 'tools, streaming' } },
+            { id: 'gpt-5.5-tools', owned_by: 'gateway', capabilities: [], metadata: { capabilities: { tools: { supported: true }, streaming: 'available' } } },
             { id: 'custom-basic-chat', owned_by: 'gateway', contract: { capabilities: { chat: true } } },
         ], {
             needsTools: true,
@@ -130,6 +130,11 @@ describe('model-catalog', () => {
         });
 
         expect(isPublicChatModel({ id: 'gpt-image-2', capabilities: 'image_generation' })).toBe(false);
+        expect(isPublicChatModel({
+            id: 'custom-render-router',
+            capabilities: [],
+            metadata: { capabilities: { image_generation: { supported: true } } },
+        })).toBe(false);
         expect(selected).toEqual(expect.objectContaining({
             id: 'gpt-5.5-tools',
             capabilities: ['chat', 'tools', 'streaming'],

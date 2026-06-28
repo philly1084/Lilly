@@ -72,19 +72,34 @@ function parseCapabilityEntries(value = null) {
 
     if (value && typeof value === 'object') {
         return Object.entries(value)
-            .filter(([, enabled]) => enabled === true)
+            .filter(([, enabled]) => isCapabilityEnabled(enabled))
             .map(([name]) => name);
     }
 
     return [];
 }
 
+function isCapabilityEnabled(value) {
+    if (value === true || value === 1) {
+        return true;
+    }
+    if (typeof value === 'string') {
+        return /^(true|yes|supported|enabled|available|1)$/i.test(value.trim());
+    }
+    if (value && typeof value === 'object') {
+        return isCapabilityEnabled(value.enabled)
+            || isCapabilityEnabled(value.supported)
+            || isCapabilityEnabled(value.available);
+    }
+    return false;
+}
+
 function getCapabilityEntries(model = {}) {
-    return parseCapabilityEntries(
-        model?.capabilities
-        || model?.metadata?.capabilities
-        || model?.contract?.capabilities,
-    );
+    return [
+        ...parseCapabilityEntries(model?.capabilities),
+        ...parseCapabilityEntries(model?.metadata?.capabilities),
+        ...parseCapabilityEntries(model?.contract?.capabilities),
+    ];
 }
 
 function isPublicChatModel(modelOrId = '') {

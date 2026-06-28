@@ -188,7 +188,8 @@ describe('web-chat model filtering', () => {
 
         const models = apiClient.filterChatModels([
             { id: 'gpt-image-2', capabilities: 'image_generation' },
-            { id: 'gpt-5.5-tools', metadata: { capabilities: 'tools, streaming' } },
+            { id: 'custom-render-router', capabilities: [], metadata: { capabilities: { image_generation: { supported: true } } } },
+            { id: 'gpt-5.5-tools', capabilities: [], metadata: { capabilities: { tools: { supported: true }, streaming: 'available' } } },
             { id: 'custom-basic-chat', contract: { capabilities: { chat: true } } },
         ]);
 
