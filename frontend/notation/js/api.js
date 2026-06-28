@@ -327,6 +327,8 @@ const NotationAPI = {
                     // Keep as string if not valid JSON
                 }
 
+                const assistantMetadata = this._normalizeAssistantMetadata(data, content);
+
                 if (this.callbacks.onMessage) {
                     this.callbacks.onMessage({
                         type: 'done',
@@ -336,7 +338,7 @@ const NotationAPI = {
                         content: content,
                         annotations: data.annotations || [],
                         suggestions: data.suggestions || [],
-                        assistantMetadata: data.assistantMetadata || data.assistant_metadata || null
+                        assistantMetadata
                     });
                 }
                 break;
@@ -386,6 +388,45 @@ const NotationAPI = {
         setTimeout(() => {
             this.connectWebSocket();
         }, delay);
+    },
+
+    _normalizeAssistantMetadata(data = {}, content = null) {
+        const source = data.assistantMetadata
+            || data.assistant_metadata
+            || (content && typeof content === 'object' ? content.assistantMetadata : null)
+            || (content && typeof content === 'object' ? content.assistant_metadata : null)
+            || {};
+        const metadata = source && typeof source === 'object' ? { ...source } : {};
+        const reasoningSummary = this._pickReasoningSummary(
+            metadata,
+            data,
+            content && typeof content === 'object' ? content : null,
+        );
+
+        if (reasoningSummary && !metadata.reasoningSummary) {
+            metadata.reasoningSummary = reasoningSummary;
+        }
+
+        return Object.keys(metadata).length > 0 ? metadata : null;
+    },
+
+    _pickReasoningSummary(...sources) {
+        for (const source of sources) {
+            if (!source || typeof source !== 'object') {
+                continue;
+            }
+            const summary = String(
+                source.reasoningSummary
+                || source.reasoning_summary
+                || source.reasoningText
+                || source.reasoning_text
+                || ''
+            ).trim();
+            if (summary) {
+                return summary;
+            }
+        }
+        return '';
     },
 
     /**

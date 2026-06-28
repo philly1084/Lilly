@@ -50,3 +50,54 @@ describe('notation API health check', () => {
         expect(abortSignal.timeout).toHaveBeenCalledWith(10000);
     });
 });
+
+describe('notation API WebSocket metadata normalization', () => {
+    test('promotes top-level reasoning summary aliases into assistant metadata', () => {
+        const { NotationAPI } = loadNotationApi();
+        const onMessage = jest.fn();
+        NotationAPI.callbacks = { ...NotationAPI.callbacks, onMessage };
+
+        NotationAPI._handleWebSocketMessage({
+            type: 'done',
+            sessionId: 'session-1',
+            responseId: 'response-1',
+            helperMode: 'explain',
+            content: { result: 'Expanded flow' },
+            reasoning_summary: 'Checked the shorthand before expanding it.',
+        });
+
+        expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'done',
+            sessionId: 'session-1',
+            responseId: 'response-1',
+            helperMode: 'explain',
+            assistantMetadata: {
+                reasoningSummary: 'Checked the shorthand before expanding it.',
+            },
+        }));
+    });
+
+    test('promotes reasoning summary aliases from parsed JSON content', () => {
+        const { NotationAPI } = loadNotationApi();
+        const onMessage = jest.fn();
+        NotationAPI.callbacks = { ...NotationAPI.callbacks, onMessage };
+
+        NotationAPI._handleWebSocketMessage({
+            type: 'done',
+            content: JSON.stringify({
+                result: 'Validated flow',
+                reasoningText: 'Found one ambiguous transition.',
+            }),
+        });
+
+        expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+            content: {
+                result: 'Validated flow',
+                reasoningText: 'Found one ambiguous transition.',
+            },
+            assistantMetadata: {
+                reasoningSummary: 'Found one ambiguous transition.',
+            },
+        }));
+    });
+});
