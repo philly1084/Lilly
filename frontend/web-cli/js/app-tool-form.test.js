@@ -519,6 +519,23 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(document.activeElement).toBe(sessions);
     });
 
+    test('updates the drawer trigger label for open and closed states', () => {
+        const app = createDrawerHarness();
+        app.commandDrawer.hidden = true;
+
+        app.toggleCommandDrawer(true);
+
+        expect(app.commandDrawerToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(app.commandDrawerToggle.getAttribute('aria-label')).toBe('Close command actions');
+        expect(app.commandDrawerToggle.getAttribute('title')).toBe('Close command actions');
+
+        app.toggleCommandDrawer(false);
+
+        expect(app.commandDrawerToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(app.commandDrawerToggle.getAttribute('aria-label')).toBe('Open command actions');
+        expect(app.commandDrawerToggle.getAttribute('title')).toBe('Open command actions');
+    });
+
     test('closes the drawer and restores trigger focus on Escape', () => {
         const app = createDrawerHarness();
         const preventDefault = jest.fn();
@@ -533,6 +550,7 @@ describe('web-cli command drawer keyboard navigation', () => {
 
         expect(app.commandDrawer.hidden).toBe(true);
         expect(app.commandDrawerToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(app.commandDrawerToggle.getAttribute('aria-label')).toBe('Open command actions');
         expect(document.activeElement).toBe(app.commandDrawerToggle);
         expect(preventDefault).toHaveBeenCalled();
         expect(stopPropagation).toHaveBeenCalled();

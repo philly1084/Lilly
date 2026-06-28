@@ -3374,6 +3374,9 @@ class CodeCLIApp {
         this.commandDrawer.classList.toggle('is-open', shouldOpen);
         this.commandDrawerToggle.classList.toggle('is-active', shouldOpen);
         this.commandDrawerToggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+        const toggleLabel = shouldOpen ? 'Close command actions' : 'Open command actions';
+        this.commandDrawerToggle.setAttribute('aria-label', toggleLabel);
+        this.commandDrawerToggle.setAttribute('title', toggleLabel);
 
         if (shouldOpen) {
             this.getCommandDrawerItems()[0]?.focus({ preventScroll: true });
