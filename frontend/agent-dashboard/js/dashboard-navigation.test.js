@@ -737,7 +737,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(queue.textContent).toContain('Verified cycle <script>alert("x")</script> and found the next packaging step.');
         expect(queue.querySelector('script')).toBeNull();
         expect(queue.querySelector('.company-action-preview')).not.toBeNull();
-        expect(queue.querySelector('button').getAttribute('onclick')).toBe("dashboard.handleCompanyAction('runs', 'company-run', 'review-completed-output:company-run')");
+        expect(queue.querySelector('button').getAttribute('onclick')).toBe('dashboard.handleCompanyAction("runs", "company-run", "review-completed-output:company-run")');
         expect(dashboard.state.companyActionContexts['company-run']).toEqual(expect.objectContaining({
             label: 'Review completed work',
             detail: '1 completed run produced text output but no packaged file yet.',
@@ -781,7 +781,7 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.renderCompanyActionQueue([
             {
                 id: 'refresh-shared-whiteboard',
-                actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard\'s.md',
                 label: 'Refresh shared whiteboard',
                 detail: 'Whiteboard needs current coordination notes.',
                 target: 'whiteboard-refresh',
@@ -790,7 +790,7 @@ describe('agent dashboard navigation accessibility', () => {
                     workloadId: 'whiteboard-refresh-workload',
                     title: 'Operations Lead: Refresh <script>alert("x")</script>',
                     status: 'queued',
-                    runId: 'whiteboard-refresh-run',
+                    runId: 'whiteboard-refresh-run\'s',
                     runStatus: 'running',
                 },
             },
@@ -802,7 +802,35 @@ describe('agent dashboard navigation accessibility', () => {
         expect(queue.textContent).toContain('Operations Lead: Refresh <script>alert("x")</script>');
         expect(queue.querySelector('script')).toBeNull();
         expect(queue.querySelector('.company-action-status')).not.toBeNull();
-        expect(queue.querySelector('button').getAttribute('onclick')).toBe("dashboard.handleCompanyAction('whiteboard-refresh', '', 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md')");
+        const buttons = Array.from(queue.querySelectorAll('button'));
+        expect(buttons.map((button) => button.textContent.trim())).toEqual(['Review repair', 'Open']);
+        expect(buttons[0].getAttribute('onclick')).toBe('dashboard.handleCompanyAction("runs", "whiteboard-refresh-run\'s", "refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard\'s.md")');
+        expect(buttons[1].getAttribute('onclick')).toBe('dashboard.handleCompanyAction("whiteboard-refresh", "", "refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard\'s.md")');
+        expect(dashboard.state.companyActionContexts["whiteboard-refresh-run's"]).toEqual(expect.objectContaining({
+            label: 'Refresh shared whiteboard',
+            detail: 'Latest repair: Operations Lead: Refresh <script>alert("x")</script>',
+            outputPreview: 'Whiteboard needs current coordination notes.',
+        }));
+        expect(dashboard.state.companyActionContextsById["refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard's.md"])
+            .toEqual(expect.objectContaining({
+                label: 'Refresh shared whiteboard',
+                detail: 'Latest repair: Operations Lead: Refresh <script>alert("x")</script>',
+            }));
+
+        dashboard.selectAdminRun = jest.fn();
+        document.getElementById('companyRunsTableBody').scrollIntoView = jest.fn();
+        dashboard.handleCompanyAction(
+            'runs',
+            "whiteboard-refresh-run's",
+            "refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard's.md",
+        );
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith("whiteboard-refresh-run's", {
+            source: 'company-action',
+            actionContext: expect.objectContaining({
+                label: 'Refresh shared whiteboard',
+                detail: 'Latest repair: Operations Lead: Refresh <script>alert("x")</script>',
+            }),
+        });
     });
 
     test('marks the company run opened from a CEO action', () => {

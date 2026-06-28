@@ -3169,6 +3169,10 @@ class Dashboard {
         container.innerHTML = actions.map((action, index) => {
             const actionId = String(action.id || `company-action-${index}`);
             const actionKey = String(action.actionKey || actionId);
+            const actionHandler = this.formatCompanyActionHandler(action.target || '', action.runId || '', actionKey);
+            const refreshHandler = action.refreshStatus?.runId
+                ? this.formatCompanyActionHandler('runs', action.refreshStatus.runId, actionKey)
+                : '';
             if (action.runId) {
                 const actionContext = {
                     id: actionId,
@@ -3179,6 +3183,19 @@ class Dashboard {
                 };
                 this.state.companyActionContexts[action.runId] = actionContext;
                 this.state.companyActionContextsById[actionKey] = actionContext;
+            }
+            if (action.refreshStatus?.runId) {
+                const refreshActionContext = {
+                    id: actionId,
+                    actionKey,
+                    label: action.label || 'Opened from CEO action queue',
+                    detail: action.refreshStatus.title
+                        ? `Latest repair: ${action.refreshStatus.title}`
+                        : (action.detail || 'Review the latest shared whiteboard repair run.'),
+                    outputPreview: action.detail || '',
+                };
+                this.state.companyActionContexts[action.refreshStatus.runId] = refreshActionContext;
+                this.state.companyActionContextsById[actionKey] = refreshActionContext;
             }
 
             return `
@@ -3192,13 +3209,22 @@ class Dashboard {
                             <span>Latest repair</span>
                             <strong>${this.escapeHtml(action.refreshStatus.runStatus || action.refreshStatus.status || 'scheduled')}</strong>
                             ${action.refreshStatus.title ? `<small>${this.escapeHtml(action.refreshStatus.title)}</small>` : ''}
+                            ${action.refreshStatus.runId ? `
+                                <button
+                                    class="btn btn-sm btn-ghost company-action-status__review"
+                                    type="button"
+                                    onclick="${refreshHandler}"
+                                >
+                                    Review repair
+                                </button>
+                            ` : ''}
                         </div>
                     ` : ''}
                 </div>
                 <button
                     class="btn btn-sm btn-secondary"
                     type="button"
-                    onclick="dashboard.handleCompanyAction('${this.escapeHtml(action.target || '')}', '${this.escapeHtml(action.runId || '')}', '${this.escapeHtml(actionKey)}')"
+                    onclick="${actionHandler}"
                 >
                     Open
                 </button>
@@ -6507,6 +6533,19 @@ class Dashboard {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    formatCompanyActionHandler(target = '', runId = '', actionKey = '') {
+        const args = [target, runId, actionKey].map((value) => JSON.stringify(String(value || '')));
+        return this.escapeAttribute(`dashboard.handleCompanyAction(${args.join(', ')})`);
+    }
+
+    escapeAttribute(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     handleListItemKeydown(event) {
