@@ -201,13 +201,50 @@ class Dashboard {
         }
     }
 
+    buildCompanyActionContext(action = {}, runId = '') {
+        const actionId = String(action.id || 'company-action');
+        const actionKey = String(action.actionKey || actionId);
+        const refreshStatus = action.refreshStatus || null;
+        const isRefreshRun = refreshStatus?.runId && refreshStatus.runId === runId;
+        return {
+            id: actionId,
+            actionKey,
+            label: action.label || 'Opened from CEO action queue',
+            detail: isRefreshRun && refreshStatus.title
+                ? `Latest repair: ${refreshStatus.title}`
+                : (action.detail || ''),
+            outputPreview: isRefreshRun
+                ? (action.detail || '')
+                : (action.outputPreview || ''),
+        };
+    }
+
+    async loadCompanyActionContext(actionId = '', runId = '') {
+        if (!actionId) return null;
+
+        try {
+            const client = window.apiClient || (typeof apiClient !== 'undefined' ? apiClient : null);
+            if (!client?.get) return null;
+            const response = await client.get('/api/admin/agent-company/action', { actionKey: actionId });
+            const action = this.unwrapApiPayload(response, {})?.action;
+            if (!action) return null;
+            return this.buildCompanyActionContext(action, runId || action.runId || action.refreshStatus?.runId || '');
+        } catch (error) {
+            console.warn('Error loading agent company action context:', error.message || error);
+            return null;
+        }
+    }
+
     async restoreCompanyActionSelectionFromUrl() {
         const selection = this.getCompanyActionSelectionFromUrl();
         if (!selection?.runId) return;
 
-        const actionContext = this.state.companyActionContextsById?.[selection.actionId]
+        let actionContext = this.state.companyActionContextsById?.[selection.actionId]
             || this.state.companyActionContexts?.[selection.runId]
             || this.getPersistedCompanyActionContext(selection.runId);
+        if (!actionContext && selection.actionId) {
+            actionContext = await this.loadCompanyActionContext(selection.actionId, selection.runId);
+        }
         const currentActionKey = this.state.companyActionContext?.actionKey || this.state.companyActionContext?.id || '';
         if (
             this.state.companyActionRunId === selection.runId
@@ -3184,26 +3221,12 @@ class Dashboard {
                 ? this.formatCompanyActionHandler('runs', action.refreshStatus.runId, actionKey)
                 : '';
             if (action.runId) {
-                const actionContext = {
-                    id: actionId,
-                    actionKey,
-                    label: action.label || 'Opened from CEO action queue',
-                    detail: action.detail || '',
-                    outputPreview: action.outputPreview || '',
-                };
+                const actionContext = this.buildCompanyActionContext(action, action.runId);
                 this.state.companyActionContexts[action.runId] = actionContext;
                 this.state.companyActionContextsById[actionKey] = actionContext;
             }
             if (action.refreshStatus?.runId) {
-                const refreshActionContext = {
-                    id: actionId,
-                    actionKey,
-                    label: action.label || 'Opened from CEO action queue',
-                    detail: action.refreshStatus.title
-                        ? `Latest repair: ${action.refreshStatus.title}`
-                        : (action.detail || 'Review the latest shared whiteboard repair run.'),
-                    outputPreview: action.detail || '',
-                };
+                const refreshActionContext = this.buildCompanyActionContext(action, action.refreshStatus.runId);
                 this.state.companyActionContexts[action.refreshStatus.runId] = refreshActionContext;
                 this.state.companyActionContextsById[actionKey] = refreshActionContext;
             }

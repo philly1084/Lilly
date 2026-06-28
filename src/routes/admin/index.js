@@ -309,6 +309,71 @@ function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}, workl
   return nextActions.slice(0, 6);
 }
 
+async function buildAgentCompanyWorkspacePayload(req) {
+  const companyService = req.app.locals.agentCompanyService;
+  if (!companyService?.getStatus) {
+    const error = new Error('Agent company service is not initialized');
+    error.status = 503;
+    throw error;
+  }
+
+  const status = await companyService.getStatus();
+  const workloadService = req.app.locals.agentWorkloadService;
+  const workloadAvailable = Boolean(workloadService?.isAvailable?.());
+  let workloads = [];
+  let runs = [];
+
+  if (workloadAvailable) {
+    const [allWorkloads, allRuns] = await Promise.all([
+      workloadService.listAdminWorkloads(200),
+      workloadService.listAdminRuns(200),
+    ]);
+    workloads = (Array.isArray(allWorkloads) ? allWorkloads : [])
+      .filter((workload) => isAgentCompanyEntry(workload, status));
+    const workloadIds = new Set(workloads.map((workload) => workload.id).filter(Boolean));
+    runs = (Array.isArray(allRuns) ? allRuns : [])
+      .filter((run) => workloadIds.has(run.workloadId) || isAgentCompanyEntry(run, status));
+  }
+
+  const sessionId = status?.config?.sessionId || 'agent-company';
+  const deliverables = dedupeBusinessDeliverables([
+    ...buildCompanyRunDeliverables(runs, workloads),
+    ...await listAgentCompanyStoredArtifacts(sessionId),
+  ]).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''));
+  const improvementLoop = buildRecursiveImprovementLoop(status, workloads, runs, deliverables);
+  const sharedWhiteboard = await attachSharedWhiteboardPreview(
+    buildSharedWhiteboardStatus(status, workloads),
+    {
+      assetManager,
+      sessionId,
+      ownerId: getRequestOwnerId(req),
+    },
+  );
+  const actionQueue = appendSharedWhiteboardAction(
+    buildCeoActionQueue(status, workloads, runs, deliverables),
+    sharedWhiteboard,
+    workloads,
+    runs,
+  );
+
+  return {
+    status,
+    workloads,
+    runs,
+    deliverables,
+    actionQueue,
+    improvementLoop,
+    sharedWhiteboard,
+    workspace: {
+      sessionId,
+      workloadAvailable,
+      deliverableCount: deliverables.length,
+      runCount: runs.length,
+      workloadCount: workloads.length,
+    },
+  };
+}
+
 function buildRecursiveImprovementLoop(status = {}, workloads = [], runs = [], deliverables = []) {
   const state = status?.state || {};
   const config = status?.config || {};
@@ -624,70 +689,39 @@ router.get('/agent-company', async (req, res, next) => {
 
 router.get('/agent-company/workspace', async (req, res, next) => {
   try {
-    const companyService = req.app.locals.agentCompanyService;
-    if (!companyService?.getStatus) {
-      return res.status(503).json({ success: false, error: 'Agent company service is not initialized' });
-    }
-
-    const status = await companyService.getStatus();
-    const workloadService = req.app.locals.agentWorkloadService;
-    const workloadAvailable = Boolean(workloadService?.isAvailable?.());
-    let workloads = [];
-    let runs = [];
-
-    if (workloadAvailable) {
-      const [allWorkloads, allRuns] = await Promise.all([
-        workloadService.listAdminWorkloads(200),
-        workloadService.listAdminRuns(200),
-      ]);
-      workloads = (Array.isArray(allWorkloads) ? allWorkloads : [])
-        .filter((workload) => isAgentCompanyEntry(workload, status));
-      const workloadIds = new Set(workloads.map((workload) => workload.id).filter(Boolean));
-      runs = (Array.isArray(allRuns) ? allRuns : [])
-        .filter((run) => workloadIds.has(run.workloadId) || isAgentCompanyEntry(run, status));
-    }
-
-    const sessionId = status?.config?.sessionId || 'agent-company';
-    const deliverables = dedupeBusinessDeliverables([
-      ...buildCompanyRunDeliverables(runs, workloads),
-      ...await listAgentCompanyStoredArtifacts(sessionId),
-    ]).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''));
-    const improvementLoop = buildRecursiveImprovementLoop(status, workloads, runs, deliverables);
-    const sharedWhiteboard = await attachSharedWhiteboardPreview(
-      buildSharedWhiteboardStatus(status, workloads),
-      {
-        assetManager,
-        sessionId,
-        ownerId: getRequestOwnerId(req),
-      },
-    );
-    const actionQueue = appendSharedWhiteboardAction(
-      buildCeoActionQueue(status, workloads, runs, deliverables),
-      sharedWhiteboard,
-      workloads,
-      runs,
-    );
-
-    res.json({
-      success: true,
-      data: {
-        status,
-        workloads,
-        runs,
-        deliverables,
-        actionQueue,
-        improvementLoop,
-        sharedWhiteboard,
-        workspace: {
-          sessionId,
-          workloadAvailable,
-          deliverableCount: deliverables.length,
-          runCount: runs.length,
-          workloadCount: workloads.length,
-        },
-      },
-    });
+    const payload = await buildAgentCompanyWorkspacePayload(req);
+    res.json({ success: true, data: payload });
   } catch (error) {
+    if (error.status === 503) {
+      return res.status(503).json({ success: false, error: error.message });
+    }
+    next(error);
+  }
+});
+
+router.get('/agent-company/action', async (req, res, next) => {
+  try {
+    const actionKey = String(req.query.actionKey || req.query.key || '').trim();
+    if (!actionKey) {
+      return res.status(400).json({ success: false, error: 'actionKey is required' });
+    }
+
+    const payload = await buildAgentCompanyWorkspacePayload(req);
+    const action = (payload.actionQueue || []).find((candidate) => {
+      const key = String(candidate.actionKey || candidate.id || '').trim();
+      const id = String(candidate.id || '').trim();
+      return key === actionKey || id === actionKey;
+    });
+
+    if (!action) {
+      return res.status(404).json({ success: false, error: 'Agent company action was not found' });
+    }
+
+    res.json({ success: true, data: { action } });
+  } catch (error) {
+    if (error.status === 503) {
+      return res.status(503).json({ success: false, error: error.message });
+    }
     next(error);
   }
 });

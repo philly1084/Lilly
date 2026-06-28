@@ -491,6 +491,21 @@ describe('/api/admin workload routes', () => {
                     priority: 'medium',
                 }),
             ]));
+
+            const actionResponse = await request(app)
+                .get('/api/admin/agent-company/action')
+                .query({ actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md' });
+
+            expect(actionResponse.status).toBe(200);
+            expect(actionResponse.body.data.action).toEqual(expect.objectContaining({
+                id: 'refresh-shared-whiteboard',
+                actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                target: 'whiteboard-refresh',
+                refreshStatus: expect.objectContaining({
+                    runId: 'whiteboard-refresh-run',
+                    runStatus: 'running',
+                }),
+            }));
         } finally {
             searchSpy.mockRestore();
             isEnabledSpy.mockRestore();

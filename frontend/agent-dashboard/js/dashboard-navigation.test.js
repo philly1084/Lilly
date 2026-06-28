@@ -958,6 +958,49 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('restores CEO action context from the server action lookup', async () => {
+        const { dom, dashboard } = createAgentCompanyHarness({
+            url: 'http://localhost:3000/admin/?view=agentCompany&companyAction=1&companyRun=whiteboard-refresh-run&companyActionId=refresh-shared-whiteboard%3A.kimibuilt%2Fagent-company%2F2026-06-22-whiteboard.md',
+        });
+        dom.window.apiClient = {
+            get: jest.fn().mockResolvedValue({
+                success: true,
+                data: {
+                    action: {
+                        id: 'refresh-shared-whiteboard',
+                        actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                        label: 'Refresh shared whiteboard',
+                        detail: 'Whiteboard needs current coordination notes.',
+                        target: 'whiteboard-refresh',
+                        refreshStatus: {
+                            title: 'Operations Lead: Refresh shared whiteboard',
+                            status: 'queued',
+                            runId: 'whiteboard-refresh-run',
+                            runStatus: 'completed',
+                        },
+                    },
+                },
+            }),
+        };
+        dashboard.selectAdminRun = jest.fn().mockResolvedValue(undefined);
+
+        await dashboard.restoreCompanyActionSelectionFromUrl();
+
+        expect(dom.window.apiClient.get).toHaveBeenCalledWith('/api/admin/agent-company/action', {
+            actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+        });
+        expect(dashboard.selectAdminRun).toHaveBeenCalledWith('whiteboard-refresh-run', {
+            source: 'company-action',
+            actionContext: expect.objectContaining({
+                actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                label: 'Refresh shared whiteboard',
+                detail: 'Latest repair: Operations Lead: Refresh shared whiteboard',
+                outputPreview: 'Whiteboard needs current coordination notes.',
+            }),
+            persistSelection: false,
+        });
+    });
+
     test('re-applies restored repair run selection after action context renders', async () => {
         const { dashboard } = createAgentCompanyHarness({
             url: 'http://localhost:3000/admin/?view=agentCompany&companyAction=1&companyRun=whiteboard-refresh-run&companyActionId=refresh-shared-whiteboard%3A.kimibuilt%2Fagent-company%2F2026-06-22-whiteboard.md',
