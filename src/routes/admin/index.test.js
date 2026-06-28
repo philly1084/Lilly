@@ -497,6 +497,7 @@ describe('/api/admin workload routes', () => {
                 .query({ actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md' });
 
             expect(actionResponse.status).toBe(200);
+            expect(actionResponse.body.data.historical).toBe(false);
             expect(actionResponse.body.data.action).toEqual(expect.objectContaining({
                 id: 'refresh-shared-whiteboard',
                 actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',

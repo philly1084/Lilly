@@ -855,6 +855,7 @@ describe('agent dashboard navigation accessibility', () => {
             label: 'Review completed work <script>alert("x")</script>',
             detail: '1 completed run produced text output but no packaged file yet.',
             outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
+            contextSource: 'saved-history',
         };
 
         dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
@@ -862,10 +863,12 @@ describe('agent dashboard navigation accessibility', () => {
         const companyDetails = document.getElementById('companyRunDetails');
         expect(companyDetails.querySelector('.workload-action-context')).not.toBeNull();
         expect(companyDetails.textContent).toContain('Review completed work <script>alert("x")</script>');
+        expect(companyDetails.textContent).toContain('Saved history');
         expect(companyDetails.textContent).toContain('1 completed run produced text output but no packaged file yet.');
         expect(companyDetails.textContent).toContain('Verified cycle <script>alert("x")</script> and found the next packaging step.');
         expect(companyDetails.querySelector('script')).toBeNull();
         expect(companyDetails.querySelector('.workload-action-preview')).not.toBeNull();
+        expect(companyDetails.querySelector('.workload-action-source').textContent).toBe('Saved history');
 
         dashboard.state.companyActionRunId = null;
         dashboard.state.companyActionContext = null;
@@ -979,6 +982,7 @@ describe('agent dashboard navigation accessibility', () => {
                             runStatus: 'completed',
                         },
                     },
+                    historical: true,
                 },
             }),
         };
@@ -996,6 +1000,7 @@ describe('agent dashboard navigation accessibility', () => {
                 label: 'Refresh shared whiteboard',
                 detail: 'Latest repair: Operations Lead: Refresh shared whiteboard',
                 outputPreview: 'Whiteboard needs current coordination notes.',
+                contextSource: 'saved-history',
             }),
             persistSelection: false,
         });

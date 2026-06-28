@@ -173,13 +173,17 @@ class Dashboard {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed !== 'object') return null;
-            return {
+            const context = {
                 id: parsed.id || '',
                 actionKey: parsed.actionKey || parsed.id || '',
                 label: parsed.label || 'Opened from CEO action queue',
                 detail: parsed.detail || '',
                 outputPreview: parsed.outputPreview || '',
             };
+            if (parsed.contextSource) {
+                context.contextSource = parsed.contextSource;
+            }
+            return context;
         } catch (error) {
             return null;
         }
@@ -189,19 +193,23 @@ class Dashboard {
         if (!runId || !context || !window.sessionStorage) return;
 
         try {
-            window.sessionStorage.setItem(`kb.companyActionContext.${runId}`, JSON.stringify({
+            const persisted = {
                 id: context.id || '',
                 actionKey: context.actionKey || context.id || '',
                 label: context.label || 'Opened from CEO action queue',
                 detail: context.detail || '',
                 outputPreview: context.outputPreview || '',
-            }));
+            };
+            if (context.contextSource) {
+                persisted.contextSource = context.contextSource;
+            }
+            window.sessionStorage.setItem(`kb.companyActionContext.${runId}`, JSON.stringify(persisted));
         } catch (error) {
             // Session persistence is a convenience, not a blocker for review.
         }
     }
 
-    buildCompanyActionContext(action = {}, runId = '') {
+    buildCompanyActionContext(action = {}, runId = '', options = {}) {
         const actionId = String(action.id || 'company-action');
         const actionKey = String(action.actionKey || actionId);
         const refreshStatus = action.refreshStatus || null;
@@ -216,6 +224,7 @@ class Dashboard {
             outputPreview: isRefreshRun
                 ? (action.detail || '')
                 : (action.outputPreview || ''),
+            contextSource: options.contextSource || 'live',
         };
     }
 
@@ -226,9 +235,14 @@ class Dashboard {
             const client = window.apiClient || (typeof apiClient !== 'undefined' ? apiClient : null);
             if (!client?.get) return null;
             const response = await client.get('/api/admin/agent-company/action', { actionKey: actionId });
-            const action = this.unwrapApiPayload(response, {})?.action;
+            const payload = this.unwrapApiPayload(response, {});
+            const action = payload?.action;
             if (!action) return null;
-            return this.buildCompanyActionContext(action, runId || action.runId || action.refreshStatus?.runId || '');
+            return this.buildCompanyActionContext(
+                action,
+                runId || action.runId || action.refreshStatus?.runId || '',
+                { contextSource: payload.historical ? 'saved-history' : 'live' },
+            );
         } catch (error) {
             console.warn('Error loading agent company action context:', error.message || error);
             return null;
@@ -2804,10 +2818,16 @@ class Dashboard {
         const errorPayload = this.stringifyAdminPayload(run.error);
         const tracePayload = this.stringifyAdminPayload(run.trace);
         const actionContext = this.state.companyActionRunId === run.id ? this.state.companyActionContext : null;
+        const actionContextSource = actionContext?.contextSource === 'saved-history'
+            ? 'Saved history'
+            : (actionContext?.contextSource === 'live' ? 'Live queue' : '');
         const actionContextHtml = actionContext
             ? `
             <div class="workload-action-context">
-                <strong>${this.escapeHtml(actionContext.label || 'Opened from CEO action queue')}</strong>
+                <div class="workload-action-context__header">
+                    <strong>${this.escapeHtml(actionContext.label || 'Opened from CEO action queue')}</strong>
+                    ${actionContextSource ? `<span class="workload-action-source">${this.escapeHtml(actionContextSource)}</span>` : ''}
+                </div>
                 <span>${this.escapeHtml(actionContext.detail || "Review this run's output evidence before continuing or packaging company work.")}</span>
                 ${actionContext.outputPreview ? `<div class="workload-action-preview">${this.escapeHtml(actionContext.outputPreview)}</div>` : ''}
             </div>`

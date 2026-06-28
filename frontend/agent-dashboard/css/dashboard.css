@@ -3189,6 +3189,26 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     font-weight: 600;
 }
 
+.workload-action-context__header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    align-items: center;
+}
+
+.workload-action-source {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-xs);
+    border: 1px solid rgba(210, 153, 34, 0.45);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: 1.35;
+}
+
 .workload-action-context span {
     color: var(--text-secondary);
     font-size: var(--text-xs);
