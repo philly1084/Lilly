@@ -10425,6 +10425,9 @@ class UIHelpers {
 
     closeExportModal() {
         const modal = document.getElementById('export-modal');
+        if (!modal || modal.classList.contains('hidden')) {
+            return;
+        }
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
         this.hideExportProgress();
@@ -11043,6 +11046,7 @@ class UIHelpers {
                 this.closeModelSelector();
                 this.closeThemeGallery();
                 this.closeShortcutsModal();
+                this.closeExportModal();
                 this.closeImportModal();
                 this.closeMobileActionSheet();
             }

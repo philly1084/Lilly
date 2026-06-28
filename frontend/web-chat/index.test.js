@@ -55,7 +55,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
         expect(html).toContain('css/styles.css?v=20260625b');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
-        expect(html).toContain('js/ui.js?v=20260628b');
+        expect(html).toContain('js/ui.js?v=20260628c');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(uiSource).toContain("if (event.key === 'Escape')");
@@ -69,14 +69,18 @@ describe('web-chat index redirect', () => {
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
 
         expect(html).toContain('aria-describedby="export-description"');
+        expect(html).toContain('id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-title" aria-describedby="export-description" aria-hidden="true"');
         expect(html).toContain('id="export-description"');
         expect(html).toContain('id="export-progress-bar"');
         expect(html).toContain('role="progressbar"');
         expect(html).toContain('aria-labelledby="export-progress-text"');
         expect(html).toContain('aria-describedby="export-progress-percent"');
+        expect(html).toContain('js/ui.js?v=20260628c');
         expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
+        expect(uiSource).toContain('this.closeExportModal();');
+        expect(uiSource).toContain("if (!modal || modal.classList.contains('hidden'))");
         expect(uiSource).toContain('this.lastFocusedElement.focus();');
     });
 
@@ -89,7 +93,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-busy="false"');
-        expect(html).toContain('js/ui.js?v=20260628b');
+        expect(html).toContain('js/ui.js?v=20260628c');
         expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
