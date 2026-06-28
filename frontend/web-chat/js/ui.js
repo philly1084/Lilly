@@ -5871,8 +5871,12 @@ class UIHelpers {
         const value = String(text || '');
         const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : null;
         if (clipboard?.writeText) {
-            await clipboard.writeText(value);
-            return;
+            try {
+                await clipboard.writeText(value);
+                return;
+            } catch (_err) {
+                // Permission and secure-context failures can still copy through the textarea path.
+            }
         }
 
         this.copyTextWithTextareaFallback(value);
@@ -5975,7 +5979,7 @@ class UIHelpers {
 
     async copyImageUrl(imageUrl) {
         try {
-            await navigator.clipboard.writeText(imageUrl);
+            await this.writeClipboardText(imageUrl);
             this.showToast('Image URL copied to clipboard', 'success');
         } catch (err) {
             console.error('Failed to copy image URL:', err);

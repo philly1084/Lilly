@@ -638,6 +638,30 @@ I will continue once you answer.`;
         expect(context.document.appendedElements).toHaveLength(0);
     });
 
+    test('falls back to a temporary textarea when clipboard write is rejected', async () => {
+        const { prototype, context } = loadUIHelpersPrototype({ withContext: true });
+        const helper = Object.create(prototype);
+        const writeText = jest.fn().mockRejectedValue(new Error('NotAllowedError'));
+        context.navigator.clipboard = { writeText };
+
+        await helper.writeClipboardText('Copied after clipboard rejection.');
+
+        expect(writeText).toHaveBeenCalledWith('Copied after clipboard rejection.');
+        expect(context.document.execCommand).toHaveBeenCalledWith('copy');
+        expect(context.document.appendedElements).toHaveLength(0);
+    });
+
+    test('image URL copy uses shared clipboard fallback helper', async () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.writeClipboardText = jest.fn().mockResolvedValue(undefined);
+        helper.showToast = jest.fn();
+
+        await helper.copyImageUrl('/api/artifacts/image-1/download');
+
+        expect(helper.writeClipboardText).toHaveBeenCalledWith('/api/artifacts/image-1/download');
+        expect(helper.showToast).toHaveBeenCalledWith('Image URL copied to clipboard', 'success');
+    });
+
     test('code copy keeps copied button feedback with fallback clipboard support', async () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const classList = {
