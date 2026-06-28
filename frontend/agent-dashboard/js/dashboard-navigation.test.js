@@ -911,6 +911,60 @@ describe('agent dashboard navigation accessibility', () => {
         expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('All 2');
     });
 
+    test('loads more saved CEO action history from the action-history endpoint', async () => {
+        const { dom, dashboard } = createAgentCompanyHarness();
+        dom.window.apiClient = {
+            get: jest.fn().mockResolvedValue({
+                success: true,
+                data: {
+                    actions: [
+                        {
+                            id: 'review-completed-output',
+                            actionKey: 'review-completed-output:historical-run',
+                            label: 'Review saved output',
+                            detail: 'Saved run context from the workspace slice.',
+                            target: 'runs',
+                            runId: 'historical-run',
+                            outputPreview: 'Saved output preview.',
+                            snapshotAt: '2026-06-28T05:12:00.000Z',
+                        },
+                        {
+                            id: 'review-completed-output',
+                            actionKey: 'review-completed-output:older-run',
+                            label: 'Review older saved output <script>alert("x")</script>',
+                            detail: 'Older saved run context from the action-history endpoint.',
+                            target: 'runs',
+                            runId: 'older-run',
+                            outputPreview: 'Older saved output preview.',
+                            snapshotAt: '2026-06-28T04:12:00.000Z',
+                        },
+                    ],
+                    limit: 24,
+                    maxLimit: 24,
+                },
+            }),
+        };
+
+        dashboard.renderCompanyActionHistory(dashboard.state.agentCompanyWorkspace.actionHistory);
+        expect(document.getElementById('companyActionHistory').textContent).toContain('All 1');
+
+        await dashboard.loadCompanyActionHistory();
+
+        const history = document.getElementById('companyActionHistory');
+        expect(dom.window.apiClient.get).toHaveBeenCalledWith('/api/admin/agent-company/action-history', { limit: 24 });
+        expect(history.textContent).toContain('All 2');
+        expect(history.textContent).toContain('Review older saved output <script>alert("x")</script>');
+        expect(history.querySelector('script')).toBeNull();
+        expect(history.querySelector('[data-action-id="review-completed-output:older-run"] button').getAttribute('onclick'))
+            .toBe('dashboard.handleCompanyAction("runs", "older-run", "review-completed-output:older-run")');
+        expect(dashboard.state.companyActionContexts['older-run']).toEqual(expect.objectContaining({
+            label: 'Review older saved output <script>alert("x")</script>',
+            detail: 'Older saved run context from the action-history endpoint.',
+            outputPreview: 'Older saved output preview.',
+            contextSource: 'saved-history',
+        }));
+    });
+
     test('marks the company run opened from a CEO action', () => {
         const { dashboard } = createAgentCompanyHarness();
         dashboard.state.selectedRun = dashboard.state.runs[0];

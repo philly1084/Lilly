@@ -31,6 +31,8 @@ class Dashboard {
             companyActionContextsById: {},
             companyActionHistory: [],
             companyActionHistoryFilter: 'all',
+            companyActionHistoryLoading: false,
+            companyActionHistoryError: '',
             companyFileSearch: '',
             companyFileSourceFilter: 'any',
             companyWorkSearch: '',
@@ -3351,12 +3353,25 @@ class Dashboard {
             `${reviewableCount} reviewable`,
             referenceCount ? `${referenceCount} reference` : '',
         ].filter(Boolean).join(' | ');
+        const isLoading = Boolean(this.state.companyActionHistoryLoading);
+        const errorMessage = this.state.companyActionHistoryError || '';
 
         container.innerHTML = `
             <div class="company-action-history__header">
-                <strong>Recent saved CEO actions</strong>
-                <span>${this.escapeHtml(historySummary)}</span>
+                <div>
+                    <strong>Recent saved CEO actions</strong>
+                    <span>${this.escapeHtml(historySummary)}</span>
+                </div>
+                <button
+                    class="btn btn-sm btn-ghost company-action-history__more"
+                    type="button"
+                    onclick="dashboard.loadCompanyActionHistory()"
+                    ${isLoading ? 'disabled' : ''}
+                >
+                    ${isLoading ? 'Loading...' : 'Show more'}
+                </button>
             </div>
+            ${errorMessage ? `<p class="company-action-history__error">${this.escapeHtml(errorMessage)}</p>` : ''}
             <div class="company-action-history__filters" role="group" aria-label="Saved CEO action filter">
                 ${[
                     ['all', `All ${history.length}`],
@@ -4768,6 +4783,40 @@ class Dashboard {
                 },
             };
             return this.loadAgentCompanyStatus();
+        }
+    }
+
+    async loadCompanyActionHistory(limit = 24) {
+        this.state.companyActionHistoryLoading = true;
+        this.state.companyActionHistoryError = '';
+        this.renderCompanyActionHistory(
+            this.state.companyActionHistory
+                || this.state.agentCompanyWorkspace?.actionHistory
+                || [],
+        );
+
+        try {
+            const client = window.apiClient || (typeof apiClient !== 'undefined' ? apiClient : null);
+            if (!client?.get) {
+                throw new Error('API client is unavailable');
+            }
+            const response = await client.get('/api/admin/agent-company/action-history', { limit });
+            const payload = this.unwrapApiPayload(response, {});
+            const actions = Array.isArray(payload.actions) ? payload.actions : [];
+            this.state.companyActionHistoryLoading = false;
+            this.state.companyActionHistoryError = '';
+            this.renderCompanyActionHistory(actions);
+            return actions;
+        } catch (error) {
+            this.state.companyActionHistoryLoading = false;
+            this.state.companyActionHistoryError = error.userMessage || error.message || 'Failed to load saved CEO actions.';
+            this.renderCompanyActionHistory(
+                this.state.companyActionHistory
+                    || this.state.agentCompanyWorkspace?.actionHistory
+                    || [],
+            );
+            console.warn('Error loading company action history:', error.message || error);
+            return [];
         }
     }
 

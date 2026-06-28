@@ -2828,6 +2828,21 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     color: var(--text-primary);
 }
 
+.company-action-history__header > div {
+    display: grid;
+    gap: 2px;
+}
+
+.company-action-history__more {
+    align-self: center;
+}
+
+.company-action-history__error {
+    margin: var(--space-xs) 0 0;
+    color: var(--error);
+    font-size: var(--text-xs);
+}
+
 .company-action-history__filters {
     display: flex;
     flex-wrap: wrap;
