@@ -267,6 +267,40 @@ async function listRecentCeoActionHistory(limit = 6) {
     .slice(0, limit);
 }
 
+function summarizeCeoActionHistory(actions = []) {
+  const summary = {
+    total: 0,
+    reviewable: 0,
+    referenceOnly: 0,
+    newestSnapshotAt: null,
+    oldestSnapshotAt: null,
+  };
+
+  (Array.isArray(actions) ? actions : []).forEach((action) => {
+    summary.total += 1;
+    if (action?.runId || action?.refreshStatus?.runId) {
+      summary.reviewable += 1;
+    } else {
+      summary.referenceOnly += 1;
+    }
+
+    const snapshotAt = String(action?.snapshotAt || '').trim();
+    const timestamp = Date.parse(snapshotAt);
+    if (!Number.isFinite(timestamp)) {
+      return;
+    }
+
+    if (!summary.newestSnapshotAt || timestamp > Date.parse(summary.newestSnapshotAt)) {
+      summary.newestSnapshotAt = snapshotAt;
+    }
+    if (!summary.oldestSnapshotAt || timestamp < Date.parse(summary.oldestSnapshotAt)) {
+      summary.oldestSnapshotAt = snapshotAt;
+    }
+  });
+
+  return summary;
+}
+
 function normalizeCeoActionHistoryLimit(value, defaultLimit = 12) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -830,6 +864,7 @@ router.get('/agent-company/action-history', async (req, res, next) => {
       success: true,
       data: {
         actions,
+        summary: summarizeCeoActionHistory(actions),
         limit,
         maxLimit: CEO_ACTION_HISTORY_LIMIT,
       },

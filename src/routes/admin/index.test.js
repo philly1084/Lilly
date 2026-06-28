@@ -794,6 +794,13 @@ describe('/api/admin workload routes', () => {
             expect(historyResponse.body.data).toEqual(expect.objectContaining({
                 limit: 24,
                 maxLimit: 24,
+                summary: expect.objectContaining({
+                    total: 2,
+                    reviewable: 1,
+                    referenceOnly: 1,
+                    newestSnapshotAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+                    oldestSnapshotAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+                }),
                 actions: expect.arrayContaining([
                     expect.objectContaining({
                         actionKey: 'review-completed-output:historical-run',
