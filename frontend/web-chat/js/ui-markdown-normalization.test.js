@@ -107,6 +107,47 @@ function loadUIHelpersPrototype(options = {}) {
 }
 
 describe('web-chat markdown normalization', () => {
+    test('renders message speech buttons for delegated click handling', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.getMessageSpeechControlState = () => ({
+            visible: true,
+            disabled: false,
+            isLoading: false,
+            isPlaying: false,
+            title: 'Read aloud with Kokoro',
+            icon: 'volume-2',
+        });
+
+        const markup = helper.buildMessageSpeechButtonMarkup('assistant-42', {});
+
+        expect(markup).toContain('data-tts-message-id="assistant-42"');
+        expect(markup).toContain('aria-label="Read aloud with Kokoro"');
+        expect(markup).not.toContain('onclick=');
+    });
+
+    test('delegates message speech button clicks to toggle playback', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.toggleMessageSpeech = jest.fn();
+        const button = {
+            dataset: { ttsMessageId: 'assistant-42' },
+            disabled: false,
+            hidden: false,
+        };
+        const event = {
+            target: {
+                closest: jest.fn(() => button),
+            },
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        };
+
+        expect(helper.handleMessageSpeechButtonClick(event)).toBe(true);
+        expect(event.target.closest).toHaveBeenCalledWith('[data-tts-message-id]');
+        expect(event.preventDefault).toHaveBeenCalled();
+        expect(event.stopPropagation).toHaveBeenCalled();
+        expect(helper.toggleMessageSpeech).toHaveBeenCalledWith('assistant-42');
+    });
+
     test('finds speech highlight content indexes across comparable boundaries', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         const node = {};

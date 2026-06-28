@@ -492,14 +492,14 @@ const normalizedTtsRealtimePrimaryTimeoutMs = Math.max(
     3000,
     Math.min(
         normalizedKokoroTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 8000,
+        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 30000,
     ),
 );
 const normalizedTtsRealtimeFallbackTimeoutMs = Math.max(
     2000,
     Math.min(
         normalizedPiperTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 7000,
+        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 30000,
     ),
 );
 const normalizedTtsRealtimeHedgeDelayMs = Math.max(

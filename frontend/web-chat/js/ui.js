@@ -7679,7 +7679,6 @@ class UIHelpers {
             <button
                 class="message-action-btn${state.isPlaying ? ' is-active' : ''}${state.isLoading ? ' is-loading' : ''}"
                 data-tts-message-id="${this.escapeHtmlAttr(messageId)}"
-                onclick="uiHelpers.toggleMessageSpeech('${this.escapeHtmlAttr(messageId)}')"
                 title="${this.escapeHtmlAttr(state.title)}"
                 aria-label="${this.escapeHtmlAttr(state.title)}"
                 ${state.disabled ? 'disabled' : ''}
@@ -7798,6 +7797,23 @@ class UIHelpers {
 
     stopSpeechPlayback() {
         this.ttsManager?.stop?.();
+    }
+
+    handleMessageSpeechButtonClick(event = null) {
+        const button = event?.target?.closest?.('[data-tts-message-id]');
+        if (!button || button.disabled || button.hidden) {
+            return false;
+        }
+
+        const messageId = String(button.dataset?.ttsMessageId || '').trim();
+        if (!messageId) {
+            return false;
+        }
+
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        void this.toggleMessageSpeech(messageId);
+        return true;
     }
 
     normalizeSpeechHighlightText(text = '') {
@@ -10911,6 +10927,10 @@ class UIHelpers {
             button.addEventListener('click', () => {
                 this.playTtsPreview(button.dataset.ttsPreview || '');
             });
+        });
+
+        document.addEventListener('click', (event) => {
+            this.handleMessageSpeechButtonClick(event);
         });
 
         const minimalistButtons = [
