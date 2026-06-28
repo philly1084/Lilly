@@ -3925,10 +3925,17 @@ class AIAssistant {
         const imageOptions = document.getElementById('imageOptions');
         const aiDescription = document.querySelector('.ai-description');
         
+        const modeButtons = [
+            { button: chatModeBtn, mode: 'chat' },
+            { button: diagramModeBtn, mode: 'diagram' },
+            { button: imageModeBtn, mode: 'image' },
+        ];
+        modeButtons.forEach(({ button, mode: buttonMode }) => {
+            button?.classList.toggle('active', buttonMode === mode);
+            button?.setAttribute('aria-pressed', buttonMode === mode ? 'true' : 'false');
+        });
+
         if (mode === 'chat') {
-            chatModeBtn?.classList.add('active');
-            diagramModeBtn?.classList.remove('active');
-            imageModeBtn?.classList.remove('active');
             diagramOptions?.classList.remove('hidden');
             imageOptions?.classList.add('hidden');
             if (aiDescription) {
@@ -3941,9 +3948,6 @@ class AIAssistant {
                 this.generateBtn.lastChild.textContent = 'Send';
             }
         } else if (mode === 'diagram') {
-            chatModeBtn?.classList.remove('active');
-            diagramModeBtn?.classList.add('active');
-            imageModeBtn?.classList.remove('active');
             diagramOptions?.classList.remove('hidden');
             imageOptions?.classList.add('hidden');
             if (aiDescription) {
@@ -3956,9 +3960,6 @@ class AIAssistant {
                 this.generateBtn.lastChild.textContent = 'Build';
             }
         } else {
-            chatModeBtn?.classList.remove('active');
-            diagramModeBtn?.classList.remove('active');
-            imageModeBtn?.classList.add('active');
             diagramOptions?.classList.add('hidden');
             imageOptions?.classList.remove('hidden');
             if (aiDescription) {

@@ -67,6 +67,29 @@ function loadImportExportManagerClass(dom) {
     return sandbox.module.exports.ImportExportManager;
 }
 
+function loadAIAssistantClass(dom) {
+    const sourcePath = path.join(__dirname, 'ai-assistant.js');
+    const source = fs.readFileSync(sourcePath, 'utf8')
+        .replace(
+            /\/\/ Create global instance\s*window\.aiAssistant = new AIAssistant\(\);\s*$/,
+            'module.exports = { AIAssistant };'
+        );
+    const sandbox = {
+        module: { exports: {} },
+        exports: {},
+        console,
+        document: dom.window.document,
+        window: dom.window,
+        localStorage: dom.window.localStorage,
+        fetch: jest.fn(),
+        setTimeout,
+        clearTimeout,
+    };
+
+    vm.runInNewContext(source, sandbox, { filename: sourcePath });
+    return sandbox.module.exports.AIAssistant;
+}
+
 function createTemplatesModalHarness() {
     const dom = new JSDOM(`
         <button id="templatesBtn" type="button">Templates</button>
@@ -263,6 +286,33 @@ function createToolCategoryHarness() {
     return { app };
 }
 
+function createAIModeHarness() {
+    const dom = new JSDOM(`
+        <div class="ai-mode-toggle" aria-label="Canvas AI mode">
+            <button class="ai-mode-btn active" id="chatModeBtn" data-mode="chat" type="button" aria-pressed="true">Talk</button>
+            <button class="ai-mode-btn" id="diagramModeBtn" data-mode="diagram" type="button" aria-pressed="false">Objects</button>
+            <button class="ai-mode-btn" id="imageModeBtn" data-mode="image" type="button" aria-pressed="false">Image</button>
+        </div>
+        <div id="diagramOptions"></div>
+        <div id="imageOptions" class="hidden"></div>
+        <p class="ai-description"></p>
+        <textarea id="aiInput"></textarea>
+        <button id="aiGenerateBtn" type="button"><span>Icon</span><span>Send</span></button>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const AIAssistant = loadAIAssistantClass(dom);
+    const assistant = Object.create(AIAssistant.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+    global.localStorage = dom.window.localStorage;
+
+    assistant.input = document.getElementById('aiInput');
+    assistant.generateBtn = document.getElementById('aiGenerateBtn');
+    assistant.renderToolPlan = jest.fn();
+
+    return { assistant };
+}
+
 describe('canvas help modal accessibility', () => {
     afterEach(() => {
         delete global.document;
@@ -423,6 +473,42 @@ describe('canvas tool group header accessibility', () => {
 
         expect(category.classList.contains('expanded')).toBe(true);
         expect(header.getAttribute('aria-expanded')).toBe('true');
+    });
+});
+
+describe('canvas AI mode toggle accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+        delete global.localStorage;
+    });
+
+    test('keeps pressed state aligned with the selected AI mode', () => {
+        const { assistant } = createAIModeHarness();
+        const chat = document.getElementById('chatModeBtn');
+        const diagram = document.getElementById('diagramModeBtn');
+        const image = document.getElementById('imageModeBtn');
+        const diagramOptions = document.getElementById('diagramOptions');
+        const imageOptions = document.getElementById('imageOptions');
+
+        assistant.setMode('diagram');
+
+        expect(chat.classList.contains('active')).toBe(false);
+        expect(chat.getAttribute('aria-pressed')).toBe('false');
+        expect(diagram.classList.contains('active')).toBe(true);
+        expect(diagram.getAttribute('aria-pressed')).toBe('true');
+        expect(image.getAttribute('aria-pressed')).toBe('false');
+        expect(diagramOptions.classList.contains('hidden')).toBe(false);
+        expect(imageOptions.classList.contains('hidden')).toBe(true);
+
+        assistant.setMode('image');
+
+        expect(diagram.classList.contains('active')).toBe(false);
+        expect(diagram.getAttribute('aria-pressed')).toBe('false');
+        expect(image.classList.contains('active')).toBe(true);
+        expect(image.getAttribute('aria-pressed')).toBe('true');
+        expect(diagramOptions.classList.contains('hidden')).toBe(true);
+        expect(imageOptions.classList.contains('hidden')).toBe(false);
     });
 });
 
