@@ -527,6 +527,13 @@ function buildToolRuntime(toolId, options = {}) {
         'For PPTX/XLSX, inspect or render the generated artifact with available office or spreadsheet tooling before delivery.',
         'Handoff must include source files, artifact IDs or URLs, checks run, fixed issues, and remaining assumptions.',
       ],
+      acceptanceChecks: {
+        html: ['browser preview opened or ui-check run', 'desktop and mobile layout readable', 'links and images load'],
+        pdf: ['page geometry declared', 'rendered pages reviewed', 'contrast tables captions and images readable'],
+        pptx: ['deck opens or renders', 'titles and captions fit', 'exported images remain readable'],
+        xlsx: ['workbook opens or parses', 'tables preserve headings', 'numeric/date cells keep expected types'],
+        handoff: ['source path included', 'artifact id or url included', 'checks run and remaining assumptions named'],
+      },
     };
   }
 

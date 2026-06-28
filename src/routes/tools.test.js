@@ -174,6 +174,20 @@ describe('/api/tools routes', () => {
             expect.stringContaining('PPTX/XLSX'),
             expect.stringContaining('artifact IDs or URLs'),
         ]));
+        expect(response.body.data.runtime.acceptanceChecks).toEqual(expect.objectContaining({
+            html: expect.arrayContaining([
+                expect.stringContaining('ui-check'),
+                expect.stringContaining('desktop and mobile'),
+            ]),
+            pdf: expect.arrayContaining([
+                expect.stringContaining('page geometry'),
+                expect.stringContaining('rendered pages'),
+            ]),
+            handoff: expect.arrayContaining([
+                expect.stringContaining('artifact id or url'),
+                expect.stringContaining('remaining assumptions'),
+            ]),
+        }));
     });
 
     test('modern capability map details expose the eight agent upgrade lanes', async () => {
