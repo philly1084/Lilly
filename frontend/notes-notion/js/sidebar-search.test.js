@@ -52,6 +52,20 @@ describe('Notes search modal accessibility semantics', () => {
 });
 
 describe('Notes collapsed sidebar handle accessibility', () => {
+    test('keeps the main sidebar toggle stateful and tied to the sidebar region', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = readSidebarSource();
+
+        expect(html).toContain('id="sidebar-toggle"');
+        expect(html).toContain('type="button" title="Collapse sidebar" aria-label="Collapse sidebar" aria-controls="sidebar" aria-expanded="true"');
+        expect(source).toContain('let sidebarToggleEl = null;');
+        expect(source).toContain("sidebarToggleEl = document.getElementById('sidebar-toggle')");
+        expect(source).toContain('function syncSidebarToggleState(collapsed)');
+        expect(source).toContain("sidebarToggleEl.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true')");
+        expect(source).toContain("sidebarToggleEl.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar')");
+        expect(source).toContain("sidebarToggleEl.setAttribute('title', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar')");
+    });
+
     test('wires the collapsed sidebar handle as a stateful controlled button', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const source = readSidebarSource();

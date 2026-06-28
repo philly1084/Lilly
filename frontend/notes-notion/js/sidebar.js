@@ -7,6 +7,7 @@ const Sidebar = (function() {
     let pageTreeEl = null;
     let outlineSectionEl = null;
     let outlineToggleEl = null;
+    let sidebarToggleEl = null;
     let sidebarHandleEl = null;
     let mobileToggleEl = null;
     let expandedPages = new Set();
@@ -52,6 +53,7 @@ const Sidebar = (function() {
         pageTreeEl = document.getElementById('page-tree');
         outlineSectionEl = document.getElementById('sidebar-outline-section');
         outlineToggleEl = document.getElementById('sidebar-outline-toggle');
+        sidebarToggleEl = document.getElementById('sidebar-toggle');
         sidebarHandleEl = document.getElementById('sidebar-handle');
         
         setupEventListeners();
@@ -114,9 +116,8 @@ const Sidebar = (function() {
         });
         
         // Sidebar toggle
-        const toggleBtn = document.getElementById('sidebar-toggle');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', toggleSidebar);
+        if (sidebarToggleEl) {
+            sidebarToggleEl.addEventListener('click', toggleSidebar);
         }
 
         if (sidebarHandleEl) {
@@ -1011,6 +1012,7 @@ const Sidebar = (function() {
             if (shouldPersist) {
                 localStorage.setItem('notes_notion_sidebar_collapsed', 'false');
             }
+            syncSidebarToggleState(false);
             syncMobileSidebarState();
             return;
         }
@@ -1023,6 +1025,16 @@ const Sidebar = (function() {
         if (sidebarHandleEl) {
             sidebarHandleEl.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         }
+        syncSidebarToggleState(collapsed);
+    }
+
+    function syncSidebarToggleState(collapsed) {
+        if (!sidebarToggleEl) return;
+
+        const isCollapsed = Boolean(collapsed);
+        sidebarToggleEl.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+        sidebarToggleEl.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        sidebarToggleEl.setAttribute('title', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
     }
 
     function syncMobileSidebarState() {
