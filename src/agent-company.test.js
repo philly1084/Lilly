@@ -138,6 +138,44 @@ describe('AgentCompanyService', () => {
         expect(applySelfReflectionUpdate).toHaveBeenCalledTimes(1);
     });
 
+    test('clears stale running work when company scheduling is disabled', async () => {
+        await fs.writeFile(statePath, JSON.stringify({
+            enabled: true,
+            runningWork: {
+                running: 1,
+                queued: 3,
+                companyWorkloads: 8,
+            },
+            createdWorkloads: [{
+                id: 'stale-workload',
+                title: 'Stale workload',
+            }],
+        }), 'utf8');
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig({
+                    enabled: false,
+                }),
+            },
+            workloadService: {
+                isAvailable: () => true,
+            },
+            sessionStore: {},
+        });
+
+        const result = await service.tick({ force: true, reason: 'disabled-cleanup-test' });
+
+        expect(result.state.enabled).toBe(false);
+        expect(result.state.runningWork).toEqual({
+            running: 0,
+            queued: 0,
+            companyWorkloads: 0,
+        });
+        expect(result.state.createdWorkloads).toEqual([]);
+    });
+
     test('creates one weekly set of long-agent workloads and skips duplicates on the next heartbeat', async () => {
         const createdWorkloads = [];
         const workloadService = {
@@ -185,6 +223,11 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].metadata.longAgent.enabled).toBe(true);
         expect(createdWorkloads[0].metadata.longAgent.sharedWhiteboardFile).toBe('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
         expect(createdWorkloads[0].metadata.requestedModel).toBe('gpt-5.5');
+        expect(createdWorkloads[0].metadata.modelSelection).toEqual(expect.objectContaining({
+            model: 'gpt-5.5',
+            competency: 'strategy-planning',
+            source: 'primaryModel',
+        }));
         expect(createdWorkloads[0].metadata.agentCompany.heartbeatManaged).toBe(true);
         expect(createdWorkloads[0].metadata.agentCompany.sharedWhiteboard).toEqual(expect.objectContaining({
             path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
@@ -208,9 +251,111 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].prompt).toContain('Do not count an HTML file as a deliverable if it is only a plan');
         expect(createdWorkloads[0].prompt).toContain('Use managed-app create/iterate/reconcile/doctor');
         expect(createdWorkloads[0].prompt).toContain('Use a stable concrete hostname under demoserver2.buzz');
+        expect(createdWorkloads[0].prompt).toContain('Selected model lane: gpt-5.5 (strategy-planning, primaryModel).');
         expect(createdWorkloads[0].prompt).toContain('Shared whiteboard:');
         expect(createdWorkloads[0].prompt).toContain('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
         expect(createdWorkloads[0].prompt).toContain('Claims checked, Decisions made, Files/artifacts changed, Deployment/DNS state, Blockers, Next agent task');
+    });
+
+    test('selects a competency-fit model and skips known unavailable defaults', async () => {
+        const createdWorkloads = [];
+        const workloadService = {
+            isAvailable: () => true,
+            listAdminWorkloads: jest.fn(async () => createdWorkloads),
+            createWorkload: jest.fn(async (payload, ownerId) => {
+                const workload = {
+                    id: `workload-${createdWorkloads.length + 1}`,
+                    ownerId,
+                    sessionId: payload.sessionId,
+                    title: payload.title,
+                    prompt: payload.prompt,
+                    trigger: payload.trigger,
+                    metadata: payload.metadata,
+                    workloadSummary: {
+                        queued: 1,
+                        running: 0,
+                    },
+                };
+                createdWorkloads.push(workload);
+                return workload;
+            }),
+        };
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig({
+                    primaryModel: '',
+                    escalationModels: ['codex-latest', 'deepseek-v4-pro'],
+                    maxConcurrentWorkloads: 4,
+                }),
+            },
+            workloadService,
+            sessionStore: {
+                getOrCreateOwned: jest.fn(async () => ({ id: 'agent-company' })),
+            },
+        });
+
+        await service.tick({ force: true, reason: 'model-selection-test' });
+
+        const operationsWorkload = createdWorkloads.find((workload) => workload.title.includes('Operations Lead'));
+        expect(operationsWorkload.metadata.requestedModel).toBe('deepseek-v4-pro');
+        expect(operationsWorkload.metadata.modelSelection).toEqual(expect.objectContaining({
+            competency: 'operations-verification',
+            excluded: ['codex-latest'],
+            model: 'deepseek-v4-pro',
+            source: 'competencyProfile',
+        }));
+        expect(operationsWorkload.metadata.agentCompany.modelPolicy).toEqual(expect.objectContaining({
+            selectedModel: 'deepseek-v4-pro',
+            selectedCompetency: 'operations-verification',
+            excludedModels: ['codex-latest'],
+        }));
+        expect(operationsWorkload.prompt).toContain('Selected model lane: deepseek-v4-pro (operations-verification, competencyProfile).');
+    });
+
+    test('drops stale created workload state when Postgres has no matching company workloads', async () => {
+        await fs.writeFile(statePath, JSON.stringify({
+            createdWorkloads: [{
+                id: 'stale-workload',
+                title: 'Stale workload',
+                planItemId: 'old-plan',
+                scheduledFor: '2026-06-21T10:00:00.000Z',
+            }],
+        }), 'utf8');
+        const createWorkload = jest.fn(async (payload, ownerId) => ({
+            id: 'fresh-workload',
+            ownerId,
+            title: payload.title,
+            trigger: payload.trigger,
+            metadata: payload.metadata,
+        }));
+        const service = new AgentCompanyService({
+            statePath,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig({
+                    maxConcurrentWorkloads: 1,
+                }),
+            },
+            workloadService: {
+                isAvailable: () => true,
+                listAdminWorkloads: jest.fn(async () => []),
+                createWorkload,
+            },
+            sessionStore: {
+                getOrCreateOwned: jest.fn(async () => ({ id: 'agent-company' })),
+            },
+        });
+
+        const result = await service.tick({ force: true, reason: 'stale-state-test' });
+
+        expect(result.state.createdWorkloads).toEqual([expect.objectContaining({
+            id: 'fresh-workload',
+        })]);
+        expect(result.state.createdWorkloads).not.toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: 'stale-workload' }),
+        ]));
     });
 
     test('schedules one focused shared whiteboard refresh workload for the refresh reason', async () => {

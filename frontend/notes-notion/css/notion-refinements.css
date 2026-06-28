@@ -2803,7 +2803,8 @@ button:focus-visible,
 }
 
 .database-table {
-  width: 100%;
+  display: block;
+  width: max(100%, var(--database-table-min-width, 480px));
   min-width: max(100%, var(--database-table-min-width, 480px));
   border-collapse: collapse;
   table-layout: auto;
@@ -2886,7 +2887,7 @@ button:focus-visible,
 
 .database-action-row {
   padding: 8px 12px;
-  color: var(--nb-text-muted);
+  color: var(--nb-text-secondary);
   font-size: 13px;
   cursor: pointer;
   border-top: 1px solid var(--nb-border-soft);
@@ -2895,7 +2896,7 @@ button:focus-visible,
 .database-action {
   padding: 8px 12px;
   text-align: left;
-  color: var(--nb-text-muted);
+  color: var(--nb-text-secondary);
   cursor: pointer;
 }
 

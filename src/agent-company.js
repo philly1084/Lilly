@@ -15,6 +15,64 @@ const DEFAULT_OWNER_ID = 'system';
 const DEFAULT_SESSION_ID = 'agent-company';
 const MIN_HEARTBEAT_MINUTES = 15;
 const SHARED_WHITEBOARD_REFRESH_REASON = 'shared-whiteboard-refresh';
+const DEFAULT_MODEL_CANDIDATES = [
+    'gpt-5.5',
+    'gpt-5.5-pro',
+    'gpt-5.4-pro',
+    'gpt-5.4',
+    'gpt-5.3-chat-latest',
+    'gemini-3.1-pro-preview',
+    'deepseek-reasoner',
+    'deepseek-v4-pro',
+    'kimi-k2.7-code-highspeed',
+    'gemini-3.5-flash',
+    'deepseek-v4-flash',
+];
+const MODEL_SELECTION_PROFILES = {
+    strategy: {
+        competency: 'strategy-planning',
+        preferred: [
+            'gpt-5.5',
+            'gpt-5.5-pro',
+            'deepseek-reasoner',
+            'gemini-3.1-pro-preview',
+            'deepseek-v4-pro',
+        ],
+    },
+    production: {
+        competency: 'production-deliverable',
+        preferred: [
+            'gpt-5.5',
+            'gpt-5.5-pro',
+            'gemini-3.1-pro-preview',
+            'deepseek-v4-pro',
+            'kimi-k2.7-code-highspeed',
+        ],
+    },
+    operations: {
+        competency: 'operations-verification',
+        preferred: [
+            'gpt-5.5',
+            'gpt-5.4-pro',
+            'kimi-k2.7-code-highspeed',
+            'gemini-3.1-pro-preview',
+            'deepseek-v4-pro',
+        ],
+    },
+    refresh: {
+        competency: 'coordination-repair',
+        preferred: [
+            'gpt-5.5',
+            'gpt-5.4',
+            'kimi-k2.7-code-highspeed',
+            'deepseek-v4-pro',
+            'gemini-3.1-pro-preview',
+        ],
+    },
+};
+const KNOWN_UNAVAILABLE_MODEL_IDS = new Set([
+    'codex-latest',
+]);
 
 function sanitizeText(value = '') {
     return String(value || '').trim();
@@ -79,6 +137,32 @@ function addDays(date, days) {
 
 function isSharedWhiteboardRefresh(reason = '') {
     return sanitizeText(reason) === SHARED_WHITEBOARD_REFRESH_REASON;
+}
+
+function uniqueStrings(values = []) {
+    const seen = new Set();
+    return values
+        .map(sanitizeText)
+        .filter(Boolean)
+        .filter((value) => {
+            const key = value.toLowerCase();
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        });
+}
+
+function isKnownUnavailableModel(modelId = '') {
+    return KNOWN_UNAVAILABLE_MODEL_IDS.has(sanitizeText(modelId).toLowerCase());
+}
+
+function classifyWorkItemCompetency(item = {}) {
+    if (item.workloadReason === SHARED_WHITEBOARD_REFRESH_REASON) {
+        return MODEL_SELECTION_PROFILES.refresh;
+    }
+    return MODEL_SELECTION_PROFILES[item.roleId] || MODEL_SELECTION_PROFILES.strategy;
 }
 
 function normalizeRole(role = {}, index = 0) {
@@ -354,6 +438,12 @@ class AgentCompanyService {
                 },
                 heartbeat,
                 dailyAlignment,
+                runningWork: {
+                    running: 0,
+                    queued: 0,
+                    companyWorkloads: 0,
+                },
+                createdWorkloads: [],
             });
             return { available: false, config, state: saved };
         }
@@ -480,6 +570,7 @@ class AgentCompanyService {
                 }
             }
         }
+        const currentWorkloadIds = new Set(companyWorkloads.map((workload) => workload?.id).filter(Boolean));
         const createdIds = new Set(created.map((entry) => entry.id));
         const heartbeatStatus = (() => {
             if (availableSlots <= 0) {
@@ -526,7 +617,9 @@ class AgentCompanyService {
             dailyAlignment,
             createdWorkloads: [
                 ...created,
-                ...((currentState.createdWorkloads || []).filter((entry) => !createdIds.has(entry?.id)).slice(0, 50)),
+                ...((currentState.createdWorkloads || [])
+                    .filter((entry) => entry?.id && currentWorkloadIds.has(entry.id) && !createdIds.has(entry.id))
+                    .slice(0, 50)),
             ],
         });
 
@@ -665,13 +758,52 @@ class AgentCompanyService {
     }
 
     selectModelForItem(config = {}, item = {}) {
+        return this.buildModelSelection(config, item).model;
+    }
+
+    buildModelSelection(config = {}, item = {}) {
+        const profile = classifyWorkItemCompetency(item);
         if (config.primaryModel) {
-            return config.primaryModel;
+            return {
+                model: config.primaryModel,
+                competency: profile.competency,
+                source: 'primaryModel',
+                preferred: profile.preferred,
+                candidates: uniqueStrings([config.primaryModel, ...(config.escalationModels || []), ...DEFAULT_MODEL_CANDIDATES]),
+                excluded: [],
+            };
         }
-        if (item.roleId === 'operations' && config.escalationModels.includes('codex-latest')) {
-            return 'codex-latest';
+
+        const configuredCandidates = uniqueStrings(config.escalationModels || []);
+        const allCandidates = uniqueStrings([
+            ...configuredCandidates,
+            ...DEFAULT_MODEL_CANDIDATES,
+        ]);
+        const excluded = allCandidates.filter(isKnownUnavailableModel);
+        const usableConfiguredCandidates = configuredCandidates.filter((model) => !isKnownUnavailableModel(model));
+        const usableCandidates = allCandidates.filter((model) => !isKnownUnavailableModel(model));
+        const preferred = uniqueStrings([
+            ...profile.preferred,
+            ...usableCandidates,
+        ]);
+        const searchPool = usableConfiguredCandidates.length > 0 ? usableConfiguredCandidates : usableCandidates;
+        const model = preferred.find((candidate) => searchPool.includes(candidate)) || searchPool[0] || null;
+
+        return {
+            model,
+            competency: profile.competency,
+            source: 'competencyProfile',
+            preferred: profile.preferred,
+            candidates: usableCandidates,
+            excluded,
+        };
+    }
+
+    formatModelSelection(selection = {}) {
+        if (!selection?.model) {
+            return 'No model selected; use the runtime default.';
         }
-        return config.escalationModels[0] || null;
+        return `${selection.model} (${selection.competency || 'general'}, ${selection.source || 'auto'})`;
     }
 
     buildWorkloadPrompt(config = {}, item = {}, weekKey = '') {
@@ -679,6 +811,7 @@ class AgentCompanyService {
         const escalation = config.escalationModels.length > 0
             ? config.escalationModels.join(', ')
             : 'no configured escalation models';
+        const modelSelection = this.buildModelSelection(config, item);
         const whiteboardFile = getCompanyWhiteboardPath(weekKey);
         const whiteboardRefreshLines = item.workloadReason === SHARED_WHITEBOARD_REFRESH_REASON
             ? [
@@ -705,6 +838,7 @@ class AgentCompanyService {
             '- Keep side effects conservative unless the task explicitly has admin-approved tools.',
             '- If the selected model cannot complete the task because of context length, tool capability, or provider failure, record the smallest model-switch recommendation using the configured escalation models.',
             `- Escalation models: ${escalation}.`,
+            `- Selected model lane: ${this.formatModelSelection(modelSelection)}.`,
             '- Do not create duplicate recurring jobs; inspect current work first and update the schedule or scratch summary instead.',
             buildOutputQualityContract(),
             '',
@@ -719,7 +853,8 @@ class AgentCompanyService {
     }
 
     async createScheduledWorkload(config = {}, item = {}, weekKey = '', goalHash = '') {
-        const requestedModel = this.selectModelForItem(config, item);
+        const modelSelection = this.buildModelSelection(config, item);
+        const requestedModel = modelSelection.model;
         const whiteboardFile = getCompanyWhiteboardPath(weekKey);
         return this.workloadService.createWorkload({
             sessionId: config.sessionId,
@@ -741,6 +876,7 @@ class AgentCompanyService {
             ...(requestedModel ? { model: requestedModel } : {}),
             metadata: {
                 requestedModel,
+                modelSelection,
                 longAgent: {
                     enabled: true,
                     goal: config.companyGoal,
@@ -787,6 +923,10 @@ class AgentCompanyService {
                     modelPolicy: {
                         primaryModel: config.primaryModel || null,
                         escalationModels: config.escalationModels,
+                        selectedModel: requestedModel,
+                        selectedCompetency: modelSelection.competency,
+                        selectionSource: modelSelection.source,
+                        excludedModels: modelSelection.excluded,
                     },
                 },
             },

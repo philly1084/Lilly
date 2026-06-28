@@ -24,7 +24,7 @@ class WorkloadStore {
         }
     }
 
-    mapWorkload(row = {}) {
+    mapWorkload(row = null) {
         if (!row) {
             return null;
         }
@@ -49,7 +49,7 @@ class WorkloadStore {
         };
     }
 
-    mapRun(row = {}) {
+    mapRun(row = null) {
         if (!row) {
             return null;
         }
@@ -606,8 +606,12 @@ class WorkloadStore {
 
     async addRunEvent(runId, eventType, payload = {}) {
         await this.ensureAvailable();
+        if (!runId) {
+            return false;
+        }
+
         try {
-            await postgres.query(
+            const result = await postgres.query(
                 `
                     INSERT INTO agent_run_events (
                         id,
@@ -615,7 +619,12 @@ class WorkloadStore {
                         event_type,
                         payload
                     )
-                    VALUES ($1, $2, $3, $4::jsonb)
+                    SELECT $1, $2, $3, $4::jsonb
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM agent_runs
+                        WHERE id = $2
+                    )
                 `,
                 [
                     randomUUID(),
@@ -624,6 +633,7 @@ class WorkloadStore {
                     JSON.stringify(payload || {}),
                 ],
             );
+            return Number(result.rowCount || 0) > 0;
         } catch (error) {
             throw this.normalizePersistenceError(error, 'record workload event');
         }

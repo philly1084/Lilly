@@ -105,6 +105,13 @@ describe('AgentWorkloadService', () => {
         );
     });
 
+    test('does not call the store when adding a run event without a run id', async () => {
+        const recorded = await service.addRunEventSafe(undefined, 'queued', { source: 'scheduled' });
+
+        expect(recorded).toBe(false);
+        expect(store.addRunEvent).not.toHaveBeenCalled();
+    });
+
     test('reports workloads as unavailable when the session store is not Postgres-backed', () => {
         sessionStore.isPersistent.mockReturnValue(false);
 

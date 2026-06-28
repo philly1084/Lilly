@@ -2658,7 +2658,10 @@ const Blocks = (function() {
      */
     function renderDatabaseBlock(block, isEditable = true) {
         const wrapper = document.createElement('div');
-        wrapper.className = 'block-content';
+        wrapper.className = 'block-content database-scroll-region';
+        wrapper.setAttribute('role', 'region');
+        wrapper.setAttribute('aria-label', 'Database table, scroll horizontally to view all columns');
+        wrapper.tabIndex = 0;
         
         const data = normalizeDatabaseContent(block.content);
         block.content = data;
@@ -2811,7 +2814,7 @@ const Blocks = (function() {
                 deleteCell.className = 'database-cell database-action-cell';
                 deleteCell.innerHTML = 'X';
                 deleteCell.style.cursor = 'pointer';
-                deleteCell.style.color = 'var(--text-muted)';
+                deleteCell.style.color = 'var(--text-secondary)';
                 deleteCell.style.width = '30px';
                 deleteCell.style.textAlign = 'center';
                 deleteCell.title = 'Delete row';
@@ -2847,7 +2850,7 @@ const Blocks = (function() {
             const addCol = document.createElement('div');
             addCol.className = 'database-add-column';
             addCol.textContent = '+ Add Column';
-            addCol.style.cssText = 'padding: 8px 12px; text-align: left; color: var(--text-muted); font-size: 13px; cursor: pointer; border-top: 1px solid var(--border-color);';
+            addCol.style.cssText = 'padding: 8px 12px; text-align: left; color: var(--text-secondary); font-size: 13px; cursor: pointer; border-top: 1px solid var(--border-color);';
             addCol.addEventListener('click', () => {
                 const colName = prompt('Column name:');
                 if (colName) {

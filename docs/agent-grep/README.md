@@ -1,6 +1,6 @@
 # Agent Grep Docs
 
-GREP_HANDLES: AGENT_DOC AGENT_GREP GREP_INDEX GREP_QUICKSTART TOOL_USE_RHYTHM TOOL_LOOKUP REMOTE_TOOLS ADDING_TOOLS DESIGN_RESEARCH SKILL_AUTHORING BUILD_VERIFY
+GREP_HANDLES: AGENT_DOC AGENT_GREP GREP_INDEX GREP_QUICKSTART TOOL_USE_RHYTHM TOOL_LOOKUP REMOTE_TOOLS ADDING_TOOLS DESIGN_RESEARCH SKILL_AUTHORING BUILD_VERIFY NOTES_DATABASES
 
 Purpose: small, grepable docs for agents that need to choose the right KimiBuilt workflow without loading long planning files.
 
@@ -12,7 +12,7 @@ Start here when:
 Fast grep:
 
 ```bash
-rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|REMOTE_TOOLS|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY" docs/agent-grep src/agent-sdk/tool-docs data/skills
+rg -n "AGENT_DOC|GREP_QUICKSTART|TOOL_USE_RHYTHM|TOOL_LOOKUP|REMOTE_TOOLS|ADDING_TOOLS|DESIGN_RESEARCH|SKILL_AUTHORING|BUILD_VERIFY|NOTES_DATABASES" docs/agent-grep src/agent-sdk/tool-docs data/skills frontend/notes-notion/docs
 ```
 
 Docs:
@@ -24,6 +24,7 @@ Docs:
 - `design-research.md`: gather visual/design sources before building artifacts.
 - `skill-authoring.md`: create or update compact file-backed skills.
 - `build-and-verify.md`: pick the build path and prove the result.
+- `notes-databases.md`: tiny routing doc for Notes database/spreadsheet rendering and metadata context.
 
 Rules for these docs:
 - Keep each doc short enough to read in one tool result.

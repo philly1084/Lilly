@@ -3059,14 +3059,25 @@ body {
 .block[data-type="database"] .block-content {
     max-width: 100%;
     width: 100%;
+}
+
+.database-scroll-region {
     overflow-x: auto;
     overflow-y: hidden;
-    padding-bottom: 2px;
+    padding-bottom: 4px;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
     scrollbar-gutter: stable;
 }
 
+.database-scroll-region:focus {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
 .database-table {
-    width: 100%;
+    display: block;
+    width: max(100%, var(--database-table-min-width, 480px));
     min-width: max(100%, var(--database-table-min-width, 480px));
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
@@ -3118,7 +3129,7 @@ body {
 }
 
 .database-sort-indicator {
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -3131,7 +3142,7 @@ body {
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -3148,6 +3159,7 @@ body {
 .database-rows {
     max-height: 400px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .database-cell {
@@ -3194,6 +3206,7 @@ body {
 
 .database-row {
     display: flex;
+    min-width: 100%;
     border-bottom: 1px solid var(--border-color);
     transition: background 0.15s;
 }
@@ -3213,9 +3226,10 @@ body {
 
 .database-add-row,
 .database-add-column {
+    min-width: 100%;
     padding: 10px 12px;
     text-align: center;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 13px;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;

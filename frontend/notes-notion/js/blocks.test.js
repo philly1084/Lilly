@@ -108,6 +108,30 @@ describe('Notes Blocks database normalization', () => {
         expect(database.columns).toEqual(['Column 1', 'Column 2']);
         expect(database.rows).toEqual([['Main body still works', 'Second value']]);
     });
+
+    test('renders databases as horizontal scroll regions with a computed table width', () => {
+        const { Blocks } = loadBlocks({ withContext: true });
+
+        const rendered = Blocks.render.database({
+            type: 'database',
+            content: {
+                columns: ['Account', 'Owner', 'Status', 'Next Step', 'Notes'],
+                rows: [
+                    ['Northwind', 'Maya', 'Qualified', 'Send proposal', 'Long spreadsheet-like value'],
+                ],
+            },
+        }, true);
+
+        const region = rendered;
+        const table = rendered.querySelector('.database-table');
+
+        expect(region.classList.contains('database-scroll-region')).toBe(true);
+        expect(region.getAttribute('role')).toBe('region');
+        expect(region.getAttribute('aria-label')).toContain('scroll horizontally');
+        expect(region.tabIndex).toBe(0);
+        expect(table.style.getPropertyValue('--database-table-min-width')).toMatch(/px$/);
+        expect(Number.parseInt(table.style.getPropertyValue('--database-table-min-width'), 10)).toBeGreaterThan(480);
+    });
 });
 
 describe('Notes Blocks image rendering', () => {

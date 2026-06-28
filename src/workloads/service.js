@@ -1751,10 +1751,16 @@ class AgentWorkloadService {
     }
 
     async addRunEventSafe(runId, eventType, payload = {}) {
+        if (!runId) {
+            console.warn(`[Workloads] Skipped run event '${eventType}' because no run id was provided.`);
+            return false;
+        }
+
         try {
-            await this.store.addRunEvent(runId, eventType, payload);
+            return await this.store.addRunEvent(runId, eventType, payload);
         } catch (error) {
             console.warn(`[Workloads] Failed to record run event '${eventType}' for ${runId}:`, error.message);
+            return false;
         }
     }
 

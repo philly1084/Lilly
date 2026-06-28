@@ -112,4 +112,22 @@ describe('WorkloadStore', () => {
         expect(postgres.query.mock.calls[0][0]).toContain("error = '{}'::jsonb");
         expect(postgres.query.mock.calls[0][0]).not.toContain('error = NULL');
     });
+
+    test('skips run events when no run id is available', async () => {
+        const recorded = await store.addRunEvent(null, 'queued', { source: 'scheduled' });
+
+        expect(recorded).toBe(false);
+        expect(postgres.query).not.toHaveBeenCalled();
+    });
+
+    test('only records run events for existing run rows', async () => {
+        postgres.query.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+        const recorded = await store.addRunEvent('missing-run', 'completed', { responseId: 'resp-1' });
+
+        expect(recorded).toBe(false);
+        expect(postgres.query).toHaveBeenCalledTimes(1);
+        expect(postgres.query.mock.calls[0][0]).toContain('WHERE EXISTS');
+        expect(postgres.query.mock.calls[0][0]).toContain('FROM agent_runs');
+    });
 });
