@@ -86,6 +86,27 @@ describe('web-cli copy helpers', () => {
     });
 });
 
+describe('web-cli stream progress display', () => {
+    test('cleans runner log prefixes before rendering progress lines', () => {
+        const { app, document } = createCopyHarness();
+        document.body.innerHTML = '<main id="terminalOutput"></main>';
+        app.terminalOutput = document.getElementById('terminalOutput');
+        app.getTimestamp = jest.fn(() => '12:34');
+        app.scrollToBottom = jest.fn();
+
+        expect(app.cleanProgressLineText('[remote-cli-agent] stdout: `Applying k3s manifest`')).toBe('Applying k3s manifest');
+
+        app.updateProgressLine('[remote-cli-agent] stdout: `Applying k3s manifest`');
+
+        const line = app.terminalOutput.querySelector('.line-output.system.stream-progress');
+        expect(line).not.toBeNull();
+        expect(line.textContent).toContain('Applying k3s manifest');
+        expect(line.textContent).not.toContain('remote-cli-agent');
+        expect(line.textContent).not.toContain('stdout:');
+        expect(line.textContent).not.toContain('`');
+    });
+});
+
 describe('web-cli file manager modal', () => {
     test('opens as a labeled dialog and restores focus after Escape', async () => {
         const { app, document } = createCopyHarness();

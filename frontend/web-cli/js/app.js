@@ -7288,8 +7288,25 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         this.liveProgressLastRenderAt = 0;
     }
 
+    cleanProgressLineText(value = '') {
+        let text = String(value || '').trim();
+        for (let index = 0; index < 3; index += 1) {
+            const next = text
+                .replace(/^\s*\[[^\]\n]{1,80}\]\s*/, '')
+                .replace(/^\s*(?:remote[-_\s]*cli[-_\s]*agent|remote[-_\s]*command|remote[-_\s]*workbench|k3s[-_\s]*deploy|tool|runner|agent)\s*(?:[:|-])\s*/i, '')
+                .replace(/^\s*(?:output|stdout|stderr|result|response|message|detail|summary|label|step)\s*:\s*/i, '')
+                .replace(/^`([^`]{1,240})`$/s, '$1')
+                .trim();
+            if (next === text) {
+                break;
+            }
+            text = next;
+        }
+        return text;
+    }
+
     updateProgressLine(text) {
-        const normalized = String(text || '').trim();
+        const normalized = this.cleanProgressLineText(text);
         if (!normalized) {
             return;
         }
