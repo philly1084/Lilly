@@ -205,11 +205,21 @@ class Dashboard {
         const selection = this.getCompanyActionSelectionFromUrl();
         if (!selection?.runId) return;
 
+        const actionContext = this.state.companyActionContextsById?.[selection.actionId]
+            || this.state.companyActionContexts?.[selection.runId]
+            || this.getPersistedCompanyActionContext(selection.runId);
+        const currentActionKey = this.state.companyActionContext?.actionKey || this.state.companyActionContext?.id || '';
+        if (
+            this.state.companyActionRunId === selection.runId
+            && this.state.companyActionContext
+            && (!selection.actionId || currentActionKey === selection.actionId)
+        ) {
+            return;
+        }
+
         await this.selectAdminRun(selection.runId, {
             source: 'company-action',
-            actionContext: this.state.companyActionContextsById?.[selection.actionId]
-                || this.state.companyActionContexts?.[selection.runId]
-                || this.getPersistedCompanyActionContext(selection.runId),
+            actionContext,
             persistSelection: false,
         });
     }
@@ -4570,6 +4580,7 @@ class Dashboard {
                 this.state.runs = Array.from(knownRuns.values());
             }
             this.renderAgentCompanyDashboard();
+            await this.restoreCompanyActionSelectionFromUrl();
             return workspace;
         } catch (error) {
             console.warn('Error loading agent company workspace:', error.message || error);
