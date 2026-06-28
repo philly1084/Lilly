@@ -794,6 +794,7 @@ describe('/api/admin workload routes', () => {
                 target: 'runs',
                 runId: 'historical-run',
                 outputPreview: 'Captured the CEO review brief before packaging.',
+                snapshotAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
             }));
         } finally {
             isEnabledSpy.mockRestore();

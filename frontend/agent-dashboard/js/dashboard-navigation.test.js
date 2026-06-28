@@ -856,6 +856,7 @@ describe('agent dashboard navigation accessibility', () => {
             detail: '1 completed run produced text output but no packaged file yet.',
             outputPreview: 'Verified cycle <script>alert("x")</script> and found the next packaging step.',
             contextSource: 'saved-history',
+            snapshotAt: '2026-06-28T05:12:00.000Z',
         };
 
         dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
@@ -864,11 +865,13 @@ describe('agent dashboard navigation accessibility', () => {
         expect(companyDetails.querySelector('.workload-action-context')).not.toBeNull();
         expect(companyDetails.textContent).toContain('Review completed work <script>alert("x")</script>');
         expect(companyDetails.textContent).toContain('Saved history');
+        expect(companyDetails.textContent).toContain('Saved');
         expect(companyDetails.textContent).toContain('1 completed run produced text output but no packaged file yet.');
         expect(companyDetails.textContent).toContain('Verified cycle <script>alert("x")</script> and found the next packaging step.');
         expect(companyDetails.querySelector('script')).toBeNull();
         expect(companyDetails.querySelector('.workload-action-preview')).not.toBeNull();
         expect(companyDetails.querySelector('.workload-action-source').textContent).toBe('Saved history');
+        expect(companyDetails.querySelector('.workload-action-snapshot')).not.toBeNull();
 
         dashboard.state.companyActionRunId = null;
         dashboard.state.companyActionContext = null;
@@ -981,6 +984,7 @@ describe('agent dashboard navigation accessibility', () => {
                             runId: 'whiteboard-refresh-run',
                             runStatus: 'completed',
                         },
+                        snapshotAt: '2026-06-28T05:12:00.000Z',
                     },
                     historical: true,
                 },
@@ -1001,6 +1005,7 @@ describe('agent dashboard navigation accessibility', () => {
                 detail: 'Latest repair: Operations Lead: Refresh shared whiteboard',
                 outputPreview: 'Whiteboard needs current coordination notes.',
                 contextSource: 'saved-history',
+                snapshotAt: '2026-06-28T05:12:00.000Z',
             }),
             persistSelection: false,
         });

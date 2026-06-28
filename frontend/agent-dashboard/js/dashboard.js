@@ -183,6 +183,9 @@ class Dashboard {
             if (parsed.contextSource) {
                 context.contextSource = parsed.contextSource;
             }
+            if (parsed.snapshotAt) {
+                context.snapshotAt = parsed.snapshotAt;
+            }
             return context;
         } catch (error) {
             return null;
@@ -202,6 +205,9 @@ class Dashboard {
             };
             if (context.contextSource) {
                 persisted.contextSource = context.contextSource;
+            }
+            if (context.snapshotAt) {
+                persisted.snapshotAt = context.snapshotAt;
             }
             window.sessionStorage.setItem(`kb.companyActionContext.${runId}`, JSON.stringify(persisted));
         } catch (error) {
@@ -225,6 +231,7 @@ class Dashboard {
                 ? (action.detail || '')
                 : (action.outputPreview || ''),
             contextSource: options.contextSource || 'live',
+            ...(action.snapshotAt ? { snapshotAt: action.snapshotAt } : {}),
         };
     }
 
@@ -2821,6 +2828,9 @@ class Dashboard {
         const actionContextSource = actionContext?.contextSource === 'saved-history'
             ? 'Saved history'
             : (actionContext?.contextSource === 'live' ? 'Live queue' : '');
+        const actionSnapshotLabel = actionContext?.contextSource === 'saved-history' && actionContext?.snapshotAt
+            ? `Saved ${this.formatDate(actionContext.snapshotAt)}`
+            : '';
         const actionContextHtml = actionContext
             ? `
             <div class="workload-action-context">
@@ -2828,6 +2838,7 @@ class Dashboard {
                     <strong>${this.escapeHtml(actionContext.label || 'Opened from CEO action queue')}</strong>
                     ${actionContextSource ? `<span class="workload-action-source">${this.escapeHtml(actionContextSource)}</span>` : ''}
                 </div>
+                ${actionSnapshotLabel ? `<span class="workload-action-snapshot">${this.escapeHtml(actionSnapshotLabel)}</span>` : ''}
                 <span>${this.escapeHtml(actionContext.detail || "Review this run's output evidence before continuing or packaging company work.")}</span>
                 ${actionContext.outputPreview ? `<div class="workload-action-preview">${this.escapeHtml(actionContext.outputPreview)}</div>` : ''}
             </div>`
