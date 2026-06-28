@@ -3187,6 +3187,13 @@ class Dashboard {
                     <strong>${this.escapeHtml(action.label || 'Company action')}</strong>
                     <span>${this.escapeHtml(action.detail || '')}</span>
                     ${action.outputPreview ? `<div class="company-action-preview">${this.escapeHtml(action.outputPreview)}</div>` : ''}
+                    ${action.refreshStatus ? `
+                        <div class="company-action-status">
+                            <span>Latest repair</span>
+                            <strong>${this.escapeHtml(action.refreshStatus.runStatus || action.refreshStatus.status || 'scheduled')}</strong>
+                            ${action.refreshStatus.title ? `<small>${this.escapeHtml(action.refreshStatus.title)}</small>` : ''}
+                        </div>
+                    ` : ''}
                 </div>
                 <button
                     class="btn btn-sm btn-secondary"

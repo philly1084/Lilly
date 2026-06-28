@@ -775,6 +775,36 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('renders latest shared whiteboard repair status in action cards', () => {
+        const { dashboard } = createAgentCompanyHarness();
+
+        dashboard.renderCompanyActionQueue([
+            {
+                id: 'refresh-shared-whiteboard',
+                actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                label: 'Refresh shared whiteboard',
+                detail: 'Whiteboard needs current coordination notes.',
+                target: 'whiteboard-refresh',
+                priority: 'medium',
+                refreshStatus: {
+                    workloadId: 'whiteboard-refresh-workload',
+                    title: 'Operations Lead: Refresh <script>alert("x")</script>',
+                    status: 'queued',
+                    runId: 'whiteboard-refresh-run',
+                    runStatus: 'running',
+                },
+            },
+        ]);
+
+        const queue = document.getElementById('companyActionQueue');
+        expect(queue.textContent).toContain('Latest repair');
+        expect(queue.textContent).toContain('running');
+        expect(queue.textContent).toContain('Operations Lead: Refresh <script>alert("x")</script>');
+        expect(queue.querySelector('script')).toBeNull();
+        expect(queue.querySelector('.company-action-status')).not.toBeNull();
+        expect(queue.querySelector('button').getAttribute('onclick')).toBe("dashboard.handleCompanyAction('whiteboard-refresh', '', 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md')");
+    });
+
     test('marks the company run opened from a CEO action', () => {
         const { dashboard } = createAgentCompanyHarness();
         dashboard.state.selectedRun = dashboard.state.runs[0];

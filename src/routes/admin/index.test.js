@@ -395,8 +395,45 @@ describe('/api/admin workload routes', () => {
                         },
                     },
                 },
+                {
+                    id: 'whiteboard-refresh-workload',
+                    sessionId: 'agent-company',
+                    title: 'Operations Lead: Refresh shared whiteboard',
+                    status: 'queued',
+                    updatedAt: '2026-06-26T15:00:00.000Z',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            roleName: 'Operations Lead',
+                            companyGoalHash: 'goal-hash',
+                            weekKey: '2026-06-22',
+                            workloadReason: 'shared-whiteboard-refresh',
+                            workloadFocus: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                            sharedWhiteboard: {
+                                path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                                purpose: 'agent-to-agent weekly coordination',
+                                sections: ['Claims checked', 'Next agent task'],
+                            },
+                        },
+                    },
+                },
             ]),
-            listAdminRuns: jest.fn(async () => []),
+            listAdminRuns: jest.fn(async () => [
+                {
+                    id: 'whiteboard-refresh-run',
+                    workloadId: 'whiteboard-refresh-workload',
+                    sessionId: 'agent-company',
+                    status: 'running',
+                    updatedAt: '2026-06-26T15:05:00.000Z',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            workloadReason: 'shared-whiteboard-refresh',
+                            workloadFocus: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                        },
+                    },
+                },
+            ]),
         };
         const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
         const searchSpy = jest.spyOn(assetManager, 'searchAssets').mockResolvedValue({
@@ -443,6 +480,14 @@ describe('/api/admin workload routes', () => {
                     target: 'whiteboard-refresh',
                     workloadReason: 'shared-whiteboard-refresh',
                     workloadFocus: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    refreshStatus: expect.objectContaining({
+                        workloadId: 'whiteboard-refresh-workload',
+                        title: 'Operations Lead: Refresh shared whiteboard',
+                        status: 'queued',
+                        runId: 'whiteboard-refresh-run',
+                        runStatus: 'running',
+                        updatedAt: '2026-06-26T15:05:00.000Z',
+                    }),
                     priority: 'medium',
                 }),
             ]));

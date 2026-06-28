@@ -244,7 +244,42 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
   return actions.slice(0, 6);
 }
 
-function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}) {
+function getEntryTimestamp(entry = {}) {
+  return Date.parse(entry.updatedAt || entry.finishedAt || entry.startedAt || entry.createdAt || '') || 0;
+}
+
+function buildSharedWhiteboardRefreshStatus(workloads = [], runs = [], workloadFocus = '') {
+  const focusPath = normalizeWorkspaceRelativePath(workloadFocus);
+  const refreshWorkloads = (Array.isArray(workloads) ? workloads : [])
+    .filter((workload) => {
+      const metadata = getAgentCompanyMetadata(workload);
+      const reason = String(metadata.workloadReason || '').trim();
+      const focus = normalizeWorkspaceRelativePath(metadata.workloadFocus || workload?.metadata?.longAgent?.sharedWhiteboardFile || '');
+      return reason === 'shared-whiteboard-refresh'
+        && (!focusPath || !focus || focus === focusPath);
+    })
+    .sort((a, b) => getEntryTimestamp(b) - getEntryTimestamp(a));
+
+  const workload = refreshWorkloads[0] || null;
+  if (!workload) {
+    return null;
+  }
+
+  const run = (Array.isArray(runs) ? runs : [])
+    .filter((candidate) => candidate.workloadId === workload.id)
+    .sort((a, b) => getEntryTimestamp(b) - getEntryTimestamp(a))[0] || null;
+
+  return {
+    workloadId: workload.id || null,
+    title: workload.title || 'Shared whiteboard refresh',
+    status: workload.status || workload.workloadSummary?.status || 'scheduled',
+    runId: run?.id || null,
+    runStatus: run?.status || null,
+    updatedAt: run?.updatedAt || run?.finishedAt || workload.updatedAt || workload.createdAt || null,
+  };
+}
+
+function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}, workloads = [], runs = []) {
   const nextActions = Array.isArray(actions) ? [...actions] : [];
   const current = sharedWhiteboard?.current || null;
   const previewStatus = String(current?.filePreview?.status || '').trim();
@@ -253,6 +288,9 @@ function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}) {
   if (!needsRefresh) {
     return nextActions.slice(0, 6);
   }
+
+  const workloadFocus = current?.path || '.kimibuilt/agent-company/shared-whiteboard.md';
+  const refreshStatus = buildSharedWhiteboardRefreshStatus(workloads, runs, workloadFocus);
 
   nextActions.push({
     id: 'refresh-shared-whiteboard',
@@ -263,7 +301,8 @@ function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}) {
       : 'No shared coordination whiteboard is attached to current company workloads yet.',
     target: 'whiteboard-refresh',
     workloadReason: 'shared-whiteboard-refresh',
-    workloadFocus: current?.path || '.kimibuilt/agent-company/shared-whiteboard.md',
+    workloadFocus,
+    ...(refreshStatus ? { refreshStatus } : {}),
     priority: current ? 'medium' : 'high',
   });
 
@@ -625,6 +664,8 @@ router.get('/agent-company/workspace', async (req, res, next) => {
     const actionQueue = appendSharedWhiteboardAction(
       buildCeoActionQueue(status, workloads, runs, deliverables),
       sharedWhiteboard,
+      workloads,
+      runs,
     );
 
     res.json({
