@@ -288,6 +288,30 @@ describe('normalizeMermaidSource', () => {
         expect(parts.bodyContent).not.toContain('hidden layout note');
     });
 
+    test('drops fenced internal thought blocks from html documents', () => {
+        const parts = extractCompositeDocumentParts([
+            '```html',
+            '<!DOCTYPE html>',
+            '<html><head><title>Fence Clean</title></head><body><main>',
+            '```analysis',
+            'Private plan should not render in the generated document.',
+            '```',
+            '<h1>Fence Clean</h1>',
+            '\'\'\'reasoning',
+            'Hidden layout note should not render.',
+            '\'\'\'',
+            '</main></body></html>',
+            '```',
+        ].join('\n'));
+
+        expect(parts.headContent).toContain('<title>Fence Clean</title>');
+        expect(parts.bodyContent).toContain('<h1>Fence Clean</h1>');
+        expect(parts.bodyContent).not.toContain('```analysis');
+        expect(parts.bodyContent).not.toContain('Private plan');
+        expect(parts.bodyContent).not.toContain('reasoning');
+        expect(parts.bodyContent).not.toContain('Hidden layout note');
+    });
+
     test('drops explanatory prose before standalone html fragments', () => {
         const parts = extractCompositeDocumentParts([
             'Here is the finished page:',

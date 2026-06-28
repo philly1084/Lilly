@@ -9,6 +9,7 @@ const INTERNAL_THOUGHT_TAG_PATTERN = /<\s*(?:think|thinking|thought|analysis|rea
 const INTERNAL_THOUGHT_BRACKET_PATTERN = /\[\s*(?:think|thinking|thought|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*\]/ig;
 const INTERNAL_THOUGHT_MARKER_PATTERN = /(?:^|\n)\s*(?:begin|start)\s+(?:think|thinking|thought|analysis|reasoning)\s*\n[\s\S]*?\n\s*(?:end|stop)\s+(?:think|thinking|thought|analysis|reasoning)\s*(?=\n|$)/ig;
 const INTERNAL_THOUGHT_COMMENT_PATTERN = /<!--\s*(?:(?:begin|start)\s+)?(?:think|thinking|thought|analysis|reasoning)\b[\s\S]*?-->/ig;
+const INTERNAL_THOUGHT_FENCE_PATTERN = /(?:^|\n)\s*([`']{3,})(?:think|thinking|thought|analysis|reasoning)\b[^\n]*\n[\s\S]*?\n\s*\1\s*(?=\n|$)/ig;
 
 function cleanFilename(value = '') {
     const candidate = String(value || '')
@@ -44,6 +45,7 @@ function stripInternalThoughtMarkup(value = '') {
         .replace(INTERNAL_THOUGHT_BRACKET_PATTERN, '')
         .replace(INTERNAL_THOUGHT_MARKER_PATTERN, '')
         .replace(INTERNAL_THOUGHT_COMMENT_PATTERN, '')
+        .replace(INTERNAL_THOUGHT_FENCE_PATTERN, '')
         .trim();
 }
 

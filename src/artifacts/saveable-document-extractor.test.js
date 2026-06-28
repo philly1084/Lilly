@@ -119,6 +119,33 @@ describe('saveable document extractor', () => {
         expect(result.content).not.toContain('hidden export note');
     });
 
+    test('strips fenced internal thoughts from saved html', () => {
+        const result = extractSaveableDocumentArtifact({
+            assistantText: [
+                'Save this as `fence-clean.html`.',
+                '<!DOCTYPE html><html><head><title>Fence Clean</title></head><body>',
+                '```analysis',
+                'Private document planning should not be stored.',
+                '```',
+                '<main><h1>Fence Clean</h1></main>',
+                '\'\'\'reasoning',
+                'Hidden layout reasoning should not be stored.',
+                '\'\'\'',
+                '</body></html>',
+            ].join('\n'),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            format: 'html',
+            filename: 'fence-clean.html',
+            content: expect.stringContaining('<h1>Fence Clean</h1>'),
+        }));
+        expect(result.content).not.toContain('```analysis');
+        expect(result.content).not.toContain('Private document planning');
+        expect(result.content).not.toContain('reasoning');
+        expect(result.content).not.toContain('Hidden layout reasoning');
+    });
+
     test('ignores short non-document snippets', () => {
         expect(extractSaveableDocumentArtifact({
             assistantText: 'Use `<div>Hello</div>` inside your page.',
