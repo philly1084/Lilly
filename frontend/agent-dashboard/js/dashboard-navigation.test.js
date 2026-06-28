@@ -880,9 +880,11 @@ describe('agent dashboard navigation accessibility', () => {
         expect(history.textContent).toContain('Reviewable run');
         expect(history.textContent).toContain('Reference only');
         expect(history.querySelector('script')).toBeNull();
-        expect(history.querySelectorAll('.company-action-history__filter')).toHaveLength(3);
+        expect(history.querySelectorAll('.company-action-history__filters .company-action-history__filter')).toHaveLength(3);
         expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('All 2');
+        expect(history.querySelector('.company-action-history__sort').textContent).toContain('Newest first');
         expect(history.querySelectorAll('.company-action-history__item')).toHaveLength(2);
+        expect(history.querySelectorAll('.company-action-history__item')[0].textContent).toContain('Review archived deliverables');
         expect(history.querySelectorAll('.company-action-history__item button')).toHaveLength(1);
         expect(history.querySelector('.company-action-history__item button').getAttribute('onclick'))
             .toBe('dashboard.handleCompanyAction("runs", "historical-run", "review-completed-output:historical-run")');
@@ -909,6 +911,15 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.setCompanyActionHistoryFilter('reviewable');
         dashboard.setCompanyActionHistoryFilter('unknown');
         expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('All 2');
+
+        dashboard.setCompanyActionHistorySort('oldest');
+        expect(history.querySelector('.company-action-history__sort .company-action-history__filter--active').textContent)
+            .toContain('Oldest first');
+        expect(history.querySelectorAll('.company-action-history__item')[0].textContent).toContain('Review saved output <script>alert("x")</script>');
+
+        dashboard.setCompanyActionHistorySort('unknown');
+        expect(history.querySelector('.company-action-history__sort .company-action-history__filter--active').textContent)
+            .toContain('Newest first');
     });
 
     test('loads more saved CEO action history from the action-history endpoint', async () => {

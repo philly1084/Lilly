@@ -31,6 +31,7 @@ class Dashboard {
             companyActionContextsById: {},
             companyActionHistory: [],
             companyActionHistoryFilter: 'all',
+            companyActionHistorySort: 'newest',
             companyActionHistoryLoading: false,
             companyActionHistoryError: '',
             companyFileSearch: '',
@@ -3343,7 +3344,19 @@ class Dashboard {
         const activeFilter = ['all', 'reviewable', 'reference'].includes(this.state.companyActionHistoryFilter)
             ? this.state.companyActionHistoryFilter
             : 'all';
-        const visibleHistory = history.filter((action) => {
+        const activeSort = ['newest', 'oldest'].includes(this.state.companyActionHistorySort)
+            ? this.state.companyActionHistorySort
+            : 'newest';
+        const sortedHistory = [...history].sort((a, b) => {
+            const left = Date.parse(a.snapshotAt || a.updatedAt || a.createdAt || '');
+            const right = Date.parse(b.snapshotAt || b.updatedAt || b.createdAt || '');
+            const safeLeft = Number.isFinite(left) ? left : 0;
+            const safeRight = Number.isFinite(right) ? right : 0;
+            return activeSort === 'oldest'
+                ? safeLeft - safeRight
+                : safeRight - safeLeft;
+        });
+        const visibleHistory = sortedHistory.filter((action) => {
             const hasRunEvidence = Boolean(action.runId || action.refreshStatus?.runId);
             if (activeFilter === 'reviewable') return hasRunEvidence;
             if (activeFilter === 'reference') return !hasRunEvidence;
@@ -3383,6 +3396,21 @@ class Dashboard {
                         type="button"
                         aria-pressed="${activeFilter === value ? 'true' : 'false'}"
                         onclick="dashboard.setCompanyActionHistoryFilter('${value}')"
+                    >
+                        ${this.escapeHtml(label)}
+                    </button>
+                `).join('')}
+            </div>
+            <div class="company-action-history__sort" role="group" aria-label="Saved CEO action order">
+                ${[
+                    ['newest', 'Newest first'],
+                    ['oldest', 'Oldest first'],
+                ].map(([value, label]) => `
+                    <button
+                        class="company-action-history__filter${activeSort === value ? ' company-action-history__filter--active' : ''}"
+                        type="button"
+                        aria-pressed="${activeSort === value ? 'true' : 'false'}"
+                        onclick="dashboard.setCompanyActionHistorySort('${value}')"
                     >
                         ${this.escapeHtml(label)}
                     </button>
@@ -3428,6 +3456,15 @@ class Dashboard {
     setCompanyActionHistoryFilter(filter = 'all') {
         const nextFilter = ['all', 'reviewable', 'reference'].includes(filter) ? filter : 'all';
         this.state.companyActionHistoryFilter = nextFilter;
+        const actions = this.state.companyActionHistory
+            || this.state.agentCompanyWorkspace?.actionHistory
+            || [];
+        this.renderCompanyActionHistory(actions);
+    }
+
+    setCompanyActionHistorySort(sort = 'newest') {
+        const nextSort = ['newest', 'oldest'].includes(sort) ? sort : 'newest';
+        this.state.companyActionHistorySort = nextSort;
         const actions = this.state.companyActionHistory
             || this.state.agentCompanyWorkspace?.actionHistory
             || [];

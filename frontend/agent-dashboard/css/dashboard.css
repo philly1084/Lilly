@@ -2843,11 +2843,16 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     font-size: var(--text-xs);
 }
 
-.company-action-history__filters {
+.company-action-history__filters,
+.company-action-history__sort {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-xs);
     margin: var(--space-sm) 0;
+}
+
+.company-action-history__sort {
+    margin-top: calc(-1 * var(--space-xs));
 }
 
 .company-action-history__filter {
