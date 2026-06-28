@@ -117,44 +117,48 @@ class RetryPolicy {
    * @returns {ErrorType} The classified error type
    */
   classifyError(error) {
+    const code = String(error?.code || '').toLowerCase();
+    const status = Number(error?.status || error?.statusCode || 0);
+    const message = String(error?.message || '').toLowerCase();
+
     // Check for timeout errors
-    if (error.code === 'TIMEOUT' || 
-        error.message?.toLowerCase().includes('timeout') ||
-        error.name === 'TimeoutError') {
+    if (code === 'timeout' ||
+        message.includes('timeout') ||
+        error?.name === 'TimeoutError') {
       return 'timeout';
     }
     
     // Check for rate limiting
-    if (error.code === 'RATE_LIMIT' || 
-        error.status === 429 ||
-        error.message?.toLowerCase().includes('rate limit') ||
-        error.message?.toLowerCase().includes('too many requests')) {
+    if (['rate_limit', 'rate_limit_exceeded', 'too_many_requests'].includes(code) ||
+        status === 429 ||
+        message.includes('rate limit') ||
+        message.includes('too many requests')) {
       return 'rate-limit';
     }
     
     // Check for network errors
-    if (error.code === 'NETWORK_ERROR' || 
-        error.message?.toLowerCase().includes('network') ||
-        error.message?.toLowerCase().includes('econnrefused') ||
-        error.message?.toLowerCase().includes('enotfound')) {
+    if (code === 'network_error' ||
+        message.includes('network') ||
+        message.includes('econnrefused') ||
+        message.includes('enotfound')) {
       return 'network';
     }
     
     // Check for transient/connection errors
-    if (error.code === 'ECONNRESET' || 
-        error.code === 'ETIMEDOUT' ||
-        error.code === 'ECONNABORTED' ||
-        error.code === 'EPIPE') {
+    if (code === 'econnreset' ||
+        code === 'etimedout' ||
+        code === 'econnaborted' ||
+        code === 'epipe') {
       return 'transient';
     }
     
     // Server errors (5xx) are typically transient
-    if (error.status >= 500 && error.status < 600) {
+    if (status >= 500 && status < 600) {
       return 'transient';
     }
     
     // Client errors (4xx except 429) are typically permanent
-    if (error.status >= 400 && error.status < 500) {
+    if (status >= 400 && status < 500) {
       return 'permanent';
     }
     
