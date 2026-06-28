@@ -1237,6 +1237,29 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.activeElement).toBe(document.getElementById('settingsAgentCompanyGoal'));
     });
 
+    test('preserves typed agent company settings goal during background refresh', () => {
+        const dom = new JSDOM(`
+            <textarea id="settingsAgentCompanyGoal"></textarea>
+        `, { url: 'http://localhost:3000/admin/?view=settings' });
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+        global.document = dom.window.document;
+        global.window = dom.window;
+        dashboard.state = {};
+        dashboard.dirtyInputIds = new Set();
+        dashboard.setupEventListeners();
+
+        const goal = document.getElementById('settingsAgentCompanyGoal');
+        dashboard.setInputValue('settingsAgentCompanyGoal', '');
+        goal.value = 'Build a self-sufficient research company';
+        goal.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+
+        const changed = dashboard.setInputValue('settingsAgentCompanyGoal', '', { preserveDirty: true });
+
+        expect(changed).toBe(false);
+        expect(goal.value).toBe('Build a self-sufficient research company');
+    });
+
     test('renders selected run details into workload and company output panes', () => {
         const { dashboard } = createAgentCompanyHarness();
         const run = {

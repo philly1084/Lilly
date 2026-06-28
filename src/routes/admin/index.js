@@ -267,6 +267,14 @@ async function listRecentCeoActionHistory(limit = 6) {
     .slice(0, limit);
 }
 
+function normalizeCeoActionHistoryLimit(value, defaultLimit = 12) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return defaultLimit;
+  }
+  return Math.min(parsed, CEO_ACTION_HISTORY_LIMIT);
+}
+
 function findCeoAction(actions = [], actionKey = '') {
   const targetKey = String(actionKey || '').trim();
   if (!targetKey) {
@@ -810,6 +818,23 @@ router.get('/agent-company/workspace', async (req, res, next) => {
     if (error.status === 503) {
       return res.status(503).json({ success: false, error: error.message });
     }
+    next(error);
+  }
+});
+
+router.get('/agent-company/action-history', async (req, res, next) => {
+  try {
+    const limit = normalizeCeoActionHistoryLimit(req.query.limit);
+    const actions = await listRecentCeoActionHistory(limit);
+    res.json({
+      success: true,
+      data: {
+        actions,
+        limit,
+        maxLimit: CEO_ACTION_HISTORY_LIMIT,
+      },
+    });
+  } catch (error) {
     next(error);
   }
 });

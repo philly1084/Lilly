@@ -789,6 +789,20 @@ describe('/api/admin workload routes', () => {
                 }),
             ]));
 
+            const historyResponse = await request(app).get('/api/admin/agent-company/action-history?limit=100');
+            expect(historyResponse.status).toBe(200);
+            expect(historyResponse.body.data).toEqual(expect.objectContaining({
+                limit: 24,
+                maxLimit: 24,
+                actions: expect.arrayContaining([
+                    expect.objectContaining({
+                        actionKey: 'review-completed-output:historical-run',
+                        runId: 'historical-run',
+                        snapshotAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+                    }),
+                ]),
+            }));
+
             service.listAdminRuns.mockResolvedValue([]);
             const actionResponse = await request(app)
                 .get('/api/admin/agent-company/action?actionKey=review-completed-output%3Ahistorical-run');

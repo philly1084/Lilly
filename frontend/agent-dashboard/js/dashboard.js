@@ -362,6 +362,9 @@ class Dashboard {
         document.getElementById('companyCeoDirection')?.addEventListener('input', () => {
             this.markInputDirty('companyCeoDirection');
         });
+        document.getElementById('settingsAgentCompanyGoal')?.addEventListener('input', () => {
+            this.markInputDirty('settingsAgentCompanyGoal');
+        });
         document.getElementById('companyFileSearch')?.addEventListener('input', (event) => {
             this.state.companyFileSearch = event.target.value || '';
             clearTimeout(this.companyFileSearchTimer);
