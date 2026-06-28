@@ -192,6 +192,35 @@ describe('SkillStore', () => {
     expect(context.block).toContain('matched_tools=remote-command');
   });
 
+  test('preserves raw match metadata when rendering a supplied context block', () => {
+    const store = new SkillStore({ rootDir: makeTempSkillRoot() });
+    store.upsertSkill({
+      id: 'document-handoff',
+      name: 'Document Handoff',
+      description: 'Prepare document workflow handoffs.',
+      body: 'Include source, artifact URL, checks, and remaining assumptions.',
+      tools: ['document-workflow'],
+      triggerPatterns: ['document handoff'],
+    });
+
+    const selectedSkillMatches = store.selectRelevantSkillMatches({
+      text: 'Use document workflow for a document handoff',
+      toolIds: ['document-workflow'],
+      limit: 1,
+    });
+    const context = store.buildContextBlock({
+      selectedSkillIds: ['document-handoff'],
+      selectedSkillMatches,
+      includeAdditionalMatches: false,
+    });
+
+    expect(context).toContain('id=document-handoff');
+    expect(context).toContain('matched_tools=document-workflow');
+    expect(context).toContain('match_reasons=');
+    expect(context).toContain('tool affinity');
+    expect(context).toContain('trigger document handoff');
+  });
+
   test('escapes user-authored skill fields in context handoffs', () => {
     const store = new SkillStore({ rootDir: makeTempSkillRoot() });
     store.upsertSkill({

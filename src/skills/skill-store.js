@@ -415,8 +415,11 @@ class SkillStore {
     const skills = [...explicitSkills, ...matchedSkills].slice(0, Math.max(1, Math.min(Number(limit) || DEFAULT_MATCH_LIMIT, 8)));
     const matchMetadata = new Map(
       selectedSkillMatches
-        .filter((entry) => entry && entry.id)
-        .map((entry) => [entry.id, entry])
+        .map((entry) => {
+          const id = entry?.id || entry?.skill?.id || '';
+          return id ? [id, entry] : null;
+        })
+        .filter(Boolean)
     );
 
     if (skills.length === 0) {
