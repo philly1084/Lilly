@@ -305,6 +305,25 @@ describe('openai-sse helpers', () => {
     expect(events[1].content).toBe('Checked the request. Chose the direct path.');
   });
 
+  test('normalizes provider thinking aliases from completion metadata', () => {
+    const events = normalizeGatewayEventPayload({
+      object: 'chat.completion',
+      choices: [{
+        message: {
+          content: 'Final answer',
+          thinking_summary: 'Checked constraints and picked the direct fix.',
+        },
+      }],
+    }, { allowFinalText: true });
+
+    expect(events.map((event) => event.type)).toEqual([
+      'text_delta',
+      'reasoning_delta',
+      'final',
+    ]);
+    expect(events[1].content).toBe('Checked constraints and picked the direct fix.');
+  });
+
   test('normalizes final JSON response reasoning items from output arrays', () => {
     const events = normalizeGatewayEventPayload({
       object: 'response',

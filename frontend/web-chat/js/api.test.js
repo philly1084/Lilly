@@ -247,6 +247,25 @@ describe('web-chat artifact metadata normalization', () => {
     });
 });
 
+describe('web-chat reasoning metadata normalization', () => {
+    test('normalizes provider thinking aliases from stream done payloads', () => {
+        const { apiClient } = loadApiClient();
+
+        const events = apiClient.normalizeStreamPayload({
+            type: 'done',
+            assistant_metadata: {
+                thinking_summary: 'Checked constraints and picked the direct fix.',
+            },
+        }, {});
+
+        const done = events.find((event) => event.type === 'done');
+        expect(done.assistantMetadata).toEqual(expect.objectContaining({
+            reasoningAvailable: true,
+            reasoningSummary: 'Checked constraints and picked the direct fix.',
+        }));
+    });
+});
+
 describe('web-chat remote build metadata', () => {
     test('sends plugin menu execution profile and planned tools in chat requests', async () => {
         const fetchMock = jest.fn(async () => ({
