@@ -16,6 +16,7 @@ describe('config bundled TTS defaults', () => {
         delete process.env.PIPER_TTS_CONFIG_PATH;
         delete process.env.PIPER_TTS_DEFAULT_VOICE_ID;
         delete process.env.TTS_PROVIDER;
+        delete process.env.TTS_REALTIME_CHUNK_TARGET_CHARS;
         delete process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS;
         delete process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS;
         process.env.TTS_FALLBACK_PROVIDER = '';
@@ -61,7 +62,8 @@ describe('config bundled TTS defaults', () => {
             'ryan-direct',
         ]));
         expect(config.tts.piper.defaultVoiceId).toBe('hfc-female-rich');
-        expect(config.tts.realtime.primaryTimeoutMs).toBe(30000);
-        expect(config.tts.realtime.fallbackTimeoutMs).toBe(30000);
+        expect(config.tts.realtime.chunkTargetChars).toBe(180);
+        expect(config.tts.realtime.primaryTimeoutMs).toBe(60000);
+        expect(config.tts.realtime.fallbackTimeoutMs).toBe(45000);
     });
 });

@@ -457,7 +457,7 @@ const normalizedTtsRealtimeChunkTargetChars = Math.max(
     60,
     Math.min(
         normalizedKokoroMaxTextChars,
-        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 280,
+        parseInt(process.env.TTS_REALTIME_CHUNK_TARGET_CHARS, 10) || 180,
     ),
 );
 const normalizedTtsRealtimeInitialBufferChunks = Math.max(
@@ -492,14 +492,14 @@ const normalizedTtsRealtimePrimaryTimeoutMs = Math.max(
     3000,
     Math.min(
         normalizedKokoroTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 30000,
+        parseInt(process.env.TTS_REALTIME_PRIMARY_TIMEOUT_MS, 10) || 60000,
     ),
 );
 const normalizedTtsRealtimeFallbackTimeoutMs = Math.max(
     2000,
     Math.min(
         normalizedPiperTimeoutMs,
-        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 30000,
+        parseInt(process.env.TTS_REALTIME_FALLBACK_TIMEOUT_MS, 10) || 60000,
     ),
 );
 const normalizedTtsRealtimeHedgeDelayMs = Math.max(
