@@ -4223,11 +4223,12 @@ class CodeCLIApp {
         }
         return `
             <div class="cli-menu-chip-row" aria-label="Tool categories">
-                <button type="button" class="${activeCategory ? '' : 'is-active'}" data-menu-view="tools" data-menu-value="" onclick="app.openCliMenuButton(this)">All</button>
+                <button type="button" class="${activeCategory ? '' : 'is-active'}" aria-pressed="${activeCategory ? 'false' : 'true'}" data-menu-view="tools" data-menu-value="" onclick="app.openCliMenuButton(this)">All</button>
                 ${categories.map((category) => `
                     <button
                         type="button"
                         class="${category === activeCategory ? 'is-active' : ''}"
+                        aria-pressed="${category === activeCategory ? 'true' : 'false'}"
                         data-menu-view="tools"
                         data-menu-value="${this.escapeHtmlAttr(category)}"
                         onclick="app.openCliMenuButton(this)"

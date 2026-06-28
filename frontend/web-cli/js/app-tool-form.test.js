@@ -225,6 +225,24 @@ describe('web-cli tool form rendering', () => {
         expect(uncheckedMarkup).not.toContain(' checked');
     });
 
+    test('marks the active tool category chip for assistive technology', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolCategoryChips([
+            { id: 'web-fetch', category: 'Research' },
+            { id: 'remote-command', category: 'Remote' },
+        ], 'Research');
+        const dom = new JSDOM(markup);
+        const buttons = Array.from(dom.window.document.querySelectorAll('button'));
+        const byLabel = Object.fromEntries(buttons.map((button) => [button.textContent.trim(), button]));
+
+        expect(byLabel.All.classList.contains('is-active')).toBe(false);
+        expect(byLabel.All.getAttribute('aria-pressed')).toBe('false');
+        expect(byLabel.Research.classList.contains('is-active')).toBe(true);
+        expect(byLabel.Research.getAttribute('aria-pressed')).toBe('true');
+        expect(byLabel.Remote.getAttribute('aria-pressed')).toBe('false');
+    });
+
     test('collects selected enum parameters through the normal tool JSON path', () => {
         const app = createToolFormHarness();
         const fields = [
