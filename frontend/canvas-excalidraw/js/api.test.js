@@ -89,3 +89,49 @@ describe('canvas API artifact metadata normalization', () => {
         expect(api.normalizeArtifacts([{ filename: 'missing-id.html' }, null])).toEqual([]);
     });
 });
+
+describe('canvas API image model lookup', () => {
+    test('accepts image generation capabilities from metadata and contract maps', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                data: [
+                    {
+                        id: 'gateway-image-model',
+                        metadata: {
+                            name: 'Gateway Image',
+                            capabilities: { image_generation: { supported: true } },
+                            sizes: ['auto'],
+                        },
+                    },
+                    {
+                        id: 'contract-image-model',
+                        contract: {
+                            capabilityMap: { image_generation: 'available' },
+                        },
+                    },
+                    {
+                        id: 'chat-only-model',
+                        metadata: {
+                            capabilities: { chat: true },
+                        },
+                    },
+                ],
+            }),
+        }));
+        const { OpenAICanvasAPI } = loadCanvasApi(fetchMock);
+        const api = new OpenAICanvasAPI('http://localhost:3000/v1');
+
+        const models = await api.getImageModels();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(models.map((model) => model.id)).toEqual([
+            'gateway-image-model',
+            'contract-image-model',
+        ]);
+        expect(models[0]).toEqual(expect.objectContaining({
+            name: 'Gateway Image',
+            sizes: ['auto'],
+        }));
+    });
+});

@@ -1064,6 +1064,46 @@ class WebCLIAPI {
         };
     }
 
+    collectModelCapabilities(model = {}) {
+        const capabilities = new Set();
+        const addValue = (value) => {
+            if (Array.isArray(value)) {
+                value.forEach(addValue);
+                return;
+            }
+            if (value && typeof value === 'object') {
+                Object.entries(value).forEach(([key, entry]) => {
+                    if (entry === true || entry === 'true' || entry === 'available' || entry === 'supported') {
+                        capabilities.add(String(key).trim().toLowerCase());
+                    } else if (entry && typeof entry === 'object' && !Array.isArray(entry)
+                        && (entry.supported === true || entry.supported === 'true' || entry.available === true || entry.available === 'true')) {
+                        capabilities.add(String(key).trim().toLowerCase());
+                    } else if (Array.isArray(entry) || (entry && typeof entry === 'object')) {
+                        addValue(entry);
+                    }
+                });
+                return;
+            }
+            const normalized = String(value || '').trim().toLowerCase();
+            if (normalized) {
+                capabilities.add(normalized);
+            }
+        };
+
+        const metadata = model?.metadata && typeof model.metadata === 'object' ? model.metadata : {};
+        const contract = model?.contract && typeof model.contract === 'object' ? model.contract : {};
+        addValue(model?.capabilities);
+        addValue(metadata.capabilities);
+        addValue(metadata.capabilityMap || metadata.capability_map);
+        addValue(contract.capabilities);
+        addValue(contract.capabilityMap || contract.capability_map);
+        return capabilities;
+    }
+
+    modelHasCapability(model = {}, capability = '') {
+        return this.collectModelCapabilities(model).has(String(capability || '').trim().toLowerCase());
+    }
+
     async getImageModels() {
         const baseUrl = API_BASE_URL.replace('/v1', '');
 
@@ -1082,7 +1122,7 @@ class WebCLIAPI {
             const data = await response.json();
             const models = Array.isArray(data.data) ? data.data : [];
             const imageModels = models
-                .filter((model) => Array.isArray(model.capabilities) && model.capabilities.includes('image_generation'))
+                .filter((model) => this.modelHasCapability(model, 'image_generation'))
                 .map((model) => this.normalizeImageModelRecord(model))
                 .filter((model) => model.id);
 

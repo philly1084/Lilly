@@ -132,3 +132,48 @@ describe('web-cli API artifact metadata normalization', () => {
         ]);
     });
 });
+
+describe('web-cli API image model lookup', () => {
+    test('accepts image generation capabilities from metadata and contract maps', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                data: [
+                    {
+                        id: 'gateway-image-model',
+                        metadata: {
+                            name: 'Gateway Image',
+                            capabilities: { image_generation: { supported: true } },
+                            sizes: ['auto'],
+                        },
+                    },
+                    {
+                        id: 'contract-image-model',
+                        contract: {
+                            capability_map: { image_generation: 'available' },
+                        },
+                    },
+                    {
+                        id: 'chat-only-model',
+                        metadata: {
+                            capabilities: { chat: true },
+                        },
+                    },
+                ],
+            }),
+        }));
+        const { api } = loadWebCliApi(fetchMock);
+
+        const models = await api.getImageModels();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(models.map((model) => model.id)).toEqual([
+            'gateway-image-model',
+            'contract-image-model',
+        ]);
+        expect(models[0]).toEqual(expect.objectContaining({
+            name: 'Gateway Image',
+            sizes: ['auto'],
+        }));
+    });
+});
