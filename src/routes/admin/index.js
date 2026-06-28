@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const fs = require('fs/promises');
 const path = require('path');
 const router = express.Router();
 
@@ -24,6 +25,9 @@ const { buildLillyHistory } = require('../../admin/lilly-history');
 const { artifactService } = require('../../artifacts/artifact-service');
 const { artifactStore } = require('../../artifacts/artifact-store');
 const { assetManager } = require('../../asset-manager');
+const { getConfiguredStateDirectoryValue, getStateDirectory } = require('../../runtime-state-paths');
+
+const CEO_ACTION_HISTORY_LIMIT = 24;
 
 // Dashboard controller is initialized with orchestrator in server.js
 const getDashboardController = (req) => {
@@ -166,6 +170,100 @@ function normalizeRunOutputPreview(run = {}, maxLength = 220) {
   }
 
   return raw.length > maxLength ? `${raw.slice(0, maxLength - 1).trimEnd()}...` : raw;
+}
+
+function getAgentCompanyActionHistoryPath() {
+  return path.join(getStateDirectory(), 'agent-company', 'ceo-action-history.json');
+}
+
+function getActionLookupKey(action = {}) {
+  return String(action.actionKey || action.id || '').trim();
+}
+
+function normalizeCeoActionSnapshot(action = {}, snapshotAt = new Date().toISOString()) {
+  const actionKey = getActionLookupKey(action);
+  if (!actionKey) {
+    return null;
+  }
+
+  return {
+    id: String(action.id || actionKey),
+    actionKey,
+    label: String(action.label || 'Company action'),
+    detail: String(action.detail || ''),
+    target: String(action.target || ''),
+    priority: String(action.priority || 'low'),
+    ...(action.runId ? { runId: action.runId } : {}),
+    ...(action.outputPreview ? { outputPreview: action.outputPreview } : {}),
+    ...(action.workloadReason ? { workloadReason: action.workloadReason } : {}),
+    ...(action.workloadFocus ? { workloadFocus: action.workloadFocus } : {}),
+    ...(action.refreshStatus ? { refreshStatus: action.refreshStatus } : {}),
+    snapshotAt,
+  };
+}
+
+async function readCeoActionHistory() {
+  try {
+    const raw = await fs.readFile(getAgentCompanyActionHistoryPath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.actions) ? parsed.actions : [];
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn('[Admin] Failed to read Agent Company action history:', error.message);
+    }
+    return [];
+  }
+}
+
+async function writeCeoActionHistory(actions = []) {
+  const historyPath = getAgentCompanyActionHistoryPath();
+  await fs.mkdir(path.dirname(historyPath), { recursive: true });
+  const tempPath = `${historyPath}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify({ actions }, null, 2), 'utf8');
+  await fs.rename(tempPath, historyPath);
+}
+
+async function snapshotCeoActions(actions = []) {
+  if (process.env.NODE_ENV === 'test' && !getConfiguredStateDirectoryValue()) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const snapshots = (Array.isArray(actions) ? actions : [])
+    .map((action) => normalizeCeoActionSnapshot(action, now))
+    .filter(Boolean);
+
+  if (!snapshots.length) {
+    return;
+  }
+
+  try {
+    const byKey = new Map();
+    snapshots.forEach((action) => byKey.set(action.actionKey, action));
+    const existing = await readCeoActionHistory();
+    existing.forEach((action) => {
+      const actionKey = getActionLookupKey(action);
+      if (actionKey && !byKey.has(actionKey)) {
+        byKey.set(actionKey, action);
+      }
+    });
+    await writeCeoActionHistory(Array.from(byKey.values()).slice(0, CEO_ACTION_HISTORY_LIMIT));
+  } catch (error) {
+    console.warn('[Admin] Failed to snapshot Agent Company action history:', error.message);
+  }
+}
+
+function findCeoAction(actions = [], actionKey = '') {
+  const targetKey = String(actionKey || '').trim();
+  if (!targetKey) {
+    return null;
+  }
+
+  return (Array.isArray(actions) ? actions : []).find((candidate) => {
+    const key = getActionLookupKey(candidate);
+    const id = String(candidate.id || '').trim();
+    return key === targetKey || id === targetKey;
+  }) || null;
 }
 
 function hasCompletedTextOutputWithoutDeliverables(run = {}) {
@@ -355,6 +453,7 @@ async function buildAgentCompanyWorkspacePayload(req) {
     workloads,
     runs,
   );
+  await snapshotCeoActions(actionQueue);
 
   return {
     status,
@@ -707,17 +806,17 @@ router.get('/agent-company/action', async (req, res, next) => {
     }
 
     const payload = await buildAgentCompanyWorkspacePayload(req);
-    const action = (payload.actionQueue || []).find((candidate) => {
-      const key = String(candidate.actionKey || candidate.id || '').trim();
-      const id = String(candidate.id || '').trim();
-      return key === actionKey || id === actionKey;
-    });
+    const action = findCeoAction(payload.actionQueue, actionKey);
 
     if (!action) {
-      return res.status(404).json({ success: false, error: 'Agent company action was not found' });
+      const historicalAction = findCeoAction(await readCeoActionHistory(), actionKey);
+      if (!historicalAction) {
+        return res.status(404).json({ success: false, error: 'Agent company action was not found' });
+      }
+      return res.json({ success: true, data: { action: historicalAction, historical: true } });
     }
 
-    res.json({ success: true, data: { action } });
+    res.json({ success: true, data: { action, historical: false } });
   } catch (error) {
     if (error.status === 503) {
       return res.status(503).json({ success: false, error: error.message });

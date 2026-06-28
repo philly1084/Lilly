@@ -719,6 +719,92 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('resolves aged-out CEO action context from saved action history', async () => {
+        const previousStateDir = process.env.KIMIBUILT_STATE_DIR;
+        const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kimibuilt-action-history-'));
+        process.env.KIMIBUILT_STATE_DIR = stateDir;
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => [
+                {
+                    id: 'company-workload',
+                    sessionId: 'agent-company',
+                    title: 'Operations Lead: Recursive improvement review',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            roleName: 'Operations Lead',
+                            companyGoalHash: 'goal-hash',
+                        },
+                    },
+                },
+            ]),
+            listAdminRuns: jest.fn(async () => [
+                {
+                    id: 'historical-run',
+                    workloadId: 'company-workload',
+                    sessionId: 'agent-company',
+                    status: 'completed',
+                    metadata: {
+                        output: {
+                            text: 'Captured the CEO review brief before packaging.',
+                        },
+                    },
+                },
+            ]),
+        };
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                available: true,
+                config: {
+                    enabled: true,
+                    sessionId: 'agent-company',
+                    companyGoal: 'Run a useful research studio.',
+                },
+                state: {
+                    companyGoalHash: 'goal-hash',
+                    heartbeat: { status: 'steady' },
+                    dailyAlignment: { status: 'steady' },
+                },
+            })),
+        };
+
+        try {
+            const workspaceResponse = await request(app).get('/api/admin/agent-company/workspace');
+            expect(workspaceResponse.status).toBe(200);
+            expect(workspaceResponse.body.data.actionQueue).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    actionKey: 'review-completed-output:historical-run',
+                    outputPreview: 'Captured the CEO review brief before packaging.',
+                }),
+            ]));
+
+            service.listAdminRuns.mockResolvedValue([]);
+            const actionResponse = await request(app)
+                .get('/api/admin/agent-company/action?actionKey=review-completed-output%3Ahistorical-run');
+
+            expect(actionResponse.status).toBe(200);
+            expect(actionResponse.body.data.historical).toBe(true);
+            expect(actionResponse.body.data.action).toEqual(expect.objectContaining({
+                id: 'review-completed-output',
+                actionKey: 'review-completed-output:historical-run',
+                target: 'runs',
+                runId: 'historical-run',
+                outputPreview: 'Captured the CEO review brief before packaging.',
+            }));
+        } finally {
+            isEnabledSpy.mockRestore();
+            if (previousStateDir === undefined) {
+                delete process.env.KIMIBUILT_STATE_DIR;
+            } else {
+                process.env.KIMIBUILT_STATE_DIR = previousStateDir;
+            }
+            await fs.rm(stateDir, { recursive: true, force: true });
+        }
+    });
+
     test('creates a fallback dashboard controller when startup did not initialize one', async () => {
         const service = {
             isAvailable: jest.fn(() => true),
