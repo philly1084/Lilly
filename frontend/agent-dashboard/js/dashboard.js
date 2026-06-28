@@ -3314,10 +3314,17 @@ class Dashboard {
             return;
         }
 
+        const reviewableCount = history.filter((action) => action.runId || action.refreshStatus?.runId).length;
+        const referenceCount = history.length - reviewableCount;
+        const historySummary = [
+            `${reviewableCount} reviewable`,
+            referenceCount ? `${referenceCount} reference` : '',
+        ].filter(Boolean).join(' | ');
+
         container.innerHTML = `
             <div class="company-action-history__header">
                 <strong>Recent saved CEO actions</strong>
-                <span>${history.length} saved</span>
+                <span>${this.escapeHtml(historySummary)}</span>
             </div>
             ${history.map((action, index) => {
                 const actionId = String(action.id || `company-action-history-${index}`);
@@ -3326,6 +3333,7 @@ class Dashboard {
                 const handler = runId
                     ? this.formatCompanyActionHandler('runs', runId, actionKey)
                     : '';
+                const evidenceLabel = runId ? 'Reviewable run' : 'Reference only';
                 if (runId) {
                     const actionContext = this.buildCompanyActionContext(action, runId, { contextSource: 'saved-history' });
                     this.state.companyActionContexts[runId] = actionContext;
@@ -3337,6 +3345,7 @@ class Dashboard {
                     <div>
                         <strong>${this.escapeHtml(action.label || 'Saved CEO action')}</strong>
                         <span>${this.escapeHtml(action.detail || '')}</span>
+                        <small class="company-action-history__evidence">${this.escapeHtml(evidenceLabel)}</small>
                         ${action.snapshotAt ? `<small>Saved ${this.escapeHtml(this.formatDate(action.snapshotAt))}</small>` : ''}
                     </div>
                     ${runId ? `

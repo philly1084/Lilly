@@ -2842,6 +2842,16 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     overflow-wrap: anywhere;
 }
 
+.company-action-history__evidence {
+    justify-self: start;
+    padding: 2px 6px;
+    border: 1px solid rgba(99, 102, 241, 0.32);
+    border-radius: var(--radius-sm);
+    background-color: rgba(99, 102, 241, 0.12);
+    color: var(--text-primary) !important;
+    font-weight: 600;
+}
+
 .company-action-history__item {
     padding: var(--space-sm);
     border: 1px solid var(--border-secondary);

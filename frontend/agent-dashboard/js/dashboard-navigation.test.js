@@ -863,12 +863,24 @@ describe('agent dashboard navigation accessibility', () => {
                 outputPreview: 'Saved output preview.',
                 snapshotAt: '2026-06-28T05:12:00.000Z',
             },
+            {
+                id: 'review-deliverables',
+                actionKey: 'review-deliverables:archive',
+                label: 'Review archived deliverables',
+                detail: 'Saved context without a specific run.',
+                target: 'deliverables',
+                snapshotAt: '2026-06-28T05:13:00.000Z',
+            },
         ]);
 
         const history = document.getElementById('companyActionHistory');
         expect(history.textContent).toContain('Recent saved CEO actions');
+        expect(history.textContent).toContain('1 reviewable | 1 reference');
         expect(history.textContent).toContain('Review saved output <script>alert("x")</script>');
+        expect(history.textContent).toContain('Reviewable run');
+        expect(history.textContent).toContain('Reference only');
         expect(history.querySelector('script')).toBeNull();
+        expect(history.querySelectorAll('button')).toHaveLength(1);
         expect(history.querySelector('button').getAttribute('onclick'))
             .toBe('dashboard.handleCompanyAction("runs", "historical-run", "review-completed-output:historical-run")');
         expect(dashboard.state.companyActionContexts['historical-run']).toEqual(expect.objectContaining({
