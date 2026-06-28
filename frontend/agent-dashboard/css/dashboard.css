@@ -2904,6 +2904,22 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     font-weight: 600;
 }
 
+.company-action-history__badges {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.company-action-history__source {
+    justify-self: start;
+    padding: 2px 6px;
+    border: 1px solid rgba(20, 184, 166, 0.3);
+    border-radius: var(--radius-sm);
+    background-color: rgba(20, 184, 166, 0.11);
+    color: var(--text-primary) !important;
+    font-weight: 600;
+}
+
 .company-action-history__item {
     padding: var(--space-sm);
     border: 1px solid var(--border-secondary);

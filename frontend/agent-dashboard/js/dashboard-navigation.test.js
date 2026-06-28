@@ -862,6 +862,7 @@ describe('agent dashboard navigation accessibility', () => {
                 runId: 'historical-run',
                 outputPreview: 'Saved output preview.',
                 snapshotAt: '2026-06-28T05:12:00.000Z',
+                historical: true,
             },
             {
                 id: 'review-deliverables',
@@ -876,9 +877,12 @@ describe('agent dashboard navigation accessibility', () => {
         const history = document.getElementById('companyActionHistory');
         expect(history.textContent).toContain('Recent saved CEO actions');
         expect(history.textContent).toContain('1 reviewable | 1 reference');
+        expect(history.textContent).toContain('Deliverables 1 | Saved history 1');
         expect(history.textContent).toContain('Review saved output <script>alert("x")</script>');
         expect(history.textContent).toContain('Reviewable run');
         expect(history.textContent).toContain('Reference only');
+        expect(history.textContent).toContain('Saved history');
+        expect(history.textContent).toContain('Deliverables');
         expect(history.querySelector('script')).toBeNull();
         expect(history.querySelectorAll('.company-action-history__filters .company-action-history__filter')).toHaveLength(3);
         expect(history.querySelector('.company-action-history__filter--active').textContent).toContain('All 2');
@@ -938,6 +942,7 @@ describe('agent dashboard navigation accessibility', () => {
                             runId: 'historical-run',
                             outputPreview: 'Saved output preview.',
                             snapshotAt: '2026-06-28T05:12:00.000Z',
+                            historical: true,
                         },
                         {
                             id: 'review-completed-output',
@@ -948,6 +953,7 @@ describe('agent dashboard navigation accessibility', () => {
                             runId: 'older-run',
                             outputPreview: 'Older saved output preview.',
                             snapshotAt: '2026-06-28T04:12:00.000Z',
+                            historical: true,
                         },
                     ],
                     summary: {
@@ -972,6 +978,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.apiClient.get).toHaveBeenCalledWith('/api/admin/agent-company/action-history', { limit: 24 });
         expect(history.textContent).toContain('All 2');
         expect(history.textContent).toContain('2 reviewable');
+        expect(history.textContent).toContain('Saved history 2');
         expect(history.textContent).toContain('newest');
         expect(history.textContent).toContain('oldest');
         expect(history.textContent).toContain('Review older saved output <script>alert("x")</script>');

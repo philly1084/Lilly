@@ -3348,6 +3348,15 @@ class Dashboard {
         const summaryReferenceOnly = Number(endpointSummary.referenceOnly || 0);
         const reviewableCount = summaryTotal > 0 ? summaryReviewable : localReviewableCount;
         const referenceCount = summaryTotal > 0 ? summaryReferenceOnly : localReferenceCount;
+        const sourceCounts = history.reduce((counts, action) => {
+            const source = this.getCompanyActionHistorySourceLabel(action);
+            counts[source] = (counts[source] || 0) + 1;
+            return counts;
+        }, {});
+        const sourceSummary = Object.entries(sourceCounts)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([source, count]) => `${source} ${count}`)
+            .join(' | ');
         const activeFilter = ['all', 'reviewable', 'reference'].includes(this.state.companyActionHistoryFilter)
             ? this.state.companyActionHistoryFilter
             : 'all';
@@ -3385,6 +3394,7 @@ class Dashboard {
                 <div>
                     <strong>Recent saved CEO actions</strong>
                     <span>${this.escapeHtml(historySummary)}</span>
+                    ${sourceSummary ? `<small>${this.escapeHtml(sourceSummary)}</small>` : ''}
                     ${historyWindow ? `<small>${this.escapeHtml(historyWindow)}</small>` : ''}
                 </div>
                 <button
@@ -3436,6 +3446,7 @@ class Dashboard {
                     ? this.formatCompanyActionHandler('runs', runId, actionKey)
                     : '';
                 const evidenceLabel = runId ? 'Reviewable run' : 'Reference only';
+                const sourceLabel = this.getCompanyActionHistorySourceLabel(action);
                 if (runId) {
                     const actionContext = this.buildCompanyActionContext(action, runId, { contextSource: 'saved-history' });
                     this.state.companyActionContexts[runId] = actionContext;
@@ -3447,7 +3458,10 @@ class Dashboard {
                     <div>
                         <strong>${this.escapeHtml(action.label || 'Saved CEO action')}</strong>
                         <span>${this.escapeHtml(action.detail || '')}</span>
-                        <small class="company-action-history__evidence">${this.escapeHtml(evidenceLabel)}</small>
+                        <div class="company-action-history__badges">
+                            <small class="company-action-history__evidence">${this.escapeHtml(evidenceLabel)}</small>
+                            <small class="company-action-history__source">${this.escapeHtml(sourceLabel)}</small>
+                        </div>
                         ${action.snapshotAt ? `<small>Saved ${this.escapeHtml(this.formatDate(action.snapshotAt))}</small>` : ''}
                     </div>
                     ${runId ? `
@@ -3463,6 +3477,22 @@ class Dashboard {
             `;
             }).join('') : '<p class="empty-state">No saved CEO actions match this filter.</p>'}
         `;
+    }
+
+    getCompanyActionHistorySourceLabel(action = {}) {
+        if (action.historical === true || action.contextSource === 'saved-history') {
+            return 'Saved history';
+        }
+        if (action.refreshStatus || action.id === 'refresh-shared-whiteboard') {
+            return 'Whiteboard';
+        }
+        if (action.runId || action.id === 'review-completed-output') {
+            return 'Run output';
+        }
+        if (action.id === 'review-deliverables' || action.target === 'deliverables') {
+            return 'Deliverables';
+        }
+        return 'Queue snapshot';
     }
 
     setCompanyActionHistoryFilter(filter = 'all') {
