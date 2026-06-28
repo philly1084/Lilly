@@ -30,6 +30,7 @@ class Dashboard {
             companyActionContexts: {},
             companyActionContextsById: {},
             companyActionHistory: [],
+            companyActionHistorySummary: null,
             companyActionHistoryFilter: 'all',
             companyActionHistorySort: 'newest',
             companyActionHistoryLoading: false,
@@ -3339,8 +3340,14 @@ class Dashboard {
             return;
         }
 
-        const reviewableCount = history.filter((action) => action.runId || action.refreshStatus?.runId).length;
-        const referenceCount = history.length - reviewableCount;
+        const endpointSummary = this.state.companyActionHistorySummary || {};
+        const localReviewableCount = history.filter((action) => action.runId || action.refreshStatus?.runId).length;
+        const localReferenceCount = history.length - localReviewableCount;
+        const summaryTotal = Number(endpointSummary.total || 0);
+        const summaryReviewable = Number(endpointSummary.reviewable || 0);
+        const summaryReferenceOnly = Number(endpointSummary.referenceOnly || 0);
+        const reviewableCount = summaryTotal > 0 ? summaryReviewable : localReviewableCount;
+        const referenceCount = summaryTotal > 0 ? summaryReferenceOnly : localReferenceCount;
         const activeFilter = ['all', 'reviewable', 'reference'].includes(this.state.companyActionHistoryFilter)
             ? this.state.companyActionHistoryFilter
             : 'all';
@@ -3366,6 +3373,10 @@ class Dashboard {
             `${reviewableCount} reviewable`,
             referenceCount ? `${referenceCount} reference` : '',
         ].filter(Boolean).join(' | ');
+        const historyWindow = [
+            endpointSummary.newestSnapshotAt ? `newest ${this.formatDate(endpointSummary.newestSnapshotAt)}` : '',
+            endpointSummary.oldestSnapshotAt ? `oldest ${this.formatDate(endpointSummary.oldestSnapshotAt)}` : '',
+        ].filter(Boolean).join(' | ');
         const isLoading = Boolean(this.state.companyActionHistoryLoading);
         const errorMessage = this.state.companyActionHistoryError || '';
 
@@ -3374,6 +3385,7 @@ class Dashboard {
                 <div>
                     <strong>Recent saved CEO actions</strong>
                     <span>${this.escapeHtml(historySummary)}</span>
+                    ${historyWindow ? `<small>${this.escapeHtml(historyWindow)}</small>` : ''}
                 </div>
                 <button
                     class="btn btn-sm btn-ghost company-action-history__more"
@@ -4840,6 +4852,7 @@ class Dashboard {
             const response = await client.get('/api/admin/agent-company/action-history', { limit });
             const payload = this.unwrapApiPayload(response, {});
             const actions = Array.isArray(payload.actions) ? payload.actions : [];
+            this.state.companyActionHistorySummary = payload.summary || null;
             this.state.companyActionHistoryLoading = false;
             this.state.companyActionHistoryError = '';
             this.renderCompanyActionHistory(actions);

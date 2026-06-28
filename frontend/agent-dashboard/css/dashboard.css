@@ -2886,6 +2886,7 @@ body[data-ui-surface="admin"] .select-sm option:checked {
 }
 
 .company-action-history__header span,
+.company-action-history__header small,
 .company-action-history__item span,
 .company-action-history__item small {
     color: var(--text-secondary);

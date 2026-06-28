@@ -950,6 +950,13 @@ describe('agent dashboard navigation accessibility', () => {
                             snapshotAt: '2026-06-28T04:12:00.000Z',
                         },
                     ],
+                    summary: {
+                        total: 2,
+                        reviewable: 2,
+                        referenceOnly: 0,
+                        newestSnapshotAt: '2026-06-28T05:12:00.000Z',
+                        oldestSnapshotAt: '2026-06-28T04:12:00.000Z',
+                    },
                     limit: 24,
                     maxLimit: 24,
                 },
@@ -964,8 +971,18 @@ describe('agent dashboard navigation accessibility', () => {
         const history = document.getElementById('companyActionHistory');
         expect(dom.window.apiClient.get).toHaveBeenCalledWith('/api/admin/agent-company/action-history', { limit: 24 });
         expect(history.textContent).toContain('All 2');
+        expect(history.textContent).toContain('2 reviewable');
+        expect(history.textContent).toContain('newest');
+        expect(history.textContent).toContain('oldest');
         expect(history.textContent).toContain('Review older saved output <script>alert("x")</script>');
         expect(history.querySelector('script')).toBeNull();
+        expect(dashboard.state.companyActionHistorySummary).toEqual(expect.objectContaining({
+            total: 2,
+            reviewable: 2,
+            referenceOnly: 0,
+            newestSnapshotAt: '2026-06-28T05:12:00.000Z',
+            oldestSnapshotAt: '2026-06-28T04:12:00.000Z',
+        }));
         expect(history.querySelector('[data-action-id="review-completed-output:older-run"] button').getAttribute('onclick'))
             .toBe('dashboard.handleCompanyAction("runs", "older-run", "review-completed-output:older-run")');
         expect(dashboard.state.companyActionContexts['older-run']).toEqual(expect.objectContaining({
