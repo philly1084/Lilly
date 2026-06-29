@@ -695,12 +695,51 @@ class AIAssistant {
     async copyBoardIndexSummary() {
         const text = this.buildBoardIndexSummaryText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied board index summary', 'success', 'index');
             this.showStatus('Board index copied.', 'success');
         } catch (_error) {
             this.recordActionLedger('Clipboard unavailable for board index', 'warning', 'index');
             this.showStatus('Clipboard unavailable for board index.', 'error');
+        }
+    }
+
+    async writeClipboardText(text = '') {
+        const value = String(text || '');
+        try {
+            if (!navigator?.clipboard?.writeText) {
+                throw new Error('Clipboard API unavailable');
+            }
+            await navigator.clipboard.writeText(value);
+            return true;
+        } catch (error) {
+            if (this.writeClipboardTextFallback(value)) {
+                return true;
+            }
+            throw error;
+        }
+    }
+
+    writeClipboardTextFallback(text = '') {
+        if (!document?.body?.appendChild || !document?.execCommand) {
+            return false;
+        }
+
+        const textarea = document.createElement('textarea');
+        textarea.value = String(text || '');
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+            return document.execCommand('copy') === true;
+        } catch (_error) {
+            return false;
+        } finally {
+            textarea.remove();
         }
     }
 
@@ -730,7 +769,7 @@ class AIAssistant {
     async copyCanvasHandoffPacket() {
         const text = this.buildCanvasHandoffPacketText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied canvas continuation packet', 'success', 'packet');
             this.showStatus('Canvas packet copied.', 'success');
         } catch (_error) {
@@ -850,7 +889,7 @@ class AIAssistant {
     async copyDecisionRegister() {
         const text = this.buildDecisionRegisterText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied decision register', 'success', 'register');
             this.showStatus('Decision register copied.', 'success');
         } catch (_error) {
@@ -999,7 +1038,7 @@ class AIAssistant {
     async copyGateReview() {
         const text = this.buildGateReviewText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied gate review', 'success', 'gates');
             this.showStatus('Gate review copied.', 'success');
         } catch (_error) {
@@ -1189,7 +1228,7 @@ class AIAssistant {
     async copyOpsSnapshot() {
         const text = this.buildCanvasOpsSnapshotText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied ops snapshot', 'success', 'ops');
             this.showStatus('Ops snapshot copied.', 'success');
         } catch (_error) {
@@ -1393,7 +1432,7 @@ class AIAssistant {
     async copyEvidencePack() {
         const text = this.buildCanvasEvidencePackText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied evidence pack', 'success', 'evidence');
             this.showStatus('Evidence pack copied.', 'success');
         } catch (_error) {
@@ -1611,7 +1650,7 @@ class AIAssistant {
     async copyReviewQueue() {
         const text = this.lastReviewQueueText || this.buildReviewQueueText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied review queue', 'success', 'review');
             this.showStatus('Review queue copied.', 'success');
         } catch (_error) {
@@ -1789,7 +1828,7 @@ class AIAssistant {
     async copyBoardBrief() {
         const text = this.lastBoardBriefText || this.buildBoardBriefText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied board brief', 'success', 'brief');
             this.showStatus('Board brief copied.', 'success');
         } catch {
@@ -2067,7 +2106,7 @@ class AIAssistant {
     async copyCanvasAudit() {
         const text = this.buildCanvasAuditText();
         try {
-            await navigator.clipboard.writeText(text);
+            await this.writeClipboardText(text);
             this.recordActionLedger('Copied canvas audit trail', 'success', 'audit');
             this.showStatus('Canvas audit copied.', 'success');
         } catch {
