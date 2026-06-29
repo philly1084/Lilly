@@ -267,6 +267,18 @@
             color: var(--text-secondary);
         }
 
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
         .status-dot {
             width: 8px;
             height: 8px;
@@ -1884,8 +1896,9 @@
         <header class="header">
             <div class="header-left">
                 <span class="header-title">Lilly CLI</span>
-                <div class="status-indicator">
-                    <span id="statusDot" class="status-dot connecting"></span>
+                <div class="status-indicator" role="status" aria-live="polite" aria-atomic="true">
+                    <span class="sr-only">Connection status: </span>
+                    <span id="statusDot" class="status-dot connecting" aria-hidden="true"></span>
                     <span id="statusText">Connecting...</span>
                 </div>
                 <span id="headerModelDisplay" class="header-model" title="Current AI model">--</span>

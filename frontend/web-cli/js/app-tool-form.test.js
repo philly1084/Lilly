@@ -428,9 +428,16 @@ describe('web-cli command drawer keyboard navigation', () => {
         const modelSelect = dom.window.document.getElementById('modelSelect');
         const commandInput = dom.window.document.getElementById('commandInput');
         const commandAssist = dom.window.document.getElementById('commandAssist');
+        const statusIndicator = dom.window.document.querySelector('.status-indicator');
+        const statusDot = dom.window.document.getElementById('statusDot');
         const drawer = dom.window.document.getElementById('commandDrawer');
         const items = Array.from(drawer.querySelectorAll('button, a[href]'));
 
+        expect(statusIndicator.getAttribute('role')).toBe('status');
+        expect(statusIndicator.getAttribute('aria-live')).toBe('polite');
+        expect(statusIndicator.getAttribute('aria-atomic')).toBe('true');
+        expect(statusIndicator.textContent).toContain('Connection status:');
+        expect(statusDot.getAttribute('aria-hidden')).toBe('true');
         expect(modelSelect.getAttribute('aria-label')).toBe('Current AI model');
         expect(modelSelect.classList.contains('header-model-select')).toBe(true);
         expect(commandInput.getAttribute('aria-label')).toBe('Web CLI command input');
@@ -625,6 +632,43 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(app.autocompleteEl.classList.contains('hidden')).toBe(true);
         expect(app.commandInput.getAttribute('aria-expanded')).toBe('false');
         expect(app.commandInput.hasAttribute('aria-activedescendant')).toBe(false);
+    });
+
+    test('keeps connection status text synchronized with health results', async () => {
+        const api = {
+            healthCheck: jest.fn()
+                .mockResolvedValueOnce({ connected: true })
+                .mockResolvedValueOnce({ connected: false })
+                .mockRejectedValueOnce(new Error('offline')),
+        };
+        const { CodeCLIApp } = loadWebCliToolFormHelpers({ api });
+        const app = Object.create(CodeCLIApp.prototype);
+        const dom = new JSDOM(`
+            <div class="status-indicator" role="status" aria-live="polite" aria-atomic="true">
+                <span class="sr-only">Connection status: </span>
+                <span id="statusDot" class="status-dot connecting" aria-hidden="true"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        `);
+        app.statusDot = dom.window.document.getElementById('statusDot');
+        app.statusText = dom.window.document.getElementById('statusText');
+        app.roamVoxelPet = jest.fn();
+
+        await app.checkConnection();
+
+        expect(app.statusDot.className).toBe('status-dot online');
+        expect(app.statusText.textContent).toBe('Connected');
+
+        await app.checkConnection();
+
+        expect(app.statusDot.className).toBe('status-dot offline');
+        expect(app.statusText.textContent).toBe('Disconnected');
+        expect(app.roamVoxelPet).toHaveBeenCalledWith('alert', 'guard', 1200);
+
+        await app.checkConnection();
+
+        expect(app.statusDot.className).toBe('status-dot offline');
+        expect(app.statusText.textContent).toBe('Offline');
     });
 });
 
