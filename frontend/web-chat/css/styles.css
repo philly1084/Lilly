@@ -127,6 +127,7 @@
     --tool-picker-chip-shadow: 0 10px 22px rgba(5, 10, 18, 0.16);
     --tool-picker-result-chip-background: color-mix(in srgb, var(--success) 12%, transparent);
     --tool-picker-result-chip-border: color-mix(in srgb, var(--success) 34%, transparent);
+    --tool-picker-focus-ring: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 /* Light theme */
@@ -239,6 +240,7 @@
     --tool-picker-chip-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 12%, transparent);
     --tool-picker-result-chip-background: color-mix(in srgb, var(--success) 12%, #ffffff);
     --tool-picker-result-chip-border: color-mix(in srgb, var(--success) 34%, rgba(191, 208, 228, 0.95));
+    --tool-picker-focus-ring: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 /* Curated chat theme presets */
@@ -7606,6 +7608,7 @@ code[class*="language-"] {
 }
 
 .tool-menu-btn:hover,
+.tool-menu-btn:focus-visible,
 .tool-menu-btn.is-active {
     color: var(--text-primary);
     border-color: var(--tool-picker-button-hover-border);
@@ -7702,7 +7705,7 @@ code[class*="language-"] {
 .tool-menu-choice:focus-within {
     border-color: var(--accent);
     background: var(--tool-picker-surface-hover-background);
-    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.22);
+    box-shadow: 0 0 0 3px var(--tool-picker-focus-ring);
 }
 
 .tool-menu-choice:hover {
@@ -7782,10 +7785,12 @@ code[class*="language-"] {
         background var(--transition-fast);
 }
 
-.tool-menu-actions button:hover {
+.tool-menu-actions button:hover,
+.tool-menu-actions button:focus-visible {
     color: var(--text-primary);
     border-color: var(--tool-picker-surface-hover-border);
     background: var(--tool-picker-surface-hover-background);
+    box-shadow: 0 0 0 3px var(--tool-picker-focus-ring);
 }
 
 .tool-command-picker {
@@ -7844,6 +7849,12 @@ code[class*="language-"] {
     color: var(--text-tertiary);
 }
 
+.tool-command-picker__search:focus-within {
+    border-color: var(--accent);
+    background: var(--tool-picker-surface-hover-background);
+    box-shadow: 0 0 0 3px var(--tool-picker-focus-ring);
+}
+
 .tool-command-list {
     display: grid;
     gap: 0.4rem;
@@ -7882,6 +7893,7 @@ code[class*="language-"] {
 .tool-command-option:hover,
 .tool-command-option:focus-visible {
     transform: translateY(-1px);
+    box-shadow: 0 0 0 3px var(--tool-picker-focus-ring);
 }
 
 .tool-command-option__icon {
@@ -8003,6 +8015,7 @@ code[class*="language-"] {
 .selected-tool-chip__clear:focus-visible {
     color: var(--text-primary);
     background: var(--tool-picker-surface-hover-background);
+    box-shadow: 0 0 0 3px var(--tool-picker-focus-ring);
 }
 
 .message-tool-chip {

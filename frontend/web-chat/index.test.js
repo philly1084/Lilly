@@ -40,6 +40,19 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<span class="tool-menu-choice__hint">Patch source</span>');
     });
 
+    test('composer tool picker exposes visible keyboard focus styling', () => {
+        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
+
+        expect(css).toContain('--tool-picker-focus-ring: color-mix(in srgb, var(--accent)');
+        expect(css).toContain('.tool-menu-btn:focus-visible');
+        expect(css).toContain('.tool-menu-choice:focus-within');
+        expect(css).toContain('box-shadow: 0 0 0 3px var(--tool-picker-focus-ring);');
+        expect(css).toContain('.tool-menu-actions button:focus-visible');
+        expect(css).toContain('.tool-command-picker__search:focus-within');
+        expect(css).toContain('.selected-tool-chip__clear:focus-visible');
+        expect(css).not.toContain('var(--accent-rgb)');
+    });
+
     test('mobile chat controls expose dialog ownership and open-close labels', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
