@@ -990,6 +990,9 @@ const AgentUI = (function() {
         if (elements.referencePopover) {
             elements.referencePopover.hidden = !referencePopoverOpen;
         }
+        if (elements.referenceSearch) {
+            elements.referenceSearch.setAttribute('aria-expanded', String(referencePopoverOpen && !elements.referenceResults?.hidden));
+        }
         if (elements.inputArea) {
             elements.inputArea.classList.toggle('is-reference-open', referencePopoverOpen);
         }
@@ -1024,10 +1027,13 @@ const AgentUI = (function() {
         if (!hasQuery) {
             elements.referenceResults.hidden = true;
             elements.referenceResults.innerHTML = '';
+            elements.referenceSearch?.setAttribute('aria-expanded', 'false');
+            elements.referenceSearch?.removeAttribute('aria-activedescendant');
             return;
         }
 
         elements.referenceResults.hidden = false;
+        elements.referenceSearch?.setAttribute('aria-expanded', 'true');
         const results = searchReferenceRecords(referenceSearchQuery, {
             includeSelected: false,
             limit: MAX_REFERENCE_RESULTS,
@@ -1035,15 +1041,18 @@ const AgentUI = (function() {
 
         if (selectedPageReferences.length >= MAX_SELECTED_REFERENCES) {
             elements.referenceResults.innerHTML = '<div class="agent-reference-empty">Reference limit reached</div>';
+            elements.referenceSearch?.removeAttribute('aria-activedescendant');
             return;
         }
 
         if (results.length === 0) {
             elements.referenceResults.innerHTML = '<div class="agent-reference-empty">No matches</div>';
+            elements.referenceSearch?.removeAttribute('aria-activedescendant');
             return;
         }
 
-        elements.referenceResults.innerHTML = results.map((record) => {
+        elements.referenceSearch?.setAttribute('aria-activedescendant', 'agent-reference-result-0');
+        elements.referenceResults.innerHTML = results.map((record, index) => {
             const isChat = record.type === REFERENCE_TYPE_CHAT;
             const typeLabel = isChat ? 'Chat' : 'Page';
             const countLabel = isChat
@@ -1058,8 +1067,17 @@ const AgentUI = (function() {
                 typeLabel,
                 countLabel,
             ].filter(Boolean);
+            const resultLabel = `Add ${record.title || 'Untitled'} reference`;
             return `
-            <div class="agent-reference-result" data-page-id="${escapeHtmlAttr(record.pageId)}" role="button" tabindex="0">
+            <div
+                id="agent-reference-result-${index}"
+                class="agent-reference-result"
+                data-page-id="${escapeHtmlAttr(record.pageId)}"
+                role="option"
+                tabindex="0"
+                aria-selected="false"
+                aria-label="${escapeHtmlAttr(resultLabel)}"
+            >
                 <span class="agent-reference-result-icon">${escapeHtml(normalizeReferenceIcon(record.icon, record.type))}</span>
                 <span class="agent-reference-result-body">
                     <span class="agent-reference-result-title">${escapeHtml(record.title || 'Untitled')}${chatLabel}</span>

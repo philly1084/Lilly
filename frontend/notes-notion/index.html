@@ -779,6 +779,11 @@
                                 type="search"
                                 placeholder="Search pages or chats"
                                 autocomplete="off"
+                                role="combobox"
+                                aria-label="Search reference pages and chats"
+                                aria-autocomplete="list"
+                                aria-expanded="false"
+                                aria-controls="agent-reference-results"
                             >
                             <button
                                 id="agent-reference-close"
@@ -788,7 +793,7 @@
                                 title="Close"
                             >×</button>
                         </div>
-                        <div id="agent-reference-results" class="agent-reference-results" hidden></div>
+                        <div id="agent-reference-results" class="agent-reference-results" role="listbox" aria-label="Reference search results" hidden></div>
                     </div>
                 </div>
                     </div>
