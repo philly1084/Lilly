@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const { artifactService } = require('./artifacts/artifact-service');
+const { sanitizeGeneratedFilename } = require('./artifacts/generated-filename');
 const { config } = require('./config');
 const { sessionStore } = require('./session-store');
 const {
@@ -41,14 +42,14 @@ function buildGeneratedAudioFilename({
 } = {}) {
     const explicitFilename = String(filename || '').trim();
     if (explicitFilename) {
-        return explicitFilename;
+        return sanitizeGeneratedFilename(explicitFilename, extension);
     }
 
     const base = slugifyAudioBase(title)
         || slugifyAudioBase(text.split(/\s+/).slice(0, 8).join(' '))
         || 'generated-audio';
 
-    return `${base}.${extension}`;
+    return sanitizeGeneratedFilename(`${base}.${extension}`, extension);
 }
 
 function normalizeGeneratedAudioRecord(artifact = null) {

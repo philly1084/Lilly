@@ -20,7 +20,10 @@ jest.mock('./session-store', () => ({
 const { artifactService } = require('./artifacts/artifact-service');
 const { sessionStore } = require('./session-store');
 const fs = require('fs/promises');
-const { persistGeneratedAudio } = require('./generated-audio-artifacts');
+const {
+    buildGeneratedAudioFilename,
+    persistGeneratedAudio,
+} = require('./generated-audio-artifacts');
 
 describe('generated-audio-artifacts', () => {
     beforeEach(() => {
@@ -81,6 +84,13 @@ describe('generated-audio-artifacts', () => {
             downloadUrl: '/api/artifacts/artifact-audio-1/download',
             inlinePath: '/api/artifacts/artifact-audio-1/download?inline=1',
         }));
+    });
+
+    test('sanitizes explicit generated audio filenames before download handoff', () => {
+        expect(buildGeneratedAudioFilename({
+            filename: '../Release: Brief\r\nFinal\"',
+            extension: 'wav',
+        })).toBe('-Release- BriefFinal.wav');
     });
 
     test('falls back to local audio artifacts when Postgres artifacts are unavailable', async () => {

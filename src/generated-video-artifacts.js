@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
+const { sanitizeGeneratedFilename } = require('./artifacts/generated-filename');
 const { config } = require('./config');
 const { sessionStore } = require('./session-store');
 const {
@@ -28,10 +29,10 @@ function slugifyVideoBase(value = '') {
 function buildGeneratedVideoFilename({ filename = '', title = '' } = {}) {
   const explicitFilename = String(filename || '').trim();
   if (explicitFilename) {
-    return explicitFilename;
+    return sanitizeGeneratedFilename(explicitFilename, 'mp4');
   }
 
-  return `${slugifyVideoBase(title) || 'generated-video'}.mp4`;
+  return sanitizeGeneratedFilename(`${slugifyVideoBase(title) || 'generated-video'}.mp4`, 'mp4');
 }
 
 function isLocalGeneratedVideoArtifactId(id = '') {
