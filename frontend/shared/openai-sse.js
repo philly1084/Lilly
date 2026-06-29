@@ -94,8 +94,11 @@
   function getModelCapabilities(model = {}) {
     return [
       ...parseModelCapabilityEntries(model?.capabilities),
+      ...parseModelCapabilityEntries(model?.supports),
       ...parseModelCapabilityEntries(model?.metadata?.capabilities),
+      ...parseModelCapabilityEntries(model?.metadata?.supports),
       ...parseModelCapabilityEntries(model?.contract?.capabilities),
+      ...parseModelCapabilityEntries(model?.contract?.supports),
     ]
       .map((capability) => String(capability || '').trim().toLowerCase())
       .filter(Boolean);

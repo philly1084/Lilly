@@ -515,6 +515,21 @@ describe('openai-sse helpers', () => {
     expect(resolvePreferredChatModel(models, 'gpt-5.5-tools')).toBe('gpt-5.5-tools');
   });
 
+  test('normalizes provider support maps for chat selection', () => {
+    const models = [
+      { id: 'image-output-router', supports: { image_generation: true } },
+      { id: 'fast-router', supports: { chat: true, tools: { supported: true }, streaming: 'available' } },
+      { id: 'structured-router', contract: { supports: { chat: true, structured_outputs: true } } },
+    ];
+
+    expect(isChatModel(models[0])).toBe(false);
+    expect(filterChatModels(models).map((model) => model.id)).toEqual([
+      'fast-router',
+      'structured-router',
+    ]);
+    expect(resolvePreferredChatModel(models, 'fast-router')).toBe('fast-router');
+  });
+
   test('keeps vision and image-input chat models selectable', () => {
     const models = [
       { id: 'gpt-4-vision-preview' },

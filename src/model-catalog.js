@@ -97,8 +97,11 @@ function isCapabilityEnabled(value) {
 function getCapabilityEntries(model = {}) {
     return [
         ...parseCapabilityEntries(model?.capabilities),
+        ...parseCapabilityEntries(model?.supports),
         ...parseCapabilityEntries(model?.metadata?.capabilities),
+        ...parseCapabilityEntries(model?.metadata?.supports),
         ...parseCapabilityEntries(model?.contract?.capabilities),
+        ...parseCapabilityEntries(model?.contract?.supports),
     ];
 }
 

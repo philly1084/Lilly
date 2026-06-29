@@ -141,6 +141,39 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('normalizes provider support maps before model routing', () => {
+        const selected = selectAutoModel([
+            { id: 'image-output-router', owned_by: 'gateway', supports: { image_generation: true } },
+            { id: 'fast-router', owned_by: 'gateway', supports: { chat: true, tools: { supported: true }, streaming: 'available' } },
+            { id: 'structured-router', owned_by: 'gateway', contract: { supports: { chat: true, structured_outputs: true } } },
+        ], {
+            needsTools: true,
+            apiMode: 'chat',
+        });
+
+        expect(isPublicChatModel({ id: 'image-output-router', supports: { image_generation: true } })).toBe(false);
+        expect(buildModelContract({
+            id: 'fast-router',
+            owned_by: 'gateway',
+            supports: { chat: true, tools: { supported: true }, streaming: 'available' },
+        })).toEqual(expect.objectContaining({
+            capabilities: ['chat', 'tools', 'streaming'],
+            supports: expect.objectContaining({
+                chat: true,
+                tools: true,
+                streaming: true,
+            }),
+        }));
+        expect(buildModelContract({
+            id: 'structured-router',
+            owned_by: 'gateway',
+            contract: { supports: { chat: true, structured_outputs: true } },
+        }).supports.structured_outputs).toBe(true);
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'fast-router',
+        }));
+    });
+
     test('labels common gateway model families in public contracts', () => {
         expect(buildModelContract({ id: 'mistral-large-latest' })).toEqual(expect.objectContaining({
             provider: 'mistral',
