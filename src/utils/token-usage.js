@@ -664,7 +664,12 @@ function extractResponseUsageMetadata(response = {}) {
         return metadataUsage;
     }
 
-    return withDefaultModelCallCount(response?.usage || {}, 1);
+    const directUsage = withDefaultModelCallCount(response?.usage || {}, 1);
+    if (directUsage) {
+        return directUsage;
+    }
+
+    return withDefaultModelCallCount(response, 1);
 }
 
 function extractUsageMetadataFromTrace(executionTrace = []) {

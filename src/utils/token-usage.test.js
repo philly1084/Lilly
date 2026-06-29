@@ -1,5 +1,6 @@
 const {
     createEstimatedUsageMetadata,
+    extractResponseUsageMetadata,
     extractUsageMetadataFromTrace,
     hasMeasuredTokenCounts,
     mergeUsageMetadata,
@@ -138,6 +139,28 @@ describe('token usage utilities', () => {
             totalTokens: 42,
             reasoningTokens: 5,
             cachedTokens: 7,
+            source: 'provider-response-metadata',
+        });
+    });
+
+    test('extracts provider response metadata usage wrappers', () => {
+        expect(extractResponseUsageMetadata({
+            id: 'response-usage-wrapper',
+            response_metadata: {
+                usage: {
+                    prompt_tokens: 18,
+                    completion_tokens: 7,
+                    total_tokens: 25,
+                    source: 'provider-response-metadata',
+                },
+            },
+        })).toEqual({
+            promptTokens: 18,
+            inputTokens: 18,
+            completionTokens: 7,
+            outputTokens: 7,
+            totalTokens: 25,
+            modelCalls: 1,
             source: 'provider-response-metadata',
         });
     });
