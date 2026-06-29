@@ -455,7 +455,7 @@
       }
     }
 
-    const directKeys = ['output_text', 'text', 'content', 'message', 'response', 'output'];
+    const directKeys = ['output_text', 'text', 'refusal', 'content', 'message', 'response', 'output'];
     for (const key of directKeys) {
       const extracted = extractAssistantText(value[key]);
       if (extracted) {
@@ -878,6 +878,16 @@
       events.push({
         type: 'text_delta',
         content: extractStreamText(payload.delta ?? payload.output_text_delta ?? ''),
+        raw: payload,
+        ...metadata,
+      });
+      return events;
+    }
+
+    if (payload.type === 'response.refusal.delta') {
+      events.push({
+        type: 'text_delta',
+        content: extractStreamText(payload.delta ?? payload.refusal_delta ?? ''),
         raw: payload,
         ...metadata,
       });

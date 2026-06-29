@@ -193,6 +193,20 @@ describe('openai-sse helpers', () => {
     });
   });
 
+  test('normalizes typed response refusal deltas as visible assistant text', () => {
+    const events = normalizeGatewayEventPayload({
+      object: 'response.chunk',
+      type: 'response.refusal.delta',
+      delta: 'I can help with a safer alternative.',
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'text_delta',
+      content: 'I can help with a safer alternative.',
+    });
+  });
+
   test('normalizes reasoning items embedded in response chunk output arrays', () => {
     const events = normalizeGatewayEventPayload({
       object: 'response.chunk',
@@ -348,6 +362,28 @@ describe('openai-sse helpers', () => {
     ]);
     expect(events[0].content).toBe('Final answer');
     expect(events[1].content).toBe('Checked the request. Chose the direct path.');
+  });
+
+  test('normalizes final JSON response refusal content as visible text', () => {
+    const events = normalizeGatewayEventPayload({
+      object: 'response',
+      id: 'resp_refusal',
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            { type: 'refusal', refusal: 'I can help with a safer version instead.' },
+          ],
+        },
+      ],
+    }, { allowFinalText: true });
+
+    expect(events.map((event) => event.type)).toEqual(['text_delta', 'final']);
+    expect(events[0]).toMatchObject({
+      content: 'I can help with a safer version instead.',
+      finalChunk: true,
+    });
   });
 
   test('keeps Kimi-style thinking blocks out of final assistant text', () => {
