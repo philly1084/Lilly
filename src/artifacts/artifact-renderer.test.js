@@ -268,6 +268,26 @@ describe('normalizeMermaidSource', () => {
         expect(parts.bodyContent).not.toContain('Hidden chain');
     });
 
+    test('drops colon-suffixed internal thought markers from html documents', () => {
+        const parts = extractCompositeDocumentParts([
+            '```html',
+            '<!DOCTYPE html>',
+            '<html><head><title>Colon Marker Clean</title></head><body><main>',
+            'START REASONING:',
+            'Hidden layout planning should not render in the generated document.',
+            'STOP REASONING:',
+            '<h1>Colon Marker Clean</h1>',
+            '</main></body></html>',
+            '```',
+        ].join('\n'));
+
+        expect(parts.headContent).toContain('<title>Colon Marker Clean</title>');
+        expect(parts.bodyContent).toContain('<h1>Colon Marker Clean</h1>');
+        expect(parts.bodyContent).not.toContain('START REASONING:');
+        expect(parts.bodyContent).not.toContain('Hidden layout planning');
+        expect(parts.bodyContent).not.toContain('STOP REASONING:');
+    });
+
     test('drops internal thought comments from html documents', () => {
         const parts = extractCompositeDocumentParts([
             '```html',

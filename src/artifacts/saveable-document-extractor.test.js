@@ -94,6 +94,31 @@ describe('saveable document extractor', () => {
         expect(result.content).not.toContain('hidden reasoning');
     });
 
+    test('strips colon-suffixed internal thought markers from saved html', () => {
+        const result = extractSaveableDocumentArtifact({
+            assistantText: [
+                'Save this as `colon-marker-clean.html`.',
+                '```html',
+                '<!DOCTYPE html><html><head><title>Colon Marker Clean</title></head><body>',
+                'BEGIN ANALYSIS:',
+                'Private planning should not become saved document text.',
+                'END ANALYSIS:',
+                '<main><h1>Colon Marker Clean</h1></main>',
+                '</body></html>',
+                '```',
+            ].join('\n'),
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            format: 'html',
+            filename: 'colon-marker-clean.html',
+            content: expect.stringContaining('<h1>Colon Marker Clean</h1>'),
+        }));
+        expect(result.content).not.toContain('BEGIN ANALYSIS:');
+        expect(result.content).not.toContain('Private planning');
+        expect(result.content).not.toContain('END ANALYSIS:');
+    });
+
     test('strips internal thought comments from saved html', () => {
         const result = extractSaveableDocumentArtifact({
             assistantText: [

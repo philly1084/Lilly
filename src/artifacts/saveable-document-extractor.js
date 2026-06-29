@@ -7,7 +7,7 @@ const SAVE_AS_FILENAME_PATTERN = /\b(?:save|saved|saving|name|named|called|downl
 const HTML_FENCE_PATTERN = /([`']{3,})([a-z0-9_-]*)\s*([\s\S]*?)\1/ig;
 const INTERNAL_THOUGHT_TAG_PATTERN = /<\s*(?:think|thinking|thought|analysis|reasoning)(?:\s[^>]*)?>[\s\S]*?<\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*>/ig;
 const INTERNAL_THOUGHT_BRACKET_PATTERN = /\[\s*(?:think|thinking|thought|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*(?:think|thinking|thought|analysis|reasoning)\s*\]/ig;
-const INTERNAL_THOUGHT_MARKER_PATTERN = /(?:^|\n)\s*(?:begin|start)\s+(?:think|thinking|thought|analysis|reasoning)\s*\n[\s\S]*?\n\s*(?:end|stop)\s+(?:think|thinking|thought|analysis|reasoning)\s*(?=\n|$)/ig;
+const INTERNAL_THOUGHT_MARKER_PATTERN = /(?:^|\n)\s*(?:begin|start)\s+(?:think|thinking|thought|analysis|reasoning)\s*:?\s*\n[\s\S]*?\n\s*(?:end|stop)\s+(?:think|thinking|thought|analysis|reasoning)\s*:?\s*(?=\n|$)/ig;
 const INTERNAL_THOUGHT_COMMENT_PATTERN = /<!--\s*(?:(?:begin|start)\s+)?(?:think|thinking|thought|analysis|reasoning)\b[\s\S]*?-->/ig;
 const INTERNAL_THOUGHT_FENCE_PATTERN = /(?:^|\n)\s*([`']{3,})(?:think|thinking|thought|analysis|reasoning)\b[^\n]*\n[\s\S]*?\n\s*\1\s*(?=\n|$)/ig;
 
