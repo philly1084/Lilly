@@ -119,6 +119,23 @@ describe('OpenAIClient provider sessions', () => {
         data: [
           { id: 'gpt-5.4-mini', capabilities: ['chat'], owned_by: 'openai' },
           { id: 'gpt-image-2', capabilities: ['image_generation'], owned_by: 'openai' },
+          {
+            id: 'gateway-image-model',
+            metadata: {
+              capabilities: { image_generation: { supported: true } },
+              sizes: ['1024x1024', '1536x1024'],
+            },
+            owned_by: 'gateway',
+          },
+          {
+            id: 'contract-image-model',
+            contract: {
+              capability_map: { image_generation: 'available' },
+            },
+            metadata: {
+              qualities: ['standard', 'high'],
+            },
+          },
         ],
       })),
     });
@@ -131,6 +148,14 @@ describe('OpenAIClient provider sessions', () => {
         id: 'gpt-image-2',
         sizes: expect.arrayContaining(['1536x1024']),
         qualities: expect.arrayContaining(['high']),
+      }),
+      expect.objectContaining({
+        id: 'gateway-image-model',
+        sizes: ['1024x1024', '1536x1024'],
+      }),
+      expect.objectContaining({
+        id: 'contract-image-model',
+        qualities: ['standard', 'high'],
       }),
     ]);
     expect(global.fetch).toHaveBeenCalledWith(
