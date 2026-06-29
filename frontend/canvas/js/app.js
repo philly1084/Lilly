@@ -639,7 +639,9 @@ class CanvasApp {
 
         // Update UI
         document.querySelectorAll('.type-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.type === type);
+            const isActive = btn.dataset.type === type;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
 
         // Get handler and update editor

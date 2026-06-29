@@ -37,15 +37,15 @@
                 </div>
             </div>
             <div class="header-center">
-                <div class="canvas-type-selector">
-                    <button class="type-btn active" data-type="code" title="Code Editor">
+                <div class="canvas-type-selector" role="group" aria-label="Canvas type">
+                    <button class="type-btn active" data-type="code" title="Code Editor" aria-pressed="true">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="16 18 22 12 16 6"></polyline>
                             <polyline points="8 6 2 12 8 18"></polyline>
                         </svg>
                         <span>Code</span>
                     </button>
-                    <button class="type-btn" data-type="document" title="Document Editor">
+                    <button class="type-btn" data-type="document" title="Document Editor" aria-pressed="false">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14 2 14 8 20 8"></polyline>
@@ -55,7 +55,7 @@
                         </svg>
                         <span>Document</span>
                     </button>
-                    <button class="type-btn" data-type="diagram" title="Diagram Editor">
+                    <button class="type-btn" data-type="diagram" title="Diagram Editor" aria-pressed="false">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="7" height="7"></rect>
                             <rect x="14" y="3" width="7" height="7"></rect>
@@ -64,7 +64,7 @@
                         </svg>
                         <span>Diagram</span>
                     </button>
-                    <button class="type-btn" data-type="frontend" title="Frontend Demo Builder">
+                    <button class="type-btn" data-type="frontend" title="Frontend Demo Builder" aria-pressed="false">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="2" y="4" width="20" height="16" rx="2"></rect>
                             <path d="M2 8h20"></path>
