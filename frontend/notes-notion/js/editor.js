@@ -809,53 +809,55 @@ const Editor = (function() {
         const rect = range.getBoundingClientRect();
         const toolbar = document.createElement('div');
         toolbar.className = 'inline-toolbar';
+        toolbar.setAttribute('role', 'toolbar');
+        toolbar.setAttribute('aria-label', 'Inline text formatting');
         toolbar.innerHTML = `
-            <button class="inline-toolbar-btn" data-cmd="bold" title="Bold (Ctrl+B)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="inline-toolbar-btn" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-keyshortcuts="Control+B">
+                <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path>
                     <path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path>
                 </svg>
             </button>
-            <button class="inline-toolbar-btn" data-cmd="italic" title="Italic (Ctrl+I)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="inline-toolbar-btn" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-keyshortcuts="Control+I">
+                <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="19" y1="4" x2="10" y2="4"></line>
                     <line x1="14" y1="20" x2="5" y2="20"></line>
                     <line x1="15" y1="4" x2="9" y2="20"></line>
                 </svg>
             </button>
-            <button class="inline-toolbar-btn" data-cmd="underline" title="Underline (Ctrl+U)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="inline-toolbar-btn" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline" aria-keyshortcuts="Control+U">
+                <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"></path>
                     <line x1="4" y1="21" x2="20" y2="21"></line>
                 </svg>
             </button>
-            <button class="inline-toolbar-btn" data-cmd="strikethrough" title="Strikethrough">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="inline-toolbar-btn" data-cmd="strikethrough" title="Strikethrough" aria-label="Strikethrough">
+                <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M17.3 4.9c-2.3-.6-4.4-1-6.2-.9-2.7.1-5.3.8-5.3 3.2 0 1.5 1.1 2.4 3 3.1"></path>
                     <path d="M12 21c3.4 0 6-1.2 6-3.5 0-1.6-.8-2.6-2.4-3.3"></path>
                     <line x1="4" y1="11" x2="20" y2="11"></line>
                 </svg>
             </button>
-            <button class="inline-toolbar-btn" data-cmd="hiliteColor" data-value="#fef08a" title="Highlight">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="inline-toolbar-btn" data-cmd="hiliteColor" data-value="#fef08a" title="Highlight" aria-label="Yellow highlight">
+                <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="m9 11-6 6v3h3l6-6"></path>
                     <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0L7.4 9.4a2 2 0 0 1 0-2.8L12 2"></path>
                     <path d="m14 4 6 6"></path>
                 </svg>
             </button>
-            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#bbf7d0" title="Green highlight" style="--swatch-color: #bbf7d0;"></button>
-            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#bfdbfe" title="Blue highlight" style="--swatch-color: #bfdbfe;"></button>
-            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#ddd6fe" title="Purple highlight" style="--swatch-color: #ddd6fe;"></button>
-            <button class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#fbcfe8" title="Pink highlight" style="--swatch-color: #fbcfe8;"></button>
+            <button type="button" class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#bbf7d0" title="Green highlight" aria-label="Green highlight" style="--swatch-color: #bbf7d0;"></button>
+            <button type="button" class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#bfdbfe" title="Blue highlight" aria-label="Blue highlight" style="--swatch-color: #bfdbfe;"></button>
+            <button type="button" class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#ddd6fe" title="Purple highlight" aria-label="Purple highlight" style="--swatch-color: #ddd6fe;"></button>
+            <button type="button" class="inline-toolbar-swatch" data-cmd="hiliteColor" data-value="#fbcfe8" title="Pink highlight" aria-label="Pink highlight" style="--swatch-color: #fbcfe8;"></button>
             <div class="inline-toolbar-divider"></div>
-            <button class="inline-toolbar-btn" data-cmd="createLink" title="Link (Ctrl+K)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="inline-toolbar-btn" data-cmd="createLink" title="Link (Ctrl+K)" aria-label="Create link" aria-keyshortcuts="Control+K">
+                <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                 </svg>
             </button>
-            <button class="inline-toolbar-btn" data-cmd="removeFormat" title="Clear Formatting">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="inline-toolbar-btn" data-cmd="removeFormat" title="Clear Formatting" aria-label="Clear formatting">
+                <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 7v4a1 1 0 0 0 1 1h3"></path>
                     <path d="M7 7v10"></path>
                     <path d="M10 8v8a1 1 0 0 0 1 1h2"></path>
