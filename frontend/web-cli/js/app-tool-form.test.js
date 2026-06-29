@@ -539,6 +539,34 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(app.commandDrawerToggle.getAttribute('title')).toBe('Open command actions');
     });
 
+    test('opens the drawer from the trigger with arrow keys and focuses the expected action', () => {
+        const app = createDrawerHarness();
+        const preventDefault = jest.fn();
+        const stopPropagation = jest.fn();
+        app.commandDrawer.hidden = true;
+
+        app.handleCommandDrawerToggleKeydown({
+            key: 'ArrowDown',
+            preventDefault,
+            stopPropagation,
+        });
+
+        expect(app.commandDrawer.hidden).toBe(false);
+        expect(app.commandDrawerToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(document.activeElement).toBe(document.getElementById('sessions'));
+        expect(preventDefault).toHaveBeenCalled();
+        expect(stopPropagation).toHaveBeenCalled();
+
+        app.commandDrawer.hidden = true;
+        app.handleCommandDrawerToggleKeydown({
+            key: 'ArrowUp',
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        });
+
+        expect(document.activeElement).toBe(document.getElementById('home'));
+    });
+
     test('closes the drawer and restores trigger focus on Escape', () => {
         const app = createDrawerHarness();
         const preventDefault = jest.fn();

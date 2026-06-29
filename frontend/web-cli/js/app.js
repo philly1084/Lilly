@@ -3275,6 +3275,10 @@ class CodeCLIApp {
             this.toggleCommandDrawer();
         });
 
+        this.commandDrawerToggle.addEventListener('keydown', (e) => {
+            this.handleCommandDrawerToggleKeydown(e);
+        });
+
         this.commandDrawer.addEventListener('click', (e) => {
             if (e.target.closest('button, a')) {
                 this.closeCommandDrawer();
@@ -3330,6 +3334,23 @@ class CodeCLIApp {
         const currentIndex = Math.max(0, items.indexOf(currentItem));
         const nextIndex = (currentIndex + direction + items.length) % items.length;
         items[nextIndex].focus({ preventScroll: true });
+    }
+
+    handleCommandDrawerToggleKeydown(e) {
+        const openFromStartKeys = ['ArrowDown', 'ArrowRight', 'Home'];
+        const openFromEndKeys = ['ArrowUp', 'ArrowLeft', 'End'];
+
+        if (!openFromStartKeys.includes(e.key) && !openFromEndKeys.includes(e.key)) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleCommandDrawer(true);
+
+        const items = this.getCommandDrawerItems();
+        const targetItem = openFromEndKeys.includes(e.key) ? items[items.length - 1] : items[0];
+        targetItem?.focus({ preventScroll: true });
     }
 
     handleCommandDrawerKeydown(e) {
