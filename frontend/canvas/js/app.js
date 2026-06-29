@@ -1385,12 +1385,14 @@ class CanvasApp {
         // Create simple modal
         const modal = document.createElement('div');
         modal.className = 'toast info';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-label', 'Export diagram options');
         modal.innerHTML = `
             <div class="toast-message">
                 <strong>Export Diagram</strong><br>
                 ${options.map((opt, i) => `<button class="btn btn-secondary" style="margin: 4px;" data-index="${i}">${opt.label}</button>`).join('')}
             </div>
-            <button class="toast-close">&times;</button>
+            <button class="toast-close" aria-label="Close export diagram options">&times;</button>
         `;
 
         modal.querySelectorAll('[data-index]').forEach(btn => {
@@ -1450,12 +1452,14 @@ class CanvasApp {
 
         const modal = document.createElement('div');
         modal.className = 'toast info';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-label', 'Export frontend demo options');
         modal.innerHTML = `
             <div class="toast-message">
                 <strong>Export Frontend Demo</strong><br>
                 ${options.map((opt, i) => `<button class="btn btn-secondary" style="margin: 4px;" data-index="${i}">${opt.label}</button>`).join('')}
             </div>
-            <button class="toast-close">&times;</button>
+            <button class="toast-close" aria-label="Close export frontend demo options">&times;</button>
         `;
 
         modal.querySelectorAll('[data-index]').forEach((btn) => {
@@ -1669,9 +1673,13 @@ class CanvasApp {
         
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
+        const isUrgent = type === 'error' || type === 'warning';
+        toast.setAttribute('role', isUrgent ? 'alert' : 'status');
+        toast.setAttribute('aria-live', isUrgent ? 'assertive' : 'polite');
+        toast.setAttribute('aria-atomic', 'true');
         toast.innerHTML = `
             <span class="toast-message">${message}</span>
-            <button class="toast-close">&times;</button>
+            <button class="toast-close" aria-label="Dismiss notification">&times;</button>
         `;
 
         toast.querySelector('.toast-close').addEventListener('click', () => {

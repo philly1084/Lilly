@@ -96,4 +96,25 @@ describe('Canvas type selector accessibility', () => {
             ['frontend', false, 'false'],
         ]);
     });
+
+    test('announces canvas toast notifications with dismissible controls', () => {
+        const dom = new JSDOM('<div id="toast-container" aria-label="Canvas notifications"></div>');
+        const CanvasApp = loadCanvasAppClass(dom.window.document);
+        const app = Object.create(CanvasApp.prototype);
+
+        app.showToast('Copied to clipboard', 'success');
+        app.showToast('Failed to download file', 'error');
+
+        const [successToast, errorToast] = [...dom.window.document.querySelectorAll('.toast')];
+
+        expect(successToast.getAttribute('role')).toBe('status');
+        expect(successToast.getAttribute('aria-live')).toBe('polite');
+        expect(successToast.getAttribute('aria-atomic')).toBe('true');
+        expect(successToast.querySelector('.toast-close').getAttribute('aria-label')).toBe('Dismiss notification');
+
+        expect(errorToast.getAttribute('role')).toBe('alert');
+        expect(errorToast.getAttribute('aria-live')).toBe('assertive');
+        expect(errorToast.getAttribute('aria-atomic')).toBe('true');
+        expect(errorToast.querySelector('.toast-close').getAttribute('aria-label')).toBe('Dismiss notification');
+    });
 });
