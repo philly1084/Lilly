@@ -55,7 +55,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
         expect(html).toContain('css/styles.css?v=20260625b');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
-        expect(html).toContain('js/ui.js?v=20260629a');
+        expect(html).toContain('js/ui.js?v=20260629b');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(uiSource).toContain("if (event.key === 'Escape')");
@@ -75,7 +75,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="progressbar"');
         expect(html).toContain('aria-labelledby="export-progress-text"');
         expect(html).toContain('aria-describedby="export-progress-percent"');
-        expect(html).toContain('js/ui.js?v=20260629a');
+        expect(html).toContain('js/ui.js?v=20260629b');
         expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
@@ -93,7 +93,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-busy="false"');
-        expect(html).toContain('js/ui.js?v=20260629a');
+        expect(html).toContain('js/ui.js?v=20260629b');
         expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
@@ -128,5 +128,18 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('this.setImageSource(nextButton.dataset.source || \'generate\');');
         expect(uiSource).toContain('nextButton.focus();');
         expect(uiSource).toContain('requestAnimationFrame(() => nextButton.focus());');
+    });
+
+    test('shortcuts help dialog exposes instructions without stealing unrelated modal focus', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('js/ui.js?v=20260629b');
+        expect(uiSource).toContain("modal.setAttribute('aria-describedby', 'shortcuts-description');");
+        expect(uiSource).toContain('<div class="modal-overlay" aria-hidden="true" onclick="uiHelpers.closeShortcutsModal()"></div>');
+        expect(uiSource).toContain('<button type="button" class="btn-icon" onclick="uiHelpers.closeShortcutsModal()" aria-label="Close keyboard shortcuts help">');
+        expect(uiSource).toContain('id="shortcuts-description"');
+        expect(uiSource).toContain('Common workspace shortcuts and slash commands for the current chat.');
+        expect(uiSource).toContain('if (!modal) {\n            return;\n        }');
     });
 });

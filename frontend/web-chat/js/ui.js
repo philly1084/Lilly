@@ -10111,6 +10111,7 @@ class UIHelpers {
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
         modal.setAttribute('aria-labelledby', 'shortcuts-title');
+        modal.setAttribute('aria-describedby', 'shortcuts-description');
         
         const shortcuts = [
             { key: 'Ctrl + K', description: 'Open command palette' },
@@ -10134,15 +10135,18 @@ class UIHelpers {
         ];
         
         modal.innerHTML = `
-            <div class="modal-overlay" onclick="uiHelpers.closeShortcutsModal()"></div>
+            <div class="modal-overlay" aria-hidden="true" onclick="uiHelpers.closeShortcutsModal()"></div>
             <div class="modal-content" style="max-width: 480px;">
                 <div class="modal-header">
                     <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
-                    <button class="btn-icon" onclick="uiHelpers.closeShortcutsModal()" aria-label="Close keyboard shortcuts help">
+                    <button type="button" class="btn-icon" onclick="uiHelpers.closeShortcutsModal()" aria-label="Close keyboard shortcuts help">
                         <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
                     </button>
                 </div>
                 <div class="modal-body">
+                    <p id="shortcuts-description" class="modal-description">
+                        Common workspace shortcuts and slash commands for the current chat.
+                    </p>
                     <div class="shortcuts-list" role="list">
                         ${shortcuts.map(s => s.key ? `
                             <div class="shortcut-item" role="listitem">
@@ -10169,9 +10173,11 @@ class UIHelpers {
 
     closeShortcutsModal() {
         const modal = document.getElementById('shortcuts-modal');
-        if (modal) {
-            modal.remove();
+        if (!modal) {
+            return;
         }
+
+        modal.remove();
         
         // Return focus to trigger button
         if (this.lastFocusedElement) {
