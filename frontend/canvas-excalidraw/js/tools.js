@@ -97,6 +97,7 @@ class ToolManager {
         
         // Initialize resize handles
         this.initResizeHandles();
+        this.syncToolButtonStates();
     }
 
     getSupportedTools() {
@@ -105,6 +106,14 @@ class ToolManager {
 
     isSupportedTool(toolName) {
         return this.supportedTools.has(toolName);
+    }
+
+    syncToolButtonStates(toolName = this.currentTool) {
+        document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+            const isActive = btn.dataset.tool === toolName;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
     }
     
     initResizeHandles() {
@@ -138,12 +147,7 @@ class ToolManager {
         
         this.currentTool = toolName;
         
-        // Update UI
-        document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        const btn = document.querySelector(`.tool-btn[data-tool="${toolName}"]`);
-        if (btn) btn.classList.add('active');
+        this.syncToolButtonStates(toolName);
         
         // Update cursor
         const container = document.getElementById('canvasContainer');
