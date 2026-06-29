@@ -29,6 +29,16 @@ function loadCanvasAppClass(document) {
 }
 
 describe('Canvas type selector accessibility', () => {
+    test('names the header model and reasoning selectors for assistive technology', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const modelSelect = dom.window.document.getElementById('model-select');
+        const reasoningSelect = dom.window.document.getElementById('reasoning-effort-select');
+
+        expect(modelSelect.getAttribute('aria-label')).toBe('Select AI model for Canvas generation');
+        expect(reasoningSelect.getAttribute('aria-label')).toBe('Select reasoning effort for Canvas generation');
+    });
+
     test('declares the active canvas type with aria-pressed in the initial markup', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         const dom = new JSDOM(html);
