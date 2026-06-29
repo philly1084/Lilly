@@ -309,8 +309,10 @@
                                 class="image-source-btn active" 
                                 data-source="generate"
                                 onclick="uiHelpers.setImageSource('generate')"
+                                onkeydown="uiHelpers.handleImageSourceKeydown(event)"
                                 role="radio"
-                                aria-checked="true">
+                                aria-checked="true"
+                                tabindex="0">
                             <i data-lucide="wand-2" class="w-4 h-4" aria-hidden="true"></i>
                             <span>AI Generate</span>
                         </button>
@@ -318,8 +320,10 @@
                                 class="image-source-btn" 
                                 data-source="unsplash"
                                 onclick="uiHelpers.setImageSource('unsplash')"
+                                onkeydown="uiHelpers.handleImageSourceKeydown(event)"
                                 role="radio"
-                                aria-checked="false">
+                                aria-checked="false"
+                                tabindex="-1">
                             <i data-lucide="camera" class="w-4 h-4" aria-hidden="true"></i>
                             <span>Unsplash</span>
                         </button>
@@ -327,8 +331,10 @@
                                 class="image-source-btn"
                                 data-source="podcast"
                                 onclick="uiHelpers.setImageSource('podcast')"
+                                onkeydown="uiHelpers.handleImageSourceKeydown(event)"
                                 role="radio"
-                                aria-checked="false">
+                                aria-checked="false"
+                                tabindex="-1">
                             <i data-lucide="audio-lines" class="w-4 h-4" aria-hidden="true"></i>
                             <span>Podcast</span>
                         </button>
@@ -1345,7 +1351,7 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260424a"></script>
-    <script defer src="js/ui.js?v=20260628d"></script>
+    <script defer src="js/ui.js?v=20260629a"></script>
     <script defer src="js/app.js?v=20260531a"></script>
     <script defer src="js/artifacts.js?v=20260509a"></script>
 </body>

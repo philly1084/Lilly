@@ -6209,6 +6209,7 @@ class UIHelpers {
             const isActive = btn.dataset.source === source;
             btn.classList.toggle('active', isActive);
             btn.setAttribute('aria-checked', isActive);
+            btn.setAttribute('tabindex', isActive ? '0' : '-1');
         });
         
         // Show/hide appropriate options
@@ -6244,6 +6245,41 @@ class UIHelpers {
         
         // Re-initialize icons
         this.reinitializeIcons();
+    }
+
+    handleImageSourceKeydown(event) {
+        const handledKeys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
+        if (!handledKeys.includes(event.key)) {
+            return;
+        }
+
+        const buttons = Array.from(document.querySelectorAll('.image-source-btn'));
+        if (buttons.length === 0) {
+            return;
+        }
+
+        event.preventDefault();
+        const currentIndex = Math.max(0, buttons.indexOf(event.currentTarget));
+        let nextIndex = currentIndex;
+
+        if (event.key === 'Home') {
+            nextIndex = 0;
+        } else if (event.key === 'End') {
+            nextIndex = buttons.length - 1;
+        } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+            nextIndex = (currentIndex + 1) % buttons.length;
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+            nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+        }
+
+        const nextButton = buttons[nextIndex];
+        if (!nextButton) {
+            return;
+        }
+
+        this.setImageSource(nextButton.dataset.source || 'generate');
+        nextButton.focus();
+        requestAnimationFrame(() => nextButton.focus());
     }
 
     setupImageGenerationToggles() {
