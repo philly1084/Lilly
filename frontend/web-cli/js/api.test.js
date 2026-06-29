@@ -42,6 +42,47 @@ function loadWebCliApi(fetchMock = jest.fn()) {
     };
 }
 
+function createJsonResponse(data = {}, options = {}) {
+    return {
+        ok: options.ok !== false,
+        status: options.status || 200,
+        json: async () => data,
+        text: async () => JSON.stringify(data),
+        headers: {
+            get: jest.fn(() => null),
+        },
+    };
+}
+
+function createSseResponse(events = [], options = {}) {
+    const payload = events
+        .map((event) => `data: ${typeof event === 'string' ? event : JSON.stringify(event)}\n\n`)
+        .join('');
+    const chunks = [Buffer.from(payload, 'utf8')];
+
+    return {
+        ok: true,
+        status: 200,
+        headers: {
+            get: jest.fn((name) => (
+                String(name || '').toLowerCase() === 'x-session-id'
+                    ? (options.sessionId || null)
+                    : null
+            )),
+        },
+        body: {
+            getReader: () => ({
+                read: jest.fn(async () => {
+                    if (chunks.length === 0) {
+                        return { done: true };
+                    }
+                    return { done: false, value: chunks.shift() };
+                }),
+            }),
+        },
+    };
+}
+
 describe('web-cli API artifact metadata normalization', () => {
     test('normalizes snake_case artifact metadata from stream payloads', () => {
         const { api } = loadWebCliApi();
@@ -130,6 +171,49 @@ describe('web-cli API artifact metadata normalization', () => {
                 sizeBytes: 512,
             }),
         ]);
+    });
+});
+
+describe('web-cli API reasoning metadata normalization', () => {
+    test('preserves provider reasoning aliases when streaming without the shared gateway helper', async () => {
+        const fetchMock = jest.fn(async (url) => {
+            if (String(url).endsWith('/api/sessions')) {
+                return createJsonResponse({ id: 'session-1' });
+            }
+
+            return createSseResponse([
+                {
+                    choices: [{
+                        delta: {
+                            content: 'Done.',
+                            thought_text: 'Checked the command shape before answering.',
+                        },
+                    }],
+                },
+                '[DONE]',
+            ], { sessionId: 'session-1' });
+        });
+        const { api } = loadWebCliApi(fetchMock);
+
+        const chunks = [];
+        for await (const chunk of api.streamChat('status please')) {
+            chunks.push(chunk);
+        }
+
+        expect(chunks).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'reasoning_summary_delta',
+                content: 'Checked the command shape before answering.',
+            }),
+            expect.objectContaining({ type: 'delta', content: 'Done.' }),
+        ]));
+        expect(chunks[chunks.length - 1]).toEqual(expect.objectContaining({
+            type: 'done',
+            assistantMetadata: expect.objectContaining({
+                reasoningSummary: 'Checked the command shape before answering.',
+                reasoningAvailable: true,
+            }),
+        }));
     });
 });
 

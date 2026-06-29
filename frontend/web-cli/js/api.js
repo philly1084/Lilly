@@ -29,7 +29,7 @@ const buildGatewayHeaders = gatewayStreamHelpers.buildGatewayHeaders || ((header
     Authorization: 'Bearer any-key',
 }));
 const streamGatewayResponse = gatewayStreamHelpers.streamGatewayResponse || null;
-const extractAssistantMetadata = gatewayStreamHelpers.extractAssistantMetadata || (() => null);
+const extractAssistantMetadata = gatewayStreamHelpers.extractAssistantMetadata || extractAssistantMetadataFallback;
 const extractStreamMetadata = gatewayStreamHelpers.extractStreamMetadata || (() => ({}));
 const stripNullCharacters = gatewayStreamHelpers.stripNullCharacters || ((value = '') => String(value || '').replace(/\u0000/g, ''));
 
@@ -54,14 +54,109 @@ function normalizeReasoningSummary(value = '') {
     return normalizeReasoningSummary(
         value.reasoningSummary
         || value.reasoning_summary
+        || value.reasoningText
+        || value.reasoning_text
+        || value.reasoning_content
+        || value.reasoningContent
         || value.summary
         || value.summary_text
+        || value.summaryText
+        || value.thinkingSummary
+        || value.thinking_summary
+        || value.thinkingText
+        || value.thinking_text
+        || value.thinking_content
+        || value.thinkingContent
+        || value.thoughtSummary
+        || value.thought_summary
+        || value.thoughtText
+        || value.thought_text
+        || value.thought_content
+        || value.thoughtContent
+        || value.thought
+        || value.thought_delta
+        || value.thoughtDelta
         || value.reasoning
         || value.reasoning_delta
+        || value.reasoningDelta
+        || value.choices?.[0]?.message?.reasoning
+        || value.choices?.[0]?.message?.reasoning_text
+        || value.choices?.[0]?.message?.reasoning_content
+        || value.choices?.[0]?.message?.thinking_summary
+        || value.choices?.[0]?.message?.thinking_text
+        || value.choices?.[0]?.message?.thought_text
+        || value.choices?.[0]?.delta?.reasoning
+        || value.choices?.[0]?.delta?.reasoning_text
+        || value.choices?.[0]?.delta?.reasoning_content
+        || value.choices?.[0]?.delta?.thinking_summary
+        || value.choices?.[0]?.delta?.thinking_text
+        || value.choices?.[0]?.delta?.thought_text
+        || value.response?.choices?.[0]?.message?.reasoning
+        || value.response?.choices?.[0]?.message?.reasoning_text
+        || value.response?.choices?.[0]?.message?.reasoning_content
+        || value.response?.choices?.[0]?.message?.thinking_summary
+        || value.response?.choices?.[0]?.message?.thinking_text
+        || value.response?.choices?.[0]?.message?.thought_text
+        || value.response?.choices?.[0]?.delta?.reasoning
+        || value.response?.choices?.[0]?.delta?.reasoning_text
+        || value.response?.choices?.[0]?.delta?.reasoning_content
+        || value.response?.choices?.[0]?.delta?.thinking_summary
+        || value.response?.choices?.[0]?.delta?.thinking_text
+        || value.response?.choices?.[0]?.delta?.thought_text
         || value.text
         || value.content
         || '',
     );
+}
+
+function normalizeAssistantMetadata(metadata) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        return null;
+    }
+
+    const normalizedMetadata = {};
+    if (Array.isArray(metadata.artifacts)) {
+        normalizedMetadata.artifacts = normalizeArtifacts(metadata.artifacts);
+    }
+
+    const reasoningSummary = normalizeReasoningSummary(metadata);
+    if (reasoningSummary) {
+        normalizedMetadata.reasoningSummary = reasoningSummary;
+        normalizedMetadata.reasoningAvailable = metadata.reasoningAvailable !== false;
+    }
+
+    return Object.keys(normalizedMetadata).length > 0 ? normalizedMetadata : null;
+}
+
+function extractAssistantMetadataFallback(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+
+    const sources = [
+        value.assistantMetadata,
+        value.assistant_metadata,
+        value.metadata,
+        value.output,
+        value.message,
+        value.choices?.[0]?.message,
+        value.response?.assistantMetadata,
+        value.response?.assistant_metadata,
+        value.response?.metadata,
+        value.response?.output,
+        value.response?.message,
+        value.response?.choices?.[0]?.message,
+        value,
+    ];
+
+    for (const source of sources) {
+        const normalized = normalizeAssistantMetadata(source);
+        if (normalized) {
+            return normalized;
+        }
+    }
+
+    return null;
 }
 
 function mergeAssistantMetadata(currentValue, nextValue) {
@@ -785,7 +880,23 @@ class WebCLIAPI {
                                         || parsed?.choices?.[0]?.delta?.reasoning_text
                                         || parsed?.choices?.[0]?.delta?.reasoning_content
                                         || parsed?.choices?.[0]?.delta?.reasoning_details
+                                        || parsed?.choices?.[0]?.delta?.thinking_summary
+                                        || parsed?.choices?.[0]?.delta?.thinking_text
+                                        || parsed?.choices?.[0]?.delta?.thinking_content
+                                        || parsed?.choices?.[0]?.delta?.thought_summary
+                                        || parsed?.choices?.[0]?.delta?.thought_text
+                                        || parsed?.choices?.[0]?.delta?.thought_content
+                                        || parsed?.choices?.[0]?.message?.thinking_summary
+                                        || parsed?.choices?.[0]?.message?.thinking_text
+                                        || parsed?.choices?.[0]?.message?.thinking_content
+                                        || parsed?.choices?.[0]?.message?.thought_summary
+                                        || parsed?.choices?.[0]?.message?.thought_text
+                                        || parsed?.choices?.[0]?.message?.thought_content
                                         || parsed?.reasoning_delta
+                                        || parsed?.thinking_summary
+                                        || parsed?.thinking_text
+                                        || parsed?.thought_summary
+                                        || parsed?.thought_text
                                         || ''
                                     ),
                             );
