@@ -582,6 +582,16 @@ const NotesTts = (function() {
         };
     }
 
+    function getStopNarrationTitle(readRequest = null) {
+        if (readRequest?.mode === 'selection') {
+            return 'Stop selected text narration';
+        }
+        if (readRequest?.mode === 'from-here') {
+            return 'Stop current block narration';
+        }
+        return 'Stop page narration';
+    }
+
     function getActiveReadStartOffset() {
         return Math.max(0, Number(activeReadRequest?.startSearchOffset) || 0);
     }
@@ -791,7 +801,7 @@ const NotesTts = (function() {
         }
 
         const label = getButtonLabel();
-        const readRequest = createReadRequest();
+        const readRequest = activeReadRequest || createReadRequest();
         const text = readRequest.text;
         const available = manager?.isAvailable?.() === true;
         const loading = activeMessageId && manager?.isLoadingMessage?.(activeMessageId) === true;
@@ -809,7 +819,7 @@ const NotesTts = (function() {
             ? 'No readable page text'
             : (!available
                 ? String(diagnostics.message || 'Voice playback is unavailable.')
-                : (playing ? 'Stop page narration' : readRequest.title));
+                : (playing ? getStopNarrationTitle(readRequest) : readRequest.title));
         button.title = title;
         button.setAttribute('aria-label', title);
         if (label) {
