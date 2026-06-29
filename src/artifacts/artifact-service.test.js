@@ -2123,7 +2123,7 @@ describe('ArtifactService', () => {
                         title: 'Photo Brief',
                         sections: [
                             { heading: 'Overview', content: 'TODO: replace this overview.\nThis is the real overview content.\nInsert citations here.', level: 1 },
-                            { heading: 'Gallery Notes', content: '- Verified Unsplash photos\nTBD\n- Coherent sequence\nThis section should explain the image order later.', level: 1 },
+                            { heading: 'Gallery Notes', content: '- Verified Unsplash photos\nTBD\nComing soon\nUnder construction.\n- Coherent sequence\nThis section should explain the image order later.', level: 1 },
                         ],
                     }) }],
                 }],
@@ -2179,6 +2179,12 @@ describe('ArtifactService', () => {
         }));
         expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
             content: expect.not.stringContaining('TBD'),
+        }));
+        expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.not.stringContaining('Coming soon'),
+        }));
+        expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.not.stringContaining('Under construction'),
         }));
         expect(renderArtifact).toHaveBeenCalledWith(expect.objectContaining({
             content: expect.not.stringContaining('Insert citations here'),

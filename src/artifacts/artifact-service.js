@@ -129,6 +129,7 @@ const DOCUMENT_CONTENT_NOISE_PATTERNS = [
     /^\[research workflow\]$/i,
     /^\[verified image references\]$/i,
     /^(?:todo|tbd|tk|placeholder)(?:\b|[:\]-])/i,
+    /^(?:coming soon|under construction|content pending|to be filled(?: in)?)(?:[.!?])?$/i,
     /^(?:insert|add|write|draft)\s+(?:.+\s+)?(?:here|later)\.?$/i,
     /^this section (?:should|will|needs to)\b/i,
     /^section (?:to|should|will)\b/i,
