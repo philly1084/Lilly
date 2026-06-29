@@ -57,8 +57,8 @@
     <!-- Top Bar -->
     <header class="top-bar">
         <div class="top-bar-left">
-            <button class="menu-btn" id="menuBtn" title="Menu">
-                <svg viewBox="0 0 24 24" width="20" height="20">
+            <button class="menu-btn" id="menuBtn" type="button" title="Menu" aria-label="Open canvas menu">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                     <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
                 </svg>
             </button>
@@ -66,21 +66,21 @@
         </div>
         <div class="top-bar-center">
             <div class="canvas-actions">
-                <button id="resetZoomBtn" title="Reset Zoom (Ctrl+0)">
-                    <svg viewBox="0 0 24 24" width="16" height="16">
+                <button id="resetZoomBtn" type="button" title="Reset Zoom (Ctrl+0)" aria-label="Reset zoom to 100 percent">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
                     </svg>
                     <span id="zoomLevel">100%</span>
                 </button>
-                <button id="zoomOutBtn" title="Zoom Out (Ctrl+-)">-</button>
-                <button id="zoomInBtn" title="Zoom In (Ctrl++)">+</button>
+                <button id="zoomOutBtn" type="button" title="Zoom Out (Ctrl+-)" aria-label="Zoom out">-</button>
+                <button id="zoomInBtn" type="button" title="Zoom In (Ctrl++)" aria-label="Zoom in">+</button>
             </div>
             <!-- Model Selector Dropdown -->
             <div class="model-selector">
-                <svg viewBox="0 0 24 24" width="14" height="14" class="model-icon">
+                <svg viewBox="0 0 24 24" width="14" height="14" class="model-icon" aria-hidden="true">
                     <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                <select id="topModelSelect" title="Select AI Model">
+                <select id="topModelSelect" title="Select AI Model" aria-label="Select AI model">
                     <option value="gpt-4o">GPT-4o</option>
                     <option value="gpt-4o-mini">GPT-4o Mini</option>
                     <option value="claude-3-opus">Claude 3 Opus</option>
@@ -96,30 +96,30 @@
             </div>
         </div>
         <div class="top-bar-right">
-            <button id="enterpriseModeBtn" title="Toggle focus workspace" aria-label="Toggle focus workspace">
-                <svg viewBox="0 0 24 24" width="18" height="18">
+            <button id="enterpriseModeBtn" type="button" title="Toggle focus workspace" aria-label="Toggle focus workspace">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path fill="currentColor" d="M9 6V4c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v2h4c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2h4zm2 0h2V4h-2v2zm-6 5h14V8H5v3zm0 2v4h14v-4h-5v1h-4v-1H5z"/>
                 </svg>
             </button>
-            <button id="densityBtn" title="Density: Roomy" aria-label="Toggle layout density">
-                <svg viewBox="0 0 24 24" width="18" height="18">
+            <button id="densityBtn" type="button" title="Density: Roomy" aria-label="Toggle layout density">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path fill="currentColor" d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"/>
                 </svg>
             </button>
-            <button id="clearBtn" title="Clear Canvas">
-                <svg viewBox="0 0 24 24" width="18" height="18">
+            <button id="clearBtn" type="button" title="Clear Canvas" aria-label="Clear canvas">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                 </svg>
             </button>
-            <button id="importBtn" title="Import Files (Ctrl+O)">
-                <svg viewBox="0 0 24 24" width="18" height="18">
+            <button id="importBtn" type="button" title="Import Files (Ctrl+O)" aria-label="Import files">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path fill="currentColor" d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
                 </svg>
             </button>
             <!-- Theme Picker Dropdown -->
             <div class="theme-picker dropdown" id="themeDropdown">
-                <button id="themePickerBtn" title="Theme" aria-haspopup="menu" aria-expanded="false" aria-controls="themeMenu">
-                    <svg viewBox="0 0 24 24" width="18" height="18">
+                <button id="themePickerBtn" type="button" title="Theme" aria-label="Choose canvas theme" aria-haspopup="menu" aria-expanded="false" aria-controls="themeMenu">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                         <path fill="currentColor" d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/>
                     </svg>
                 </button>
@@ -146,8 +146,8 @@
                 </div>
             </div>
             <div class="dropdown" id="exportDropdown">
-                <button id="exportBtn" title="Export" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu">
-                    <svg viewBox="0 0 24 24" width="18" height="18">
+                <button id="exportBtn" type="button" title="Export" aria-label="Export canvas" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                         <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                     </svg>
                 </button>
@@ -185,8 +185,8 @@
                     </button>
                 </div>
             </div>
-            <button id="shareBtn" title="Share Canvas">
-                <svg viewBox="0 0 24 24" width="18" height="18">
+            <button id="shareBtn" type="button" title="Share Canvas" aria-label="Share canvas">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path fill="currentColor" d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/>
                 </svg>
             </button>

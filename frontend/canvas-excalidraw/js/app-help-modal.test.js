@@ -319,6 +319,39 @@ describe('canvas help modal accessibility', () => {
         delete global.window;
     });
 
+    test('top bar icon controls expose stable accessible names', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const document = dom.window.document;
+        const expectedLabels = {
+            menuBtn: 'Open canvas menu',
+            resetZoomBtn: 'Reset zoom to 100 percent',
+            zoomOutBtn: 'Zoom out',
+            zoomInBtn: 'Zoom in',
+            enterpriseModeBtn: 'Toggle focus workspace',
+            densityBtn: 'Toggle layout density',
+            clearBtn: 'Clear canvas',
+            importBtn: 'Import files',
+            themePickerBtn: 'Choose canvas theme',
+            exportBtn: 'Export canvas',
+            shareBtn: 'Share canvas',
+        };
+
+        Object.entries(expectedLabels).forEach(([id, label]) => {
+            const button = document.getElementById(id);
+
+            expect(button).not.toBeNull();
+            expect(button.getAttribute('type')).toBe('button');
+            expect(button.getAttribute('aria-label')).toBe(label);
+            button.querySelectorAll('svg').forEach((svg) => {
+                expect(svg.getAttribute('aria-hidden')).toBe('true');
+            });
+        });
+
+        expect(document.getElementById('topModelSelect').getAttribute('aria-label')).toBe('Select AI model');
+        expect(document.querySelector('.model-icon').getAttribute('aria-hidden')).toBe('true');
+    });
+
     test('opens as an accessible dialog and restores focus to the help button', () => {
         const { app } = createHelpModalHarness();
         const opener = document.getElementById('helpBtn');
