@@ -1370,6 +1370,64 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companyRunDetails').textContent).toContain('run-json');
     });
 
+    test('labels storage cleanup selections and destructive row actions', () => {
+        const dom = new JSDOM(`
+            <span id="storageTotalCount"></span>
+            <span id="storageTotalBytes"></span>
+            <span id="storageDataDirectory"></span>
+            <span id="storageSelectionStatus" role="status" aria-live="polite" aria-atomic="true"></span>
+            <button id="deleteSelectedStorageBtn" type="button" aria-describedby="storageSelectionStatus"></button>
+            <input type="checkbox" id="storageSelectAll">
+            <table><tbody id="storageTableBody"></tbody></table>
+        `);
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.state = {};
+        dashboard.storageSelection = new Set(['generatedArtifacts::artifact-1']);
+        dashboard.setTextContent = Dashboard.prototype.setTextContent.bind(dashboard);
+        dashboard.formatBytes = Dashboard.prototype.formatBytes.bind(dashboard);
+        dashboard.formatDate = jest.fn((value) => `formatted ${value}`);
+        dashboard.escapeHtml = Dashboard.prototype.escapeHtml.bind(dashboard);
+        dashboard.getStorageSelectionKey = Dashboard.prototype.getStorageSelectionKey.bind(dashboard);
+        dashboard.updateStorageSelectionControls = Dashboard.prototype.updateStorageSelectionControls.bind(dashboard);
+
+        dashboard.renderStorageSettings({
+            totalCount: 1,
+            totalBytes: 1024,
+            dataDirectory: 'C:/data',
+            categories: [
+                {
+                    label: 'Generated artifacts',
+                    records: [
+                        {
+                            id: 'artifact-1',
+                            category: 'generatedArtifacts',
+                            filename: 'quarterly-report.pdf',
+                            diskBytes: 1024,
+                            updatedAt: '2026-06-29T03:00:00.000Z',
+                            storage: 'local',
+                        },
+                    ],
+                },
+            ],
+        });
+
+        const checkbox = document.querySelector('.storage-select-record');
+        const deleteButton = document.getElementById('deleteSelectedStorageBtn');
+        const rowDelete = document.querySelector('.storage-delete-file');
+
+        expect(document.getElementById('storageSelectionStatus').getAttribute('role')).toBe('status');
+        expect(checkbox.getAttribute('aria-label')).toBe('Select quarterly-report.pdf, Generated artifacts, updated formatted 2026-06-29T03:00:00.000Z');
+        expect(checkbox.checked).toBe(true);
+        expect(deleteButton.disabled).toBe(false);
+        expect(deleteButton.getAttribute('aria-label')).toBe('Delete 1 selected storage record');
+        expect(rowDelete.getAttribute('aria-label')).toBe('Delete quarterly-report.pdf');
+    });
+
     test('announces and safely dismisses dashboard toasts', () => {
         jest.useFakeTimers();
         const dom = new JSDOM('<div id="toastContainer" aria-live="polite" aria-atomic="false"></div>');

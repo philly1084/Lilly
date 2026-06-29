@@ -5516,6 +5516,11 @@ class Dashboard {
             ].filter(Boolean);
             const isChatSession = record.category === 'chatSessions';
             const deleteLabel = isChatSession ? 'Delete Chat' : 'Delete';
+            const recordLabel = [
+                record.filename || record.id,
+                record.categoryLabel || record.category,
+                record.updatedAt || record.createdAt ? `updated ${this.formatDate(record.updatedAt || record.createdAt)}` : '',
+            ].filter(Boolean).join(', ');
 
             return `
                 <tr class="${selected ? 'storage-row-selected' : ''}" data-storage-key="${this.escapeHtml(selectionKey)}">
@@ -5523,7 +5528,7 @@ class Dashboard {
                         <input
                             type="checkbox"
                             class="storage-select-record"
-                            aria-label="Select ${this.escapeHtml(record.filename || record.id)}"
+                            aria-label="Select ${this.escapeHtml(recordLabel)}"
                             data-category="${this.escapeHtml(record.category)}"
                             data-id="${this.escapeHtml(record.id)}"
                             ${selected ? 'checked' : ''}
@@ -5546,6 +5551,7 @@ class Dashboard {
                                 class="btn btn-ghost btn-sm storage-delete-file"
                                 data-category="${this.escapeHtml(record.category)}"
                                 data-id="${this.escapeHtml(record.id)}"
+                                aria-label="${this.escapeHtml(`${deleteLabel} ${record.filename || record.id}`)}"
                             >${deleteLabel}</button>
                         </div>
                     </td>
@@ -5629,6 +5635,12 @@ class Dashboard {
         const deleteButton = document.getElementById('deleteSelectedStorageBtn');
         if (deleteButton) {
             deleteButton.disabled = selectedCount === 0;
+            deleteButton.setAttribute(
+                'aria-label',
+                selectedCount === 0
+                    ? 'Delete selected storage records'
+                    : `Delete ${selectedCount.toLocaleString()} selected storage record${selectedCount === 1 ? '' : 's'}`,
+            );
         }
 
         const visibleCheckboxes = Array.from(document.querySelectorAll('.storage-select-record'));

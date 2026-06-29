@@ -1795,8 +1795,8 @@
                                             <button type="button" class="btn btn-danger" id="clearAllStorageBtn">Clear All</button>
                                         </div>
                                         <div class="storage-bulk-actions">
-                                            <span class="storage-selection-status" id="storageSelectionStatus">0 selected</span>
-                                            <button type="button" class="btn btn-danger" id="deleteSelectedStorageBtn" disabled>Delete Selected</button>
+                                            <span class="storage-selection-status" id="storageSelectionStatus" role="status" aria-live="polite" aria-atomic="true">0 selected</span>
+                                            <button type="button" class="btn btn-danger" id="deleteSelectedStorageBtn" aria-describedby="storageSelectionStatus" aria-label="Delete selected storage records" disabled>Delete Selected</button>
                                         </div>
                                         <div class="table-wrapper storage-table-wrapper">
                                             <table class="logs-table storage-table">
