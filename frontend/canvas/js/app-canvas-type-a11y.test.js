@@ -117,4 +117,25 @@ describe('Canvas type selector accessibility', () => {
         expect(errorToast.getAttribute('aria-atomic')).toBe('true');
         expect(errorToast.querySelector('.toast-close').getAttribute('aria-label')).toBe('Dismiss notification');
     });
+
+    test('names canvas export option popups and their close controls', () => {
+        const dom = new JSDOM('<div id="toast-container" aria-label="Canvas notifications"></div>');
+        const CanvasApp = loadCanvasAppClass(dom.window.document);
+        const app = Object.create(CanvasApp.prototype);
+
+        app.editor = { getValue: jest.fn(() => 'graph TD;') };
+        app.exportManager = {
+            downloadFile: jest.fn(),
+            downloadSVG: jest.fn(),
+            downloadPNG: jest.fn(),
+        };
+
+        app.showDiagramExportOptions({ outerHTML: '<svg></svg>' });
+
+        const dialog = dom.window.document.querySelector('.toast');
+
+        expect(dialog.getAttribute('role')).toBe('dialog');
+        expect(dialog.getAttribute('aria-label')).toBe('Export diagram options');
+        expect(dialog.querySelector('.toast-close').getAttribute('aria-label')).toBe('Close export diagram options');
+    });
 });
