@@ -1,6 +1,7 @@
 const { AgentOrchestrator } = require('./AgentOrchestrator');
 const { ToolDefinition } = require('./tools/ToolDefinition');
 const settingsController = require('../routes/admin/settings.controller');
+const config = require('../config');
 
 describe('AgentOrchestrator', () => {
     afterEach(() => {
@@ -212,6 +213,39 @@ describe('AgentOrchestrator', () => {
         ]);
     });
 
+    test('normalizes snake_case tool events from runtime responses', () => {
+        const orchestrator = new AgentOrchestrator({
+            llmClient: {
+                complete: jest.fn(),
+            },
+            embedder: {
+                embed: jest.fn(),
+            },
+        });
+        const toolEvents = [{
+            toolCall: {
+                id: 'call_remote_1',
+                function: {
+                    name: 'remote-command',
+                    arguments: '{"command":"kubectl get pods"}',
+                },
+            },
+            result: {
+                success: true,
+                data: { stdout: 'pod/example Running' },
+            },
+        }];
+
+        expect(orchestrator.extractToolEvents({
+            metadata: {
+                tool_events: toolEvents,
+            },
+        })).toBe(toolEvents);
+        expect(orchestrator.extractToolEvents({
+            tool_events: toolEvents,
+        })).toBe(toolEvents);
+    });
+
     test('ignores conversation agent executor unless it is explicitly enabled in config', async () => {
         const llmClient = {
             createResponse: jest.fn().mockResolvedValue({
@@ -329,9 +363,9 @@ describe('AgentOrchestrator', () => {
 
         expect(toolIds).toContain('web-search');
         expect(toolIds).toContain('code-sandbox');
+        expect(toolIds).toContain('ssh-execute');
         expect(toolIds).not.toContain('docker-exec');
         expect(toolIds).not.toContain('remote-command'); // Remote CLI requires valid config
-        expect(toolIds).not.toContain('ssh-execute'); // SSH requires valid config
     });
 
     test('remote build profile narrows the available tool set and enables remote CLI only with usable config', () => {
@@ -487,7 +521,7 @@ describe('AgentOrchestrator', () => {
             ownerId: null,
             profile: 'research',
         }));
-        expect(sessionStore.getRecentMessages).toHaveBeenCalledWith('session-3', 20);
+        expect(sessionStore.getRecentMessages).toHaveBeenCalledWith('session-3', config.memory.recentTranscriptLimit);
         expect(sessionStore.recordResponse).toHaveBeenCalledWith('session-3', 'resp_2');
         expect(sessionStore.appendMessages).toHaveBeenCalledWith('session-3', expect.arrayContaining([
             expect.objectContaining({ role: 'user', content: 'Search for the latest update.' }),

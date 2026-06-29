@@ -1147,9 +1147,16 @@ class AgentOrchestrator {
   }
 
   extractToolEvents(response = {}) {
-    return Array.isArray(response?.metadata?.toolEvents)
-      ? response.metadata.toolEvents
-      : [];
+    const metadata = response?.metadata && typeof response.metadata === 'object'
+      ? response.metadata
+      : {};
+    const candidates = [
+      metadata.toolEvents,
+      metadata.tool_events,
+      response?.toolEvents,
+      response?.tool_events,
+    ];
+    return candidates.find((candidate) => Array.isArray(candidate)) || [];
   }
 
   wrapConversationStream({
