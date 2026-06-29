@@ -556,3 +556,54 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(stopPropagation).toHaveBeenCalled();
     });
 });
+
+describe('web-cli agent quick tool state', () => {
+    test('marks quick tools as a toolbar with an exposed active state', () => {
+        const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(indexMarkup);
+        const toolbelt = dom.window.document.getElementById('voxelToolbelt');
+        const buttons = Array.from(toolbelt.querySelectorAll('.voxel-tool-chip'));
+        const byTool = Object.fromEntries(buttons.map((button) => [button.dataset.tool, button]));
+
+        expect(toolbelt.getAttribute('role')).toBe('toolbar');
+        expect(toolbelt.getAttribute('aria-label')).toBe('Agent quick tools');
+        expect(byTool.chat.classList.contains('active')).toBe(true);
+        expect(byTool.chat.getAttribute('aria-pressed')).toBe('true');
+        expect(byTool.tools.getAttribute('aria-pressed')).toBe('false');
+        expect(byTool.files.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    test('keeps quick tool pressed state synchronized with the visual active chip', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM(`
+            <div id="voxelToolbelt" role="toolbar" aria-label="Agent quick tools">
+                <button type="button" class="voxel-tool-chip active" data-tool="chat" aria-pressed="true">Chat</button>
+                <button type="button" class="voxel-tool-chip" data-tool="tools" aria-pressed="false">Tools</button>
+                <button type="button" class="voxel-tool-chip" data-tool="files" aria-pressed="false">Files</button>
+            </div>
+        `);
+        app.voxelToolbelt = dom.window.document.getElementById('voxelToolbelt');
+
+        app.setActiveVoxelTool('files');
+
+        const buttons = Array.from(app.voxelToolbelt.querySelectorAll('.voxel-tool-chip'));
+        const byTool = Object.fromEntries(buttons.map((button) => [button.dataset.tool, button]));
+        expect(byTool.chat.classList.contains('active')).toBe(false);
+        expect(byTool.chat.getAttribute('aria-pressed')).toBe('false');
+        expect(byTool.tools.getAttribute('aria-pressed')).toBe('false');
+        expect(byTool.files.classList.contains('active')).toBe(true);
+        expect(byTool.files.getAttribute('aria-pressed')).toBe('true');
+    });
+});
+
+describe('web-cli startup command cards', () => {
+    test('labels visible startup command cards by their activation result', () => {
+        const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+
+        expect(source).toContain('aria-label="Focus the command input to ask Lilly"');
+        expect(source).toContain('aria-label="Run /tools to inspect available actions"');
+        expect(source).toContain('aria-label="Run /workflows to stage common task starters"');
+        expect(source).toContain('aria-label="Run /files to review generated artifacts"');
+        expect(source).toContain('aria-label="Run /remote status to check remote readiness"');
+    });
+});

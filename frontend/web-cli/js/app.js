@@ -3750,7 +3750,9 @@ class CodeCLIApp {
         }
 
         this.voxelToolbelt.querySelectorAll('.voxel-tool-chip').forEach((button) => {
-            button.classList.toggle('active', button.dataset.tool === tool);
+            const isActive = button.dataset.tool === tool;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
     }
 
@@ -7384,27 +7386,27 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                             </div>
                         </div>
                         <div class="voxel-command-grid" aria-label="Suggested commands">
-                            <button type="button" class="voxel-command-chip voxel-command-chip--primary" onclick="app.useVoxelQuickTool('chat')">
+                            <button type="button" class="voxel-command-chip voxel-command-chip--primary" onclick="app.useVoxelQuickTool('chat')" aria-label="Focus the command input to ask Lilly">
                                 <code>Ask</code>
                                 <span>Start with a normal request</span>
                             </button>
-                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/tools', { submit: true })">
+                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/tools', { submit: true })" aria-label="Run /tools to inspect available actions">
                                 <code>/tools</code>
                                 <span>Inspect available actions</span>
                             </button>
-                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/skills', { submit: true })">
+                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/skills', { submit: true })" aria-label="Run /skills to route with reusable skills">
                                 <code>/skills</code>
                                 <span>Route with reusable skills</span>
                             </button>
-                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/files', { submit: true })">
+                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/files', { submit: true })" aria-label="Run /files to review generated artifacts">
                                 <code>/files</code>
                                 <span>Review generated artifacts</span>
                             </button>
-                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/remote status', { submit: true })">
+                            <button type="button" class="voxel-command-chip" onclick="app.useCommandSuggestion('/remote status', { submit: true })" aria-label="Run /remote status to check remote agent readiness">
                                 <code>/remote status</code>
                                 <span>Check remote agent readiness</span>
                             </button>
-                            <button type="button" class="voxel-command-chip" onclick="app.useVoxelQuickTool('build')">
+                            <button type="button" class="voxel-command-chip" onclick="app.useVoxelQuickTool('build')" aria-label="Draft a repository build task prompt">
                                 <code>Build</code>
                                 <span>Draft a repo task prompt</span>
                             </button>
@@ -7458,23 +7460,23 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
                     </div>
                 </section>
                 <section class="command-center-actions" aria-label="Suggested commands">
-                    <button type="button" onclick="app.commandInput?.focus()">
+                    <button type="button" onclick="app.commandInput?.focus()" aria-label="Focus the command input to ask Lilly">
                         <strong>Ask</strong>
                         <span>Start a normal request</span>
                     </button>
-                    <button type="button" onclick="app.useCommandSuggestion('/tools', { submit: true })">
+                    <button type="button" onclick="app.useCommandSuggestion('/tools', { submit: true })" aria-label="Run /tools to inspect available actions">
                         <strong>/tools</strong>
                         <span>Inspect available actions</span>
                     </button>
-                    <button type="button" onclick="app.useCommandSuggestion('/workflows', { submit: true })">
+                    <button type="button" onclick="app.useCommandSuggestion('/workflows', { submit: true })" aria-label="Run /workflows to stage common task starters">
                         <strong>/workflows</strong>
                         <span>Stage common task starters</span>
                     </button>
-                    <button type="button" onclick="app.useCommandSuggestion('/files', { submit: true })">
+                    <button type="button" onclick="app.useCommandSuggestion('/files', { submit: true })" aria-label="Run /files to review generated artifacts">
                         <strong>/files</strong>
                         <span>Review generated artifacts</span>
                     </button>
-                    <button type="button" onclick="app.useCommandSuggestion('/remote status', { submit: true })">
+                    <button type="button" onclick="app.useCommandSuggestion('/remote status', { submit: true })" aria-label="Run /remote status to check remote readiness">
                         <strong>/remote status</strong>
                         <span>Check remote readiness</span>
                     </button>

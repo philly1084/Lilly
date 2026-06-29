@@ -1959,16 +1959,16 @@
                             spellcheck="false"
                         >
                     </div>
-                    <div id="voxelToolbelt" class="voxel-toolbelt" aria-label="Agent quick tools">
-                        <button type="button" class="voxel-tool-chip active" data-tool="chat" onclick="app.useVoxelQuickTool('chat')" title="Chat with the agent">
+                    <div id="voxelToolbelt" class="voxel-toolbelt" role="toolbar" aria-label="Agent quick tools">
+                        <button type="button" class="voxel-tool-chip active" data-tool="chat" onclick="app.useVoxelQuickTool('chat')" title="Chat with the agent" aria-pressed="true">
                             <span class="voxel-tool-icon" aria-hidden="true"></span>
                             <span>Chat</span>
                         </button>
-                        <button type="button" class="voxel-tool-chip" data-tool="tools" onclick="app.useVoxelQuickTool('tools')" title="List agent tools">
+                        <button type="button" class="voxel-tool-chip" data-tool="tools" onclick="app.useVoxelQuickTool('tools')" title="List agent tools" aria-pressed="false">
                             <span class="voxel-tool-icon" aria-hidden="true"></span>
                             <span>Tools</span>
                         </button>
-                        <button type="button" class="voxel-tool-chip" data-tool="files" onclick="app.useVoxelQuickTool('files')" title="Open session files">
+                        <button type="button" class="voxel-tool-chip" data-tool="files" onclick="app.useVoxelQuickTool('files')" title="Open session files" aria-pressed="false">
                             <span class="voxel-tool-icon" aria-hidden="true"></span>
                             <span>Files</span>
                         </button>
@@ -2099,6 +2099,6 @@
     <script defer src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script defer src="js/file-handler.js"></script>
     <script defer src="js/voxel-pets.js"></script>
-    <script defer src="js/app.js?v=20260620a"></script>
+    <script defer src="js/app.js?v=20260629a"></script>
 </body>
 </html>
