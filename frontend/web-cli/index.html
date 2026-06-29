@@ -1951,8 +1951,10 @@
                             placeholder="Ask Lilly, open /files, list /tools, or type /help..."
                             aria-label="Web CLI command input"
                             aria-describedby="commandAssist"
+                            role="combobox"
                             aria-autocomplete="list"
                             aria-controls="autocomplete"
+                            aria-expanded="false"
                             autocomplete="new-password"
                             autocorrect="off"
                             autocapitalize="off"
@@ -1982,7 +1984,7 @@
                         <span id="commandAssist" class="command-assist is-ready" role="status" aria-live="polite">Type /help for the command menu, or / for autocomplete.</span>
                         <span class="shortcut-hint">Ctrl+L=Clear | ↑↓=History | F1=Help</span>
                     </div>
-                    <div id="autocomplete" class="autocomplete hidden"></div>
+                    <div id="autocomplete" class="autocomplete hidden" role="listbox" aria-label="Command suggestions"></div>
                 </div>
                 <div id="voxelRoamer" class="voxel-roamer" aria-hidden="true">
                     <div id="voxelRoamerStage" class="voxel-roamer-stage"></div>
@@ -2099,6 +2101,6 @@
     <script defer src="../web-chat/js/tts-manager.js?v=20260524b"></script>
     <script defer src="js/file-handler.js"></script>
     <script defer src="js/voxel-pets.js"></script>
-    <script defer src="js/app.js?v=20260629a"></script>
+    <script defer src="js/app.js?v=20260629b"></script>
 </body>
 </html>

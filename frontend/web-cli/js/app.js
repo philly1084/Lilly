@@ -11014,7 +11014,14 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         this.autocompleteIndex = 0;
         
         this.autocompleteEl.innerHTML = matches.map((match, i) => `
-            <button type="button" class="autocomplete-item ${i === 0 ? 'selected' : ''}" data-index="${i}">
+            <button
+                type="button"
+                id="autocomplete-option-${i}"
+                class="autocomplete-item ${i === 0 ? 'selected' : ''}"
+                data-index="${i}"
+                role="option"
+                aria-selected="${i === 0 ? 'true' : 'false'}"
+            >
                 <span class="autocomplete-main">
                     <span class="autocomplete-title">
                         <code>${this.escapeHtml(match.command)}</code>
@@ -11027,6 +11034,8 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         `).join('');
         
         this.autocompleteEl.classList.remove('hidden');
+        this.commandInput.setAttribute('aria-expanded', 'true');
+        this.commandInput.setAttribute('aria-activedescendant', 'autocomplete-option-0');
         
         // Click handlers
         this.autocompleteEl.querySelectorAll('.autocomplete-item').forEach(item => {
@@ -11059,8 +11068,13 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         }
         
         this.autocompleteEl.querySelectorAll('.autocomplete-item').forEach((item, i) => {
-            item.classList.toggle('selected', i === this.autocompleteIndex);
-            if (i === this.autocompleteIndex && typeof item.scrollIntoView === 'function') {
+            const isSelected = i === this.autocompleteIndex;
+            item.classList.toggle('selected', isSelected);
+            item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            if (isSelected) {
+                this.commandInput.setAttribute('aria-activedescendant', item.id);
+            }
+            if (isSelected && typeof item.scrollIntoView === 'function') {
                 item.scrollIntoView({ block: 'nearest' });
             }
         });
@@ -11074,6 +11088,8 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     
     hideAutocomplete() {
         this.autocompleteEl.classList.add('hidden');
+        this.commandInput.setAttribute('aria-expanded', 'false');
+        this.commandInput.removeAttribute('aria-activedescendant');
         this.autocompleteMatches = [];
         this.autocompleteIndex = -1;
     }

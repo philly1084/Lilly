@@ -435,8 +435,11 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(modelSelect.classList.contains('header-model-select')).toBe(true);
         expect(commandInput.getAttribute('aria-label')).toBe('Web CLI command input');
         expect(commandInput.getAttribute('aria-describedby')).toBe('commandAssist');
+        expect(commandInput.getAttribute('role')).toBe('combobox');
         expect(commandInput.getAttribute('aria-autocomplete')).toBe('list');
         expect(commandInput.getAttribute('aria-controls')).toBe('autocomplete');
+        expect(commandInput.getAttribute('aria-expanded')).toBe('false');
+        expect(dom.window.document.getElementById('autocomplete').getAttribute('role')).toBe('listbox');
         expect(commandAssist.getAttribute('role')).toBe('status');
         expect(commandAssist.getAttribute('aria-live')).toBe('polite');
         expect(drawer.getAttribute('role')).toBe('menu');
@@ -554,6 +557,46 @@ describe('web-cli command drawer keyboard navigation', () => {
         expect(document.activeElement).toBe(app.commandDrawerToggle);
         expect(preventDefault).toHaveBeenCalled();
         expect(stopPropagation).toHaveBeenCalled();
+    });
+
+    test('exposes autocomplete active suggestion state to the command input', () => {
+        const app = createToolFormHarness();
+        const dom = new JSDOM(`
+            <input id="commandInput" aria-expanded="false">
+            <div id="autocomplete" class="autocomplete hidden" role="listbox"></div>
+        `);
+        global.window = dom.window;
+        global.document = dom.window.document;
+        app.commandInput = document.getElementById('commandInput');
+        app.autocompleteEl = document.getElementById('autocomplete');
+        app.commandCatalog = [
+            { command: '/tools', label: 'Tools', description: 'Inspect available actions' },
+            { command: '/workflows', label: 'Workflows', description: 'Stage common task starters' },
+        ];
+        app.isCurrentHelpCommand = jest.fn(() => true);
+        app.activateCommandEntry = jest.fn();
+
+        app.commandInput.value = '/';
+        app.updateAutocomplete();
+
+        const items = Array.from(app.autocompleteEl.querySelectorAll('[role="option"]'));
+        expect(app.autocompleteEl.classList.contains('hidden')).toBe(false);
+        expect(app.commandInput.getAttribute('aria-expanded')).toBe('true');
+        expect(app.commandInput.getAttribute('aria-activedescendant')).toBe('autocomplete-option-0');
+        expect(items[0].getAttribute('aria-selected')).toBe('true');
+        expect(items[1].getAttribute('aria-selected')).toBe('false');
+
+        app.navigateAutocomplete(1);
+
+        expect(app.commandInput.getAttribute('aria-activedescendant')).toBe('autocomplete-option-1');
+        expect(items[0].getAttribute('aria-selected')).toBe('false');
+        expect(items[1].getAttribute('aria-selected')).toBe('true');
+
+        app.hideAutocomplete();
+
+        expect(app.autocompleteEl.classList.contains('hidden')).toBe(true);
+        expect(app.commandInput.getAttribute('aria-expanded')).toBe('false');
+        expect(app.commandInput.hasAttribute('aria-activedescendant')).toBe(false);
     });
 });
 
