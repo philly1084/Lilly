@@ -677,7 +677,7 @@ class AIAssistant {
         });
         const selected = canvas?.selectedElements || [];
         const lines = [
-            'KimiBuilt Canvas Board Index',
+            'Lilly Canvas Board Index',
             `Created: ${new Date().toLocaleString()}`,
             `Query: ${normalizedQuery || 'All board objects'}`,
             `Objects: ${elements.length}`,
@@ -708,7 +708,7 @@ class AIAssistant {
         const context = this.buildCanvasContext();
         const healthScore = context.boardHealth?.objectCount > 0 ? context.boardHealth.score : '--';
         return [
-            'KimiBuilt Canvas Continuation Packet',
+            'Lilly Canvas Continuation Packet',
             `Created: ${new Date().toLocaleString()}`,
             `Objects: ${context.board?.elementCount || 0}`,
             `Types: ${context.board?.typeCounts || 'None'}`,
@@ -800,7 +800,7 @@ class AIAssistant {
             ? items.map((item, index) => `${index + 1}. ${item.text} (${item.source})`)
             : ['- None detected locally.'];
         return [
-            'KimiBuilt Canvas Decision Register',
+            'Lilly Canvas Decision Register',
             `Created: ${new Date().toLocaleString()}`,
             `Objects: ${data.objectCount}`,
             `Selection: ${data.selectedCount}`,
@@ -967,7 +967,7 @@ class AIAssistant {
 
     buildGateReviewText(data = this.buildGateReviewData()) {
         return [
-            'KimiBuilt Canvas Gate Review',
+            'Lilly Canvas Gate Review',
             `Created: ${new Date().toLocaleString()}`,
             `Pass: ${data.counts.pass || 0}`,
             `Warn: ${data.counts.warn || 0}`,
@@ -1106,7 +1106,7 @@ class AIAssistant {
             })
             : [fallback];
         return [
-            'KimiBuilt Canvas Ops Snapshot',
+            'Lilly Canvas Ops Snapshot',
             `Created: ${data.createdAt.toLocaleString()}`,
             `Verdict: ${data.verdict}`,
             `Objects: ${data.context.board?.elementCount || 0}`,
@@ -1309,7 +1309,7 @@ class AIAssistant {
             ? rows.map((row, index) => `${index + 1}. ${formatter(row)}`)
             : [fallback];
         return [
-            'KimiBuilt Canvas Evidence Pack',
+            'Lilly Canvas Evidence Pack',
             `Created: ${data.createdAt.toLocaleString()}`,
             `Verdict: ${data.verdict}`,
             `Objects: ${data.context.board?.elementCount || 0}`,
@@ -1538,7 +1538,7 @@ class AIAssistant {
             : [fallback];
 
         return [
-            'KimiBuilt Canvas Review Queue',
+            'Lilly Canvas Review Queue',
             `Created: ${data.createdAt.toLocaleString()}`,
             `Verdict: ${data.verdict}`,
             `Objects: ${data.ops.context?.board?.objectCount || 0}`,

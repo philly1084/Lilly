@@ -3061,18 +3061,107 @@ body {
     width: 100%;
 }
 
+.database-block-shell {
+    position: relative;
+    min-width: 0;
+    max-width: 100%;
+    padding-bottom: 30px;
+}
+
 .database-scroll-region {
+    max-width: 100%;
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-bottom: 4px;
+    padding-bottom: 8px;
     overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
-    scrollbar-gutter: stable;
+    scrollbar-gutter: stable both-edges;
+    scrollbar-width: thin;
+    scrollbar-color: var(--text-muted) transparent;
+    background:
+        linear-gradient(90deg, var(--bg-primary) 28%, rgba(255, 255, 255, 0)) left center / 22px 100% no-repeat local,
+        linear-gradient(270deg, var(--bg-primary) 28%, rgba(255, 255, 255, 0)) right center / 22px 100% no-repeat local,
+        linear-gradient(90deg, rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0)) left center / 14px 100% no-repeat scroll,
+        linear-gradient(270deg, rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0)) right center / 14px 100% no-repeat scroll;
+}
+
+.database-scroll-region::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.database-scroll-region::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.database-scroll-region::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border: 2px solid var(--bg-primary);
+    border-radius: 999px;
+}
+
+.database-scroll-region::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
 }
 
 .database-scroll-region:focus {
     outline: 2px solid var(--accent-color);
     outline-offset: 2px;
+}
+
+.database-scroll-controls {
+    position: absolute;
+    right: 8px;
+    bottom: 2px;
+    z-index: 3;
+    display: inline-flex;
+    gap: 6px;
+    padding: 3px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.database-block-shell[data-can-scroll-x="false"] .database-scroll-controls {
+    display: none;
+}
+
+.database-scroll-button {
+    width: 28px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.database-scroll-button:hover,
+.database-scroll-button:focus {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+}
+
+.database-scroll-button:disabled {
+    cursor: default;
+    opacity: 0.42;
+}
+
+.database-scroll-button:disabled:hover,
+.database-scroll-button:disabled:focus {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    outline: none;
 }
 
 .database-table {

@@ -436,6 +436,7 @@ function buildSharedWhiteboardRefreshStatus(workloads = [], runs = [], workloadF
 function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}, workloads = [], runs = []) {
   const nextActions = Array.isArray(actions) ? [...actions] : [];
   const current = sharedWhiteboard?.current || null;
+  const planned = sharedWhiteboard?.planned || null;
   const previewStatus = String(current?.filePreview?.status || '').trim();
   const needsRefresh = !current || ['missing', 'empty', 'unavailable'].includes(previewStatus);
 
@@ -443,16 +444,16 @@ function appendSharedWhiteboardAction(actions = [], sharedWhiteboard = {}, workl
     return nextActions.slice(0, 6);
   }
 
-  const workloadFocus = current?.path || '.kimibuilt/agent-company/shared-whiteboard.md';
+  const workloadFocus = current?.path || planned?.path || '.kimibuilt/agent-company/current-whiteboard.md';
   const refreshStatus = buildSharedWhiteboardRefreshStatus(workloads, runs, workloadFocus);
 
   nextActions.push({
     id: 'refresh-shared-whiteboard',
-    actionKey: current?.path ? `refresh-shared-whiteboard:${current.path}` : 'refresh-shared-whiteboard:missing',
+    actionKey: `refresh-shared-whiteboard:${workloadFocus}`,
     label: 'Refresh shared whiteboard',
     detail: current
       ? `${current.path} needs current coordination notes before scheduling more company work.`
-      : 'No shared coordination whiteboard is attached to current company workloads yet.',
+      : `${workloadFocus} needs to be attached with current coordination notes before scheduling more company work.`,
     target: 'whiteboard-refresh',
     workloadReason: 'shared-whiteboard-refresh',
     workloadFocus,
@@ -664,6 +665,7 @@ function buildSharedWhiteboardStatus(status = {}, workloads = []) {
   const items = Array.from(whiteboards.values())
     .sort((a, b) => String(b.weekKey || '').localeCompare(String(a.weekKey || '')));
   const current = items[0] || null;
+  const planned = current ? null : getPlannedWhiteboard(status);
 
   return {
     status: current ? 'ready' : 'missing',
@@ -671,8 +673,50 @@ function buildSharedWhiteboardStatus(status = {}, workloads = []) {
       ? `${current.workloadCount} workload${current.workloadCount === 1 ? '' : 's'} carrying the shared whiteboard contract.`
       : 'No shared whiteboard metadata is attached to current company workloads yet.',
     current,
+    planned,
     count: items.length,
     plannedWorkCount: schedule.length,
+  };
+}
+
+function getWeekKeyFromDate(value = new Date()) {
+  const current = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(current.getTime())) {
+    return '';
+  }
+  const day = current.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  current.setUTCDate(current.getUTCDate() + diff);
+  current.setUTCHours(0, 0, 0, 0);
+  return current.toISOString().slice(0, 10);
+}
+
+function getPlannedWhiteboard(status = {}) {
+  const state = status?.state || {};
+  const schedule = Array.isArray(state.shortTermSchedule) ? state.shortTermSchedule : [];
+  const scheduledWeek = schedule
+    .map((item) => String(item?.weekKey || '').trim())
+    .find(Boolean);
+  const referenceDate = state.heartbeat?.lastAt
+    || state.updatedAt
+    || state.heartbeat?.nextAt
+    || new Date();
+  const weekKey = scheduledWeek || getWeekKeyFromDate(referenceDate) || 'current';
+
+  return {
+    path: `.kimibuilt/agent-company/${weekKey}-whiteboard.md`,
+    purpose: 'agent-to-agent weekly coordination',
+    sections: [
+      'Claims checked',
+      'Decisions made',
+      'Files/artifacts changed',
+      'Deployment/DNS state',
+      'Blockers',
+      'Next agent task',
+    ],
+    workloadCount: 0,
+    roleNames: [],
+    weekKey,
   };
 }
 

@@ -513,6 +513,71 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('uses the planned weekly whiteboard path before any workload has attached it', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => []),
+            listAdminRuns: jest.fn(async () => []),
+        };
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
+        const searchSpy = jest.spyOn(assetManager, 'searchAssets');
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                available: true,
+                config: {
+                    enabled: true,
+                    sessionId: 'agent-company',
+                    companyGoal: 'Run a useful research studio.',
+                },
+                state: {
+                    companyGoalHash: 'goal-hash',
+                    heartbeat: {
+                        status: 'steady',
+                        lastAt: '2026-06-26T15:00:00.000Z',
+                    },
+                    dailyAlignment: { status: 'steady' },
+                    shortTermSchedule: [{
+                        id: 'plan-1',
+                        title: 'Company weekly plan',
+                        weekKey: '2026-06-22',
+                    }],
+                },
+            })),
+        };
+
+        try {
+            const response = await request(app).get('/api/admin/agent-company/workspace');
+
+            expect(response.status).toBe(200);
+            expect(searchSpy).not.toHaveBeenCalled();
+            expect(response.body.data.sharedWhiteboard).toEqual(expect.objectContaining({
+                status: 'missing',
+                current: null,
+                planned: expect.objectContaining({
+                    path: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    purpose: 'agent-to-agent weekly coordination',
+                    weekKey: '2026-06-22',
+                    sections: expect.arrayContaining(['Claims checked', 'Next agent task']),
+                }),
+                plannedWorkCount: 1,
+            }));
+            expect(response.body.data.actionQueue).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'refresh-shared-whiteboard',
+                    actionKey: 'refresh-shared-whiteboard:.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    target: 'whiteboard-refresh',
+                    workloadReason: 'shared-whiteboard-refresh',
+                    workloadFocus: '.kimibuilt/agent-company/2026-06-22-whiteboard.md',
+                    priority: 'high',
+                }),
+            ]));
+        } finally {
+            searchSpy.mockRestore();
+            isEnabledSpy.mockRestore();
+        }
+    });
+
     test('exposes a shared agent company file manager backed by asset search', async () => {
         const service = {
             isAvailable: jest.fn(() => true),

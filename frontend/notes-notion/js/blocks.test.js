@@ -122,13 +122,18 @@ describe('Notes Blocks database normalization', () => {
             },
         }, true);
 
-        const region = rendered;
+        const region = rendered.querySelector('.database-scroll-region');
         const table = rendered.querySelector('.database-table');
+        const scrollButtons = rendered.querySelectorAll('.database-scroll-button');
 
+        expect(rendered.classList.contains('database-block-shell')).toBe(true);
         expect(region.classList.contains('database-scroll-region')).toBe(true);
         expect(region.getAttribute('role')).toBe('region');
         expect(region.getAttribute('aria-label')).toContain('scroll horizontally');
         expect(region.tabIndex).toBe(0);
+        expect(scrollButtons).toHaveLength(2);
+        expect(scrollButtons[0].getAttribute('aria-label')).toContain('left');
+        expect(scrollButtons[1].getAttribute('aria-label')).toContain('right');
         expect(table.style.getPropertyValue('--database-table-min-width')).toMatch(/px$/);
         expect(Number.parseInt(table.style.getPropertyValue('--database-table-min-width'), 10)).toBeGreaterThan(480);
     });

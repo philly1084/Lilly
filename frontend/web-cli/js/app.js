@@ -1434,7 +1434,7 @@ class CodeCLIApp {
 
     buildSessionBriefText(data = this.getSessionBriefData()) {
         const lines = [
-            'KimiBuilt Web CLI Brief',
+            'Lilly CLI Brief',
             `Created: ${data.createdAt}`,
             `Session: ${data.status.session}`,
             `Model: ${data.status.model}`,
@@ -1645,7 +1645,7 @@ class CodeCLIApp {
 
     buildSessionAuditText(data = this.buildSessionAuditData()) {
         return [
-            'KimiBuilt Web CLI Audit Trail',
+            'Lilly CLI Audit Trail',
             `Created: ${data.createdAt}`,
             `Session: ${data.status.session}`,
             `Runtime: ${data.status.runtime}`,
@@ -2191,7 +2191,7 @@ class CodeCLIApp {
         const pins = (this.pinnedCommands || []).slice(0, 8);
         const recents = this.getRecentCommandLaunchers(8);
         return [
-            'KimiBuilt Web CLI Continuation Packet',
+            'Lilly CLI Continuation Packet',
             `Created: ${new Date().toISOString()}`,
             `Session: ${status.session}`,
             `Model: ${status.model}`,
@@ -2301,7 +2301,7 @@ class CodeCLIApp {
 
     downloadSessionPacket() {
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        this.downloadFile(this.lastSessionPacketText || this.buildSessionPacketText(), `kimibuilt-web-cli-packet-${stamp}.md`, 'text/markdown');
+        this.downloadFile(this.lastSessionPacketText || this.buildSessionPacketText(), `lilly-cli-packet-${stamp}.md`, 'text/markdown');
         this.printSystem('Continuation packet downloaded as Markdown');
     }
 
@@ -2364,7 +2364,7 @@ class CodeCLIApp {
             ? items.map((item, index) => `${index + 1}. ${item.text} (${item.source})`)
             : ['- None detected locally.'];
         return [
-            'KimiBuilt Web CLI Decision Register',
+            'Lilly CLI Decision Register',
             `Created: ${data.createdAt}`,
             `Transcript entries: ${data.transcriptCount}`,
             '',
@@ -2516,7 +2516,7 @@ class CodeCLIApp {
 
     buildSessionGateText(data = this.buildSessionGateData()) {
         return [
-            'KimiBuilt Web CLI Quality Gates',
+            'Lilly CLI Quality Gates',
             `Created: ${data.createdAt}`,
             `Pass: ${data.counts.pass || 0}`,
             `Warn: ${data.counts.warn || 0}`,
@@ -2632,7 +2632,7 @@ class CodeCLIApp {
             ? rows.map((row, index) => `${index + 1}. ${typeof row === 'string' ? row : `${row.type}: ${row.text}`}`)
             : [fallback];
         return [
-            'KimiBuilt Web CLI Ops Snapshot',
+            'Lilly CLI Ops Snapshot',
             `Created: ${data.createdAt}`,
             `Verdict: ${data.verdict}`,
             `Session: ${data.status.session}`,
@@ -2820,7 +2820,7 @@ class CodeCLIApp {
             ? items.map((item, index) => `${index + 1}. ${formatter(item)}`)
             : [fallback];
         return [
-            'KimiBuilt Web CLI Evidence Pack',
+            'Lilly CLI Evidence Pack',
             `Created: ${data.createdAt}`,
             `Verdict: ${data.verdict}`,
             `Session: ${data.status.session}`,
@@ -3023,7 +3023,7 @@ class CodeCLIApp {
             : [fallback];
 
         return [
-            'KimiBuilt Web CLI Review Queue',
+            'Lilly CLI Review Queue',
             `Created: ${data.createdAt}`,
             `Verdict: ${data.verdict}`,
             `Session: ${data.ops.status.session}`,
@@ -3762,7 +3762,7 @@ class CodeCLIApp {
         const actions = {
             chat: () => {
                 this.commandInput.value = '';
-                this.commandInput.placeholder = 'Ask KimiBuilt for help, open /files, or list /tools...';
+                this.commandInput.placeholder = 'Ask Lilly for help, open /files, or list /tools...';
                 this.commandInput.focus();
                 this.roamVoxelPet('prompt', 'scout', 1000, { thought: 'agent link' });
             },
@@ -7360,7 +7360,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         const sessionLabel = this.escapeHtml(api.sessionId ? api.sessionId.slice(0, 8) : 'pending');
         line.innerHTML = `
             <div class="voxel-response-head">
-                <span>KimiBuilt Web CLI</span>
+                <span>Lilly CLI</span>
                 <span class="voxel-response-meta">${this.escapeHtml(new Date().toLocaleString())}</span>
             </div>
             <div class="voxel-response-body">
@@ -7441,7 +7441,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
         const sessionLabel = this.escapeHtml(api.sessionId ? api.sessionId.slice(0, 8) : 'pending');
         line.innerHTML = `
             <div class="cli-response-head command-center-boot-head">
-                <span class="cli-response-title">KimiBuilt Web CLI</span>
+                <span class="cli-response-title">Lilly CLI</span>
                 <span class="command-center-boot-meta">${this.escapeHtml(new Date().toLocaleString())}</span>
             </div>
             <div class="cli-response-body command-center-boot">
@@ -7598,7 +7598,7 @@ Use \`/voice <id>\` to switch the read-aloud voice.`);
 
 The companion panel is focused on the three primary actions in the prompt bar.
 
-- Chat starts a normal KimiBuilt conversation.
+- Chat starts a normal Lilly conversation.
 - \`/tools [category]\`, \`/tool-help <id>\`, and \`/tool <id> {...}\` inspect or invoke the live backend tool catalog.
 - \`/skills\` and \`/skill <id>\` inspect registered low-context chains.
 - \`/files\` and \`/open\` manage generated session files.
@@ -10045,7 +10045,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         }
 
         return {
-            app: 'KimiBuilt Web CLI',
+            app: 'Lilly CLI',
             exportedAt: new Date().toISOString(),
             sessionId: api.sessionId || null,
             model: api.currentModel || null,
@@ -10068,7 +10068,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
 
     buildTranscriptMarkdown(data) {
         const lines = [
-            '# KimiBuilt Web CLI Transcript',
+            '# Lilly CLI Transcript',
             '',
             `- Exported: ${data.exportedAt}`,
             `- Session: ${data.sessionId || 'new'}`,
@@ -10098,7 +10098,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
 
     buildTranscriptText(data) {
         const header = [
-            'KimiBuilt Web CLI Transcript',
+            'Lilly CLI Transcript',
             `Exported: ${data.exportedAt}`,
             `Session: ${data.sessionId || 'new'}`,
             `Model: ${data.model || 'default'}`,
@@ -10131,7 +10131,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KimiBuilt Web CLI Transcript</title>
+  <title>Lilly CLI Transcript</title>
   <style>
     :root { color-scheme: light dark; --text: #111827; --muted: #667085; --surface: #ffffff; --panel: #f8fafc; --border: #d9e1ea; --accent: #0f766e; }
     body { margin: 0; padding: 32px; color: var(--text); background: var(--panel); font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
@@ -10149,7 +10149,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
 <body>
   <main>
     <header>
-      <h1>KimiBuilt Web CLI Transcript</h1>
+      <h1>Lilly CLI Transcript</h1>
       <div class="meta">
         <div>Exported: ${this.escapeHtml(data.exportedAt)}</div>
         <div>Session: ${this.escapeHtml(data.sessionId || 'new')}</div>
@@ -10177,32 +10177,32 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         const formats = {
             md: {
                 content: this.buildTranscriptMarkdown(data),
-                filename: `kimibuilt-web-cli-${stamp}.md`,
+                filename: `lilly-cli-${stamp}.md`,
                 mimeType: 'text/markdown',
             },
             markdown: {
                 content: this.buildTranscriptMarkdown(data),
-                filename: `kimibuilt-web-cli-${stamp}.md`,
+                filename: `lilly-cli-${stamp}.md`,
                 mimeType: 'text/markdown',
             },
             txt: {
                 content: this.buildTranscriptText(data),
-                filename: `kimibuilt-web-cli-${stamp}.txt`,
+                filename: `lilly-cli-${stamp}.txt`,
                 mimeType: 'text/plain',
             },
             text: {
                 content: this.buildTranscriptText(data),
-                filename: `kimibuilt-web-cli-${stamp}.txt`,
+                filename: `lilly-cli-${stamp}.txt`,
                 mimeType: 'text/plain',
             },
             html: {
                 content: this.buildTranscriptHtml(data),
-                filename: `kimibuilt-web-cli-${stamp}.html`,
+                filename: `lilly-cli-${stamp}.html`,
                 mimeType: 'text/html',
             },
             json: {
                 content: JSON.stringify(data, null, 2),
-                filename: `kimibuilt-web-cli-${stamp}.json`,
+                filename: `lilly-cli-${stamp}.json`,
                 mimeType: 'application/json',
             },
         };

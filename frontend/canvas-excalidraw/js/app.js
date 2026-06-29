@@ -619,7 +619,7 @@ class App {
             return false;
         }
         const payload = {
-            app: 'KimiBuilt Canvas',
+            app: 'Lilly Canvas',
             version: '1.0',
             exportedAt: new Date().toISOString(),
             board,

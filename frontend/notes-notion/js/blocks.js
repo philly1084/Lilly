@@ -2658,10 +2658,13 @@ const Blocks = (function() {
      */
     function renderDatabaseBlock(block, isEditable = true) {
         const wrapper = document.createElement('div');
-        wrapper.className = 'block-content database-scroll-region';
-        wrapper.setAttribute('role', 'region');
-        wrapper.setAttribute('aria-label', 'Database table, scroll horizontally to view all columns');
-        wrapper.tabIndex = 0;
+        wrapper.className = 'block-content database-block-shell';
+
+        const scrollRegion = document.createElement('div');
+        scrollRegion.className = 'database-scroll-region';
+        scrollRegion.setAttribute('role', 'region');
+        scrollRegion.setAttribute('aria-label', 'Database table, scroll horizontally to view all columns');
+        scrollRegion.tabIndex = 0;
         
         const data = normalizeDatabaseContent(block.content);
         block.content = data;
@@ -2864,8 +2867,74 @@ const Blocks = (function() {
             });
             table.appendChild(addCol);
         }
-        
-        wrapper.appendChild(table);
+
+        const scrollControls = document.createElement('div');
+        scrollControls.className = 'database-scroll-controls';
+
+        const scrollLeft = document.createElement('button');
+        scrollLeft.type = 'button';
+        scrollLeft.className = 'database-scroll-button';
+        scrollLeft.textContent = '<';
+        scrollLeft.title = 'Scroll table left';
+        scrollLeft.setAttribute('aria-label', 'Scroll database table left');
+
+        const scrollRight = document.createElement('button');
+        scrollRight.type = 'button';
+        scrollRight.className = 'database-scroll-button';
+        scrollRight.textContent = '>';
+        scrollRight.title = 'Scroll table right';
+        scrollRight.setAttribute('aria-label', 'Scroll database table right');
+
+        const updateScrollState = () => {
+            const maxScrollLeft = Math.max(0, scrollRegion.scrollWidth - scrollRegion.clientWidth);
+            const canScroll = maxScrollLeft > 1;
+            wrapper.dataset.canScrollX = canScroll ? 'true' : 'false';
+            wrapper.dataset.scrollAtStart = scrollRegion.scrollLeft <= 1 ? 'true' : 'false';
+            wrapper.dataset.scrollAtEnd = scrollRegion.scrollLeft >= maxScrollLeft - 1 ? 'true' : 'false';
+            scrollLeft.disabled = !canScroll || scrollRegion.scrollLeft <= 1;
+            scrollRight.disabled = !canScroll || scrollRegion.scrollLeft >= maxScrollLeft - 1;
+        };
+
+        const scrollByPage = (direction) => {
+            const distance = Math.min(Math.max(scrollRegion.clientWidth * 0.75, 240), 520);
+            scrollRegion.scrollBy({
+                left: direction * distance,
+                behavior: 'smooth',
+            });
+        };
+
+        scrollLeft.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            scrollByPage(-1);
+        });
+        scrollRight.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            scrollByPage(1);
+        });
+        scrollRegion.addEventListener('keydown', (event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            event.stopPropagation();
+            scrollByPage(event.key === 'ArrowRight' ? 1 : -1);
+        });
+        scrollRegion.addEventListener('scroll', updateScrollState, { passive: true });
+
+        scrollControls.appendChild(scrollLeft);
+        scrollControls.appendChild(scrollRight);
+
+        scrollRegion.appendChild(table);
+        wrapper.appendChild(scrollRegion);
+        wrapper.appendChild(scrollControls);
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver(updateScrollState);
+            observer.observe(scrollRegion);
+            observer.observe(table);
+        }
+        setTimeout(updateScrollState, 0);
+
         return wrapper;
     }
 
