@@ -66,7 +66,7 @@ class SidebarResizer {
     this.resizeHandle.className = 'sidebar-resize-handle';
     this.resizeHandle.innerHTML = `
       <div class="sidebar-resize-line"></div>
-      <button class="sidebar-collapse-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
+      <button class="sidebar-collapse-btn" title="Collapse sidebar" aria-label="Collapse sidebar" aria-controls="sidebar" aria-expanded="true">
         <i data-lucide="panel-left-close" class="w-4 h-4 collapse-icon"></i>
         <i data-lucide="panel-left-open" class="w-4 h-4 expand-icon hidden"></i>
       </button>
@@ -149,6 +149,14 @@ class SidebarResizer {
         color: white;
         border-color: var(--accent);
         transform: translateX(-50%) scale(1.1);
+      }
+
+      .sidebar-collapse-btn:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+        color: var(--text-primary);
+        border-color: var(--accent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
       }
       
       .sidebar-collapse-btn:active {
@@ -403,6 +411,7 @@ class SidebarResizer {
     this.isCollapsed = true;
     this.sidebar.classList.add('collapsed');
     this.resizeHandle.classList.add('collapsed');
+    this.updateCollapseControl();
     this.saveCollapsedState(true);
     
     // Reinitialize icons to show correct chevron
@@ -422,6 +431,7 @@ class SidebarResizer {
     // Restore previous width
     const savedWidth = this.loadWidth();
     this.setWidth(savedWidth);
+    this.updateCollapseControl();
     this.saveCollapsedState(false);
     
     // Reinitialize icons
@@ -446,12 +456,25 @@ class SidebarResizer {
     if (this.isCollapsed) {
       this.sidebar.classList.add('collapsed');
       this.resizeHandle.classList.add('collapsed');
+      this.updateCollapseControl();
       return;
     }
 
     this.sidebar.classList.remove('collapsed');
     this.resizeHandle.classList.remove('collapsed');
     this.setWidth(this.currentWidth);
+    this.updateCollapseControl();
+  }
+
+  updateCollapseControl() {
+    const collapseBtn = this.resizeHandle?.querySelector('.sidebar-collapse-btn');
+    if (!collapseBtn) return;
+
+    const isExpanded = !this.isCollapsed;
+    const label = isExpanded ? 'Collapse sidebar' : 'Expand sidebar';
+    collapseBtn.setAttribute('aria-expanded', String(isExpanded));
+    collapseBtn.setAttribute('aria-label', label);
+    collapseBtn.setAttribute('title', label);
   }
 
   reloadFromStorage() {
