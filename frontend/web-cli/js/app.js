@@ -194,6 +194,7 @@ class CodeCLIApp {
         this.cliStatus = document.getElementById('cliStatus');
         this.queueIndicator = document.getElementById('queueIndicator');
         this.commandAssist = document.getElementById('commandAssist');
+        this.shortcutsReturnFocus = null;
         // Queue elements removed - using inline status only
         this.queueSection = null;
         this.queueList = null;
@@ -3189,6 +3190,10 @@ class CodeCLIApp {
 
         this.commandInput.addEventListener('focus', () => {
             this.updateCommandAssist();
+        });
+
+        this.shortcutsModal?.addEventListener('keydown', (e) => {
+            this.handleShortcutsKeydown(e);
         });
 
         if (this.voxelPetPrompt) {
@@ -10972,6 +10977,11 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
     }
     
     showShortcuts() {
+        const activeElement = document.activeElement;
+        this.shortcutsReturnFocus = activeElement && activeElement !== document.body && typeof activeElement.focus === 'function'
+            ? activeElement
+            : null;
+
         document.getElementById('shortcutsContent').innerHTML = `
             <div class="grid gap-2 text-sm">
                 <div class="flex justify-between py-1 border-b" style="border-color: var(--border-color);">
@@ -11008,11 +11018,31 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 </div>
             </div>
         `;
+        this.shortcutsModal.setAttribute('aria-hidden', 'false');
         this.shortcutsModal.classList.add('active');
+        this.shortcutsModal.querySelector('.modal-close')?.focus();
     }
     
     closeShortcuts() {
+        if (!this.shortcutsModal.classList.contains('active')) {
+            return;
+        }
+
         this.shortcutsModal.classList.remove('active');
+        this.shortcutsModal.setAttribute('aria-hidden', 'true');
+        if (this.shortcutsReturnFocus && typeof this.shortcutsReturnFocus.focus === 'function') {
+            this.shortcutsReturnFocus.focus({ preventScroll: true });
+        }
+        this.shortcutsReturnFocus = null;
+    }
+
+    handleShortcutsKeydown(e) {
+        if (e.key !== 'Escape') {
+            return;
+        }
+
+        e.preventDefault();
+        this.closeShortcuts();
     }
     
     // ==================== Autocomplete ====================

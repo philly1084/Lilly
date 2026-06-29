@@ -135,3 +135,44 @@ describe('web-cli file manager modal', () => {
         expect(document.activeElement).toBe(filesButton);
     });
 });
+
+describe('web-cli shortcuts modal', () => {
+    test('opens as an accessible dialog and restores focus on close', () => {
+        const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const parsed = new JSDOM(indexMarkup);
+        const shortcutsModalMarkup = parsed.window.document.getElementById('shortcutsModal').outerHTML;
+        const { app, document } = createCopyHarness();
+        document.body.innerHTML = `
+            <button id="helpButton" type="button">Help</button>
+            ${shortcutsModalMarkup}
+        `;
+        const helpButton = document.getElementById('helpButton');
+        const modal = document.getElementById('shortcutsModal');
+        const dialog = modal.querySelector('.modal');
+        const closeButton = modal.querySelector('.modal-close');
+        helpButton.focus();
+        app.shortcutsModal = modal;
+        app.shortcutsReturnFocus = null;
+
+        expect(dialog.getAttribute('role')).toBe('dialog');
+        expect(dialog.getAttribute('aria-modal')).toBe('true');
+        expect(dialog.getAttribute('aria-labelledby')).toBe('shortcutsTitle');
+        expect(dialog.getAttribute('aria-describedby')).toBe('shortcutsContent');
+        expect(modal.getAttribute('aria-hidden')).toBe('true');
+
+        app.showShortcuts();
+
+        expect(modal.classList.contains('active')).toBe(true);
+        expect(modal.getAttribute('aria-hidden')).toBe('false');
+        expect(document.activeElement).toBe(closeButton);
+        expect(document.getElementById('shortcutsContent').textContent).toContain('Send message');
+
+        const preventDefault = jest.fn();
+        app.handleShortcutsKeydown({ key: 'Escape', preventDefault });
+
+        expect(modal.classList.contains('active')).toBe(false);
+        expect(modal.getAttribute('aria-hidden')).toBe('true');
+        expect(document.activeElement).toBe(helpButton);
+        expect(preventDefault).toHaveBeenCalled();
+    });
+});
