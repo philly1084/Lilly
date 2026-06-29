@@ -3796,6 +3796,7 @@ class App {
 
         menu.querySelector('[data-context-section="empty"]')?.toggleAttribute('hidden', hasSelection);
         menu.querySelector('[data-context-section="selection"]')?.toggleAttribute('hidden', !hasSelection);
+        menu.setAttribute('aria-label', hasSelection ? 'Selected canvas object actions' : 'Canvas board actions');
         menu.querySelectorAll('hr').forEach((rule) => {
             rule.toggleAttribute('hidden', !hasSelection);
         });
@@ -3808,13 +3809,14 @@ class App {
         menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
         menu.style.visibility = '';
-        this.getVisibleCanvasContextMenuItems(menu)[0]?.focus({ preventScroll: true });
+        this.focusCanvasContextMenuItem(0, menu);
     }
 
     hideCanvasContextMenu() {
         const menu = document.getElementById('canvasContextMenu');
         if (menu) {
             menu.hidden = true;
+            this.syncCanvasContextMenuItems(menu, null);
         }
     }
 
@@ -3822,6 +3824,29 @@ class App {
         if (!menu) return [];
         return Array.from(menu.querySelectorAll('[data-context-action]'))
             .filter((item) => !item.disabled && !item.hidden && !item.closest('[hidden]'));
+    }
+
+    syncCanvasContextMenuItems(menu = document.getElementById('canvasContextMenu'), activeItem = null) {
+        if (!menu) return;
+        menu.querySelectorAll('[data-context-action]').forEach((item) => {
+            const isActive = item === activeItem;
+            item.setAttribute('tabindex', isActive ? '0' : '-1');
+            if (isActive) {
+                item.setAttribute('aria-current', 'true');
+            } else {
+                item.removeAttribute('aria-current');
+            }
+        });
+    }
+
+    focusCanvasContextMenuItem(index, menu = document.getElementById('canvasContextMenu')) {
+        const items = this.getVisibleCanvasContextMenuItems(menu);
+        if (items.length === 0) return;
+
+        const normalizedIndex = (index + items.length) % items.length;
+        const activeItem = items[normalizedIndex];
+        this.syncCanvasContextMenuItems(menu, activeItem);
+        activeItem?.focus({ preventScroll: true });
     }
 
     handleCanvasContextMenuKeydown(event) {
@@ -3832,27 +3857,22 @@ class App {
         if (items.length === 0) return;
 
         const currentIndex = Math.max(0, items.indexOf(document.activeElement));
-        const focusItem = (index) => {
-            const normalizedIndex = (index + items.length) % items.length;
-            items[normalizedIndex]?.focus({ preventScroll: true });
-        };
-
         switch (event.key) {
             case 'ArrowDown':
                 event.preventDefault();
-                focusItem(currentIndex + 1);
+                this.focusCanvasContextMenuItem(currentIndex + 1, menu);
                 break;
             case 'ArrowUp':
                 event.preventDefault();
-                focusItem(currentIndex - 1);
+                this.focusCanvasContextMenuItem(currentIndex - 1, menu);
                 break;
             case 'Home':
                 event.preventDefault();
-                focusItem(0);
+                this.focusCanvasContextMenuItem(0, menu);
                 break;
             case 'End':
                 event.preventDefault();
-                focusItem(items.length - 1);
+                this.focusCanvasContextMenuItem(items.length - 1, menu);
                 break;
             case 'Enter':
             case ' ':

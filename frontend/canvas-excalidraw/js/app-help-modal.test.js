@@ -216,7 +216,7 @@ function createMobilePanelHarness() {
 function createContextMenuHarness() {
     const dom = new JSDOM(`
         <div id="canvasContainer" tabindex="0"></div>
-        <div id="canvasContextMenu" role="menu" hidden>
+        <div id="canvasContextMenu" role="menu" aria-label="Canvas board actions" hidden>
             <div data-context-section="empty">
                 <button type="button" role="menuitem" data-context-action="tool:selection">Select</button>
                 <button type="button" role="menuitem" data-context-action="tool:text">Text</button>
@@ -934,7 +934,10 @@ describe('canvas context menu accessibility', () => {
         app.showCanvasContextMenu(40, 50, false);
 
         expect(menu.hidden).toBe(false);
+        expect(menu.getAttribute('aria-label')).toBe('Canvas board actions');
         expect(document.activeElement.dataset.contextAction).toBe('tool:selection');
+        expect(document.activeElement.getAttribute('tabindex')).toBe('0');
+        expect(document.activeElement.getAttribute('aria-current')).toBe('true');
 
         menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: 'ArrowDown',
@@ -942,6 +945,9 @@ describe('canvas context menu accessibility', () => {
             cancelable: true,
         }));
         expect(document.activeElement.dataset.contextAction).toBe('tool:text');
+        expect(document.querySelector('[data-context-action="tool:selection"]').getAttribute('tabindex')).toBe('-1');
+        expect(document.querySelector('[data-context-action="tool:selection"]').hasAttribute('aria-current')).toBe(false);
+        expect(document.activeElement.getAttribute('aria-current')).toBe('true');
 
         menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
             key: 'End',
@@ -958,6 +964,7 @@ describe('canvas context menu accessibility', () => {
         expect(app.runCanvasContextAction).toHaveBeenCalledWith('create:storyboard');
 
         app.showCanvasContextMenu(40, 50, true);
+        expect(menu.getAttribute('aria-label')).toBe('Selected canvas object actions');
         expect(document.activeElement.dataset.contextAction).toBe('duplicate');
 
         menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
