@@ -1204,9 +1204,12 @@ class WebCLIAPI {
         const metadata = model?.metadata && typeof model.metadata === 'object' ? model.metadata : {};
         const contract = model?.contract && typeof model.contract === 'object' ? model.contract : {};
         addValue(model?.capabilities);
+        addValue(model?.supports);
         addValue(metadata.capabilities);
+        addValue(metadata.supports);
         addValue(metadata.capabilityMap || metadata.capability_map);
         addValue(contract.capabilities);
+        addValue(contract.supports);
         addValue(contract.capabilityMap || contract.capability_map);
         return capabilities;
     }

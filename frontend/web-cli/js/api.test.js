@@ -238,6 +238,18 @@ describe('web-cli API image model lookup', () => {
                         },
                     },
                     {
+                        id: 'contract-supports-image-model',
+                        contract: {
+                            supports: { image_generation: true },
+                        },
+                    },
+                    {
+                        id: 'metadata-supports-image-model',
+                        metadata: {
+                            supports: { image_generation: { available: true } },
+                        },
+                    },
+                    {
                         id: 'chat-only-model',
                         metadata: {
                             capabilities: { chat: true },
@@ -254,6 +266,8 @@ describe('web-cli API image model lookup', () => {
         expect(models.map((model) => model.id)).toEqual([
             'gateway-image-model',
             'contract-image-model',
+            'contract-supports-image-model',
+            'metadata-supports-image-model',
         ]);
         expect(models[0]).toEqual(expect.objectContaining({
             name: 'Gateway Image',
