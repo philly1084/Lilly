@@ -412,8 +412,39 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('notificationsBtn').getAttribute('type')).toBe('button');
         expect(dom.window.document.getElementById('toastContainer').getAttribute('aria-live')).toBe('polite');
         expect(dom.window.document.getElementById('toastContainer').getAttribute('aria-atomic')).toBe('false');
+        expect(dom.window.document.getElementById('connectionStatus').getAttribute('role')).toBe('status');
+        expect(dom.window.document.getElementById('connectionStatus').getAttribute('aria-live')).toBe('polite');
+        expect(dom.window.document.getElementById('connectionStatus').getAttribute('aria-atomic')).toBe('true');
+        expect(dom.window.document.getElementById('connectionStatus').getAttribute('aria-label')).toBe('Dashboard connection status: Connected');
+        expect(dom.window.document.querySelector('#connectionStatus .status-dot').getAttribute('aria-hidden')).toBe('true');
         expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-label')).toBe('Toggle color theme');
         expect(dom.window.document.getElementById('themeToggle').getAttribute('type')).toBe('button');
+    });
+
+    test('keeps the admin connection status label synchronized', () => {
+        const dom = new JSDOM(`
+            <div class="connection-status" id="connectionStatus" role="status" aria-live="polite" aria-atomic="true" aria-label="Dashboard connection status: Connected">
+                <span class="status-dot online" aria-hidden="true"></span>
+                <span class="status-text">Connected</span>
+            </div>
+        `);
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.updateConnectionStatus(false);
+
+        expect(document.querySelector('#connectionStatus .status-dot').classList.contains('offline')).toBe(true);
+        expect(document.querySelector('#connectionStatus .status-text').textContent).toBe('Disconnected');
+        expect(document.getElementById('connectionStatus').getAttribute('aria-label')).toBe('Dashboard connection status: Disconnected');
+
+        dashboard.updateConnectionStatus(true);
+
+        expect(document.querySelector('#connectionStatus .status-dot').classList.contains('online')).toBe(true);
+        expect(document.querySelector('#connectionStatus .status-text').textContent).toBe('Connected');
+        expect(document.getElementById('connectionStatus').getAttribute('aria-label')).toBe('Dashboard connection status: Connected');
     });
 
     test('exposes the agent company operations console in navigation and markup', () => {

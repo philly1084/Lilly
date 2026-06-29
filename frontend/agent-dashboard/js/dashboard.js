@@ -5838,13 +5838,19 @@ class Dashboard {
     // ==================== HELPERS ====================
     
     updateConnectionStatus(connected) {
+        const status = document.getElementById('connectionStatus');
         const dot = document.querySelector('#connectionStatus .status-dot');
         const text = document.querySelector('#connectionStatus .status-text');
+        const label = connected ? 'Connected' : 'Disconnected';
         
         if (dot && text) {
             dot.classList.toggle('online', connected);
             dot.classList.toggle('offline', !connected);
-            text.textContent = connected ? 'Connected' : 'Disconnected';
+            text.textContent = label;
+        }
+
+        if (status) {
+            status.setAttribute('aria-label', `Dashboard connection status: ${label}`);
         }
     }
 
