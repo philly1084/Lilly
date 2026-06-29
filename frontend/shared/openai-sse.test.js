@@ -64,6 +64,30 @@ describe('openai-sse helpers', () => {
     expect(events[0].artifacts).toEqual([{ id: 'artifact-1' }]);
   });
 
+  test('preserves artifact arrays from nested response metadata', () => {
+    const events = normalizeGatewayEventPayload({
+      type: 'response.completed',
+      response: {
+        id: 'resp_artifacts',
+        metadata: {
+          artifacts: [
+            { id: 'artifact-metadata-1', type: 'html', title: 'Build report' },
+          ],
+        },
+        output_text: 'Created the build report.',
+      },
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'final',
+      responseId: 'resp_artifacts',
+      artifacts: [
+        { id: 'artifact-metadata-1', type: 'html', title: 'Build report' },
+      ],
+    });
+  });
+
   test('ignores assistant role-only chat completion chunks and indexes tool calls', () => {
     expect(normalizeGatewayEventPayload({
       object: 'chat.completion.chunk',

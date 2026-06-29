@@ -751,16 +751,25 @@
       return [];
     }
 
-    if (Array.isArray(payload.artifacts)) {
-      return payload.artifacts;
-    }
+    const artifactSources = [
+      payload.artifacts,
+      payload.metadata?.artifacts,
+      payload.assistantMetadata?.artifacts,
+      payload.assistant_metadata?.artifacts,
+      payload.choices?.[0]?.message?.artifacts,
+      payload.choices?.[0]?.message?.metadata?.artifacts,
+      payload.choices?.[0]?.message?.assistantMetadata?.artifacts,
+      payload.choices?.[0]?.message?.assistant_metadata?.artifacts,
+      payload.response?.artifacts,
+      payload.response?.metadata?.artifacts,
+      payload.response?.assistantMetadata?.artifacts,
+      payload.response?.assistant_metadata?.artifacts,
+    ];
 
-    if (Array.isArray(payload.choices?.[0]?.message?.artifacts)) {
-      return payload.choices[0].message.artifacts;
-    }
-
-    if (Array.isArray(payload.response?.artifacts)) {
-      return payload.response.artifacts;
+    for (const artifacts of artifactSources) {
+      if (Array.isArray(artifacts)) {
+        return artifacts;
+      }
     }
 
     return [];
