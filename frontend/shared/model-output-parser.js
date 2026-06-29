@@ -611,6 +611,26 @@
                 metadata[key] = value[key];
             }
         });
+        const assistantMetadata = (
+            (value.assistantMetadata && typeof value.assistantMetadata === 'object' ? value.assistantMetadata : null)
+            || (value.assistant_metadata && typeof value.assistant_metadata === 'object' ? value.assistant_metadata : null)
+            || (metadata.assistantMetadata && typeof metadata.assistantMetadata === 'object' ? metadata.assistantMetadata : null)
+            || (metadata.assistant_metadata && typeof metadata.assistant_metadata === 'object' ? metadata.assistant_metadata : null)
+        );
+        if (assistantMetadata && metadata.assistantMetadata === undefined) {
+            metadata.assistantMetadata = assistantMetadata;
+        }
+
+        const toolEvents = (
+            Array.isArray(value.toolEvents) ? value.toolEvents
+                : Array.isArray(value.tool_events) ? value.tool_events
+                    : Array.isArray(metadata.toolEvents) ? metadata.toolEvents
+                        : Array.isArray(metadata.tool_events) ? metadata.tool_events
+                            : null
+        );
+        if (toolEvents && metadata.toolEvents === undefined) {
+            metadata.toolEvents = toolEvents;
+        }
         return metadata;
     }
 

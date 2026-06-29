@@ -60,6 +60,36 @@ describe('model-output-parser', () => {
         expect(normalized).not.toContain('chain of thought');
     });
 
+    test('preserves assistant metadata and tool events from provider envelopes', () => {
+        const normalized = parser.normalizeModelOutput({
+            assistant_metadata: {
+                reasoningSummary: 'Checked the source before formatting.',
+                reasoningAvailable: true,
+            },
+            tool_events: [
+                {
+                    toolId: 'web-fetch',
+                    success: true,
+                },
+            ],
+            content: [
+                { type: 'output_text', text: 'Summary: Source-backed answer is ready.' },
+            ],
+        });
+
+        expect(normalized.text).toContain('Summary:');
+        expect(normalized.metadata.assistantMetadata).toEqual(expect.objectContaining({
+            reasoningSummary: 'Checked the source before formatting.',
+            reasoningAvailable: true,
+        }));
+        expect(normalized.metadata.toolEvents).toEqual([
+            expect.objectContaining({
+                toolId: 'web-fetch',
+                success: true,
+            }),
+        ]);
+    });
+
     test('keeps fenced code blocks intact while repairing surrounding prose', () => {
         const normalized = parser.normalizeModelOutputMarkdown('Summary: useful\n\n```js\nconst table = \"| not markdown |\";\n```\n\nIngredients | Item | Quantity | |---|---| | A | B |');
 
