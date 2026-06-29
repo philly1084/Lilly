@@ -752,12 +752,7 @@ function buildToolExecutionContext(toolManager, req, sessionId = null, session =
     route: req.originalUrl || req.path || '/api/tools/invoke',
     transport: 'http',
     executionProfile: body.executionProfile || body.execution_profile || body.clientSurface || body.client_surface || 'tool-invoke',
-    model: String(
-      body.model
-      || metadata.requestedModel
-      || session?.metadata?.model
-      || ''
-    ).trim() || null,
+    model: resolveRequestedToolModel(body) || session?.metadata?.model || null,
     timezone,
     now,
     toolManager,
@@ -794,6 +789,19 @@ async function persistToolSessionModel(sessionId = null, ownerId = null, model =
   });
 
   return updated || session;
+}
+
+function resolveRequestedToolModel(body = {}) {
+  const metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+  return String(
+    body?.model
+    || body?.requestedModel
+    || body?.requested_model
+    || metadata.requestedModel
+    || metadata.requested_model
+    || metadata.model
+    || '',
+  ).trim() || null;
 }
 
 function looksLikeNotesSurface(value = '') {
@@ -1428,7 +1436,7 @@ router.post('/invoke', async (req, res) => {
     const resolvedSession = await persistToolSessionModel(
       resolvedSessionId,
       ownerId,
-      req.body?.model || req.body?.metadata?.requestedModel || null,
+      resolveRequestedToolModel(req.body),
     );
     
     const result = await toolManager.executeTool(
@@ -1469,7 +1477,7 @@ router.post('/invoke/:id', async (req, res) => {
     const resolvedSession = await persistToolSessionModel(
       resolvedSessionId,
       ownerId,
-      req.body?.model || req.body?.metadata?.requestedModel || null,
+      resolveRequestedToolModel(req.body),
     );
     
     const result = await toolManager.executeTool(
@@ -1502,5 +1510,9 @@ function getCategoryIcon(category) {
   };
   return icons[category] || 'tool';
 }
+
+router.__test = {
+  resolveRequestedToolModel,
+};
 
 module.exports = router;

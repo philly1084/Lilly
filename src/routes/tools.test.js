@@ -30,6 +30,16 @@ describe('/api/tools routes', () => {
         return app;
     }
 
+    test('normalizes requested model aliases for tool invocation handoffs', () => {
+        const { resolveRequestedToolModel } = toolsRouter.__test;
+
+        expect(resolveRequestedToolModel({ model: 'gpt-5.5' })).toBe('gpt-5.5');
+        expect(resolveRequestedToolModel({ requested_model: 'deepseek-v4-pro' })).toBe('deepseek-v4-pro');
+        expect(resolveRequestedToolModel({ metadata: { requestedModel: 'gpt-5.4-mini' } })).toBe('gpt-5.4-mini');
+        expect(resolveRequestedToolModel({ metadata: { requested_model: 'claude-sonnet-4' } })).toBe('claude-sonnet-4');
+        expect(resolveRequestedToolModel({ metadata: { model: 'kimi-k2' } })).toBe('kimi-k2');
+    });
+
     test('includeAll exposes managed-app with GitLab runtime context', async () => {
         const app = buildApp({
             managedAppService: {
