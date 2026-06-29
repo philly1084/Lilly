@@ -163,6 +163,7 @@ class PropertiesManager {
             window.toolManager?.defaultProperties?.strokeColor || '#000000',
             window.toolManager?.defaultProperties?.backgroundColor || 'transparent',
         );
+        this.syncColorButtonAccessibility();
         
         // Stroke width picker
         document.querySelectorAll('#strokeWidthPicker .stroke-btn').forEach(btn => {
@@ -810,6 +811,7 @@ class PropertiesManager {
         if (section?.dataset.target) {
             this.updateColorPreview(section.dataset.target, activeBtn.dataset.color);
         }
+        this.syncColorButtonAccessibility(document.querySelector(container));
     }
     
     updateExtendedColorUI(activeBtn, container) {
@@ -821,7 +823,22 @@ class PropertiesManager {
             if (section.dataset.target) {
                 this.updateColorPreview(section.dataset.target, activeBtn.dataset.color);
             }
+            this.syncColorButtonAccessibility(section);
         }
+    }
+
+    syncColorButtonAccessibility(root = document) {
+        root.querySelectorAll('.color-btn').forEach((btn) => {
+            const section = btn.closest('.color-section');
+            const target = section?.dataset.target === 'background' ? 'fill' : 'stroke';
+            const colorName = btn.getAttribute('title') || btn.dataset.color || 'custom color';
+            btn.type = 'button';
+            btn.setAttribute('aria-label', `Set ${target} color to ${colorName}`);
+            btn.setAttribute('aria-pressed', btn.classList.contains('active') ? 'true' : 'false');
+            btn.querySelectorAll('.color-checkmark').forEach((mark) => {
+                mark.setAttribute('aria-hidden', 'true');
+            });
+        });
     }
 
     updateColorPreview(target, color) {
@@ -970,6 +987,7 @@ class PropertiesManager {
             container.innerHTML = history.map(color => `
                 <button class="color-btn" data-color="${color}" style="background: ${color};" title="${color}"></button>
             `).join('');
+            this.syncColorButtonAccessibility(container);
             
             // Attach listeners
             container.querySelectorAll('.color-btn').forEach(btn => {
