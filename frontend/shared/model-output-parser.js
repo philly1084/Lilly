@@ -71,6 +71,9 @@
                 if (typeof part.output_text === 'string') {
                     return part.output_text;
                 }
+                if (typeof part.refusal === 'string') {
+                    return part.refusal;
+                }
                 return '';
             })
             .filter(Boolean)
@@ -112,6 +115,7 @@
             'message',
             'text',
             'output_text',
+            'refusal',
             'output',
         ];
 

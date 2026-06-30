@@ -60,6 +60,24 @@ describe('model-output-parser', () => {
         expect(normalized).not.toContain('chain of thought');
     });
 
+    test('renders non-stream Responses refusal content parts', () => {
+        const normalized = parser.normalizeModelOutputMarkdown({
+            output: [
+                {
+                    type: 'message',
+                    content: [
+                        {
+                            type: 'refusal',
+                            refusal: 'I cannot help with that request, but I can help with a safe alternative.',
+                        },
+                    ],
+                },
+            ],
+        });
+
+        expect(normalized).toBe('I cannot help with that request, but I can help with a safe alternative.');
+    });
+
     test('preserves assistant metadata and tool events from provider envelopes', () => {
         const normalized = parser.normalizeModelOutput({
             assistant_metadata: {
