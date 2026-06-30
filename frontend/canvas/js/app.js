@@ -585,7 +585,23 @@ class CanvasApp {
     setupResizer() {
         const resizer = document.getElementById('resizer');
         const sidebar = document.getElementById('sidebar');
+        if (!resizer || !sidebar) return;
+
         let isResizing = false;
+        const minWidth = 260;
+        const maxWidth = 500;
+        const getCurrentWidth = () => {
+            const inlineWidth = parseInt(sidebar.style.width, 10);
+            if (Number.isFinite(inlineWidth)) return inlineWidth;
+            const measuredWidth = Math.round(sidebar.getBoundingClientRect?.().width || 320);
+            return Math.min(maxWidth, Math.max(minWidth, measuredWidth));
+        };
+        const setSidebarWidth = (width) => {
+            const nextWidth = Math.min(maxWidth, Math.max(minWidth, width));
+            sidebar.style.width = `${nextWidth}px`;
+            resizer.setAttribute('aria-valuenow', String(nextWidth));
+            this.editor.resize();
+        };
 
         resizer.addEventListener('mousedown', (e) => {
             isResizing = true;
@@ -598,9 +614,8 @@ class CanvasApp {
             if (!isResizing) return;
             
             const newWidth = e.clientX;
-            if (newWidth >= 260 && newWidth <= 500) {
-                sidebar.style.width = `${newWidth}px`;
-                this.editor.resize();
+            if (newWidth >= minWidth && newWidth <= maxWidth) {
+                setSidebarWidth(newWidth);
             }
         });
 
@@ -609,6 +624,30 @@ class CanvasApp {
                 isResizing = false;
                 resizer.classList.remove('resizing');
                 document.body.style.cursor = '';
+            }
+        });
+
+        resizer.addEventListener('keydown', (e) => {
+            const keyDeltas = {
+                ArrowLeft: -20,
+                ArrowRight: 20,
+            };
+
+            if (e.key === 'Home') {
+                e.preventDefault();
+                setSidebarWidth(minWidth);
+                return;
+            }
+
+            if (e.key === 'End') {
+                e.preventDefault();
+                setSidebarWidth(maxWidth);
+                return;
+            }
+
+            if (Object.prototype.hasOwnProperty.call(keyDeltas, e.key)) {
+                e.preventDefault();
+                setSidebarWidth(getCurrentWidth() + keyDeltas[e.key]);
             }
         });
     }

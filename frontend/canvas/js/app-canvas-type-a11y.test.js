@@ -138,4 +138,32 @@ describe('Canvas type selector accessibility', () => {
         expect(dialog.getAttribute('aria-label')).toBe('Export diagram options');
         expect(dialog.querySelector('.toast-close').getAttribute('aria-label')).toBe('Close export diagram options');
     });
+
+    test('resizes canvas panes from the keyboard separator', () => {
+        const dom = new JSDOM(`
+            <aside id="sidebar" style="width: 320px;"></aside>
+            <div id="resizer" role="separator" aria-orientation="vertical" aria-valuemin="260" aria-valuemax="500" aria-valuenow="320" tabindex="0" aria-label="Resize prompt and canvas panes"></div>
+        `);
+        const CanvasApp = loadCanvasAppClass(dom.window.document);
+        const app = Object.create(CanvasApp.prototype);
+
+        app.editor = { resize: jest.fn() };
+        app.setupResizer();
+
+        const sidebar = dom.window.document.getElementById('sidebar');
+        const resizer = dom.window.document.getElementById('resizer');
+
+        resizer.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        expect(sidebar.style.width).toBe('340px');
+        expect(resizer.getAttribute('aria-valuenow')).toBe('340');
+        expect(app.editor.resize).toHaveBeenCalledTimes(1);
+
+        resizer.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+        expect(sidebar.style.width).toBe('260px');
+        expect(resizer.getAttribute('aria-valuenow')).toBe('260');
+
+        resizer.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+        expect(sidebar.style.width).toBe('500px');
+        expect(resizer.getAttribute('aria-valuenow')).toBe('500');
+    });
 });
