@@ -180,6 +180,23 @@ function parseBoolean(value, fallback = false) {
   return fallback;
 }
 
+function firstQueryValue(query = {}, keys = []) {
+  for (const key of keys) {
+    const value = query[key];
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+  return '';
+}
+
+function splitQueryList(value = '') {
+  return String(value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 router.get('/', (req, res, next) => {
   try {
     const skills = skillStore.listSkills({
@@ -200,25 +217,16 @@ router.get('/', (req, res, next) => {
 
 router.get('/context', (req, res, next) => {
   try {
-    const selectedSkillIds = String(req.query.skillIds || req.query.skills || '')
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    const toolIds = String(req.query.toolIds || req.query.tools || '')
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    const capabilityNeeds = String(req.query.capabilityNeeds || req.query.capabilities || '')
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+    const selectedSkillIds = splitQueryList(firstQueryValue(req.query, ['skillIds', 'skills', 'skill_ids']));
+    const toolIds = splitQueryList(firstQueryValue(req.query, ['toolIds', 'tools', 'tool_ids']));
+    const capabilityNeeds = splitQueryList(firstQueryValue(req.query, ['capabilityNeeds', 'capabilities', 'capability_needs']));
     const skillContext = skillStore.buildContext({
       text: req.query.q || req.query.text || '',
       toolIds,
       selectedSkillIds,
       limit: req.query.limit,
-      surface: req.query.surface || req.query.clientSurface || '',
-      taskType: req.query.taskType || req.query.activeMode || '',
+      surface: firstQueryValue(req.query, ['surface', 'clientSurface', 'client_surface']),
+      taskType: firstQueryValue(req.query, ['taskType', 'activeMode', 'task_type', 'active_mode']),
       capabilityNeeds,
     });
 
