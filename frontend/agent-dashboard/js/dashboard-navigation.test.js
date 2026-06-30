@@ -728,12 +728,16 @@ describe('agent dashboard navigation accessibility', () => {
 
         expect(sidebar.classList.contains('open')).toBe(true);
         expect(mobileToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(mobileToggle.getAttribute('aria-label')).toBe('Close admin navigation');
+        expect(mobileToggle.getAttribute('title')).toBe('Close admin navigation');
         expect(document.activeElement).toBe(overview);
 
         dashboard.closeMobileNavigation();
 
         expect(sidebar.classList.contains('open')).toBe(false);
         expect(mobileToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(mobileToggle.getAttribute('aria-label')).toBe('Open admin navigation');
+        expect(mobileToggle.getAttribute('title')).toBe('Open admin navigation');
         expect(document.activeElement).toBe(mobileToggle);
     });
 

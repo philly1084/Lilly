@@ -4152,6 +4152,7 @@ class Dashboard {
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebarBackdrop');
         const mobileToggle = document.getElementById('mobileMenuToggle');
+        const mobileLabel = isOpen ? 'Close admin navigation' : 'Open admin navigation';
 
         sidebar?.classList.toggle('open', isOpen);
         document.body.classList.toggle('admin-nav-open', isOpen);
@@ -4161,6 +4162,8 @@ class Dashboard {
         }
 
         mobileToggle?.setAttribute('aria-expanded', String(isOpen));
+        mobileToggle?.setAttribute('aria-label', mobileLabel);
+        mobileToggle?.setAttribute('title', mobileLabel);
         this.syncSidebarToggleState({ mobileOpen: isOpen });
     }
 
