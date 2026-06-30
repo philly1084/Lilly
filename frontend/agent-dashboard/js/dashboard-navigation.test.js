@@ -606,6 +606,7 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('logModelFilter').labels[0].textContent.trim()).toBe('Model');
         expect(document.getElementById('logTimeFilter').labels[0].textContent.trim()).toBe('Time Range');
         expect(document.getElementById('logSearch').labels[0].textContent.trim()).toBe('Filter logs by prompt, model, or status');
+        expect(document.querySelector('#logsTable .col-actions').getAttribute('aria-label')).toBe('Log actions');
     });
 
     test('toggles and persists the admin light and dark theme state', () => {
