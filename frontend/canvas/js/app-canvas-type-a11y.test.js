@@ -48,9 +48,17 @@ describe('Canvas type selector accessibility', () => {
         const dom = new JSDOM(html);
         const modelSelect = dom.window.document.getElementById('model-select');
         const reasoningSelect = dom.window.document.getElementById('reasoning-effort-select');
+        const previewToggle = dom.window.document.getElementById('toggle-preview');
+        const splitToggle = dom.window.document.getElementById('toggle-split');
 
         expect(modelSelect.getAttribute('aria-label')).toBe('Select AI model for Canvas generation');
         expect(reasoningSelect.getAttribute('aria-label')).toBe('Select reasoning effort for Canvas generation');
+        expect(previewToggle.getAttribute('aria-label')).toBe('Show preview');
+        expect(previewToggle.getAttribute('aria-controls')).toBe('preview-wrapper diagram-wrapper');
+        expect(previewToggle.getAttribute('aria-pressed')).toBe('false');
+        expect(splitToggle.getAttribute('aria-label')).toBe('Show split view');
+        expect(splitToggle.getAttribute('aria-controls')).toBe('editor-wrapper preview-wrapper diagram-wrapper');
+        expect(splitToggle.getAttribute('aria-pressed')).toBe('false');
     });
 
     test('declares the active canvas type with aria-pressed in the initial markup', () => {
@@ -179,6 +187,49 @@ describe('Canvas type selector accessibility', () => {
         resizer.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
         expect(sidebar.style.width).toBe('500px');
         expect(resizer.getAttribute('aria-valuenow')).toBe('500');
+    });
+
+    test('keeps preview and split view toggle states synchronized', () => {
+        const dom = new JSDOM(`
+            <button id="toggle-preview" aria-label="Show preview" aria-pressed="false"></button>
+            <button id="toggle-split" aria-label="Show split view" aria-pressed="false"></button>
+            <div class="editor-container">
+                <div id="editor-wrapper"></div>
+                <div id="preview-wrapper" class="hidden"></div>
+                <div id="diagram-wrapper" class="hidden"></div>
+            </div>
+            <div id="preview-content"></div>
+        `);
+        const CanvasApp = loadCanvasAppClass(dom.window.document);
+        const app = Object.create(CanvasApp.prototype);
+
+        app.state = { canvasType: 'document', isPreviewMode: false, isSplitView: false, metadata: {} };
+        app.editor = {
+            refresh: jest.fn(),
+            getValue: jest.fn(() => '# Preview'),
+        };
+        app.typeManager = {
+            getCurrentHandler: jest.fn(() => ({
+                renderMarkdown: jest.fn(() => '<h1>Preview</h1>'),
+            })),
+        };
+
+        app.togglePreview();
+
+        const previewToggle = dom.window.document.getElementById('toggle-preview');
+        const splitToggle = dom.window.document.getElementById('toggle-split');
+
+        expect(previewToggle.getAttribute('aria-pressed')).toBe('true');
+        expect(previewToggle.getAttribute('aria-label')).toBe('Hide preview');
+        expect(splitToggle.getAttribute('aria-pressed')).toBe('false');
+        expect(splitToggle.getAttribute('aria-label')).toBe('Show split view');
+
+        app.toggleSplitView();
+
+        expect(previewToggle.getAttribute('aria-pressed')).toBe('false');
+        expect(previewToggle.getAttribute('aria-label')).toBe('Show preview');
+        expect(splitToggle.getAttribute('aria-pressed')).toBe('true');
+        expect(splitToggle.getAttribute('aria-label')).toBe('Hide split view');
     });
 
     test('labels the dynamic artifact panel and renders an empty state', () => {

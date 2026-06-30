@@ -273,6 +273,12 @@ body {
     background: var(--bg-hover);
 }
 
+.icon-btn[aria-pressed="true"] {
+    color: var(--text-active);
+    background: var(--bg-active);
+    box-shadow: inset 0 -2px 0 var(--accent-primary);
+}
+
 .icon-btn.small {
     width: 24px;
     height: 24px;

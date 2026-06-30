@@ -718,7 +718,27 @@ class CanvasApp {
             this.state.isSplitView = false;
         }
 
+        this.updateViewToggleState();
         this.updateEditorLayout();
+    }
+
+    updateViewToggleState() {
+        const previewBtn = document.getElementById('toggle-preview');
+        const splitBtn = document.getElementById('toggle-split');
+
+        if (previewBtn) {
+            const isPreview = Boolean(this.state.isPreviewMode);
+            previewBtn.setAttribute('aria-pressed', isPreview ? 'true' : 'false');
+            previewBtn.setAttribute('aria-label', isPreview ? 'Hide preview' : 'Show preview');
+            previewBtn.title = isPreview ? 'Hide Preview' : 'Show Preview';
+        }
+
+        if (splitBtn) {
+            const isSplit = Boolean(this.state.isSplitView);
+            splitBtn.setAttribute('aria-pressed', isSplit ? 'true' : 'false');
+            splitBtn.setAttribute('aria-label', isSplit ? 'Hide split view' : 'Show split view');
+            splitBtn.title = isSplit ? 'Hide Split View' : 'Show Split View';
+        }
     }
 
     /**
@@ -749,6 +769,8 @@ class CanvasApp {
         const previewWrapper = document.getElementById('preview-wrapper');
         const diagramWrapper = document.getElementById('diagram-wrapper');
         const container = document.querySelector('.editor-container');
+
+        this.updateViewToggleState();
 
         // Reset classes
         container.classList.remove('split');
