@@ -68,7 +68,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
         expect(html).toContain('css/styles.css?v=20260630a');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
-        expect(html).toContain('js/ui.js?v=20260630b');
+        expect(html).toContain('js/ui.js?v=20260630c');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(uiSource).toContain("if (event.key === 'Escape')");
@@ -88,7 +88,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="progressbar"');
         expect(html).toContain('aria-labelledby="export-progress-text"');
         expect(html).toContain('aria-describedby="export-progress-percent"');
-        expect(html).toContain('js/ui.js?v=20260630b');
+        expect(html).toContain('js/ui.js?v=20260630c');
         expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
@@ -106,7 +106,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-busy="false"');
-        expect(html).toContain('js/ui.js?v=20260630b');
+        expect(html).toContain('js/ui.js?v=20260630c');
         expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
@@ -147,7 +147,7 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
 
-        expect(html).toContain('js/ui.js?v=20260630b');
+        expect(html).toContain('js/ui.js?v=20260630c');
         expect(uiSource).toContain("modal.setAttribute('aria-describedby', 'shortcuts-description');");
         expect(uiSource).toContain('<div class="modal-overlay" aria-hidden="true" onclick="uiHelpers.closeShortcutsModal()"></div>');
         expect(uiSource).toContain('<button type="button" class="btn-icon" onclick="uiHelpers.closeShortcutsModal()" aria-label="Close keyboard shortcuts help">');
@@ -190,10 +190,26 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="command-input"');
         expect(html).toContain('aria-controls="command-results"');
         expect(html).toContain('aria-autocomplete="list"');
-        expect(html).toContain('js/ui.js?v=20260630b');
+        expect(html).toContain('js/ui.js?v=20260630c');
         expect(uiSource).toContain('syncCommandResultAccessibility()');
         expect(uiSource).toContain("commandInput.setAttribute('aria-activedescendant', selectedItem.id);");
         expect(uiSource).toContain("item.setAttribute('aria-selected', item === selectedItem ? 'true' : 'false');");
         expect(uiSource).toContain("commandInput.removeAttribute('aria-activedescendant');");
+    });
+
+    test('composer input toggle exposes its controlled expanded state', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('id="input-toggle-btn"');
+        expect(html).toContain('aria-controls="input-area"');
+        expect(html).toContain('aria-expanded="true"');
+        expect(html).toContain('aria-label="Hide input area"');
+        expect(html).toContain('<span class="input-toggle-tooltip">Hide Input</span>');
+        expect(html).toContain('js/ui.js?v=20260630c');
+        expect(uiSource).toContain('syncInputAreaToggleState(isHidden)');
+        expect(uiSource).toContain("toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');");
+        expect(uiSource).toContain("toggleBtn.setAttribute('aria-label', label);");
+        expect(uiSource).toContain('toggleTooltip.textContent = tooltip;');
     });
 });

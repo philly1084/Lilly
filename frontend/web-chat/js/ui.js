@@ -9238,19 +9238,12 @@ class UIHelpers {
         }
 
         const inputArea = document.getElementById('input-area');
-        const toggleBtn = document.getElementById('input-toggle-btn');
-        const toggleIcon = document.getElementById('input-toggle-icon');
         if (!inputArea) {
             return;
         }
 
         inputArea.classList.remove('hidden');
-        toggleBtn?.classList.remove('input-hidden');
-
-        if (toggleIcon) {
-            toggleIcon.setAttribute('data-lucide', 'chevron-down');
-            this.reinitializeIcons(toggleBtn || toggleIcon);
-        }
+        this.syncInputAreaToggleState(false);
     }
 
     updateMinimalistToggleUI() {
@@ -11216,22 +11209,41 @@ class UIHelpers {
     // ============================================
     // Input Area Toggle
     // ============================================
+
+    syncInputAreaToggleState(isHidden) {
+        const toggleBtn = document.getElementById('input-toggle-btn');
+        const toggleIcon = document.getElementById('input-toggle-icon');
+        const toggleTooltip = toggleBtn?.querySelector('.input-toggle-tooltip');
+
+        if (!toggleBtn) return;
+
+        const label = isHidden ? 'Show input area' : 'Hide input area';
+        const tooltip = isHidden ? 'Show Input' : 'Hide Input';
+
+        toggleBtn.classList.toggle('input-hidden', isHidden);
+        toggleBtn.setAttribute('aria-controls', 'input-area');
+        toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+        toggleBtn.setAttribute('aria-label', label);
+        toggleBtn.setAttribute('title', `${label} (Ctrl+Shift+H)`);
+
+        if (toggleTooltip) {
+            toggleTooltip.textContent = tooltip;
+        }
+
+        if (toggleIcon) {
+            toggleIcon.setAttribute('data-lucide', isHidden ? 'chevron-up' : 'chevron-down');
+            this.reinitializeIcons(toggleBtn || toggleIcon);
+        }
+    }
     
     toggleInputArea() {
         const inputArea = document.getElementById('input-area');
         const toggleBtn = document.getElementById('input-toggle-btn');
-        const toggleIcon = document.getElementById('input-toggle-icon');
         
         if (!inputArea || !toggleBtn) return;
         
         const isHidden = inputArea.classList.toggle('hidden');
-        toggleBtn.classList.toggle('input-hidden', isHidden);
-        
-        // Update icon
-        if (toggleIcon) {
-            toggleIcon.setAttribute('data-lucide', isHidden ? 'chevron-up' : 'chevron-down');
-            lucide.createIcons();
-        }
+        this.syncInputAreaToggleState(isHidden);
         
         // Save preference
         this.storageSet('webchat_input_hidden', isHidden ? 'true' : 'false');
@@ -11253,19 +11265,11 @@ class UIHelpers {
 
         const isHidden = this.storageGet('webchat_input_hidden') === 'true';
         const inputArea = document.getElementById('input-area');
-        const toggleBtn = document.getElementById('input-toggle-btn');
-        const toggleIcon = document.getElementById('input-toggle-icon');
 
         if (inputArea) {
             inputArea.classList.toggle('hidden', isHidden);
         }
-        if (toggleBtn) {
-            toggleBtn.classList.toggle('input-hidden', isHidden);
-        }
-        if (toggleIcon) {
-            toggleIcon.setAttribute('data-lucide', isHidden ? 'chevron-up' : 'chevron-down');
-            lucide.createIcons();
-        }
+        this.syncInputAreaToggleState(isHidden);
     }
     
     // ============================================
