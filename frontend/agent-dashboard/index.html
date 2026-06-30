@@ -1539,22 +1539,22 @@
                 <section class="view" id="settingsView">
                     <div class="settings-layout">
                         <div class="settings-sidebar">
-                            <div class="settings-nav">
-                                <button class="settings-nav-item active" data-settings="general">General</button>
-                                <button class="settings-nav-item" data-settings="podcastAudio">Podcast Audio</button>
-                                <button class="settings-nav-item" data-settings="storage">Storage</button>
-                                <button class="settings-nav-item" data-settings="features">Features</button>
-                                <button class="settings-nav-item" data-settings="orchestration">Orchestration</button>
-                                <button class="settings-nav-item" data-settings="privacyPii">Privacy / PII</button>
-                                <button class="settings-nav-item" data-settings="api">API & Integrations</button>
-                                <button class="settings-nav-item" data-settings="notifications">Notifications</button>
-                                <button class="settings-nav-item" data-settings="advanced">Advanced</button>
+                            <div class="settings-nav" role="tablist" aria-label="Settings sections">
+                                <button class="settings-nav-item active" id="generalSettingsTab" data-settings="general" type="button" role="tab" aria-controls="generalSettings" aria-selected="true" tabindex="0">General</button>
+                                <button class="settings-nav-item" id="podcastAudioSettingsTab" data-settings="podcastAudio" type="button" role="tab" aria-controls="podcastAudioSettings" aria-selected="false" tabindex="-1">Podcast Audio</button>
+                                <button class="settings-nav-item" id="storageSettingsTab" data-settings="storage" type="button" role="tab" aria-controls="storageSettings" aria-selected="false" tabindex="-1">Storage</button>
+                                <button class="settings-nav-item" id="featuresSettingsTab" data-settings="features" type="button" role="tab" aria-controls="featuresSettings" aria-selected="false" tabindex="-1">Features</button>
+                                <button class="settings-nav-item" id="orchestrationSettingsTab" data-settings="orchestration" type="button" role="tab" aria-controls="orchestrationSettings" aria-selected="false" tabindex="-1">Orchestration</button>
+                                <button class="settings-nav-item" id="privacyPiiSettingsTab" data-settings="privacyPii" type="button" role="tab" aria-controls="privacyPiiSettings" aria-selected="false" tabindex="-1">Privacy / PII</button>
+                                <button class="settings-nav-item" id="apiSettingsTab" data-settings="api" type="button" role="tab" aria-controls="apiSettings" aria-selected="false" tabindex="-1">API & Integrations</button>
+                                <button class="settings-nav-item" id="notificationsSettingsTab" data-settings="notifications" type="button" role="tab" aria-controls="notificationsSettings" aria-selected="false" tabindex="-1">Notifications</button>
+                                <button class="settings-nav-item" id="advancedSettingsTab" data-settings="advanced" type="button" role="tab" aria-controls="advancedSettings" aria-selected="false" tabindex="-1">Advanced</button>
                             </div>
                         </div>
 
                         <div class="settings-content">
                             <!-- General Settings -->
-                            <div class="settings-section active" id="generalSettings">
+                            <div class="settings-section active" id="generalSettings" role="tabpanel" aria-labelledby="generalSettingsTab">
                                 <h2>General Settings</h2>
                                 <div class="card">
                                     <div class="card-body">
@@ -1702,7 +1702,7 @@
                             </div>
 
                             <!-- Podcast Audio Settings -->
-                            <div class="settings-section" id="podcastAudioSettings">
+                            <div class="settings-section" id="podcastAudioSettings" role="tabpanel" aria-labelledby="podcastAudioSettingsTab" hidden>
                                 <h2>Podcast Audio</h2>
                                 <div class="card">
                                     <div class="card-body">
@@ -1752,7 +1752,7 @@
                             </div>
 
                             <!-- Storage Settings -->
-                            <div class="settings-section" id="storageSettings">
+                            <div class="settings-section" id="storageSettings" role="tabpanel" aria-labelledby="storageSettingsTab" hidden>
                                 <h2>Storage</h2>
                                 <div class="storage-summary-grid">
                                     <div class="stat-card">
@@ -1825,7 +1825,7 @@
                             </div>
 
                             <!-- Features Settings -->
-                            <div class="settings-section" id="featuresSettings">
+                            <div class="settings-section" id="featuresSettings" role="tabpanel" aria-labelledby="featuresSettingsTab" hidden>
                                 <h2>Feature Toggles</h2>
                                 <div class="card">
                                     <div class="card-body">
@@ -1906,7 +1906,7 @@
                             </div>
 
                             <!-- Orchestration Settings -->
-                            <div class="settings-section" id="orchestrationSettings">
+                            <div class="settings-section" id="orchestrationSettings" role="tabpanel" aria-labelledby="orchestrationSettingsTab" hidden>
                                 <h2>Orchestration</h2>
                                 <div class="card">
                                     <div class="card-body">
@@ -2052,7 +2052,7 @@
                             </div>
 
                             <!-- Privacy / PII Settings -->
-                            <div class="settings-section" id="privacyPiiSettings">
+                            <div class="settings-section" id="privacyPiiSettings" role="tabpanel" aria-labelledby="privacyPiiSettingsTab" hidden>
                                 <h2>Privacy / PII Workflow</h2>
                                 <div class="card">
                                     <div class="card-body">
@@ -2230,7 +2230,7 @@
                             </div>
 
                             <!-- API Settings -->
-                            <div class="settings-section" id="apiSettings">
+                            <div class="settings-section" id="apiSettings" role="tabpanel" aria-labelledby="apiSettingsTab" hidden>
                                 <h2>API Configuration</h2>
                                 <div class="card">
                                     <div class="card-body">
@@ -2413,7 +2413,7 @@
                             </div>
 
                             <!-- Notifications Settings -->
-                            <div class="settings-section" id="notificationsSettings">
+                            <div class="settings-section" id="notificationsSettings" role="tabpanel" aria-labelledby="notificationsSettingsTab" hidden>
                                 <h2>Notifications</h2>
                                 <div class="card">
                                     <div class="card-body">
@@ -2454,7 +2454,7 @@
                             </div>
 
                             <!-- Advanced Settings -->
-                            <div class="settings-section" id="advancedSettings">
+                            <div class="settings-section" id="advancedSettings" role="tabpanel" aria-labelledby="advancedSettingsTab" hidden>
                                 <h2>Advanced</h2>
                                 <div class="card">
                                     <div class="card-body">

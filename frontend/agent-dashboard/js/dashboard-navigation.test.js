@@ -620,6 +620,31 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.activeElement).toBe(mobileToggle);
     });
 
+    test('ships settings tab semantics in the initial admin markup', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const settingsNav = dom.window.document.querySelector('.settings-nav');
+        const tabs = Array.from(dom.window.document.querySelectorAll('.settings-nav-item'));
+        const panels = Array.from(dom.window.document.querySelectorAll('.settings-section'));
+
+        expect(settingsNav.getAttribute('role')).toBe('tablist');
+        expect(settingsNav.getAttribute('aria-label')).toBe('Settings sections');
+        expect(tabs).toHaveLength(9);
+        expect(panels).toHaveLength(9);
+
+        tabs.forEach((tab, index) => {
+            const panel = dom.window.document.getElementById(tab.getAttribute('aria-controls'));
+            expect(tab.getAttribute('type')).toBe('button');
+            expect(tab.getAttribute('role')).toBe('tab');
+            expect(tab.id).toBe(`${tab.dataset.settings}SettingsTab`);
+            expect(tab.getAttribute('aria-selected')).toBe(index === 0 ? 'true' : 'false');
+            expect(tab.getAttribute('tabindex')).toBe(index === 0 ? '0' : '-1');
+            expect(panel.getAttribute('role')).toBe('tabpanel');
+            expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
+            expect(panel.hidden).toBe(index !== 0);
+        });
+    });
+
     test('exposes settings sections as selectable tabs', () => {
         const { dashboard } = createSettingsHarness();
         const generalTab = document.querySelector('[data-settings="general"]');
