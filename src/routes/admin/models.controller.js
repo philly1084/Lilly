@@ -4,6 +4,7 @@
  */
 
 const { listModels } = require('../../openai-client');
+const { buildModelContract, isPublicChatModel } = require('../../model-catalog');
 const settingsController = require('./settings.controller');
 const logsController = require('./logs.controller');
 
@@ -178,13 +179,13 @@ class ModelsController {
   isUsableChatModel(model = {}) {
     const id = String(model.id || '').toLowerCase();
     if (!id) return false;
-    return !EXCLUDED_MODEL_TOKENS.some((token) => id.includes(token));
+    return isPublicChatModel(model) && !EXCLUDED_MODEL_TOKENS.some((token) => id.includes(token));
   }
 
   normalizeLiveModel(model = {}, settings = {}, override = {}) {
     const id = String(model.id || '').trim();
-    const lowerId = id.toLowerCase();
-    const provider = model.owned_by || 'unknown';
+    const contract = buildModelContract({ ...model, id });
+    const provider = contract.provider || model.owned_by || 'unknown';
     const mergedConfig = {
       temperature: settings.temperature ?? 0.7,
       maxTokens: settings.maxTokens ?? 4096,
@@ -205,9 +206,9 @@ class ModelsController {
       isActive: typeof override.isActive === 'boolean'
         ? override.isActive
         : id === settings.defaultModel || id === settings.fallbackModel,
-      capabilities: this.inferCapabilities(lowerId),
+      capabilities: contract.capabilities,
       pricing: override.pricing || null,
-      contextWindow: override.contextWindow || null,
+      contextWindow: override.contextWindow || contract.contextWindow || null,
       createdAt: model.created ? new Date(model.created * 1000).toISOString() : null,
       updatedAt: override.updatedAt || null,
       raw: {

@@ -92,6 +92,28 @@ describe('admin models controller', () => {
     }));
   });
 
+  test('uses shared model contracts for live model capability metadata', async () => {
+    listModels.mockResolvedValue([
+      { id: 'gpt-5.5-tools', owned_by: 'openai' },
+      { id: 'grok-4.3', owned_by: 'gateway' },
+      { id: 'custom-image-router', owned_by: 'gateway', capabilities: ['image_generation'] },
+    ]);
+
+    const models = await modelsController.getLiveModels();
+
+    expect(models.map((model) => model.id)).toEqual(['gpt-5.5-tools', 'grok-4.3']);
+    expect(models.find((model) => model.id === 'gpt-5.5-tools')).toEqual(expect.objectContaining({
+      capabilities: expect.arrayContaining(['chat', 'responses', 'streaming', 'tools', 'structured_outputs']),
+      provider: 'openai',
+      contextWindow: 128000,
+    }));
+    expect(models.find((model) => model.id === 'grok-4.3')).toEqual(expect.objectContaining({
+      capabilities: expect.arrayContaining(['tools', 'reasoning', 'structured_outputs']),
+      provider: 'xai',
+      contextWindow: 1000000,
+    }));
+  });
+
   test('does not double count explicit zero completion tokens from total log tokens', () => {
     logsController.logs = [{
       model: 'tool-only-model',
