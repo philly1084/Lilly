@@ -237,7 +237,7 @@
 
                 <!-- Page Actions -->
                 <div class="page-actions">
-                    <button id="notes-tts-btn" class="notes-tts-btn" title="Read page aloud" aria-label="Read page aloud" aria-pressed="false" disabled>
+                    <button id="notes-tts-btn" class="notes-tts-btn" title="Read page aloud" aria-label="Read page aloud" aria-describedby="notes-tts-status" aria-pressed="false" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                             <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
@@ -245,6 +245,7 @@
                         </svg>
                         <span id="notes-tts-label">Read</span>
                     </button>
+                    <span id="notes-tts-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Read aloud unavailable until the page has readable text.</span>
                     <div class="export-dropdown">
                         <button id="export-btn" class="export-btn" title="Export page" aria-label="Export page" aria-haspopup="menu" aria-expanded="false" aria-controls="export-menu">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">

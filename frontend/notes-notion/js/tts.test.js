@@ -9,6 +9,7 @@ function loadNotesTts() {
         <button id="notes-tts-btn" aria-pressed="false" disabled>
             <span id="notes-tts-label">Read</span>
         </button>
+        <span id="notes-tts-status" role="status" aria-live="polite" aria-atomic="true">Read aloud unavailable until the page has readable text.</span>
         <main id="editor">
             <section class="block" data-block-id="block-1">
                 <div class="block-input">Read the selected launch note aloud.</div>
@@ -86,5 +87,9 @@ describe('Notes TTS controls', () => {
         expect(button.getAttribute('aria-pressed')).toBe('true');
         expect(button.getAttribute('aria-label')).toBe('Stop selected text narration');
         expect(dom.window.document.getElementById('notes-tts-label').textContent).toBe('Stop');
+        const status = dom.window.document.getElementById('notes-tts-status');
+        expect(status.getAttribute('aria-live')).toBe('polite');
+        expect(status.getAttribute('aria-atomic')).toBe('true');
+        expect(status.textContent).toBe('Reading selected text aloud.');
     });
 });

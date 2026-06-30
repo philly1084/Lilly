@@ -34,6 +34,46 @@ const NotesTts = (function() {
         return document.getElementById('notes-tts-label');
     }
 
+    function getStatusElement() {
+        return document.getElementById('notes-tts-status');
+    }
+
+    function getStatusText(readRequest, state) {
+        if (!readRequest?.text) {
+            return 'Read aloud unavailable until the page has readable text.';
+        }
+
+        if (!state.available) {
+            return `Read aloud unavailable: ${state.diagnosticsMessage}`;
+        }
+
+        if (state.loading) {
+            return `Loading ${String(readRequest.label || 'page audio').toLowerCase()}.`;
+        }
+
+        if (state.playing) {
+            if (readRequest.mode === 'selection') {
+                return 'Reading selected text aloud.';
+            }
+
+            if (readRequest.mode === 'from-here') {
+                return 'Reading from the current block aloud.';
+            }
+
+            return 'Reading page aloud.';
+        }
+
+        if (readRequest.mode === 'selection') {
+            return 'Selected text can be read aloud.';
+        }
+
+        if (readRequest.mode === 'from-here') {
+            return 'Current block can be read aloud.';
+        }
+
+        return 'Page can be read aloud.';
+    }
+
     function getEditorRoot() {
         return document.getElementById('editor');
     }
@@ -801,12 +841,14 @@ const NotesTts = (function() {
         }
 
         const label = getButtonLabel();
+        const statusElement = getStatusElement();
         const readRequest = activeReadRequest || createReadRequest();
         const text = readRequest.text;
         const available = manager?.isAvailable?.() === true;
         const loading = activeMessageId && manager?.isLoadingMessage?.(activeMessageId) === true;
         const playing = activeMessageId && manager?.isPlayingMessage?.(activeMessageId) === true;
         const diagnostics = manager?.getDiagnostics?.() || {};
+        const diagnosticsMessage = String(diagnostics.message || 'Voice playback is unavailable.');
         const disabled = !manager || !available || !text || loading;
 
         button.disabled = disabled;
@@ -818,12 +860,20 @@ const NotesTts = (function() {
         const title = !text
             ? 'No readable page text'
             : (!available
-                ? String(diagnostics.message || 'Voice playback is unavailable.')
+                ? diagnosticsMessage
                 : (playing ? getStopNarrationTitle(readRequest) : readRequest.title));
         button.title = title;
         button.setAttribute('aria-label', title);
         if (label) {
             label.textContent = loading ? 'Loading' : (playing ? 'Stop' : readRequest.label);
+        }
+        if (statusElement) {
+            statusElement.textContent = getStatusText(readRequest, {
+                available,
+                loading,
+                playing,
+                diagnosticsMessage,
+            });
         }
     }
 
