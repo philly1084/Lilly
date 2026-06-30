@@ -26,9 +26,9 @@ function loadDashboardClass(dom) {
     return sandbox.module.exports.Dashboard;
 }
 
-function createNavigationHarness() {
+function createNavigationHarness({ isMobile = true } = {}) {
     const dom = new JSDOM(`
-        <button id="mobileMenuToggle" type="button" aria-expanded="false">Menu</button>
+        <button id="mobileMenuToggle" type="button" aria-controls="sidebar" aria-expanded="false">Menu</button>
         <aside id="sidebar">
         <nav>
             <ul>
@@ -37,7 +37,7 @@ function createNavigationHarness() {
             </ul>
         </nav>
         </aside>
-        <button id="sidebarToggle" type="button"></button>
+        <button id="sidebarToggle" type="button" aria-controls="sidebar" aria-label="Collapse admin navigation" aria-expanded="true"></button>
         <div id="sidebarBackdrop" hidden></div>
         <section id="overviewView" class="view active"></section>
         <section id="logsView" class="view"></section>
@@ -49,7 +49,7 @@ function createNavigationHarness() {
 
     global.document = dom.window.document;
     global.window = dom.window;
-    dom.window.matchMedia = jest.fn().mockReturnValue({ matches: true });
+    dom.window.matchMedia = jest.fn().mockReturnValue({ matches: isMobile });
 
     dashboard.state = { currentView: 'overview', sidebarCollapsed: false };
     dashboard.loadViewData = jest.fn();
@@ -602,6 +602,30 @@ describe('agent dashboard navigation accessibility', () => {
         expect(logs.getAttribute('type')).toBe('button');
         expect(logs.hasAttribute('role')).toBe(false);
         expect(logs.getAttribute('aria-current')).toBe('false');
+    });
+
+    test('keeps the persistent sidebar toggle label in sync with collapse state', () => {
+        const { dashboard } = createNavigationHarness({ isMobile: false });
+        const sidebar = document.getElementById('sidebar');
+        const toggle = document.getElementById('sidebarToggle');
+
+        expect(toggle.getAttribute('aria-controls')).toBe('sidebar');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toggle.getAttribute('aria-label')).toBe('Collapse admin navigation');
+
+        dashboard.toggleSidebar();
+
+        expect(sidebar.classList.contains('collapsed')).toBe(true);
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.getAttribute('aria-label')).toBe('Expand admin navigation');
+        expect(toggle.getAttribute('title')).toBe('Expand admin navigation');
+
+        dashboard.toggleSidebar();
+
+        expect(sidebar.classList.contains('collapsed')).toBe(false);
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toggle.getAttribute('aria-label')).toBe('Collapse admin navigation');
+        expect(toggle.getAttribute('title')).toBe('Collapse admin navigation');
     });
 
     test('activates dashboard sections with Enter and Space', () => {

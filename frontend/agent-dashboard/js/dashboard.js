@@ -4126,11 +4126,28 @@ class Dashboard {
         return window.matchMedia('(max-width: 992px)').matches;
     }
 
+    syncSidebarToggleState({ mobileOpen = null } = {}) {
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        if (!sidebarToggle) {
+            return;
+        }
+
+        const isMobile = this.isMobileNavigation();
+        const expanded = isMobile ? Boolean(mobileOpen) : !this.state.sidebarCollapsed;
+        const label = isMobile
+            ? (mobileOpen ? 'Close admin navigation' : 'Open admin navigation')
+            : (this.state.sidebarCollapsed ? 'Expand admin navigation' : 'Collapse admin navigation');
+
+        sidebarToggle.setAttribute('aria-controls', 'sidebar');
+        sidebarToggle.setAttribute('aria-expanded', String(expanded));
+        sidebarToggle.setAttribute('aria-label', label);
+        sidebarToggle.setAttribute('title', label);
+    }
+
     syncMobileNavigationState(isOpen) {
         const sidebar = document.getElementById('sidebar');
         const backdrop = document.getElementById('sidebarBackdrop');
         const mobileToggle = document.getElementById('mobileMenuToggle');
-        const sidebarToggle = document.getElementById('sidebarToggle');
 
         sidebar?.classList.toggle('open', isOpen);
         document.body.classList.toggle('admin-nav-open', isOpen);
@@ -4140,8 +4157,7 @@ class Dashboard {
         }
 
         mobileToggle?.setAttribute('aria-expanded', String(isOpen));
-        sidebarToggle?.setAttribute('aria-label', this.isMobileNavigation() ? 'Close admin navigation' : 'Collapse admin navigation');
-        sidebarToggle?.setAttribute('aria-expanded', String(this.isMobileNavigation() ? isOpen : !this.state.sidebarCollapsed));
+        this.syncSidebarToggleState({ mobileOpen: isOpen });
     }
 
     openMobileNavigation() {
@@ -4174,8 +4190,8 @@ class Dashboard {
 
     toggleSidebar() {
         this.state.sidebarCollapsed = !this.state.sidebarCollapsed;
-        document.getElementById('sidebar').classList.toggle('collapsed', this.state.sidebarCollapsed);
-        document.getElementById('sidebarToggle')?.setAttribute('aria-expanded', String(!this.state.sidebarCollapsed));
+        document.getElementById('sidebar')?.classList.toggle('collapsed', this.state.sidebarCollapsed);
+        this.syncSidebarToggleState();
     }
 
     getStoredTheme() {
@@ -6756,8 +6772,7 @@ class Dashboard {
     handleResize() {
         if (!this.isMobileNavigation()) {
             this.closeMobileNavigation();
-            document.getElementById('sidebarToggle')?.setAttribute('aria-label', 'Collapse admin navigation');
-            document.getElementById('sidebarToggle')?.setAttribute('aria-expanded', String(!this.state.sidebarCollapsed));
+            this.syncSidebarToggleState();
         }
 
         // Resize charts
