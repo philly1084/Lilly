@@ -201,14 +201,14 @@ describe('web-chat model filtering', () => {
 });
 
 describe('web-chat artifact metadata normalization', () => {
-    test('normalizes snake_case artifact URLs from stream done payloads', () => {
+    test('normalizes snake_case artifact IDs and URLs from stream done payloads', () => {
         const { apiClient } = loadApiClient();
 
         const events = apiClient.normalizeStreamPayload({
             type: 'done',
             session_id: 'session-1',
             artifacts: [{
-                id: 'artifact-1',
+                artifact_id: 'artifact-1',
                 filename: 'report.pdf',
                 format: 'pdf',
                 download_url: '/api/artifacts/artifact-1/download',
@@ -217,7 +217,7 @@ describe('web-chat artifact metadata normalization', () => {
             }],
             metadata: {
                 artifacts: [{
-                    id: 'artifact-1',
+                    artifact_id: 'artifact-1',
                     filename: 'report.pdf',
                     format: 'pdf',
                     download_url: '/api/artifacts/artifact-1/download',

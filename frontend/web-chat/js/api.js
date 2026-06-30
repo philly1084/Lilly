@@ -635,7 +635,7 @@ function normalizeArtifactMetadata(artifact) {
 
     return {
         ...artifact,
-        id: String(artifact.id || '').trim(),
+        id: String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim(),
         filename: String(artifact.filename || '').trim(),
         format: String(artifact.format || '').trim(),
         downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
