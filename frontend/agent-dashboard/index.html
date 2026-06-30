@@ -190,13 +190,14 @@
                         </svg>
                         <input type="text" placeholder="Search..." id="globalSearch" aria-label="Search admin dashboard">
                     </div>
-                    <button class="btn btn-icon" id="notificationsBtn" type="button" aria-label="Show notifications">
+                    <button class="btn btn-icon" id="notificationsBtn" type="button" aria-label="Check notifications" aria-describedby="notificationsStatus">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                             <path d="M13.73 21a2 2 0 01-3.46 0"/>
                         </svg>
-                        <span class="notification-dot"></span>
+                        <span class="notification-dot" aria-hidden="true"></span>
                     </button>
+                    <span class="sr-only" id="notificationsStatus" role="status" aria-live="polite" aria-atomic="true">Notifications have not been checked yet.</span>
                     <button class="btn btn-icon" id="themeToggle" type="button" aria-label="Toggle color theme">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="moon">
                             <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>

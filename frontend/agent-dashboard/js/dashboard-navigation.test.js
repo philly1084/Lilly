@@ -408,8 +408,15 @@ describe('agent dashboard navigation accessibility', () => {
         const dom = new JSDOM(html);
 
         expect(dom.window.document.getElementById('globalSearch').getAttribute('aria-label')).toBe('Search admin dashboard');
-        expect(dom.window.document.getElementById('notificationsBtn').getAttribute('aria-label')).toBe('Show notifications');
-        expect(dom.window.document.getElementById('notificationsBtn').getAttribute('type')).toBe('button');
+        const notificationsButton = dom.window.document.getElementById('notificationsBtn');
+        const notificationsStatus = dom.window.document.getElementById('notificationsStatus');
+        expect(notificationsButton.getAttribute('aria-label')).toBe('Check notifications');
+        expect(notificationsButton.getAttribute('aria-describedby')).toBe('notificationsStatus');
+        expect(notificationsButton.getAttribute('type')).toBe('button');
+        expect(notificationsButton.querySelector('.notification-dot').getAttribute('aria-hidden')).toBe('true');
+        expect(notificationsStatus.getAttribute('role')).toBe('status');
+        expect(notificationsStatus.getAttribute('aria-live')).toBe('polite');
+        expect(notificationsStatus.textContent).toBe('Notifications have not been checked yet.');
         expect(dom.window.document.getElementById('toastContainer').getAttribute('aria-live')).toBe('polite');
         expect(dom.window.document.getElementById('toastContainer').getAttribute('aria-atomic')).toBe('false');
         expect(dom.window.document.getElementById('connectionStatus').getAttribute('role')).toBe('status');
@@ -573,6 +580,28 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.localStorage.getItem('kimibuilt_admin_theme')).toBe('dark');
         expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-label')).toBe('Switch to light color theme');
         expect(dom.window.document.getElementById('themeToggle').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    test('announces notification checks through the header status text', () => {
+        const dom = new JSDOM(`
+            <button id="notificationsBtn" type="button" aria-describedby="notificationsStatus"></button>
+            <span id="notificationsStatus" role="status" aria-live="polite" aria-atomic="true">Notifications have not been checked yet.</span>
+            <div id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+        `);
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.escapeHtml = Dashboard.prototype.escapeHtml.bind(dashboard);
+        dashboard.showToast = jest.fn();
+
+        dashboard.setupEventListeners();
+        dom.window.document.getElementById('notificationsBtn').click();
+
+        expect(dom.window.document.getElementById('notificationsStatus').textContent).toBe('No new notifications.');
+        expect(dashboard.showToast).toHaveBeenCalledWith('No new notifications', 'info');
     });
 
     test('keeps workload run JSON previews scroll-contained', () => {

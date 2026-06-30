@@ -321,6 +321,10 @@ class Dashboard {
         
         // Notifications
         document.getElementById('notificationsBtn')?.addEventListener('click', () => {
+            const status = document.getElementById('notificationsStatus');
+            if (status) {
+                status.textContent = 'No new notifications.';
+            }
             this.showToast('No new notifications', 'info');
         });
         
