@@ -604,6 +604,17 @@ describe('agent dashboard navigation accessibility', () => {
         expect(logs.getAttribute('aria-current')).toBe('false');
     });
 
+    test('ships initial sidebar current-page state in the static markup', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const navItems = Array.from(dom.window.document.querySelectorAll('.sidebar-nav .nav-item'));
+        const overview = dom.window.document.querySelector('.sidebar-nav [data-view="overview"]');
+        const currentItems = navItems.filter(item => item.getAttribute('aria-current') === 'page');
+
+        expect(currentItems).toEqual([overview]);
+        expect(navItems.filter(item => item !== overview).every(item => item.getAttribute('aria-current') === 'false')).toBe(true);
+    });
+
     test('keeps the persistent sidebar toggle label in sync with collapse state', () => {
         const { dashboard } = createNavigationHarness({ isMobile: false });
         const sidebar = document.getElementById('sidebar');
