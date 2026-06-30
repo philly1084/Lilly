@@ -768,11 +768,45 @@
 
     for (const artifacts of artifactSources) {
       if (Array.isArray(artifacts)) {
-        return artifacts;
+        return artifacts.map(normalizeArtifactMetadata).filter(Boolean);
       }
     }
 
     return [];
+  }
+
+  function normalizeArtifactMetadata(artifact) {
+    if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+      return null;
+    }
+
+    const normalized = { ...artifact };
+    const fields = {
+      id: artifact.id || artifact.artifactId || artifact.artifact_id,
+      filename: artifact.filename || artifact.name,
+      format: artifact.format || artifact.extension || artifact.type,
+      mimeType: artifact.mimeType || artifact.mime_type,
+      downloadUrl: artifact.downloadUrl || artifact.download_url,
+      previewUrl: artifact.previewUrl || artifact.preview_url,
+      sandboxUrl: artifact.sandboxUrl || artifact.sandbox_url,
+      bundleDownloadUrl: artifact.bundleDownloadUrl
+        || artifact.bundle_download_url
+        || artifact.bundle_download,
+    };
+
+    for (const [key, value] of Object.entries(fields)) {
+      const text = String(value || '').trim();
+      if (text) {
+        normalized[key] = text;
+      }
+    }
+
+    const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
+    if (Number.isFinite(Number(sizeValue))) {
+      normalized.sizeBytes = Number(sizeValue);
+    }
+
+    return normalized.id || normalized.downloadUrl ? normalized : null;
   }
 
   function extractStreamMetadata(payload = {}) {

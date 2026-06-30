@@ -71,7 +71,15 @@ describe('openai-sse helpers', () => {
         id: 'resp_artifacts',
         metadata: {
           artifacts: [
-            { id: 'artifact-metadata-1', type: 'html', title: 'Build report' },
+            {
+              artifact_id: 'artifact-metadata-1',
+              type: 'html',
+              title: 'Build report',
+              download_url: '/api/artifacts/artifact-metadata-1/download',
+              preview_url: '/api/artifacts/artifact-metadata-1/preview',
+              bundle_download_url: '/api/artifacts/artifact-metadata-1/bundle',
+              size_bytes: '2048',
+            },
           ],
         },
         output_text: 'Created the build report.',
@@ -83,7 +91,15 @@ describe('openai-sse helpers', () => {
       type: 'final',
       responseId: 'resp_artifacts',
       artifacts: [
-        { id: 'artifact-metadata-1', type: 'html', title: 'Build report' },
+        {
+          id: 'artifact-metadata-1',
+          format: 'html',
+          title: 'Build report',
+          downloadUrl: '/api/artifacts/artifact-metadata-1/download',
+          previewUrl: '/api/artifacts/artifact-metadata-1/preview',
+          bundleDownloadUrl: '/api/artifacts/artifact-metadata-1/bundle',
+          sizeBytes: 2048,
+        },
       ],
     });
   });
