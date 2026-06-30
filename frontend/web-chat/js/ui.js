@@ -9746,6 +9746,7 @@ class UIHelpers {
                     <p class="text-sm text-text-secondary">No commands found</p>
                 </div>
             `;
+            this.syncCommandResultAccessibility();
             return;
         }
 
@@ -9775,6 +9776,7 @@ class UIHelpers {
         `).join('');
 
         this.reinitializeIcons(resultsContainer);
+        this.syncCommandResultAccessibility();
         
         // Attach click handlers
         resultsContainer.querySelectorAll('.command-item').forEach(item => {
@@ -9920,6 +9922,7 @@ class UIHelpers {
         }
         
         this.reinitializeIcons(resultsContainer);
+        this.syncCommandResultAccessibility();
         resultsContainer.querySelectorAll('.command-item').forEach(item => {
             item.addEventListener('click', () => {
                 this.executeCommand(item.dataset.action);
@@ -9931,6 +9934,33 @@ class UIHelpers {
                 }
             });
         });
+    }
+
+    syncCommandResultAccessibility() {
+        const commandInput = document.getElementById('command-input');
+        const resultsContainer = document.getElementById('command-results');
+        if (!commandInput || !resultsContainer) {
+            return;
+        }
+
+        const items = Array.from(resultsContainer.querySelectorAll('.command-item'));
+        if (items.length === 0) {
+            commandInput.removeAttribute('aria-activedescendant');
+            return;
+        }
+
+        let selectedItem = items.find(item => item.classList.contains('selected'));
+        if (!selectedItem) {
+            selectedItem = items[0];
+            selectedItem.classList.add('selected');
+        }
+
+        items.forEach((item, index) => {
+            const optionId = `command-result-${index + 1}`;
+            item.id = optionId;
+            item.setAttribute('aria-selected', item === selectedItem ? 'true' : 'false');
+        });
+        commandInput.setAttribute('aria-activedescendant', selectedItem.id);
     }
 
     renderModelCommands(container) {
@@ -11088,6 +11118,9 @@ class UIHelpers {
             commandInput.addEventListener('keydown', (e) => {
                 const items = document.querySelectorAll('.command-item');
                 const selected = document.querySelector('.command-item.selected');
+                if (items.length === 0) {
+                    return;
+                }
                 let currentIndex = Array.from(items).indexOf(selected);
 
                 switch (e.key) {
@@ -11114,6 +11147,7 @@ class UIHelpers {
                 items.forEach((item, index) => {
                     item.classList.toggle('selected', index === currentIndex);
                 });
+                this.syncCommandResultAccessibility();
             });
         }
 
