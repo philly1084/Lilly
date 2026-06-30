@@ -239,6 +239,60 @@ describe('OpenAIClient provider sessions', () => {
     }));
   });
 
+  test('chatNonStreaming preserves artifact and tool metadata from final responses', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      id: 'resp-2',
+      session_id: 'session-2',
+      choices: [
+        {
+          message: {
+            content: 'Generated the report.',
+            assistant_metadata: {
+              reasoning_summary: 'Created a downloadable PDF artifact.',
+              artifacts: [
+                {
+                  artifact_id: 'artifact-pdf-1',
+                  filename: 'report.pdf',
+                  download_url: '/api/artifacts/artifact-pdf-1/download',
+                },
+              ],
+            },
+            tool_events: [
+              {
+                type: 'tool_result',
+                tool: 'document-workflow',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const client = new OpenAIClient();
+    const response = await client.chatNonStreaming('make a report', null, 'gpt-5.4-mini');
+
+    expect(response).toEqual(expect.objectContaining({
+      content: 'Generated the report.',
+      sessionId: 'session-2',
+      responseId: 'resp-2',
+      artifacts: [
+        expect.objectContaining({
+          id: 'artifact-pdf-1',
+          filename: 'report.pdf',
+          downloadUrl: '/api/artifacts/artifact-pdf-1/download',
+        }),
+      ],
+      toolEvents: [
+        expect.objectContaining({
+          tool: 'document-workflow',
+        }),
+      ],
+      assistantMetadata: expect.objectContaining({
+        reasoningSummary: 'Created a downloadable PDF artifact.',
+      }),
+    }));
+  });
+
   test('exported streaming chat forwards caller metadata to the gateway', async () => {
     global.fetch.mockResolvedValue(new Response([
       'data: {"type":"response.completed","session_id":"session-1","response":{"id":"resp-1","output_text":"done"}}',

@@ -2,7 +2,9 @@ const OpenAI = require('openai');
 const { getApiBaseUrl, get } = require('./config');
 const {
   buildGatewayHeaders,
+  extractAssistantMetadata,
   extractAssistantText,
+  extractStreamMetadata,
   resolvePreferredChatModel,
   splitSSEFrames,
   streamGatewayResponse,
@@ -377,12 +379,21 @@ class OpenAIClient {
         ?? response?.output_text
         ?? response
       );
+      const metadata = extractStreamMetadata(response);
+      const assistantMetadata = metadata.assistantMetadata
+        || extractAssistantMetadata({
+          assistantMetadata: response?.choices?.[0]?.message?.assistantMetadata,
+          assistant_metadata: response?.choices?.[0]?.message?.assistant_metadata,
+        });
       
       return {
         message: content,
         content,
-        sessionId: response.session_id || sessionId,
-        responseId: response.id,
+        sessionId: metadata.sessionId || response.session_id || response.sessionId || sessionId,
+        responseId: metadata.responseId || response.id,
+        artifacts: metadata.artifacts,
+        toolEvents: metadata.toolEvents,
+        assistantMetadata,
       };
     } catch (err) {
       throw this._handleError(err);
