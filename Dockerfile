@@ -97,6 +97,7 @@ FROM node:24-bookworm-slim AS app-base
 
 WORKDIR /app
 
+ARG KIMIBUILT_SOURCE_REV=unknown
 ARG KOKORO_TTS_MODEL_ID=onnx-community/Kokoro-82M-v1.0-ONNX
 ARG KOKORO_TTS_DEVICE=cpu
 ARG KOKORO_TTS_DTYPE=q8
@@ -120,7 +121,8 @@ COPY package.json ./
 COPY package-lock.json* ./
 COPY .npmrc ./
 
-RUN mkdir -p /home/kimibuilt/.kimibuilt && \
+RUN printf '%s\n' "${KIMIBUILT_SOURCE_REV}" > /app/.kimibuilt-source-revision && \
+  mkdir -p /home/kimibuilt/.kimibuilt && \
   chmod 0755 /app/bin/kimibuilt-ingress.js /app/bin/kimibuilt-runner.js /app/bin/kimibuilt-ui-check.js /app/bin/kimibuilt-verify-tts-build.js && \
   chown -R kimibuilt:kimibuilt /home/kimibuilt /app
 
