@@ -708,6 +708,33 @@ describe('agent dashboard navigation accessibility', () => {
         });
     });
 
+    test('ships admin modals as labelled dialogs with safe button types', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const modalExpectations = [
+            ['testPromptModal', 'Test Prompt', 'Close test prompt dialog'],
+            ['editWorkloadModal', 'Edit Workload', 'Close edit workload dialog'],
+            ['historyModal', 'Prompt History', 'Close prompt history dialog'],
+            ['logDetailsModal', 'Log Details', 'Close log details dialog'],
+        ];
+
+        modalExpectations.forEach(([modalId, title, closeLabel]) => {
+            const modal = dom.window.document.getElementById(modalId);
+            const titleEl = dom.window.document.getElementById(modal.getAttribute('aria-labelledby'));
+            const closeButton = modal.querySelector('.modal-header .modal-close');
+            const buttons = Array.from(modal.querySelectorAll('button'));
+
+            expect(modal.getAttribute('role')).toBe('dialog');
+            expect(modal.getAttribute('aria-modal')).toBe('true');
+            expect(titleEl?.textContent.trim()).toBe(title);
+            expect(closeButton.getAttribute('type')).toBe('button');
+            expect(closeButton.getAttribute('aria-label')).toBe(closeLabel);
+            buttons.forEach(button => {
+                expect(button.getAttribute('type')).toBe('button');
+            });
+        });
+    });
+
     test('exposes settings sections as selectable tabs', () => {
         const { dashboard } = createSettingsHarness();
         const generalTab = document.querySelector('[data-settings="general"]');

@@ -2493,12 +2493,12 @@
     </div>
 
     <!-- Modal: Test Prompt -->
-    <div class="modal" id="testPromptModal">
+    <div class="modal" id="testPromptModal" role="dialog" aria-modal="true" aria-labelledby="testPromptModalTitle">
         <div class="modal-overlay"></div>
         <div class="modal-container">
             <div class="modal-header">
-                <h3>Test Prompt</h3>
-                <button class="modal-close">&times;</button>
+                <h3 id="testPromptModalTitle">Test Prompt</h3>
+                <button class="modal-close" type="button" aria-label="Close test prompt dialog">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="test-config">
@@ -2530,18 +2530,18 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-ghost modal-close">Cancel</button>
-                <button class="btn btn-primary" id="runTestBtn">Run Test</button>
+                <button class="btn btn-ghost modal-close" type="button">Cancel</button>
+                <button class="btn btn-primary" id="runTestBtn" type="button">Run Test</button>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="editWorkloadModal">
+    <div class="modal" id="editWorkloadModal" role="dialog" aria-modal="true" aria-labelledby="editWorkloadModalTitle">
         <div class="modal-overlay"></div>
         <div class="modal-container">
             <div class="modal-header">
-                <h3>Edit Workload</h3>
-                <button class="modal-close">&times;</button>
+                <h3 id="editWorkloadModalTitle">Edit Workload</h3>
+                <button class="modal-close" type="button" aria-label="Close edit workload dialog">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="workload-edit-error" id="editWorkloadError" hidden></div>
@@ -2591,19 +2591,19 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-ghost modal-close">Cancel</button>
-                <button class="btn btn-primary" id="saveWorkloadChangesBtn">Save Changes</button>
+                <button class="btn btn-ghost modal-close" type="button">Cancel</button>
+                <button class="btn btn-primary" id="saveWorkloadChangesBtn" type="button">Save Changes</button>
             </div>
         </div>
     </div>
 
     <!-- Modal: Prompt History -->
-    <div class="modal" id="historyModal">
+    <div class="modal" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
         <div class="modal-overlay"></div>
         <div class="modal-container modal-lg">
             <div class="modal-header">
-                <h3>Prompt History</h3>
-                <button class="modal-close">&times;</button>
+                <h3 id="historyModalTitle">Prompt History</h3>
+                <button class="modal-close" type="button" aria-label="Close prompt history dialog">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="history-list" id="historyList">
@@ -2614,12 +2614,12 @@
     </div>
 
     <!-- Modal: Log Details -->
-    <div class="modal" id="logDetailsModal">
+    <div class="modal" id="logDetailsModal" role="dialog" aria-modal="true" aria-labelledby="logDetailsModalTitle">
         <div class="modal-overlay"></div>
         <div class="modal-container modal-lg">
             <div class="modal-header">
-                <h3>Log Details</h3>
-                <button class="modal-close">&times;</button>
+                <h3 id="logDetailsModalTitle">Log Details</h3>
+                <button class="modal-close" type="button" aria-label="Close log details dialog">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="log-details" id="logDetails">
