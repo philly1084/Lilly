@@ -155,4 +155,19 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('Common workspace shortcuts and slash commands for the current chat.');
         expect(uiSource).toContain('if (!modal) {\n            return;\n        }');
     });
+
+    test('header connection status announces visible state changes', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
+
+        expect(html).toContain('id="connection-status" class="connection-status full-shell-control connecting"');
+        expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
+        expect(html).toContain('aria-label="Backend connection status: Connecting"');
+        expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
+        expect(html).toContain('js/app.js?v=20260629b');
+        expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
+        expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
+        expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");
+        expect(appSource).toContain("statusEl.setAttribute('title', `Backend connection status: ${statusLabel}`);");
+    });
 });

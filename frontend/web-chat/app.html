@@ -765,8 +765,8 @@
                     </button>
                     <div class="header-control-group header-control-group--workspace">
                         <!-- Connection Status (Header) -->
-                        <div id="connection-status" class="connection-status full-shell-control" title="Backend connection status">
-                            <span id="connection-indicator" class="connection-indicator"></span>
+                        <div id="connection-status" class="connection-status full-shell-control connecting" title="Backend connection status" role="status" aria-live="polite" aria-atomic="true" aria-label="Backend connection status: Connecting">
+                            <span id="connection-indicator" class="connection-indicator checking" aria-hidden="true"></span>
                             <span id="connection-text" class="connection-text text-xs">Connecting...</span>
                         </div>
                         <!-- Model Selector -->
@@ -1352,7 +1352,7 @@
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260629b"></script>
-    <script defer src="js/app.js?v=20260531a"></script>
+    <script defer src="js/app.js?v=20260629b"></script>
     <script defer src="js/artifacts.js?v=20260509a"></script>
 </body>
 </html>

@@ -12062,31 +12062,44 @@ curl -fsSIL --max-time 20 "https://$host"`;
     // ============================================
     
     updateConnectionStatus(status) {
+        const statusEl = document.getElementById('connection-status');
         const indicator = document.getElementById('connection-indicator');
         const text = document.getElementById('connection-text');
         
-        if (!indicator || !text) return;
+        if (!statusEl || !indicator || !text) return;
         if (this.connectionStatus === status) return;
 
         this.connectionStatus = status;
         
         indicator.className = 'connection-indicator';
+        statusEl.classList.remove('connected', 'connecting', 'disconnected');
+        indicator.setAttribute('aria-hidden', 'true');
+
+        let statusLabel = 'Connecting';
         
         switch (status) {
             case 'connected':
+                statusEl.classList.add('connected');
                 indicator.classList.add('connected');
                 text.textContent = 'Connected';
+                statusLabel = 'Connected';
                 break;
             case 'disconnected':
+                statusEl.classList.add('disconnected');
                 indicator.classList.add('disconnected');
                 text.textContent = 'Offline';
+                statusLabel = 'Offline';
                 break;
             case 'checking':
             default:
+                statusEl.classList.add('connecting');
                 indicator.classList.add('checking');
                 text.textContent = 'Connecting...';
                 break;
         }
+
+        statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);
+        statusEl.setAttribute('title', `Backend connection status: ${statusLabel}`);
     }
     
     async checkConnection() {
