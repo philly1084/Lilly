@@ -269,6 +269,52 @@ describe('DashboardController', () => {
     }));
   });
 
+  test('preserves split cache usage details in admin logs', () => {
+    const controller = new DashboardController(null);
+    const task = controller.recordRuntimeTaskStart({
+      sessionId: 'session-cache-usage',
+      input: 'Summarize the cached project context.',
+      model: 'gateway-model',
+      mode: 'chat',
+      transport: 'http',
+      metadata: {},
+    });
+
+    controller.recordRuntimeTaskComplete(task.id, {
+      responseId: 'resp-cache-usage',
+      output: 'Cached context summarized.',
+      model: 'gateway-model',
+      duration: 650,
+      metadata: {
+        usage: {
+          input_tokens: 120,
+          output_tokens: 30,
+          input_tokens_details: {
+            cache_read_input_tokens: 45,
+            cache_creation_input_tokens: 12,
+          },
+        },
+      },
+    });
+
+    const completedTask = controller.taskStore.get(task.id);
+    expect(completedTask.result.tokenUsage).toEqual(expect.objectContaining({
+      promptTokens: 120,
+      completionTokens: 30,
+      totalTokens: 150,
+      cachedTokens: 57,
+      cacheReadInputTokens: 45,
+      cacheCreationInputTokens: 12,
+      inferred: false,
+    }));
+    expect(logsController.addLog).toHaveBeenCalledWith(expect.objectContaining({
+      cachedTokens: 57,
+      cacheReadInputTokens: 45,
+      cacheCreationInputTokens: 12,
+      tokenUsageInferred: false,
+    }));
+  });
+
   test('keeps explicit zero-token runs at zero for tool-only responses', () => {
     const controller = new DashboardController(null);
     const task = controller.recordRuntimeTaskStart({

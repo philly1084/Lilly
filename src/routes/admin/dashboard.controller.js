@@ -118,7 +118,7 @@ class DashboardController {
       inferred: !hasExplicitUsage,
     };
 
-    ['reasoningTokens', 'cachedTokens', 'modelCalls'].forEach((key) => {
+    ['reasoningTokens', 'cachedTokens', 'cacheReadInputTokens', 'cacheCreationInputTokens', 'modelCalls'].forEach((key) => {
       if (Object.prototype.hasOwnProperty.call(normalizedUsage, key)) {
         usage[key] = normalizedUsage[key];
       }
@@ -953,6 +953,8 @@ class DashboardController {
       completionTokens: tokenUsage.completionTokens,
       reasoningTokens: tokenUsage.reasoningTokens,
       cachedTokens: tokenUsage.cachedTokens,
+      cacheReadInputTokens: tokenUsage.cacheReadInputTokens,
+      cacheCreationInputTokens: tokenUsage.cacheCreationInputTokens,
       modelCalls: tokenUsage.modelCalls,
       tokenUsageInferred: tokenUsage.inferred,
       latency: Number(duration || 0),
@@ -1051,6 +1053,8 @@ class DashboardController {
       completionTokens: tokenUsage.completionTokens,
       reasoningTokens: tokenUsage.reasoningTokens,
       cachedTokens: tokenUsage.cachedTokens,
+      cacheReadInputTokens: tokenUsage.cacheReadInputTokens,
+      cacheCreationInputTokens: tokenUsage.cacheCreationInputTokens,
       modelCalls: tokenUsage.modelCalls,
       tokenUsageInferred: tokenUsage.inferred,
       latency: Number(duration || 0),
