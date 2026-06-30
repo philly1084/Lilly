@@ -44,6 +44,22 @@ function getRequestToken(req = null) {
   }
 }
 
+function getRunnerSocketOpen(runner = null) {
+  return Boolean(runner?.online && runner.ws && runner.ws.readyState === WebSocket.OPEN);
+}
+
+function getRunnerFreshness(runner = null, staleAfterMs = 45000) {
+  const normalizedStaleAfterMs = Math.max(5000, Number(staleAfterMs) || 45000);
+  const lastHeartbeatMs = Date.parse(runner?.lastHeartbeat || runner?.connectedAt || '');
+  const heartbeatAgeMs = Number.isFinite(lastHeartbeatMs) ? Math.max(0, Date.now() - lastHeartbeatMs) : null;
+  const stale = heartbeatAgeMs !== null && heartbeatAgeMs > normalizedStaleAfterMs;
+  return {
+    staleAfterMs: normalizedStaleAfterMs,
+    heartbeatAgeMs,
+    stale,
+  };
+}
+
 class RemoteRunnerService extends EventEmitter {
   constructor(options = {}) {
     super();
@@ -134,15 +150,14 @@ class RemoteRunnerService extends EventEmitter {
   }
 
   isRunnerHealthy(runner = null) {
-    if (!runner?.online || !runner.ws || runner.ws.readyState !== WebSocket.OPEN) {
+    if (!getRunnerSocketOpen(runner)) {
       return false;
     }
-    const lastHeartbeatMs = Date.parse(runner.lastHeartbeat || runner.connectedAt || '');
-    if (!Number.isFinite(lastHeartbeatMs)) {
+    const freshness = getRunnerFreshness(runner, this.config.staleAfterMs);
+    if (freshness.heartbeatAgeMs === null) {
       return this.runnerSupportsProfile(runner);
     }
-    return Date.now() - lastHeartbeatMs <= Math.max(5000, Number(this.config.staleAfterMs) || 45000)
-      && this.runnerSupportsProfile(runner);
+    return !freshness.stale && this.runnerSupportsProfile(runner);
   }
 
   runnerSupportsProfile(runner = null, requiredProfile = '') {
@@ -157,13 +172,38 @@ class RemoteRunnerService extends EventEmitter {
   }
 
   isRunnerReadyForProfile(runner = null, requiredProfile = '') {
-    if (!runner?.online || !runner.ws || runner.ws.readyState !== WebSocket.OPEN) {
+    if (!getRunnerSocketOpen(runner)) {
       return false;
     }
-    const lastHeartbeatMs = Date.parse(runner.lastHeartbeat || runner.connectedAt || '');
-    const fresh = !Number.isFinite(lastHeartbeatMs)
-      || Date.now() - lastHeartbeatMs <= Math.max(5000, Number(this.config.staleAfterMs) || 45000);
+    const freshness = getRunnerFreshness(runner, this.config.staleAfterMs);
+    const fresh = freshness.heartbeatAgeMs === null || !freshness.stale;
     return fresh && this.runnerSupportsProfile(runner, requiredProfile);
+  }
+
+  describeRunnerUnavailable(runnerId = '', requiredProfile = '') {
+    const profileHint = requiredProfile ? ` ${requiredProfile} jobs` : ' the requested job';
+    const runner = runnerId ? this.runners.get(runnerId) : null;
+    const runners = runnerId && runner ? [runner] : Array.from(this.runners.values());
+    const staleCandidates = runners
+      .filter((candidate) => getRunnerSocketOpen(candidate))
+      .map((candidate) => ({
+        runner: candidate,
+        freshness: getRunnerFreshness(candidate, this.config.staleAfterMs),
+      }))
+      .filter((candidate) => candidate.freshness.stale);
+
+    if (staleCandidates.length > 0) {
+      const candidate = staleCandidates[0];
+      const ageSeconds = Math.round((candidate.freshness.heartbeatAgeMs || 0) / 1000);
+      const staleSeconds = Math.round(candidate.freshness.staleAfterMs / 1000);
+      return runnerId
+        ? `Remote runner ${runnerId} heartbeat is stale for ${ageSeconds}s, exceeding the ${staleSeconds}s freshness timeout; this is expected after sleep or network loss and the runner should reconnect before accepting${profileHint}`
+        : `No healthy remote runner is online for${profileHint}; ${candidate.runner.runnerId || 'a runner'} heartbeat is stale for ${ageSeconds}s, exceeding the ${staleSeconds}s freshness timeout. This is expected after sleep or network loss and the runner should reconnect before accepting work`;
+    }
+
+    return runnerId
+      ? `Remote runner ${runnerId} is not online or does not support${profileHint}`
+      : `No healthy remote runner is online or supports${profileHint}`;
   }
 
   getHealthyRunner(preferredRunnerId = '', options = {}) {
@@ -191,12 +231,18 @@ class RemoteRunnerService extends EventEmitter {
   }
 
   serializeRunner(runner = {}) {
+    const freshness = getRunnerFreshness(runner, this.config.staleAfterMs);
+    const stale = getRunnerSocketOpen(runner) && freshness.stale;
     return {
       runnerId: runner.runnerId,
       displayName: runner.displayName,
       hostIdentity: runner.hostIdentity || {},
       status: this.isRunnerHealthy(runner) ? 'online' : (runner.status === 'registered' ? 'registered' : 'offline'),
       online: this.isRunnerHealthy(runner),
+      stale,
+      staleAfterMs: freshness.staleAfterMs,
+      heartbeatAgeMs: freshness.heartbeatAgeMs,
+      offlineReason: stale ? 'heartbeat_stale' : '',
       capabilities: runner.capabilities || [],
       allowedRoots: runner.allowedRoots || [],
       metadata: runner.metadata || {},
@@ -245,10 +291,7 @@ class RemoteRunnerService extends EventEmitter {
       requiredProfile: normalizedJob.profile,
     });
     if (!runner) {
-      const profileHint = normalizedJob.profile ? ` ${normalizedJob.profile} jobs` : ' the requested job';
-      const error = new Error(runnerId
-        ? `Remote runner ${runnerId} is not online or does not support${profileHint}`
-        : `No healthy remote runner is online or supports${profileHint}`);
+      const error = new Error(this.describeRunnerUnavailable(runnerId, normalizedJob.profile));
       error.statusCode = 503;
       throw error;
     }

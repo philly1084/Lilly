@@ -191,4 +191,38 @@ describe('RemoteRunnerService', () => {
       profile: 'build',
     })).rejects.toThrow('does not support');
   });
+
+  test('reports heartbeat-stale runners as expected timeout state', async () => {
+    const service = new RemoteRunnerService({
+      config: {
+        enabled: true,
+        token: 'secret',
+        staleAfterMs: 5000,
+        jobTimeoutMs: 30000,
+      },
+    });
+    const socket = new FakeSocket();
+    service.registerRunner({
+      runnerId: 'sleeping-laptop',
+      capabilities: ['inspect'],
+    }, socket);
+    const runner = service.runners.get('sleeping-laptop');
+    runner.lastHeartbeat = new Date(Date.now() - 10000).toISOString();
+
+    expect(service.getRunner('sleeping-laptop')).toEqual(expect.objectContaining({
+      online: false,
+      stale: true,
+      staleAfterMs: 5000,
+      offlineReason: 'heartbeat_stale',
+    }));
+
+    await expect(service.dispatchCommand('sleeping-laptop', {
+      command: 'hostname',
+      profile: 'inspect',
+    })).rejects.toThrow(/heartbeat is stale/i);
+    await expect(service.dispatchCommand('sleeping-laptop', {
+      command: 'hostname',
+      profile: 'inspect',
+    })).rejects.toThrow(/expected after sleep or network loss/i);
+  });
 });
