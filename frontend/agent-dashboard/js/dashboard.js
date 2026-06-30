@@ -4641,11 +4641,16 @@ class Dashboard {
     
     switchPromptTab(tab) {
         document.querySelectorAll('.editor-tabs .tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.tab === tab);
+            const selected = btn.dataset.tab === tab;
+            btn.classList.toggle('active', selected);
+            btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+            btn.setAttribute('tabindex', selected ? '0' : '-1');
         });
         
         document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.toggle('active', content.id === `${tab}Tab`);
+            const selected = content.id === `${tab}Tab`;
+            content.classList.toggle('active', selected);
+            content.toggleAttribute('hidden', !selected);
         });
     }
     

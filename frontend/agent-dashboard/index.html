@@ -439,12 +439,12 @@
                                 </div>
                             </div>
                             <div class="editor-body">
-                                <div class="editor-tabs">
-                                    <button class="tab-btn active" data-tab="editor">Editor</button>
-                                    <button class="tab-btn" data-tab="preview">Preview</button>
-                                    <button class="tab-btn" data-tab="variables">Variables</button>
+                                <div class="editor-tabs" role="tablist" aria-label="Prompt editor views">
+                                    <button class="tab-btn active" id="prompt-editor-tab" data-tab="editor" type="button" role="tab" aria-controls="editorTab" aria-selected="true" tabindex="0">Editor</button>
+                                    <button class="tab-btn" id="prompt-preview-tab" data-tab="preview" type="button" role="tab" aria-controls="previewTab" aria-selected="false" tabindex="-1">Preview</button>
+                                    <button class="tab-btn" id="prompt-variables-tab" data-tab="variables" type="button" role="tab" aria-controls="variablesTab" aria-selected="false" tabindex="-1">Variables</button>
                                 </div>
-                                <div class="tab-content active" id="editorTab">
+                                <div class="tab-content active" id="editorTab" role="tabpanel" aria-labelledby="prompt-editor-tab">
                                     <textarea class="prompt-editor" id="promptEditor" placeholder="Enter your system prompt here..."></textarea>
                                     <div class="editor-toolbar">
                                         <button class="toolbar-btn" title="Insert Variable" data-insert="{{variable}}">{'{ }'}</button>
@@ -454,12 +454,12 @@
                                         <span class="char-count" id="charCount">0 chars</span>
                                     </div>
                                 </div>
-                                <div class="tab-content" id="previewTab">
+                                <div class="tab-content" id="previewTab" role="tabpanel" aria-labelledby="prompt-preview-tab" hidden>
                                     <div class="prompt-preview" id="promptPreview">
                                         <p class="preview-placeholder">Preview will appear here...</p>
                                     </div>
                                 </div>
-                                <div class="tab-content" id="variablesTab">
+                                <div class="tab-content" id="variablesTab" role="tabpanel" aria-labelledby="prompt-variables-tab" hidden>
                                     <div class="variables-list" id="variablesList">
                                         <p class="empty-state">No variables defined</p>
                                     </div>
@@ -2636,6 +2636,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=admin-mobile-nav-label"></script>
+    <script src="js/dashboard.js?v=admin-prompt-tabs-a11y"></script>
 </body>
 </html>

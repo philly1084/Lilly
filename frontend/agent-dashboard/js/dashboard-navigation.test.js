@@ -99,12 +99,14 @@ function createThemeHarness({ prefersLight = false, storedTheme = '' } = {}) {
     return { dom, dashboard };
 }
 
-function createPromptTabHarness() {
+function createPromptTabHarness({ mockSwitch = true } = {}) {
     const dom = new JSDOM(`
         <div class="editor-tabs">
-            <button class="tab-btn active" data-tab="editor">Editor</button>
-            <button class="tab-btn" data-tab="preview">Preview</button>
+            <button class="tab-btn active" data-tab="editor" aria-selected="true" tabindex="0">Editor</button>
+            <button class="tab-btn" data-tab="preview" aria-selected="false" tabindex="-1">Preview</button>
         </div>
+        <div class="tab-content active" id="editorTab"></div>
+        <div class="tab-content" id="previewTab" hidden></div>
     `, { url: 'http://localhost:3000/admin/?view=prompts' });
     const Dashboard = loadDashboardClass(dom);
     const dashboard = Object.create(Dashboard.prototype);
@@ -112,7 +114,9 @@ function createPromptTabHarness() {
     global.document = dom.window.document;
     global.window = dom.window;
 
-    dashboard.switchPromptTab = jest.fn();
+    if (mockSwitch) {
+        dashboard.switchPromptTab = jest.fn();
+    }
     dashboard.setupEventListeners();
 
     return { dom, dashboard };
@@ -871,6 +875,45 @@ describe('agent dashboard navigation accessibility', () => {
 
         expect(dashboard.switchPromptTab).toHaveBeenNthCalledWith(1, 'preview');
         expect(dashboard.switchPromptTab).toHaveBeenNthCalledWith(2, 'preview');
+    });
+
+    test('exposes prompt editor tabs as a synchronized tablist', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const tablist = dom.window.document.querySelector('.editor-tabs');
+        const editorTab = dom.window.document.getElementById('prompt-editor-tab');
+        const previewTab = dom.window.document.getElementById('prompt-preview-tab');
+        const previewPanel = dom.window.document.getElementById('previewTab');
+
+        expect(tablist.getAttribute('role')).toBe('tablist');
+        expect(tablist.getAttribute('aria-label')).toBe('Prompt editor views');
+        expect(editorTab.getAttribute('role')).toBe('tab');
+        expect(editorTab.getAttribute('aria-controls')).toBe('editorTab');
+        expect(editorTab.getAttribute('aria-selected')).toBe('true');
+        expect(previewTab.getAttribute('aria-controls')).toBe('previewTab');
+        expect(previewTab.getAttribute('aria-selected')).toBe('false');
+        expect(previewPanel.getAttribute('role')).toBe('tabpanel');
+        expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
+        expect(previewPanel.hasAttribute('hidden')).toBe(true);
+        expect(html).toContain('dashboard.js?v=admin-prompt-tabs-a11y');
+    });
+
+    test('keeps prompt tab selection and panel visibility synchronized', () => {
+        const { dashboard } = createPromptTabHarness({ mockSwitch: false });
+
+        dashboard.switchPromptTab('preview');
+
+        const editorTab = document.querySelector('[data-tab="editor"]');
+        const previewTab = document.querySelector('[data-tab="preview"]');
+        const editorPanel = document.getElementById('editorTab');
+        const previewPanel = document.getElementById('previewTab');
+
+        expect(editorTab.getAttribute('aria-selected')).toBe('false');
+        expect(editorTab.getAttribute('tabindex')).toBe('-1');
+        expect(previewTab.getAttribute('aria-selected')).toBe('true');
+        expect(previewTab.getAttribute('tabindex')).toBe('0');
+        expect(editorPanel.hasAttribute('hidden')).toBe(true);
+        expect(previewPanel.hasAttribute('hidden')).toBe(false);
     });
 
     test('makes runtime list items keyboard-selectable with selected state', () => {
