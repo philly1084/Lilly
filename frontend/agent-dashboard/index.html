@@ -270,7 +270,7 @@
                             <div class="card-header">
                                 <h3>Request Volume</h3>
                                 <div class="card-actions">
-                                    <select class="select-sm" id="chartTimeRange">
+                                    <select class="select-sm" id="chartTimeRange" aria-label="Request volume time range">
                                         <option value="1h">Last Hour</option>
                                         <option value="24h" selected>Last 24 Hours</option>
                                         <option value="7d">Last 7 Days</option>
@@ -288,7 +288,7 @@
                         <div class="card">
                             <div class="card-header">
                                 <h3>Recent Activity</h3>
-                                <button class="btn btn-sm btn-ghost" data-view="logs">View All</button>
+                                <button class="btn btn-sm btn-ghost" data-view="logs" type="button" aria-label="View all recent activity logs">View All</button>
                             </div>
                             <div class="card-body">
                                 <div class="activity-list" id="recentActivity">

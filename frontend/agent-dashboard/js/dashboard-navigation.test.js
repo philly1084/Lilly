@@ -421,6 +421,18 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dom.window.document.getElementById('themeToggle').getAttribute('type')).toBe('button');
     });
 
+    test('labels overview card controls with their data context', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+
+        const range = dom.window.document.getElementById('chartTimeRange');
+        const recentActivityButton = dom.window.document.querySelector('#overviewView [data-view="logs"]');
+
+        expect(range.getAttribute('aria-label')).toBe('Request volume time range');
+        expect(recentActivityButton.getAttribute('type')).toBe('button');
+        expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
+    });
+
     test('keeps the admin connection status label synchronized', () => {
         const dom = new JSDOM(`
             <div class="connection-status" id="connectionStatus" role="status" aria-live="polite" aria-atomic="true" aria-label="Dashboard connection status: Connected">
