@@ -53,6 +53,16 @@ describe('web-chat index redirect', () => {
         expect(css).not.toContain('var(--accent-rgb)');
     });
 
+    test('composer tool trigger announces selected tool summary', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
+
+        expect(html).toContain('js/app.js?v=20260630c');
+        expect(appSource).toContain("const triggerLabel = selectedCount > 0");
+        expect(appSource).toContain("this.toolMenuBtn.setAttribute('aria-label', triggerLabel);");
+        expect(appSource).toContain('this.toolMenuBtn.title = triggerLabel;');
+    });
+
     test('mobile chat controls expose dialog ownership and open-close labels', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
@@ -176,7 +186,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('aria-label="Backend connection status: Connecting"');
         expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
-        expect(html).toContain('js/app.js?v=20260629b');
+        expect(html).toContain('js/app.js?v=20260630c');
         expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
         expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
         expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");

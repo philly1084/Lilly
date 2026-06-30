@@ -1266,11 +1266,13 @@ class ChatApp {
                 .join('\n');
         }
         if (this.toolMenuBtn) {
-            this.toolMenuBtn.classList.toggle('is-active', selectedCount > 0 || isOpen);
-            this.toolMenuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            this.toolMenuBtn.title = selectedCount > 0
+            const triggerLabel = selectedCount > 0
                 ? `Tools: ${buildToolIntentSelectionSummary(selectedDefinitions)}`
                 : 'Choose tools';
+            this.toolMenuBtn.classList.toggle('is-active', selectedCount > 0 || isOpen);
+            this.toolMenuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            this.toolMenuBtn.setAttribute('aria-label', triggerLabel);
+            this.toolMenuBtn.title = triggerLabel;
         }
 
         this.toolMenuPanel?.querySelectorAll?.('[data-tool-intent-checkbox]').forEach((checkbox) => {
