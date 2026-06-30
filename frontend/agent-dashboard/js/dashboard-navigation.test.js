@@ -504,6 +504,45 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('--admin-menu-option-bg: #cfe0f7');
         expect(css).toContain('body[data-ui-surface="admin"] select.form-control option');
         expect(css).toContain('background-color: var(--admin-menu-bg)');
+        expect(css).toContain('--danger-light: #9b1c1c');
+    });
+
+    test('labels logs icon controls with their live state and target', () => {
+        const dom = new JSDOM(`
+            <button class="btn btn-sm btn-icon active" id="pauseLogsBtn" type="button" aria-label="Pause live log updates" aria-pressed="false" title="Pause live log updates"></button>
+            <table><tbody id="logsTableBody"></tbody></table>
+        `, { url: 'http://localhost:3000/admin/?view=logs' });
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+        dom.window.dashboard = dashboard;
+
+        dashboard.state = { logsPaused: false };
+        dashboard.formatTime = jest.fn(() => '12:00');
+        dashboard.truncate = Dashboard.prototype.truncate.bind(dashboard);
+        dashboard.escapeHtml = Dashboard.prototype.escapeHtml.bind(dashboard);
+
+        dashboard.toggleLogsPause();
+
+        const pauseButton = document.getElementById('pauseLogsBtn');
+        expect(pauseButton.getAttribute('aria-label')).toBe('Resume live log updates');
+        expect(pauseButton.getAttribute('aria-pressed')).toBe('true');
+        expect(pauseButton.getAttribute('title')).toBe('Resume live log updates');
+
+        dashboard.renderLogs([{
+            id: 'log-123',
+            timestamp: '2026-06-30T05:00:00.000Z',
+            level: 'info',
+            model: 'gpt-5',
+            prompt: 'Inspect the latest run',
+            tokens: 1280,
+            latency: 42,
+            status: 'success',
+        }]);
+
+        expect(document.querySelector('#logsTableBody .btn-icon').getAttribute('aria-label')).toBe('View details for log-123');
     });
 
     test('toggles and persists the admin light and dark theme state', () => {

@@ -2679,7 +2679,13 @@ class Dashboard {
                     </span>
                 </td>
                 <td class="col-actions">
-                    <button class="btn btn-sm btn-icon" onclick="event.stopPropagation(); dashboard.showLogDetails('${log.id}')">
+                    <button
+                        class="btn btn-sm btn-icon"
+                        type="button"
+                        aria-label="View details for ${this.escapeHtml(log.id)}"
+                        title="View log details"
+                        onclick="event.stopPropagation(); dashboard.showLogDetails('${log.id}')"
+                    >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="1"/>
                             <circle cx="19" cy="12" r="1"/>
@@ -5089,6 +5095,10 @@ class Dashboard {
         const btn = document.getElementById('pauseLogsBtn');
         if (btn) {
             btn.classList.toggle('active', !this.state.logsPaused);
+            const label = this.state.logsPaused ? 'Resume live log updates' : 'Pause live log updates';
+            btn.setAttribute('aria-label', label);
+            btn.setAttribute('aria-pressed', String(this.state.logsPaused));
+            btn.setAttribute('title', label);
             btn.innerHTML = this.state.logsPaused 
                 ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>'
                 : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
