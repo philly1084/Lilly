@@ -1075,8 +1075,8 @@ class OpenAIAPIClient extends EventTarget {
     }
 
     getTextDeltaFromStreamPayload(parsed = {}) {
-        if (parsed?.type === 'response.output_text.delta') {
-            return extractStreamText(parsed.delta ?? parsed.output_text_delta ?? '');
+        if (parsed?.type === 'response.output_text.delta' || parsed?.type === 'response.refusal.delta') {
+            return extractStreamText(parsed.delta ?? parsed.output_text_delta ?? parsed.refusal_delta ?? '');
         }
 
         return extractStreamText(parsed?.choices?.[0]?.delta?.content || parsed?.output_text_delta || '');

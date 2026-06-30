@@ -264,6 +264,22 @@ describe('web-chat reasoning metadata normalization', () => {
             reasoningSummary: 'Checked constraints and picked the direct fix.',
         }));
     });
+
+    test('renders response refusal deltas through the local stream fallback', () => {
+        const { apiClient } = loadApiClient();
+
+        const events = apiClient.normalizeStreamPayload({
+            type: 'response.refusal.delta',
+            delta: 'I can help with a safer version instead.',
+        }, {});
+
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'text_delta',
+                content: 'I can help with a safer version instead.',
+            }),
+        ]));
+    });
 });
 
 describe('web-chat remote build metadata', () => {

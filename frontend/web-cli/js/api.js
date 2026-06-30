@@ -346,8 +346,8 @@ class WebCLIAPI {
     }
 
     extractStreamContent(payload = {}) {
-        if (payload?.type === 'response.output_text.delta') {
-            return String(payload.delta || '');
+        if (payload?.type === 'response.output_text.delta' || payload?.type === 'response.refusal.delta') {
+            return String(payload.delta || payload.output_text_delta || payload.refusal_delta || '');
         }
 
         if (payload?.type === 'delta') {

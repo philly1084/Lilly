@@ -175,6 +175,35 @@ describe('web-cli API artifact metadata normalization', () => {
 });
 
 describe('web-cli API reasoning metadata normalization', () => {
+    test('preserves response refusal deltas when streaming without the shared gateway helper', async () => {
+        const fetchMock = jest.fn(async (url) => {
+            if (String(url).endsWith('/api/sessions')) {
+                return createJsonResponse({ id: 'session-1' });
+            }
+
+            return createSseResponse([
+                {
+                    type: 'response.refusal.delta',
+                    delta: 'I can help with a safer version instead.',
+                },
+                '[DONE]',
+            ], { sessionId: 'session-1' });
+        });
+        const { api } = loadWebCliApi(fetchMock);
+
+        const chunks = [];
+        for await (const chunk of api.streamChat('unsafe request')) {
+            chunks.push(chunk);
+        }
+
+        expect(chunks).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'delta',
+                content: 'I can help with a safer version instead.',
+            }),
+        ]));
+    });
+
     test('preserves provider reasoning aliases when streaming without the shared gateway helper', async () => {
         const fetchMock = jest.fn(async (url) => {
             if (String(url).endsWith('/api/sessions')) {
