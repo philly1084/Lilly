@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
+const { sanitizeGeneratedFilename } = require('./artifacts/generated-filename');
 const { config } = require('./config');
 
 const LOCAL_FILE_ARTIFACT_PREFIX = 'artifact-local-';
@@ -29,23 +30,6 @@ function normalizeExtension(extension = '', filename = '') {
 
     const filenameMatch = String(filename || '').trim().toLowerCase().match(/\.([a-z0-9]+)$/i);
     return filenameMatch?.[1] || 'bin';
-}
-
-function sanitizeFilename(filename = '', extension = 'bin') {
-    const normalizedExtension = normalizeExtension(extension);
-    const fallback = `generated-artifact.${normalizedExtension}`;
-    const cleaned = String(filename || fallback)
-        .trim()
-        .replace(/["\r\n]/g, '')
-        .replace(/[\\/:*?<>|]+/g, '-')
-        .replace(/\s+/g, ' ')
-        .replace(/^\.+/, '')
-        .slice(0, 160)
-        .trim();
-    const candidate = cleaned || fallback;
-    return /\.[a-z0-9]+$/i.test(candidate)
-        ? candidate
-        : `${candidate}.${normalizedExtension}`;
 }
 
 function buildArtifactDownloadPath(artifactId = '') {
@@ -135,7 +119,7 @@ async function persistGeneratedArtifactLocally({
         parentArtifactId,
         direction,
         sourceMode,
-        filename: sanitizeFilename(filename, normalizedExtension),
+        filename: sanitizeGeneratedFilename(filename, normalizedExtension),
         extension: normalizedExtension,
         mimeType,
         sizeBytes: buffer.length,
