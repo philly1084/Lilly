@@ -4340,9 +4340,18 @@ class CodeCLIApp {
 
     normalizeToolFieldSchema(schema = {}) {
         const source = schema && typeof schema === 'object' ? schema : {};
-        const directType = Array.isArray(source.type)
-            ? source.type.find((value) => String(value || '').trim().toLowerCase() !== 'null')
-            : source.type;
+        const typeOptions = Array.isArray(source.type)
+            ? source.type
+                .map((value) => String(value || '').trim().toLowerCase())
+                .filter((value) => value && value !== 'null')
+            : [];
+        if (typeOptions.includes('string') && (typeOptions.includes('object') || typeOptions.includes('array'))) {
+            return {
+                ...source,
+                type: typeOptions.includes('object') ? 'json-or-string' : 'array-or-string',
+            };
+        }
+        const directType = typeOptions.length ? typeOptions[0] : source.type;
         if (directType) {
             return { ...source, type: String(directType).toLowerCase() };
         }
@@ -4369,12 +4378,19 @@ class CodeCLIApp {
         const description = schema.description || schema.title || '';
         const requiredAttr = required ? ' required' : '';
         const hasDefault = schema.default != null;
-        const defaultValue = hasDefault && (type === 'object' || type === 'array')
+        const defaultValue = hasDefault && (
+            type === 'object'
+            || type === 'array'
+            || (type === 'json-or-string' && schema.default && typeof schema.default === 'object')
+            || (type === 'array-or-string' && Array.isArray(schema.default))
+        )
             ? JSON.stringify(schema.default, null, 2)
             : (hasDefault ? String(schema.default) : '');
-        const placeholder = name === 'prompt'
-            ? 'Describe the result you want...'
-            : type;
+        const placeholder = type === 'json-or-string'
+            ? 'string or JSON object'
+            : (type === 'array-or-string'
+                ? 'string or JSON array'
+                : (name === 'prompt' ? 'Describe the result you want...' : type));
         if (Array.isArray(schema.enum) && schema.enum.length) {
             const defaultValue = schema.default != null
                 ? String(schema.default)
@@ -4394,8 +4410,8 @@ class CodeCLIApp {
                 </label>
             `;
         }
-        if (type === 'object' || type === 'array') {
-            const jsonPlaceholder = type === 'array' ? '["value"]' : '{"key":"value"}';
+        if (type === 'object' || type === 'array' || type === 'json-or-string' || type === 'array-or-string') {
+            const jsonPlaceholder = type === 'array' || type === 'array-or-string' ? '["value"]' : (type === 'json-or-string' ? 'string or {"key":"value"}' : '{"key":"value"}');
             return `
                 <label class="cli-menu-field">
                     <span>${this.escapeHtml(name)}${required ? ' *' : ''}</span>
@@ -4501,6 +4517,16 @@ class CodeCLIApp {
                 }
                 if (type === 'object' && (!value || Array.isArray(value) || typeof value !== 'object')) {
                     throw new Error(`${name} must be a JSON object`);
+                }
+            } else if (type === 'json-or-string' || type === 'array-or-string') {
+                if (/^[\[{]/.test(value)) {
+                    value = JSON.parse(value);
+                    if (type === 'json-or-string' && (!value || Array.isArray(value) || typeof value !== 'object')) {
+                        throw new Error(`${name} must be plain text or a JSON object`);
+                    }
+                    if (type === 'array-or-string' && !Array.isArray(value)) {
+                        throw new Error(`${name} must be plain text or a JSON array`);
+                    }
                 }
             }
             params[name] = value;

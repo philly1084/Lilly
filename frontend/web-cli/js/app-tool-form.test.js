@@ -170,6 +170,22 @@ describe('web-cli tool form rendering', () => {
         expect(integerMarkup).toContain('placeholder="integer" step="1" value="5"');
     });
 
+    test('renders mixed string and object parameters as flexible body textareas', () => {
+        const app = createToolFormHarness();
+
+        const markup = app.renderToolField('body', {
+            type: ['string', 'object'],
+            default: { prompt: 'Hello' },
+            description: 'Request body.',
+        }, false);
+
+        expect(markup).toContain('<textarea rows="4"');
+        expect(markup).toContain('data-tool-type="json-or-string"');
+        expect(markup).toContain('placeholder="string or {&quot;key&quot;:&quot;value&quot;}"');
+        expect(markup).toContain('"prompt": "Hello"');
+        expect(markup).not.toContain('[object Object]');
+    });
+
     test('unwraps simple oneOf schemas for tool form rendering', () => {
         const app = createToolFormHarness();
 
@@ -273,6 +289,37 @@ describe('web-cli tool form rendering', () => {
             payload: { mode: 'preview', limit: 2 },
             items: ['alpha', 'beta'],
         });
+    });
+
+    test('collects mixed string and object parameters as text or parsed JSON', () => {
+        const app = createToolFormHarness();
+        const textForm = {
+            querySelector: () => null,
+            querySelectorAll: () => [
+                { dataset: { toolParam: 'body', toolType: 'json-or-string' }, type: 'textarea', value: 'plain request body' },
+            ],
+        };
+        const jsonForm = {
+            querySelector: () => null,
+            querySelectorAll: () => [
+                { dataset: { toolParam: 'body', toolType: 'json-or-string' }, type: 'textarea', value: '{"prompt":"Hello"}' },
+            ],
+        };
+
+        expect(app.collectToolMenuFormParams(textForm)).toEqual({ body: 'plain request body' });
+        expect(app.collectToolMenuFormParams(jsonForm)).toEqual({ body: { prompt: 'Hello' } });
+    });
+
+    test('rejects wrong JSON shapes for mixed string and object parameters', () => {
+        const app = createToolFormHarness();
+        const form = {
+            querySelector: () => null,
+            querySelectorAll: () => [
+                { dataset: { toolParam: 'body', toolType: 'json-or-string' }, type: 'textarea', value: '["not","object"]' },
+            ],
+        };
+
+        expect(() => app.collectToolMenuFormParams(form)).toThrow('body must be plain text or a JSON object');
     });
 
     test('rejects structured JSON parameters with the wrong schema shape', () => {
