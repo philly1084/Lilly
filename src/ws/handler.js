@@ -87,6 +87,7 @@ const {
     buildFrontendFallbackMetadata,
     normalizeFrontendMetadata,
 } = require('../frontend-bundles');
+const { parseLenientJson } = require('../utils/lenient-json');
 
 // Admin dashboard event emitter
 const EventEmitter = require('events');
@@ -119,7 +120,10 @@ function buildWsCanvasInstructions(canvasType = 'document', existingContent = ''
 
 function parseWsCanvasResponse(text = '', canvasType = 'document') {
     try {
-        const parsed = JSON.parse(String(text || ''));
+        const parsed = parseLenientJson(String(text || ''));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Canvas response was not a JSON object');
+        }
         const parsedContent = typeof parsed.content === 'string'
             ? parsed.content
             : String(parsed.content || '');

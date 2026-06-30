@@ -31,6 +31,7 @@ const {
     buildRequestDecisionMetadata,
     formatRequestDecisionFrameForPrompt,
 } = require('../request-decision-frame');
+const { parseLenientJson } = require('../utils/lenient-json');
 
 const router = Router();
 
@@ -532,7 +533,10 @@ Always respond with valid JSON in this format:
 
 function parseCanvasResponse(text, canvasType) {
     try {
-        const parsed = JSON.parse(text);
+        const parsed = parseLenientJson(text);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Canvas response was not a JSON object');
+        }
         if (
             canvasType === 'diagram'
             && (Array.isArray(parsed.actions) || Array.isArray(parsed.elements))

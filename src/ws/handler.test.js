@@ -321,4 +321,54 @@ describe('websocket chat handler', () => {
         );
         expect(executeConversationRuntime).not.toHaveBeenCalled();
     });
+
+    test('parses fenced JSON canvas responses over websocket', async () => {
+        executeConversationRuntime.mockResolvedValueOnce({
+            handledPersistence: false,
+            response: {
+                id: 'resp-canvas-1',
+                model: 'gpt-test',
+                output_text: [
+                    '```json',
+                    JSON.stringify({
+                        content: '# Release Notes\n\n- Improved handoff parsing',
+                        metadata: {
+                            title: 'Release Notes',
+                            type: 'document',
+                        },
+                        suggestions: ['Add screenshots'],
+                    }),
+                    '```',
+                ].join('\n'),
+                metadata: { toolEvents: [] },
+            },
+        });
+
+        const donePayload = await new Promise((resolve) => {
+            const wss = new EventEmitter();
+            setupWebSocket(wss, { locals: {} });
+            const ws = createFakeSocket(resolve);
+            wss.emit('connection', ws, {});
+            ws.emit('message', Buffer.from(JSON.stringify({
+                type: 'canvas',
+                sessionId: 'session-1',
+                payload: {
+                    message: 'Draft release notes',
+                    canvasType: 'document',
+                    metadata: { clientSurface: 'canvas' },
+                },
+            })));
+        });
+
+        expect(donePayload).toMatchObject({
+            type: 'done',
+            canvasType: 'document',
+            content: '# Release Notes\n\n- Improved handoff parsing',
+            metadata: {
+                title: 'Release Notes',
+                type: 'document',
+            },
+            suggestions: ['Add screenshots'],
+        });
+    });
 });

@@ -254,6 +254,30 @@ describe('/api/canvas helpers', () => {
         expect(parsed.suggestions).toEqual(['Add a pricing section']);
     });
 
+    test('parseCanvasResponse accepts fenced JSON returned by chat models', () => {
+        const parsed = parseCanvasResponse([
+            '```json',
+            JSON.stringify({
+                content: '## Launch Checklist\n\n- Confirm rollback plan',
+                metadata: {
+                    title: 'Launch Checklist',
+                    type: 'document',
+                },
+                suggestions: ['Add owner names'],
+            }),
+            '```',
+        ].join('\n'), 'document');
+
+        expect(parsed).toEqual({
+            content: '## Launch Checklist\n\n- Confirm rollback plan',
+            metadata: {
+                title: 'Launch Checklist',
+                type: 'document',
+            },
+            suggestions: ['Add owner names'],
+        });
+    });
+
     test('parseCanvasResponse preserves short frontend content when bundle files hold the project', () => {
         const parsed = parseCanvasResponse(JSON.stringify({
             content: 'Preview: a compact ops dashboard with filters and charts.',
