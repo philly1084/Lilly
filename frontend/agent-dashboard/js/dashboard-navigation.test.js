@@ -444,6 +444,44 @@ describe('agent dashboard navigation accessibility', () => {
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
     });
 
+    test('exposes tool category filter state to assistive tech', () => {
+        const dom = new JSDOM('<div id="skillCategories"></div><div id="skillsGrid"></div>');
+        const Dashboard = loadDashboardClass(dom);
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.state = {
+            tools: [
+                { id: 'tool-a', name: 'Tool A', category: 'builtin' },
+                { id: 'tool-b', name: 'Tool B', category: 'custom_tool' },
+            ],
+        };
+        dashboard.escapeHtml = Dashboard.prototype.escapeHtml.bind(dashboard);
+        dashboard.renderSkills = jest.fn();
+        dashboard.getFilteredTools = Dashboard.prototype.getFilteredTools.bind(dashboard);
+
+        dashboard.renderSkillCategories(dashboard.state.tools);
+
+        const allButton = document.querySelector('[data-category="all"]');
+        const customButton = document.querySelector('[data-category="custom_tool"]');
+
+        expect(allButton.getAttribute('type')).toBe('button');
+        expect(allButton.getAttribute('aria-pressed')).toBe('true');
+        expect(customButton.getAttribute('aria-pressed')).toBe('false');
+
+        dashboard.filterSkills('custom_tool');
+
+        expect(allButton.classList.contains('active')).toBe(false);
+        expect(allButton.getAttribute('aria-pressed')).toBe('false');
+        expect(customButton.classList.contains('active')).toBe(true);
+        expect(customButton.getAttribute('aria-pressed')).toBe('true');
+        expect(dashboard.renderSkills).toHaveBeenCalledWith([
+            expect.objectContaining({ id: 'tool-b' }),
+        ]);
+    });
+
     test('keeps the admin connection status label synchronized', () => {
         const dom = new JSDOM(`
             <div class="connection-status" id="connectionStatus" role="status" aria-live="polite" aria-atomic="true" aria-label="Dashboard connection status: Connected">

@@ -5252,7 +5252,9 @@ class Dashboard {
     
     filterSkills(category) {
         document.querySelectorAll('.category-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.category === category);
+            const isActive = btn.dataset.category === category;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
 
         this.renderSkills(this.getFilteredTools());
@@ -6418,8 +6420,14 @@ class Dashboard {
             const label = category === 'all'
                 ? 'All'
                 : category.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+            const isActive = activeCategory === category;
             return `
-                <button class="category-btn ${activeCategory === category ? 'active' : ''}" data-category="${this.escapeHtml(category)}">
+                <button
+                    class="category-btn ${isActive ? 'active' : ''}"
+                    type="button"
+                    data-category="${this.escapeHtml(category)}"
+                    aria-pressed="${isActive ? 'true' : 'false'}"
+                >
                     ${this.escapeHtml(label)} <span class="category-count">${count}</span>
                 </button>
             `;
