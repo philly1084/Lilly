@@ -18,6 +18,7 @@
             .artifact-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
             .artifact-toolbar select { flex: 1; min-width: 160px; }
             .artifact-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow: auto; }
+            .artifact-empty { border: 1px dashed var(--border-color, #475569); border-radius: 10px; color: var(--text-secondary, #94a3b8); font-size: 12px; padding: 10px; }
             .artifact-item { border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px; }
             .artifact-item.active { border-color: #38bdf8; }
             .artifact-meta { font-size: 12px; opacity: 0.75; margin-top: 4px; }
@@ -80,14 +81,23 @@
         if (!list) return;
 
         list.innerHTML = '';
+        if (state.artifacts.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'artifact-empty';
+            empty.textContent = 'No artifacts attached yet.';
+            list.appendChild(empty);
+            return;
+        }
+
         state.artifacts.forEach((artifact) => {
             const item = document.createElement('div');
             item.className = `artifact-item${state.selectedArtifactIds.includes(artifact.id) ? ' active' : ''}`;
+            item.setAttribute('role', 'listitem');
             item.innerHTML = `
                 <strong>${artifact.filename}</strong>
                 <div class="artifact-meta">${artifact.format} | ${artifact.sizeBytes} bytes</div>
                 <div class="artifact-actions">
-                    <button type="button" data-action="toggle">${state.selectedArtifactIds.includes(artifact.id) ? 'Detach' : 'Attach'}</button>
+                    <button type="button" data-action="toggle" aria-pressed="${state.selectedArtifactIds.includes(artifact.id) ? 'true' : 'false'}">${state.selectedArtifactIds.includes(artifact.id) ? 'Detach' : 'Attach'}</button>
                     ${(artifact.sandboxUrl || artifact.previewUrl) ? `<a href="${artifact.sandboxUrl || artifact.previewUrl}" target="_blank" rel="noopener">Preview</a>` : ''}
                     <a href="${artifact.downloadUrl}" target="_blank" rel="noopener">Download</a>
                 </div>
@@ -110,11 +120,13 @@
 
         const panel = document.createElement('div');
         panel.className = 'artifact-panel';
+        panel.setAttribute('role', 'region');
+        panel.setAttribute('aria-labelledby', 'artifact-panel-title');
         panel.innerHTML = `
-            <h4>Artifacts</h4>
+            <h4 id="artifact-panel-title">Artifacts</h4>
             <div class="artifact-toolbar">
-                <button id="artifact-upload-btn" class="btn btn-secondary" type="button">Upload File</button>
-                <select id="artifact-output-format" class="context-textarea" style="height:auto; min-height:40px;">
+                <button id="artifact-upload-btn" class="btn btn-secondary" type="button" aria-label="Upload artifact file">Upload File</button>
+                <select id="artifact-output-format" class="context-textarea" style="height:auto; min-height:40px;" aria-label="Choose generated artifact output format">
                     <option value="">No file output</option>
                     <option value="html">HTML</option>
                     <option value="pdf">PDF</option>
@@ -125,7 +137,7 @@
                 </select>
                 <input id="artifact-file-input" type="file" hidden>
             </div>
-            <div id="artifact-list" class="artifact-list"></div>
+            <div id="artifact-list" class="artifact-list" role="list" aria-label="Attached artifacts"></div>
         `;
         actionButtons.parentNode.insertBefore(panel, actionButtons);
 
@@ -145,6 +157,7 @@
         document.getElementById('artifact-output-format').addEventListener('change', (event) => {
             state.outputFormat = event.target.value;
         });
+        renderArtifacts();
     }
 
     function patchCanvasApi() {

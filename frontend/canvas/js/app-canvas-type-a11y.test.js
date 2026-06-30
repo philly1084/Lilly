@@ -28,6 +28,20 @@ function loadCanvasAppClass(document) {
     return sandbox.module.exports.CanvasApp;
 }
 
+function loadCanvasArtifacts(dom) {
+    const sourcePath = path.join(__dirname, 'artifacts.js');
+    const source = fs.readFileSync(sourcePath, 'utf8');
+
+    dom.window.fetch = jest.fn();
+    vm.runInNewContext(source, {
+        document: dom.window.document,
+        window: dom.window,
+        FormData: dom.window.FormData,
+        setTimeout: (callback) => callback(),
+        console,
+    }, { filename: sourcePath });
+}
+
 describe('Canvas type selector accessibility', () => {
     test('names the header model and reasoning selectors for assistive technology', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -165,5 +179,31 @@ describe('Canvas type selector accessibility', () => {
         resizer.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
         expect(sidebar.style.width).toBe('500px');
         expect(resizer.getAttribute('aria-valuenow')).toBe('500');
+    });
+
+    test('labels the dynamic artifact panel and renders an empty state', () => {
+        const dom = new JSDOM(`
+            <section>
+                <div class="action-buttons"></div>
+            </section>
+        `, { url: 'http://localhost:3000/canvas/' });
+
+        loadCanvasArtifacts(dom);
+        dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+
+        const panel = dom.window.document.querySelector('.artifact-panel');
+        const title = dom.window.document.getElementById('artifact-panel-title');
+        const uploadButton = dom.window.document.getElementById('artifact-upload-btn');
+        const outputSelect = dom.window.document.getElementById('artifact-output-format');
+        const artifactList = dom.window.document.getElementById('artifact-list');
+
+        expect(panel.getAttribute('role')).toBe('region');
+        expect(panel.getAttribute('aria-labelledby')).toBe('artifact-panel-title');
+        expect(title.textContent).toBe('Artifacts');
+        expect(uploadButton.getAttribute('aria-label')).toBe('Upload artifact file');
+        expect(outputSelect.getAttribute('aria-label')).toBe('Choose generated artifact output format');
+        expect(artifactList.getAttribute('role')).toBe('list');
+        expect(artifactList.getAttribute('aria-label')).toBe('Attached artifacts');
+        expect(artifactList.querySelector('.artifact-empty').textContent).toBe('No artifacts attached yet.');
     });
 });
