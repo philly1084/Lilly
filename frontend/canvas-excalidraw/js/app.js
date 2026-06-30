@@ -237,7 +237,8 @@ class App {
         }
         button.classList.toggle('active', this.enterpriseMode);
         button.title = this.enterpriseMode ? 'Focus workspace active' : 'Toggle focus workspace';
-        button.setAttribute('aria-label', this.enterpriseMode ? 'Focus workspace active' : 'Toggle focus workspace');
+        button.setAttribute('aria-label', 'Toggle focus workspace');
+        button.setAttribute('aria-pressed', this.enterpriseMode ? 'true' : 'false');
     }
     
     setupAutoSave() {

@@ -350,6 +350,36 @@ describe('canvas help modal accessibility', () => {
 
         expect(document.getElementById('topModelSelect').getAttribute('aria-label')).toBe('Select AI model');
         expect(document.querySelector('.model-icon').getAttribute('aria-hidden')).toBe('true');
+        expect(document.getElementById('enterpriseModeBtn').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    test('keeps the focus workspace toggle pressed state synchronized', () => {
+        const dom = new JSDOM('<button id="enterpriseModeBtn" type="button" aria-label="Toggle focus workspace" aria-pressed="false"></button>', {
+            url: 'http://localhost:3000/canvas/',
+        });
+        const App = loadAppClass(dom);
+        const app = Object.create(App.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        const button = document.getElementById('enterpriseModeBtn');
+
+        app.enterpriseMode = true;
+        app.updateEnterpriseButton();
+
+        expect(button.classList.contains('active')).toBe(true);
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+        expect(button.getAttribute('aria-label')).toBe('Toggle focus workspace');
+        expect(button.title).toBe('Focus workspace active');
+
+        app.enterpriseMode = false;
+        app.updateEnterpriseButton();
+
+        expect(button.classList.contains('active')).toBe(false);
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+        expect(button.getAttribute('aria-label')).toBe('Toggle focus workspace');
+        expect(button.title).toBe('Toggle focus workspace');
     });
 
     test('opens as an accessible dialog and restores focus to the help button', () => {
