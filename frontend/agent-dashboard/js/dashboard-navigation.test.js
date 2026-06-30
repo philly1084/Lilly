@@ -1620,4 +1620,14 @@ describe('agent dashboard navigation accessibility', () => {
         jest.runOnlyPendingTimers();
         jest.useRealTimers();
     });
+
+    test('respects reduced motion preferences for dashboard toasts', () => {
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'dashboard.css'), 'utf8');
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+        expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+        expect(css).toContain('.toast,\n    .toast.hiding');
+        expect(css).toContain('animation: none;');
+        expect(html).toContain('dashboard.css?v=admin-toast-reduced-motion');
+    });
 });

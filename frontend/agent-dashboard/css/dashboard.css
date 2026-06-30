@@ -4901,6 +4901,13 @@ a.lilly-pulse-chip:hover {
     animation: toastSlideOut 0.3s ease forwards;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .toast,
+    .toast.hiding {
+        animation: none;
+    }
+}
+
 @keyframes toastSlideIn {
     from {
         opacity: 0;
