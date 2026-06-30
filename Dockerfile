@@ -113,6 +113,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY bin/ ./bin/
 COPY scripts/kokoro_g2p_bridge.py ./scripts/kokoro_g2p_bridge.py
 COPY src/ ./src/
+# Keep remote CLI runner code on a distinct layer; stale copies produce misleading timeout text.
+COPY src/remote-cli/ ./src/remote-cli/
 COPY frontend/ ./frontend/
 COPY data/skills/ ./data/skills/
 COPY data/kokoro/voices/manifest.json ./data/kokoro/voices/manifest.json
