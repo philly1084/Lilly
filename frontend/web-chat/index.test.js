@@ -66,9 +66,9 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="btn-icon mobile-chat-menu__close"');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
-        expect(html).toContain('css/styles.css?v=20260625b');
+        expect(html).toContain('css/styles.css?v=20260630a');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
-        expect(html).toContain('js/ui.js?v=20260629b');
+        expect(html).toContain('js/ui.js?v=20260630a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(uiSource).toContain("if (event.key === 'Escape')");
@@ -88,7 +88,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="progressbar"');
         expect(html).toContain('aria-labelledby="export-progress-text"');
         expect(html).toContain('aria-describedby="export-progress-percent"');
-        expect(html).toContain('js/ui.js?v=20260629b');
+        expect(html).toContain('js/ui.js?v=20260630a');
         expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
@@ -106,7 +106,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-busy="false"');
-        expect(html).toContain('js/ui.js?v=20260629b');
+        expect(html).toContain('js/ui.js?v=20260630a');
         expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
@@ -147,13 +147,25 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
 
-        expect(html).toContain('js/ui.js?v=20260629b');
+        expect(html).toContain('js/ui.js?v=20260630a');
         expect(uiSource).toContain("modal.setAttribute('aria-describedby', 'shortcuts-description');");
         expect(uiSource).toContain('<div class="modal-overlay" aria-hidden="true" onclick="uiHelpers.closeShortcutsModal()"></div>');
         expect(uiSource).toContain('<button type="button" class="btn-icon" onclick="uiHelpers.closeShortcutsModal()" aria-label="Close keyboard shortcuts help">');
         expect(uiSource).toContain('id="shortcuts-description"');
         expect(uiSource).toContain('Common workspace shortcuts and slash commands for the current chat.');
         expect(uiSource).toContain('if (!modal) {\n            return;\n        }');
+    });
+
+    test('toast notifications expose keyboard-safe dismissal and reduced motion handling', () => {
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
+
+        expect(uiSource).toContain("toast.setAttribute('aria-atomic', 'true');");
+        expect(uiSource).toContain('<button type="button" class="toast-close" aria-label="Dismiss notification">');
+        expect(uiSource).toContain("window.matchMedia?.('(prefers-reduced-motion: reduce)').matches");
+        expect(css).toContain('.toast-close:focus-visible');
+        expect(css).toContain('box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 34%, transparent);');
+        expect(css).toContain('@media (prefers-reduced-motion: reduce) {\n    .toast {');
     });
 
     test('header connection status announces visible state changes', () => {

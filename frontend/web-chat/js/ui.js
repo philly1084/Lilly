@@ -10579,6 +10579,7 @@ class UIHelpers {
         toast.className = `toast ${type}`;
         toast.setAttribute('role', 'alert');
         toast.setAttribute('aria-live', 'polite');
+        toast.setAttribute('aria-atomic', 'true');
 
         const icons = {
             success: 'check-circle',
@@ -10597,7 +10598,7 @@ class UIHelpers {
                 ${title ? `<div class="toast-title">${title}</div>` : ''}
                 <div class="toast-message">${message}</div>
             </div>
-            <button class="toast-close" aria-label="Close notification">
+            <button type="button" class="toast-close" aria-label="Dismiss notification">
                 <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
             </button>
         `;
@@ -10643,6 +10644,12 @@ class UIHelpers {
     }
 
     removeToast(toast) {
+        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReducedMotion) {
+            toast.remove();
+            return;
+        }
+
         toast.style.opacity = '0';
         toast.style.transform = 'translateX(100%)';
         setTimeout(() => toast.remove(), 300);

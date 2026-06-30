@@ -9259,14 +9259,38 @@ code[class*="language-"] {
     flex-shrink: 0;
     cursor: pointer;
     color: var(--text-secondary);
-    transition: color var(--transition-fast);
+    transition:
+        color var(--transition-fast),
+        background-color var(--transition-fast),
+        box-shadow var(--transition-fast);
     background: none;
     border: none;
-    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+    padding: 0.35rem;
+    min-width: 2rem;
+    min-height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .toast-close:hover {
     color: var(--text-primary);
+    background-color: var(--bg-hover);
+}
+
+.toast-close:focus-visible {
+    outline: none;
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast {
+        animation: none;
+        transition: none;
+    }
 }
 
 /* ============================================
