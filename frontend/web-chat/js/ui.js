@@ -7137,6 +7137,7 @@ class UIHelpers {
 
         if (range) {
             range.value = String(percent);
+            range.setAttribute('aria-valuetext', `${percent} percent`);
         }
 
         if (value) {
