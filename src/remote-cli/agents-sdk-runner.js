@@ -38,7 +38,7 @@ function sleep(ms = 0) {
 
 class RemoteCliAgentRunTimeoutError extends Error {
   constructor(timeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS) {
-    super(`remote-cli-agent inner model run timed out after ${timeoutMs}ms.`);
+    super(`remote-cli-agent inner model wait became stale after ${timeoutMs}ms; continuing with direct remote_code_run fallback.`);
     this.name = 'RemoteCliAgentRunTimeoutError';
     this.code = 'REMOTE_CLI_AGENT_RUN_TIMEOUT';
     this.timeoutMs = timeoutMs;
@@ -2408,13 +2408,13 @@ class RemoteCliAgentsSdkRunner {
               reasoningSummary: staleExistingJob
                 ? 'Remote CLI agent tried to poll a stale remote_code_run job; starting a fresh remote_code_run.'
                 : pollExistingJob
-                ? 'Remote CLI agent model run timed out; polling the remote_code_run job it already started.'
-                : 'Remote CLI agent model run timed out; falling back to direct remote_code_run.',
+                ? 'Remote CLI agent stale wait budget was exceeded; polling the remote_code_run job it already started.'
+                : 'Remote CLI agent stale wait budget was exceeded; continuing with direct remote_code_run.',
               detail: staleExistingJob
                 ? 'Gateway no longer knows the prior remote job id, likely after a gateway restart.'
                 : pollExistingJob
-                ? 'Inner agent timeout reached; continuing with remote_code_status.'
-                : 'Inner agent timeout reached; starting remote_code_run directly.',
+                ? 'Inner agent wait budget expired; continuing with remote_code_status.'
+                : 'Inner agent wait budget expired; starting remote_code_run directly.',
               percent: 46,
               toolEvents: [{
                 toolId: 'remote-cli-agent',
@@ -2422,8 +2422,8 @@ class RemoteCliAgentsSdkRunner {
                 detail: staleExistingJob
                   ? 'Starting a new remote_code_run because the prior job id is stale.'
                   : pollExistingJob
-                  ? 'Polling the existing remote_code_run job after inner model timeout.'
-                  : 'Starting direct remote_code_run after inner model timeout.',
+                  ? 'Polling the existing remote_code_run job after stale wait budget expiry.'
+                  : 'Starting direct remote_code_run after stale wait budget expiry.',
               }],
             });
           }

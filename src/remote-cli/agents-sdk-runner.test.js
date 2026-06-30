@@ -1692,7 +1692,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
 
     expect(calls.runnerCalled).toBe(true);
-    expect(calls.progress.some((progress) => /falling back to direct remote_code_run/i.test(progress.reasoningSummary))).toBe(true);
+    expect(calls.progress.some((progress) => /stale wait budget was exceeded; continuing with direct remote_code_run/i.test(progress.reasoningSummary))).toBe(true);
     expect(calls.toolCalls).toEqual([
       {
         name: 'remote_code_run',
