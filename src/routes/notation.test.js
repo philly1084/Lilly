@@ -118,6 +118,24 @@ describe('/api/notation helpers', () => {
         });
     });
 
+    test('parseNotationResponse accepts fenced JSON returned by chat models', () => {
+        const parsed = parseNotationResponse([
+            '```json',
+            JSON.stringify({
+                result: 'User authenticates, then reaches the dashboard.',
+                annotations: [{ line: 1, note: 'Main success path' }],
+                suggestions: ['Add an auth failure branch'],
+            }),
+            '```',
+        ].join('\n'), 'expand');
+
+        expect(parsed).toEqual({
+            result: 'User authenticates, then reaches the dashboard.',
+            annotations: [{ line: 1, note: 'Main success path' }],
+            suggestions: ['Add an auth failure branch'],
+        });
+    });
+
     test('normalizeIssues filters malformed issues and defaults severity', () => {
         expect(normalizeIssues([
             { line: '3', message: 'Needs a target', fix: 'Add target' },

@@ -21,6 +21,7 @@ const {
     buildRequestDecisionMetadata,
     formatRequestDecisionFrameForPrompt,
 } = require('../request-decision-frame');
+const { parseLenientJson } = require('../utils/lenient-json');
 
 const router = Router();
 
@@ -327,8 +328,8 @@ Always respond with valid JSON in this format:
 }
 
 function parseNotationResponse(text, helperMode = 'expand') {
-    try {
-        const parsed = JSON.parse(text);
+    const parsed = parseLenientJson(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const annotations = normalizeAnnotations(parsed.annotations);
         const issues = normalizeIssues(parsed.issues);
         return {
@@ -343,14 +344,14 @@ function parseNotationResponse(text, helperMode = 'expand') {
                 ? { correctedNotation: parsed.correctedNotation.trim() }
                 : {}),
         };
-    } catch {
-        return {
-            result: text,
-            annotations: [],
-            suggestions: [],
-            ...(helperMode === 'validate' ? { issues: [] } : {}),
-        };
     }
+
+    return {
+        result: text,
+        annotations: [],
+        suggestions: [],
+        ...(helperMode === 'validate' ? { issues: [] } : {}),
+    };
 }
 
 function normalizeStringArray(value) {
