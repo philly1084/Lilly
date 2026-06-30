@@ -545,6 +545,20 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.querySelector('#logsTableBody .btn-icon').getAttribute('aria-label')).toBe('View details for log-123');
     });
 
+    test('associates logs filters with stable accessible names', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html, { url: 'http://localhost:3000/admin/?view=logs' });
+        const document = dom.window.document;
+
+        expect(document.querySelector('label[for="logLevelFilter"]').textContent.trim()).toBe('Level');
+        expect(document.querySelector('label[for="logModelFilter"]').textContent.trim()).toBe('Model');
+        expect(document.querySelector('label[for="logTimeFilter"]').textContent.trim()).toBe('Time Range');
+        expect(document.getElementById('logLevelFilter').labels[0].textContent.trim()).toBe('Level');
+        expect(document.getElementById('logModelFilter').labels[0].textContent.trim()).toBe('Model');
+        expect(document.getElementById('logTimeFilter').labels[0].textContent.trim()).toBe('Time Range');
+        expect(document.getElementById('logSearch').labels[0].textContent.trim()).toBe('Filter logs by prompt, model, or status');
+    });
+
     test('toggles and persists the admin light and dark theme state', () => {
         const { dom, dashboard } = createThemeHarness({ prefersLight: true });
 
