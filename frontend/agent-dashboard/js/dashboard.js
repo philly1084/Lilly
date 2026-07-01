@@ -3523,6 +3523,33 @@ class Dashboard {
         this.renderCompanyActionHistory(actions);
     }
 
+    getCompanyDeliverableDomId(deliverable = {}, index = 0) {
+        const source = String(deliverable.id || deliverable.filename || `deliverable-${index}`)
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 48);
+        return `company-deliverable-${source || index}`;
+    }
+
+    getCompanyDeliverableFormatLabel(deliverable = {}) {
+        if (deliverable.formatLabel) return String(deliverable.formatLabel);
+        const source = String(deliverable.format || deliverable.mimeType || deliverable.filename || '').toLowerCase();
+        if (source.includes('html')) return 'HTML';
+        if (source.includes('markdown') || /\.md\b/.test(source)) return 'Markdown';
+        if (source.includes('pdf')) return 'PDF';
+        if (source.includes('pptx') || source.includes('presentation')) return 'PPTX';
+        if (source.includes('xlsx') || source.includes('spreadsheet') || source.includes('excel')) return 'XLSX';
+        if (source.includes('json')) return 'JSON';
+        return 'Document';
+    }
+
+    getCompanyDeliverablePreviewText(deliverable = {}) {
+        return String(deliverable.previewText || deliverable.contentPreview || deliverable.summary || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
     renderCompanyDeliverables(deliverables = []) {
         const container = document.getElementById('companyDeliverableList');
         if (!container) return;
@@ -3532,28 +3559,61 @@ class Dashboard {
             return;
         }
 
-        container.innerHTML = deliverables.map((deliverable) => {
+        const viewModels = deliverables.map((deliverable, index) => {
             const previewUrl = deliverable.sandboxUrl || deliverable.previewUrl || '';
             const downloadUrl = deliverable.downloadUrl || deliverable.bundleDownloadUrl || '';
+            const previewText = this.getCompanyDeliverablePreviewText(deliverable);
+            const formatLabel = this.getCompanyDeliverableFormatLabel(deliverable);
             const meta = [
                 deliverable.roleName,
                 deliverable.workloadTitle,
                 deliverable.updatedAt ? this.formatDate(deliverable.updatedAt) : '',
                 deliverable.sizeBytes ? this.formatBytes(deliverable.sizeBytes) : '',
             ].filter(Boolean).join(' | ');
-            return `
-                <div class="company-deliverable-item">
-                    <div>
-                        <strong>${this.escapeHtml(deliverable.title || deliverable.filename || 'Business deliverable')}</strong>
-                        <span>${this.escapeHtml(meta || deliverable.filename || deliverable.id || '')}</span>
-                    </div>
-                    <div class="company-deliverable-actions">
-                        ${previewUrl ? `<a class="btn btn-sm btn-secondary" href="${this.escapeHtml(previewUrl)}" target="_blank" rel="noopener">Preview</a>` : ''}
-                        ${downloadUrl ? `<a class="btn btn-sm btn-ghost" href="${this.escapeHtml(downloadUrl)}" target="_blank" rel="noopener">Download</a>` : ''}
-                    </div>
+            return {
+                deliverable,
+                previewUrl,
+                downloadUrl,
+                previewText,
+                formatLabel,
+                meta,
+                domId: this.getCompanyDeliverableDomId(deliverable, index),
+            };
+        });
+        const readableCount = viewModels.filter((item) => item.previewText || item.previewUrl).length;
+        const xlsxCount = viewModels.filter((item) => item.formatLabel.toLowerCase() === 'xlsx').length;
+
+        container.innerHTML = `
+            <div class="company-deliverable-collage" id="companyDeliverableCollage" aria-label="Business deliverable preview collage">
+                <div class="company-deliverable-summary">
+                    <strong>${deliverables.length} document${deliverables.length === 1 ? '' : 's'}</strong>
+                    <span>${readableCount} previewable${xlsxCount ? ` | ${xlsxCount} workbook${xlsxCount === 1 ? '' : 's'}` : ''}</span>
                 </div>
-            `;
-        }).join('');
+                <div class="company-deliverable-jumps" aria-label="Jump to deliverable">
+                    ${viewModels.map((item, index) => `
+                        <a href="#${this.escapeAttribute(item.domId)}">${this.escapeHtml(String(index + 1))}. ${this.escapeHtml(item.formatLabel)}</a>
+                    `).join('')}
+                </div>
+                <div class="company-deliverable-cards">
+                    ${viewModels.map((item) => `
+                        <article class="company-deliverable-item company-deliverable-card" id="${this.escapeAttribute(item.domId)}" tabindex="-1">
+                            <div class="company-deliverable-main">
+                                <div class="company-deliverable-title-row">
+                                    <strong>${this.escapeHtml(item.deliverable.title || item.deliverable.filename || 'Business deliverable')}</strong>
+                                    <span class="company-deliverable-format">${this.escapeHtml(item.formatLabel)}</span>
+                                </div>
+                                <span>${this.escapeHtml(item.meta || item.deliverable.filename || item.deliverable.id || '')}</span>
+                                ${item.previewText ? `<p class="company-deliverable-preview">${this.escapeHtml(item.previewText)}</p>` : '<p class="company-deliverable-preview company-deliverable-preview--empty">No text preview stored yet.</p>'}
+                            </div>
+                            <div class="company-deliverable-actions">
+                                ${item.previewUrl ? `<a class="btn btn-sm btn-secondary" href="${this.escapeHtml(item.previewUrl)}" target="_blank" rel="noopener">Preview</a>` : ''}
+                                ${item.downloadUrl ? `<a class="btn btn-sm btn-ghost" href="${this.escapeHtml(item.downloadUrl)}" target="_blank" rel="noopener">Download</a>` : ''}
+                            </div>
+                        </article>
+                    `).join('')}
+                </div>
+            </div>
+        `;
     }
 
     renderCompanySharedWhiteboard(whiteboard = null) {
@@ -5091,7 +5151,12 @@ class Dashboard {
                 document.getElementById('companyRunsTableBody')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
                 break;
             case 'deliverables':
-                document.getElementById('companyDeliverableList')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                {
+                    const collage = document.getElementById('companyDeliverableCollage')
+                        || document.getElementById('companyDeliverableList');
+                    collage?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    document.querySelector('.company-deliverable-card')?.focus?.({ preventScroll: true });
+                }
                 break;
             case 'alignment':
                 document.getElementById('companyAlignmentPanel')?.scrollIntoView({ block: 'center', behavior: 'smooth' });

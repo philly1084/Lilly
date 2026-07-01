@@ -319,6 +319,11 @@ describe('/api/admin workload routes', () => {
                     id: 'artifact-session-brief',
                     filename: 'ceo-brief.html',
                     previewUrl: '/api/artifacts/artifact-session-brief/preview',
+                    format: 'html',
+                    formatLabel: 'HTML',
+                    isTextHeavy: true,
+                    previewKind: 'html',
+                    previewText: 'CEO Brief',
                 }),
             ]));
             expect(response.body.data.actionQueue).toEqual(expect.arrayContaining([

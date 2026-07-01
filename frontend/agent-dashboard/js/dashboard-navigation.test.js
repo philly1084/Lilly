@@ -319,6 +319,9 @@ function createAgentCompanyHarness(options = {}) {
                     workloadTitle: 'Strategy Lead: Company weekly plan',
                     updatedAt: '2026-06-26T18:00:00.000Z',
                     sizeBytes: 2048,
+                    format: 'pdf',
+                    formatLabel: 'PDF',
+                    previewText: 'Executive plan with priorities, proof targets, and next review decisions.',
                     downloadUrl: '/api/artifacts/artifact-plan/download',
                     previewUrl: '/api/artifacts/artifact-plan/preview',
                 },
@@ -1012,6 +1015,11 @@ describe('agent dashboard navigation accessibility', () => {
         expect(document.getElementById('companyCeoDirection').value).toBe('Run a research studio that ships weekly outputs.');
         expect(document.getElementById('companyDeliverableStatus').textContent).toBe('1 file');
         expect(document.getElementById('companyDeliverableList').textContent).toContain('Weekly Plan');
+        expect(document.getElementById('companyDeliverableList').textContent).toContain('1 document');
+        expect(document.getElementById('companyDeliverableList').textContent).toContain('1 previewable');
+        expect(document.getElementById('companyDeliverableList').textContent).toContain('Executive plan with priorities');
+        expect(document.getElementById('companyDeliverableList').querySelector('.company-deliverable-card')).not.toBeNull();
+        expect(document.getElementById('companyDeliverableList').querySelector('.company-deliverable-format').textContent).toBe('PDF');
         expect(document.getElementById('companyActionQueue').textContent).toContain('Review business outputs');
         expect(document.getElementById('companyActionHistory').textContent).toContain('Recent saved CEO actions');
         expect(document.getElementById('companyActionHistory').textContent).toContain('Review saved output <script>alert("x")</script>');
@@ -1076,6 +1084,21 @@ describe('agent dashboard navigation accessibility', () => {
             actionContext: null,
         });
         expect(runsTable.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+    });
+
+    test('opens CEO deliverable actions on the review collage', () => {
+        const { dashboard } = createAgentCompanyHarness();
+
+        dashboard.renderCompanyDeliverables(dashboard.state.agentCompanyWorkspace.deliverables);
+        const collage = document.getElementById('companyDeliverableCollage');
+        const firstCard = document.querySelector('.company-deliverable-card');
+        collage.scrollIntoView = jest.fn();
+        firstCard.focus = jest.fn();
+
+        dashboard.handleCompanyAction('deliverables');
+
+        expect(collage.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+        expect(firstCard.focus).toHaveBeenCalledWith({ preventScroll: true });
     });
 
     test('routes shared whiteboard CEO actions through a focused heartbeat reason', () => {

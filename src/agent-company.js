@@ -86,7 +86,7 @@ function buildOutputQualityContract() {
     return [
         'Output quality contract:',
         '- Separate communication from deliverables: use the long-agent scratch Markdown only for status, reasoning summaries, blockers, and handoff notes.',
-        '- Final work must be a real deliverable in the right file family: Markdown for briefs/runbooks, PDF/PPTX/XLSX through the document/export path, source files for code, and index.html plus CSS/JS/assets for web previews.',
+        '- Final work must be a real deliverable in the right file family: Markdown or HTML for text-heavy briefs/runbooks/research notes, PDF/PPTX through the document/export path for presentation-quality reviews, XLSX only for genuinely tabular workbook data, source files for code, and index.html plus CSS/JS/assets for web previews.',
         '- Do not count an HTML file as a deliverable if it is only a plan, outline, placeholder page, TODO list, or prose about what should be built. HTML deliverables must render the requested finished content or usable interface.',
         '- For design or site work, include concrete visual structure, subject-specific copy, relevant assets or asset slots, responsive styling, and browser/UI verification evidence.',
         '- For production website/app/dashboard work, inventory existing managed apps, GitLab projects, k3s namespaces/services/ingresses, and candidate hostnames before creating anything new.',
@@ -915,7 +915,9 @@ class AgentCompanyService {
                     },
                     outputContract: {
                         communication: 'scratch-markdown',
-                        deliverables: ['md', 'html-css-js-assets', 'pdf', 'pptx', 'xlsx', 'source'],
+                        deliverables: ['md', 'html', 'pdf', 'pptx', 'source', 'html-css-js-assets', 'xlsx'],
+                        defaultTextFormats: ['md', 'html', 'pdf'],
+                        xlsxUseCase: 'Only use XLSX for real spreadsheet/workbook data with rows, columns, formulas, or tables.',
                         rejectPlanningOnlyHtml: true,
                         productionWebHostRoot: 'demoserver2.buzz',
                         productionWebRequires: ['managed-app-inventory', 'stable-hostname', 'dns-tls-public-proof'],

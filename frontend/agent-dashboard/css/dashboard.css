@@ -2932,6 +2932,108 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     gap: 2px;
 }
 
+.company-deliverable-collage,
+.company-deliverable-cards {
+    display: grid;
+    gap: var(--space-sm);
+}
+
+.company-deliverable-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    align-items: baseline;
+    color: var(--text-primary);
+}
+
+.company-deliverable-summary strong {
+    font-size: var(--text-sm);
+    font-weight: 700;
+}
+
+.company-deliverable-summary span {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+.company-deliverable-jumps {
+    display: flex;
+    gap: var(--space-xs);
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: var(--space-xs);
+}
+
+.company-deliverable-jumps a {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 5px 9px;
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.company-deliverable-jumps a:hover,
+.company-deliverable-jumps a:focus-visible {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.company-deliverable-card {
+    scroll-margin: 96px;
+}
+
+.company-deliverable-card:focus-visible {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.company-deliverable-main {
+    min-width: 0;
+}
+
+.company-deliverable-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+.company-deliverable-format {
+    padding: 2px 7px;
+    border: 1px solid rgba(20, 184, 166, 0.3);
+    border-radius: var(--radius-sm);
+    background-color: rgba(20, 184, 166, 0.11);
+    color: var(--text-primary) !important;
+    font-size: var(--text-xs);
+    font-weight: 700;
+}
+
+.company-deliverable-preview {
+    max-height: 8rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    margin: var(--space-sm) 0 0;
+    padding: var(--space-sm);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.company-deliverable-preview--empty {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 .company-file-main {
     min-width: 0;
 }

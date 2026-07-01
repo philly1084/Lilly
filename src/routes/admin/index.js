@@ -79,21 +79,78 @@ function extractRunOutputArtifacts(run = {}) {
       previewUrl: artifact.previewUrl || artifact.preview_url || null,
       sandboxUrl: artifact.sandboxUrl || artifact.sandbox_url || null,
       bundleDownloadUrl: artifact.bundleDownloadUrl || artifact.bundle_download_url || null,
+      preview: artifact.preview || null,
       metadata: artifact.metadata || {},
     }));
+}
+
+function stripHtmlForPreview(value = '') {
+  return String(value || '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeDeliverableFormat(artifact = {}) {
+  const source = [
+    artifact.format,
+    artifact.extension,
+    artifact.mimeType,
+    artifact.filename,
+  ].map((value) => String(value || '').toLowerCase()).join(' ');
+
+  if (/\b(html|text\/html)\b/.test(source) || /\.html?\b/.test(source)) return 'html';
+  if (/\b(markdown|text\/markdown|md)\b/.test(source) || /\.md\b/.test(source)) return 'md';
+  if (/\bpdf\b/.test(source) || /\.pdf\b/.test(source)) return 'pdf';
+  if (/\bpptx|presentation\b/.test(source) || /\.pptx\b/.test(source)) return 'pptx';
+  if (/\bxlsx|spreadsheet|excel\b/.test(source) || /\.xlsx\b/.test(source)) return 'xlsx';
+  if (/\bjson\b/.test(source) || /\.json\b/.test(source)) return 'json';
+  if (/\btext\/plain|txt\b/.test(source) || /\.txt\b/.test(source)) return 'txt';
+  return String(artifact.format || artifact.extension || '').trim().toLowerCase();
+}
+
+function buildDeliverablePreview(artifact = {}) {
+  const preview = artifact.preview && typeof artifact.preview === 'object' ? artifact.preview : null;
+  const previewKind = String(preview?.type || '').trim().toLowerCase();
+  const previewText = preview?.content
+    ? stripHtmlForPreview(preview.content)
+    : stripHtmlForPreview(artifact.previewText || artifact.contentPreview || artifact.extractedText || artifact.summary || '');
+
+  return {
+    previewKind: previewKind || (previewText ? 'text' : ''),
+    previewText: previewText.length > 520 ? `${previewText.slice(0, 519).trimEnd()}...` : previewText,
+  };
 }
 
 function normalizeBusinessDeliverable(artifact = {}, context = {}) {
   const id = String(artifact.id || `${context.runId || 'run'}:${artifact.filename || 'output'}`).trim();
   const filename = String(artifact.filename || artifact.name || id).trim();
   const previewUrl = artifact.previewUrl || artifact.sandboxUrl || null;
+  const format = normalizeDeliverableFormat(artifact);
+  const readableFormats = new Set(['md', 'html', 'pdf', 'txt']);
+  const formatLabel = format
+    ? (format === 'md' ? 'Markdown' : format.toUpperCase())
+    : 'Document';
+  const preview = buildDeliverablePreview(artifact);
 
   return {
     id,
     filename,
     title: String(artifact.metadata?.title || artifact.title || filename).trim(),
     mimeType: artifact.mimeType || null,
-    format: artifact.format || artifact.extension || '',
+    format,
+    formatLabel,
+    isTextHeavy: readableFormats.has(format) || Boolean(preview.previewText),
+    previewKind: preview.previewKind,
+    previewText: preview.previewText,
     sizeBytes: Number(artifact.sizeBytes || 0),
     roleName: context.roleName || artifact.metadata?.agentCompany?.roleName || artifact.metadata?.roleName || '',
     workloadId: context.workloadId || artifact.workloadId || '',
