@@ -604,6 +604,73 @@
             .join('');
     }
 
+    function normalizeArtifactMetadata(artifact) {
+        if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+            return null;
+        }
+
+        const normalized = { ...artifact };
+        const fields = {
+            id: artifact.id || artifact.artifactId || artifact.artifact_id,
+            filename: artifact.filename || artifact.name,
+            format: artifact.format || artifact.extension || artifact.type,
+            mimeType: artifact.mimeType || artifact.mime_type,
+            downloadUrl: artifact.downloadUrl || artifact.download_url,
+            previewUrl: artifact.previewUrl || artifact.preview_url,
+            sandboxUrl: artifact.sandboxUrl || artifact.sandbox_url,
+            bundleDownloadUrl: artifact.bundleDownloadUrl
+                || artifact.bundle_download_url
+                || artifact.bundle_download,
+        };
+
+        Object.entries(fields).forEach(([key, fieldValue]) => {
+            const text = String(fieldValue || '').trim();
+            if (text) {
+                normalized[key] = text;
+            }
+        });
+
+        const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
+        if (Number.isFinite(Number(sizeValue))) {
+            normalized.sizeBytes = Number(sizeValue);
+        }
+
+        return normalized.id || normalized.downloadUrl ? normalized : null;
+    }
+
+    function normalizeArtifactList(artifacts) {
+        if (!Array.isArray(artifacts)) {
+            return [];
+        }
+
+        return artifacts.map(normalizeArtifactMetadata).filter(Boolean);
+    }
+
+    function collectArtifacts(value, metadata, assistantMetadata) {
+        const sources = [
+            value?.artifacts,
+            metadata?.artifacts,
+            assistantMetadata?.artifacts,
+            value?.response?.artifacts,
+            value?.response?.metadata?.artifacts,
+            value?.response?.assistantMetadata?.artifacts,
+            value?.response?.assistant_metadata?.artifacts,
+            value?.choices?.[0]?.message?.artifacts,
+            value?.choices?.[0]?.message?.metadata?.artifacts,
+            value?.choices?.[0]?.message?.assistantMetadata?.artifacts,
+            value?.choices?.[0]?.message?.assistant_metadata?.artifacts,
+        ];
+
+        for (const source of sources) {
+            const artifacts = normalizeArtifactList(source);
+            if (artifacts.length > 0) {
+                return artifacts;
+            }
+        }
+
+        return [];
+    }
+
     function collectMetadata(value) {
         if (!value || typeof value !== 'object') {
             return {};
@@ -634,6 +701,10 @@
         );
         if (toolEvents && metadata.toolEvents === undefined) {
             metadata.toolEvents = toolEvents;
+        }
+        const artifacts = collectArtifacts(value, metadata, assistantMetadata);
+        if (artifacts.length > 0) {
+            metadata.artifacts = artifacts;
         }
         return metadata;
     }

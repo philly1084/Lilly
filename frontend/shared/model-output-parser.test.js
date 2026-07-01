@@ -108,6 +108,44 @@ describe('model-output-parser', () => {
         ]);
     });
 
+    test('normalizes artifact metadata from non-stream provider envelopes', () => {
+        const normalized = parser.normalizeModelOutput({
+            response: {
+                metadata: {
+                    artifacts: [
+                        {
+                            artifact_id: 'artifact-html-1',
+                            name: 'demo.html',
+                            mime_type: 'text/html',
+                            download_url: '/api/artifacts/artifact-html-1/download',
+                            preview_url: '/api/artifacts/artifact-html-1/preview',
+                            sandbox_url: '/api/artifacts/artifact-html-1/sandbox',
+                            bundle_download_url: '/api/artifacts/artifact-html-1/bundle',
+                            size_bytes: '2048',
+                        },
+                    ],
+                },
+            },
+            content: [
+                { type: 'output_text', text: 'Created the HTML artifact.' },
+            ],
+        });
+
+        expect(normalized.text).toContain('Created the HTML artifact.');
+        expect(normalized.metadata.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-html-1',
+                filename: 'demo.html',
+                mimeType: 'text/html',
+                downloadUrl: '/api/artifacts/artifact-html-1/download',
+                previewUrl: '/api/artifacts/artifact-html-1/preview',
+                sandboxUrl: '/api/artifacts/artifact-html-1/sandbox',
+                bundleDownloadUrl: '/api/artifacts/artifact-html-1/bundle',
+                sizeBytes: 2048,
+            }),
+        ]);
+    });
+
     test('keeps fenced code blocks intact while repairing surrounding prose', () => {
         const normalized = parser.normalizeModelOutputMarkdown('Summary: useful\n\n```js\nconst table = \"| not markdown |\";\n```\n\nIngredients | Item | Quantity | |---|---| | A | B |');
 
