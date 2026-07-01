@@ -15,6 +15,11 @@ const DEFAULT_OWNER_ID = 'system';
 const DEFAULT_SESSION_ID = 'agent-company';
 const MIN_HEARTBEAT_MINUTES = 15;
 const SHARED_WHITEBOARD_REFRESH_REASON = 'shared-whiteboard-refresh';
+const COMPANY_LONG_AGENT_MAX_AUTO_STEPS = 4;
+const COMPANY_LONG_AGENT_COMPACTION_TRIGGER_CHARS = 10000;
+const COMPANY_LONG_AGENT_RETAIN_CHARS = 4500;
+const COMPANY_WORKLOAD_MAX_ROUNDS = 5;
+const COMPANY_WORKLOAD_MAX_TOOL_CALLS = 14;
 const DEFAULT_MODEL_CANDIDATES = [
     'gpt-5.5',
     'gpt-5.5-pro',
@@ -86,6 +91,7 @@ function buildOutputQualityContract() {
     return [
         'Output quality contract:',
         '- Separate communication from deliverables: use the long-agent scratch Markdown only for status, reasoning summaries, blockers, and handoff notes.',
+        '- Reuse verified prior outputs before generating replacements: inspect current deliverables, public URLs, source files, action history, and scratch/whiteboard notes, then update the smallest useful gap.',
         '- Final work must be a real deliverable in the right file family: Markdown or HTML for text-heavy briefs/runbooks/research notes, PDF/PPTX through the document/export path for presentation-quality reviews, XLSX only for genuinely tabular workbook data, source files for code, and index.html plus CSS/JS/assets for web previews.',
         '- Do not count an HTML file as a deliverable if it is only a plan, outline, placeholder page, TODO list, or prose about what should be built. HTML deliverables must render the requested finished content or usable interface.',
         '- For design or site work, include concrete visual structure, subject-specific copy, relevant assets or asset slots, responsive styling, and browser/UI verification evidence.',
@@ -835,20 +841,26 @@ class AgentCompanyService {
             'Operating rules:',
             '- Do one concrete, useful company step and verify it as far as the available tools allow.',
             '- Use a sense, plan, act, verify, learn rhythm: inspect existing work first, choose one bounded action, test the result, and record the next improvement.',
+            '- Start from current evidence, not a blank slate: check existing deliverables, CEO action history, shared whiteboard state, source files, and live/public URLs before creating new work.',
+            '- If a verified deliverable or live surface already satisfies the objective, improve one high-impact gap or stop with proof; do not regenerate a parallel artifact.',
             '- Keep side effects conservative unless the task explicitly has admin-approved tools.',
             '- If the selected model cannot complete the task because of context length, tool capability, or provider failure, record the smallest model-switch recommendation using the configured escalation models.',
             `- Escalation models: ${escalation}.`,
             `- Selected model lane: ${this.formatModelSelection(modelSelection)}.`,
             '- Do not create duplicate recurring jobs; inspect current work first and update the schedule or scratch summary instead.',
+            '- Save tokens: cite paths, IDs, URLs, and concise deltas instead of pasting full prior plans, logs, source files, or unchanged prose.',
             buildOutputQualityContract(),
             '',
             'Shared whiteboard:',
             `- Use ${whiteboardFile} as the agent-to-agent whiteboard for this company week.`,
             '- Read it before acting if file tools are available; update it after acting so the next agent can continue without re-discovering the same facts.',
+            '- For live KimiBuilt remote work, the admin-visible state is /home/kimibuilt/.kimibuilt. The repo source path /opt/kimibuilt/.kimibuilt is useful evidence, but it does not by itself satisfy the dashboard whiteboard check.',
+            '- If a remote agent updates whiteboard or scratch files, verify the admin-visible state path or state the path mismatch as a blocker.',
             '- Keep whiteboard entries structured as: Claims checked, Decisions made, Files/artifacts changed, Deployment/DNS state, Blockers, Next agent task.',
             '- Keep plans in the whiteboard short and actionable; do not use it as the final deliverable or as a replacement for real files/artifacts.',
             ...whiteboardRefreshLines,
-            '- End with "Stage scratch summary" containing done, verification, blockers, next step, and schedule impact.',
+            '- End with "Stage scratch summary" containing done, changed files/artifacts, verification, blockers, next step, and schedule impact.',
+            '- When the objective is satisfied and no follow-up stage is useful, include the exact phrase "overall goal complete" in the Stage scratch summary so the scheduler stops instead of spending another review pass.',
         ].filter(Boolean).join('\n');
     }
 
@@ -868,8 +880,8 @@ class AgentCompanyService {
             policy: {
                 executionProfile: 'default',
                 toolIds: [],
-                maxRounds: 6,
-                maxToolCalls: 18,
+                maxRounds: COMPANY_WORKLOAD_MAX_ROUNDS,
+                maxToolCalls: COMPANY_WORKLOAD_MAX_TOOL_CALLS,
                 maxDurationMs: 900000,
                 allowSideEffects: false,
             },
@@ -882,12 +894,12 @@ class AgentCompanyService {
                     goal: config.companyGoal,
                     scratchFile: `.kimibuilt/agent-company/${weekKey}-${item.roleId}.md`,
                     sharedWhiteboardFile: whiteboardFile,
-                    maxAutoSteps: 6,
+                    maxAutoSteps: COMPANY_LONG_AGENT_MAX_AUTO_STEPS,
                     reviewPolicy: 'auto',
                     compaction: {
                         enabled: true,
-                        triggerCharCount: 12000,
-                        retainChars: 6000,
+                        triggerCharCount: COMPANY_LONG_AGENT_COMPACTION_TRIGGER_CHARS,
+                        retainChars: COMPANY_LONG_AGENT_RETAIN_CHARS,
                     },
                 },
                 agentCompany: {
@@ -921,6 +933,9 @@ class AgentCompanyService {
                         rejectPlanningOnlyHtml: true,
                         productionWebHostRoot: 'demoserver2.buzz',
                         productionWebRequires: ['managed-app-inventory', 'stable-hostname', 'dns-tls-public-proof'],
+                        reuseBeforeRegenerate: true,
+                        adminVisibleStateRoot: '/home/kimibuilt/.kimibuilt',
+                        repoEvidenceStateRoot: '/opt/kimibuilt/.kimibuilt',
                     },
                     modelPolicy: {
                         primaryModel: config.primaryModel || null,

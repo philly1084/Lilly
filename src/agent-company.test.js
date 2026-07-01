@@ -189,6 +189,7 @@ describe('AgentCompanyService', () => {
                     title: payload.title,
                     prompt: payload.prompt,
                     trigger: payload.trigger,
+                    policy: payload.policy,
                     metadata: payload.metadata,
                     workloadSummary: {
                         queued: 1,
@@ -221,8 +222,17 @@ describe('AgentCompanyService', () => {
         expect(second.createdWorkloads).toHaveLength(0);
         expect(workloadService.createWorkload).toHaveBeenCalledTimes(3);
         expect(createdWorkloads[0].metadata.longAgent.enabled).toBe(true);
+        expect(createdWorkloads[0].metadata.longAgent.maxAutoSteps).toBe(4);
         expect(createdWorkloads[0].metadata.longAgent.sharedWhiteboardFile).toBe('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
+        expect(createdWorkloads[0].metadata.longAgent.compaction).toEqual(expect.objectContaining({
+            triggerCharCount: 10000,
+            retainChars: 4500,
+        }));
         expect(createdWorkloads[0].metadata.requestedModel).toBe('gpt-5.5');
+        expect(createdWorkloads[0].policy).toEqual(expect.objectContaining({
+            maxRounds: 5,
+            maxToolCalls: 14,
+        }));
         expect(createdWorkloads[0].metadata.modelSelection).toEqual(expect.objectContaining({
             model: 'gpt-5.5',
             competency: 'strategy-planning',
@@ -249,12 +259,23 @@ describe('AgentCompanyService', () => {
             .toContain('sense, plan, act, verify, learn');
         expect(createdWorkloads[0].prompt).toContain('Separate communication from deliverables');
         expect(createdWorkloads[0].prompt).toContain('Do not count an HTML file as a deliverable if it is only a plan');
+        expect(createdWorkloads[0].prompt).toContain('Reuse verified prior outputs before generating replacements');
         expect(createdWorkloads[0].prompt).toContain('Use managed-app create/iterate/reconcile/doctor');
         expect(createdWorkloads[0].prompt).toContain('Use a stable concrete hostname under demoserver2.buzz');
+        expect(createdWorkloads[0].prompt).toContain('Start from current evidence, not a blank slate');
+        expect(createdWorkloads[0].prompt).toContain('Save tokens: cite paths, IDs, URLs, and concise deltas');
         expect(createdWorkloads[0].prompt).toContain('Selected model lane: gpt-5.5 (strategy-planning, primaryModel).');
         expect(createdWorkloads[0].prompt).toContain('Shared whiteboard:');
         expect(createdWorkloads[0].prompt).toContain('.kimibuilt/agent-company/2026-06-22-whiteboard.md');
+        expect(createdWorkloads[0].prompt).toContain('the admin-visible state is /home/kimibuilt/.kimibuilt');
+        expect(createdWorkloads[0].prompt).toContain('repo source path /opt/kimibuilt/.kimibuilt');
+        expect(createdWorkloads[0].prompt).toContain('overall goal complete');
         expect(createdWorkloads[0].prompt).toContain('Claims checked, Decisions made, Files/artifacts changed, Deployment/DNS state, Blockers, Next agent task');
+        expect(createdWorkloads[0].metadata.agentCompany.outputContract).toEqual(expect.objectContaining({
+            reuseBeforeRegenerate: true,
+            adminVisibleStateRoot: '/home/kimibuilt/.kimibuilt',
+            repoEvidenceStateRoot: '/opt/kimibuilt/.kimibuilt',
+        }));
     });
 
     test('selects a competency-fit model and skips known unavailable defaults', async () => {
