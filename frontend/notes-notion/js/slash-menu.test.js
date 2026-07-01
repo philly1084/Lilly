@@ -3,7 +3,7 @@ const path = require('path');
 const vm = require('vm');
 const { JSDOM } = require('jsdom');
 
-function loadSlashMenu({ width = 1024, height = 768 } = {}) {
+function loadSlashMenu({ width = 1024, height = 768, reducedMotion = false } = {}) {
     const source = fs.readFileSync(path.join(__dirname, 'slash-menu.js'), 'utf8');
     const dom = new JSDOM(`
         <!doctype html>
@@ -31,6 +31,16 @@ function loadSlashMenu({ width = 1024, height = 768 } = {}) {
         configurable: true,
         value: height,
     });
+    dom.window.matchMedia = jest.fn().mockImplementation((query) => ({
+        matches: query === '(prefers-reduced-motion: reduce)' ? reducedMotion : false,
+        media: query,
+        onchange: null,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+    }));
 
     const context = {
         console,
@@ -114,6 +124,18 @@ describe('Notes slash menu positioning', () => {
 
         expect(menu.getAttribute('aria-activedescendant')).toBe(items[0].id);
         expect(items[0].getAttribute('aria-selected')).toBe('true');
+    });
+
+    test('uses instant option scrolling when reduced motion is requested', () => {
+        const { dom, SlashMenu } = loadSlashMenu({ reducedMotion: true });
+        const menu = dom.window.document.getElementById('slash-menu');
+        const items = Array.from(menu.querySelectorAll('.slash-item'));
+
+        SlashMenu.show(120, 120, 'block-1');
+        dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+
+        expect(menu.getAttribute('aria-activedescendant')).toBe(items[2].id);
+        expect(items[2].scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', behavior: 'auto' });
     });
 
     test('clears active option state when filtering has no matches', () => {

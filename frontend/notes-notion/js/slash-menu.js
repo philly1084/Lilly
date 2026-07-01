@@ -287,7 +287,8 @@ const SlashMenu = (function() {
      */
     function scrollIntoView(item) {
         if (item) {
-            item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth';
+            item.scrollIntoView({ block: 'nearest', behavior });
         }
     }
     
