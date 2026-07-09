@@ -564,7 +564,12 @@ function normalizeAssistantMetadata(value) {
     const artifacts = (Array.isArray(value.artifacts) ? value.artifacts : [])
         .map(normalizeArtifactMetadata)
         .filter(Boolean)
-        .filter((artifact) => artifact.id && artifact.downloadUrl);
+        .filter((artifact) => artifact.id && (
+            artifact.downloadUrl
+            || artifact.previewUrl
+            || artifact.sandboxUrl
+            || artifact.bundleDownloadUrl
+        ));
     if (artifacts.length > 0) {
         nextMetadata.artifacts = artifacts;
     }

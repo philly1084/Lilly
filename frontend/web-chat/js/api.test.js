@@ -245,6 +245,33 @@ describe('web-chat artifact metadata normalization', () => {
             }),
         ]);
     });
+
+    test('keeps preview-only assistant metadata artifacts from stream done payloads', () => {
+        const { apiClient } = loadApiClient();
+
+        const events = apiClient.normalizeStreamPayload({
+            type: 'done',
+            metadata: {
+                artifacts: [{
+                    artifact_id: 'sandbox-artifact-1',
+                    filename: 'site.html',
+                    format: 'html',
+                    preview_url: '/api/artifacts/sandbox-artifact-1/preview',
+                    sandbox_url: '/api/artifacts/sandbox-artifact-1/sandbox',
+                }],
+            },
+        }, {});
+
+        const done = events.find((event) => event.type === 'done');
+        expect(done.assistantMetadata.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'sandbox-artifact-1',
+                previewUrl: '/api/artifacts/sandbox-artifact-1/preview',
+                sandboxUrl: '/api/artifacts/sandbox-artifact-1/sandbox',
+                downloadUrl: '',
+            }),
+        ]);
+    });
 });
 
 describe('web-chat reasoning metadata normalization', () => {
