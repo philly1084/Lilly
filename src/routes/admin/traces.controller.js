@@ -10,6 +10,7 @@ const {
   readJsonlRecordsSync,
   writeJsonlRecordsSync,
 } = require('../../observability/jsonl-persistence');
+const { summarizeAgentQualityAssessments } = require('../../agent-quality-contract');
 
 const DEFAULT_AGENT_COMPANY_SESSION_ID = 'agent-company';
 
@@ -32,6 +33,59 @@ function hasContent(value) {
     return Object.keys(value).length > 0;
   }
   return Boolean(value);
+}
+
+function normalizeAgentQuality(value) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  const status = String(value.status || '').trim();
+  const score = Number(value.score);
+  const requiredMissing = Array.isArray(value.requiredMissing)
+    ? value.requiredMissing.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : [];
+  const surfaces = Array.isArray(value.surfaces)
+    ? value.surfaces
+        .filter(isObject)
+        .map((surface) => ({
+          id: String(surface.id || '').trim(),
+          label: String(surface.label || surface.id || '').trim(),
+          score: Number.isFinite(Number(surface.score)) ? Number(surface.score) : null,
+          requiredMissing: Array.isArray(surface.requiredMissing)
+            ? surface.requiredMissing.map((entry) => String(entry || '').trim()).filter(Boolean)
+            : [],
+        }))
+    : [];
+
+  return {
+    ...value,
+    ...(status ? { status } : {}),
+    ...(Number.isFinite(score) ? { score } : {}),
+    requiredMissing,
+    surfaces,
+  };
+}
+
+function extractAgentQuality(...candidates) {
+  for (const candidate of candidates) {
+    const quality = normalizeAgentQuality(candidate);
+    if (quality) {
+      return quality;
+    }
+  }
+  return null;
+}
+
+function extractTraceAgentQuality(trace = {}) {
+  return extractAgentQuality(
+    trace.agentQuality,
+    trace.metadata?.agentQuality,
+    trace.metadata?.remoteCliAgent?.agentQuality,
+    trace.metadata?.activeProject?.remoteCliAgent?.agentQuality,
+    trace.result?.agentQuality,
+    trace.result?.data?.agentQuality,
+  );
 }
 
 function toIsoString(value) {
@@ -134,6 +188,39 @@ function extractTimelineFromRunTrace(trace = {}, run = {}, workload = {}) {
   }];
 }
 
+function getTraceStatusForAgentQuality(quality = {}) {
+  const status = String(quality.status || '').trim().toLowerCase();
+  if (status === 'passed') {
+    return 'completed';
+  }
+  if (status === 'blocked' || status === 'needs_work') {
+    return 'error';
+  }
+  return 'info';
+}
+
+function buildAgentQualityTimelineStep(agentQuality = {}, index = 0) {
+  if (!agentQuality) {
+    return null;
+  }
+  const score = Number(agentQuality.score);
+  const scoreLabel = Number.isFinite(score) ? `${Math.round(score * 100)}%` : 'unscored';
+  const missing = Array.isArray(agentQuality.requiredMissing) ? agentQuality.requiredMissing : [];
+
+  return normalizeTimelineStep({
+    step: index + 1,
+    name: 'Agent quality gates',
+    type: 'quality_gate',
+    status: getTraceStatusForAgentQuality(agentQuality),
+    details: {
+      agentQuality,
+      qualityStatus: agentQuality.status || 'unknown',
+      qualityScore: scoreLabel,
+      requiredMissing: missing,
+    },
+  }, index);
+}
+
 function buildTraceName(title = '', roleName = '') {
   const normalizedTitle = String(title || 'Agent company work').trim() || 'Agent company work';
   const normalizedRole = String(roleName || '').trim();
@@ -153,7 +240,24 @@ function buildAgentCompanyRunTrace(run = {}, workload = {}) {
   const title = workload?.title || run.workloadTitle || 'Agent company work';
   const startedAt = toIsoString(run.startedAt || run.createdAt || run.scheduledFor);
   const endedAt = toIsoString(run.finishedAt || run.updatedAt);
-  const timeline = extractTimelineFromRunTrace(run.trace || {}, run, workload);
+  const agentQuality = extractAgentQuality(
+    run.agentQuality,
+    run.metadata?.agentQuality,
+    run.metadata?.remoteCliAgent?.agentQuality,
+    run.metadata?.activeProject?.remoteCliAgent?.agentQuality,
+    run.result?.agentQuality,
+    run.result?.data?.agentQuality,
+    run.trace?.agentQuality,
+    run.trace?.metadata?.agentQuality,
+    run.trace?.result?.agentQuality,
+    run.trace?.result?.data?.agentQuality,
+    workload.agentQuality,
+    workload.metadata?.agentQuality,
+    workload.metadata?.remoteCliAgent?.agentQuality,
+  );
+  const baseTimeline = extractTimelineFromRunTrace(run.trace || {}, run, workload);
+  const agentQualityStep = buildAgentQualityTimelineStep(agentQuality, baseTimeline.length);
+  const timeline = agentQualityStep ? [...baseTimeline, agentQualityStep] : baseTimeline;
   const output = String(run.metadata?.output?.text || run.metadata?.output?.artifactMessage || '').slice(0, 4000);
 
   return {
@@ -176,9 +280,15 @@ function buildAgentCompanyRunTrace(run = {}, workload = {}) {
       attempts: Number(run.attempt || 0),
       artifacts: Array.isArray(run.metadata?.output?.artifacts) ? run.metadata.output.artifacts.length : 0,
       steps: timeline.length,
+      ...(agentQuality ? {
+        agentQualityScore: agentQuality.score,
+        agentQualityStatus: agentQuality.status || 'unknown',
+        agentQualityRequiredMissing: agentQuality.requiredMissing || [],
+      } : {}),
     },
     metadata: {
       agentCompany,
+      ...(agentQuality ? { agentQuality } : {}),
       workloadId: run.workloadId || workload?.id || null,
       workloadTitle: title,
       runId: run.id,
@@ -295,12 +405,16 @@ class TracesController {
 
       // Pagination
       const total = traces.length;
+      const agentQualitySummary = summarizeAgentQualityAssessments(traces.map(extractTraceAgentQuality));
       const offset = (pageNumber - 1) * pageLimit;
       const paginated = traces.slice(offset, offset + pageLimit);
 
       res.json({
         success: true,
         data: paginated,
+        meta: {
+          agentQualitySummary,
+        },
         pagination: {
           total,
           page: pageNumber,
@@ -411,6 +525,15 @@ class TracesController {
             md += `- **Status:** ${trace.status}\n`;
             md += `- **Model:** ${trace.model}\n`;
             md += `- **Duration:** ${trace.duration}ms\n`;
+          const agentQuality = extractTraceAgentQuality(trace);
+            if (agentQuality) {
+              const score = Number(agentQuality.score);
+              const scoreLabel = Number.isFinite(score) ? `${Math.round(score * 100)}%` : 'unscored';
+              md += `- **Agent Quality:** ${agentQuality.status || 'unknown'} (${scoreLabel})\n`;
+              if (agentQuality.requiredMissing?.length) {
+                md += `- **Missing Quality Gates:** ${agentQuality.requiredMissing.join(', ')}\n`;
+              }
+            }
             md += `- **Start:** ${trace.startTime}\n\n`;
             md += '### Timeline\n\n';
             (trace.timeline || []).forEach(step => {

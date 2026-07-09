@@ -514,6 +514,7 @@ class RemoteCliAgentTool extends ToolBase {
           verifyResults: { type: 'array' },
           blocker: { type: 'string' },
           completionStatus: { type: 'string' },
+          agentQuality: { type: 'object' },
           model: { type: 'string' },
           apiMode: { type: 'string' },
         },

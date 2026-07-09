@@ -2572,6 +2572,30 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     margin-bottom: var(--space-lg);
 }
 
+.trace-quality-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.trace-quality-item {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.trace-quality-item strong {
+    color: var(--text-primary);
+    font-size: var(--text-lg);
+}
+
 .traces-layout {
     display: grid;
     grid-template-columns: 350px 1fr;
@@ -5267,6 +5291,7 @@ code {
     
     .split-layout,
     .traces-layout,
+    .trace-quality-summary,
     .settings-layout,
     .tools-layout {
         grid-template-columns: 1fr;

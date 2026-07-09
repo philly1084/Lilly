@@ -9,6 +9,10 @@ const {
     runDailyFeedbackAlignment,
     shouldRunDailyAlignment,
 } = require('./alignment/daily-feedback-loop');
+const {
+    buildAgentQualityContractText,
+    buildQualityProfileMetadata,
+} = require('./agent-quality-contract');
 
 const DEFAULT_STATE_FILENAME = 'agent-company-state.json';
 const DEFAULT_OWNER_ID = 'system';
@@ -99,6 +103,7 @@ function buildOutputQualityContract() {
         '- Use managed-app create/iterate/reconcile/doctor for explicit managed-app control-plane work; when deeper build/deploy work is needed, run it with executor:"remote-cli-agent" inside that evidence loop.',
         '- Use a stable concrete hostname under demoserver2.buzz for production web work unless a different domain is explicitly required; avoid wildcard ingress and verify DNS/TLS/public URL after deploy.',
         '- If the needed tool, export path, or deployment lane is unavailable, do not fake the final artifact. Return a blocker plus the exact next command/tool needed.',
+        buildAgentQualityContractText(['document-artifact', 'website-experience', 'remote-deployment']),
     ].join('\n');
 }
 
@@ -936,6 +941,11 @@ class AgentCompanyService {
                         reuseBeforeRegenerate: true,
                         adminVisibleStateRoot: '/home/kimibuilt/.kimibuilt',
                         repoEvidenceStateRoot: '/opt/kimibuilt/.kimibuilt',
+                        qualityProfiles: buildQualityProfileMetadata([
+                            'document-artifact',
+                            'website-experience',
+                            'remote-deployment',
+                        ]),
                     },
                     modelPolicy: {
                         primaryModel: config.primaryModel || null,

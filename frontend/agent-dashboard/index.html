@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent SDK Admin Dashboard</title>
-    <link rel="stylesheet" href="css/dashboard.css?v=admin-toast-reduced-motion">
+    <link rel="stylesheet" href="css/dashboard.css?v=admin-agent-quality-summary">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
 </head>
 <body data-ui-surface="admin">
@@ -1452,6 +1452,10 @@
                         </div>
                     </div>
 
+                    <div class="trace-quality-summary" id="traceQualitySummary" aria-live="polite">
+                        <span class="trace-muted">Agent quality metrics will appear after scored traces are available.</span>
+                    </div>
+
                     <div class="traces-layout">
                         <div class="traces-list-panel">
                             <div class="traces-list" id="tracesList">
@@ -2636,6 +2640,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=admin-prompt-tabs-a11y"></script>
+    <script src="js/dashboard.js?v=admin-agent-quality-summary"></script>
 </body>
 </html>

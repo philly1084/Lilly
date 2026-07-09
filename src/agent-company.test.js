@@ -253,6 +253,20 @@ describe('AgentCompanyService', () => {
             communication: 'scratch-markdown',
             rejectPlanningOnlyHtml: true,
             productionWebHostRoot: 'demoserver2.buzz',
+            qualityProfiles: expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'document-artifact',
+                    requiredChecks: expect.arrayContaining(['format_locked', 'target_medium_checked']),
+                }),
+                expect.objectContaining({
+                    id: 'website-experience',
+                    requiredChecks: expect.arrayContaining(['public_or_preview_url', 'browser_proof']),
+                }),
+                expect.objectContaining({
+                    id: 'remote-deployment',
+                    requiredChecks: expect.arrayContaining(['change_continuity', 'verification_commands']),
+                }),
+            ]),
         }));
         expect(createdWorkloads.map((workload) => workload.title)).toContain('Operations Lead: Recursive improvement review');
         expect(createdWorkloads.find((workload) => workload.title.includes('Recursive improvement review')).prompt)
@@ -262,6 +276,8 @@ describe('AgentCompanyService', () => {
         expect(createdWorkloads[0].prompt).toContain('Reuse verified prior outputs before generating replacements');
         expect(createdWorkloads[0].prompt).toContain('Use managed-app create/iterate/reconcile/doctor');
         expect(createdWorkloads[0].prompt).toContain('Use a stable concrete hostname under demoserver2.buzz');
+        expect(createdWorkloads[0].prompt).toContain('Agent quality metrics:');
+        expect(createdWorkloads[0].prompt).toContain('guardrails as release gates');
         expect(createdWorkloads[0].prompt).toContain('Start from current evidence, not a blank slate');
         expect(createdWorkloads[0].prompt).toContain('Save tokens: cite paths, IDs, URLs, and concise deltas');
         expect(createdWorkloads[0].prompt).toContain('Selected model lane: gpt-5.5 (strategy-planning, primaryModel).');

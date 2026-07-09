@@ -378,6 +378,95 @@ describe('/api/admin workload routes', () => {
         }
     });
 
+    test('queues a CEO action when agent quality gates need repair', async () => {
+        const service = {
+            isAvailable: jest.fn(() => true),
+            listAdminWorkloads: jest.fn(async () => [
+                {
+                    id: 'company-workload',
+                    sessionId: 'agent-company',
+                    title: 'Builder: Deploy preview site',
+                    metadata: {
+                        agentCompany: {
+                            enabled: true,
+                            roleName: 'Builder',
+                            companyGoalHash: 'goal-hash',
+                        },
+                    },
+                },
+            ]),
+            listAdminRuns: jest.fn(async () => [
+                {
+                    id: 'company-run-quality',
+                    workloadId: 'company-workload',
+                    sessionId: 'agent-company',
+                    status: 'completed',
+                    metadata: {
+                        remoteCliAgent: {
+                            agentQuality: {
+                                version: 'agent-quality-contract/v1',
+                                status: 'partial',
+                                score: 0.55,
+                                requiredMissing: ['browser_proof', 'public_or_preview_url'],
+                                surfaces: [{
+                                    id: 'website-experience',
+                                    label: 'Website and frontend experience quality',
+                                    score: 0.5,
+                                    requiredMissing: ['browser_proof', 'public_or_preview_url'],
+                                }],
+                            },
+                        },
+                        output: {
+                            text: '',
+                            artifacts: [],
+                        },
+                    },
+                },
+            ]),
+        };
+        const isEnabledSpy = jest.spyOn(artifactService, 'isEnabled').mockReturnValue(false);
+        const app = buildApp(service);
+        app.locals.agentCompanyService = {
+            getStatus: jest.fn(async () => ({
+                available: true,
+                config: {
+                    enabled: true,
+                    sessionId: 'agent-company',
+                    companyGoal: 'Build useful websites.',
+                },
+                state: {
+                    companyGoalHash: 'goal-hash',
+                    heartbeat: { status: 'steady' },
+                    dailyAlignment: { status: 'steady' },
+                },
+            })),
+        };
+
+        try {
+            const response = await request(app).get('/api/admin/agent-company/workspace');
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.actionQueue).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    id: 'repair-agent-quality-gates',
+                    target: 'traces',
+                    priority: 'medium',
+                    detail: expect.stringContaining('browser_proof'),
+                    qualitySummary: expect.objectContaining({
+                        total: 1,
+                        averageScore: 0.55,
+                        topMissingGates: expect.arrayContaining([
+                            { id: 'browser_proof', count: 1 },
+                            { id: 'public_or_preview_url', count: 1 },
+                        ]),
+                    }),
+                }),
+            ]));
+        } finally {
+            isEnabledSpy.mockRestore();
+        }
+    });
+
     test('surfaces a CEO action when the shared whiteboard file is missing from the file room', async () => {
         const service = {
             isAvailable: jest.fn(() => true),

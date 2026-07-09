@@ -26,6 +26,7 @@ const { artifactService } = require('../../artifacts/artifact-service');
 const { artifactStore } = require('../../artifacts/artifact-store');
 const { assetManager } = require('../../asset-manager');
 const { getConfiguredStateDirectoryValue, getStateDirectory } = require('../../runtime-state-paths');
+const { summarizeAgentQualityAssessments } = require('../../agent-quality-contract');
 
 const CEO_ACTION_HISTORY_LIMIT = 24;
 
@@ -255,6 +256,7 @@ function normalizeCeoActionSnapshot(action = {}, snapshotAt = new Date().toISOSt
     ...(action.workloadReason ? { workloadReason: action.workloadReason } : {}),
     ...(action.workloadFocus ? { workloadFocus: action.workloadFocus } : {}),
     ...(action.refreshStatus ? { refreshStatus: action.refreshStatus } : {}),
+    ...(action.qualitySummary ? { qualitySummary: action.qualitySummary } : {}),
     snapshotAt,
   };
 }
@@ -385,6 +387,57 @@ function hasCompletedTextOutputWithoutDeliverables(run = {}) {
     && String(run?.metadata?.output?.text || run?.output || '').trim();
 }
 
+function extractRunAgentQuality(run = {}) {
+  const candidates = [
+    run.agentQuality,
+    run.metadata?.agentQuality,
+    run.metadata?.remoteCliAgent?.agentQuality,
+    run.metadata?.activeProject?.remoteCliAgent?.agentQuality,
+    run.result?.agentQuality,
+    run.result?.data?.agentQuality,
+    run.trace?.agentQuality,
+    run.trace?.metadata?.agentQuality,
+    run.trace?.result?.agentQuality,
+    run.trace?.result?.data?.agentQuality,
+  ];
+  return candidates.find((candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate)) || null;
+}
+
+function buildAgentQualityRepairAction(runs = []) {
+  const qualitySummary = summarizeAgentQualityAssessments(
+    (Array.isArray(runs) ? runs : []).map(extractRunAgentQuality).filter(Boolean),
+  );
+  if (!qualitySummary.total) {
+    return null;
+  }
+
+  const statusCounts = qualitySummary.statusCounts || {};
+  const weakCount = Number(statusCounts.partial || 0)
+    + Number(statusCounts.blocked || 0)
+    + Number(statusCounts.needs_work || 0);
+  if (weakCount <= 0) {
+    return null;
+  }
+
+  const score = Number(qualitySummary.averageScore);
+  const scoreLabel = Number.isFinite(score) ? `${Math.round(score * 100)}%` : 'unscored';
+  const missing = (qualitySummary.topMissingGates || [])
+    .slice(0, 3)
+    .map((entry) => `${entry.id} (${entry.count})`)
+    .join(', ');
+  const blockedOrNeedsWork = Number(statusCounts.blocked || 0) + Number(statusCounts.needs_work || 0);
+
+  return {
+    id: 'repair-agent-quality-gates',
+    actionKey: 'repair-agent-quality-gates',
+    label: 'Repair agent quality gates',
+    detail: `${weakCount} scored agent run${weakCount === 1 ? '' : 's'} need better proof. Average quality is ${scoreLabel}${missing ? `; top missing gates: ${missing}` : ''}. Review Traces before scheduling more document, website, or deployment work.`,
+    target: 'traces',
+    priority: blockedOrNeedsWork > 0 ? 'high' : 'medium',
+    qualitySummary,
+  };
+}
+
 function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverables = []) {
   const state = status?.state || {};
   const config = status?.config || {};
@@ -419,6 +472,10 @@ function buildCeoActionQueue(status = {}, workloads = [], runs = [], deliverable
       target: 'runs',
       priority: 'medium',
     });
+  }
+  const qualityRepairAction = buildAgentQualityRepairAction(runs);
+  if (qualityRepairAction) {
+    actions.push(qualityRepairAction);
   }
   if (deliverables.length > 0) {
     actions.push({

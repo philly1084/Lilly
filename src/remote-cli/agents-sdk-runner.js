@@ -3,6 +3,10 @@
 const { config } = require('../config');
 const settingsController = require('../routes/admin/settings.controller');
 const { parseLenientJson } = require('../utils/lenient-json');
+const {
+  assessAgentQuality,
+  buildAgentQualityContractText,
+} = require('../agent-quality-contract');
 
 const DEFAULT_REMOTE_CODE_MODEL = 'gpt-5.4';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
@@ -544,6 +548,13 @@ function applyUiProofRequirement(metadata = {}, task = '') {
     blocker: metadata.blocker || blocker,
     completionStatus: 'blocked',
   };
+}
+
+function assessRemoteCliQuality(task = '', metadata = {}) {
+  return assessAgentQuality({
+    task,
+    metadata,
+  });
 }
 
 function hasTerminalRemoteCliProof(metadata = {}) {
@@ -1531,6 +1542,7 @@ function buildRemoteCliInstructions({
     'Design with restraint and specificity: avoid one-note palettes, oversized rounded/nested cards, decorative blobs, clipped text, horizontal overflow, broken image paths, and unreadable dropdown/menu/popover/dialog/tooltip states.',
     'After the first working screenshot, make at least one refinement pass for non-trivial frontend builds; fix layout, contrast, asset, interaction, and responsive issues before deploying or calling the UI ready.',
     'If the KimiBuilt runner helper is present, prefer `node /app/bin/kimibuilt-ui-check.js <url> --out ui-checks` and inspect its JSON report before claiming the UI is ready.',
+    buildAgentQualityContractText(['website-experience', 'remote-deployment', 'document-artifact']),
     'Report screenshot and report paths with marker lines when known: UI_CHECK_REPORT=<path> and UI_SCREENSHOTS=<comma-separated paths>.',
     `For long tasks, call remote_code_run with waitMs: ${waitMs}.`,
     'If it returns status "running", call remote_code_status with the returned jobId only.',
@@ -1591,6 +1603,7 @@ function buildDirectRemoteCodeTask({
     '- Keep primary and secondary targets separate. Re-baseline when switching targets and never use proof from one server as proof for the other.',
     '- Keep changes scoped to the requested workspace and task. Avoid destructive operations and secret changes unless explicitly requested.',
     '- If the work touches web-chat, managed-app previews, generated HTML artifacts, TTS, document rendering, websites, dashboards, or frontend UI, require browser/Playwright or `kimibuilt-ui-check` evidence before claiming success; otherwise report the missing UI proof as BLOCKER.',
+    buildAgentQualityContractText(['website-experience', 'remote-deployment', 'document-artifact']),
     '- Finish with proof marker lines: WHAT_CHANGED=<short summary>, VERIFY_COMMANDS=<commands run or not_available>, VERIFY_RESULTS=<pass/fail/blocked results>, PUBLIC_URL=<https URL or not_available>, BLOCKER=<none or exact blocker>.',
     '- Include continuity markers when known: REMOTE_CLI_SESSION_ID=<session id>, WORKSPACE=<path>, REMOTE_CLI_JOB_ID=<job id if known>, GIT_REPO=<origin>, GIT_BRANCH=<branch>, GIT_BASE_COMMIT=<sha>, GIT_COMMIT=<sha>, CHANGED_FILES=<comma-separated files>, DEPLOYMENT=<namespace/name>, PUBLIC_HOST=<host>, UI_CHECK_REPORT=<path>, UI_SCREENSHOTS=<comma-separated paths>, and any requested REMOTE_AGENT_RESULT=<value>.',
     continuitySummary ? 'Remote project continuity context:' : '',
@@ -2011,6 +2024,7 @@ class RemoteCliAgentsSdkRunner {
         transportDescription: '/api/codex-agent run/events contract',
       });
       const runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
+      const agentQuality = assessRemoteCliQuality(task, runMetadata);
       return {
         finalOutput,
         transport: 'codex-agent',
@@ -2036,6 +2050,7 @@ class RemoteCliAgentsSdkRunner {
         verifyResults: runMetadata.verifyResults || [],
         blocker: runMetadata.blocker || null,
         completionStatus: runMetadata.completionStatus || 'unknown',
+        agentQuality,
         model,
         apiMode: 'codex-agent',
       };
@@ -2535,6 +2550,7 @@ class RemoteCliAgentsSdkRunner {
       const metadataRemoteJobId = staleRemoteJobIds.includes(runMetadata.jobId) ? '' : runMetadata.jobId;
       const fallbackRemoteJobId = staleRemoteJobIds.includes(jobId) ? null : jobId;
 
+      const agentQuality = assessRemoteCliQuality(task, runMetadata);
       return {
         finalOutput,
         mcpSessionId: remoteCli.sessionId || input.mcpSessionId || null,
@@ -2560,6 +2576,7 @@ class RemoteCliAgentsSdkRunner {
         verifyResults: runMetadata.verifyResults || [],
         blocker: runMetadata.blocker || null,
         completionStatus: runMetadata.completionStatus || 'unknown',
+        agentQuality,
         model,
         apiMode,
       };

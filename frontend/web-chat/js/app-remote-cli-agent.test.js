@@ -251,6 +251,27 @@ describe('web-chat remote CLI agent routing', () => {
         expect(renderedMessages.at(-1).content).toContain('Remote CLI Agent Result');
     });
 
+    test('formats remote agent quality status and missing gates', () => {
+        const { app } = buildAppHarness();
+
+        const content = app.formatRemoteAgentResult({
+            finalOutput: 'WHAT_CHANGED=deployed the dashboard',
+            completionStatus: 'blocked',
+            agentQuality: {
+                status: 'blocked',
+                score: 0.42,
+                requiredMissing: ['public_or_preview_url', 'browser_proof'],
+            },
+            verifyCommands: ['npm test'],
+            verifyResults: ['tests passed'],
+            blocker: 'Missing browser proof.',
+        });
+
+        expect(content).toContain('Quality: `blocked` (42%)');
+        expect(content).toContain('Missing quality gates: `public_or_preview_url`, `browser_proof`');
+        expect(content).toContain('Blocker: Missing browser proof.');
+    });
+
     test('keeps exact catalog commands on the command lane', async () => {
         const { app, context } = buildAppHarness();
 

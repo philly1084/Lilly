@@ -125,6 +125,7 @@ function createPromptTabHarness({ mockSwitch = true } = {}) {
 function createRuntimeListHarness() {
     const dom = new JSDOM(`
         <div id="promptList"></div>
+        <div id="traceQualitySummary"></div>
         <div id="tracesList"></div>
         <table><tbody id="adminRunsTableBody"></tbody></table>
     `, { url: 'http://localhost:3000/admin/?view=workloads' });
@@ -937,7 +938,9 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-prompt-tabs-a11y');
+        expect(html).toContain('dashboard.js?v=admin-agent-quality-summary');
+        expect(html).toContain('css/dashboard.css?v=admin-agent-quality-summary');
+        expect(html).toContain('id="traceQualitySummary"');
     });
 
     test('keeps prompt tab selection and panel visibility synchronized', () => {
@@ -991,6 +994,67 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dashboard.selectPromptById).toHaveBeenCalledWith('prompt-b');
         expect(dashboard.selectTrace).toHaveBeenCalledWith('trace-b');
         expect(dashboard.selectAdminRun).toHaveBeenCalledWith('run-b');
+    });
+
+    test('renders agent quality gate fields in the trace timeline', () => {
+        const { dashboard } = createRuntimeListHarness();
+        document.body.insertAdjacentHTML('beforeend', '<div id="traceTimeline"></div><div id="traceDetails"></div>');
+
+        const trace = dashboard.normalizeTrace({
+            id: 'trace-quality',
+            status: 'completed',
+            duration: 18,
+            timeline: [{
+                name: 'Agent quality gates',
+                type: 'quality_gate',
+                status: 'info',
+                details: {
+                    qualityStatus: 'partial',
+                    qualityScore: '55%',
+                    requiredMissing: ['browser_proof', 'public_or_preview_url'],
+                },
+            }],
+        });
+
+        dashboard.renderTraceTimeline(trace);
+
+        const timelineText = document.getElementById('traceTimeline').textContent;
+        expect(timelineText).toContain('Agent quality gates');
+        expect(timelineText).toContain('Quality status');
+        expect(timelineText).toContain('partial');
+        expect(timelineText).toContain('Quality score');
+        expect(timelineText).toContain('55%');
+        expect(timelineText).toContain('browser_proof, public_or_preview_url');
+    });
+
+    test('renders aggregate agent quality metrics above traces', () => {
+        const { dashboard } = createRuntimeListHarness();
+
+        dashboard.renderTraceQualitySummary({
+            total: 3,
+            averageScore: 0.56,
+            statusCounts: {
+                partial: 2,
+                passed: 1,
+            },
+            topMissingGates: [
+                { id: 'browser_proof', count: 2 },
+                { id: 'verification_commands', count: 1 },
+            ],
+            surfaces: [
+                { id: 'website-experience', label: 'Website and frontend experience quality', averageScore: 0.5 },
+                { id: 'remote-deployment', label: 'Remote CLI deployment quality', averageScore: 0.62 },
+            ],
+        });
+
+        const summaryText = document.getElementById('traceQualitySummary').textContent;
+        expect(summaryText).toContain('Agent quality');
+        expect(summaryText).toContain('56%');
+        expect(summaryText).toContain('3 traces');
+        expect(summaryText).toContain('partial 2');
+        expect(summaryText).toContain('passed 1');
+        expect(summaryText).toContain('browser_proof 2');
+        expect(summaryText).toContain('Website and frontend experience quality 50%');
     });
 
     test('renders backend-shaped agent company status, work, and output filters', () => {
@@ -1110,6 +1174,19 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dashboard.runAgentCompanyHeartbeat).toHaveBeenCalledWith({
             source: 'shared-whiteboard-refresh',
         });
+    });
+
+    test('routes agent quality CEO actions to the traces view', () => {
+        const { dashboard } = createAgentCompanyHarness();
+        document.body.insertAdjacentHTML('beforeend', '<div id="traceQualitySummary"></div>');
+        const summary = document.getElementById('traceQualitySummary');
+        summary.scrollIntoView = jest.fn();
+        dashboard.navigateTo = jest.fn();
+
+        dashboard.handleCompanyAction('traces');
+
+        expect(dashboard.navigateTo).toHaveBeenCalledWith('traces');
+        expect(summary.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
     });
 
     test('renders latest shared whiteboard repair status in action cards', () => {
@@ -1366,6 +1443,38 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.renderAdminRunDetails(dashboard.state.runs[0]);
 
         expect(companyDetails.querySelector('.workload-action-context')).toBeNull();
+    });
+
+    test('shows remote agent quality gates in selected run details', () => {
+        const { dashboard } = createAgentCompanyHarness();
+        const run = {
+            ...dashboard.state.runs[0],
+            metadata: {
+                remoteCliAgent: {
+                    agentQuality: {
+                        status: 'partial',
+                        score: 0.55,
+                        requiredMissing: ['public_or_preview_url', 'browser_proof'],
+                        surfaces: [
+                            { id: 'remote-deployment', label: 'Remote CLI deployment quality', score: 0.6, requiredMissing: [] },
+                            { id: 'website-experience', label: 'Website and frontend experience quality', score: 0.5, requiredMissing: ['public_or_preview_url'] },
+                        ],
+                    },
+                },
+            },
+        };
+
+        dashboard.renderAdminRunDetails(run);
+
+        const companyDetails = document.getElementById('companyRunDetails');
+        const qualityBlock = companyDetails.querySelector('.workload-agent-quality');
+        expect(qualityBlock).not.toBeNull();
+        expect(qualityBlock.textContent).toContain('Agent Quality Gates');
+        expect(qualityBlock.textContent).toContain('partial');
+        expect(qualityBlock.textContent).toContain('55%');
+        expect(qualityBlock.textContent).toContain('Remote CLI deployment quality 60%');
+        expect(qualityBlock.textContent).toContain('Website and frontend experience quality 50%');
+        expect(qualityBlock.textContent).toContain('public_or_preview_url, browser_proof');
     });
 
     test('persists CEO action run selection in the URL and session storage', async () => {
@@ -1791,6 +1900,6 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
         expect(css).toContain('.toast,\n    .toast.hiding');
         expect(css).toContain('animation: none;');
-        expect(html).toContain('dashboard.css?v=admin-toast-reduced-motion');
+        expect(html).toContain('dashboard.css?v=admin-agent-quality-summary');
     });
 });

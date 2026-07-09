@@ -101,6 +101,20 @@ describe('TracesController persistence', () => {
                 }],
               },
               metadata: {
+                remoteCliAgent: {
+                  agentQuality: {
+                    version: 'agent-quality-contract/v1',
+                    status: 'partial',
+                    score: 0.55,
+                    requiredMissing: ['browser_proof'],
+                    surfaces: [{
+                      id: 'website-experience',
+                      label: 'Website and frontend experience quality',
+                      score: 0.5,
+                      requiredMissing: ['browser_proof'],
+                    }],
+                  },
+                },
                 output: {
                   text: 'Company proof shipped.',
                   artifacts: [{ id: 'artifact-1', filename: 'brief.md' }],
@@ -119,6 +133,17 @@ describe('TracesController persistence', () => {
 
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         success: true,
+        meta: expect.objectContaining({
+          agentQualitySummary: expect.objectContaining({
+            total: 1,
+            scored: 1,
+            averageScore: 0.55,
+            statusCounts: expect.objectContaining({
+              partial: 1,
+            }),
+            topMissingGates: [{ id: 'browser_proof', count: 1 }],
+          }),
+        }),
         data: expect.arrayContaining([
           expect.objectContaining({
             id: 'trace-workload-run-company-run',
@@ -132,10 +157,29 @@ describe('TracesController persistence', () => {
                 name: 'Tool call (repo-check)',
                 type: 'tool_call',
               }),
+              expect.objectContaining({
+                name: 'Agent quality gates',
+                type: 'quality_gate',
+                details: expect.objectContaining({
+                  qualityStatus: 'partial',
+                  qualityScore: '55%',
+                  requiredMissing: ['browser_proof'],
+                }),
+              }),
             ]),
+            metrics: expect.objectContaining({
+              agentQualityScore: 0.55,
+              agentQualityStatus: 'partial',
+              agentQualityRequiredMissing: ['browser_proof'],
+            }),
             metadata: expect.objectContaining({
               agentCompany: expect.objectContaining({
                 roleName: 'Strategy Lead',
+              }),
+              agentQuality: expect.objectContaining({
+                status: 'partial',
+                score: 0.55,
+                requiredMissing: ['browser_proof'],
               }),
               output: expect.objectContaining({
                 text: 'Company proof shipped.',

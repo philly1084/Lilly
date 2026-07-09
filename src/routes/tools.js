@@ -926,6 +926,10 @@ function normalizeToolText(value = '') {
   return String(value || '').trim();
 }
 
+function normalizeToolObject(value = null) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
 function normalizeToolHost(value = '') {
   const normalized = normalizeToolText(value);
   if (!normalized) {
@@ -1006,6 +1010,7 @@ function buildRemoteCliActiveProjectPatch(session = null, payload = {}, params =
       ...(payload?.gitCommit ? { gitCommit: payload.gitCommit } : {}),
       ...(payload?.deployment ? { deployment: payload.deployment } : {}),
       ...(payload?.uiCheckReport ? { uiCheckReport: payload.uiCheckReport } : {}),
+      ...(normalizeToolObject(payload?.agentQuality) ? { agentQuality: payload.agentQuality } : {}),
       updatedAt: now,
     },
     updatedAt: now,
@@ -1077,6 +1082,7 @@ async function updateSessionToolMetadata(sessionId, toolId, params = {}, result 
       ...(Array.isArray(payload?.verifyResults) && payload.verifyResults.length > 0 ? { verifyResults: payload.verifyResults } : {}),
       ...(payload?.blocker ? { blocker: payload.blocker } : {}),
       ...(payload?.completionStatus ? { completionStatus: payload.completionStatus } : {}),
+      ...(normalizeToolObject(payload?.agentQuality) ? { agentQuality: payload.agentQuality } : {}),
       ...(payload?.model ? { model: payload.model } : {}),
     };
     const controlPatch = {
@@ -1513,6 +1519,7 @@ function getCategoryIcon(category) {
 
 router.__test = {
   resolveRequestedToolModel,
+  buildRemoteCliActiveProjectPatch,
 };
 
 module.exports = router;

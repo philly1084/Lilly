@@ -19,6 +19,7 @@ class Dashboard {
             selectedToolId: null,
             logs: [],
             traces: [],
+            traceQualitySummary: null,
             workloads: [],
             runs: [],
             selectedRun: null,
@@ -1522,17 +1523,21 @@ class Dashboard {
             const response = await apiClient.get('/api/admin/traces', { page, limit });
             const traces = this.unwrapApiPayload(response, []).map(trace => this.normalizeTrace(trace));
             const pagination = this.getApiPagination(response);
+            const agentQualitySummary = response?.meta?.agentQualitySummary || null;
             
             this.state.traces = traces;
+            this.state.traceQualitySummary = agentQualitySummary;
             if (pagination) {
                 this.state.pagination.traces = { ...this.state.pagination.traces, ...pagination, total: pagination.total || 0 };
             }
             if (this.state.selectedTrace && !traces.some((trace) => trace.id === this.state.selectedTrace.id)) {
                 this.state.selectedTrace = null;
             }
+            this.renderTraceQualitySummary(agentQualitySummary);
             this.renderTraces(traces);
         } catch (error) {
             console.error('Error loading traces:', error);
+            this.renderTraceQualitySummary(null);
             this.renderTraces(this.getMockTraces());
         }
     }
@@ -2732,6 +2737,57 @@ class Dashboard {
         }
     }
 
+    renderTraceQualitySummary(summary = null) {
+        const container = document.getElementById('traceQualitySummary');
+        if (!container) return;
+
+        const total = Number(summary?.total || 0);
+        if (!summary || total <= 0) {
+            container.innerHTML = '<span class="trace-muted">Agent quality metrics will appear after scored traces are available.</span>';
+            return;
+        }
+
+        const averageScore = Number(summary.averageScore);
+        const scoreLabel = Number.isFinite(averageScore) ? `${Math.round(averageScore * 100)}%` : 'unscored';
+        const statusCounts = summary.statusCounts && typeof summary.statusCounts === 'object' ? summary.statusCounts : {};
+        const topMissingGates = Array.isArray(summary.topMissingGates) ? summary.topMissingGates : [];
+        const surfaces = Array.isArray(summary.surfaces) ? summary.surfaces : [];
+        const statusText = Object.entries(statusCounts)
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .map(([status, count]) => `${status} ${count}`)
+            .join(' | ') || 'no statuses';
+        const missingText = topMissingGates.length
+            ? topMissingGates.slice(0, 4).map((entry) => `${entry.id} ${entry.count}`).join(' | ')
+            : 'none';
+        const surfaceText = surfaces.length
+            ? surfaces.slice(0, 3).map((surface) => {
+                const surfaceScore = Number(surface.averageScore);
+                const surfaceScoreLabel = Number.isFinite(surfaceScore) ? `${Math.round(surfaceScore * 100)}%` : 'unscored';
+                return `${surface.label || surface.id || 'surface'} ${surfaceScoreLabel}`;
+            }).join(' | ')
+            : 'none';
+
+        container.innerHTML = `
+            <div class="trace-quality-item">
+                <span class="trace-detail-label">Agent quality</span>
+                <strong>${this.escapeHtml(scoreLabel)}</strong>
+                <span>${this.escapeHtml(total)} trace${total === 1 ? '' : 's'}</span>
+            </div>
+            <div class="trace-quality-item">
+                <span class="trace-detail-label">Statuses</span>
+                <span>${this.escapeHtml(statusText)}</span>
+            </div>
+            <div class="trace-quality-item">
+                <span class="trace-detail-label">Missing gates</span>
+                <span>${this.escapeHtml(missingText)}</span>
+            </div>
+            <div class="trace-quality-item">
+                <span class="trace-detail-label">Surfaces</span>
+                <span>${this.escapeHtml(surfaceText)}</span>
+            </div>
+        `;
+    }
+
     renderWorkloadSummary(workloads = [], runs = []) {
         const counts = runs.reduce((summary, run) => {
             if (run.status === 'queued') summary.queued += 1;
@@ -2859,6 +2915,7 @@ class Dashboard {
         const metadata = this.stringifyAdminPayload(run.metadata);
         const errorPayload = this.stringifyAdminPayload(run.error);
         const tracePayload = this.stringifyAdminPayload(run.trace);
+        const agentQualityHtml = this.renderRunAgentQuality(this.getRunAgentQuality(run));
         const actionContext = this.state.companyActionRunId === run.id ? this.state.companyActionContext : null;
         const actionContextSource = actionContext?.contextSource === 'saved-history'
             ? 'Saved history'
@@ -2911,6 +2968,7 @@ class Dashboard {
                     <span class="workload-detail-value">${this.escapeHtml(run.responseId || '-')}</span>
                 </div>
             </div>
+            ${agentQualityHtml}
             <div class="workload-detail-block">
                 <h4>Prompt</h4>
                 <div class="workload-detail-code workload-detail-code--prompt">${this.escapeHtml(run.prompt || '')}</div>
@@ -2937,6 +2995,101 @@ class Dashboard {
                 <div class="workload-detail-code workload-detail-code--json">${this.escapeHtml(tracePayload)}</div>
             </div>
         `);
+    }
+
+    normalizeRunAgentQuality(value = null) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return null;
+        }
+        const score = Number(value.score);
+        const surfaces = Array.isArray(value.surfaces)
+            ? value.surfaces
+                .filter((surface) => surface && typeof surface === 'object' && !Array.isArray(surface))
+                .map((surface) => ({
+                    id: String(surface.id || '').trim(),
+                    label: String(surface.label || surface.id || '').trim(),
+                    score: Number.isFinite(Number(surface.score)) ? Number(surface.score) : null,
+                    requiredMissing: Array.isArray(surface.requiredMissing)
+                        ? surface.requiredMissing.map((entry) => String(entry || '').trim()).filter(Boolean)
+                        : [],
+                }))
+            : [];
+        return {
+            version: String(value.version || '').trim(),
+            status: String(value.status || '').trim(),
+            score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : null,
+            requiredMissing: Array.isArray(value.requiredMissing)
+                ? value.requiredMissing.map((entry) => String(entry || '').trim()).filter(Boolean)
+                : [],
+            surfaces,
+        };
+    }
+
+    getRunAgentQuality(run = {}) {
+        const candidates = [
+            run?.agentQuality,
+            run?.metadata?.agentQuality,
+            run?.metadata?.remoteCliAgent?.agentQuality,
+            run?.metadata?.activeProject?.remoteCliAgent?.agentQuality,
+            run?.result?.agentQuality,
+            run?.result?.data?.agentQuality,
+            run?.trace?.agentQuality,
+            run?.trace?.metadata?.agentQuality,
+            run?.trace?.result?.agentQuality,
+            run?.trace?.result?.data?.agentQuality,
+        ];
+
+        for (const candidate of candidates) {
+            const normalized = this.normalizeRunAgentQuality(candidate);
+            if (normalized) {
+                return normalized;
+            }
+        }
+        return null;
+    }
+
+    renderRunAgentQuality(quality = null) {
+        if (!quality) {
+            return '';
+        }
+        const score = quality.score == null
+            ? 'n/a'
+            : `${Math.round(quality.score * 100)}%`;
+        const status = quality.status || 'scored';
+        const statusClass = status === 'passed' ? 'completed'
+            : status === 'blocked' || status === 'needs_work' ? 'failed'
+                : 'running';
+        const missing = quality.requiredMissing || [];
+        const surfaces = quality.surfaces || [];
+        const surfaceSummary = surfaces.length > 0
+            ? surfaces.map((surface) => {
+                const surfaceScore = surface.score == null ? 'n/a' : `${Math.round(Math.max(0, Math.min(1, surface.score)) * 100)}%`;
+                return `${surface.label || surface.id || 'surface'} ${surfaceScore}`;
+            }).join(' | ')
+            : 'No surface scores recorded';
+
+        return `
+            <div class="workload-detail-block workload-agent-quality">
+                <div class="workload-detail-block__header">
+                    <h4>Agent Quality Gates</h4>
+                    <span class="status-badge ${this.getRunStatusClass(statusClass)}">${this.escapeHtml(status)}</span>
+                </div>
+                <div class="workload-detail-grid">
+                    <div class="workload-detail-item">
+                        <span class="workload-detail-label">Score</span>
+                        <span class="workload-detail-value">${this.escapeHtml(score)}</span>
+                    </div>
+                    <div class="workload-detail-item">
+                        <span class="workload-detail-label">Surfaces</span>
+                        <span class="workload-detail-value">${this.escapeHtml(surfaceSummary)}</span>
+                    </div>
+                    <div class="workload-detail-item">
+                        <span class="workload-detail-label">Missing gates</span>
+                        <span class="workload-detail-value">${missing.length ? this.escapeHtml(missing.slice(0, 8).join(', ')) : 'none'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     renderAgentCompanyDashboard() {
@@ -3997,6 +4150,9 @@ class Dashboard {
             ['Provider transport', imageDiagnostics.transport?.category],
             ['Artifact persistence', imageDiagnostics.artifactPersistence?.primaryReason],
             ['Artifact attempt', artifactAttempt?.reason],
+            ['Quality status', details.qualityStatus],
+            ['Quality score', details.qualityScore],
+            ['Missing quality gates', details.requiredMissing],
             ['Remote download', remoteDownload?.reason],
             ['Remote status', remoteDownload?.status],
             ['Remote content type', remoteDownload?.contentType],
@@ -5160,6 +5316,10 @@ class Dashboard {
                 break;
             case 'alignment':
                 document.getElementById('companyAlignmentPanel')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                break;
+            case 'traces':
+                this.navigateTo('traces');
+                document.getElementById('traceQualitySummary')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
                 break;
             default:
                 document.getElementById('agentCompanyView')?.scrollIntoView({ block: 'start', behavior: 'smooth' });

@@ -40,6 +40,34 @@ describe('/api/tools routes', () => {
         expect(resolveRequestedToolModel({ metadata: { model: 'kimi-k2' } })).toBe('kimi-k2');
     });
 
+    test('carries remote agent quality into active project metadata', () => {
+        const { buildRemoteCliActiveProjectPatch } = toolsRouter.__test;
+        const agentQuality = {
+            version: 'agent-quality-contract/v1',
+            status: 'partial',
+            score: 0.55,
+            requiredMissing: ['public_or_preview_url'],
+        };
+
+        const patch = buildRemoteCliActiveProjectPatch(null, {
+            publicUrl: 'https://weather.demoserver2.buzz',
+            whatChanged: 'Updated the weather dashboard.',
+            sessionId: 'remote-session-1',
+            agentQuality,
+        }, {
+            task: 'Deploy the weather dashboard.',
+        });
+
+        expect(patch).toEqual(expect.objectContaining({
+            publicUrl: 'https://weather.demoserver2.buzz',
+            verificationStatus: 'live',
+            remoteCliAgent: expect.objectContaining({
+                sessionId: 'remote-session-1',
+                agentQuality,
+            }),
+        }));
+    });
+
     test('includeAll exposes managed-app with GitLab runtime context', async () => {
         const app = buildApp({
             managedAppService: {

@@ -63,6 +63,8 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(instructions).toContain('persistent private workbench');
     expect(instructions).toContain('not a Git remote, URL, or raw user@host SSH string');
     expect(instructions).toContain('root@github.com permission failure');
+    expect(instructions).toContain('Agent quality metrics:');
+    expect(instructions).toContain('guardrails as release gates');
     expect(instructions).toContain('sess_123');
   });
 
@@ -538,6 +540,15 @@ describe('RemoteCliAgentsSdkRunner', () => {
       verifyCommands: ['npm test'],
       verifyResults: ['npm test passed.'],
       completionStatus: 'complete',
+      agentQuality: expect.objectContaining({
+        version: 'agent-quality-contract/v1',
+        status: 'partial',
+        requiredMissing: expect.arrayContaining(['public_or_preview_url']),
+        surfaces: expect.arrayContaining([
+          expect.objectContaining({ id: 'remote-deployment' }),
+          expect.objectContaining({ id: 'website-experience' }),
+        ]),
+      }),
     });
   });
 
@@ -1972,6 +1983,10 @@ describe('RemoteCliAgentsSdkRunner', () => {
       ],
       blocker: 'Missing browser/Playwright or kimibuilt-ui-check evidence for a UI-affecting remote task.',
       completionStatus: 'blocked',
+      agentQuality: expect.objectContaining({
+        status: 'blocked',
+        requiredMissing: expect.arrayContaining(['public_or_preview_url', 'browser_proof']),
+      }),
     });
   });
 

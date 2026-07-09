@@ -7455,9 +7455,24 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const blocker = String(result.blocker || '').trim();
         const verifyCommands = Array.isArray(result.verifyCommands) ? result.verifyCommands.filter(Boolean) : [];
         const verifyResults = Array.isArray(result.verifyResults) ? result.verifyResults.filter(Boolean) : [];
+        const agentQuality = result.agentQuality && typeof result.agentQuality === 'object' && !Array.isArray(result.agentQuality)
+            ? result.agentQuality
+            : null;
+        const qualityStatus = String(agentQuality?.status || '').trim();
+        const qualityScore = Number(agentQuality?.score);
+        const missingQualityGates = Array.isArray(agentQuality?.requiredMissing)
+            ? agentQuality.requiredMissing.map((item) => String(item || '').trim()).filter(Boolean)
+            : [];
         const metadata = [];
         if (completionStatus) {
             metadata.push(`Status: \`${completionStatus}\``);
+        }
+        if (qualityStatus || Number.isFinite(qualityScore)) {
+            const scoreText = Number.isFinite(qualityScore) ? ` (${Math.round(Math.max(0, Math.min(1, qualityScore)) * 100)}%)` : '';
+            metadata.push(`Quality: \`${qualityStatus || 'scored'}\`${scoreText}`);
+        }
+        if (missingQualityGates.length > 0) {
+            metadata.push(`Missing quality gates: ${missingQualityGates.slice(0, 6).map((item) => `\`${item}\``).join(', ')}`);
         }
         if (result.targetId) {
             metadata.push(`Target: \`${result.targetId}\``);
