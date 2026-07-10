@@ -126,6 +126,11 @@
             color: var(--muted);
             font-size: 13px;
         }
+
+        .mfa-panel[hidden] { display: none; }
+        .mfa-panel { display: grid; gap: 14px; }
+        .qr-code { width: 240px; max-width: 100%; margin: 0 auto; border-radius: 12px; background: white; padding: 8px; }
+        .manual-key { overflow-wrap: anywhere; padding: 10px; border-radius: 10px; background: rgba(148, 163, 184, 0.1); color: var(--text); font-family: ui-monospace, monospace; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -147,6 +152,22 @@
             <div id="message" class="message" role="alert" aria-live="polite"></div>
         </form>
 
+        <form id="mfaForm" class="mfa-panel" hidden>
+            <div id="enrollmentPanel" hidden>
+                <p>Scan this QR code with Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.</p>
+                <img id="qrCode" class="qr-code" alt="Authenticator setup QR code">
+                <p>Manual setup key:</p>
+                <div id="manualKey" class="manual-key"></div>
+            </div>
+            <p id="mfaPrompt">Enter the 6-digit code from your authenticator app.</p>
+            <label>
+                Authenticator code
+                <input id="totpCode" name="totpCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+            </label>
+            <button id="verifyButton" type="submit">Verify and Sign In</button>
+            <div id="mfaMessage" class="message" role="alert" aria-live="polite"></div>
+        </form>
+
         <div class="footer">Authentication uses an HTTP-only session token.</div>
     </section>
 
@@ -158,6 +179,14 @@
         const password = document.getElementById('password');
         const submitButton = document.getElementById('submitButton');
         const message = document.getElementById('message');
+        const mfaForm = document.getElementById('mfaForm');
+        const enrollmentPanel = document.getElementById('enrollmentPanel');
+        const qrCode = document.getElementById('qrCode');
+        const manualKey = document.getElementById('manualKey');
+        const totpCode = document.getElementById('totpCode');
+        const verifyButton = document.getElementById('verifyButton');
+        const mfaMessage = document.getElementById('mfaMessage');
+        let mfaChallengeId = '';
 
         async function redirectIfAuthenticated() {
             try {
@@ -199,11 +228,46 @@
                     throw new Error(data?.error?.message || 'Login failed');
                 }
 
+                if (data.mfaRequired) {
+                    mfaChallengeId = data.challengeId;
+                    form.hidden = true;
+                    mfaForm.hidden = false;
+                    if (data.enrollmentRequired) {
+                        enrollmentPanel.hidden = false;
+                        qrCode.src = data.qrCodeDataUrl;
+                        manualKey.textContent = data.manualKey;
+                    }
+                    totpCode.focus();
+                    return;
+                }
                 window.location.replace(data.returnTo || returnTo);
             } catch (error) {
                 message.textContent = error.message || 'Login failed';
                 submitButton.disabled = false;
                 submitButton.textContent = 'Sign In';
+            }
+        });
+
+        mfaForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            mfaMessage.textContent = '';
+            verifyButton.disabled = true;
+            verifyButton.textContent = 'Verifying...';
+            try {
+                const response = await fetch('/api/auth/mfa/verify', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ challengeId: mfaChallengeId, code: totpCode.value, returnTo }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data?.error?.message || 'Verification failed');
+                window.location.replace(data.returnTo || returnTo);
+            } catch (error) {
+                mfaMessage.textContent = error.message || 'Verification failed';
+                verifyButton.disabled = false;
+                verifyButton.textContent = 'Verify and Sign In';
+                totpCode.select();
             }
         });
 

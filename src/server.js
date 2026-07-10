@@ -322,6 +322,7 @@ app.get('/login', (req, res) => {
 });
 
 app.use('/api/auth/login', loginRateLimit);
+app.use('/api/auth/mfa/verify', loginRateLimit);
 app.use('/api/auth', authRouter);
 app.use('/api/integrations/gitlab', gitlabIntegrationsRouter);
 app.use('/api/integrations/gitea', giteaIntegrationsRouter);
@@ -381,7 +382,6 @@ app.use('/podcast-video', express.static(path.join(frontendPath, 'podcast-video'
 app.use('/admin', express.static(path.join(frontendPath, 'agent-dashboard'), buildFrontendStaticOptions()));
 app.use('/async-lab', express.static(path.join(frontendPath, 'async-lab'), buildFrontendStaticOptions()));
 app.use('/launchpad', express.static(path.join(frontendPath, 'launchpad'), buildFrontendStaticOptions()));
-app.use('/', express.static(path.join(frontendPath, 'launchpad'), buildFrontendStaticOptions()));
 
 app.get('/', (_req, res) => {
     res.send(`
@@ -390,6 +390,7 @@ app.get('/', (_req, res) => {
 <head>
     <title>Lilly</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

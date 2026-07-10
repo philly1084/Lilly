@@ -40,6 +40,16 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<span class="tool-menu-choice__hint">Patch source</span>');
     });
 
+    test('keeps mission launches inside the normal conversation surface', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+
+        expect(html).toContain('id="messages-container"');
+        expect(html).toContain('id="message-input"');
+        expect(html).not.toContain('id="mission-mode"');
+        expect(html).not.toContain('mission-welcome-cue');
+        expect(html).not.toContain('Raw run detail');
+    });
+
     test('composer tool picker exposes visible keyboard focus styling', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
 
@@ -53,11 +63,23 @@ describe('web-chat index redirect', () => {
         expect(css).not.toContain('var(--accent-rgb)');
     });
 
+    test('composer tool picker keeps a light shell independent of dark chat presets', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
+        const lightTheme = css.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] || '';
+
+        expect(html).toContain('css/styles.css?v=20260710a');
+        expect(lightTheme).toContain('--tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98)');
+        expect(lightTheme).toContain('--tool-picker-panel-border: rgba(215, 226, 239, 0.96);');
+        expect(lightTheme).not.toContain('--tool-picker-panel-background: var(--theme-dialog-background);');
+        expect(lightTheme).not.toContain('--tool-picker-panel-border: var(--theme-dialog-border);');
+    });
+
     test('composer tool trigger announces selected tool summary', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
 
-        expect(html).toContain('js/app.js?v=20260709a');
+        expect(html).toContain('js/app.js?v=20260710a');
         expect(appSource).toContain("const triggerLabel = selectedCount > 0");
         expect(appSource).toContain("this.toolMenuBtn.setAttribute('aria-label', triggerLabel);");
         expect(appSource).toContain('this.toolMenuBtn.title = triggerLabel;');
@@ -76,7 +98,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="btn-icon mobile-chat-menu__close"');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
-        expect(html).toContain('css/styles.css?v=20260709a');
+        expect(html).toContain('css/styles.css?v=20260710a');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
         expect(html).toContain('js/ui.js?v=20260709a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
@@ -186,7 +208,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('aria-label="Backend connection status: Connecting"');
         expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
-        expect(html).toContain('js/app.js?v=20260709a');
+        expect(html).toContain('js/app.js?v=20260710a');
         expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
         expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
         expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");

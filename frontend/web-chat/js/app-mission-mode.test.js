@@ -153,11 +153,13 @@ describe('Lilly Mission Mode', () => {
 
     expect(metadata).toEqual(expect.objectContaining({
       missionId: 'run-complete',
-      missionContinuationRequired: 'fork-or-new-mission',
+      parentAgentRunId: 'run-complete',
     }));
+    expect(metadata).not.toHaveProperty('missionContinuationRequired');
     expect(metadata).not.toHaveProperty('agentRunId');
     expect(options.metadata).not.toHaveProperty('agentRunId');
     expect(options.metadata).not.toHaveProperty('agent_run_id');
+    expect(options.metadata.parentAgentRunId).toBe('run-complete');
   });
 
   test('carries server-issued approval receipts into the next active mission request', () => {
@@ -184,7 +186,7 @@ describe('Lilly Mission Mode', () => {
     }));
   });
 
-  test('preserves a follow-up draft until the terminal mission is forked or replaced', async () => {
+  test('allows normal chat follow-up after a terminal mission', () => {
     const context = loadMissionContext();
     const app = Object.create(context.ChatApp.prototype);
     app.messageInput = { value: 'Continue this completed mission', focus: jest.fn() };
@@ -192,19 +194,9 @@ describe('Lilly Mission Mode', () => {
       active: true,
       run: { id: 'run-complete', state: 'completed' },
     });
-    app.tryHandleToolCommand = jest.fn();
-    app.sendPreparedMessage = jest.fn();
 
-    await app.sendMessage();
-
-    expect(app.messageInput.value).toBe('Continue this completed mission');
-    expect(app.messageInput.focus).toHaveBeenCalled();
-    expect(app.tryHandleToolCommand).not.toHaveBeenCalled();
-    expect(app.sendPreparedMessage).not.toHaveBeenCalled();
-    expect(context.uiHelpers.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('Fork it or start a new chat'),
-      'warning',
-    );
+    expect(app.requireMissionContinuationForMessage()).toBe(true);
+    expect(context.uiHelpers.showToast).not.toHaveBeenCalled();
   });
 
   test('stages artifact iteration/deploy with mission lineage and no success claim', () => {

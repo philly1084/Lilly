@@ -821,6 +821,8 @@ const config = {
         jwtSecret: process.env.LILLYBUILT_JWT_SECRET || process.env.KIMIBUILT_JWT_SECRET || '',
         cookieName: process.env.LILLYBUILT_AUTH_COOKIE || process.env.KIMIBUILT_AUTH_COOKIE || 'lillybuilt_auth',
         tokenTtlSeconds: parseInt(process.env.LILLYBUILT_AUTH_TTL_SECONDS || process.env.KIMIBUILT_AUTH_TTL_SECONDS, 10) || (12 * 60 * 60),
+        totpEnabled: parseOptionalBoolean(process.env.KIMIBUILT_AUTH_TOTP_ENABLED) ?? false,
+        totpIssuer: process.env.KIMIBUILT_AUTH_TOTP_ISSUER || 'KimiBuilt',
     },
 
     security: {

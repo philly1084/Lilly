@@ -1028,15 +1028,10 @@ class ChatApp {
     }
 
     requireMissionContinuationForMessage(options = {}) {
-        if (!this.isTerminalMissionRun() || options.allowTerminalMissionFollowUp === true) {
-            return true;
-        }
-        uiHelpers.showToast?.(
-            'This mission is finished. Fork it or start a new chat before sending follow-up work.',
-            'warning',
-        );
-        this.messageInput?.focus?.();
-        return false;
+        // Chat remains the primary surface. A terminal run is immutable, so the
+        // next message starts a parent-linked run instead of blocking behind a
+        // separate Mission control panel.
+        return true;
     }
 
     getMissionRequestMetadata() {
@@ -1059,8 +1054,8 @@ class ChatApp {
             missionObjective: String(this.missionState.objective || '').trim(),
             missionPermissionPolicy: String(this.missionState.permission || '').trim(),
             missionMode: true,
-            ...(terminal ? { missionContinuationRequired: 'fork-or-new-mission' } : {}),
             ...(runId && !terminal ? { agentRunId: runId } : {}),
+            ...(runId && terminal ? { parentAgentRunId: runId } : {}),
             ...(approvalReceipts.length > 0 ? { approvalReceipts } : {}),
             ...(this.missionState.run?.parentRunId
                 ? { parentAgentRunId: this.missionState.run.parentRunId }
@@ -1090,7 +1085,7 @@ class ChatApp {
         if (this.isTerminalMissionRun()) {
             delete metadata.agentRunId;
             delete metadata.agent_run_id;
-            metadata.missionContinuationRequired = 'fork-or-new-mission';
+            metadata.parentAgentRunId = metadata.parentAgentRunId || this.missionState?.run?.id;
         }
         if (lineage && config.consumeLineage !== false) {
             this.pendingArtifactLineage = null;
@@ -6854,7 +6849,7 @@ class ChatApp {
         if (this.isTerminalMissionRun()) {
             delete requestMetadata.agentRunId;
             delete requestMetadata.agent_run_id;
-            requestMetadata.missionContinuationRequired = 'fork-or-new-mission';
+            requestMetadata.parentAgentRunId = requestMetadata.parentAgentRunId || this.missionState?.run?.id;
         }
         const inferredBuildRunBrief = shouldReuseUserMessage
             ? (options.userMessage?.metadata?.buildRunBrief || requestMetadata.buildRunBrief || null)

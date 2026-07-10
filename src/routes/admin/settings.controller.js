@@ -447,13 +447,13 @@ class SettingsController {
       },
       orchestration: {
         enabled: true,
-        defaultModel: 'gpt-5.5',
+        defaultModel: 'gpt-5.6-terra',
         fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
-        plannerModel: 'gpt-5.5',
-        synthesisModel: 'gpt-5.5',
-        repairModel: 'gpt-5.5',
-        evaluatorModel: 'gpt-5.5',
-        afterProcessAuditModel: 'codex-latest',
+        plannerModel: 'gpt-5.6-sol',
+        synthesisModel: 'gpt-5.6-terra',
+        repairModel: 'gpt-5.6-sol',
+        evaluatorModel: 'gpt-5.6-luna',
+        afterProcessAuditModel: 'gpt-5.6-luna',
         plannerReasoningEffort: 'high',
         synthesisReasoningEffort: 'medium',
         repairReasoningEffort: 'high',
@@ -1324,7 +1324,7 @@ class SettingsController {
     next.primaryModel = String(next.primaryModel || '').trim().slice(0, 120);
     next.escalationModels = this.normalizeStringArray(
       next.escalationModels ?? next.fallbackModels ?? next.modelFallbacks,
-      current.escalationModels || ['gpt-5.5', 'codex-latest'],
+      current.escalationModels || ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     ).slice(0, 8);
     next.roles = this.normalizeAgentCompanyRoles(next.roles, current.roles || DEFAULT_AGENT_COMPANY_ROLES);
     next.dailyAlignment = normalizeDailyAlignmentConfig(
@@ -1681,7 +1681,7 @@ class SettingsController {
       synthesisModel: envSynthesis || merged.synthesisModel || merged.defaultModel,
       repairModel: envRepair || merged.repairModel || merged.defaultModel,
       evaluatorModel: envEvaluator || merged.evaluatorModel || merged.defaultModel,
-      afterProcessAuditModel: envAfterProcessAudit || merged.afterProcessAuditModel || merged.evaluatorModel || merged.defaultModel || 'codex-latest',
+      afterProcessAuditModel: envAfterProcessAudit || merged.afterProcessAuditModel || merged.evaluatorModel || merged.defaultModel || 'gpt-5.6-luna',
       plannerReasoningEffort: envPlannerReasoning || merged.plannerReasoningEffort || 'high',
       synthesisReasoningEffort: envSynthesisReasoning || merged.synthesisReasoningEffort || 'medium',
       repairReasoningEffort: envRepairReasoning || merged.repairReasoningEffort || 'high',
@@ -1806,13 +1806,13 @@ class SettingsController {
       },
       orchestration: {
         enabled: true,
-        defaultModel: 'gpt-5.5',
+        defaultModel: 'gpt-5.6-terra',
         fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
-        plannerModel: 'gpt-5.5',
-        synthesisModel: 'gpt-5.5',
-        repairModel: 'gpt-5.5',
-        evaluatorModel: 'gpt-5.5',
-        afterProcessAuditModel: 'codex-latest',
+        plannerModel: 'gpt-5.6-sol',
+        synthesisModel: 'gpt-5.6-terra',
+        repairModel: 'gpt-5.6-sol',
+        evaluatorModel: 'gpt-5.6-luna',
+        afterProcessAuditModel: 'gpt-5.6-luna',
         plannerReasoningEffort: 'high',
         synthesisReasoningEffort: 'medium',
         repairReasoningEffort: 'high',
@@ -1838,7 +1838,7 @@ class SettingsController {
         ownerId: 'system',
         sessionId: 'agent-company',
         primaryModel: '',
-        escalationModels: ['gpt-5.5', 'codex-latest'],
+        escalationModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
         dailyAlignment: {
           enabled: true,
           autoApply: true,

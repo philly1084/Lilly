@@ -223,8 +223,8 @@
     --tool-picker-button-border: rgba(191, 208, 228, 0.95);
     --tool-picker-button-hover-background: #edf5ff;
     --tool-picker-button-hover-border: color-mix(in srgb, var(--accent) 42%, rgba(191, 208, 228, 0.95));
-    --tool-picker-panel-background: var(--theme-dialog-background);
-    --tool-picker-panel-border: var(--theme-dialog-border);
+    --tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96)), rgba(255, 255, 255, 0.96);
+    --tool-picker-panel-border: rgba(215, 226, 239, 0.96);
     --tool-picker-panel-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
     --tool-picker-surface-background: #f8fbff;
     --tool-picker-surface-border: rgba(215, 226, 239, 0.98);

@@ -125,6 +125,7 @@ describe('Notes Blocks database normalization', () => {
         const region = rendered.querySelector('.database-scroll-region');
         const table = rendered.querySelector('.database-table');
         const scrollButtons = rendered.querySelectorAll('.database-scroll-button');
+        const scrollSlider = rendered.querySelector('.database-scroll-slider');
 
         expect(rendered.classList.contains('database-block-shell')).toBe(true);
         expect(region.classList.contains('database-scroll-region')).toBe(true);
@@ -134,8 +135,53 @@ describe('Notes Blocks database normalization', () => {
         expect(scrollButtons).toHaveLength(2);
         expect(scrollButtons[0].getAttribute('aria-label')).toContain('left');
         expect(scrollButtons[1].getAttribute('aria-label')).toContain('right');
+        expect(scrollSlider).not.toBeNull();
+        expect(scrollSlider.type).toBe('range');
+        expect(scrollSlider.getAttribute('aria-label')).toContain('Horizontal position');
         expect(table.style.getPropertyValue('--database-table-min-width')).toMatch(/px$/);
         expect(Number.parseInt(table.style.getPropertyValue('--database-table-min-width'), 10)).toBeGreaterThan(480);
+    });
+
+    test('uses the database slider to set and reflect horizontal scroll position', () => {
+        const { Blocks } = loadBlocks({ withContext: true });
+        const rendered = Blocks.render.database({
+            type: 'database',
+            content: {
+                columns: ['One', 'Two', 'Three', 'Four'],
+                rows: [['A', 'B', 'C', 'D']],
+            },
+        }, true);
+        const region = rendered.querySelector('.database-scroll-region');
+        const slider = rendered.querySelector('.database-scroll-slider');
+
+        Object.defineProperty(region, 'scrollWidth', { configurable: true, value: 1000 });
+        Object.defineProperty(region, 'clientWidth', { configurable: true, value: 400 });
+        slider.value = '50';
+        const Event = region.ownerDocument.defaultView.Event;
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(region.scrollLeft).toBe(300);
+        region.scrollLeft = 450;
+        region.dispatchEvent(new Event('scroll'));
+        expect(slider.value).toBe('75');
+    });
+
+    test('renders wide charts with a draggable horizontal position slider', () => {
+        const { Blocks } = loadBlocks({ withContext: true });
+        const rendered = Blocks.render.chart({
+            type: 'chart',
+            content: {
+                title: 'Monthly totals',
+                chartType: 'bar',
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'],
+                values: [1, 2, 3, 4, 5, 6, 7, 8],
+            },
+        }, true);
+
+        expect(rendered.classList.contains('chart-block-shell')).toBe(true);
+        expect(rendered.querySelector('.chart-scroll-region')?.getAttribute('aria-label')).toContain('scroll horizontally');
+        expect(rendered.querySelector('.chart-scroll-slider')?.type).toBe('range');
+        expect(rendered.querySelector('.chart-body').style.getPropertyValue('--chart-content-min-width')).toBe('672px');
     });
 });
 

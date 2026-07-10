@@ -128,6 +128,29 @@ describe('server readiness', () => {
         expect(response.text.length).toBeLessThan(2500);
     });
 
+    test('keeps the six-interface chooser at the product root', async () => {
+        process.env = {
+            ...originalEnv,
+            KIMIBUILT_AUTH_REQUIRED: 'false',
+            NODE_ENV: 'test',
+            OPENAI_API_KEY: originalEnv.OPENAI_API_KEY || 'test-key',
+        };
+
+        const { app } = require('./server');
+        const response = await request(app).get('/');
+
+        expect(response.status).toBe(200);
+        expect(response.text).toContain('name="viewport"');
+        expect(response.text).toContain('Choose your interface:');
+        expect(response.text).toContain('Web Chat');
+        expect(response.text).toContain('Web CLI');
+        expect(response.text).toContain('Notes');
+        expect(response.text).toContain('Canvas');
+        expect(response.text).toContain('Podcast Wave');
+        expect(response.text).toContain('Admin Dashboard');
+        expect(response.text).not.toContain('What should Lilly accomplish?');
+    });
+
     test('serves full frontend entry HTML through the bootstrap full query', async () => {
         process.env = {
             ...originalEnv,

@@ -84,8 +84,8 @@ function resolveAfterProcessAuditConfig(overrides = {}) {
             || orchestration.afterProcessAuditModel
             || orchestration.evaluatorModel
             || orchestration.defaultModel
-            || 'codex-latest',
-        ).trim() || 'codex-latest',
+            || 'gpt-5.6-luna',
+        ).trim() || 'gpt-5.6-luna',
         reasoningEffort: String(
             overrides.reasoningEffort
             || orchestration.afterProcessAuditReasoningEffort

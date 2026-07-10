@@ -308,11 +308,11 @@ describe('settings.controller personality support', () => {
     expect(publicSettings.integrations.ssh.password).toBeUndefined();
     expect(publicSettings.orchestration).toEqual(expect.objectContaining({
       enabled: true,
-      defaultModel: 'gpt-5.5',
-      plannerModel: 'gpt-5.5',
+      defaultModel: 'gpt-5.6-terra',
+      plannerModel: 'gpt-5.6-sol',
       fallbackModels: ['gemini-3.1-pro', 'groq-compound'],
       afterProcessAuditEnabled: true,
-      afterProcessAuditModel: 'codex-latest',
+      afterProcessAuditModel: 'gpt-5.6-luna',
       neuralWaveResearchMode: false,
       perplexityResearchLevel: 'auto',
       asyncRuntimeEnabled: false,

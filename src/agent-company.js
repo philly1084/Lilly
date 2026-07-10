@@ -30,8 +30,9 @@ const COMPANY_LONG_AGENT_RETAIN_CHARS = 4500;
 const COMPANY_WORKLOAD_MAX_ROUNDS = 5;
 const COMPANY_WORKLOAD_MAX_TOOL_CALLS = 14;
 const DEFAULT_MODEL_CANDIDATES = [
-    'gpt-5.5',
-    'gpt-5.5-pro',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
     'gpt-5.4-pro',
     'gpt-5.4',
     'gpt-5.3-chat-latest',
@@ -46,8 +47,7 @@ const MODEL_SELECTION_PROFILES = {
     strategy: {
         competency: 'strategy-planning',
         preferred: [
-            'gpt-5.5',
-            'gpt-5.5-pro',
+            'gpt-5.6-sol',
             'deepseek-reasoner',
             'gemini-3.1-pro-preview',
             'deepseek-v4-pro',
@@ -56,8 +56,7 @@ const MODEL_SELECTION_PROFILES = {
     production: {
         competency: 'production-deliverable',
         preferred: [
-            'gpt-5.5',
-            'gpt-5.5-pro',
+            'gpt-5.6-terra',
             'gemini-3.1-pro-preview',
             'deepseek-v4-pro',
             'kimi-k2.7-code-highspeed',
@@ -66,7 +65,7 @@ const MODEL_SELECTION_PROFILES = {
     operations: {
         competency: 'operations-verification',
         preferred: [
-            'gpt-5.5',
+            'gpt-5.6-terra',
             'gpt-5.4-pro',
             'kimi-k2.7-code-highspeed',
             'gemini-3.1-pro-preview',
@@ -76,7 +75,7 @@ const MODEL_SELECTION_PROFILES = {
     refresh: {
         competency: 'coordination-repair',
         preferred: [
-            'gpt-5.5',
+            'gpt-5.6-sol',
             'gpt-5.4',
             'kimi-k2.7-code-highspeed',
             'deepseek-v4-pro',
@@ -229,7 +228,7 @@ function normalizeConfig(config = {}) {
         ownerId: sanitizeText(config.ownerId || DEFAULT_OWNER_ID) || DEFAULT_OWNER_ID,
         sessionId: sanitizeText(config.sessionId || DEFAULT_SESSION_ID) || DEFAULT_SESSION_ID,
         primaryModel: sanitizeText(config.primaryModel || ''),
-        escalationModels: escalationModels.length > 0 ? escalationModels.slice(0, 8) : ['gpt-5.5', 'codex-latest'],
+        escalationModels: escalationModels.length > 0 ? escalationModels.slice(0, 8) : ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
         roles: roles.slice(0, 8),
         dailyAlignment: normalizeDailyAlignmentConfig(config.dailyAlignment),
         source: sanitizeText(config.source || ''),

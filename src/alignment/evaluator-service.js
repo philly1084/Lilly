@@ -610,8 +610,8 @@ function resolveEvaluatorConfig(overrides = {}) {
             overrides.model
             || orchestration.evaluatorModel
             || orchestration.defaultModel
-            || 'gpt-5.5',
-        ).trim() || 'gpt-5.5',
+            || 'gpt-5.6-luna',
+        ).trim() || 'gpt-5.6-luna',
         reasoningEffort: String(
             overrides.reasoningEffort
             || orchestration.evaluatorReasoningEffort

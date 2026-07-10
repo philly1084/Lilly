@@ -1,6 +1,8 @@
 const express = require('express');
 const {
     clearAuthCookie,
+    beginMfaChallenge,
+    completeMfaChallenge,
     createAuthToken,
     getAuthenticatedUser,
     getSafeReturnTo,
@@ -46,7 +48,7 @@ router.get('/ws-token', requireAuth, (req, res) => {
     });
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res, next) => {
     if (!isAuthEnabled()) {
         return res.status(400).json({
             error: {
@@ -67,6 +69,19 @@ router.post('/login', (req, res) => {
         });
     }
 
+    if (config.auth.totpEnabled) {
+        try {
+            return res.json({
+                success: true,
+                mfaRequired: true,
+                ...(await beginMfaChallenge(config.auth.username)),
+                returnTo: getSafeReturnTo(returnTo),
+            });
+        } catch (error) {
+            return next(error);
+        }
+    }
+
     const { token, expiresAt } = createAuthToken(config.auth.username);
     setAuthCookie(res, token, req);
 
@@ -79,6 +94,29 @@ router.post('/login', (req, res) => {
         expiresAt,
         returnTo: getSafeReturnTo(returnTo),
     });
+});
+
+router.post('/mfa/verify', async (req, res, next) => {
+    if (!isAuthEnabled() || !config.auth.totpEnabled) {
+        return res.status(400).json({ error: { message: 'Authenticator verification is not enabled' } });
+    }
+    try {
+        const { challengeId = '', code = '', returnTo = '/' } = req.body || {};
+        const completed = await completeMfaChallenge(challengeId, code);
+        if (!completed) {
+            return res.status(401).json({ error: { message: 'Invalid or expired authenticator code' } });
+        }
+        const { token, expiresAt } = createAuthToken(completed.username);
+        setAuthCookie(res, token, req);
+        return res.json({
+            success: true,
+            user: { username: completed.username, role: 'admin' },
+            expiresAt,
+            returnTo: getSafeReturnTo(returnTo),
+        });
+    } catch (error) {
+        return next(error);
+    }
 });
 
 router.post('/logout', (req, res) => {

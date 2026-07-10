@@ -2871,6 +2871,16 @@ const Blocks = (function() {
         const scrollControls = document.createElement('div');
         scrollControls.className = 'database-scroll-controls';
 
+        const scrollSlider = document.createElement('input');
+        scrollSlider.type = 'range';
+        scrollSlider.className = 'database-scroll-slider';
+        scrollSlider.min = '0';
+        scrollSlider.max = '100';
+        scrollSlider.step = '1';
+        scrollSlider.value = '0';
+        scrollSlider.title = 'Move across table columns';
+        scrollSlider.setAttribute('aria-label', 'Horizontal position in database table');
+
         const scrollLeft = document.createElement('button');
         scrollLeft.type = 'button';
         scrollLeft.className = 'database-scroll-button';
@@ -2893,6 +2903,10 @@ const Blocks = (function() {
             wrapper.dataset.scrollAtEnd = scrollRegion.scrollLeft >= maxScrollLeft - 1 ? 'true' : 'false';
             scrollLeft.disabled = !canScroll || scrollRegion.scrollLeft <= 1;
             scrollRight.disabled = !canScroll || scrollRegion.scrollLeft >= maxScrollLeft - 1;
+            scrollSlider.disabled = !canScroll;
+            scrollSlider.value = canScroll
+                ? String(Math.round((scrollRegion.scrollLeft / maxScrollLeft) * 100))
+                : '0';
         };
 
         const scrollByPage = (direction) => {
@@ -2913,6 +2927,13 @@ const Blocks = (function() {
             event.stopPropagation();
             scrollByPage(1);
         });
+        scrollSlider.addEventListener('input', (event) => {
+            event.stopPropagation();
+            const maxScrollLeft = Math.max(0, scrollRegion.scrollWidth - scrollRegion.clientWidth);
+            scrollRegion.scrollLeft = (Number(scrollSlider.value) / 100) * maxScrollLeft;
+            updateScrollState();
+        });
+        scrollSlider.addEventListener('click', (event) => event.stopPropagation());
         scrollRegion.addEventListener('keydown', (event) => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
             event.preventDefault();
@@ -2921,6 +2942,7 @@ const Blocks = (function() {
         });
         scrollRegion.addEventListener('scroll', updateScrollState, { passive: true });
 
+        scrollControls.appendChild(scrollSlider);
         scrollControls.appendChild(scrollLeft);
         scrollControls.appendChild(scrollRight);
 
@@ -2940,7 +2962,7 @@ const Blocks = (function() {
 
     function renderChartBlock(block, isEditable = true) {
         const wrapper = document.createElement('div');
-        wrapper.className = 'block-content';
+        wrapper.className = 'block-content chart-block-shell';
 
         const data = normalizeChartContent(block.content);
         block.content = data;
@@ -2980,6 +3002,9 @@ const Blocks = (function() {
 
         const body = document.createElement('div');
         body.className = `chart-body chart-${data.chartType}`;
+        body.style.setProperty('--chart-content-min-width', `${data.chartType === 'pie'
+            ? 520
+            : Math.max(520, data.labels.length * 84)}px`);
 
         if (!data.hasData) {
             const empty = document.createElement('div');
@@ -2994,7 +3019,13 @@ const Blocks = (function() {
             body.appendChild(renderCartesianChart(data));
         }
 
-        chart.appendChild(body);
+        const scrollRegion = document.createElement('div');
+        scrollRegion.className = 'chart-scroll-region';
+        scrollRegion.setAttribute('role', 'region');
+        scrollRegion.setAttribute('aria-label', 'Chart, scroll horizontally to view all data');
+        scrollRegion.tabIndex = 0;
+        scrollRegion.appendChild(body);
+        chart.appendChild(scrollRegion);
 
         if (isEditable) {
             const editor = document.createElement('textarea');
@@ -3029,7 +3060,47 @@ const Blocks = (function() {
             chart.appendChild(editor);
         }
 
+        const scrollControls = document.createElement('div');
+        scrollControls.className = 'chart-scroll-controls';
+
+        const scrollSlider = document.createElement('input');
+        scrollSlider.type = 'range';
+        scrollSlider.className = 'chart-scroll-slider';
+        scrollSlider.min = '0';
+        scrollSlider.max = '100';
+        scrollSlider.step = '1';
+        scrollSlider.value = '0';
+        scrollSlider.title = 'Move across chart data';
+        scrollSlider.setAttribute('aria-label', 'Horizontal position in chart');
+
+        const updateScrollState = () => {
+            const maxScrollLeft = Math.max(0, scrollRegion.scrollWidth - scrollRegion.clientWidth);
+            const canScroll = maxScrollLeft > 1;
+            wrapper.dataset.canScrollX = canScroll ? 'true' : 'false';
+            scrollSlider.disabled = !canScroll;
+            scrollSlider.value = canScroll
+                ? String(Math.round((scrollRegion.scrollLeft / maxScrollLeft) * 100))
+                : '0';
+        };
+
+        scrollSlider.addEventListener('input', (event) => {
+            event.stopPropagation();
+            const maxScrollLeft = Math.max(0, scrollRegion.scrollWidth - scrollRegion.clientWidth);
+            scrollRegion.scrollLeft = (Number(scrollSlider.value) / 100) * maxScrollLeft;
+            updateScrollState();
+        });
+        scrollSlider.addEventListener('click', (event) => event.stopPropagation());
+        scrollRegion.addEventListener('scroll', updateScrollState, { passive: true });
+        scrollControls.appendChild(scrollSlider);
+
         wrapper.appendChild(chart);
+        wrapper.appendChild(scrollControls);
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver(updateScrollState);
+            observer.observe(scrollRegion);
+            observer.observe(body);
+        }
+        setTimeout(updateScrollState, 0);
         return wrapper;
     }
 

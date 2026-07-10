@@ -8338,11 +8338,11 @@ class Dashboard {
 
         const orchestration = this.state.settings?.orchestration || {};
         const orchestrationSelections = {
-            orchestrationDefaultModel: [orchestration.defaultModel || 'gpt-5.5'],
-            orchestrationPlannerModel: [orchestration.plannerModel || orchestration.defaultModel || 'gpt-5.5'],
-            orchestrationSynthesisModel: [orchestration.synthesisModel || orchestration.defaultModel || 'gpt-5.5'],
-            orchestrationRepairModel: [orchestration.repairModel || orchestration.defaultModel || 'gpt-5.5'],
-            orchestrationEvaluatorModel: [orchestration.evaluatorModel || orchestration.defaultModel || 'gpt-5.5'],
+            orchestrationDefaultModel: [orchestration.defaultModel || 'gpt-5.6-terra'],
+            orchestrationPlannerModel: [orchestration.plannerModel || 'gpt-5.6-sol'],
+            orchestrationSynthesisModel: [orchestration.synthesisModel || 'gpt-5.6-terra'],
+            orchestrationRepairModel: [orchestration.repairModel || 'gpt-5.6-sol'],
+            orchestrationEvaluatorModel: [orchestration.evaluatorModel || 'gpt-5.6-luna'],
             orchestrationFallbackModels: orchestration.fallbackModels || ['gemini-3.1-pro', 'groq-compound'],
         };
 

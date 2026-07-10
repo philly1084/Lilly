@@ -3113,15 +3113,40 @@ body {
 .database-scroll-controls {
     position: absolute;
     right: 8px;
+    left: 8px;
     bottom: 2px;
     z-index: 3;
-    display: inline-flex;
+    display: flex;
+    align-items: center;
     gap: 6px;
     padding: 3px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     background: var(--bg-primary);
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.database-scroll-slider {
+    flex: 1 1 auto;
+    min-width: 80px;
+    height: 24px;
+    margin: 0 4px;
+    accent-color: var(--accent-color);
+    cursor: grab;
+}
+
+.database-scroll-slider:active {
+    cursor: grabbing;
+}
+
+.database-scroll-slider:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
+.database-scroll-slider:disabled {
+    cursor: default;
+    opacity: 0.42;
 }
 
 .database-block-shell[data-can-scroll-x="false"] .database-scroll-controls {
@@ -5168,6 +5193,62 @@ pre {
   overflow: hidden;
 }
 
+.chart-block-shell {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  padding-bottom: 30px;
+}
+
+.chart-scroll-region {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-muted) transparent;
+}
+
+.chart-scroll-region:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.chart-scroll-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 2px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.chart-block-shell[data-can-scroll-x="false"] .chart-scroll-controls {
+  display: none;
+}
+
+.chart-scroll-slider {
+  width: 100%;
+  height: 24px;
+  accent-color: var(--accent-color);
+  cursor: grab;
+}
+
+.chart-scroll-slider:active {
+  cursor: grabbing;
+}
+
+.chart-scroll-slider:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
 .chart-header {
   display: flex;
   align-items: center;
@@ -5201,6 +5282,8 @@ pre {
 
 .chart-body {
   position: relative;
+  width: max(100%, var(--chart-content-min-width, 520px));
+  min-width: max(100%, var(--chart-content-min-width, 520px));
   padding: 12px;
 }
 

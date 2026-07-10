@@ -1,5 +1,7 @@
 const crypto = require('crypto');
+const QRCode = require('qrcode');
 const { config } = require('../config');
+const { postgres } = require('../postgres');
 const {
     isAuthorizedOpenCodeGatewayRequest,
     resolveOpenCodeGatewayApiKey,
@@ -172,6 +174,126 @@ function safeEqualString(left, right) {
         return false;
     }
     return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+const MFA_SETTING_PREFIX = 'auth.mfa.';
+const MFA_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const mfaChallenges = new Map();
+
+function base32Encode(buffer) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = 0;
+    let value = 0;
+    let output = '';
+    for (const byte of buffer) {
+        value = (value << 8) | byte;
+        bits += 8;
+        while (bits >= 5) {
+            output += alphabet[(value >>> (bits - 5)) & 31];
+            bits -= 5;
+        }
+    }
+    if (bits > 0) output += alphabet[(value << (5 - bits)) & 31];
+    return output;
+}
+
+function base32Decode(input) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = 0;
+    let value = 0;
+    const bytes = [];
+    for (const character of String(input || '').toUpperCase().replace(/=|\s/g, '')) {
+        const index = alphabet.indexOf(character);
+        if (index === -1) throw new Error('Invalid TOTP secret');
+        value = (value << 5) | index;
+        bits += 5;
+        if (bits >= 8) {
+            bytes.push((value >>> (bits - 8)) & 255);
+            bits -= 8;
+        }
+    }
+    return Buffer.from(bytes);
+}
+
+function encryptMfaSecret(secret) {
+    const key = crypto.createHash('sha256').update(config.auth.jwtSecret).digest();
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+    return [iv, cipher.getAuthTag(), ciphertext].map((value) => value.toString('base64url')).join('.');
+}
+
+function decryptMfaSecret(encrypted) {
+    const [iv, tag, ciphertext] = String(encrypted || '').split('.').map((value) => Buffer.from(value, 'base64url'));
+    if (!iv || !tag || !ciphertext) throw new Error('Invalid encrypted MFA secret');
+    const key = crypto.createHash('sha256').update(config.auth.jwtSecret).digest();
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+}
+
+function generateTotp(secret, timestamp = Date.now()) {
+    const counter = Buffer.alloc(8);
+    counter.writeBigUInt64BE(BigInt(Math.floor(timestamp / 30000)));
+    const digest = crypto.createHmac('sha1', base32Decode(secret)).update(counter).digest();
+    const offset = digest[digest.length - 1] & 15;
+    const value = (digest.readUInt32BE(offset) & 0x7fffffff) % 1000000;
+    return String(value).padStart(6, '0');
+}
+
+function verifyTotp(secret, code, timestamp = Date.now()) {
+    const normalized = String(code || '').replace(/\s/g, '');
+    if (!/^\d{6}$/.test(normalized)) return false;
+    return [-1, 0, 1].some((window) => safeEqualString(generateTotp(secret, timestamp + (window * 30000)), normalized));
+}
+
+async function getMfaRecord(username) {
+    const result = await postgres.query('SELECT value FROM app_settings WHERE key = $1', [`${MFA_SETTING_PREFIX}${username}`]);
+    return result.rows[0]?.value || null;
+}
+
+async function saveMfaRecord(username, record) {
+    await postgres.query(`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ($1, $2::jsonb, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `, [`${MFA_SETTING_PREFIX}${username}`, JSON.stringify(record)]);
+}
+
+async function beginMfaChallenge(username) {
+    let record = await getMfaRecord(username);
+    let secret;
+    let enrollmentRequired = !record?.enrolled;
+    if (!record?.secret) {
+        secret = base32Encode(crypto.randomBytes(20));
+        record = { enrolled: false, secret: encryptMfaSecret(secret) };
+        await saveMfaRecord(username, record);
+        enrollmentRequired = true;
+    } else {
+        secret = decryptMfaSecret(record.secret);
+    }
+
+    const challengeId = crypto.randomBytes(32).toString('base64url');
+    mfaChallenges.set(challengeId, { username, expiresAt: Date.now() + MFA_CHALLENGE_TTL_MS });
+    const response = { challengeId, enrollmentRequired };
+    if (enrollmentRequired) {
+        const issuer = String(config.auth.totpIssuer || 'KimiBuilt').trim();
+        const label = `${issuer}:${username}`;
+        const uri = `otpauth://totp/${encodeURIComponent(label)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+        response.qrCodeDataUrl = await QRCode.toDataURL(uri, { errorCorrectionLevel: 'M', margin: 2, width: 240 });
+        response.manualKey = secret;
+    }
+    return response;
+}
+
+async function completeMfaChallenge(challengeId, code) {
+    const challenge = mfaChallenges.get(String(challengeId || ''));
+    mfaChallenges.delete(String(challengeId || ''));
+    if (!challenge || challenge.expiresAt < Date.now()) return null;
+    const record = await getMfaRecord(challenge.username);
+    if (!record?.secret || !verifyTotp(decryptMfaSecret(record.secret), code)) return null;
+    if (!record.enrolled) await saveMfaRecord(challenge.username, { ...record, enrolled: true });
+    return { username: challenge.username };
 }
 
 function getSafeReturnTo(value = '/') {
@@ -408,9 +530,12 @@ function requireAuth(req, res, next) {
 }
 
 module.exports = {
+    beginMfaChallenge,
     clearAuthCookie,
     createAuthToken,
+    completeMfaChallenge,
     getAuthenticatedUser,
+    generateTotp,
     getSafeReturnTo,
     isAuthorizedFrontendApiRequest,
     isAuthEnabled,
@@ -420,4 +545,5 @@ module.exports = {
     resolveFrontendApiKey,
     safeEqualString,
     setAuthCookie,
+    verifyTotp,
 };
