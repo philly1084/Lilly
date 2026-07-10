@@ -65,6 +65,69 @@ describe('Lilly Mission Mode', () => {
     expect(app.readMissionLaunchParams('?mission=unknown')).toBeNull();
   });
 
+  test('defaults to traditional chat and enables long-form work as an explicit choice', async () => {
+    const context = loadMissionContext();
+    const modeClassList = { toggle: jest.fn() };
+    const app = Object.create(context.ChatApp.prototype);
+    app.executionModeSelect = {
+      value: 'chat',
+      closest: jest.fn(() => ({ classList: modeClassList })),
+    };
+    app.messageInput = { value: '', focus: jest.fn() };
+    app.missionState = app.createMissionState();
+    app.clearMissionRefreshTimer = jest.fn();
+    app.renderMissionMode = jest.fn(() => app.syncExecutionModeControl());
+
+    await app.setExecutionMode('mission', { notify: false, persistRemote: false });
+
+    expect(app.missionState.active).toBe(true);
+    expect(app.missionState.templateId).toBe('custom');
+    expect(app.executionModeSelect.value).toBe('mission');
+    expect(app.executionModeSelect.disabled).toBe(false);
+    expect(context.sessionManager.mergeSessionMetadataLocally).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ executionMode: 'mission' }),
+    );
+
+    app.missionState.run = { id: 'run-active', state: 'executing' };
+    app.syncExecutionModeControl();
+    expect(app.executionModeSelect.disabled).toBe(true);
+
+    app.missionState.run.state = 'completed';
+
+    await app.setExecutionMode('chat', { notify: false, persistRemote: false });
+
+    expect(app.missionState.active).toBe(false);
+    expect(app.executionModeSelect.value).toBe('chat');
+    expect(context.sessionManager.mergeSessionMetadataLocally).toHaveBeenCalledWith(
+      'session-1',
+      { executionMode: 'chat', activeMission: null },
+    );
+  });
+
+  test('starts an explicit new conversation in traditional chat mode', async () => {
+    const context = loadMissionContext();
+    context.sessionManager.createSession = jest.fn(async () => {
+      context.sessionManager.currentSessionId = 'session-new';
+    });
+    context.uiHelpers.stopSpeechPlayback = jest.fn();
+    context.uiHelpers.hideWelcomeMessage = jest.fn();
+    context.uiHelpers.clearMessages = jest.fn();
+    const app = Object.create(context.ChatApp.prototype);
+    app.executionModeSelect = { value: 'mission', closest: jest.fn(() => null) };
+    app.missionState = app.createMissionState({ active: true, missionId: 'mission-old' });
+    app.messageInput = { focus: jest.fn() };
+    app.clearTtsAutoPlayQueue = jest.fn();
+    app.clearMissionRefreshTimer = jest.fn();
+    app.renderMissionMode = jest.fn(() => app.syncExecutionModeControl());
+    app.loadSessionWorkloads = jest.fn();
+
+    await app.createNewSession({ silent: true });
+
+    expect(app.missionState.active).toBe(false);
+    expect(app.executionModeSelect.value).toBe('chat');
+  });
+
   test('renders persistent objective, run state, controls, timeline, proof, and raw detail', () => {
     const dom = new JSDOM(`
       <section id="mission-mode" class="hidden">

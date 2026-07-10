@@ -132,10 +132,10 @@
 
     
     <!-- Custom styles -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260710a" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260710d" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-        <link rel="stylesheet" href="css/styles.css?v=20260710a">
+        <link rel="stylesheet" href="css/styles.css?v=20260710d">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <!-- Skip to main content link for accessibility -->
@@ -1044,6 +1044,14 @@
                                 <kbd class="font-sans bg-bg-tertiary px-1.5 py-0.5 rounded border border-border">Shift</kbd> + <kbd class="font-sans bg-bg-tertiary px-1.5 py-0.5 rounded border border-border">Enter</kbd> for new line
                             </p>
                             <div id="input-meta-actions" class="flex items-center gap-2">
+                                <label class="execution-mode-control" title="Choose traditional chat or a long-form mission">
+                                    <i data-lucide="messages-square" class="w-3 h-3" aria-hidden="true"></i>
+                                    <select id="execution-mode-select" aria-label="Response mode" aria-describedby="execution-mode-description">
+                                        <option value="chat">Chat</option>
+                                        <option value="mission">Mission</option>
+                                    </select>
+                                </label>
+                                <span id="execution-mode-description" class="sr-only">Chat uses the traditional conversation flow. Mission runs longer work with durable progress and proof inside the same conversation.</span>
                                 <span id="voice-input-indicator" class="composer-audio-indicator hidden" aria-live="polite"></span>
                                 <!-- Quick Model Indicator -->
                                 <button id="input-model-indicator" class="text-xs text-text-tertiary hover:text-accent transition-colors flex items-center gap-1" onclick="uiHelpers.toggleModelSelector()" aria-label="Current model">
@@ -1352,7 +1360,7 @@
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260709a"></script>
-    <script defer src="js/app.js?v=20260710a"></script>
+    <script defer src="js/app.js?v=20260710c"></script>
     <script defer src="js/artifacts.js?v=20260509a"></script>
 </body>
 </html>

@@ -12755,3 +12755,68 @@ body.mission-mode-active .mission-welcome-cue {
 [data-theme="light"] .proof-pack--partial {
     --proof-accent: #92400e;
 }
+
+/* Traditional chat is the default; long-form Mission is an explicit composer choice. */
+.execution-mode-control {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 7px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-tertiary) 86%, transparent);
+    color: var(--text-tertiary);
+    transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.execution-mode-control:hover,
+.execution-mode-control:focus-within {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    color: var(--text-primary);
+}
+
+.execution-mode-control:focus-within {
+    outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent);
+    outline-offset: 2px;
+}
+
+.execution-mode-control--mission {
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+    background: color-mix(in srgb, var(--accent) 11%, var(--bg-tertiary));
+    color: var(--accent);
+}
+
+#execution-mode-select {
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+#execution-mode-select option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+#execution-mode-select:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+@media (max-width: 767px) {
+    #input-meta-row,
+    body.layout-minimal #input-meta-row {
+        display: flex !important;
+        justify-content: flex-end;
+    }
+
+    #input-meta-row > p,
+    #input-meta-actions > :not(.execution-mode-control):not(#execution-mode-description) {
+        display: none;
+    }
+}

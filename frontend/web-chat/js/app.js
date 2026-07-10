@@ -626,6 +626,7 @@ class ChatApp {
         this.messagesContainer = document.getElementById('messages-container');
         this.charCounter = document.getElementById('char-counter');
         this.currentSessionInfo = document.getElementById('current-session-info');
+        this.executionModeSelect = document.getElementById('execution-mode-select');
         this.missionMode = document.getElementById('mission-mode');
         this.missionObjective = document.getElementById('mission-objective');
         this.missionStateLabel = document.getElementById('mission-state-label');
@@ -944,6 +945,9 @@ class ChatApp {
             return;
         }
         this.missionModeSetup = true;
+        this.executionModeSelect?.addEventListener('change', () => {
+            void this.setExecutionMode(this.executionModeSelect.value);
+        });
         this.missionMode?.addEventListener('click', (event) => {
             const button = event.target?.closest?.('[data-mission-action]');
             const action = String(button?.dataset?.missionAction || '').trim();
@@ -960,6 +964,86 @@ class ChatApp {
             }
         });
         this.missionElapsedTimer = setInterval(() => this.updateMissionElapsed(), 1000);
+        this.syncExecutionModeControl();
+    }
+
+    syncExecutionModeControl() {
+        if (!this.executionModeSelect) {
+            return;
+        }
+        const nextMode = this.missionState?.active === true ? 'mission' : 'chat';
+        if (this.executionModeSelect.value !== nextMode) {
+            this.executionModeSelect.value = nextMode;
+        }
+        const runState = String(this.missionState?.run?.state || '').trim().toLowerCase();
+        const missionIsRunning = nextMode === 'mission'
+            && Boolean(runState)
+            && !MISSION_TERMINAL_STATES.has(runState);
+        this.executionModeSelect.disabled = missionIsRunning;
+        this.executionModeSelect.title = missionIsRunning
+            ? 'Mission mode stays selected while this run is active.'
+            : 'Choose traditional chat or a long-form mission.';
+        this.executionModeSelect.closest?.('.execution-mode-control')?.classList.toggle(
+            'execution-mode-control--mission',
+            nextMode === 'mission',
+        );
+    }
+
+    async setExecutionMode(mode = 'chat', options = {}) {
+        const nextMode = String(mode || '').trim().toLowerCase() === 'mission' ? 'mission' : 'chat';
+        const sessionId = String(sessionManager.currentSessionId || '').trim();
+        this.clearMissionRefreshTimer();
+
+        if (nextMode === 'mission') {
+            const current = this.missionState || this.createMissionState();
+            const shouldStartFresh = current.active !== true || MISSION_TERMINAL_STATES.has(current.run?.state);
+            this.missionState = this.createMissionState({
+                ...(shouldStartFresh ? {} : current),
+                active: true,
+                templateId: shouldStartFresh ? 'custom' : current.templateId,
+                missionId: shouldStartFresh ? `mission-chat-${Date.now().toString(36)}` : current.missionId,
+                objective: shouldStartFresh ? '' : current.objective,
+                starterPrompt: shouldStartFresh ? '' : current.starterPrompt,
+                uiState: shouldStartFresh ? 'idle' : current.uiState,
+                phase: shouldStartFresh ? 'Ready in chat' : current.phase,
+                statusNote: shouldStartFresh
+                    ? 'Long-form work will run inside this conversation.'
+                    : current.statusNote,
+                run: shouldStartFresh ? null : current.run,
+                events: shouldStartFresh ? [] : current.events,
+                eventCursor: shouldStartFresh ? '' : current.eventCursor,
+                proofPack: shouldStartFresh ? null : current.proofPack,
+                evidenceAttestations: shouldStartFresh ? [] : current.evidenceAttestations,
+                error: '',
+            });
+            this.persistMissionState({ remote: options.persistRemote !== false });
+        } else {
+            this.missionState = this.createMissionState();
+            if (sessionId) {
+                sessionManager.mergeSessionMetadataLocally?.(sessionId, {
+                    executionMode: 'chat',
+                    activeMission: null,
+                });
+                if (options.persistRemote !== false) {
+                    await sessionManager.persistSessionMetadata?.(sessionId, {
+                        executionMode: 'chat',
+                        activeMission: null,
+                    });
+                }
+            }
+        }
+
+        this.renderMissionMode();
+        if (options.notify !== false) {
+            uiHelpers.showToast?.(
+                nextMode === 'mission'
+                    ? 'Mission mode is on. Long-form work will stay in this chat.'
+                    : 'Traditional chat mode is on.',
+                'info',
+            );
+        }
+        this.messageInput?.focus?.();
+        return nextMode;
     }
 
     hydrateMissionFromCurrentSession() {
@@ -1015,9 +1099,9 @@ class ChatApp {
             return false;
         }
         const activeMission = this.getMissionSnapshot();
-        sessionManager.mergeSessionMetadataLocally?.(sessionId, { activeMission });
+        sessionManager.mergeSessionMetadataLocally?.(sessionId, { executionMode: 'mission', activeMission });
         if (options.remote !== false) {
-            void sessionManager.persistSessionMetadata?.(sessionId, { activeMission });
+            void sessionManager.persistSessionMetadata?.(sessionId, { executionMode: 'mission', activeMission });
         }
         return true;
     }
@@ -1356,6 +1440,7 @@ class ChatApp {
     }
 
     renderMissionMode() {
+        this.syncExecutionModeControl();
         if (!this.missionMode) {
             return;
         }
@@ -1522,7 +1607,7 @@ class ChatApp {
         });
         this.renderMissionMode();
         if (!sessionManager.currentSessionId) {
-            await this.createNewSession();
+            await this.createNewSession({ preserveExecutionMode: true });
         }
         const sessionId = String(sessionManager.currentSessionId || '').trim();
         const idempotencyKey = `mission-start-${sessionId || 'local'}-${Date.now().toString(36)}`;
@@ -3289,6 +3374,11 @@ class ChatApp {
             this.clearTtsAutoPlayQueue();
             uiHelpers.stopSpeechPlayback();
             await sessionManager.createSession('chat');
+            if (options.preserveExecutionMode !== true) {
+                this.clearMissionRefreshTimer();
+                this.missionState = this.createMissionState();
+                this.renderMissionMode();
+            }
             uiHelpers.hideWelcomeMessage();
             uiHelpers.clearMessages();
             this.loadSessionWorkloads(sessionManager.currentSessionId);
@@ -6779,6 +6869,12 @@ class ChatApp {
             return;
         }
 
+        if (this.missionState?.active === true && !this.missionState.run?.id) {
+            this.missionState.objective = content;
+            this.missionState.starterPrompt = this.missionState.starterPrompt || content;
+            this.persistMissionState({ remote: false });
+        }
+
         const toolIntentOptions = this.buildMissionSendOptions(this.selectedDirectTool
             ? this.buildSelectedDirectToolRequestOptions()
             : this.buildToolIntentRequestOptions());
@@ -6821,7 +6917,9 @@ class ChatApp {
 
         // Check if we need to create a session
         if (!sessionManager.currentSessionId) {
-            await this.createNewSession();
+            await this.createNewSession({
+                preserveExecutionMode: this.missionState?.active === true,
+            });
         }
 
         const sessionId = sessionManager.currentSessionId;
