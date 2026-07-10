@@ -176,20 +176,20 @@
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                padding: 8px 12px;
-                background: var(--bg-tertiary);
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                margin-top: 8px;
+                padding: 6px 8px 0;
+                background: transparent;
+                border: 0;
+                border-radius: 8px;
+                margin-top: 6px;
             }
             
             .artifact-toolbar-compact .toolbar-btn {
                 display: flex;
                 align-items: center;
                 gap: 6px;
-                padding: 6px 12px;
-                border: 1px solid var(--border);
-                background: var(--bg-secondary);
+                padding: 6px 9px;
+                border: 1px solid transparent;
+                background: transparent;
                 color: var(--text-secondary);
                 font-size: 13px;
                 border-radius: 6px;
@@ -201,17 +201,19 @@
             .artifact-toolbar-compact .toolbar-btn:hover {
                 border-color: var(--accent);
                 color: var(--text-primary);
+                background: color-mix(in srgb, var(--accent) 8%, transparent);
             }
             
             .artifact-toolbar-compact .toolbar-btn.primary {
-                background: var(--accent);
-                color: white;
-                border-color: var(--accent);
+                background: color-mix(in srgb, var(--accent) 11%, transparent);
+                color: var(--accent);
+                border-color: color-mix(in srgb, var(--accent) 30%, transparent);
                 font-weight: 700;
             }
             
             .artifact-toolbar-compact .toolbar-btn.primary:hover {
-                opacity: 0.9;
+                background: color-mix(in srgb, var(--accent) 17%, transparent);
+                opacity: 1;
             }
             
             .artifact-toolbar-compact .toolbar-divider {
@@ -223,7 +225,7 @@
             
             .artifact-toolbar-compact .selected-count {
                 font-size: 12px;
-                color: var(--text-secondary);
+                color: var(--text-tertiary);
                 padding: 0 4px;
             }
             
