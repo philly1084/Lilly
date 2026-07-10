@@ -34,6 +34,7 @@ jest.mock('../runtime-execution', () => ({
     executeConversationRuntime: jest.fn(),
     resolveConversationExecutorFlag: jest.fn(() => false),
     inferExecutionProfile: jest.fn(() => 'notes'),
+    scheduleDirectAfterProcessAudit: jest.fn(),
 }));
 
 jest.mock('../ai-route-utils', () => ({
@@ -69,6 +70,7 @@ jest.mock('../ai-route-utils', () => ({
     inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
+    buildPiiWorkbookRelationshipToolContext: jest.fn(async () => null),
     resolveReasoningEffort: jest.fn(() => null),
 }));
 

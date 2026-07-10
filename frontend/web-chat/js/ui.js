@@ -4304,6 +4304,337 @@ class UIHelpers {
         `;
     }
 
+    normalizeProofUrl(value = '') {
+        const normalized = String(value || '').trim();
+        if (!normalized) {
+            return '';
+        }
+        if (normalized.startsWith('/') && !normalized.startsWith('//')) {
+            return normalized;
+        }
+        return /^https?:\/\//i.test(normalized) ? normalized : '';
+    }
+
+    buildArtifactLineageUrl(surface = 'notes', artifact = {}, missionId = '') {
+        const normalizedSurface = surface === 'canvas' ? 'canvas' : 'notes';
+        const artifactId = String(artifact?.id || artifact?.artifactId || artifact?.artifact_id || '').trim();
+        if (!artifactId) {
+            return `/${normalizedSurface}/`;
+        }
+        const lineageMissionId = String(
+            missionId
+            || artifact?.missionId
+            || artifact?.mission_id
+            || '',
+        ).trim();
+        const parentArtifactId = String(
+            artifact?.parentArtifactId
+            || artifact?.parent_artifact_id
+            || artifactId,
+        ).trim();
+        const revision = artifact?.revision ?? artifact?.artifactRevision ?? artifact?.artifact_revision ?? '';
+        const params = new URLSearchParams({ artifactId });
+        if (lineageMissionId) params.set('missionId', lineageMissionId);
+        if (parentArtifactId) params.set('parentArtifactId', parentArtifactId);
+        if (revision !== '' && revision !== null && revision !== undefined) {
+            params.set('revision', String(revision));
+        }
+        return `/${normalizedSurface}/?${params.toString()}`;
+    }
+
+    buildArtifactLineageActionsMarkup(artifact = {}, missionId = '') {
+        const artifactId = String(artifact?.id || artifact?.artifactId || artifact?.artifact_id || '').trim();
+        if (!artifactId) {
+            return '';
+        }
+        const resolvedMissionId = String(missionId || artifact?.missionId || artifact?.mission_id || '').trim();
+        const parentArtifactId = String(artifact?.parentArtifactId || artifact?.parent_artifact_id || artifactId).trim();
+        const revision = artifact?.revision ?? artifact?.artifactRevision ?? artifact?.artifact_revision ?? '';
+        const dataAttributes = [
+            `data-artifact-id="${this.escapeHtmlAttr(artifactId)}"`,
+            `data-parent-artifact-id="${this.escapeHtmlAttr(parentArtifactId)}"`,
+            `data-mission-id="${this.escapeHtmlAttr(resolvedMissionId)}"`,
+            `data-artifact-revision="${this.escapeHtmlAttr(String(revision ?? ''))}"`,
+        ].join(' ');
+        const notesUrl = this.buildArtifactLineageUrl('notes', artifact, resolvedMissionId);
+        const canvasUrl = this.buildArtifactLineageUrl('canvas', artifact, resolvedMissionId);
+
+        return `
+            <div class="artifact-lineage-actions" aria-label="Continue working with ${this.escapeHtmlAttr(artifact.filename || artifact.title || 'artifact')}">
+                <a class="artifact-lineage-action" href="${this.escapeHtmlAttr(notesUrl)}" ${dataAttributes} data-artifact-lineage-action="open-notes">Open in Notes</a>
+                <a class="artifact-lineage-action" href="${this.escapeHtmlAttr(canvasUrl)}" ${dataAttributes} data-artifact-lineage-action="open-canvas">Open in Canvas</a>
+                <button class="artifact-lineage-action" type="button" ${dataAttributes} data-artifact-lineage-action="iterate">Iterate in Chat</button>
+                <button class="artifact-lineage-action artifact-lineage-action--deploy" type="button" ${dataAttributes} data-artifact-lineage-action="deploy">Deploy</button>
+            </div>
+        `;
+    }
+
+    buildArtifactLineageTrayMarkup(artifacts = [], message = {}) {
+        const normalizedArtifacts = (Array.isArray(artifacts) ? artifacts : [])
+            .filter((artifact) => artifact && typeof artifact === 'object' && String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim())
+            .slice(0, 8);
+        if (normalizedArtifacts.length === 0) {
+            return '';
+        }
+        const missionId = String(
+            message?.missionId
+            || message?.metadata?.missionId
+            || message?.agentRun?.id
+            || message?.metadata?.agentRun?.id
+            || '',
+        ).trim();
+        return `
+            <div class="artifact-lineage-tray">
+                <span class="artifact-lineage-tray__label">Continue this work</span>
+                ${normalizedArtifacts.map((artifact) => this.buildArtifactLineageActionsMarkup(artifact, missionId)).join('')}
+            </div>
+        `;
+    }
+
+    normalizeProofPack(message = null) {
+        const source = message && typeof message === 'object' ? message : {};
+        const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata : {};
+        const agentRun = source.agentRun || metadata.agentRun || source.agent_run || metadata.agent_run || null;
+        const proofPack = source.proofPack
+            || metadata.proofPack
+            || source.proof_pack
+            || metadata.proof_pack
+            || agentRun?.proofPack
+            || agentRun?.proof_pack
+            || null;
+        const runEvidence = agentRun?.evidence && typeof agentRun.evidence === 'object' && !Array.isArray(agentRun.evidence)
+            ? agentRun.evidence
+            : {};
+        const explicitEvidence = source.evidence && typeof source.evidence === 'object'
+            ? source.evidence
+            : (metadata.evidence && typeof metadata.evidence === 'object' ? metadata.evidence : {});
+        const attestations = [
+            ...(Array.isArray(source.evidenceAttestations) ? source.evidenceAttestations : []),
+            ...(Array.isArray(metadata.evidenceAttestations) ? metadata.evidenceAttestations : []),
+            ...(Array.isArray(source.evidence_attestations) ? source.evidence_attestations : []),
+            ...(Array.isArray(metadata.evidence_attestations) ? metadata.evidence_attestations : []),
+            ...(Array.isArray(proofPack?.attestations) ? proofPack.attestations : []),
+            ...(Array.isArray(runEvidence.attestations) ? runEvidence.attestations : []),
+            ...(Array.isArray(agentRun?.evidence) ? agentRun.evidence : []),
+        ].filter((entry) => entry && typeof entry === 'object');
+        const hasExplicitProof = Boolean(proofPack)
+            || attestations.length > 0
+            || Object.keys(runEvidence).length > 0
+            || Object.keys(explicitEvidence).length > 0
+            || Boolean(source.agentQuality || metadata.agentQuality || agentRun?.completion?.agentQuality);
+        if (!hasExplicitProof) {
+            return null;
+        }
+
+        const toArray = (value) => Array.isArray(value)
+            ? value
+            : (value && typeof value === 'object' ? Object.values(value) : (value ? [value] : []));
+        const getLabel = (entry, fallback = 'Evidence') => {
+            if (typeof entry === 'string') return entry;
+            return this.extractDisplayText(
+                entry?.label
+                || entry?.title
+                || entry?.name
+                || entry?.summary
+                || entry?.message
+                || entry?.command
+                || fallback,
+                { maxLength: 180 },
+            ) || fallback;
+        };
+        const getStatus = (entry) => {
+            if (entry?.passed === true || entry?.success === true || entry?.verified === true) return 'passed';
+            if (entry?.passed === false || entry?.success === false || entry?.verified === false) return 'failed';
+            const normalized = String(entry?.verdict || entry?.status || entry?.state || '').trim().toLowerCase();
+            if (['pass', 'passed', 'success', 'succeeded', 'verified', 'approved', 'complete', 'completed'].includes(normalized)) return 'passed';
+            if (['fail', 'failed', 'error', 'rejected', 'missing', 'blocked'].includes(normalized)) return 'failed';
+            return 'unknown';
+        };
+        const uniqueBy = (items, keyBuilder) => {
+            const seen = new Set();
+            return items.filter((item) => {
+                const key = keyBuilder(item);
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        };
+
+        const artifactCandidates = [
+            ...toArray(proofPack?.artifacts),
+            ...toArray(proofPack?.outputs),
+            ...toArray(runEvidence.artifacts),
+            ...toArray(agentRun?.outputs),
+        ].filter((entry) => entry && typeof entry === 'object');
+        const artifacts = uniqueBy(artifactCandidates.map((entry) => ({
+            ...entry,
+            id: String(entry.id || entry.artifactId || entry.artifact_id || '').trim(),
+            label: getLabel(entry, 'Artifact'),
+            url: this.normalizeProofUrl(entry.previewUrl || entry.downloadUrl || entry.url || entry.href || ''),
+            status: getStatus(entry),
+        })), (entry) => entry.id || entry.url || entry.label).slice(0, 8);
+
+        const checkCandidates = [
+            ...toArray(proofPack?.checks),
+            ...toArray(proofPack?.tests),
+            ...toArray(proofPack?.verifications),
+            ...toArray(runEvidence.checks),
+            ...toArray(runEvidence.tests),
+            ...attestations.filter((entry) => /test|check|verify|validation/i.test(String(entry.type || entry.kind || entry.category || ''))),
+        ];
+        const checks = uniqueBy(checkCandidates.map((entry) => ({
+            label: getLabel(entry, 'Check'),
+            detail: this.extractDisplayText(entry?.detail || entry?.result || entry?.output || '', { maxLength: 220 }),
+            status: getStatus(entry),
+        })), (entry) => `${entry.label}:${entry.detail}`).slice(0, 10);
+
+        const screenshotCandidates = [
+            ...toArray(proofPack?.screenshots),
+            ...toArray(proofPack?.uiScreenshots),
+            ...toArray(runEvidence.screenshots),
+            ...attestations.filter((entry) => /screenshot|visual|browser/i.test(String(entry.type || entry.kind || entry.category || ''))),
+        ];
+        const screenshots = uniqueBy(screenshotCandidates.map((entry) => ({
+            label: getLabel(entry, 'Screenshot'),
+            url: this.normalizeProofUrl(typeof entry === 'string' ? entry : (entry.url || entry.href || entry.path || '')),
+            status: getStatus(entry),
+        })).filter((entry) => entry.url), (entry) => entry.url).slice(0, 6);
+
+        const urlCandidates = [
+            ...toArray(proofPack?.urls),
+            ...toArray(proofPack?.links),
+            ...toArray(runEvidence.urls),
+            proofPack?.publicUrl,
+            runEvidence.publicUrl,
+            agentRun?.outputs?.publicUrl,
+        ].filter(Boolean);
+        const urls = uniqueBy(urlCandidates.map((entry) => ({
+            label: getLabel(entry, 'Verified URL'),
+            url: this.normalizeProofUrl(typeof entry === 'string' ? entry : (entry.url || entry.href || entry.value || '')),
+            status: getStatus(entry),
+        })).filter((entry) => entry.url), (entry) => entry.url).slice(0, 6);
+
+        const approvalCandidates = [
+            ...toArray(proofPack?.approvals),
+            ...toArray(agentRun?.approvals),
+            ...attestations.filter((entry) => /approval|permission|consent/i.test(String(entry.type || entry.kind || entry.category || ''))),
+        ];
+        const approvals = uniqueBy(approvalCandidates.map((entry) => ({
+            label: getLabel(entry, 'Approval'),
+            detail: this.extractDisplayText(entry?.detail || entry?.reason || '', { maxLength: 180 }),
+            status: getStatus(entry),
+        })), (entry) => `${entry.label}:${entry.detail}`).slice(0, 6);
+
+        const agentQuality = source.agentQuality || metadata.agentQuality || proofPack?.agentQuality || agentRun?.completion?.agentQuality || {};
+        const missingGates = [
+            ...toArray(proofPack?.missingGates),
+            ...toArray(proofPack?.requiredMissing),
+            ...toArray(agentQuality?.requiredMissing),
+            ...toArray(runEvidence.missingGates),
+        ].map((entry) => getLabel(entry, String(entry || 'Missing proof'))).filter(Boolean);
+        const usage = proofPack?.usage || agentRun?.usage || source.usage || metadata.usage || {};
+        const durationMs = Number(proofPack?.durationMs ?? usage.durationMs ?? usage.elapsedMs ?? agentRun?.completion?.durationMs);
+        const costUsd = Number(proofPack?.costUsd ?? usage.costUsd ?? usage.costUSD ?? usage.cost);
+        const explicitStatus = String(proofPack?.status || agentQuality?.status || agentRun?.completion?.status || '').trim().toLowerCase();
+        const failedChecks = [...checks, ...approvals].filter((entry) => entry.status === 'failed').length;
+        const status = explicitStatus === 'unavailable' || missingGates.length > 0 || failedChecks > 0
+            ? 'partial'
+            : (['failed', 'blocked', 'needs_work'].includes(explicitStatus) ? 'partial' : 'verified');
+
+        return {
+            title: this.extractDisplayText(proofPack?.title || 'Proof Pack', { maxLength: 80 }) || 'Proof Pack',
+            summary: this.extractDisplayText(proofPack?.summary || agentRun?.completion?.summary || '', { maxLength: 260 }),
+            status,
+            missionId: String(source.missionId || metadata.missionId || agentRun?.id || '').trim(),
+            artifacts,
+            checks,
+            screenshots,
+            urls,
+            approvals,
+            missingGates: [...new Set(missingGates)].slice(0, 8),
+            durationMs: Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null,
+            costUsd: Number.isFinite(costUsd) && costUsd >= 0 ? costUsd : null,
+        };
+    }
+
+    formatProofDuration(durationMs = null) {
+        if (!Number.isFinite(Number(durationMs)) || Number(durationMs) < 0) return '';
+        const totalSeconds = Math.round(Number(durationMs) / 1000);
+        if (totalSeconds < 60) return `${totalSeconds}s`;
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}m ${seconds}s`;
+    }
+
+    buildProofPackMarkup(message = null, options = {}) {
+        const proof = this.normalizeProofPack(message);
+        if (!proof) {
+            return options.empty === true
+                ? '<div class="proof-pack proof-pack--empty" role="status">No typed proof has been supplied for this mission yet.</div>'
+                : '';
+        }
+        const renderEvidenceList = (label, items, { link = false } = {}) => items.length > 0 ? `
+            <section class="proof-pack__group">
+                <h4>${this.escapeHtml(label)}</h4>
+                <ul>
+                    ${items.map((item) => `
+                        <li class="proof-pack__item proof-pack__item--${this.escapeHtmlAttr(item.status || 'unknown')}">
+                            <span class="proof-pack__state" aria-label="${this.escapeHtmlAttr(item.status || 'unknown')}"></span>
+                            <span>
+                                ${link && item.url
+                                    ? `<a href="${this.escapeHtmlAttr(item.url)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(item.label)}</a>`
+                                    : `<strong>${this.escapeHtml(item.label)}</strong>`}
+                                ${item.detail ? `<small>${this.escapeHtml(item.detail)}</small>` : ''}
+                            </span>
+                        </li>
+                    `).join('')}
+                </ul>
+            </section>
+        ` : '';
+        const usageParts = [
+            proof.durationMs !== null ? `Duration ${this.formatProofDuration(proof.durationMs)}` : '',
+            proof.costUsd !== null ? `Cost $${proof.costUsd.toFixed(proof.costUsd < 1 ? 4 : 2)} USD` : '',
+        ].filter(Boolean);
+
+        return `
+            <section class="proof-pack proof-pack--${this.escapeHtmlAttr(proof.status)}" aria-label="${this.escapeHtmlAttr(proof.title)}">
+                <div class="proof-pack__header">
+                    <span class="proof-pack__mark" aria-hidden="true"><i data-lucide="shield-check" class="w-4 h-4"></i></span>
+                    <span class="proof-pack__heading">
+                        <span class="proof-pack__eyebrow">Run receipt</span>
+                        <strong>${this.escapeHtml(proof.title)}</strong>
+                    </span>
+                    <span class="proof-pack__status">${proof.status === 'verified' ? 'Verified evidence' : 'Proof needs attention'}</span>
+                </div>
+                ${proof.summary ? `<p class="proof-pack__summary">${this.escapeHtml(proof.summary)}</p>` : ''}
+                ${usageParts.length > 0 ? `<div class="proof-pack__usage">${usageParts.map((part) => `<span>${this.escapeHtml(part)}</span>`).join('')}</div>` : ''}
+                <div class="proof-pack__grid">
+                    ${renderEvidenceList('Checks', proof.checks)}
+                    ${renderEvidenceList('Screenshots', proof.screenshots, { link: true })}
+                    ${renderEvidenceList('URLs', proof.urls, { link: true })}
+                    ${renderEvidenceList('Approvals', proof.approvals)}
+                </div>
+                ${proof.artifacts.length > 0 ? `
+                    <section class="proof-pack__artifacts">
+                        <h4>Artifacts</h4>
+                        ${proof.artifacts.map((artifact) => `
+                            <article class="proof-pack__artifact">
+                                <span class="proof-pack__artifact-name">${artifact.url ? `<a href="${this.escapeHtmlAttr(artifact.url)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(artifact.label)}</a>` : this.escapeHtml(artifact.label)}</span>
+                                ${artifact.id ? this.buildArtifactLineageActionsMarkup(artifact, proof.missionId) : ''}
+                            </article>
+                        `).join('')}
+                    </section>
+                ` : ''}
+                ${proof.missingGates.length > 0 ? `
+                    <div class="proof-pack__missing" role="note">
+                        <strong>Missing gates</strong>
+                        <span>${proof.missingGates.map((gate) => this.escapeHtml(gate)).join(' · ')}</span>
+                    </div>
+                ` : ''}
+            </section>
+        `;
+    }
+
     buildManagedAppProgressMarkup(message = null, isStreaming = false) {
         const progressState = this.getManagedAppProgressState(message);
         if (!progressState) {
@@ -4611,6 +4942,7 @@ class UIHelpers {
             : { content: messageOrContent };
         const effectiveStreaming = isStreaming === true || message?.isStreaming === true;
         const content = this.resolveAssistantVisibleContent(message);
+        const proofPackMarkup = this.buildProofPackMarkup(message);
         const toolResultChip = this.buildMessageToolChipMarkup(
             message?.metadata?.toolResultChip || message?.toolResultChip || null,
             { kind: 'result' },
@@ -4632,13 +4964,13 @@ class UIHelpers {
             && !reasoningRibbon;
         if ((isManagedAppProjectSummary || renderManagedAppProgressOnly) && managedAppProgress) {
             return {
-                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}`,
+                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}${proofPackMarkup}`,
                 variant: 'default',
             };
         }
         if (!content) {
             return {
-                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon || (shouldShowStreamingPlaceholder ? this.buildStreamingPlaceholderMarkup(message) : '')}`,
+                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon || (shouldShowStreamingPlaceholder ? this.buildStreamingPlaceholderMarkup(message) : '')}${proofPackMarkup}`,
                 variant: 'default',
             };
         }
@@ -4692,7 +5024,7 @@ class UIHelpers {
             }
 
             return {
-                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}${html}`,
+                html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}${html}${proofPackMarkup}`,
                 variant: 'agent-brief',
             };
         }
@@ -4707,7 +5039,7 @@ class UIHelpers {
         }
 
         return {
-            html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}${html}`,
+            html: `${toolResultChip}${managedAppProgress}${progressTracker}${reasoningRibbon}${html}${proofPackMarkup}`,
             variant: 'default',
         };
     }
@@ -4778,6 +5110,7 @@ class UIHelpers {
                             <span class="meta">${inlineArtifacts.length} item${inlineArtifacts.length === 1 ? '' : 's'}</span>
                         </div>
                         ${window.artifactManager?.buildGalleryMarkup?.(inlineArtifacts) || ''}
+                        ${!isUser ? this.buildArtifactLineageTrayMarkup(inlineArtifacts, message) : ''}
                     </div>
                 </div>
             `
@@ -5605,6 +5938,8 @@ class UIHelpers {
         const fullTimestamp = message.timestamp ? new Date(message.timestamp).toLocaleString() : '';
         const artifacts = Array.isArray(message.artifacts) ? message.artifacts : [];
         const galleryMarkup = window.artifactManager?.buildGalleryMarkup?.(artifacts) || '';
+        const lineageMarkup = this.buildArtifactLineageTrayMarkup(artifacts, message);
+        const proofPackMarkup = this.buildProofPackMarkup(message);
 
         const messageEl = document.createElement('div');
         messageEl.className = 'message assistant';
@@ -5636,7 +5971,9 @@ class UIHelpers {
                             <p>No generated files are available.</p>
                         </div>
                     `}
+                    ${lineageMarkup}
                 </div>
+                ${proofPackMarkup}
             </div>
         `;
 
@@ -5949,7 +6286,7 @@ class UIHelpers {
         const img = document.getElementById('lightbox-image');
         lightbox.classList.add('hidden');
         lightbox.setAttribute('aria-hidden', 'true');
-        img.src = '';
+        img.removeAttribute('src');
         img.alt = '';
         document.body.style.overflow = '';
         

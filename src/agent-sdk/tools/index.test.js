@@ -81,6 +81,8 @@ const { publicSourceIndexService } = require('../../public-source-index');
 const config = require('../../config');
 const { ttsService } = require('../../tts/tts-service');
 const { persistGeneratedAudio } = require('../../generated-audio-artifacts');
+const { AgentRunService } = require('../../agent-runs');
+const { AsyncLabStore } = require('../../async-lab/store');
 const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
@@ -608,6 +610,99 @@ describe('ToolManager image tools', () => {
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  test('governs plain registry write handlers in Mission Mode', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kimibuilt-file-write-policy-'));
+    const target = path.join(tempDir, 'blocked.txt');
+
+    const result = await toolManager.executeTool('file-write', {
+      path: target,
+      content: 'must not be written',
+    }, {
+      runId: 'agent-run-policy',
+      metadata: { missionMode: true },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      errorCode: 'TOOL_APPROVAL_REQUIRED',
+      invocation: expect.objectContaining({ status: 'blocked', risk: 'write' }),
+    }));
+    await expect(fs.stat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('refuses paused and cancelled Mission Mode runs before the tool handler', async () => {
+    const toolManager = new ToolManager();
+    await toolManager.initialize();
+    const tool = toolManager.getTool('file-write');
+    const handler = jest.fn(async () => ({ written: true }));
+    tool.backend.handler = handler;
+    const agentRunService = new AgentRunService({
+      store: new AsyncLabStore({ persistToPostgres: false }),
+    });
+    const createExecutingRun = async (suffix) => {
+      const created = await agentRunService.createRun({
+        objective: `Control ${suffix}`,
+        idempotencyKey: `tool-control-${suffix}`,
+      }, 'mission-owner');
+      await agentRunService.transitionRun(created.run.id, 'planning', { ownerId: 'mission-owner' });
+      return (await agentRunService.transitionRun(created.run.id, 'executing', {
+        ownerId: 'mission-owner',
+      })).run;
+    };
+    const pausedRun = await createExecutingRun('paused');
+    await agentRunService.performAction(pausedRun.id, {
+      action: 'pause',
+      idempotencyKey: 'pause-tool-control',
+      reason: 'Wait for the operator',
+    }, 'mission-owner');
+    const cancelledRun = await createExecutingRun('cancelled');
+    await agentRunService.performAction(cancelledRun.id, {
+      action: 'cancel',
+      idempotencyKey: 'cancel-tool-control',
+      reason: 'Stop the mission',
+    }, 'mission-owner');
+
+    const execute = (runId, metadata = { missionMode: true }) => toolManager.executeTool('file-write', {
+      path: 'should-not-be-written.txt',
+      content: 'blocked',
+    }, {
+      runId,
+      ownerId: 'mission-owner',
+      agentRunService,
+      metadata,
+      sandboxMode: true,
+      workspaceBounded: true,
+    });
+    const paused = await execute(pausedRun.id);
+    const cancelled = await execute(cancelledRun.id);
+
+    expect(paused).toEqual(expect.objectContaining({
+      success: false,
+      errorCode: 'AGENT_RUN_PAUSED',
+      control: expect.objectContaining({ paused: true, canAdvance: false }),
+    }));
+    expect(cancelled).toEqual(expect.objectContaining({
+      success: false,
+      errorCode: 'AGENT_RUN_CANCELLED',
+      control: expect.objectContaining({ cancelRequested: true, canAdvance: false }),
+    }));
+    expect(handler).not.toHaveBeenCalled();
+
+    const legacy = await execute(pausedRun.id, {});
+    expect(legacy.success).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    await agentRunService.performAction(pausedRun.id, {
+      action: 'resume',
+      idempotencyKey: 'resume-tool-control',
+    }, 'mission-owner');
+    const resumed = await execute(pausedRun.id);
+    expect(resumed.success).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(2);
   });
 
   test('returns a helpful error when file-write is called without content', async () => {

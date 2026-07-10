@@ -331,6 +331,13 @@ class SideEffectTracker {
   }
 
   /**
+   * Backwards-compatible alias used by ToolBase handlers.
+   */
+  recordNetworkCall(url, method = 'GET', response = null) {
+    return this.recordNetwork(url, method, { response });
+  }
+
+  /**
    * Records a command execution
    * 
    * @param {string} command - The command executed
@@ -345,6 +352,25 @@ class SideEffectTracker {
       resource: cwd,
       beforeState: { command, cwd, ...metadata }
     }));
+  }
+
+  /**
+   * Backwards-compatible alias used by ToolBase handlers.
+   */
+  recordExecution(command, result = null) {
+    return this.recordExecute(command, process.cwd(), { result });
+  }
+
+  /**
+   * Returns the legacy per-category response shape with plain JSON values.
+   */
+  getAll() {
+    return {
+      reads: this.reads.map(effect => effect.toJSON()),
+      writes: this.writes.map(effect => effect.toJSON()),
+      networkCalls: this.networkCalls.map(effect => effect.toJSON()),
+      executions: this.executions.map(effect => effect.toJSON())
+    };
   }
 
   /**
@@ -510,7 +536,12 @@ class SideEffectTracker {
   }
 }
 
+function createSideEffectTracker() {
+  return new SideEffectTracker();
+}
+
 module.exports = { 
+  createSideEffectTracker,
   SideEffect, 
   SideEffectTracker,
   SideEffectType

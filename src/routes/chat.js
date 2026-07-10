@@ -113,6 +113,7 @@ const {
     evaluateAlignment,
 } = require('../alignment/evaluator-service');
 const { rehydrateText, sanitizeText } = require('../pii');
+const { startHttpAgentRunShadow } = require('../agent-runs/runtime-bridge');
 
 const router = Router();
 const WORKLOAD_PREFLIGHT_RECENT_LIMIT = config.memory.recentTranscriptLimit;
@@ -120,6 +121,32 @@ const ALIGNMENT_FEEDBACK_HISTORY_LIMIT = 12;
 const ALIGNMENT_ROUTE_PATTERN_LIMIT = 16;
 const ALIGNMENT_REGRESSION_FIXTURE_LIMIT = 24;
 const ALIGNMENT_TOOL_REINFORCEMENT_LIMIT = 32;
+
+router.use(async (req, res, next) => {
+    if (req.method !== 'POST' || req.path !== '/') {
+        return next();
+    }
+    await startHttpAgentRunShadow(req, res, {
+        surface: 'web-chat',
+        mode: 'chat',
+        sessionId: req.body?.sessionId || req.body?.session_id || null,
+        requestId: req.get('x-request-id')
+            || req.body?.requestId
+            || req.body?.request_id
+            || req.body?.metadata?.requestId
+            || req.body?.metadata?.request_id
+            || '',
+        startedAt: new Date().toISOString(),
+        operation: 'chat',
+        objective: req.body?.message || 'Web chat request',
+        state: 'executing',
+        metadata: {
+            route: '/api/chat',
+            transport: req.body?.stream === false ? 'http' : 'sse',
+        },
+    });
+    return next();
+});
 
 function compactPiiContextIds(...sources) {
     const ids = [];
@@ -1300,6 +1327,12 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             executionProfile = null,
             metadata: requestMetadata = {},
         } = req.body;
+        const canonicalAgentRunId = String(
+            res.locals?.agentRunShadow?.run?.id
+            || requestMetadata?.agentRunId
+            || requestMetadata?.agent_run_id
+            || '',
+        ).trim();
         let message = stripAgentJournalBlocks(rawMessage);
         if (!message) {
             return res.status(400).json({ error: { message: 'message is required' } });
@@ -1657,6 +1690,8 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             const runtimeToolManager = await ensureRuntimeToolManager(req.app);
             const result = await runtimeToolManager.executeTool('pii-relationship-calculate', piiWorkbookRelationship.request, {
                 sessionId,
+                runId: canonicalAgentRunId || null,
+                agentRunId: canonicalAgentRunId || null,
                 route: '/api/chat',
                 transport: 'http',
                 memoryService,
@@ -1847,6 +1882,8 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 const runtimeToolManager = await ensureRuntimeToolManager(req.app);
                 const result = await runtimeToolManager.executeTool('podcast', podcastParams, {
                     sessionId,
+                    runId: canonicalAgentRunId || null,
+                    agentRunId: canonicalAgentRunId || null,
                     route: '/api/chat',
                     transport: 'http',
                     memoryService,
@@ -2062,6 +2099,8 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 toolManager,
                 toolContext: {
                     sessionId,
+                    runId: canonicalAgentRunId || null,
+                    agentRunId: canonicalAgentRunId || null,
                     route: '/api/chat',
                     transport: 'http',
                     memoryService,
@@ -2077,6 +2116,11 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                     documentService: req.app.locals.documentService || null,
                     workloadService: req.app.locals.agentWorkloadService,
                     managedAppService: req.app.locals.managedAppService || null,
+                    missionId: effectiveRequestMetadata.missionId || null,
+                    parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                        || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                        || null,
+                    metadata: effectiveRequestMetadata,
                 },
                 executionProfile: effectiveExecutionProfile,
             });
@@ -2336,6 +2380,8 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 toolManager,
                 toolContext: {
                     sessionId,
+                    runId: canonicalAgentRunId || null,
+                    agentRunId: canonicalAgentRunId || null,
                     route: '/api/chat',
                     transport: 'http',
                     memoryService,
@@ -2451,6 +2497,15 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                             model,
                             reasoningEffort,
                             recentMessages: await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT),
+                            missionId: effectiveRequestMetadata.missionId || null,
+                            parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                                || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                                || null,
+                            provenance: {
+                                sourceSurface: clientSurface || 'web-chat',
+                                runId: canonicalAgentRunId || null,
+                                sessionId,
+                            },
                         })
                         : [];
                     const saveableDocumentArtifacts = generatedArtifacts.length === 0
@@ -2582,6 +2637,8 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             toolManager: runtimeToolManager,
             toolContext: {
                 sessionId,
+                runId: canonicalAgentRunId || null,
+                agentRunId: canonicalAgentRunId || null,
                 route: '/api/chat',
                 transport: 'http',
                 memoryService,
@@ -2660,6 +2717,15 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 model,
                 reasoningEffort,
                 recentMessages: await sessionStore.getRecentMessages(sessionId, WORKLOAD_PREFLIGHT_RECENT_LIMIT),
+                missionId: effectiveRequestMetadata.missionId || null,
+                parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                    || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                    || null,
+                provenance: {
+                    sourceSurface: clientSurface || 'web-chat',
+                    runId: canonicalAgentRunId || null,
+                    sessionId,
+                },
             })
             : [];
         const saveableDocumentArtifacts = generatedArtifacts.length === 0

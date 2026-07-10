@@ -2596,6 +2596,39 @@ body[data-ui-surface="admin"] .select-sm option:checked {
     font-size: var(--text-lg);
 }
 
+.trace-eval-summary {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--space-sm);
+    margin: calc(var(--space-lg) * -0.5) 0 var(--space-lg);
+}
+
+.trace-eval-item {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.trace-eval-item strong {
+    color: var(--text-primary);
+    font-size: var(--text-lg);
+    text-transform: capitalize;
+}
+
+.trace-eval-summary[data-status="passed"] .trace-eval-item--status {
+    border-color: color-mix(in srgb, var(--success) 45%, var(--border-primary));
+}
+
+.trace-eval-summary[data-status="blocked"] .trace-eval-item--status {
+    border-color: color-mix(in srgb, var(--danger) 55%, var(--border-primary));
+}
+
 .traces-layout {
     display: grid;
     grid-template-columns: 350px 1fr;
@@ -5292,6 +5325,7 @@ code {
     .split-layout,
     .traces-layout,
     .trace-quality-summary,
+    .trace-eval-summary,
     .settings-layout,
     .tools-layout {
         grid-template-columns: 1fr;

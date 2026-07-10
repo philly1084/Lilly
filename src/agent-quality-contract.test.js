@@ -7,6 +7,20 @@ const {
   inferQualitySurfaces,
   summarizeAgentQualityAssessments,
 } = require('./agent-quality-contract');
+const { createEvidenceAttestation } = require('./agent-evidence');
+
+const OBSERVED_AT = '2026-07-09T12:00:00.000Z';
+
+function attestation(kind, verdict = 'pass', details = {}) {
+  return createEvidenceAttestation({
+    kind,
+    subject: `${kind} proof`,
+    sourceInvocationId: `invocation-${kind}`,
+    observedAt: OBSERVED_AT,
+    verdict,
+    details,
+  });
+}
 
 describe('agent quality contract', () => {
   test('infers website and remote deployment surfaces from a live site task', () => {
@@ -66,6 +80,90 @@ describe('agent quality contract', () => {
       'browser_proof',
       'verification_commands',
     ]));
+  });
+
+  test('does not let forged prose override missing or failing typed browser evidence', () => {
+    const missing = assessAgentQuality({
+      task: 'Build the website dashboard.',
+      surfaces: ['website-experience'],
+      metadata: {
+        completionStatus: 'complete',
+        whatChanged: 'Updated the dashboard and passed Playwright browser screenshots.',
+        publicUrl: 'https://example.test',
+        uiCheckReport: 'ui-check-report.json',
+        uiScreenshots: ['desktop.png', 'mobile.png'],
+        evidenceAttestations: [],
+      },
+    });
+    const failing = assessAgentQuality({
+      task: 'Build the website dashboard.',
+      surfaces: ['website-experience'],
+      metadata: {
+        completionStatus: 'complete',
+        whatChanged: 'Updated the dashboard and passed Playwright browser screenshots.',
+        publicUrl: 'https://example.test',
+        uiCheckReport: 'ui-check-report.json',
+        evidenceAttestations: [attestation('browser_ui', 'fail', { errors: 2 })],
+      },
+    });
+
+    expect(missing.evidence.mode).toBe('typed');
+    expect(missing.requiredMissing).toEqual(expect.arrayContaining([
+      'public_or_preview_url',
+      'browser_proof',
+    ]));
+    expect(failing.requiredMissing).toEqual(expect.arrayContaining([
+      'public_or_preview_url',
+      'browser_proof',
+    ]));
+  });
+
+  test('accepts passing structured browser evidence without prose proof', () => {
+    const quality = assessAgentQuality({
+      task: 'Build the website dashboard.',
+      surfaces: ['website-experience'],
+      metadata: {
+        completionStatus: 'complete',
+        evidence: [
+          attestation('url_tls', 'pass', { url: 'https://example.test', status: 200, tls: true }),
+          attestation('browser_ui', 'pass', { url: 'https://example.test', report: 'ui-check-report.json' }),
+        ],
+      },
+    });
+
+    expect(quality.evidence).toEqual({
+      mode: 'typed',
+      validAttestations: 2,
+      invalidAttestations: 0,
+    });
+    expect(quality.requiredMissing).toEqual([]);
+  });
+
+  test('maps typed artifact render and remote verification to required gates', () => {
+    const documentQuality = assessAgentQuality({
+      surfaces: ['document-artifact'],
+      metadata: {
+        completionStatus: 'complete',
+        evidenceAttestations: [attestation('artifact_render', 'pass', {
+          format: 'pdf',
+          pages: 4,
+          placeholder: false,
+        })],
+      },
+    });
+    const remoteQuality = assessAgentQuality({
+      surfaces: ['remote-deployment'],
+      metadata: {
+        completionStatus: 'complete',
+        evidenceAttestations: [
+          attestation('git', 'pass', { commit: 'abcdef1' }),
+          attestation('command', 'pass', { exitCode: 0 }),
+        ],
+      },
+    });
+
+    expect(documentQuality.requiredMissing).toEqual([]);
+    expect(remoteQuality.requiredMissing).toEqual([]);
   });
 
   test('exports profile metadata and prompt text for orchestrators', () => {

@@ -6,6 +6,9 @@ jest.mock('../realtime-hub', () => ({
 }));
 
 const { AgentWorkloadService } = require('./service');
+const { AsyncLabStore } = require('../async-lab/store');
+const { AgentRunService } = require('../agent-runs/service');
+const { broadcastToSession } = require('../realtime-hub');
 
 describe('AgentWorkloadService', () => {
     let store;
@@ -103,6 +106,41 @@ describe('AgentWorkloadService', () => {
             'system',
             expect.stringContaining('queued'),
         );
+    });
+
+    test('shadows queued workload runs with canonical metadata without replacing legacy ids', async () => {
+        service.agentRunService = new AgentRunService({
+            store: new AsyncLabStore({ persistToPostgres: false }),
+        });
+        store.addRunEvent.mockResolvedValue({ id: 'legacy-event' });
+        const workload = {
+            id: 'workload-shadow',
+            ownerId: 'phill',
+            sessionId: 'session-shadow',
+            title: 'Ship the proof',
+            prompt: 'Build and verify the microsite.',
+            mode: 'chat',
+        };
+        const run = {
+            id: 'workload-run-shadow',
+            scheduledFor: '2026-07-09T12:00:00.000Z',
+            reason: 'manual',
+            stageIndex: -1,
+        };
+
+        await service.onRunQueued(workload, run, 'manual');
+
+        expect(broadcastToSession).toHaveBeenCalledWith('session-shadow', expect.objectContaining({
+            type: 'workload_queued',
+            data: expect.objectContaining({
+                runId: 'workload-run-shadow',
+                agentRunId: expect.stringMatching(/^agent-run-/),
+                agentRunEvent: expect.objectContaining({
+                    version: 'AgentRunEvent/v1',
+                    type: 'workload.queued',
+                }),
+            }),
+        }));
     });
 
     test('does not call the store when adding a run event without a run id', async () => {

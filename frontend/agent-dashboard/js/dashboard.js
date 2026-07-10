@@ -1368,7 +1368,15 @@ class Dashboard {
             
             // Update UI
             document.getElementById('totalTasks').textContent = stats.totalTasks.toLocaleString();
-            document.getElementById('successRate').textContent = `${stats.successRate}%`;
+            document.getElementById('successRate').textContent = stats.successRate === null
+                ? 'Unavailable'
+                : `${stats.successRate}%`;
+            const successRateStatus = document.getElementById('successRateStatus');
+            if (successRateStatus) {
+                successRateStatus.innerHTML = stats.successRate === null
+                    ? '<span>no completed tasks</span>'
+                    : '<span>live recorded value</span>';
+            }
             document.getElementById('activeSessions').textContent = stats.activeSessions;
             document.getElementById('skillsUsed').textContent = stats.skillsUsed.toLocaleString();
             const skillsUsedChange = document.getElementById('skillsUsedChange');
@@ -1510,7 +1518,7 @@ class Dashboard {
             this.updateLogsPagination();
         } catch (error) {
             console.error('Error loading logs:', error);
-            this.renderLogs(this.getMockLogs());
+            this.renderLogs([]);
         }
     }
     
@@ -1524,9 +1532,12 @@ class Dashboard {
             const traces = this.unwrapApiPayload(response, []).map(trace => this.normalizeTrace(trace));
             const pagination = this.getApiPagination(response);
             const agentQualitySummary = response?.meta?.agentQualitySummary || null;
+            const agentEvalSummary = response?.meta?.agentEvalSummary || null;
             
             this.state.traces = traces;
             this.state.traceQualitySummary = agentQualitySummary;
+            this.state.traceEvalSummary = agentEvalSummary;
+            this.populateTraceSessionFilter(traces);
             if (pagination) {
                 this.state.pagination.traces = { ...this.state.pagination.traces, ...pagination, total: pagination.total || 0 };
             }
@@ -1534,11 +1545,13 @@ class Dashboard {
                 this.state.selectedTrace = null;
             }
             this.renderTraceQualitySummary(agentQualitySummary);
+            this.renderTraceEvalSummary(agentEvalSummary);
             this.renderTraces(traces);
         } catch (error) {
             console.error('Error loading traces:', error);
             this.renderTraceQualitySummary(null);
-            this.renderTraces(this.getMockTraces());
+            this.renderTraceEvalSummary(null);
+            this.renderTraces([]);
         }
     }
 
@@ -2671,6 +2684,11 @@ class Dashboard {
     renderLogs(logs) {
         const tbody = document.getElementById('logsTableBody');
         if (!tbody) return;
+
+        if (!Array.isArray(logs) || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Live logs are unavailable or no logs have been recorded.</td></tr>';
+            return;
+        }
         
         tbody.innerHTML = logs.map(log => `
             <tr onclick="dashboard.showLogDetails('${log.id}')">
@@ -2723,8 +2741,8 @@ class Dashboard {
                  onclick="dashboard.selectTrace(this.dataset.id)"
                  onkeydown="dashboard.handleListItemKeydown(event)">
                 <div class="trace-header">
-                    <span class="trace-name">${trace.name}</span>
-                    <span class="trace-status ${trace.status}"></span>
+                    <span class="trace-name">${this.escapeHtml(trace.name)}</span>
+                    <span class="trace-status ${this.escapeHtml(trace.status)}"></span>
                 </div>
                 <div class="trace-meta">
                     ${this.formatDate(trace.startedAt)} • ${trace.duration}ms • ${trace.steps} steps
@@ -2784,6 +2802,57 @@ class Dashboard {
             <div class="trace-quality-item">
                 <span class="trace-detail-label">Surfaces</span>
                 <span>${this.escapeHtml(surfaceText)}</span>
+            </div>
+        `;
+    }
+
+    renderTraceEvalSummary(summary = null) {
+        const container = document.getElementById('traceEvalSummary');
+        if (!container) return;
+
+        const totalRuns = Number(summary?.totalRuns || 0);
+        const totalCases = Number(summary?.totalCases || 0);
+        if (!summary || totalRuns <= 0 || totalCases <= 0) {
+            container.innerHTML = '<span class="trace-muted">No recorded agent eval runs are available. Synthetic fallback metrics are not shown.</span>';
+            container.dataset.status = 'unavailable';
+            return;
+        }
+
+        const asPercent = (value) => `${Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100)}%`;
+        const status = String(summary.status || 'unavailable').toLowerCase();
+        const averageCost = Number(summary.averageCostUsd || 0);
+        const averageLatency = Number(summary.averageLatencyMs || 0);
+        container.dataset.status = status;
+        container.innerHTML = `
+            <div class="trace-eval-item trace-eval-item--status">
+                <span class="trace-detail-label">Eval release gate</span>
+                <strong>${this.escapeHtml(status)}</strong>
+                <span>${this.escapeHtml(totalRuns)} recorded run${totalRuns === 1 ? '' : 's'}</span>
+            </div>
+            <div class="trace-eval-item">
+                <span class="trace-detail-label">Completion</span>
+                <strong>${this.escapeHtml(asPercent(summary.passRate))}</strong>
+                <span>${this.escapeHtml(summary.passedCases || 0)} / ${this.escapeHtml(totalCases)} cases</span>
+            </div>
+            <div class="trace-eval-item">
+                <span class="trace-detail-label">Evidence coverage</span>
+                <strong>${this.escapeHtml(asPercent(summary.evidenceCoverage))}</strong>
+                <span>${this.escapeHtml(summary.criticalRegressions || 0)} critical regressions</span>
+            </div>
+            <div class="trace-eval-item">
+                <span class="trace-detail-label">Tool precision</span>
+                <strong>${this.escapeHtml(asPercent(summary.toolPrecision))}</strong>
+                <span>expected tool use</span>
+            </div>
+            <div class="trace-eval-item">
+                <span class="trace-detail-label">Average cost</span>
+                <strong>$${this.escapeHtml(averageCost.toFixed(2))}</strong>
+                <span>per eval case</span>
+            </div>
+            <div class="trace-eval-item">
+                <span class="trace-detail-label">Average latency</span>
+                <strong>${this.escapeHtml(Math.round(averageLatency))}ms</strong>
+                <span>per eval case</span>
             </div>
         `;
     }
@@ -5521,12 +5590,17 @@ class Dashboard {
     
     filterTraces() {
         const status = document.getElementById('traceStatusFilter')?.value;
+        const sessionId = document.getElementById('traceSessionFilter')?.value;
         const search = document.getElementById('traceSearch')?.value.toLowerCase();
         
         let filtered = [...this.state.traces];
         
         if (status && status !== 'all') {
             filtered = filtered.filter(t => t.status === status);
+        }
+
+        if (sessionId && sessionId !== 'all') {
+            filtered = filtered.filter(t => String(t.sessionId || '') === sessionId);
         }
         
         if (search) {
@@ -5536,6 +5610,21 @@ class Dashboard {
         }
         
         this.renderTraces(filtered);
+    }
+
+    populateTraceSessionFilter(traces = []) {
+        const select = document.getElementById('traceSessionFilter');
+        if (!select) return;
+        const selected = select.value || 'all';
+        const sessionIds = Array.from(new Set((Array.isArray(traces) ? traces : [])
+            .map((trace) => String(trace?.sessionId || '').trim())
+            .filter(Boolean)))
+            .sort();
+        select.innerHTML = [
+            '<option value="all">All Sessions</option>',
+            ...sessionIds.map((value) => `<option value="${this.escapeHtml(value)}">${this.escapeHtml(value)}</option>`),
+        ].join('');
+        select.value = sessionIds.includes(selected) ? selected : 'all';
     }
 
     configureAgentCompany() {
@@ -6145,9 +6234,15 @@ class Dashboard {
         const overview = payload.overview || {};
         const tokens = payload.tokens || {};
         const requestChart = payload.requests?.chart || {};
+        const rawSuccessRate = overview.successRate ?? payload.successRate ?? null;
+        const normalizedSuccessRate = Number(rawSuccessRate);
         return {
             totalTasks: Number(overview.totalTasks || payload.totalTasks || 0),
-            successRate: Number(overview.successRate || payload.successRate || 0),
+            successRate: rawSuccessRate === null
+                || rawSuccessRate === undefined
+                || !Number.isFinite(normalizedSuccessRate)
+                ? null
+                : normalizedSuccessRate,
             activeSessions: Number(overview.activeSessions || payload.activeSessions || 0),
             skillsUsed: Number(overview.skillsUsed || overview.totalSkillUses || payload.skillsUsed || 0),
             skillsUsedThisWeek: Number(overview.skillsUsedThisWeek || payload.skillsUsedThisWeek || payload.skills?.thisWeek || 0),
@@ -7252,6 +7347,11 @@ class Dashboard {
         const container = document.getElementById('tracesList');
         if (!container) return;
 
+        if (!Array.isArray(traces) || traces.length === 0) {
+            container.innerHTML = '<p class="empty-state">Live traces are unavailable or no traces have been recorded.</p>';
+            return;
+        }
+
         container.innerHTML = traces.map((trace) => `
             <div class="trace-item ${this.state.selectedTrace?.id === trace.id ? 'active' : ''}"
                  data-id="${this.escapeHtml(trace.id)}"
@@ -7262,8 +7362,8 @@ class Dashboard {
                  onclick="dashboard.selectTrace(this.dataset.id)"
                  onkeydown="dashboard.handleListItemKeydown(event)">
                 <div class="trace-header">
-                    <span class="trace-name">${trace.name}</span>
-                    <span class="trace-status ${trace.status}"></span>
+                    <span class="trace-name">${this.escapeHtml(trace.name)}</span>
+                    <span class="trace-status ${this.escapeHtml(trace.status)}"></span>
                 </div>
                 <div class="trace-meta">
                     ${this.formatDate(trace.startedAt)} &middot; ${trace.duration}ms &middot; ${(trace.steps || []).length} steps
@@ -8388,7 +8488,7 @@ class Dashboard {
         const ssh = settings.integrations?.ssh || {};
         const privacyPii = settings.privacyPii || {};
 
-        this.setInputValue('dashboardTitle', general.appName || 'Agent SDK Admin');
+        this.setInputValue('dashboardTitle', general.appName || 'Lilly Mission Control');
         this.setInputValue('timezone', general.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
         this.setInputValue('dateFormat', general.dateFormat || 'YYYY-MM-DD');
         this.setInputValue('apiEndpoint', api.baseURL || window.location.origin);

@@ -1356,6 +1356,9 @@ describe('ArtifactService', () => {
             metadata: {
                 type: 'frontend',
                 title: 'Newsroom',
+                missionId: 'mission-1',
+                revision: 2,
+                provenance: { runId: 'run-1', sourceSurface: 'web-chat' },
                 bundle: {
                     entry: 'index.html',
                     files: [
@@ -1380,11 +1383,50 @@ describe('ArtifactService', () => {
         expect(serialized.previewUrl).toBe('/api/artifacts/artifact-site-1/preview');
         expect(serialized.sandboxUrl).toBe('/api/artifacts/artifact-site-1/sandbox');
         expect(serialized.bundleDownloadUrl).toBe('/api/artifacts/artifact-site-1/bundle');
+        expect(serialized).toEqual(expect.objectContaining({
+            missionId: 'mission-1',
+            revision: 2,
+            provenance: { runId: 'run-1', sourceSurface: 'web-chat' },
+        }));
         expect(serialized.preview).toEqual(expect.objectContaining({
             type: 'site',
             entry: 'index.html',
             fileCount: 2,
             url: '/api/artifacts/artifact-site-1/sandbox',
+        }));
+    });
+
+    test('content-backed revisions inherit mission lineage and increment the parent revision', async () => {
+        artifactStore.get.mockResolvedValueOnce({
+            id: 'artifact-parent-1',
+            metadata: { missionId: 'mission-1', revision: 2 },
+        });
+
+        await artifactService.storeGeneratedArtifactFromContent({
+            sessionId: 'session-1',
+            session: { id: 'session-1', metadata: {} },
+            mode: 'canvas',
+            format: 'html',
+            content: '<!DOCTYPE html><html><body>revised</body></html>',
+            title: 'Revised page',
+            parentArtifactId: 'artifact-parent-1',
+            missionId: 'mission-1',
+            provenance: { sourceSurface: 'canvas', runId: 'agent-run-1' },
+        });
+
+        expect(artifactStore.create).toHaveBeenCalledWith(expect.objectContaining({
+            parentArtifactId: 'artifact-parent-1',
+            metadata: expect.objectContaining({
+                lineageVersion: 'ArtifactLineage/v1',
+                missionId: 'mission-1',
+                parentArtifactId: 'artifact-parent-1',
+                revision: 3,
+                provenance: expect.objectContaining({
+                    sourceSurface: 'canvas',
+                    runId: 'agent-run-1',
+                    sessionId: 'session-1',
+                }),
+            }),
         }));
     });
 

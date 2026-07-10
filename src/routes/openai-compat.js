@@ -104,6 +104,7 @@ const {
     shouldUseDirectPodcastChat,
 } = require('../podcast/direct-podcast-chat');
 const { rehydrateText, sanitizeText } = require('../pii');
+const { startHttpAgentRunShadow } = require('../agent-runs/runtime-bridge');
 
 const router = Router();
 const FINAL_SYNTHESIS_PLACEHOLDER = 'I completed the request, but the final answer could not be synthesized from the model response.';
@@ -1306,6 +1307,57 @@ async function updateSessionProjectMemory(sessionId, updates = {}, ownerId = nul
     });
 }
 
+router.use(async (req, res, next) => {
+    if (req.method !== 'POST' || !['/chat/completions', '/responses', '/images/generations'].includes(req.path)) {
+        return next();
+    }
+    const body = req.body || {};
+    const operation = req.path === '/chat/completions'
+        ? 'chat-completion'
+        : (req.path === '/images/generations' ? 'image-generation' : 'response');
+    const lastMessage = Array.isArray(body.messages) ? body.messages[body.messages.length - 1] : null;
+    const objective = req.path === '/images/generations'
+        ? extractImagePromptText(body.prompt)
+        : (req.path === '/chat/completions'
+            ? normalizeMessageText(lastMessage?.content)
+            : normalizeMessageText(body.input));
+    await startHttpAgentRunShadow(req, res, {
+        surface: 'openai-compatible',
+        mode: operation,
+        sessionId: body.session_id
+            || body.sessionId
+            || body.metadata?.sessionId
+            || body.metadata?.session_id
+            || null,
+        requestId: req.get('x-request-id')
+            || body.requestId
+            || body.request_id
+            || body.metadata?.requestId
+            || body.metadata?.request_id
+            || '',
+        startedAt: new Date().toISOString(),
+        operation,
+        objective: objective || `OpenAI-compatible ${operation}`,
+        state: 'executing',
+        metadata: {
+            route: req.path,
+            transport: body.stream === true ? 'sse' : 'http',
+        },
+    });
+    return next();
+});
+
+function getCanonicalAgentRunId(req, res) {
+    return String(
+        res.locals?.agentRunShadow?.run?.id
+        || req.body?.agentRunId
+        || req.body?.agent_run_id
+        || req.body?.metadata?.agentRunId
+        || req.body?.metadata?.agent_run_id
+        || '',
+    ).trim();
+}
+
 router.get('/models', async (_req, res, next) => {
     try {
         const [models, imageModels] = await Promise.all([
@@ -1707,6 +1759,8 @@ router.post('/chat/completions', async (req, res, next) => {
                 const toolManager = await ensureRuntimeToolManager(req.app);
                 const result = await toolManager.executeTool('podcast', podcastParams, {
                     sessionId,
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    agentRunId: getCanonicalAgentRunId(req, res) || null,
                     route: '/v1/chat/completions',
                     transport: 'http',
                     memoryService,
@@ -1910,6 +1964,8 @@ router.post('/chat/completions', async (req, res, next) => {
                 toolManager,
                 toolContext: {
                     sessionId,
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    agentRunId: getCanonicalAgentRunId(req, res) || null,
                     route: '/v1/chat/completions',
                     transport: 'http',
                     memoryService,
@@ -1923,6 +1979,11 @@ router.post('/chat/completions', async (req, res, next) => {
                     now: requestNow,
                     documentService: req.app.locals.documentService || null,
                     workloadService: req.app.locals.agentWorkloadService,
+                    missionId: effectiveRequestMetadata.missionId || null,
+                    parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                        || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                        || null,
+                    metadata: effectiveRequestMetadata,
                 },
                 executionProfile: effectiveExecutionProfile,
             });
@@ -2155,6 +2216,8 @@ router.post('/chat/completions', async (req, res, next) => {
                 toolManager,
                 toolContext: {
                     sessionId,
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    agentRunId: getCanonicalAgentRunId(req, res) || null,
                     route: '/v1/chat/completions',
                     transport: 'http',
                     clientSurface,
@@ -2319,6 +2382,15 @@ router.post('/chat/completions', async (req, res, next) => {
                             artifactIds: artifact_ids,
                             model,
                             reasoningEffort,
+                            missionId: effectiveRequestMetadata.missionId || null,
+                            parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                                || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                                || null,
+                            provenance: {
+                                sourceSurface: clientSurface || 'openai-compatible',
+                                runId: getCanonicalAgentRunId(req, res) || null,
+                                sessionId,
+                            },
                         })
                         : [];
                     const artifacts = mergeRuntimeArtifacts(
@@ -2419,6 +2491,8 @@ router.post('/chat/completions', async (req, res, next) => {
             toolManager: runtimeToolManager,
             toolContext: {
                 sessionId,
+                runId: getCanonicalAgentRunId(req, res) || null,
+                agentRunId: getCanonicalAgentRunId(req, res) || null,
                 route: '/v1/chat/completions',
                 transport: 'http',
                 clientSurface,
@@ -2484,6 +2558,8 @@ router.post('/chat/completions', async (req, res, next) => {
                 toolManager: runtimeToolManager,
                 toolContext: {
                     sessionId,
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    agentRunId: getCanonicalAgentRunId(req, res) || null,
                     route: '/v1/chat/completions',
                     transport: 'http',
                     clientSurface,
@@ -2546,6 +2622,15 @@ router.post('/chat/completions', async (req, res, next) => {
                 artifactIds: artifact_ids,
                 model,
                 reasoningEffort,
+                missionId: effectiveRequestMetadata.missionId || null,
+                parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                    || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                    || null,
+                provenance: {
+                    sourceSurface: clientSurface || 'openai-compatible',
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    sessionId,
+                },
             })
             : [];
         const artifacts = mergeRuntimeArtifacts(
@@ -3019,6 +3104,8 @@ router.post('/responses', async (req, res, next) => {
                 toolManager,
                 toolContext: {
                     sessionId,
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    agentRunId: getCanonicalAgentRunId(req, res) || null,
                     route: '/v1/responses',
                     transport: 'http',
                     memoryService,
@@ -3031,6 +3118,11 @@ router.post('/responses', async (req, res, next) => {
                     now: requestNow,
                     documentService: req.app.locals.documentService || null,
                     workloadService: req.app.locals.agentWorkloadService,
+                    missionId: effectiveRequestMetadata.missionId || null,
+                    parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                        || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                        || null,
+                    metadata: effectiveRequestMetadata,
                 },
                 executionProfile: effectiveExecutionProfile,
             });
@@ -3238,6 +3330,8 @@ router.post('/responses', async (req, res, next) => {
                 toolManager,
                 toolContext: {
                     sessionId,
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    agentRunId: getCanonicalAgentRunId(req, res) || null,
                     route: '/v1/responses',
                     transport: 'http',
                     clientSurface,
@@ -3336,6 +3430,15 @@ router.post('/responses', async (req, res, next) => {
                             artifactIds: artifact_ids,
                             model,
                             reasoningEffort,
+                            missionId: effectiveRequestMetadata.missionId || null,
+                            parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                                || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                                || null,
+                            provenance: {
+                                sourceSurface: clientSurface || 'openai-compatible',
+                                runId: getCanonicalAgentRunId(req, res) || null,
+                                sessionId,
+                            },
                         })
                         : [];
                     const artifacts = mergeRuntimeArtifacts(
@@ -3426,6 +3529,8 @@ router.post('/responses', async (req, res, next) => {
             toolManager: runtimeToolManager,
             toolContext: {
                 sessionId,
+                runId: getCanonicalAgentRunId(req, res) || null,
+                agentRunId: getCanonicalAgentRunId(req, res) || null,
                 route: '/v1/responses',
                 transport: 'http',
                 clientSurface,
@@ -3487,6 +3592,8 @@ router.post('/responses', async (req, res, next) => {
                 toolManager: runtimeToolManager,
                 toolContext: {
                     sessionId,
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    agentRunId: getCanonicalAgentRunId(req, res) || null,
                     route: '/v1/responses',
                     transport: 'http',
                     clientSurface,
@@ -3545,6 +3652,15 @@ router.post('/responses', async (req, res, next) => {
                 artifactIds: artifact_ids,
                 model,
                 reasoningEffort,
+                missionId: effectiveRequestMetadata.missionId || null,
+                parentArtifactId: effectiveRequestMetadata.parentArtifactId
+                    || effectiveRequestMetadata.artifactLineage?.parentArtifactId
+                    || null,
+                provenance: {
+                    sourceSurface: clientSurface || 'openai-compatible',
+                    runId: getCanonicalAgentRunId(req, res) || null,
+                    sessionId,
+                },
             })
             : [];
         const artifacts = mergeRuntimeArtifacts(

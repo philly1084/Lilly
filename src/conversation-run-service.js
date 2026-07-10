@@ -213,6 +213,8 @@ class ConversationRunService {
             toolManager: runtimeToolManager,
             toolContext: {
                 sessionId,
+                runId: metadata?.agentRunId || null,
+                agentRunId: metadata?.agentRunId || null,
                 route: '/api/workloads',
                 transport: 'worker',
                 memoryService: this.memoryService,
@@ -424,6 +426,8 @@ class ConversationRunService {
         const sessionIsolation = isSessionIsolationEnabled(metadata, resolvedSession);
         const result = await runtimeToolManager.executeTool(toolId, params, {
             sessionId,
+            runId: metadata?.agentRunId || null,
+            agentRunId: metadata?.agentRunId || null,
             route: '/api/workloads',
             transport: 'worker',
             memoryService: this.memoryService,
@@ -603,6 +607,15 @@ class ConversationRunService {
             artifactIds: preparedImages.artifactIds,
             model,
             reasoningEffort,
+            missionId: metadata.missionId || null,
+            parentArtifactId: metadata.parentArtifactId
+                || metadata.artifactLineage?.parentArtifactId
+                || null,
+            provenance: {
+                sourceSurface: metadata.clientSurface || 'workload',
+                runId: metadata.agentRunId || null,
+                sessionId,
+            },
         });
         const artifacts = [
             ...(preparedImages.artifacts || []),

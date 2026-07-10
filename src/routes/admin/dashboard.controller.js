@@ -1142,7 +1142,7 @@ class DashboardController {
     const completed = Array.from(this.taskStore.values())
       .filter(t => t.status === 'completed' || t.status === 'failed');
     
-    if (completed.length === 0) return 100;
+    if (completed.length === 0) return null;
     
     const successful = completed.filter(t => t.status === 'completed').length;
     return Math.round((successful / completed.length) * 100);

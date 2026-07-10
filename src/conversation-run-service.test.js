@@ -216,7 +216,7 @@ describe('ConversationRunService', () => {
         expect(sessionStore.appendMessages).toHaveBeenCalledWith('session-1', [
             expect.objectContaining({
                 role: 'assistant',
-                content: 'Created the PDF artifact (penguins.pdf).',
+                content: expect.stringContaining('Created the PDF artifact (penguins.pdf).'),
                 metadata: expect.objectContaining({
                     artifacts: [
                         expect.objectContaining({
@@ -234,7 +234,8 @@ describe('ConversationRunService', () => {
                 format: 'pdf',
             }),
         ]);
-        expect(result.artifactMessage).toBe('Created the PDF artifact (penguins.pdf).');
+        expect(result.artifactMessage).toContain('Created the PDF artifact (penguins.pdf).');
+        expect(result.artifactMessage).toContain('/api/artifacts/artifact-1/download');
         expect(sessionStore.maybeCompactSession).toHaveBeenCalledWith('session-1', {
             ownerId: 'user-1',
             workflow: null,
@@ -319,7 +320,8 @@ describe('ConversationRunService', () => {
             outputFormat: 'pdf',
             content: expect.stringContaining('Cluster plan'),
         }));
-        expect(result.artifactMessage).toBe('Created the PDF artifact (cluster-plan.pdf).');
+        expect(result.artifactMessage).toContain('Created the PDF artifact (cluster-plan.pdf).');
+        expect(result.artifactMessage).toContain('/api/artifacts/artifact-2/download');
     });
 
     test('surfaces tool-generated presentation artifacts for workload deep-research runs', async () => {
@@ -411,11 +413,12 @@ describe('ConversationRunService', () => {
                 downloadUrl: '/api/documents/deck-1/download',
             }),
         ]);
-        expect(result.artifactMessage).toBe('Created the PPTX artifact (pigeon-love-research.pptx).');
+        expect(result.artifactMessage).toContain('Created the PPTX artifact (pigeon-love-research.pptx).');
+        expect(result.artifactMessage).toContain('/api/documents/deck-1/download');
         expect(sessionStore.appendMessages).toHaveBeenCalledWith('session-1', [
             expect.objectContaining({
                 role: 'assistant',
-                content: 'Created the PPTX artifact (pigeon-love-research.pptx).',
+                content: expect.stringContaining('Created the PPTX artifact (pigeon-love-research.pptx).'),
                 metadata: expect.objectContaining({
                     artifacts: [
                         expect.objectContaining({
@@ -566,11 +569,12 @@ describe('ConversationRunService', () => {
                 downloadUrl: '/api/documents/deck-structured-1/download',
             }),
         ]);
-        expect(result.artifactMessage).toBe('Created the PPTX artifact (travel-pricing-deck.pptx).');
+        expect(result.artifactMessage).toContain('Created the PPTX artifact (travel-pricing-deck.pptx).');
+        expect(result.artifactMessage).toContain('/api/documents/deck-structured-1/download');
         expect(sessionStore.appendMessages).toHaveBeenNthCalledWith(2, 'session-1', [
             expect.objectContaining({
                 role: 'assistant',
-                content: 'Created the PPTX artifact (travel-pricing-deck.pptx).',
+                content: expect.stringContaining('Created the PPTX artifact (travel-pricing-deck.pptx).'),
                 metadata: expect.objectContaining({
                     artifacts: [
                         expect.objectContaining({

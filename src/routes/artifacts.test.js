@@ -662,6 +662,10 @@ describe('/api/artifacts route', () => {
                 asyncRuntimePreferred: true,
                 model: 'gpt-5.4-mini',
                 reasoningEffort: 'medium',
+                parentArtifactId: 'artifact-parent',
+                missionId: 'mission-1',
+                revision: 3,
+                provenance: { runId: 'run-1' },
             });
 
         expect(response.status).toBe(202);
@@ -682,12 +686,53 @@ describe('/api/artifacts route', () => {
                         format: 'html',
                         model: 'gpt-5.4-mini',
                         reasoningEffort: 'medium',
+                        parentArtifactId: 'artifact-parent',
+                        missionId: 'mission-1',
+                        revision: 3,
+                        provenance: { runId: 'run-1' },
                     }),
                 }),
             }),
             'phill',
         );
         expect(artifactService.generateArtifact).not.toHaveBeenCalled();
+    });
+
+    test('forwards mission and revision lineage into synchronous artifact generation', async () => {
+        sessionStore.resolveOwnedSession.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        artifactService.generateArtifact.mockResolvedValue({
+            responseId: null,
+            artifact: { id: 'artifact-child', missionId: 'mission-1', revision: 2 },
+        });
+
+        const response = await request(buildApp())
+            .post('/api/artifacts/generate')
+            .send({
+                sessionId: 'session-1',
+                mode: 'document',
+                prompt: 'Revise the selected sentence only.',
+                format: 'html',
+                parentArtifactId: 'artifact-parent',
+                missionId: 'mission-1',
+                revision: 2,
+                provenance: { sourceSurface: 'notes', runId: 'run-1' },
+                runId: 'run-1',
+            });
+
+        expect(response.status).toBe(201);
+        expect(artifactService.generateArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            parentArtifactId: 'artifact-parent',
+            missionId: 'mission-1',
+            revision: 2,
+            provenance: { sourceSurface: 'notes', runId: 'run-1' },
+            toolContext: expect.objectContaining({
+                clientSurface: 'document',
+                runId: 'run-1',
+            }),
+        }));
     });
 
     test('exports a site bundle artifact to the managed app build lane', async () => {

@@ -12,6 +12,11 @@ const {
   normalizeRunnerRegistration,
   normalizeText,
 } = require('./protocol');
+const {
+  advanceSurfaceAgentRun,
+  attachAgentRunMetadata,
+  beginSurfaceAgentRun,
+} = require('../agent-runs/runtime-bridge');
 
 function parseBearerToken(value = '') {
   const normalized = normalizeText(value);
@@ -67,6 +72,8 @@ class RemoteRunnerService extends EventEmitter {
     this.runners = new Map();
     this.jobs = new Map();
     this.pending = new Map();
+    this.agentRunService = options.agentRunService || null;
+    this.captureAgentRuns = options.captureAgentRuns === true || Boolean(options.agentRunService);
   }
 
   isEnabled() {
@@ -253,7 +260,7 @@ class RemoteRunnerService extends EventEmitter {
   }
 
   serializeJob(job = {}) {
-    return {
+    const serialized = {
       id: job.id,
       runnerId: job.runnerId,
       type: job.type,
@@ -270,6 +277,10 @@ class RemoteRunnerService extends EventEmitter {
       error: job.error || '',
       metadata: job.metadata || {},
     };
+    return attachAgentRunMetadata(serialized, job.agentRunShadow, {
+      state: job.agentRunTerminalState || job.agentRunShadow?.run?.state,
+      eventType: `remote_runner.${job.status || 'job'}`,
+    });
   }
 
   listJobs({ runnerId = '', limit = 50 } = {}) {
@@ -287,12 +298,33 @@ class RemoteRunnerService extends EventEmitter {
 
   async dispatchCommand(runnerId = '', input = {}, context = {}) {
     const normalizedJob = normalizeCommandJob(input);
+    const agentRunShadow = this.captureAgentRuns
+      ? await beginSurfaceAgentRun({
+          agentRunService: this.agentRunService,
+          surface: 'remote-runner',
+          mode: normalizedJob.type || 'command',
+          sourceId: normalizedJob.id,
+          jobId: normalizedJob.id,
+          sessionId: context.sessionId || null,
+          ownerId: context.ownerId || context.userId || null,
+          objective: normalizedJob.command || `Remote runner ${normalizedJob.type || 'job'}`,
+          state: 'executing',
+          metadata: {
+            runnerId: normalizeText(runnerId),
+            profile: normalizedJob.profile || null,
+          },
+        })
+      : null;
     const runner = this.getHealthyRunner(runnerId, {
       requiredProfile: normalizedJob.profile,
     });
     if (!runner) {
       const error = new Error(this.describeRunnerUnavailable(runnerId, normalizedJob.profile));
       error.statusCode = 503;
+      await advanceSurfaceAgentRun(agentRunShadow, 'failed', {
+        reason: error.message,
+        details: { runnerId: normalizeText(runnerId), profile: normalizedJob.profile || null },
+      });
       throw error;
     }
 
@@ -303,10 +335,36 @@ class RemoteRunnerService extends EventEmitter {
       createdAt: new Date().toISOString(),
       ownerId: normalizeText(context.ownerId || context.userId),
       sessionId: normalizeText(context.sessionId),
+      agentRunShadow,
     };
     this.jobs.set(job.id, job);
 
-    return this.sendJob(runner, job);
+    try {
+      const result = await this.sendJob(runner, job);
+      await advanceSurfaceAgentRun(agentRunShadow, 'completed', {
+        reason: 'Remote runner job completed.',
+        details: {
+          runnerId: runner.runnerId,
+          jobId: job.id,
+          exitCode: result?.exitCode ?? null,
+        },
+      });
+      return attachAgentRunMetadata(result, agentRunShadow, {
+        state: 'completed',
+        eventType: 'remote_runner.completed',
+      });
+    } catch (error) {
+      job.agentRunTerminalState = 'failed';
+      await advanceSurfaceAgentRun(agentRunShadow, 'failed', {
+        reason: error.message,
+        details: {
+          runnerId: runner.runnerId,
+          jobId: job.id,
+          errorCode: error.code || null,
+        },
+      });
+      throw error;
+    }
   }
 
   sendJob(runner = {}, job = {}) {
@@ -327,7 +385,12 @@ class RemoteRunnerService extends EventEmitter {
         job.status = 'timeout';
         job.finishedAt = new Date().toISOString();
         job.error = `Remote runner job timed out after ${timeoutMs}ms`;
+        job.agentRunTerminalState = 'failed';
         this.jobs.set(job.id, job);
+        void advanceSurfaceAgentRun(job.agentRunShadow, 'failed', {
+          reason: job.error,
+          details: { runnerId: job.runnerId, jobId: job.id, timeoutMs },
+        });
         reject(new Error(job.error));
       }, timeoutMs + 1000);
 
@@ -373,7 +436,11 @@ class RemoteRunnerService extends EventEmitter {
     };
 
     job.status = result.error ? 'failed' : 'completed';
-    job.result = result;
+    job.agentRunTerminalState = result.error ? 'failed' : 'completed';
+    job.result = attachAgentRunMetadata(result, job.agentRunShadow, {
+      state: job.agentRunTerminalState,
+      eventType: `remote_runner.${job.status}`,
+    });
     job.finishedAt = result.finishedAt;
     job.error = result.error || '';
     this.jobs.set(job.id, job);
@@ -387,8 +454,17 @@ class RemoteRunnerService extends EventEmitter {
         error.result = result;
         pending.reject(error);
       } else {
-        pending.resolve(result);
+        pending.resolve(job.result);
       }
+    } else {
+      void advanceSurfaceAgentRun(job.agentRunShadow, job.agentRunTerminalState, {
+        reason: result.error || 'Remote runner job completed.',
+        details: {
+          runnerId: job.runnerId,
+          jobId: job.id,
+          exitCode: result.exitCode ?? null,
+        },
+      });
     }
 
     this.emit('job:result', this.serializeJob(job));
@@ -440,7 +516,7 @@ class RemoteRunnerService extends EventEmitter {
   }
 }
 
-const remoteRunnerService = new RemoteRunnerService();
+const remoteRunnerService = new RemoteRunnerService({ captureAgentRuns: true });
 
 module.exports = {
   RemoteRunnerService,

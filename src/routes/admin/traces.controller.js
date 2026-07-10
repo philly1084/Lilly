@@ -11,6 +11,8 @@ const {
   writeJsonlRecordsSync,
 } = require('../../observability/jsonl-persistence');
 const { summarizeAgentQualityAssessments } = require('../../agent-quality-contract');
+const { summarizeEvalRuns } = require('../../agent-evals/runner');
+const { readEvalRuns } = require('../../agent-evals/store');
 
 const DEFAULT_AGENT_COMPANY_SESSION_ID = 'agent-company';
 
@@ -85,6 +87,23 @@ function extractTraceAgentQuality(trace = {}) {
     trace.metadata?.activeProject?.remoteCliAgent?.agentQuality,
     trace.result?.agentQuality,
     trace.result?.data?.agentQuality,
+  );
+}
+
+function extractAgentEval(...candidates) {
+  return candidates.find((candidate) => (
+    isObject(candidate)
+      && (candidate.schemaVersion === 'EvalRun/v1' || Array.isArray(candidate.caseResults))
+      && Number(candidate.total || 0) > 0
+  )) || null;
+}
+
+function extractTraceAgentEval(trace = {}) {
+  return extractAgentEval(
+    trace.agentEval,
+    trace.metadata?.agentEval,
+    trace.result?.agentEval,
+    trace.result?.data?.agentEval,
   );
 }
 
@@ -255,6 +274,15 @@ function buildAgentCompanyRunTrace(run = {}, workload = {}) {
     workload.metadata?.agentQuality,
     workload.metadata?.remoteCliAgent?.agentQuality,
   );
+  const agentEval = extractAgentEval(
+    run.agentEval,
+    run.metadata?.agentEval,
+    run.result?.agentEval,
+    run.result?.data?.agentEval,
+    run.trace?.agentEval,
+    workload.agentEval,
+    workload.metadata?.agentEval,
+  );
   const baseTimeline = extractTimelineFromRunTrace(run.trace || {}, run, workload);
   const agentQualityStep = buildAgentQualityTimelineStep(agentQuality, baseTimeline.length);
   const timeline = agentQualityStep ? [...baseTimeline, agentQualityStep] : baseTimeline;
@@ -289,6 +317,7 @@ function buildAgentCompanyRunTrace(run = {}, workload = {}) {
     metadata: {
       agentCompany,
       ...(agentQuality ? { agentQuality } : {}),
+      ...(agentEval ? { agentEval } : {}),
       workloadId: run.workloadId || workload?.id || null,
       workloadTitle: title,
       runId: run.id,
@@ -406,6 +435,14 @@ class TracesController {
       // Pagination
       const total = traces.length;
       const agentQualitySummary = summarizeAgentQualityAssessments(traces.map(extractTraceAgentQuality));
+      const traceEvalRuns = traces.map(extractTraceAgentEval).filter(Boolean);
+      const recordedEvalRuns = readEvalRuns({ limit: 100 });
+      const evalRunByKey = new Map();
+      [...traceEvalRuns, ...recordedEvalRuns].forEach((run) => {
+        const key = String(run.id || `${run.label || 'eval'}:${run.createdAt || ''}:${run.total || 0}`);
+        evalRunByKey.set(key, run);
+      });
+      const agentEvalSummary = summarizeEvalRuns(Array.from(evalRunByKey.values()));
       const offset = (pageNumber - 1) * pageLimit;
       const paginated = traces.slice(offset, offset + pageLimit);
 
@@ -414,6 +451,7 @@ class TracesController {
         data: paginated,
         meta: {
           agentQualitySummary,
+          agentEvalSummary,
         },
         pagination: {
           total,

@@ -10843,6 +10843,56 @@ Silently verify the lead cluster, section order, and final polish before returni
         }
     }
     
+    function readArtifactLineageFromLocation(search = window.location?.search || '') {
+        const params = new URLSearchParams(String(search || '').replace(/^\?/, ''));
+        const artifactId = String(params.get('artifactId') || '').trim();
+        const missionId = String(params.get('missionId') || '').trim();
+        const parentArtifactId = String(params.get('parentArtifactId') || artifactId).trim();
+        const revision = Number(params.get('revision'));
+        if (!artifactId && !missionId && !parentArtifactId) {
+            return null;
+        }
+        return {
+            artifactId: artifactId || null,
+            missionId: missionId || null,
+            parentArtifactId: parentArtifactId || null,
+            revision: Number.isInteger(revision) && revision > 0 ? revision : null,
+        };
+    }
+
+    function recordArtifactRevision(lineage = null, appliedCount = 0, responseMetadata = {}) {
+        if (!lineage || Number(appliedCount) <= 0) {
+            return null;
+        }
+        const page = window.Editor?.getCurrentPage?.();
+        if (!page) {
+            return null;
+        }
+        const prior = page.metadata?.artifactLineage && typeof page.metadata.artifactLineage === 'object'
+            ? page.metadata.artifactLineage
+            : lineage;
+        const currentRevision = Number(prior.revision ?? lineage.revision ?? 0);
+        const next = {
+            schemaVersion: 'ArtifactLineage/v1',
+            artifactId: lineage.artifactId || null,
+            missionId: lineage.missionId || null,
+            parentArtifactId: lineage.parentArtifactId || lineage.artifactId || null,
+            revision: Number.isInteger(currentRevision) && currentRevision > 0 ? currentRevision + 1 : 1,
+            sourceSurface: 'notes',
+            runId: responseMetadata?.agentRun?.id
+                || responseMetadata?.agentRunId
+                || lineage.missionId
+                || null,
+            updatedAt: new Date().toISOString(),
+        };
+        page.metadata = {
+            ...(page.metadata || {}),
+            artifactLineage: next,
+        };
+        window.Editor?.savePage?.();
+        return next;
+    }
+
     // Call the real API with streaming support
     async function askWithAPI(question, context, options) {
         const {
@@ -10865,6 +10915,7 @@ Silently verify the lead cluster, section order, and final polish before returni
         const agentProfile = getSelectedAgentProfile();
         const normalizedPageReferences = normalizePageReferences(pageReferences);
         const normalizedReferenceSearch = normalizeReferenceSearchPayload(referenceSearch);
+        const artifactLineage = readArtifactLineageFromLocation();
         const requestOptions = {
             ...(requestedArtifactFormat ? { outputFormat: requestedArtifactFormat } : {}),
             reasoningEffort: 'medium',
@@ -10873,6 +10924,13 @@ Silently verify the lead cluster, section order, and final polish before returni
                 notesAgentProfileId: agentProfile.id,
                 ...(normalizedPageReferences.length ? { notesPageReferences: normalizedPageReferences } : {}),
                 ...(normalizedReferenceSearch.hits.length ? { notesReferenceSearch: normalizedReferenceSearch } : {}),
+                ...(artifactLineage ? {
+                    missionId: artifactLineage.missionId,
+                    agentRunId: artifactLineage.missionId,
+                    parentArtifactId: artifactLineage.parentArtifactId || artifactLineage.artifactId,
+                    revision: artifactLineage.revision,
+                    artifactLineage,
+                } : {}),
             },
         };
         const requestUnderstanding = buildRequestUnderstanding(question, context, requestOptions);
@@ -11142,6 +11200,14 @@ Silently verify the lead cluster, section order, and final polish before returni
                             : '');
                     const visibleResponse = `${baseVisibleResponse}${artifactLinkNotice}${mermaidArtifactNotice}${blindArtifactNotice}`.trim()
                         || fallbackVisibleResponse;
+                    const totalAppliedCount = (preparedResponse.appliedCount || 0)
+                        + (mermaidArtifactApplyResult.appliedCount || 0)
+                        + (blindArtifactSelectionResult.appliedCount || 0);
+                    const recordedLineage = recordArtifactRevision(
+                        artifactLineage,
+                        totalAppliedCount,
+                        assistantMetadata || {},
+                    );
                     const assistantMessage = hiddenAssistantMessage
                         ? null
                         : addMessage('assistant', visibleResponse, {
@@ -11150,9 +11216,8 @@ Silently verify the lead cluster, section order, and final polish before returni
                             source: 'api',
                             ...(normalizedPageReferences.length ? { pageReferences: normalizedPageReferences } : {}),
                             requestUnderstanding,
-                            appliedCount: (preparedResponse.appliedCount || 0)
-                                + (mermaidArtifactApplyResult.appliedCount || 0)
-                                + (blindArtifactSelectionResult.appliedCount || 0),
+                            appliedCount: totalAppliedCount,
+                            ...(recordedLineage ? { artifactLineage: recordedLineage } : {}),
                             ...(assistantMetadata || {})
                         });
 
@@ -11808,7 +11873,9 @@ Silently verify the lead cluster, section order, and final polish before returni
         _shouldForcePageEditActions: shouldForcePageEditActions,
         _shouldUseMultiPassNotesDraft: shouldUseMultiPassNotesDraft,
         _shouldSuppressRequestedArtifactFormat: shouldSuppressRequestedArtifactFormat,
-        _buildAgentProfilePromptGuidance: buildAgentProfilePromptGuidance
+        _buildAgentProfilePromptGuidance: buildAgentProfilePromptGuidance,
+        _readArtifactLineageFromLocation: readArtifactLineageFromLocation,
+        _recordArtifactRevision: recordArtifactRevision,
     };
 })();
 

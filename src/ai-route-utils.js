@@ -337,6 +337,10 @@ async function maybeGenerateOutputArtifact({
     reasoningEffort = null,
     contextMessages = [],
     recentMessages = [],
+    missionId = null,
+    parentArtifactId = null,
+    revision = null,
+    provenance = {},
 }) {
     if (!outputFormat) {
         return [];
@@ -356,6 +360,10 @@ async function maybeGenerateOutputArtifact({
                 reasoningEffort,
                 contextMessages,
                 recentMessages,
+                missionId,
+                parentArtifactId,
+                revision,
+                provenance,
             });
             return [result.artifact];
         }
@@ -376,9 +384,16 @@ async function maybeGenerateOutputArtifact({
         format: outputFormat,
         content,
         title,
+        parentArtifactId,
+        missionId,
+        revision,
+        provenance,
         metadata: {
             sourceResponseId: responseId,
             artifactIds,
+            missionId,
+            revision,
+            provenance,
         },
     });
 
@@ -2265,6 +2280,9 @@ async function generateOutputArtifactFromPrompt({
     model = null,
     reasoningEffort = null,
     parentArtifactId = null,
+    missionId = null,
+    revision = null,
+    provenance = {},
     contextMessages = [],
     recentMessages = [],
     toolManager = null,
@@ -2329,6 +2347,14 @@ async function generateOutputArtifactFromPrompt({
             model,
             reasoningEffort,
             parentArtifactId: effectiveParentArtifactId,
+            missionId: missionId || toolContext?.missionId || toolContext?.metadata?.missionId || null,
+            revision,
+            provenance: {
+                ...(provenance && typeof provenance === 'object' ? provenance : {}),
+                sourceSurface: provenance?.sourceSurface || toolContext?.clientSurface || mode || 'artifact-generation',
+                runId: provenance?.runId || toolContext?.runId || null,
+                sessionId: provenance?.sessionId || sessionId,
+            },
             contextMessages,
             recentMessages,
             toolManager,
@@ -2348,6 +2374,14 @@ async function generateOutputArtifactFromPrompt({
             content,
             title: inferResilientArtifactTitle(prompt, normalizedOutputFormat),
             parentArtifactId: effectiveParentArtifactId,
+            missionId: missionId || toolContext?.missionId || toolContext?.metadata?.missionId || null,
+            revision,
+            provenance: {
+                ...(provenance && typeof provenance === 'object' ? provenance : {}),
+                sourceSurface: provenance?.sourceSurface || toolContext?.clientSurface || mode || 'artifact-generation',
+                runId: provenance?.runId || toolContext?.runId || null,
+                sessionId: provenance?.sessionId || sessionId,
+            },
             metadata: {
                 sourceResponseId: null,
                 artifactIds,

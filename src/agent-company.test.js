@@ -4,6 +4,8 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { AgentCompanyService, hashGoal, normalizeConfig } = require('./agent-company');
+const { AsyncLabStore } = require('./async-lab/store');
+const { AgentRunService } = require('./agent-runs/service');
 
 function buildConfig(overrides = {}) {
     return {
@@ -72,6 +74,36 @@ describe('AgentCompanyService', () => {
         expect(result.state.heartbeat.status).toBe('standby');
         expect(result.state.shortTermSchedule).toHaveLength(3);
         expect(JSON.parse(await fs.readFile(statePath, 'utf8')).heartbeat.status).toBe('standby');
+    });
+
+    test('returns a completed canonical AgentRun envelope for a heartbeat', async () => {
+        const agentRunService = new AgentRunService({
+            store: new AsyncLabStore({ persistToPostgres: false }),
+        });
+        const service = new AgentCompanyService({
+            statePath,
+            agentRunService,
+            now: () => new Date('2026-06-22T12:00:00.000Z'),
+            settingsController: {
+                getEffectiveAgentCompanyConfig: () => buildConfig(),
+            },
+            workloadService: {
+                isAvailable: () => false,
+            },
+            sessionStore: {},
+        });
+
+        const result = await service.tick({ force: true, reason: 'canonical-proof' });
+
+        expect(result.runId).toMatch(/^agent-run-/);
+        expect(result.agentRun).toMatchObject({
+            version: 'AgentRun/v1',
+            state: 'completed',
+            surface: 'agent-company',
+        });
+        expect(result.agentRunEvent.type).toBe('agent_company.heartbeat_completed');
+        const persisted = await agentRunService.getRun(result.runId, 'system');
+        expect(persisted.state).toBe('completed');
     });
 
     test('runs daily alignment from heartbeat state even when company scheduling is disabled', async () => {

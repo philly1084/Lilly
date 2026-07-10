@@ -561,6 +561,43 @@ function normalizeAssistantMetadata(value) {
         nextMetadata.routingDecision = value.routingDecision;
     }
 
+    const agentRun = value.agentRun || value.agent_run;
+    if (agentRun && typeof agentRun === 'object' && !Array.isArray(agentRun)) {
+        nextMetadata.agentRun = normalizeAgentRunRecord(agentRun);
+    }
+
+    const proofPack = value.proofPack || value.proof_pack;
+    if (proofPack && typeof proofPack === 'object' && !Array.isArray(proofPack)) {
+        nextMetadata.proofPack = proofPack;
+    }
+
+    const evidenceAttestations = Array.isArray(value.evidenceAttestations)
+        ? value.evidenceAttestations
+        : (Array.isArray(value.evidence_attestations) ? value.evidence_attestations : []);
+    if (evidenceAttestations.length > 0) {
+        nextMetadata.evidenceAttestations = evidenceAttestations;
+    }
+
+    const agentQuality = value.agentQuality || value.agent_quality;
+    if (agentQuality && typeof agentQuality === 'object' && !Array.isArray(agentQuality)) {
+        nextMetadata.agentQuality = agentQuality;
+    }
+
+    const missionId = String(value.missionId || value.mission_id || '').trim();
+    if (missionId) {
+        nextMetadata.missionId = missionId;
+    }
+
+    const parentArtifactId = String(value.parentArtifactId || value.parent_artifact_id || '').trim();
+    if (parentArtifactId) {
+        nextMetadata.parentArtifactId = parentArtifactId;
+    }
+
+    const revision = value.revision ?? value.artifactRevision ?? value.artifact_revision;
+    if (revision !== undefined && revision !== null && String(revision).trim()) {
+        nextMetadata.revision = revision;
+    }
+
     const artifacts = (Array.isArray(value.artifacts) ? value.artifacts : [])
         .map(normalizeArtifactMetadata)
         .filter(Boolean)
@@ -652,6 +689,105 @@ function normalizeArtifactMetadata(artifact) {
             || artifact.bundle_download
             || '',
         ).trim(),
+        missionId: String(artifact.missionId || artifact.mission_id || '').trim(),
+        parentArtifactId: String(artifact.parentArtifactId || artifact.parent_artifact_id || '').trim(),
+        revision: artifact.revision ?? artifact.artifactRevision ?? artifact.artifact_revision ?? null,
+    };
+}
+
+const AGENT_RUN_TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
+const AGENT_RUN_ERROR_STATES = new Set(['failed', 'cancelled', 'blocked']);
+
+function normalizeAgentRunUiState(runState = '', fallbackState = 'idle') {
+    const normalized = String(runState || '').trim().toLowerCase();
+    if (!normalized) {
+        return ['idle', 'loading', 'streaming', 'success', 'error'].includes(fallbackState)
+            ? fallbackState
+            : 'idle';
+    }
+    if (normalized === 'completed') {
+        return 'success';
+    }
+    if (AGENT_RUN_ERROR_STATES.has(normalized)) {
+        return 'error';
+    }
+    if (['planning', 'executing', 'verifying', 'waiting_for_approval'].includes(normalized)) {
+        return 'streaming';
+    }
+    if (normalized === 'created') {
+        return 'idle';
+    }
+    return AGENT_RUN_TERMINAL_STATES.has(normalized) ? 'success' : fallbackState;
+}
+
+function normalizeAgentRunRecord(value = null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+    const state = String(value.state || value.status || 'created').trim().toLowerCase() || 'created';
+    return {
+        ...value,
+        version: String(value.version || 'AgentRun/v1').trim() || 'AgentRun/v1',
+        id: String(value.id || value.runId || value.run_id || '').trim(),
+        parentRunId: String(value.parentRunId || value.parent_run_id || '').trim(),
+        sessionId: String(value.sessionId || value.session_id || '').trim(),
+        objective: String(value.objective || value.goal || value.task || '').trim(),
+        surface: String(value.surface || '').trim(),
+        mode: String(value.mode || '').trim(),
+        state,
+        uiState: normalizeAgentRunUiState(state),
+        eventCursor: String(value.eventCursor || value.event_cursor || '').trim(),
+        createdAt: String(value.createdAt || value.created_at || '').trim(),
+        updatedAt: String(value.updatedAt || value.updated_at || '').trim(),
+    };
+}
+
+function normalizeAgentRunEvent(value = null, fallbackIndex = 0) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+    return {
+        ...value,
+        eventId: String(value.eventId || value.event_id || value.id || `event-${fallbackIndex}`).trim(),
+        runId: String(value.runId || value.run_id || '').trim(),
+        cursor: String(value.cursor ?? value.eventCursor ?? value.event_cursor ?? '').trim(),
+        type: String(value.type || value.eventType || value.event_type || 'progress').trim(),
+        source: String(value.source || '').trim(),
+        status: String(value.status || value.state || '').trim(),
+        timestamp: String(value.timestamp || value.createdAt || value.created_at || '').trim(),
+        payload: value.payload && typeof value.payload === 'object' ? value.payload : {},
+    };
+}
+
+function normalizeAgentRunPayload(payload = null, fallbackState = 'idle') {
+    const source = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+    const run = normalizeAgentRunRecord(
+        source.run
+        || source.agentRun
+        || source.agent_run
+        || source.data?.run
+        || null,
+    );
+    const forkedRun = normalizeAgentRunRecord(source.forkedRun || source.forked_run || null);
+    const events = (Array.isArray(source.events) ? source.events : [])
+        .map((event, index) => normalizeAgentRunEvent(event, index))
+        .filter(Boolean);
+    const errorSource = source.error && typeof source.error === 'object'
+        ? source.error
+        : (source.error ? { message: String(source.error) } : null);
+    const uiState = errorSource
+        ? 'error'
+        : normalizeAgentRunUiState(run?.state, fallbackState);
+    return {
+        uiState,
+        state: uiState,
+        run,
+        forkedRun,
+        events,
+        eventCursor: String(source.eventCursor || source.event_cursor || run?.eventCursor || '').trim(),
+        duplicate: source.duplicate === true,
+        action: String(source.action || '').trim(),
+        error: errorSource,
     };
 }
 
@@ -846,6 +982,7 @@ function extractAssistantMetadata(value) {
         value.response?.choices?.[0]?.message,
         value.response?.metadata,
         value.metadata,
+        value,
     ];
 
     for (const source of sources) {
@@ -1145,6 +1282,23 @@ class OpenAIAPIClient extends EventTarget {
                 : {};
             const phase = extractDisplayText(progress.phase || parsed.phase || 'thinking') || 'thinking';
             const detail = extractDisplayText(progress.detail || parsed.detail || '');
+            const agentRun = normalizeAgentRunRecord(
+                parsed.agentRun
+                || parsed.agent_run
+                || progress.agentRun
+                || progress.agent_run
+                || null,
+            );
+            const proofPack = parsed.proofPack
+                || parsed.proof_pack
+                || progress.proofPack
+                || progress.proof_pack
+                || null;
+            const evidenceAttestations = parsed.evidenceAttestations
+                || parsed.evidence_attestations
+                || progress.evidenceAttestations
+                || progress.evidence_attestations
+                || [];
             events.push(this.buildStatusEvent(phase, detail));
             events.push({
                 type: 'progress',
@@ -1153,6 +1307,11 @@ class OpenAIAPIClient extends EventTarget {
                     phase,
                     detail,
                 },
+                ...(agentRun ? { agentRun } : {}),
+                ...(proofPack && typeof proofPack === 'object' ? { proofPack } : {}),
+                ...(Array.isArray(evidenceAttestations) && evidenceAttestations.length > 0
+                    ? { evidenceAttestations }
+                    : {}),
             });
             return events;
         }
@@ -2651,6 +2810,114 @@ class OpenAIAPIClient extends EventTarget {
             result: data.data,
             sessionId: data.sessionId || this.currentSessionId || null,
         };
+    }
+
+    normalizeAgentRunPayload(payload = null, fallbackState = 'idle') {
+        return normalizeAgentRunPayload(payload, fallbackState);
+    }
+
+    async requestAgentRun(pathname = '', options = {}) {
+        const normalizedPath = `/${String(pathname || '').replace(/^\/+/, '')}`;
+        const method = String(options.method || 'GET').trim().toUpperCase();
+        const headers = buildGatewayHeaders({
+            'Accept': 'application/json',
+            ...(method === 'GET' ? {} : { 'Content-Type': 'application/json' }),
+        });
+        const idempotencyKey = String(options.idempotencyKey || options.body?.idempotencyKey || '').trim();
+        if (idempotencyKey) {
+            headers['x-idempotency-key'] = idempotencyKey;
+        }
+
+        try {
+            const response = await fetch(`${BASE_URL_WITHOUT_API}${normalizedPath}`, {
+                method,
+                headers,
+                credentials: 'same-origin',
+                cache: 'no-store',
+                ...(options.signal ? { signal: options.signal } : {}),
+                ...(method === 'GET' ? {} : { body: JSON.stringify(options.body || {}) }),
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                return normalizeAgentRunPayload({
+                    error: {
+                        status: response.status,
+                        message: payload?.error?.message || payload?.message || `Agent run request failed (${response.status})`,
+                    },
+                }, 'error');
+            }
+            return normalizeAgentRunPayload(payload, options.fallbackState || 'streaming');
+        } catch (error) {
+            return normalizeAgentRunPayload({
+                error: {
+                    status: 0,
+                    message: error?.message || 'Agent run request failed',
+                },
+            }, 'error');
+        }
+    }
+
+    async createAgentRun(payload = {}, options = {}) {
+        return this.requestAgentRun('/api/agent-runs', {
+            method: 'POST',
+            body: payload,
+            signal: options.signal,
+            idempotencyKey: options.idempotencyKey || payload.idempotencyKey,
+            fallbackState: 'loading',
+        });
+    }
+
+    async getAgentRun(runId = '', options = {}) {
+        const normalizedRunId = String(runId || '').trim();
+        if (!normalizedRunId) {
+            return normalizeAgentRunPayload({ error: { message: 'Agent run ID is required' } }, 'error');
+        }
+        return this.requestAgentRun(`/api/agent-runs/${encodeURIComponent(normalizedRunId)}`, {
+            method: 'GET',
+            signal: options.signal,
+            fallbackState: 'streaming',
+        });
+    }
+
+    async getAgentRunEvents(runId = '', options = {}) {
+        const normalizedRunId = String(runId || '').trim();
+        if (!normalizedRunId) {
+            return normalizeAgentRunPayload({ error: { message: 'Agent run ID is required' } }, 'error');
+        }
+        const params = new URLSearchParams();
+        const after = String(options.after || '').trim();
+        if (after) {
+            params.set('after', after);
+        }
+        const query = params.toString();
+        return this.requestAgentRun(`/api/agent-runs/${encodeURIComponent(normalizedRunId)}/events${query ? `?${query}` : ''}`, {
+            method: 'GET',
+            signal: options.signal,
+            fallbackState: 'streaming',
+        });
+    }
+
+    async postAgentRunAction(runId = '', action = '', payload = {}, options = {}) {
+        const normalizedRunId = String(runId || '').trim();
+        const requestedAction = String(action || '').trim().toLowerCase();
+        const normalizedAction = requestedAction === 'replay' ? 'retry-step' : requestedAction;
+        const allowedActions = new Set(['pause', 'resume', 'cancel', 'retry-step', 'fork']);
+        if (!normalizedRunId) {
+            return normalizeAgentRunPayload({ error: { message: 'Agent run ID is required' } }, 'error');
+        }
+        if (!allowedActions.has(normalizedAction)) {
+            return normalizeAgentRunPayload({ error: { message: `Unsupported agent run action: ${requestedAction || 'unknown'}` } }, 'error');
+        }
+        return this.requestAgentRun(`/api/agent-runs/${encodeURIComponent(normalizedRunId)}/actions`, {
+            method: 'POST',
+            body: {
+                ...payload,
+                action: normalizedAction,
+            },
+            signal: options.signal,
+            idempotencyKey: options.idempotencyKey || payload.idempotencyKey,
+            fallbackState: 'streaming',
+        });
     }
 
     async createAsyncRun(payload = {}) {

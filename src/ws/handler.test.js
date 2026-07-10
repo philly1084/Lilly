@@ -247,6 +247,15 @@ describe('websocket chat handler', () => {
         });
 
         expect(donePayload.type).toBe('done');
+        expect(donePayload.runId).toMatch(/^agent-run-/);
+        expect(donePayload.agentRun).toMatchObject({
+            version: 'AgentRun/v1',
+            surface: 'websocket-chat',
+        });
+        expect(donePayload.agentRunEvent).toMatchObject({
+            version: 'AgentRunEvent/v1',
+            type: 'ws.done',
+        });
         expect(generateOutputArtifactFromPrompt).not.toHaveBeenCalled();
         expect(executeConversationRuntime).toHaveBeenCalled();
     });

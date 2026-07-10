@@ -1,4 +1,5 @@
 const { WebSocket } = require('ws');
+const { AsyncLocalStorage } = require('async_hooks');
 const { sessionStore } = require('../session-store');
 const { memoryService } = require('../memory/memory-service');
 const { config } = require('../config');
@@ -88,6 +89,11 @@ const {
     normalizeFrontendMetadata,
 } = require('../frontend-bundles');
 const { parseLenientJson } = require('../utils/lenient-json');
+const {
+    advanceSurfaceAgentRun,
+    attachAgentRunMetadata,
+    beginSurfaceAgentRun,
+} = require('../agent-runs/runtime-bridge');
 
 // Admin dashboard event emitter
 const EventEmitter = require('events');
@@ -309,13 +315,24 @@ function normalizeClientNow(value = '') {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-function safeWsSend(ws, payload) {
+const wsAgentRunContext = new AsyncLocalStorage();
+
+function getRequestAgentRunHandle() {
+    return wsAgentRunContext.getStore()?.handle || null;
+}
+
+function safeWsSend(ws, payload, explicitHandle = undefined) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         return false;
     }
 
     try {
-        ws.send(typeof payload === 'string' ? payload : JSON.stringify(payload));
+        const outbound = typeof payload === 'string'
+            ? payload
+            : attachAgentRunMetadata(payload, explicitHandle === undefined ? getRequestAgentRunHandle() : explicitHandle, {
+                eventType: `ws.${String(payload?.type || 'event').trim() || 'event'}`,
+            });
+        ws.send(typeof outbound === 'string' ? outbound : JSON.stringify(outbound));
         return true;
     } catch (error) {
         console.warn(`[WS] Failed to send message: ${error.message}`);
@@ -351,6 +368,7 @@ function setupWebSocket(wss, app = null) {
         console.log('[WS] Client connected');
 
         ws.on('message', async (raw) => {
+            let activeShadow = null;
             try {
                 const msg = JSON.parse(raw.toString());
                 const { type, payload } = msg;
@@ -405,25 +423,77 @@ function setupWebSocket(wss, app = null) {
                     safeWsSend(ws, { type: 'session_created', sessionId });
                 }
 
-                switch (type) {
-                    case 'chat':
-                        registerSessionConnection(ws, sessionId);
-                        await handleChat(ws, session, payload, app?.locals?.toolManager || null, ownerId);
-                        break;
-                    case 'canvas':
-                        registerSessionConnection(ws, sessionId);
-                        await handleCanvas(ws, session, payload, ownerId);
-                        break;
-                    case 'notation':
-                        registerSessionConnection(ws, sessionId);
-                        await handleNotation(ws, session, payload, ownerId);
-                        break;
-                    default:
-                        safeWsSend(ws, { type: 'error', message: `Unknown type: ${type}` });
+                if (['chat', 'canvas', 'notation'].includes(type)) {
+                    activeShadow = await beginSurfaceAgentRun({
+                        app,
+                        surface: `websocket-${type}`,
+                        mode: type,
+                        sessionId,
+                        ownerId,
+                        requestId: payload?.requestId
+                            || payload?.request_id
+                            || payload?.messageId
+                            || payload?.message_id
+                            || msg.requestId
+                            || msg.request_id
+                            || '',
+                        existingRunId: payload?.agentRunId
+                            || payload?.agent_run_id
+                            || payload?.metadata?.agentRunId
+                            || payload?.metadata?.agent_run_id
+                            || '',
+                        startedAt: new Date().toISOString(),
+                        operation: type,
+                        objective: payload?.message
+                            || payload?.notation
+                            || payload?.prompt
+                            || `${type} websocket request`,
+                        state: 'executing',
+                        metadata: {
+                            route: '/ws',
+                            transport: 'websocket',
+                        },
+                    });
                 }
+
+                await wsAgentRunContext.run({ handle: activeShadow }, async () => {
+                    switch (type) {
+                        case 'chat':
+                            registerSessionConnection(ws, sessionId);
+                            await handleChat(ws, session, payload, app?.locals?.toolManager || null, ownerId);
+                            break;
+                        case 'canvas':
+                            registerSessionConnection(ws, sessionId);
+                            await handleCanvas(ws, session, payload, ownerId);
+                            break;
+                        case 'notation':
+                            registerSessionConnection(ws, sessionId);
+                            await handleNotation(ws, session, payload, ownerId);
+                            break;
+                        default:
+                            safeWsSend(ws, { type: 'error', message: `Unknown type: ${type}` });
+                    }
+                    if (activeShadow) {
+                        await advanceSurfaceAgentRun(activeShadow, 'completed', {
+                            reason: `WebSocket ${type} request completed.`,
+                            details: { sessionId, type },
+                        });
+                        safeWsSend(ws, {
+                            type: 'agent_run',
+                            sessionId,
+                            status: activeShadow.run?.state || 'completed',
+                        });
+                    }
+                });
             } catch (err) {
                 console.error('[WS] Error:', err.message);
-                safeWsSend(ws, { type: 'error', message: err.message });
+                if (activeShadow) {
+                    await advanceSurfaceAgentRun(activeShadow, 'failed', {
+                        reason: err.message,
+                        details: { errorCode: err.code || null },
+                    });
+                }
+                safeWsSend(ws, { type: 'error', message: err.message }, activeShadow);
             }
         });
 
@@ -669,6 +739,8 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
 
                 const result = await runtimeToolManager.executeTool('podcast', podcastParams, {
                     sessionId: session.id,
+                    runId: getRequestAgentRunHandle()?.run?.id || null,
+                    agentRunId: getRequestAgentRunHandle()?.run?.id || null,
                     route: '/ws',
                     transport: 'ws',
                     memoryService,
@@ -820,6 +892,8 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                 toolManager,
                 toolContext: {
                     sessionId: session.id,
+                    runId: getRequestAgentRunHandle()?.run?.id || null,
+                    agentRunId: getRequestAgentRunHandle()?.run?.id || null,
                     route: '/ws',
                     transport: 'ws',
                     memoryService,
@@ -832,6 +906,11 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
                     now: requestNow,
                     artifactIds: preparedImages.artifactIds,
                     workloadService: ws.app?.locals?.agentWorkloadService || null,
+                    missionId: payload?.metadata?.missionId || null,
+                    parentArtifactId: payload?.metadata?.parentArtifactId
+                        || payload?.metadata?.artifactLineage?.parentArtifactId
+                        || null,
+                    metadata: payload?.metadata || {},
                 },
                 executionProfile: effectiveExecutionProfile,
             });
@@ -947,6 +1026,8 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
             toolManager: runtimeToolManager,
             toolContext: {
                 sessionId: session.id,
+                runId: getRequestAgentRunHandle()?.run?.id || null,
+                agentRunId: getRequestAgentRunHandle()?.run?.id || null,
                 route: '/ws',
                 transport: 'ws',
                 memoryService,
@@ -1203,6 +1284,8 @@ async function handleCanvas(ws, session, payload = {}, ownerId = null) {
             ownerId,
             toolContext: {
                 sessionId: session.id,
+                runId: getRequestAgentRunHandle()?.run?.id || null,
+                agentRunId: getRequestAgentRunHandle()?.run?.id || null,
                 route: '/ws',
                 transport: 'ws',
                 memoryService,
@@ -1382,6 +1465,8 @@ async function handleNotation(ws, session, payload = {}, ownerId = null) {
             ownerId,
             toolContext: {
                 sessionId: session.id,
+                runId: getRequestAgentRunHandle()?.run?.id || null,
+                agentRunId: getRequestAgentRunHandle()?.run?.id || null,
                 route: '/ws',
                 transport: 'ws',
                 memoryService,

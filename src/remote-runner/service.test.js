@@ -3,6 +3,8 @@
 const { EventEmitter } = require('events');
 const { WebSocket } = require('ws');
 const { RemoteRunnerService } = require('./service');
+const { AsyncLabStore } = require('../async-lab/store');
+const { AgentRunService } = require('../agent-runs/service');
 
 class FakeSocket extends EventEmitter {
   constructor() {
@@ -120,6 +122,51 @@ describe('RemoteRunnerService', () => {
       ownerId: 'phil',
       sessionId: 'session-1',
     }));
+  });
+
+  test('returns canonical AgentRun metadata while preserving the remote job id', async () => {
+    const agentRunService = new AgentRunService({
+      store: new AsyncLabStore({ persistToPostgres: false }),
+    });
+    const service = new RemoteRunnerService({
+      agentRunService,
+      config: {
+        enabled: true,
+        token: 'secret',
+        staleAfterMs: 45000,
+        jobTimeoutMs: 30000,
+      },
+    });
+    const socket = new FakeSocket();
+    service.registerRunner({
+      runnerId: 'runner-proof',
+      capabilities: ['inspect'],
+    }, socket);
+
+    const pending = service.dispatchCommand('runner-proof', {
+      id: 'remote-job-proof',
+      command: 'hostname',
+    }, {
+      ownerId: 'phil',
+      sessionId: 'session-proof',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    service.handleJobResult({
+      jobId: 'remote-job-proof',
+      stdout: 'proof-host\n',
+      exitCode: 0,
+    });
+
+    const result = await pending;
+    expect(result.jobId).toBe('remote-job-proof');
+    expect(result.runId).toMatch(/^agent-run-/);
+    expect(result.agentRunEvent).toMatchObject({
+      version: 'AgentRunEvent/v1',
+      state: 'completed',
+      type: 'remote_runner.completed',
+    });
+    const stored = await agentRunService.getRun(result.runId, 'phil');
+    expect(stored.state).toBe('completed');
   });
 
   test('selects only runners that support the requested capability profile', async () => {

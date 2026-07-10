@@ -3,6 +3,7 @@ const path = require('path');
 const EventEmitter = require('events');
 const { createResponse } = require('./openai-client');
 const { config } = require('./config');
+const { buildModelRoutingShadow } = require('./model-routing-shadow');
 const { extractResponseText } = require('./artifacts/artifact-service');
 const settingsController = require('./routes/admin/settings.controller');
 const { inferExecutionProfile: inferRuntimeExecutionProfile } = require('./runtime-execution');
@@ -2552,19 +2553,49 @@ function resolveRoleExecutionOptions({
     toolEvents = [],
 } = {}) {
     const orchestrationConfig = getEffectiveOrchestrationConfig();
+    const classification = toolPolicy?.classification || {};
+    const roleModelKey = role === 'planner'
+        ? 'plannerModel'
+        : (role === 'repair' ? 'repairModel' : 'synthesisModel');
+    const shadowCurrentModel = String(
+        config.runtime?.[roleModelKey]
+        || orchestrationConfig?.[roleModelKey]
+        || orchestrationConfig?.defaultModel
+        || model
+        || '',
+    ).trim();
+    const shadowCandidateModels = [
+        shadowCurrentModel,
+        model,
+        orchestrationConfig?.defaultModel,
+        orchestrationConfig?.plannerModel,
+        orchestrationConfig?.synthesisModel,
+        orchestrationConfig?.repairModel,
+        ...(Array.isArray(orchestrationConfig?.fallbackModels) ? orchestrationConfig.fallbackModels : []),
+    ].map((entry) => String(entry || '').trim()).filter(Boolean);
+    const routingShadow = buildModelRoutingShadow({
+        models: shadowCandidateModels,
+        currentModel: shadowCurrentModel,
+        role,
+        request: {
+            needsTools: Array.isArray(toolPolicy?.candidateToolIds) && toolPolicy.candidateToolIds.length > 0
+                || (Array.isArray(toolEvents) && toolEvents.length > 0),
+            needsVision: classification?.needsVision === true || classification?.modality === 'vision',
+            needsReasoning: role === 'planner' || role === 'repair' || classification?.ambiguous === true,
+            needsStructuredOutputs: role === 'planner',
+            apiMode: 'chat',
+        },
+    });
     const useOrchestrationConfig = isJudgmentV2Enabled() && orchestrationConfig?.enabled !== false;
     if (!useOrchestrationConfig) {
         return {
             model,
             reasoningEffort,
+            routingShadow,
         };
     }
 
-    const classification = toolPolicy?.classification || {};
     const explicitReasoning = String(reasoningEffort || '').trim();
-    const roleModelKey = role === 'planner'
-        ? 'plannerModel'
-        : (role === 'repair' ? 'repairModel' : 'synthesisModel');
     const roleReasoningKey = role === 'planner'
         ? 'plannerReasoningEffort'
         : (role === 'repair' ? 'repairReasoningEffort' : 'synthesisReasoningEffort');
@@ -2593,6 +2624,7 @@ function resolveRoleExecutionOptions({
         fallbackModels: Array.isArray(orchestrationConfig?.fallbackModels)
             ? orchestrationConfig.fallbackModels
             : [],
+        routingShadow,
     };
 }
 
@@ -9252,9 +9284,15 @@ function normalizeToolResult(result, fallbackToolId, timing = {}) {
         duration: Number(result?.duration || durationFromTimestamps || 0),
         data: sanitizeValue(result?.data),
         error: result?.error || null,
+        errorCode: result?.errorCode || null,
         diagnostics: sanitizeValue(result?.diagnostics),
         readiness: sanitizeValue(result?.readiness),
         verification: sanitizeValue(result?.verification),
+        invocation: sanitizeValue(result?.invocation),
+        approvalDecision: sanitizeValue(result?.approvalDecision),
+        evidenceAttestations: sanitizeValue(
+            result?.evidenceAttestations || result?.data?.evidenceAttestations,
+        ),
         failureKind: result?.failureKind || null,
         timestamp: endTime,
         startedAt: fallbackStartTime,
@@ -13202,6 +13240,10 @@ class ConversationOrchestrator extends EventEmitter {
             toolPolicy,
             toolEvents,
         });
+        toolPolicy.modelRoutingShadow = {
+            ...(toolPolicy.modelRoutingShadow || {}),
+            planner: roleOptions.routingShadow,
+        };
         const remoteToolId = getPreferredRemoteToolId(toolPolicy);
         const toolCatalog = toolPolicy.candidateToolIds
             .map((toolId) => {
@@ -13878,6 +13920,10 @@ class ConversationOrchestrator extends EventEmitter {
             toolPolicy,
             toolEvents,
         });
+        toolPolicy.modelRoutingShadow = {
+            ...(toolPolicy.modelRoutingShadow || {}),
+            repair: roleOptions.routingShadow,
+        };
 
         const repairPrompt = [
             'The previous draft was invalid after verified tool execution.',
@@ -13992,6 +14038,10 @@ class ConversationOrchestrator extends EventEmitter {
             toolPolicy,
             toolEvents,
         });
+        toolPolicy.modelRoutingShadow = {
+            ...(toolPolicy.modelRoutingShadow || {}),
+            [toolEvents.length === 0 ? 'direct' : 'synthesis']: roleOptions.routingShadow,
+        };
         const notesSurfaceTask = isNotesSurfaceTask({ taskType, executionProfile });
 
         if (toolEvents.length === 0) {
@@ -14707,6 +14757,7 @@ class ConversationOrchestrator extends EventEmitter {
             skillsUsed: selectedSkillIds,
             toolReadiness: toolReadinessSummary,
             decisionTrace,
+            modelRoutingShadow: toolPolicy?.modelRoutingShadow || null,
             verification: verificationSummary,
             ...(harnessSummary ? { harness: harnessSummary } : {}),
             naturalContext: nextNaturalContext,
@@ -14767,6 +14818,7 @@ class ConversationOrchestrator extends EventEmitter {
             skillsUsed: selectedSkillIds,
             toolReadiness: toolReadinessSummary,
             decisionTrace,
+            modelRoutingShadow: toolPolicy?.modelRoutingShadow || null,
             verification: verificationSummary,
             replanReason: extractLatestReplanReason(executionTrace),
             recallSummary: summarizeRecallTrace(memoryTrace),

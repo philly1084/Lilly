@@ -7,6 +7,9 @@ const {
   assessAgentQuality,
   buildAgentQualityContractText,
 } = require('../agent-quality-contract');
+const { normalizeEvidenceAttestation, redactSecrets } = require('../agent-evidence');
+
+const REMOTE_CLI_RESULT_VERSION = 'RemoteCliResult/v2';
 
 const DEFAULT_REMOTE_CODE_MODEL = 'gpt-5.4';
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 180000;
@@ -554,6 +557,52 @@ function assessRemoteCliQuality(task = '', metadata = {}) {
   return assessAgentQuality({
     task,
     metadata,
+  });
+}
+
+function buildRemoteCliStructuredResult({ task = '', metadata = {}, agentQuality = null } = {}) {
+  const evidenceAttestations = (Array.isArray(metadata.evidenceAttestations)
+    ? metadata.evidenceAttestations
+    : [])
+    .map(normalizeEvidenceAttestation)
+    .filter(Boolean);
+  const summary = normalizeText(metadata.whatChanged)
+    || (metadata.completionStatus === 'blocked'
+      ? normalizeText(metadata.blocker) || 'Remote work is blocked.'
+      : 'Remote CLI run completed without a change summary.');
+
+  return redactSecrets({
+    version: REMOTE_CLI_RESULT_VERSION,
+    status: normalizeText(metadata.completionStatus) || 'unknown',
+    humanSummary: summary,
+    objective: normalizeText(task) || null,
+    continuity: {
+      sessionId: normalizeText(metadata.sessionId) || null,
+      jobId: normalizeText(metadata.jobId) || null,
+      workspace: normalizeText(metadata.workspace) || null,
+    },
+    sourceControl: {
+      repository: normalizeText(metadata.gitRepo) || null,
+      branch: normalizeText(metadata.gitBranch) || null,
+      baseCommit: normalizeText(metadata.gitBaseCommit) || null,
+      commit: normalizeText(metadata.gitCommit) || null,
+      changedFiles: Array.isArray(metadata.changedFiles) ? metadata.changedFiles : [],
+    },
+    verification: {
+      commands: Array.isArray(metadata.verifyCommands) ? metadata.verifyCommands : [],
+      results: Array.isArray(metadata.verifyResults) ? metadata.verifyResults : [],
+      uiCheckReport: normalizeText(metadata.uiCheckReport) || null,
+      screenshots: Array.isArray(metadata.uiScreenshots) ? metadata.uiScreenshots : [],
+      evidenceAttestations,
+      source: evidenceAttestations.length > 0 ? 'structured-attestations' : 'legacy-marker-adapter',
+    },
+    deployment: {
+      resource: normalizeText(metadata.deployment) || null,
+      publicHost: normalizeText(metadata.publicHost) || null,
+      publicUrl: normalizeText(metadata.publicUrl) || null,
+    },
+    blocker: normalizeText(metadata.blocker) || null,
+    agentQuality,
   });
 }
 
@@ -2025,8 +2074,11 @@ class RemoteCliAgentsSdkRunner {
       });
       const runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
       const agentQuality = assessRemoteCliQuality(task, runMetadata);
+      const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
       return {
         finalOutput,
+        humanSummary: structuredResult.humanSummary,
+        structuredResult,
         transport: 'codex-agent',
         codexAgentRunId: runId,
         codexThreadId: normalizeText(terminalEvent.thread_id || terminalEvent.threadId || startBody?.threadId) || null,
@@ -2551,8 +2603,11 @@ class RemoteCliAgentsSdkRunner {
       const fallbackRemoteJobId = staleRemoteJobIds.includes(jobId) ? null : jobId;
 
       const agentQuality = assessRemoteCliQuality(task, runMetadata);
+      const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
       return {
         finalOutput,
+        humanSummary: structuredResult.humanSummary,
+        structuredResult,
         mcpSessionId: remoteCli.sessionId || input.mcpSessionId || null,
         targetId,
         cwd: runMetadata.workspace || cwd,
@@ -2611,8 +2666,10 @@ class RemoteCliAgentsSdkRunner {
 const remoteCliAgentsSdkRunner = new RemoteCliAgentsSdkRunner();
 
 module.exports = {
+  REMOTE_CLI_RESULT_VERSION,
   RemoteCliAgentsSdkRunner,
   buildRemoteCliInstructions,
+  buildRemoteCliStructuredResult,
   buildRemoteCliPrompt,
   extractRemoteCliRunMetadata,
   remoteCliAgentsSdkRunner,

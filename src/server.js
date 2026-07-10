@@ -48,6 +48,7 @@ const managedAppsRouter = require('./routes/managed-apps');
 const runnersRouter = require('./routes/runners');
 const asyncLabRouter = require('./routes/async-lab');
 const asyncLabWebhooksRouter = require('./routes/async-lab-webhooks');
+const agentRunsRouter = require('./routes/agent-runs');
 const giteaIntegrationsRouter = require('./routes/integrations-gitea');
 const gitlabIntegrationsRouter = require('./routes/integrations-gitlab');
 const providerSessionsRouter = require('./routes/provider-sessions');
@@ -69,6 +70,8 @@ const { podcastService } = require('./podcast/podcast-service');
 const { podcastVideoService } = require('./video/podcast-video-service');
 const { remoteRunnerService } = require('./remote-runner/service');
 const { asyncLabService } = require('./async-lab/service');
+const { AgentRunService } = require('./agent-runs');
+const { startHttpAgentRunShadow } = require('./agent-runs/runtime-bridge');
 const {
     buildSystemHealthReport,
     createStartupState,
@@ -83,10 +86,12 @@ const { extractResponseText } = require('./artifacts/artifact-service');
 
 validate();
 
+const agentRunService = new AgentRunService({ store: asyncLabService.store });
 const app = express();
 app.set('trust proxy', 1);
 app.locals.dashboardController = new DashboardController(null);
 app.locals.asyncLabService = asyncLabService;
+app.locals.agentRunService = agentRunService;
 setDashboardController(app.locals.dashboardController);
 
 let startupState = {
@@ -375,6 +380,8 @@ app.use('/canvas', express.static(path.join(frontendPath, 'canvas-excalidraw'), 
 app.use('/podcast-video', express.static(path.join(frontendPath, 'podcast-video'), buildFrontendStaticOptions()));
 app.use('/admin', express.static(path.join(frontendPath, 'agent-dashboard'), buildFrontendStaticOptions()));
 app.use('/async-lab', express.static(path.join(frontendPath, 'async-lab'), buildFrontendStaticOptions()));
+app.use('/launchpad', express.static(path.join(frontendPath, 'launchpad'), buildFrontendStaticOptions()));
+app.use('/', express.static(path.join(frontendPath, 'launchpad'), buildFrontendStaticOptions()));
 
 app.get('/', (_req, res) => {
     res.send(`
@@ -455,7 +462,38 @@ app.get('/', (_req, res) => {
 
 app.use('/api/chat', chatRouter);
 app.use('/api/async-lab', asyncLabRouter);
+app.use('/api/agent-runs', agentRunsRouter);
+app.use('/api/canvas', async (req, res, next) => {
+    if (req.method !== 'POST') return next();
+    try {
+        await startHttpAgentRunShadow(req, res, {
+            surface: 'canvas-http',
+            mode: 'canvas',
+            state: 'executing',
+            objective: req.body?.message || req.body?.prompt || 'Canvas request',
+            eventType: 'canvas.response',
+        });
+        return next();
+    } catch (error) {
+        return next(error);
+    }
+});
 app.use('/api/canvas', canvasRouter);
+app.use('/api/notation', async (req, res, next) => {
+    if (req.method !== 'POST') return next();
+    try {
+        await startHttpAgentRunShadow(req, res, {
+            surface: 'notation-http',
+            mode: 'notation',
+            state: 'executing',
+            objective: req.body?.notation || req.body?.message || 'Notation request',
+            eventType: 'notation.response',
+        });
+        return next();
+    } catch (error) {
+        return next(error);
+    }
+});
 app.use('/api/notation', notationRouter);
 app.use('/api/notes', notesRouter);
 app.use('/api/sessions', sessionsRouter);
@@ -643,6 +681,7 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
         app.locals.agentWorkloadService = new AgentWorkloadService({
             sessionStore,
             conversationRunService: app.locals.conversationRunService,
+            agentRunService,
         });
         app.locals.managedAppService = new ManagedAppService();
         app.locals.agentWorkloadRunner = new AgentWorkloadRunner({
@@ -654,6 +693,7 @@ async function initializeRuntimeServices(targetApp = app, state = startupState) 
             workloadService: app.locals.agentWorkloadService,
             sessionStore,
             logsController,
+            agentRunService,
         });
         app.locals.agentCompanyService.start();
         app.locals.asyncLabService = asyncLabService;

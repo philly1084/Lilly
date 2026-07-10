@@ -3,6 +3,11 @@
 const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
+const {
+    advanceSurfaceAgentRun,
+    attachAgentRunMetadata,
+    beginSurfaceAgentRun,
+} = require('./agent-runs/runtime-bridge');
 const { getStateDirectory } = require('./runtime-state-paths');
 const {
     normalizeDailyAlignmentConfig,
@@ -279,6 +284,7 @@ class AgentCompanyService {
         workloadService,
         sessionStore,
         logsController = null,
+        agentRunService = null,
         collectAlignmentSuggestions = null,
         applySelfReflectionUpdate = null,
         statePath = path.join(getStateDirectory(), DEFAULT_STATE_FILENAME),
@@ -289,6 +295,7 @@ class AgentCompanyService {
         this.workloadService = workloadService;
         this.sessionStore = sessionStore;
         this.logsController = logsController;
+        this.agentRunService = agentRunService;
         this.collectAlignmentSuggestions = collectAlignmentSuggestions;
         this.applySelfReflectionUpdate = applySelfReflectionUpdate;
         this.statePath = statePath;
@@ -415,7 +422,44 @@ class AgentCompanyService {
                     skipped: true,
                 };
             }
-            return this.heartbeat({ config, state, reason, force });
+            const startedAt = this.now().toISOString();
+            const agentRunShadow = await beginSurfaceAgentRun({
+                agentRunService: this.agentRunService,
+                conversationRunService: this.workloadService?.conversationRunService,
+                allowSharedFallback: Boolean(
+                    this.agentRunService
+                    || this.workloadService?.conversationRunService?.app,
+                ),
+                surface: 'agent-company',
+                mode: 'company-heartbeat',
+                sourceId: `${config.sessionId || DEFAULT_SESSION_ID}:${reason}:${startedAt}`,
+                sessionId: config.sessionId || DEFAULT_SESSION_ID,
+                ownerId: config.ownerId || DEFAULT_OWNER_ID,
+                objective: config.companyGoal || 'Agent Company heartbeat',
+                state: 'executing',
+                metadata: { reason, force },
+            });
+            try {
+                const result = await this.heartbeat({ config, state, reason, force });
+                await advanceSurfaceAgentRun(agentRunShadow, 'completed', {
+                    reason: 'Agent Company heartbeat completed.',
+                    details: {
+                        heartbeatStatus: result?.state?.heartbeat?.status || null,
+                        createdWorkloads: result?.createdWorkloads?.length
+                            || result?.state?.heartbeat?.createdWorkloads
+                            || 0,
+                    },
+                });
+                return attachAgentRunMetadata(result, agentRunShadow, {
+                    eventType: 'agent_company.heartbeat_completed',
+                });
+            } catch (error) {
+                await advanceSurfaceAgentRun(agentRunShadow, 'failed', {
+                    reason: error.message,
+                    details: { errorCode: error.code || null },
+                });
+                throw error;
+            }
         } finally {
             this.isTicking = false;
         }

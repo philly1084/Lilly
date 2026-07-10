@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Start a focused Lilly mission for building, research, creative work, or agent-company operations.">
+    <meta name="theme-color" content="#08111f">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2308111f'/%3E%3Cpath d='M20 14h9v27h16v9H20z' fill='%2338bdf8'/%3E%3C/svg%3E">
+    <title>Lilly Mission Launcher</title>
+    <link rel="stylesheet" href="styles.css?v=20260709a">
+    <script defer src="launchpad.js?v=20260709a"></script>
+</head>
+<body>
+    <a class="skip-link" href="#mission-outcomes">Skip to mission outcomes</a>
+    <header class="site-header" aria-label="Lilly mission launcher">
+        <a class="brand" href="/launchpad/" aria-label="Lilly mission launcher home">
+            <span class="brand-mark" aria-hidden="true">L</span>
+            <span>
+                <strong>Lilly</strong>
+                <span>Mission launcher</span>
+            </span>
+        </a>
+        <nav class="header-actions" aria-label="Lilly destinations">
+            <a href="/web-chat/">Open chat</a>
+            <a href="/admin/?view=agentCompany">Agent Company</a>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero" aria-labelledby="launchpad-title">
+            <div class="hero-copy">
+                <p class="eyebrow">Outcome first</p>
+                <h1 id="launchpad-title">What should Lilly accomplish?</h1>
+                <p class="hero-summary">Choose a focused mission. Lilly will keep the objective, live work, decisions, outputs, and proof connected in one place.</p>
+            </div>
+            <aside class="trust-note" aria-label="How mission proof works">
+                <span class="trust-note__label">Proof, not theater</span>
+                <p>Mission receipts only show artifacts, checks, screenshots, URLs, approvals, time, or cost when the run actually supplies them.</p>
+            </aside>
+        </section>
+
+        <section id="mission-outcomes" class="outcome-grid" aria-label="Mission outcomes">
+            <a class="outcome-card outcome-card--build" data-mission-link="build-launch" href="/web-chat/">
+                <span class="outcome-index" aria-hidden="true">01</span>
+                <span class="outcome-copy">
+                    <span class="outcome-kicker">Software</span>
+                    <strong>Build and launch</strong>
+                    <span>Create or update an experience, verify the real route, and return deployment evidence.</span>
+                </span>
+                <span class="outcome-cta">Start mission <span aria-hidden="true">&rarr;</span></span>
+            </a>
+
+            <a class="outcome-card outcome-card--research" data-mission-link="research-publish" href="/web-chat/">
+                <span class="outcome-index" aria-hidden="true">02</span>
+                <span class="outcome-copy">
+                    <span class="outcome-kicker">Knowledge</span>
+                    <strong>Research and publish</strong>
+                    <span>Gather current sources and turn them into a cited, export-ready brief.</span>
+                </span>
+                <span class="outcome-cta">Start mission <span aria-hidden="true">&rarr;</span></span>
+            </a>
+
+            <a class="outcome-card outcome-card--create" data-mission-link="create-refine" href="/web-chat/">
+                <span class="outcome-index" aria-hidden="true">03</span>
+                <span class="outcome-copy">
+                    <span class="outcome-kicker">Artifact</span>
+                    <strong>Create and refine</strong>
+                    <span>Draft a document or visual, then keep precise revisions tied to its lineage.</span>
+                </span>
+                <span class="outcome-cta">Start mission <span aria-hidden="true">&rarr;</span></span>
+            </a>
+
+            <a class="outcome-card outcome-card--company" href="/admin/?view=agentCompany">
+                <span class="outcome-index" aria-hidden="true">04</span>
+                <span class="outcome-copy">
+                    <span class="outcome-kicker">Operations</span>
+                    <strong>Run an agent company</strong>
+                    <span>Set CEO direction, inspect handoffs, review deliverables, and decide what happens next.</span>
+                </span>
+                <span class="outcome-cta">Open console <span aria-hidden="true">&rarr;</span></span>
+            </a>
+        </section>
+
+        <section class="capability-strip" aria-label="Mission capabilities">
+            <div>
+                <strong>Steerable</strong>
+                <span>Approval waits and run controls stay visible.</span>
+            </div>
+            <div>
+                <strong>Traceable</strong>
+                <span>Outputs remain connected to their source mission.</span>
+            </div>
+            <div>
+                <strong>Honest</strong>
+                <span>Unavailable proof is named, never manufactured.</span>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <span>Lilly</span>
+        <span>Choose an outcome; keep the evidence.</span>
+    </footer>
+</body>
+</html>

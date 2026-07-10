@@ -12,6 +12,26 @@ const SYNTHETIC_REASONING_TITLE = 'Live progress';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
 const MANAGED_APP_PROGRESS_RENDER_BUFFER_MS = 1200;
+const MISSION_REFRESH_INTERVAL_MS = 1800;
+const MISSION_TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
+const MISSION_ACTIVE_STATES = new Set(['planning', 'executing', 'verifying', 'waiting_for_approval']);
+const MISSION_TEMPLATES = Object.freeze({
+    'build-launch': {
+        label: 'Build and launch',
+        objective: 'Build a polished, working product and prepare a verified launch path.',
+        permission: 'Approval before deploy or other external changes',
+    },
+    'research-publish': {
+        label: 'Research and publish',
+        objective: 'Research the topic with current sources and produce a publication-ready brief.',
+        permission: 'Approval before publishing or messaging anyone',
+    },
+    'create-refine': {
+        label: 'Create and refine',
+        objective: 'Create a high-quality artifact, critique it, and refine it into a useful deliverable.',
+        permission: 'Approval before external changes',
+    },
+});
 const WEB_CHAT_TOOL_MENU_STORAGE_KEY = 'kimibuilt_web_chat_plugin_lanes';
 const WEB_CHAT_TOOL_COMMAND_STARTER_PARAMS = Object.freeze({
     'web-search': { query: '' },
@@ -606,6 +626,17 @@ class ChatApp {
         this.messagesContainer = document.getElementById('messages-container');
         this.charCounter = document.getElementById('char-counter');
         this.currentSessionInfo = document.getElementById('current-session-info');
+        this.missionMode = document.getElementById('mission-mode');
+        this.missionObjective = document.getElementById('mission-objective');
+        this.missionStateLabel = document.getElementById('mission-state-label');
+        this.missionPhaseLabel = document.getElementById('mission-phase-label');
+        this.missionElapsedLabel = document.getElementById('mission-elapsed-label');
+        this.missionPermissionLabel = document.getElementById('mission-permission-label');
+        this.missionStatusNote = document.getElementById('mission-status-note');
+        this.missionTimeline = document.getElementById('mission-timeline');
+        this.missionProofDetails = document.getElementById('mission-proof-details');
+        this.missionProofPack = document.getElementById('mission-proof-pack');
+        this.missionRawEvents = document.getElementById('mission-raw-events');
         this.typingIndicator = document.getElementById('typing-indicator');
         this.backgroundWorkloadStatus = document.getElementById('background-workload-status');
         this.workloadsBtn = document.getElementById('workloads-btn');
@@ -742,6 +773,11 @@ class ChatApp {
         this.pendingManagedAppProgressRenders = new Map();
         this.projectPreviewTokenCache = null;
         this.projectViewportRequestId = 0;
+        this.missionState = this.createMissionState();
+        this.missionRefreshTimer = null;
+        this.missionElapsedTimer = null;
+        this.missionActionInFlight = false;
+        this.pendingArtifactLineage = null;
         this.ttsAutoPlayQueue = [];
         this.ttsAutoPlayQueuedIds = new Set();
         this.ttsAutoPlayActive = false;
@@ -791,6 +827,25 @@ class ChatApp {
 
         // Load sessions
         await this.loadSessions();
+        this.setupMissionMode();
+        const missionLaunch = this.readMissionLaunchParams(globalThis.location?.search || '');
+        if (missionLaunch) {
+            const freshSessionCreated = await this.createNewSession({ silent: true });
+            if (!freshSessionCreated) {
+                this.missionState = this.createMissionState({
+                    active: true,
+                    ...missionLaunch,
+                    uiState: 'error',
+                    phase: 'Session setup failed',
+                    statusNote: 'Lilly could not isolate this mission in a fresh conversation. Nothing was submitted.',
+                });
+                this.renderMissionMode();
+            } else {
+                this.applyMissionLaunchParams();
+            }
+        } else {
+            this.applyMissionLaunchParams();
+        }
         
         // Initialize Lucide icons
         uiHelpers.reinitializeIcons();
@@ -811,6 +866,773 @@ class ChatApp {
         
         // Setup online/offline listeners
         this.setupConnectivityListeners();
+    }
+
+    // ============================================
+    // Mission Mode
+    // ============================================
+
+    createMissionState(overrides = {}) {
+        return {
+            active: false,
+            templateId: '',
+            missionId: '',
+            starterPrompt: '',
+            objective: '',
+            permission: 'Approval before external changes',
+            uiState: 'idle',
+            phase: 'Awaiting start',
+            statusNote: 'Review the prepared objective, then start when you are ready.',
+            startedAt: '',
+            run: null,
+            events: [],
+            eventCursor: '',
+            progress: null,
+            proofPack: null,
+            evidenceAttestations: [],
+            error: '',
+            ...overrides,
+        };
+    }
+
+    readMissionLaunchParams(search = '') {
+        const rawSearch = String(search || '').trim();
+        if (!rawSearch) {
+            return null;
+        }
+        const params = new URLSearchParams(rawSearch.startsWith('?') ? rawSearch.slice(1) : rawSearch);
+        const templateId = String(params.get('mission') || '').trim();
+        const template = MISSION_TEMPLATES[templateId] || null;
+        if (!template) {
+            return null;
+        }
+        const starterPrompt = String(params.get('starter') || '').trim();
+        return {
+            templateId,
+            label: template.label,
+            objective: template.objective,
+            permission: template.permission,
+            starterPrompt,
+        };
+    }
+
+    applyMissionLaunchParams(search = globalThis.location?.search || '') {
+        const launch = this.readMissionLaunchParams(search);
+        if (!launch) {
+            this.hydrateMissionFromCurrentSession();
+            return false;
+        }
+
+        const launchId = `mission-launch-${Date.now().toString(36)}`;
+        this.missionState = this.createMissionState({
+            active: true,
+            missionId: launchId,
+            ...launch,
+        });
+        if (launch.starterPrompt && this.messageInput) {
+            this.messageInput.value = launch.starterPrompt;
+            this.messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+            this.autoResize?.resize?.();
+        }
+        this.renderMissionMode();
+        this.persistMissionState({ remote: false });
+        return true;
+    }
+
+    setupMissionMode() {
+        if (this.missionModeSetup) {
+            return;
+        }
+        this.missionModeSetup = true;
+        this.missionMode?.addEventListener('click', (event) => {
+            const button = event.target?.closest?.('[data-mission-action]');
+            const action = String(button?.dataset?.missionAction || '').trim();
+            if (!action) {
+                return;
+            }
+            event.preventDefault();
+            void this.handleMissionAction(action);
+        });
+        document.addEventListener('click', (event) => {
+            const control = event.target?.closest?.('[data-artifact-lineage-action]');
+            if (control) {
+                this.handleArtifactLineageAction(event, control);
+            }
+        });
+        this.missionElapsedTimer = setInterval(() => this.updateMissionElapsed(), 1000);
+    }
+
+    hydrateMissionFromCurrentSession() {
+        const session = sessionManager.getCurrentSession?.();
+        const snapshot = session?.metadata?.activeMission;
+        this.clearMissionRefreshTimer();
+        if (!snapshot || typeof snapshot !== 'object' || snapshot.active !== true) {
+            this.missionState = this.createMissionState();
+            this.renderMissionMode();
+            return false;
+        }
+
+        this.missionState = this.createMissionState({
+            ...snapshot,
+            active: true,
+            events: Array.isArray(snapshot.events) ? snapshot.events.slice(-30) : [],
+            evidenceAttestations: Array.isArray(snapshot.evidenceAttestations)
+                ? snapshot.evidenceAttestations.slice(-30)
+                : [],
+        });
+        this.renderMissionMode();
+        if (this.missionState.run?.id && !MISSION_TERMINAL_STATES.has(this.missionState.run.state)) {
+            this.scheduleMissionRefresh(250);
+        }
+        return true;
+    }
+
+    getMissionSnapshot() {
+        const state = this.missionState || this.createMissionState();
+        return {
+            active: state.active === true,
+            templateId: state.templateId,
+            missionId: state.missionId,
+            starterPrompt: state.starterPrompt,
+            objective: state.objective,
+            permission: state.permission,
+            uiState: state.uiState,
+            phase: state.phase,
+            statusNote: state.statusNote,
+            startedAt: state.startedAt,
+            run: state.run,
+            events: (Array.isArray(state.events) ? state.events : []).slice(-30),
+            eventCursor: state.eventCursor,
+            proofPack: state.proofPack,
+            evidenceAttestations: (Array.isArray(state.evidenceAttestations) ? state.evidenceAttestations : []).slice(-30),
+            error: state.error,
+        };
+    }
+
+    persistMissionState(options = {}) {
+        const sessionId = String(sessionManager.currentSessionId || '').trim();
+        if (!sessionId || !this.missionState?.active) {
+            return false;
+        }
+        const activeMission = this.getMissionSnapshot();
+        sessionManager.mergeSessionMetadataLocally?.(sessionId, { activeMission });
+        if (options.remote !== false) {
+            void sessionManager.persistSessionMetadata?.(sessionId, { activeMission });
+        }
+        return true;
+    }
+
+    isTerminalMissionRun() {
+        const state = String(this.missionState?.run?.state || '').trim().toLowerCase();
+        return this.missionState?.active === true && MISSION_TERMINAL_STATES.has(state);
+    }
+
+    requireMissionContinuationForMessage(options = {}) {
+        if (!this.isTerminalMissionRun() || options.allowTerminalMissionFollowUp === true) {
+            return true;
+        }
+        uiHelpers.showToast?.(
+            'This mission is finished. Fork it or start a new chat before sending follow-up work.',
+            'warning',
+        );
+        this.messageInput?.focus?.();
+        return false;
+    }
+
+    getMissionRequestMetadata() {
+        if (!this.missionState?.active) {
+            return {};
+        }
+        const runId = String(this.missionState.run?.id || '').trim();
+        const terminal = this.isTerminalMissionRun();
+        const approvalReceipts = (Array.isArray(this.missionState.run?.approvals)
+            ? this.missionState.run.approvals
+            : [])
+            .filter((approval) => (
+                approval?.version === 'ApprovalReceipt/v1'
+                && approval?.status === 'approved'
+                && approval?.authority?.version === 'ApprovalAuthority/v1'
+            ));
+        return {
+            missionId: String(this.missionState.missionId || runId || '').trim(),
+            missionTemplateId: String(this.missionState.templateId || '').trim(),
+            missionObjective: String(this.missionState.objective || '').trim(),
+            missionPermissionPolicy: String(this.missionState.permission || '').trim(),
+            missionMode: true,
+            ...(terminal ? { missionContinuationRequired: 'fork-or-new-mission' } : {}),
+            ...(runId && !terminal ? { agentRunId: runId } : {}),
+            ...(approvalReceipts.length > 0 ? { approvalReceipts } : {}),
+            ...(this.missionState.run?.parentRunId
+                ? { parentAgentRunId: this.missionState.run.parentRunId }
+                : {}),
+        };
+    }
+
+    buildMissionSendOptions(options = {}, config = {}) {
+        const lineage = this.pendingArtifactLineage && typeof this.pendingArtifactLineage === 'object'
+            ? { ...this.pendingArtifactLineage }
+            : null;
+        const artifactIds = Array.from(new Set([
+            ...(Array.isArray(options.artifactIds) ? options.artifactIds : []),
+            ...(lineage?.artifactId ? [lineage.artifactId] : []),
+        ].map((value) => String(value || '').trim()).filter(Boolean)));
+        const metadata = {
+            ...this.getMissionRequestMetadata(),
+            ...(lineage ? {
+                missionId: lineage.missionId || this.missionState?.missionId || '',
+                parentArtifactId: lineage.parentArtifactId || lineage.artifactId,
+                revision: lineage.revision,
+                requestedArtifactAction: lineage.action,
+                artifactLineage: lineage,
+            } : {}),
+            ...(options.metadata && typeof options.metadata === 'object' ? options.metadata : {}),
+        };
+        if (this.isTerminalMissionRun()) {
+            delete metadata.agentRunId;
+            delete metadata.agent_run_id;
+            metadata.missionContinuationRequired = 'fork-or-new-mission';
+        }
+        if (lineage && config.consumeLineage !== false) {
+            this.pendingArtifactLineage = null;
+        }
+        return {
+            ...options,
+            ...(artifactIds.length > 0 ? { artifactIds } : {}),
+            ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+        };
+    }
+
+    handleArtifactLineageAction(event, control) {
+        const action = String(control?.dataset?.artifactLineageAction || '').trim();
+        if (!['iterate', 'deploy'].includes(action)) {
+            return false;
+        }
+        event?.preventDefault?.();
+        const artifactId = String(control.dataset.artifactId || '').trim();
+        if (!artifactId) {
+            uiHelpers.showToast?.('This artifact has no stable ID, so it cannot be continued yet.', 'warning');
+            return false;
+        }
+        const lineage = {
+            artifactId,
+            parentArtifactId: String(control.dataset.parentArtifactId || artifactId).trim(),
+            missionId: String(control.dataset.missionId || this.missionState?.missionId || '').trim(),
+            revision: String(control.dataset.artifactRevision || '').trim(),
+            action,
+        };
+        this.pendingArtifactLineage = lineage;
+        window.artifactManager?.prepareArtifactUpdate?.(artifactId);
+        const draft = action === 'deploy'
+            ? 'Deploy this artifact through the verified remote build lane. Show the live URL and deployment checks before calling it complete.'
+            : 'Refine this artifact while preserving its working content: ';
+        this.setInput?.(draft);
+        uiHelpers.showToast?.(
+            action === 'deploy'
+                ? 'Deployment request staged. Review it, then send when ready.'
+                : 'Artifact pinned with its mission and revision. Add the change you want.',
+            'info',
+        );
+        return true;
+    }
+
+    getMissionEventIdentity(event = {}, index = 0) {
+        return String(event.eventId || event.event_id || event.id || event.cursor || `event-${index}`).trim();
+    }
+
+    mergeMissionEvents(existing = [], incoming = []) {
+        const merged = [];
+        const positions = new Map();
+        [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]
+            .filter((entry) => entry && typeof entry === 'object')
+            .forEach((entry, index) => {
+                const identity = this.getMissionEventIdentity(entry, index);
+                if (positions.has(identity)) {
+                    merged[positions.get(identity)] = { ...merged[positions.get(identity)], ...entry };
+                    return;
+                }
+                positions.set(identity, merged.length);
+                merged.push(entry);
+            });
+        return merged.slice(-40);
+    }
+
+    updateMissionFromPayload(payload = null, options = {}) {
+        if (!payload || typeof payload !== 'object') {
+            return false;
+        }
+        const metadata = payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {};
+        const run = payload.run
+            || payload.agentRun
+            || payload.agent_run
+            || metadata.agentRun
+            || metadata.agent_run
+            || null;
+        const events = payload.events
+            || payload.agentRunEvents
+            || payload.agent_run_events
+            || metadata.agentRunEvents
+            || [];
+        const proofPack = payload.proofPack || payload.proof_pack || metadata.proofPack || metadata.proof_pack || null;
+        const attestations = payload.evidenceAttestations
+            || payload.evidence_attestations
+            || metadata.evidenceAttestations
+            || metadata.evidence_attestations
+            || [];
+        const hasTypedMissionData = Boolean(run)
+            || (Array.isArray(events) && events.length > 0)
+            || Boolean(proofPack)
+            || (Array.isArray(attestations) && attestations.length > 0)
+            || Boolean(payload.uiState || options.uiState);
+        if (!hasTypedMissionData && !this.missionState?.active) {
+            return false;
+        }
+
+        const previous = this.missionState || this.createMissionState();
+        const nextRun = run && typeof run === 'object' ? { ...(previous.run || {}), ...run } : previous.run;
+        const runState = String(nextRun?.state || '').trim().toLowerCase();
+        let uiState = String(payload.uiState || payload.state || options.uiState || previous.uiState || 'idle').trim().toLowerCase();
+        if (runState === 'completed') uiState = 'success';
+        if (['failed', 'cancelled', 'blocked'].includes(runState)) uiState = 'error';
+        if (MISSION_ACTIVE_STATES.has(runState)) uiState = 'streaming';
+        if (!['idle', 'loading', 'streaming', 'success', 'error'].includes(uiState)) {
+            uiState = previous.uiState || 'idle';
+        }
+        const normalizedEvents = Array.isArray(events) ? events : [];
+        const nextEvents = this.mergeMissionEvents(previous.events, normalizedEvents);
+        const latestEvent = nextEvents[nextEvents.length - 1] || null;
+        const latestPayload = latestEvent?.payload && typeof latestEvent.payload === 'object' ? latestEvent.payload : {};
+        const errorMessage = payload.error?.message
+            || (typeof payload.error === 'string' ? payload.error : '')
+            || options.error
+            || '';
+        const fallbackPhase = this.getMissionPhaseLabel(runState || uiState);
+        const phase = String(
+            options.phase
+            || latestPayload.phaseLabel
+            || latestPayload.phase
+            || latestPayload.stage
+            || previous.phase
+            || fallbackPhase,
+        ).trim() || fallbackPhase;
+        const statusNote = errorMessage
+            ? String(errorMessage)
+            : String(
+                options.statusNote
+                || latestPayload.detail
+                || latestPayload.message
+                || latestPayload.summary
+                || previous.statusNote
+                || '',
+            ).trim();
+        const eventCursor = String(
+            payload.eventCursor
+            || payload.event_cursor
+            || nextRun?.eventCursor
+            || latestEvent?.cursor
+            || previous.eventCursor
+            || '',
+        ).trim();
+        const missionId = String(nextRun?.id || metadata.missionId || payload.missionId || previous.missionId || '').trim();
+
+        this.missionState = this.createMissionState({
+            ...previous,
+            active: true,
+            missionId,
+            objective: String(nextRun?.objective || previous.objective || 'Agent mission').trim(),
+            uiState,
+            phase,
+            statusNote,
+            startedAt: previous.startedAt || nextRun?.createdAt || new Date().toISOString(),
+            run: nextRun,
+            events: nextEvents,
+            eventCursor,
+            progress: options.progress || previous.progress,
+            proofPack: proofPack || previous.proofPack,
+            evidenceAttestations: Array.isArray(attestations) && attestations.length > 0
+                ? attestations
+                : previous.evidenceAttestations,
+            error: String(errorMessage || '').trim(),
+        });
+        this.renderMissionMode();
+        this.persistMissionState({ remote: options.persistRemote === true });
+        if (nextRun?.id && !MISSION_TERMINAL_STATES.has(runState)) {
+            this.scheduleMissionRefresh();
+        } else if (MISSION_TERMINAL_STATES.has(runState)) {
+            this.clearMissionRefreshTimer();
+        }
+        return true;
+    }
+
+    updateMissionFromMessages(messages = []) {
+        const source = Array.isArray(messages) ? messages : [];
+        for (let index = source.length - 1; index >= 0; index -= 1) {
+            const message = source[index];
+            const metadata = message?.metadata || {};
+            if (message?.agentRun || metadata.agentRun || message?.proofPack || metadata.proofPack) {
+                this.updateMissionFromPayload(message, { persistRemote: false });
+                return true;
+            }
+        }
+        return false;
+    }
+
+    getMissionPhaseLabel(state = '') {
+        const normalized = String(state || '').trim().toLowerCase();
+        const labels = {
+            created: 'Run created',
+            planning: 'Planning',
+            executing: 'Executing',
+            verifying: 'Verifying evidence',
+            waiting_for_approval: 'Waiting for approval',
+            blocked: 'Blocked',
+            completed: 'Complete',
+            failed: 'Failed',
+            cancelled: 'Cancelled',
+            loading: 'Starting',
+            streaming: 'Working',
+            success: 'Complete',
+            error: 'Needs attention',
+        };
+        return labels[normalized] || 'Awaiting start';
+    }
+
+    getMissionStateLabel(state = '') {
+        const normalized = String(state || 'idle').trim().toLowerCase();
+        const labels = {
+            idle: 'Ready',
+            loading: 'Starting',
+            streaming: 'In progress',
+            success: 'Verified complete',
+            error: 'Needs attention',
+            created: 'Created',
+            planning: 'Planning',
+            executing: 'Executing',
+            verifying: 'Verifying',
+            waiting_for_approval: 'Approval needed',
+            blocked: 'Blocked',
+            completed: 'Completed',
+            failed: 'Failed',
+            cancelled: 'Cancelled',
+        };
+        return labels[normalized] || normalized.replace(/_/g, ' ');
+    }
+
+    buildMissionTimeline() {
+        const state = this.missionState || this.createMissionState();
+        const events = Array.isArray(state.events) ? state.events : [];
+        if (events.length > 0) {
+            return events.slice(-8).map((event, index) => {
+                const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+                const title = String(
+                    payload.title
+                    || payload.label
+                    || payload.message
+                    || event.type
+                    || 'Progress',
+                ).trim();
+                const status = String(event.status || payload.status || 'active').trim().toLowerCase();
+                return {
+                    title,
+                    status,
+                    detail: String(payload.detail || payload.summary || event.source || '').trim(),
+                    index: index + 1,
+                };
+            });
+        }
+        const rawPlan = state.run?.plan;
+        const steps = Array.isArray(rawPlan)
+            ? rawPlan
+            : (Array.isArray(rawPlan?.steps) ? rawPlan.steps : []);
+        if (steps.length > 0) {
+            return steps.slice(0, 8).map((step, index) => ({
+                title: String(step?.title || step?.label || step?.name || step?.description || `Step ${index + 1}`).trim(),
+                status: String(step?.status || step?.state || 'pending').trim().toLowerCase(),
+                detail: String(step?.detail || '').trim(),
+                index: index + 1,
+            }));
+        }
+        const progressSteps = Array.isArray(state.progress?.steps) ? state.progress.steps : [];
+        return progressSteps.slice(0, 8).map((step, index) => ({
+            title: String(step?.title || step?.label || step?.name || `Step ${index + 1}`).trim(),
+            status: String(step?.status || step?.state || 'active').trim().toLowerCase(),
+            detail: String(step?.detail || '').trim(),
+            index: index + 1,
+        }));
+    }
+
+    renderMissionMode() {
+        if (!this.missionMode) {
+            return;
+        }
+        const state = this.missionState || this.createMissionState();
+        this.missionMode.classList.toggle('hidden', state.active !== true);
+        this.missionMode.setAttribute('aria-hidden', state.active === true ? 'false' : 'true');
+        document.body?.classList?.toggle('mission-mode-active', state.active === true);
+        if (!state.active) {
+            return;
+        }
+        const runState = String(state.run?.state || '').trim().toLowerCase();
+        this.missionMode.dataset.state = state.uiState || 'idle';
+        if (this.missionObjective) this.missionObjective.textContent = state.objective || 'Agent mission';
+        if (this.missionStateLabel) this.missionStateLabel.textContent = this.getMissionStateLabel(runState || state.uiState);
+        if (this.missionPhaseLabel) this.missionPhaseLabel.textContent = state.phase || this.getMissionPhaseLabel(runState || state.uiState);
+        if (this.missionPermissionLabel) this.missionPermissionLabel.textContent = state.permission || 'Approval before external changes';
+        if (this.missionStatusNote) this.missionStatusNote.textContent = state.statusNote || 'Mission status is available from the run timeline.';
+        this.updateMissionElapsed();
+
+        const hasRun = Boolean(state.run?.id);
+        const terminal = MISSION_TERMINAL_STATES.has(runState);
+        const waiting = ['waiting_for_approval', 'blocked'].includes(runState);
+        const controlVisibility = {
+            start: !hasRun,
+            pause: hasRun && !terminal && !waiting,
+            resume: hasRun && waiting,
+            replay: hasRun && ['failed', 'blocked'].includes(runState),
+            fork: hasRun,
+            cancel: hasRun && !terminal,
+        };
+        this.missionMode.querySelectorAll?.('[data-mission-action]').forEach((control) => {
+            const action = String(control.dataset.missionAction || '');
+            control.hidden = controlVisibility[action] !== true;
+            control.disabled = this.missionActionInFlight === true;
+            control.setAttribute('aria-busy', this.missionActionInFlight === true ? 'true' : 'false');
+        });
+
+        const timeline = this.buildMissionTimeline();
+        if (this.missionTimeline) {
+            this.missionTimeline.innerHTML = timeline.map((entry) => `
+                <li class="mission-timeline__item" data-status="${escapeToolMenuHtmlAttr(entry.status)}">
+                    <span class="mission-timeline__index" aria-hidden="true">${entry.status === 'completed' ? '✓' : escapeToolMenuHtml(String(entry.index))}</span>
+                    <span class="mission-timeline__copy">
+                        <strong>${escapeToolMenuHtml(entry.title)}</strong>
+                        ${entry.detail ? `<small>${escapeToolMenuHtml(entry.detail)}</small>` : ''}
+                    </span>
+                </li>
+            `).join('');
+        }
+
+        if (this.missionProofPack) {
+            const proofSource = {
+                agentRun: state.run,
+                proofPack: state.proofPack,
+                evidenceAttestations: state.evidenceAttestations,
+                missionId: state.missionId,
+            };
+            this.missionProofPack.innerHTML = uiHelpers.buildProofPackMarkup?.(proofSource, { empty: true })
+                || '<div class="proof-pack proof-pack--empty" role="status">No typed proof has been supplied for this mission yet.</div>';
+        }
+        if (this.missionRawEvents) {
+            const raw = {
+                run: state.run,
+                events: state.events,
+                eventCursor: state.eventCursor,
+            };
+            this.missionRawEvents.textContent = state.run || state.events.length > 0
+                ? JSON.stringify(raw, null, 2)
+                : 'Run detail appears after the mission starts.';
+        }
+        uiHelpers.reinitializeIcons?.(this.missionMode);
+    }
+
+    updateMissionElapsed() {
+        if (!this.missionElapsedLabel) {
+            return;
+        }
+        const started = Date.parse(this.missionState?.startedAt || '');
+        if (!Number.isFinite(started)) {
+            this.missionElapsedLabel.textContent = '0s';
+            return;
+        }
+        const end = MISSION_TERMINAL_STATES.has(this.missionState?.run?.state)
+            ? Date.parse(this.missionState?.run?.updatedAt || '')
+            : Date.now();
+        const elapsedSeconds = Math.max(0, Math.floor(((Number.isFinite(end) ? end : Date.now()) - started) / 1000));
+        if (elapsedSeconds < 60) {
+            this.missionElapsedLabel.textContent = `${elapsedSeconds}s`;
+        } else if (elapsedSeconds < 3600) {
+            this.missionElapsedLabel.textContent = `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`;
+        } else {
+            this.missionElapsedLabel.textContent = `${Math.floor(elapsedSeconds / 3600)}h ${Math.floor((elapsedSeconds % 3600) / 60)}m`;
+        }
+    }
+
+    async handleMissionAction(action = '') {
+        const normalizedAction = String(action || '').trim().toLowerCase();
+        if (this.missionActionInFlight || !this.missionState?.active) {
+            return false;
+        }
+        if (normalizedAction === 'start') {
+            return this.startMission();
+        }
+        const runId = String(this.missionState.run?.id || '').trim();
+        if (!runId) {
+            return false;
+        }
+        this.missionActionInFlight = true;
+        this.renderMissionMode();
+        const activeStep = [...this.buildMissionTimeline()].reverse().find((step) => !['completed', 'passed'].includes(step.status));
+        const result = await apiClient.postAgentRunAction(runId, normalizedAction, {
+            reason: normalizedAction === 'pause' ? 'Paused from Lilly Mission Mode.' : undefined,
+            ...(normalizedAction === 'replay' && activeStep?.id ? { stepId: activeStep.id } : {}),
+            idempotencyKey: `mission-${normalizedAction}-${runId}-${Date.now().toString(36)}`,
+        });
+        this.missionActionInFlight = false;
+        if (result?.error) {
+            this.updateMissionFromPayload(result, {
+                uiState: 'error',
+                error: result.error.message,
+                statusNote: `The ${normalizedAction} action was not accepted.`,
+            });
+            return false;
+        }
+        const nextPayload = result.forkedRun
+            ? { ...result, run: result.forkedRun, events: [], eventCursor: '' }
+            : result;
+        this.updateMissionFromPayload(nextPayload, {
+            statusNote: result.forkedRun
+                ? 'Fork created. Future work will continue on the new run.'
+                : `Mission action accepted: ${normalizedAction.replace('-', ' ')}.`,
+            persistRemote: true,
+        });
+        if (result.forkedRun) {
+            this.missionState.events = [];
+            this.missionState.eventCursor = '';
+            this.renderMissionMode();
+            this.scheduleMissionRefresh(200);
+        }
+        return true;
+    }
+
+    async startMission() {
+        if (this.missionActionInFlight || !this.missionState?.active || this.missionState.run?.id) {
+            return false;
+        }
+        const starterPrompt = String(this.missionState.starterPrompt || this.messageInput?.value || '').trim();
+        if (!starterPrompt) {
+            this.missionState.statusNote = 'Add a concrete goal in the composer before starting this mission.';
+            this.missionState.uiState = 'error';
+            this.renderMissionMode();
+            this.messageInput?.focus();
+            return false;
+        }
+        this.missionActionInFlight = true;
+        this.missionState = this.createMissionState({
+            ...this.missionState,
+            active: true,
+            uiState: 'loading',
+            phase: 'Creating run record',
+            statusNote: 'Creating a durable mission record before Lilly begins work.',
+            startedAt: new Date().toISOString(),
+            error: '',
+        });
+        this.renderMissionMode();
+        if (!sessionManager.currentSessionId) {
+            await this.createNewSession();
+        }
+        const sessionId = String(sessionManager.currentSessionId || '').trim();
+        const idempotencyKey = `mission-start-${sessionId || 'local'}-${Date.now().toString(36)}`;
+        const result = await apiClient.createAgentRun({
+            objective: this.missionState.objective || starterPrompt,
+            sessionId: sessionId || undefined,
+            surface: 'web-chat',
+            mode: 'mission',
+            approvals: [{
+                type: 'external_side_effects',
+                status: 'required',
+                summary: this.missionState.permission,
+            }],
+            snapshot: {
+                templateId: this.missionState.templateId,
+                starterPrompt,
+            },
+            idempotencyKey,
+        }, { idempotencyKey });
+        this.missionActionInFlight = false;
+        if (result?.error || !result?.run?.id) {
+            const message = result?.error?.message || 'The mission run could not be created.';
+            this.updateMissionFromPayload(result || {}, {
+                uiState: 'error',
+                error: message,
+                phase: 'Start failed',
+                statusNote: `${message} Nothing was submitted.`,
+            });
+            return false;
+        }
+        this.updateMissionFromPayload(result, {
+            uiState: 'streaming',
+            phase: 'Starting Lilly',
+            statusNote: 'Run created. Lilly is beginning the prepared objective.',
+            persistRemote: true,
+        });
+        this.missionState.uiState = 'streaming';
+        this.missionState.phase = 'Working in chat';
+        this.renderMissionMode();
+        const sent = await this.sendPreparedMessage(starterPrompt, this.buildMissionSendOptions({
+            metadata: {
+                missionLaunch: true,
+                agentRun: this.missionState.run,
+            },
+        }));
+        if (!sent && !this.isCurrentSessionProcessing()) {
+            this.missionState.uiState = 'error';
+            this.missionState.phase = 'Chat did not start';
+            this.missionState.statusNote = 'The run exists, but the assistant request did not start. Retry the message from the composer.';
+            this.renderMissionMode();
+            this.persistMissionState();
+            return false;
+        }
+        this.messageInput.value = '';
+        this.messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+        this.scheduleMissionRefresh(400);
+        return true;
+    }
+
+    clearMissionRefreshTimer() {
+        if (this.missionRefreshTimer) {
+            clearTimeout(this.missionRefreshTimer);
+            this.missionRefreshTimer = null;
+        }
+    }
+
+    scheduleMissionRefresh(delayMs = MISSION_REFRESH_INTERVAL_MS) {
+        const runId = String(this.missionState?.run?.id || '').trim();
+        if (!runId || MISSION_TERMINAL_STATES.has(this.missionState?.run?.state)) {
+            this.clearMissionRefreshTimer();
+            return;
+        }
+        this.clearMissionRefreshTimer();
+        this.missionRefreshTimer = setTimeout(() => void this.refreshMissionRun(), Math.max(100, Number(delayMs) || MISSION_REFRESH_INTERVAL_MS));
+    }
+
+    async refreshMissionRun() {
+        const runId = String(this.missionState?.run?.id || '').trim();
+        if (!runId || this.missionPollInFlight) {
+            return false;
+        }
+        this.missionPollInFlight = true;
+        const [runResult, eventResult] = await Promise.all([
+            apiClient.getAgentRun(runId),
+            apiClient.getAgentRunEvents(runId, { after: this.missionState.eventCursor || '' }),
+        ]);
+        this.missionPollInFlight = false;
+        if (runResult?.error && eventResult?.error) {
+            this.missionState.statusNote = 'Live run refresh is temporarily unavailable. Existing mission evidence is preserved.';
+            this.renderMissionMode();
+            this.scheduleMissionRefresh(MISSION_REFRESH_INTERVAL_MS * 2);
+            return false;
+        }
+        if (!runResult?.error) {
+            this.updateMissionFromPayload(runResult, { persistRemote: false });
+        }
+        if (!eventResult?.error) {
+            this.updateMissionFromPayload(eventResult, { persistRemote: false });
+        }
+        this.persistMissionState({ remote: false });
+        const state = String(this.missionState?.run?.state || '').trim().toLowerCase();
+        if (!MISSION_TERMINAL_STATES.has(state)) {
+            this.scheduleMissionRefresh();
+        }
+        return true;
     }
 
     // ============================================
@@ -2203,6 +3025,11 @@ class ChatApp {
             this.loadSessionWorkloads(e.detail.session.id);
             this.renderProjectViewport();
             this.updateSessionInfo();
+            if (!this.missionState?.active) {
+                this.hydrateMissionFromCurrentSession();
+            } else {
+                this.persistMissionState({ remote: false });
+            }
         });
         
         sessionManager.addEventListener('sessionSwitched', (e) => {
@@ -2210,6 +3037,7 @@ class ChatApp {
             apiClient.setSessionId(e.detail.sessionId);
             this.applyStreamStateToVisibleSession(e.detail.sessionId);
             const session = sessionManager.getCurrentSession();
+            this.hydrateMissionFromCurrentSession();
             if (session?.model) {
                 uiHelpers.setCurrentModel(session.model);
             }
@@ -2260,6 +3088,7 @@ class ChatApp {
             }
             this.renderProjectViewport();
             this.updateSessionInfo();
+            this.hydrateMissionFromCurrentSession();
         });
         
         sessionManager.addEventListener('messagesCleared', () => {
@@ -2460,7 +3289,7 @@ class ChatApp {
         }
     }
 
-    async createNewSession() {
+    async createNewSession(options = {}) {
         try {
             this.clearTtsAutoPlayQueue();
             uiHelpers.stopSpeechPlayback();
@@ -2469,9 +3298,13 @@ class ChatApp {
             uiHelpers.clearMessages();
             this.loadSessionWorkloads(sessionManager.currentSessionId);
             this.messageInput?.focus();
-            uiHelpers.showToast('New conversation started', 'success');
+            if (options.silent !== true) {
+                uiHelpers.showToast('New conversation started', 'success');
+            }
+            return true;
         } catch (error) {
             uiHelpers.showToast('Failed to create new session', 'error');
+            return false;
         }
     }
 
@@ -2702,6 +3535,7 @@ class ChatApp {
     renderMessages(messages) {
         this.clearBufferedStreamingRenders();
         uiHelpers.clearMessages();
+        this.updateMissionFromMessages(messages);
         
         if (messages.length === 0) {
             uiHelpers.showWelcomeMessage();
@@ -5919,6 +6753,10 @@ class ChatApp {
         
         if (!content) return;
 
+        if (!content.startsWith('/') && !this.requireMissionContinuationForMessage()) {
+            return;
+        }
+
         if (this.skillWizardState && !content.startsWith('/')) {
             this.messageInput.value = '';
             this.autoResize?.reset?.();
@@ -5946,9 +6784,9 @@ class ChatApp {
             return;
         }
 
-        const toolIntentOptions = this.selectedDirectTool
+        const toolIntentOptions = this.buildMissionSendOptions(this.selectedDirectTool
             ? this.buildSelectedDirectToolRequestOptions()
-            : this.buildToolIntentRequestOptions();
+            : this.buildToolIntentRequestOptions());
         const routeSelectedToolAsAsync = this.shouldRouteSelectedToolMessageToAsync(content, toolIntentOptions);
         this.messageInput.value = '';
         this.autoResize?.reset?.();
@@ -5979,6 +6817,9 @@ class ChatApp {
         if (!normalizedContent) {
             return false;
         }
+        if (!this.requireMissionContinuationForMessage(options)) {
+            return false;
+        }
 
         uiHelpers.stopSpeechPlayback();
         void uiHelpers.ttsManager?.preparePlayback?.({ quiet: true });
@@ -6005,10 +6846,16 @@ class ChatApp {
                 : []),
         ].map((artifactId) => String(artifactId || '').trim()).filter(Boolean)));
         const requestMetadata = {
+            ...this.getMissionRequestMetadata(),
             ...(options.metadata && typeof options.metadata === 'object'
                 ? options.metadata
                 : {}),
         };
+        if (this.isTerminalMissionRun()) {
+            delete requestMetadata.agentRunId;
+            delete requestMetadata.agent_run_id;
+            requestMetadata.missionContinuationRequired = 'fork-or-new-mission';
+        }
         const inferredBuildRunBrief = shouldReuseUserMessage
             ? (options.userMessage?.metadata?.buildRunBrief || requestMetadata.buildRunBrief || null)
             : (requestMetadata.buildRunBrief || uiHelpers.inferBuildRunBrief?.(normalizedContent, {
@@ -6025,6 +6872,13 @@ class ChatApp {
         const userMessageMetadata = {
             ...(inferredBuildRunBrief ? { buildRunBrief: inferredBuildRunBrief } : {}),
             ...(selectedToolChip ? { selectedToolChip } : {}),
+            ...(requestMetadata.missionMode ? {
+                missionId: requestMetadata.missionId,
+                missionTemplateId: requestMetadata.missionTemplateId,
+                agentRunId: requestMetadata.agentRunId || '',
+                ...(requestMetadata.parentArtifactId ? { parentArtifactId: requestMetadata.parentArtifactId } : {}),
+                ...(requestMetadata.revision !== undefined ? { revision: requestMetadata.revision } : {}),
+            } : {}),
         };
 
         // Hide welcome message
@@ -10794,6 +11648,19 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const phase = extractChatDisplayText(progress.phase || chunk.phase || '', { maxLength: 80 }) || 'thinking';
         const detail = cleanChatStatusText(progress.detail || chunk.detail || '', { maxLength: 240 });
 
+        this.updateMissionFromPayload({
+            ...chunk,
+            ...(progress.agentRun ? { agentRun: progress.agentRun } : {}),
+            ...(progress.proofPack ? { proofPack: progress.proofPack } : {}),
+            ...(progress.evidenceAttestations ? { evidenceAttestations: progress.evidenceAttestations } : {}),
+        }, {
+            uiState: 'streaming',
+            phase,
+            statusNote: detail || 'Lilly is working through the mission.',
+            progress,
+            persistRemote: false,
+        });
+
         this.updateLiveResponsePhase(phase, detail);
         this.updateStreamingMessageState({
             progressState: {
@@ -11180,6 +12047,34 @@ curl -fsSIL --max-time 20 "https://$host"`;
         if (persistedAssistantMessage) {
             this.persistSessionMessageIfNeeded(sessionId, persistedAssistantMessage);
         }
+
+        if (this.missionState?.active) {
+            const typedMissionPayload = {
+                ...chunk,
+                ...(currentMessage || {}),
+                metadata: {
+                    ...(chunk.assistantMetadata || {}),
+                    ...(currentMessage?.metadata || {}),
+                },
+            };
+            const recordedState = String(
+                typedMissionPayload.agentRun?.state
+                || typedMissionPayload.metadata?.agentRun?.state
+                || this.missionState.run?.state
+                || '',
+            ).trim().toLowerCase();
+            this.updateMissionFromPayload(typedMissionPayload, {
+                uiState: recordedState === 'completed' ? 'success' : this.missionState.uiState,
+                phase: recordedState === 'completed' ? 'Complete' : 'Assistant reply complete',
+                statusNote: recordedState === 'completed'
+                    ? 'The mission completed with the typed evidence shown in the proof pack.'
+                    : 'The assistant reply finished. The recorded run remains authoritative until it reports a terminal state.',
+                persistRemote: true,
+            });
+            if (this.missionState.run?.id && !MISSION_TERMINAL_STATES.has(recordedState)) {
+                this.scheduleMissionRefresh(250);
+            }
+        }
         
         this.finalizeActiveStreamState({
             clearPendingResync: false,
@@ -11225,6 +12120,14 @@ curl -fsSIL --max-time 20 "https://$host"`;
 
     handleError(message, status = null) {
         console.error('Chat error:', message, 'status:', status);
+        if (this.missionState?.active) {
+            this.updateMissionFromPayload({ error: { message: String(message || 'Mission request failed') } }, {
+                uiState: 'error',
+                phase: 'Chat request failed',
+                statusNote: String(message || 'The mission request failed. Existing run evidence is preserved.'),
+                persistRemote: true,
+            });
+        }
         const trackedRequest = this.getTrackedStreamRequest();
         const sessionId = String(trackedRequest?.sessionId || sessionManager.currentSessionId || '').trim();
         const isVisibleSession = this.isVisibleSession(sessionId);
@@ -11370,6 +12273,14 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const trackedRequest = this.getTrackedStreamRequest();
         const sessionId = String(trackedRequest?.sessionId || sessionManager.currentSessionId || '').trim();
         const isVisibleSession = this.isVisibleSession(sessionId);
+        if (this.missionState?.active) {
+            this.updateMissionFromPayload({}, {
+                uiState: 'error',
+                phase: 'Chat stopped',
+                statusNote: 'The chat request stopped. Use the mission cancel control separately if you also want to cancel the recorded run.',
+                persistRemote: true,
+            });
+        }
         if (this.currentStreamingMessageId && sessionId) {
             const currentMessage = this.getSessionMessage(sessionId, this.currentStreamingMessageId);
             const currentContent = String(currentMessage?.content || '').trim();

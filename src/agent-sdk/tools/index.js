@@ -65,6 +65,15 @@ const {
 } = require('../../orchestration/tool-readiness');
 const { classifyFailureText } = require('../../orchestration/recovery-policy');
 const { validatePlanStep } = require('../../orchestration/plan-validator');
+const {
+  createToolInvocation,
+  decideToolInvocationApproval,
+} = require('../../tool-invocation');
+const {
+  createEvidenceAttestation,
+  extractEvidenceAttestations,
+} = require('../../agent-evidence');
+const { resolveAgentRunService } = require('../../agent-runs/runtime-bridge');
 const { remoteRunnerService } = require('../../remote-runner/service');
 const { getHostnameFromUrl, normalizeDomainList } = require('./categories/web/research-site-policy');
 const {
@@ -89,6 +98,93 @@ const MAX_DOCUMENT_SOURCE_CHARS = Math.max(
   8000,
   Math.min(Number(config.memory?.toolResultCharLimit) || 120000, parseInt(process.env.DOCUMENT_SOURCE_CHARS, 10) || 20000),
 );
+
+function collectInvocationApprovalReceipts(context = {}) {
+  return [
+    context.approvalReceipt,
+    context.approval,
+    ...(Array.isArray(context.approvalReceipts) ? context.approvalReceipts : []),
+    ...(Array.isArray(context.metadata?.approvalReceipts) ? context.metadata.approvalReceipts : []),
+  ].filter(Boolean);
+}
+
+function shouldEnforceInvocationPolicy(context = {}) {
+  if (context.enforceToolInvocationPolicy === false
+    || context.toolInvocationPolicyMode === 'shadow') {
+    return false;
+  }
+  return context.enforceToolInvocationPolicy === true
+    || context.toolInvocationPolicyMode === 'enforce'
+    || context.metadata?.missionMode === true;
+}
+
+async function getAgentRunExecutionRefusal(toolId, context = {}) {
+  const runId = String(context.runId || context.agentRunId || '').trim();
+  if (!runId || !shouldEnforceInvocationPolicy(context)) {
+    return null;
+  }
+
+  const service = resolveAgentRunService({
+    agentRunService: context.agentRunService,
+    app: context.app,
+    req: context.req,
+  });
+  if (!service?.getControlState) {
+    return null;
+  }
+
+  let control;
+  try {
+    // Control is keyed by the canonical run id. Owner-scoped authorization is
+    // enforced when actions mutate the run; execution must not become possible
+    // merely because a caller supplied a mismatched owner hint here.
+    control = await service.getControlState(runId);
+  } catch (error) {
+    return {
+      success: false,
+      error: `Agent run control could not be verified before executing ${toolId}: ${error.message}`,
+      errorCode: 'AGENT_RUN_CONTROL_UNAVAILABLE',
+      statusCode: 503,
+      toolId,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  const cancelled = control?.cancelRequested === true || control?.state === 'cancelled';
+  const paused = control?.paused === true || control?.state === 'waiting_for_approval';
+  if (!cancelled && !paused) {
+    return null;
+  }
+
+  return {
+    success: false,
+    error: cancelled
+      ? `Agent run ${runId} is cancelled; ${toolId} was not executed.`
+      : `Agent run ${runId} is paused; resume it before executing ${toolId}.`,
+    errorCode: cancelled ? 'AGENT_RUN_CANCELLED' : 'AGENT_RUN_PAUSED',
+    statusCode: 409,
+    toolId,
+    timestamp: new Date().toISOString(),
+    control,
+  };
+}
+
+function chooseInvocationApproval(invocation, context = {}, tool = {}) {
+  const sandboxMode = context.sandboxMode === true
+    || context.sandbox?.enabled === true
+    || tool.backend?.sandbox?.filesystem === 'isolated';
+  const workspaceBounded = context.workspaceBounded === true
+    || context.sandbox?.workspaceBounded === true
+    || tool.backend?.sandbox?.filesystem === 'isolated';
+  return collectInvocationApprovalReceipts(context)
+    .map((approvalReceipt) => decideToolInvocationApproval(invocation, {
+      sandboxMode,
+      workspaceBounded,
+      approvalReceipt,
+    }))
+    .find((decision) => decision.allowed)
+    || decideToolInvocationApproval(invocation, { sandboxMode, workspaceBounded });
+}
 const DEFAULT_DEEP_RESEARCH_PASSES = 3;
 const MAX_DEEP_RESEARCH_PASSES = 6;
 const MAX_DEEP_RESEARCH_SEARCH_LIMIT = Math.max(
@@ -5894,6 +5990,14 @@ class ToolManager {
       throw new Error(`Tool ${id} is disabled`);
     }
 
+    const effectiveContext = context?.toolManager
+      ? context
+      : { ...context, toolManager: this };
+    const controlRefusal = await getAgentRunExecutionRefusal(id, effectiveContext);
+    if (controlRefusal) {
+      return controlRefusal;
+    }
+
     const readiness = this.getToolReadiness(id);
     if (readiness.status === READINESS_UNAVAILABLE
       || (readiness.status === READINESS_DEGRADED && readiness.executableShape === 'none')) {
@@ -5906,9 +6010,6 @@ class ToolManager {
     const normalizedParams = id === 'file-write'
       ? normalizeFileWriteParams(params)
       : params;
-    const effectiveContext = context?.toolManager
-      ? context
-      : { ...context, toolManager: this };
     if (effectiveContext.validateToolPlan === true || process.env.ORCHESTRATION_REWRITE_ENABLED === 'true') {
       const validation = this.validateToolCall(id, normalizedParams);
       if (!validation.ok) {
@@ -5937,7 +6038,32 @@ class ToolManager {
       }
     } else if (typeof tool.backend?.handler === 'function') {
       const startedAt = Date.now();
-      try {
+      const runId = String(effectiveContext.runId || effectiveContext.agentRunId || '').trim();
+      const declaredSideEffects = (Array.isArray(tool.backend.sideEffects) ? tool.backend.sideEffects : [])
+        .map((type) => ({ type }));
+      const invocation = runId ? createToolInvocation({
+        runId,
+        toolId: id,
+        toolVersion: tool.version || '1.0.0',
+        input: normalizedParams,
+        sideEffects: declaredSideEffects,
+        idempotencyKey: effectiveContext.idempotencyKey || normalizedParams?.idempotencyKey,
+        idempotency: effectiveContext.idempotency,
+        status: 'planned',
+      }) : null;
+      const approvalDecision = invocation
+        ? chooseInvocationApproval(invocation, effectiveContext, tool)
+        : null;
+      if (invocation && shouldEnforceInvocationPolicy(effectiveContext) && !approvalDecision.allowed) {
+        result = {
+          success: false,
+          error: approvalDecision.reason,
+          errorCode: 'TOOL_APPROVAL_REQUIRED',
+          duration: Date.now() - startedAt,
+          toolId: id,
+          timestamp: new Date().toISOString(),
+        };
+      } else try {
         const data = await tool.backend.handler(normalizedParams, effectiveContext);
         result = {
           success: true,
@@ -5988,6 +6114,34 @@ class ToolManager {
           toolId: id,
           timestamp: new Date().toISOString(),
           ...(diagnostics ? { diagnostics } : {}),
+        };
+      }
+      if (invocation) {
+        const extractedEvidence = extractEvidenceAttestations({
+          evidenceAttestations: Array.isArray(result?.data?.evidenceAttestations)
+            ? result.data.evidenceAttestations
+            : (Array.isArray(result?.data?.evidence) ? result.data.evidence : []),
+        }).attestations;
+        const evidence = extractedEvidence.map((entry) => createEvidenceAttestation({
+          ...entry,
+          sourceInvocationId: invocation.id,
+        }));
+        result = {
+          ...result,
+          invocation: createToolInvocation({
+            ...invocation,
+            input: normalizedParams,
+            approvalReceipt: approvalDecision?.receipt,
+            result: result?.success === false
+              ? { error: result.error, errorCode: result.errorCode || null }
+              : result.data,
+            evidence,
+            sideEffects: declaredSideEffects,
+            status: result?.errorCode === 'TOOL_APPROVAL_REQUIRED'
+              ? 'blocked'
+              : (result?.success === false ? 'failed' : 'succeeded'),
+          }),
+          approvalDecision,
         };
       }
     } else {

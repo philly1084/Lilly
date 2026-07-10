@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent SDK Admin Dashboard</title>
-    <link rel="stylesheet" href="css/dashboard.css?v=admin-agent-quality-summary">
+    <title>Lilly Mission Control</title>
+    <link rel="stylesheet" href="css/dashboard.css?v=admin-trustworthy-mission-v1">
     <link rel="stylesheet" href="../shared/ui-polish.css?v=20260506">
 </head>
 <body data-ui-surface="admin">
@@ -16,7 +16,7 @@
                     <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                     </svg>
-                    <span class="logo-text">Agent SDK</span>
+                    <span class="logo-text">Lilly</span>
                 </div>
                 <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Collapse admin navigation" aria-controls="sidebar" aria-expanded="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -220,7 +220,7 @@
                             <div class="stat-content">
                                 <span class="stat-value" id="totalTasks">0</span>
                                 <span class="stat-label">Total Tasks</span>
-                                <span class="stat-change positive">+12% <span>vs last hour</span></span>
+                                <span class="stat-change neutral"><span>live recorded value</span></span>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -231,9 +231,9 @@
                                 </svg>
                             </div>
                             <div class="stat-content">
-                                <span class="stat-value" id="successRate">0%</span>
+                                <span class="stat-value" id="successRate">Unavailable</span>
                                 <span class="stat-label">Success Rate</span>
-                                <span class="stat-change positive">+2.5% <span>vs last hour</span></span>
+                                <span class="stat-change neutral" id="successRateStatus"><span>no completed tasks</span></span>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -247,7 +247,7 @@
                             <div class="stat-content">
                                 <span class="stat-value" id="activeSessions">0</span>
                                 <span class="stat-label">Active Sessions</span>
-                                <span class="stat-change neutral">0% <span>vs last hour</span></span>
+                                <span class="stat-change neutral"><span>live recorded value</span></span>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -1456,6 +1456,10 @@
                         <span class="trace-muted">Agent quality metrics will appear after scored traces are available.</span>
                     </div>
 
+                    <div class="trace-eval-summary" id="traceEvalSummary" aria-live="polite">
+                        <span class="trace-muted">No recorded agent eval runs are available.</span>
+                    </div>
+
                     <div class="traces-layout">
                         <div class="traces-list-panel">
                             <div class="traces-list" id="tracesList">
@@ -1567,7 +1571,7 @@
                                         <form id="generalSettingsForm">
                                             <div class="form-group">
                                                 <label for="dashboardTitle">Dashboard Title</label>
-                                                <input type="text" class="form-control" id="dashboardTitle" value="Agent SDK Admin">
+                                                <input type="text" class="form-control" id="dashboardTitle" value="Lilly Mission Control">
                                             </div>
                                             <div class="form-group">
                                                 <label for="timezone">Timezone</label>
@@ -2640,6 +2644,6 @@
 
     <!-- Scripts -->
     <script src="js/api-client.js"></script>
-    <script src="js/dashboard.js?v=admin-agent-quality-summary"></script>
+    <script src="js/dashboard.js?v=admin-trustworthy-mission-v1"></script>
 </body>
 </html>

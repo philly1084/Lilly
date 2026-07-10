@@ -7,6 +7,7 @@ const { ReadableStream } = require('stream/web');
 const {
   RemoteCliAgentsSdkRunner,
   buildRemoteCliInstructions,
+  buildRemoteCliStructuredResult,
   extractRemoteCliRunMetadata,
   hasRemoteSoftwareDeploymentIntent,
   resolveAgentsApiMode,
@@ -186,6 +187,35 @@ describe('RemoteCliAgentsSdkRunner', () => {
       ],
       completionStatus: 'complete',
     });
+  });
+
+  test('returns a versioned structured result while labeling marker proof as a migration adapter', () => {
+    const structured = buildRemoteCliStructuredResult({
+      task: 'Deploy the weather site',
+      metadata: {
+        completionStatus: 'complete',
+        whatChanged: 'Updated and deployed the weather site.',
+        sessionId: 'session-1',
+        workspace: '/srv/weather',
+        gitCommit: 'abc1234',
+        changedFiles: ['src/app.js'],
+        verifyCommands: ['npm test'],
+        verifyResults: ['passed'],
+        publicUrl: 'https://weather.example.test',
+      },
+      agentQuality: { status: 'partial' },
+    });
+
+    expect(structured).toEqual(expect.objectContaining({
+      version: 'RemoteCliResult/v2',
+      status: 'complete',
+      humanSummary: 'Updated and deployed the weather site.',
+      verification: expect.objectContaining({
+        source: 'legacy-marker-adapter',
+        evidenceAttestations: [],
+      }),
+      sourceControl: expect.objectContaining({ commit: 'abc1234' }),
+    }));
   });
 
   test('classifies blocked remote CLI output from proof markers', () => {

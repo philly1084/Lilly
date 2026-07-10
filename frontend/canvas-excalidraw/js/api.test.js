@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadCanvasApi(fetchMock = jest.fn()) {
+function loadCanvasApi(fetchMock = jest.fn(), search = '') {
     const sourcePath = path.join(__dirname, 'api.js');
     const source = fs.readFileSync(sourcePath, 'utf8')
         .replace(
@@ -20,6 +20,7 @@ function loadCanvasApi(fetchMock = jest.fn()) {
             origin: 'http://localhost:3000',
             host: 'localhost:3000',
             href: 'http://localhost:3000/canvas/',
+            search,
         },
         KimiBuiltGatewaySSE: null,
     };
@@ -44,6 +45,36 @@ function loadCanvasApi(fetchMock = jest.fn()) {
 }
 
 describe('canvas API artifact metadata normalization', () => {
+    test('propagates mission and revision lineage into exact-object edits', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                content: '{"actions":[]}',
+                artifactLineage: {
+                    missionId: 'mission-1',
+                    parentArtifactId: 'artifact-1',
+                    revision: 3,
+                },
+            }),
+        }));
+        const { OpenAICanvasAPI } = loadCanvasApi(
+            fetchMock,
+            '?artifactId=artifact-1&missionId=mission-1&parentArtifactId=artifact-1&revision=2',
+        );
+        const api = new OpenAICanvasAPI('http://localhost:3000/v1');
+
+        const result = await api.requestCanvasAgent({ message: 'Change the selected label.' });
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+
+        expect(body.metadata).toEqual(expect.objectContaining({
+            missionId: 'mission-1',
+            parentArtifactId: 'artifact-1',
+            revision: 2,
+            artifactLineage: expect.objectContaining({ artifactId: 'artifact-1' }),
+        }));
+        expect(result.artifactLineage.revision).toBe(3);
+    });
+
     test('normalizes persisted session artifacts returned by the backend', async () => {
         const fetchMock = jest.fn(async () => ({
             ok: true,

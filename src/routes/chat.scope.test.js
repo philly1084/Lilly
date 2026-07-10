@@ -42,11 +42,14 @@ jest.mock('../runtime-tool-manager', () => ({
 jest.mock('../runtime-execution', () => ({
     executeConversationRuntime: jest.fn(),
     resolveConversationExecutorFlag: jest.fn(() => false),
+    inferExecutionProfile: jest.fn(() => 'default'),
+    scheduleDirectAfterProcessAudit: jest.fn(),
 }));
 
 jest.mock('../ai-route-utils', () => ({
     buildInstructionsWithArtifacts: jest.fn(async () => 'continuity instructions'),
     maybeGenerateOutputArtifact: jest.fn(async () => []),
+    shouldGenerateOutputArtifactForToolResponse: jest.fn(({ outputFormat }) => Boolean(outputFormat)),
     generateOutputArtifactFromPrompt: jest.fn(),
     inferRequestedOutputFormat: jest.fn(() => null),
     maybePrepareImagesForArtifactPrompt: jest.fn(async ({ artifactIds = [] } = {}) => ({
@@ -76,6 +79,7 @@ jest.mock('../ai-route-utils', () => ({
     inferOutputFormatFromArtifactContext: jest.fn(async () => null),
     resolveArtifactContextIds: jest.fn(() => []),
     buildUserInputWithImageArtifacts: jest.fn(async ({ text }) => text),
+    buildPiiWorkbookRelationshipToolContext: jest.fn(async () => null),
 }));
 
 jest.mock('../admin/runtime-monitor', () => ({

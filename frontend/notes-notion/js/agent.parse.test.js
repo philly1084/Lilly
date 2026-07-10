@@ -31,6 +31,7 @@ function loadAgent(overrides = {}) {
         localStorage: localStorageObject,
         console,
         URL,
+        URLSearchParams,
         setTimeout,
         clearTimeout,
         CustomEvent: function CustomEvent(type, init = {}) {
@@ -64,6 +65,39 @@ function loadAgent(overrides = {}) {
 }
 
 describe('notes agent parsing', () => {
+    test('retains mission lineage and records a new revision after an exact edit', () => {
+        const page = { id: 'page-1', metadata: {} };
+        const Editor = {
+            getCurrentPage: jest.fn(() => page),
+            savePage: jest.fn(),
+        };
+        const agent = loadAgent({
+            location: {
+                origin: 'http://localhost:3000',
+                search: '?artifactId=artifact-1&missionId=agent-run-1&parentArtifactId=artifact-1&revision=2',
+            },
+            Editor,
+        });
+        const lineage = agent._readArtifactLineageFromLocation();
+        const recorded = agent._recordArtifactRevision(lineage, 1, {
+            agentRun: { id: 'agent-run-1' },
+        });
+
+        expect(lineage).toEqual(expect.objectContaining({
+            artifactId: 'artifact-1',
+            missionId: 'agent-run-1',
+            revision: 2,
+        }));
+        expect(recorded).toEqual(expect.objectContaining({
+            missionId: 'agent-run-1',
+            parentArtifactId: 'artifact-1',
+            revision: 3,
+            sourceSurface: 'notes',
+        }));
+        expect(page.metadata.artifactLineage.revision).toBe(3);
+        expect(Editor.savePage).toHaveBeenCalled();
+    });
+
     test('adds the selected buddy profile to the notes system prompt', () => {
         const agent = loadAgent();
 

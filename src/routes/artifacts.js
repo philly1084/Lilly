@@ -355,6 +355,9 @@ const generationSchema = {
     template: { required: false, type: 'string' },
     model: { required: false, type: 'string' },
     parentArtifactId: { required: false, type: 'string' },
+    missionId: { required: false, type: 'string' },
+    revision: { required: false, type: 'number' },
+    provenance: { required: false, type: 'object' },
     reasoningEffort: { required: false, type: 'string' },
     executionProfile: { required: false, type: 'string' },
     memoryKeywords: { required: false, type: 'array' },
@@ -380,6 +383,10 @@ async function maybeQueueArtifactAsyncGeneration(req, {
     reasoningEffort = null,
     executionProfile = 'default',
     memoryKeywords = [],
+    parentArtifactId = null,
+    missionId = null,
+    revision = null,
+    provenance = {},
 } = {}) {
     if (!shouldQueueArtifactAsyncGeneration(req.body || {})) {
         return null;
@@ -413,6 +420,10 @@ async function maybeQueueArtifactAsyncGeneration(req, {
                 reasoningEffort,
                 buildMode: normalizedFormat === 'html' ? 'sandbox' : 'document',
                 includeContent: false,
+                parentArtifactId,
+                missionId,
+                revision,
+                provenance,
             },
         },
     }, ownerId);
@@ -769,6 +780,9 @@ router.post('/generate', validate(generationSchema), async (req, res, next) => {
             template = '',
             model = null,
             parentArtifactId = null,
+            missionId = null,
+            revision = null,
+            provenance = {},
             reasoningEffort = null,
             executionProfile = 'default',
             memoryKeywords = [],
@@ -807,6 +821,10 @@ router.post('/generate', validate(generationSchema), async (req, res, next) => {
             reasoningEffort,
             executionProfile,
             memoryKeywords,
+            parentArtifactId,
+            missionId,
+            revision,
+            provenance,
         });
         if (asyncRuntime) {
             return res.status(asyncRuntime.duplicate ? 200 : 202).json({
@@ -831,6 +849,9 @@ router.post('/generate', validate(generationSchema), async (req, res, next) => {
             template,
             model,
             parentArtifactId,
+            missionId,
+            revision,
+            provenance,
             reasoningEffort,
             toolManager,
             toolContext: {
@@ -842,6 +863,7 @@ router.post('/generate', validate(generationSchema), async (req, res, next) => {
                 clientSurface,
                 memoryScope,
                 memoryKeywords,
+                runId: req.body?.runId || req.body?.agentRunId || null,
                 timezone: requestTimezone,
                 now: requestNow,
                 documentService: req.app.locals.documentService || null,

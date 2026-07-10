@@ -186,6 +186,30 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             ...(requestNow ? { clientNow: requestNow } : {}),
             ...(memoryKeywords.length > 0 ? { memoryKeywords } : {}),
         };
+        const lineageRequest = effectiveRequestMetadata.artifactLineage
+            && typeof effectiveRequestMetadata.artifactLineage === 'object'
+            ? effectiveRequestMetadata.artifactLineage
+            : {};
+        const missionId = String(
+            effectiveRequestMetadata.missionId
+            || lineageRequest.missionId
+            || '',
+        ).trim() || null;
+        const parentArtifactId = String(
+            effectiveRequestMetadata.parentArtifactId
+            || lineageRequest.parentArtifactId
+            || lineageRequest.artifactId
+            || artifactIds[0]
+            || '',
+        ).trim() || null;
+        const currentRevision = Number(
+            effectiveRequestMetadata.revision
+            ?? lineageRequest.revision
+            ?? 0,
+        );
+        const nextRevision = Number.isInteger(currentRevision) && currentRevision > 0
+            ? currentRevision + 1
+            : 1;
         const requestedClientSurface = resolveClientSurface(req.body || {}, null, 'canvas');
         const leanCanvasAgent = isLeanCanvasAgentRequest({
             canvasType,
@@ -359,6 +383,13 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             model,
             reasoningEffort,
             recentMessages: await sessionStore.getRecentMessages(sessionId),
+            missionId,
+            parentArtifactId,
+            provenance: {
+                sourceSurface: clientSurface || 'canvas',
+                runId: effectiveRequestMetadata.agentRunId || null,
+                sessionId,
+            },
         });
         const artifacts = mergeRuntimeArtifacts(
             extractArtifactsFromToolEvents(response?.metadata?.toolEvents || []),
@@ -386,6 +417,23 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
                 }),
             });
         }
+        const artifactLineage = missionId || parentArtifactId
+            ? {
+                schemaVersion: 'ArtifactLineage/v1',
+                missionId,
+                parentArtifactId,
+                revision: artifacts[artifacts.length - 1]?.revision || nextRevision,
+                sourceSurface: clientSurface || 'canvas',
+                responseId: response.id,
+            }
+            : null;
+        if (artifactLineage) {
+            await sessionStore.update(sessionId, {
+                metadata: {
+                    activeArtifactLineage: artifactLineage,
+                },
+            });
+        }
 
         completeRuntimeTask(runtimeTask?.id, {
             responseId: response.id,
@@ -406,6 +454,7 @@ router.post('/', validate(canvasSchema), async (req, res, next) => {
             artifacts,
             assistant_metadata: requestFrameMetadata,
             assistantMetadata: requestFrameMetadata,
+            ...(artifactLineage ? { artifactLineage } : {}),
             templateMatches: templateSelection.matches,
             ...structured,
         });

@@ -25,6 +25,7 @@ class OpenAICanvasAPI {
         this.client = null;
         this.sessionId = null;
         this.sdkAvailable = false;
+        this.artifactLineage = this.readArtifactLineageFromLocation();
         try {
             this.selectedModel = localStorage.getItem('kimi-canvas-model') || 'gpt-4o';
         } catch {
@@ -70,6 +71,23 @@ class OpenAICanvasAPI {
 
     getBackendBaseURL() {
         return this.baseURL.replace(/\/v1\/?$/, '');
+    }
+
+    readArtifactLineageFromLocation(search = window.location?.search || '') {
+        const params = new URLSearchParams(String(search || '').replace(/^\?/, ''));
+        const artifactId = String(params.get('artifactId') || '').trim();
+        const missionId = String(params.get('missionId') || '').trim();
+        const parentArtifactId = String(params.get('parentArtifactId') || artifactId).trim();
+        const revision = Number(params.get('revision'));
+        if (!artifactId && !missionId && !parentArtifactId) {
+            return null;
+        }
+        return {
+            artifactId: artifactId || null,
+            missionId: missionId || null,
+            parentArtifactId: parentArtifactId || null,
+            revision: Number.isInteger(revision) && revision > 0 ? revision : null,
+        };
     }
 
     formatCanvasGrounding(canvasContext = null, fallback = '') {
@@ -189,6 +207,12 @@ class OpenAICanvasAPI {
                         avoidRasterSnapshots: compactToolPlan?.avoidRasterSnapshots !== false,
                         explicitImageMode: mode === 'image',
                     },
+                    ...(this.artifactLineage ? {
+                        missionId: this.artifactLineage.missionId,
+                        parentArtifactId: this.artifactLineage.parentArtifactId || this.artifactLineage.artifactId,
+                        revision: this.artifactLineage.revision,
+                        artifactLineage: this.artifactLineage,
+                    } : {}),
                 },
             }),
         });
@@ -201,6 +225,12 @@ class OpenAICanvasAPI {
         if (data.sessionId) {
             this.sessionId = data.sessionId;
         }
+        if (data.artifactLineage && typeof data.artifactLineage === 'object') {
+            this.artifactLineage = {
+                ...(this.artifactLineage || {}),
+                ...data.artifactLineage,
+            };
+        }
 
         return {
             content: data.content || '',
@@ -208,6 +238,7 @@ class OpenAICanvasAPI {
             metadata: data.metadata || {},
             sessionId: this.sessionId,
             responseId: data.responseId,
+            artifactLineage: data.artifactLineage || this.artifactLineage,
             raw: data,
         };
     }

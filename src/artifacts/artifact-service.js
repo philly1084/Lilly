@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { randomUUID } = require('crypto');
 const { config } = require('../config');
 const { artifactStore } = require('./artifact-store');
+const { buildArtifactLineageMetadata } = require('./artifact-lineage');
 const { extractArtifact } = require('./artifact-extractor');
 const { renderArtifact } = require('./artifact-renderer');
 const { FORMAT_MIME_TYPES, SUPPORTED_GENERATION_FORMATS, SUPPORTED_UPLOAD_FORMATS, inferFormat, normalizeFormat } = require('./constants');
@@ -2075,6 +2076,9 @@ class ArtifactService {
                 ? { type: 'html', content: artifact.previewHtml }
                 : (artifact.extractedText ? { type: 'text', content: artifact.extractedText.slice(0, 4000) } : null),
             metadata: serializedMetadata,
+            missionId: serializedMetadata?.missionId || null,
+            revision: Number(serializedMetadata?.revision || 1),
+            provenance: serializedMetadata?.provenance || null,
             createdAt: artifact.createdAt,
         };
     }
@@ -3145,6 +3149,9 @@ class ArtifactService {
         model = null,
         reasoningEffort = null,
         parentArtifactId = null,
+        missionId = null,
+        revision = null,
+        provenance = {},
         contextMessages = [],
         recentMessages = [],
         toolManager = null,
@@ -3178,6 +3185,11 @@ class ArtifactService {
                 return postgres.enabled ? artifactStore.get(artifactId) : null;
             }))).filter(Boolean)
             : [];
+        const parentArtifact = parentArtifactId
+            ? (isLocalGeneratedArtifactId(parentArtifactId)
+                ? getLocalGeneratedArtifact(parentArtifactId)
+                : (postgres.enabled ? await artifactStore.get(parentArtifactId) : null))
+            : null;
         const imageReferences = conservativeDocumentRevision
             ? []
             : await this.resolveImageReferences(session, prompt, {
@@ -3478,7 +3490,8 @@ class ArtifactService {
             buffer: rendered.buffer,
             extractedText: rendered.extractedText,
             previewHtml: rendered.previewHtml,
-            metadata: {
+            metadata: buildArtifactLineageMetadata({
+                metadata: {
                 format: normalizedFormat,
                 sourcePrompt: resolveStoredSourcePrompt(prompt, generatedPiiCleansing),
                 artifactIds,
@@ -3489,7 +3502,17 @@ class ArtifactService {
                 ...(generated.metadata || {}),
                 ...artifactExperienceMetadata,
                 ...(piiArtifactMetadata ? { piiCleansing: piiArtifactMetadata } : {}),
-            },
+                },
+                parentArtifact,
+                parentArtifactId,
+                missionId,
+                revision,
+                provenance,
+                session,
+                toolContext,
+                sourceMode: mode,
+                sourceArtifactIds: artifactIds,
+            }),
             vectorizeText: ['html', 'pdf'].includes(normalizedFormat)
                 ? stripHtml(rawRenderSource)
                 : String(rawRenderSource || ''),
@@ -3512,6 +3535,9 @@ class ArtifactService {
         content,
         title = 'generated-artifact',
         parentArtifactId = null,
+        missionId = null,
+        revision = null,
+        provenance = {},
         metadata = {},
         ownerId = null,
         session = null,
@@ -3528,6 +3554,11 @@ class ArtifactService {
             route: metadata?.route || '/api/artifacts/generate',
         });
         const piiArtifactMetadata = buildPiiArtifactMetadata(metadata?.piiCleansing || null, restoredContent.restorations);
+        const parentArtifact = parentArtifactId
+            ? (isLocalGeneratedArtifactId(parentArtifactId)
+                ? getLocalGeneratedArtifact(parentArtifactId)
+                : (postgres.enabled ? await artifactStore.get(parentArtifactId) : null))
+            : null;
         const rendered = await renderArtifact({
             format: normalizedFormat,
             title,
@@ -3546,11 +3577,21 @@ class ArtifactService {
             buffer: rendered.buffer,
             extractedText: rendered.extractedText,
             previewHtml: rendered.previewHtml,
-            metadata: {
-                ...rendered.metadata,
-                ...metadata,
-                ...(piiArtifactMetadata ? { piiCleansing: piiArtifactMetadata } : {}),
-            },
+            metadata: buildArtifactLineageMetadata({
+                metadata: {
+                    ...rendered.metadata,
+                    ...metadata,
+                    ...(piiArtifactMetadata ? { piiCleansing: piiArtifactMetadata } : {}),
+                },
+                parentArtifact,
+                parentArtifactId,
+                missionId,
+                revision,
+                provenance,
+                session,
+                sourceMode: mode,
+                sourceArtifactIds: metadata?.artifactIds || [],
+            }),
             ownerId,
             vectorizeText: String(content || ''),
             vectorize: Boolean(rendered.extractedText),

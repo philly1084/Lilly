@@ -18,8 +18,21 @@ function errorHandler(err, req, res, _next) {
         return;
     }
 
+    if (String(err.code || '').startsWith('AGENT_RUN_')
+        || ['INVALID_AGENT_RUN_ACTION', 'INVALID_AGENT_RUN_STATE', 'ILLEGAL_AGENT_RUN_TRANSITION'].includes(err.code)) {
+        return res.status(err.statusCode || err.status || 400).json({
+            error: {
+                type: 'agent_run_error',
+                message: err.message,
+                code: err.code || null,
+            },
+        });
+    }
+
     // OpenAI API errors
-    if (err.constructor?.name === 'APIError' || err.status) {
+    if (err.constructor?.name === 'APIError'
+        || err.name === 'OpenAIError'
+        || err.type === 'openai_error') {
         return res.status(err.status || 502).json({
             error: {
                 type: 'openai_error',
@@ -41,7 +54,7 @@ function errorHandler(err, req, res, _next) {
     }
 
     // Generic errors
-    const statusCode = err.statusCode || 500;
+    const statusCode = err.statusCode || err.status || 500;
     res.status(statusCode).json({
         error: {
             type: 'internal_error',

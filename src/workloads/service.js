@@ -23,6 +23,11 @@ const {
 } = require('./long-agent-mode');
 const { RUN_STATUS, workloadStore } = require('./store');
 const { broadcastToAdmins, broadcastToSession } = require('../realtime-hub');
+const {
+    advanceSurfaceAgentRun,
+    attachAgentRunMetadata,
+    beginSurfaceAgentRun,
+} = require('../agent-runs/runtime-bridge');
 
 const SUB_AGENT_MAX_TASKS = 3;
 const SUB_AGENT_MAX_DEPTH = 1;
@@ -177,14 +182,37 @@ class AgentWorkloadService {
         store = workloadStore,
         sessionStore,
         conversationRunService,
+        agentRunService = null,
     }) {
         this.store = store;
         this.sessionStore = sessionStore;
         this.conversationRunService = conversationRunService;
+        this.agentRunService = agentRunService;
     }
 
     isAvailable() {
         return this.store.isAvailable() && this.sessionStore?.isPersistent?.() === true;
+    }
+
+    async captureAgentRunShadow(workload = {}, run = {}, state = 'created', details = {}) {
+        return beginSurfaceAgentRun({
+            agentRunService: this.agentRunService,
+            conversationRunService: this.conversationRunService,
+            allowSharedFallback: Boolean(this.agentRunService || this.conversationRunService?.app),
+            surface: 'workload',
+            mode: workload.mode || 'chat',
+            sourceId: run.id,
+            sessionId: workload.sessionId,
+            ownerId: workload.ownerId,
+            objective: run.prompt || workload.prompt || workload.title || 'Deferred workload',
+            state,
+            metadata: {
+                workloadId: workload.id || run.workloadId || null,
+                workloadRunId: run.id || null,
+                stageIndex: run.stageIndex ?? null,
+                ...details,
+            },
+        });
     }
 
     resolveRequestedModel(payload = {}, session = null) {
@@ -885,15 +913,18 @@ class AgentWorkloadService {
             || workload?.metadata?.requestedModel
             || '',
         ).trim() || null;
+        const agentRunShadow = await this.captureAgentRunShadow(workload, run, 'executing', {
+            workerId,
+        });
         const startedMessage = `Deferred workload "${workload.title}" started${stage ? ` (stage ${run.stageIndex + 1})` : ''}.`;
         await this.appendSyntheticMessageSafe(workload.sessionId, 'system', startedMessage);
         await this.addRunEventSafe(run.id, 'started', { workerId, stageIndex: run.stageIndex });
-        await this.emitWorkloadUpdate('workload_started', workload.sessionId, {
+        await this.emitWorkloadUpdate('workload_started', workload.sessionId, attachAgentRunMetadata({
             workloadId: workload.id,
             runId: run.id,
             stageIndex: run.stageIndex,
             scheduledFor: run.scheduledFor,
-        });
+        }, agentRunShadow, { eventType: 'workload.started' }));
 
         try {
             const session = await this.sessionStore.getOwned(workload.sessionId, workload.ownerId);
@@ -912,6 +943,7 @@ class AgentWorkloadService {
                         clientSurface: 'workload',
                         workloadId: workload.id,
                         runId: run.id,
+                        agentRunId: agentRunShadow?.run?.id || null,
                         workloadRun: true,
                         subAgentDepth,
                         subAgentOrchestrationId: workload?.metadata?.subAgent?.orchestrationId || null,
@@ -928,6 +960,7 @@ class AgentWorkloadService {
                         prompt,
                         workloadId: workload.id,
                         runId: run.id,
+                        agentRunId: agentRunShadow?.run?.id || null,
                         requestedModel,
                         subAgentDepth,
                         subAgentOrchestrationId: workload?.metadata?.subAgent?.orchestrationId || null,
@@ -947,6 +980,7 @@ class AgentWorkloadService {
                         clientSurface: 'workload',
                         workloadId: workload.id,
                         runId: run.id,
+                        agentRunId: agentRunShadow?.run?.id || null,
                         workloadRun: true,
                         subAgentDepth,
                         subAgentOrchestrationId: workload?.metadata?.subAgent?.orchestrationId || null,
@@ -997,14 +1031,29 @@ class AgentWorkloadService {
                 'system',
                 `Deferred workload "${trackedWorkload.title}" completed${stage ? ` (stage ${run.stageIndex + 1})` : ''}.`,
             );
-            await this.emitWorkloadUpdate('workload_completed', trackedWorkload.sessionId, {
+            await advanceSurfaceAgentRun(agentRunShadow, 'completed', {
+                reason: 'Deferred workload completed.',
+                details: {
+                    workloadId: trackedWorkload.id,
+                    workloadRunId: run.id,
+                    responseId: result.response?.id || null,
+                    artifactCount: Array.isArray(result.artifacts) ? result.artifacts.length : 0,
+                },
+                usage: result.response?.usage || result.response?.metadata?.usage || null,
+                outputs: (result.artifacts || []).map((artifact) => ({
+                    type: 'artifact',
+                    id: artifact?.id || artifact?.artifactId || null,
+                    filename: artifact?.filename || null,
+                })),
+            });
+            await this.emitWorkloadUpdate('workload_completed', trackedWorkload.sessionId, attachAgentRunMetadata({
                 workloadId: trackedWorkload.id,
                 runId: run.id,
                 output: result.outputText || '',
                 responseId: result.response?.id || null,
                 artifacts: result.artifacts || [],
-            });
-            return completed;
+            }, agentRunShadow, { eventType: 'workload.completed' }));
+            return attachAgentRunMetadata(completed, agentRunShadow, { eventType: 'workload.completed' });
         } catch (error) {
             const subAgentFailure = isSubAgentWorkload(workload)
                 ? classifySubAgentFailure(error)
@@ -1052,13 +1101,22 @@ class AgentWorkloadService {
                 'system',
                 `Deferred workload "${trackedWorkload.title}" failed${stage ? ` (stage ${run.stageIndex + 1})` : ''}: ${error.message}`,
             );
-            await this.emitWorkloadUpdate('workload_failed', trackedWorkload.sessionId, {
+            await advanceSurfaceAgentRun(agentRunShadow, 'failed', {
+                reason: error.message,
+                details: {
+                    workloadId: trackedWorkload.id,
+                    workloadRunId: run.id,
+                    errorCode: error.code || null,
+                    retryRunId: retryRun?.id || null,
+                },
+            });
+            await this.emitWorkloadUpdate('workload_failed', trackedWorkload.sessionId, attachAgentRunMetadata({
                 workloadId: trackedWorkload.id,
                 runId: run.id,
                 error: error.message,
                 retryRunId: retryRun?.id || null,
-            });
-            return failed;
+            }, agentRunShadow, { eventType: 'workload.failed' }));
+            return attachAgentRunMetadata(failed, agentRunShadow, { eventType: 'workload.failed' });
         }
     }
 
@@ -1717,6 +1775,9 @@ class AgentWorkloadService {
     }
 
     async onRunQueued(workload, run, source = 'scheduled') {
+        const agentRunShadow = await this.captureAgentRunShadow(workload, run, 'created', {
+            source,
+        });
         await this.addRunEventSafe(run.id, 'queued', {
             source,
             scheduledFor: run.scheduledFor,
@@ -1726,12 +1787,12 @@ class AgentWorkloadService {
             'system',
             `Deferred workload "${workload.title}" queued for ${run.scheduledFor}.`,
         );
-        await this.emitWorkloadUpdate('workload_queued', workload.sessionId, {
+        await this.emitWorkloadUpdate('workload_queued', workload.sessionId, attachAgentRunMetadata({
             workloadId: workload.id,
             runId: run.id,
             scheduledFor: run.scheduledFor,
             reason: run.reason,
-        });
+        }, agentRunShadow, { eventType: 'workload.queued' }));
     }
 
     async emitWorkloadUpdate(type, sessionId, data = {}) {

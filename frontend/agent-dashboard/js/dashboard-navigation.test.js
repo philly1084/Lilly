@@ -126,6 +126,7 @@ function createRuntimeListHarness() {
     const dom = new JSDOM(`
         <div id="promptList"></div>
         <div id="traceQualitySummary"></div>
+        <div id="traceEvalSummary"></div>
         <div id="tracesList"></div>
         <table><tbody id="adminRunsTableBody"></tbody></table>
     `, { url: 'http://localhost:3000/admin/?view=workloads' });
@@ -938,9 +939,12 @@ describe('agent dashboard navigation accessibility', () => {
         expect(previewPanel.getAttribute('role')).toBe('tabpanel');
         expect(previewPanel.getAttribute('aria-labelledby')).toBe('prompt-preview-tab');
         expect(previewPanel.hasAttribute('hidden')).toBe(true);
-        expect(html).toContain('dashboard.js?v=admin-agent-quality-summary');
-        expect(html).toContain('css/dashboard.css?v=admin-agent-quality-summary');
+        expect(html).toContain('dashboard.js?v=admin-trustworthy-mission-v1');
+        expect(html).toContain('css/dashboard.css?v=admin-trustworthy-mission-v1');
         expect(html).toContain('id="traceQualitySummary"');
+        expect(html).toContain('id="traceEvalSummary"');
+        expect(html).toContain('<title>Lilly Mission Control</title>');
+        expect(html).not.toContain('vs last hour');
     });
 
     test('keeps prompt tab selection and panel visibility synchronized', () => {
@@ -971,6 +975,7 @@ describe('agent dashboard navigation accessibility', () => {
         dashboard.renderTraces([
             { id: 'trace-a', name: 'Trace A', status: 'success', startedAt: 'now', duration: 24, steps: [] },
             { id: 'trace-b', name: 'Trace B', status: 'running', startedAt: 'later', duration: 12, steps: [] },
+            { id: 'trace-xss', name: '<img src=x onerror=alert(1)>', status: 'success', startedAt: 'later', duration: 1, steps: [] },
         ]);
         dashboard.renderAdminRuns([
             { id: 'run-a', workloadTitle: 'Morning job', status: 'completed', reason: 'manual' },
@@ -994,6 +999,29 @@ describe('agent dashboard navigation accessibility', () => {
         expect(dashboard.selectPromptById).toHaveBeenCalledWith('prompt-b');
         expect(dashboard.selectTrace).toHaveBeenCalledWith('trace-b');
         expect(dashboard.selectAdminRun).toHaveBeenCalledWith('run-b');
+        expect(document.querySelector('.trace-item[data-id="trace-xss"] img')).toBeNull();
+        expect(document.querySelector('.trace-item[data-id="trace-xss"] .trace-name').textContent)
+            .toBe('<img src=x onerror=alert(1)>');
+    });
+
+    test('populates and applies the trace session filter', () => {
+        const { dashboard } = createRuntimeListHarness();
+        document.body.insertAdjacentHTML('beforeend', `
+            <select id="traceSessionFilter"><option value="all">All Sessions</option></select>
+            <select id="traceStatusFilter"><option value="all">All Statuses</option></select>
+            <input id="traceSearch" value="">
+        `);
+        dashboard.state.traces = [
+            { id: 'trace-a', sessionId: 'session-a', name: 'Trace A', status: 'success', steps: [] },
+            { id: 'trace-b', sessionId: 'session-b', name: 'Trace B', status: 'success', steps: [] },
+        ];
+
+        dashboard.populateTraceSessionFilter(dashboard.state.traces);
+        document.getElementById('traceSessionFilter').value = 'session-b';
+        dashboard.filterTraces();
+
+        expect(Array.from(document.querySelectorAll('.trace-item')).map((item) => item.dataset.id))
+            .toEqual(['trace-b']);
     });
 
     test('renders agent quality gate fields in the trace timeline', () => {
@@ -1055,6 +1083,34 @@ describe('agent dashboard navigation accessibility', () => {
         expect(summaryText).toContain('passed 1');
         expect(summaryText).toContain('browser_proof 2');
         expect(summaryText).toContain('Website and frontend experience quality 50%');
+    });
+
+    test('renders recorded eval metrics and never invents fallback scores', () => {
+        const { dashboard } = createRuntimeListHarness();
+
+        dashboard.renderTraceEvalSummary(null);
+        expect(document.getElementById('traceEvalSummary').textContent).toContain('Synthetic fallback metrics are not shown');
+
+        dashboard.renderTraceEvalSummary({
+            totalRuns: 2,
+            totalCases: 60,
+            passedCases: 57,
+            passRate: 0.95,
+            status: 'passed',
+            criticalRegressions: 0,
+            evidenceCoverage: 0.92,
+            toolPrecision: 0.88,
+            averageCostUsd: 0.24,
+            averageLatencyMs: 1234,
+        });
+
+        const summary = document.getElementById('traceEvalSummary');
+        expect(summary.dataset.status).toBe('passed');
+        expect(summary.textContent).toContain('95%');
+        expect(summary.textContent).toContain('57 / 60 cases');
+        expect(summary.textContent).toContain('92%');
+        expect(summary.textContent).toContain('$0.24');
+        expect(summary.textContent).toContain('1234ms');
     });
 
     test('renders backend-shaped agent company status, work, and output filters', () => {
@@ -1900,6 +1956,6 @@ describe('agent dashboard navigation accessibility', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
         expect(css).toContain('.toast,\n    .toast.hiding');
         expect(css).toContain('animation: none;');
-        expect(html).toContain('dashboard.css?v=admin-agent-quality-summary');
+        expect(html).toContain('dashboard.css?v=admin-trustworthy-mission-v1');
     });
 });

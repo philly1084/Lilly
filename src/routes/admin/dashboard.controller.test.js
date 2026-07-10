@@ -27,6 +27,12 @@ describe('DashboardController', () => {
     logsController.logs = undefined;
   });
 
+  test('reports success rate as unavailable when no tasks have completed', () => {
+    const controller = new DashboardController(null);
+
+    expect(controller.calculateSuccessRate()).toBeNull();
+  });
+
   test('includes execution trace steps in the admin timeline', () => {
     const controller = new DashboardController(null);
     const task = controller.recordRuntimeTaskStart({

@@ -1,5 +1,7 @@
 'use strict';
 
+const { extractEvidenceAttestations } = require('./agent-evidence');
+
 const QUALITY_CONTRACT_VERSION = 'agent-quality-contract/v1';
 
 function normalizeText(value = '') {
@@ -14,7 +16,18 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function hasAttestation(evidence = {}, kinds = [], verdicts = ['pass'], predicate = null) {
+  const allowedKinds = new Set(asArray(kinds));
+  const allowedVerdicts = new Set(asArray(verdicts));
+  return asArray(evidence.evidenceAttestations).some((attestation) => (
+    (allowedKinds.size === 0 || allowedKinds.has(attestation.kind))
+    && (allowedVerdicts.size === 0 || allowedVerdicts.has(attestation.verdict))
+    && (typeof predicate !== 'function' || predicate(attestation))
+  ));
+}
+
 function buildEvidence(metadata = {}) {
+  const typedEvidence = extractEvidenceAttestations(metadata);
   const verifyCommands = asArray(metadata.verifyCommands).map(normalizeText).filter(Boolean);
   const verifyResults = asArray(metadata.verifyResults).map(normalizeText).filter(Boolean);
   const uiScreenshots = asArray(metadata.uiScreenshots).map(normalizeText).filter(Boolean);
@@ -57,6 +70,9 @@ function buildEvidence(metadata = {}) {
     verifyResults,
     uiScreenshots,
     changedFiles,
+    typedEvidencePresent: typedEvidence.present,
+    evidenceAttestations: typedEvidence.attestations,
+    invalidEvidenceAttestations: typedEvidence.invalidCount,
     textPool,
     proofTextPool,
   };
@@ -73,18 +89,25 @@ const QUALITY_PROFILES = {
         label: 'Format is explicit and real',
         required: true,
         pass: (evidence) => hasTextMatch(evidence.textPool, /\b(?:html|pdf|pptx|xlsx|md|markdown|document|artifact|source file|download|preview)\b/i),
+        passTyped: (evidence) => hasAttestation(evidence, ['artifact_render', 'source']),
       },
       {
         id: 'not_placeholder',
         label: 'Deliverable is not a placeholder or plan-only artifact',
         required: true,
         pass: (evidence) => !hasTextMatch(evidence.textPool, /\b(?:todo|tbd|placeholder|plan-only|outline only|not generated)\b/i),
+        passTyped: (evidence) => hasAttestation(evidence, ['artifact_render', 'source'], ['pass'], (attestation) => (
+          attestation.details?.placeholder !== true
+          && attestation.details?.complete !== false
+          && attestation.details?.generated !== false
+        )),
       },
       {
         id: 'target_medium_checked',
         label: 'Target medium was rendered, previewed, or inspected',
         required: true,
         pass: (evidence) => hasTextMatch(evidence.textPool, /\b(?:rendered|preview|opened|inspected|ui-check|visual|page break|contrast|table split|captions?)\b/i),
+        passTyped: (evidence) => hasAttestation(evidence, ['artifact_render']),
       },
       {
         id: 'handoff_complete',
@@ -103,6 +126,12 @@ const QUALITY_PROFILES = {
         label: 'Public or preview URL is available',
         required: true,
         pass: (evidence) => Boolean(normalizeText(evidence.publicUrl || evidence.publicHost)),
+        passTyped: (evidence) => hasAttestation(
+          evidence,
+          ['browser_ui', 'url_tls'],
+          ['pass'],
+          (attestation) => Boolean(normalizeText(attestation.details?.url)),
+        ),
       },
       {
         id: 'browser_proof',
@@ -116,6 +145,7 @@ const QUALITY_PROFILES = {
             || evidence.uiScreenshots.length > 0
             || hasTextMatch(evidence.proofTextPool, /\b(?:kimibuilt-ui-check|playwright|chromium|browser|screenshot|visual qa|desktop|mobile)\b/i);
         },
+        passTyped: (evidence) => hasAttestation(evidence, ['browser_ui']),
       },
       {
         id: 'responsive_states',
@@ -147,12 +177,21 @@ const QUALITY_PROFILES = {
         pass: (evidence) => evidence.changedFiles.length > 0
           || Boolean(normalizeText(evidence.gitCommit))
           || Boolean(normalizeText(evidence.whatChanged)),
+        passTyped: (evidence) => hasAttestation(evidence, ['deployment', 'git', 'source']),
       },
       {
         id: 'verification_commands',
         label: 'Verification commands and results are captured',
         required: true,
         pass: (evidence) => evidence.verifyCommands.length > 0 && evidence.verifyResults.length > 0,
+        passTyped: (evidence) => hasAttestation(evidence, [
+          'browser_ui',
+          'command',
+          'deployment',
+          'git',
+          'test',
+          'url_tls',
+        ]),
       },
       {
         id: 'deployment_or_url_proof',
@@ -166,12 +205,16 @@ const QUALITY_PROFILES = {
         pass: (evidence) => normalizeText(evidence.completionStatus) === 'blocked'
           ? Boolean(normalizeText(evidence.blocker))
           : !Boolean(normalizeText(evidence.blocker)),
+        passTyped: (evidence) => normalizeText(evidence.completionStatus) === 'blocked'
+          ? hasAttestation(evidence, [], ['blocked'])
+          : !Boolean(normalizeText(evidence.blocker)) && !hasAttestation(evidence, [], ['blocked']),
       },
     ],
   },
 };
 
 function inferQualitySurfaces(task = '', metadata = {}) {
+  const typedEvidence = extractEvidenceAttestations(metadata);
   const text = [
     task,
     metadata.whatChanged,
@@ -182,6 +225,16 @@ function inferQualitySurfaces(task = '', metadata = {}) {
     ...(Array.isArray(metadata.verifyResults) ? metadata.verifyResults : []),
   ].map(normalizeText).join('\n').toLowerCase();
   const surfaces = new Set();
+
+  if (typedEvidence.attestations.some((attestation) => ['deployment', 'git', 'command', 'test'].includes(attestation.kind))) {
+    surfaces.add('remote-deployment');
+  }
+  if (typedEvidence.attestations.some((attestation) => ['browser_ui', 'url_tls'].includes(attestation.kind))) {
+    surfaces.add('website-experience');
+  }
+  if (typedEvidence.attestations.some((attestation) => attestation.kind === 'artifact_render')) {
+    surfaces.add('document-artifact');
+  }
 
   if (/\b(?:remote|server|deploy|deployment|k3s|kubectl|ingress|tls|gitlab|runner|public host|public url)\b/.test(text)
     || metadata.deployment
@@ -205,7 +258,10 @@ function inferQualitySurfaces(task = '', metadata = {}) {
 
 function scoreProfile(profile, evidence) {
   const checks = profile.checks.map((check) => {
-    const passed = Boolean(check.pass(evidence));
+    const evaluator = evidence.typedEvidencePresent && check.required
+      ? check.passTyped
+      : check.pass;
+    const passed = Boolean(typeof evaluator === 'function' && evaluator(evidence));
     return {
       id: check.id,
       label: check.label,
@@ -258,6 +314,11 @@ function assessAgentQuality({ task = '', metadata = {}, surfaces = null } = {}) 
     score,
     status: summarizeStatus(surfaceScores, metadata.completionStatus),
     requiredMissing,
+    evidence: {
+      mode: evidence.typedEvidencePresent ? 'typed' : 'legacy',
+      validAttestations: evidence.evidenceAttestations.length,
+      invalidAttestations: evidence.invalidEvidenceAttestations,
+    },
   };
 }
 

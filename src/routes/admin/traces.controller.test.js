@@ -101,6 +101,21 @@ describe('TracesController persistence', () => {
                 }],
               },
               metadata: {
+                agentEval: {
+                  schemaVersion: 'EvalRun/v1',
+                  total: 30,
+                  passed: 29,
+                  criticalFailures: [],
+                  createdAt: '2026-06-27T10:00:02.000Z',
+                  metrics: {
+                    completionRate: 29 / 30,
+                    evidenceCoverage: 0.95,
+                    toolPrecision: 0.9,
+                    averageCostUsd: 0.2,
+                    averageLatencyMs: 1200,
+                  },
+                  caseResults: [],
+                },
                 remoteCliAgent: {
                   agentQuality: {
                     version: 'agent-quality-contract/v1',
@@ -143,6 +158,13 @@ describe('TracesController persistence', () => {
             }),
             topMissingGates: [{ id: 'browser_proof', count: 1 }],
           }),
+          agentEvalSummary: expect.objectContaining({
+            totalRuns: 1,
+            totalCases: 30,
+            passedCases: 29,
+            passRate: 29 / 30,
+            status: 'passed',
+          }),
         }),
         data: expect.arrayContaining([
           expect.objectContaining({
@@ -180,6 +202,11 @@ describe('TracesController persistence', () => {
                 status: 'partial',
                 score: 0.55,
                 requiredMissing: ['browser_proof'],
+              }),
+              agentEval: expect.objectContaining({
+                schemaVersion: 'EvalRun/v1',
+                total: 30,
+                passed: 29,
               }),
               output: expect.objectContaining({
                 text: 'Company proof shipped.',
