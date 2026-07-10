@@ -128,6 +128,23 @@ describe('Lilly Mission Mode', () => {
     expect(app.executionModeSelect.value).toBe('chat');
   });
 
+  test('resets empty conversations to the top of the welcome state', () => {
+    const context = loadMissionContext();
+    context.uiHelpers.clearMessages = jest.fn();
+    context.uiHelpers.showWelcomeMessage = jest.fn();
+    const app = Object.create(context.ChatApp.prototype);
+    app.messagesContainer = { scrollTop: 480 };
+    app.clearBufferedStreamingRenders = jest.fn();
+    app.updateMissionFromMessages = jest.fn();
+    app.updateAudioControls = jest.fn();
+
+    app.renderMessages([]);
+
+    expect(context.uiHelpers.showWelcomeMessage).toHaveBeenCalled();
+    expect(app.messagesContainer.scrollTop).toBe(0);
+    expect(app.updateAudioControls).toHaveBeenCalled();
+  });
+
   test('renders persistent objective, run state, controls, timeline, proof, and raw detail', () => {
     const dom = new JSDOM(`
       <section id="mission-mode" class="hidden">

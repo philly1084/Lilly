@@ -3624,6 +3624,9 @@ class ChatApp {
         
         if (messages.length === 0) {
             uiHelpers.showWelcomeMessage();
+            if (this.messagesContainer) {
+                this.messagesContainer.scrollTop = 0;
+            }
             this.updateAudioControls();
             return;
         }
