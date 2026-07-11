@@ -193,7 +193,7 @@
                 <span class="breadcrumb-current" id="breadcrumb-current">Untitled</span>
                 <!-- Model Selector (inline with breadcrumbs) -->
                 <div class="breadcrumb-model-selector">
-                    <button id="model-selector-btn" class="model-selector-btn" onclick="AgentUI.toggleModelSelector()" title="Change AI model" aria-label="Change AI model" aria-haspopup="listbox" aria-expanded="false">
+                    <button id="model-selector-btn" class="model-selector-btn" onclick="AgentUI.toggleModelSelector()" title="Change AI model" aria-label="Change AI model" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-list">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="model-icon-svg">
                             <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
                             <rect x="9" y="9" width="6" height="6"></rect>
@@ -686,9 +686,9 @@
         <div class="model-selector-dropdown-overlay" onclick="AgentUI.closeModelSelector()"></div>
         <div class="model-selector-dropdown-content">
             <div class="model-selector-header">
-                <span>Select Model</span>
+                <span id="model-selector-heading">Select Model</span>
             </div>
-            <div id="model-list" class="model-list">
+            <div id="model-list" class="model-list" role="listbox" aria-labelledby="model-selector-heading">
                 <!-- Models will be rendered here -->
             </div>
         </div>

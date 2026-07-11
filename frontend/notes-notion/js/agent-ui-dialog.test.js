@@ -12,6 +12,19 @@ function loadAgentUI() {
                 <span class="agent-label">Ask AI</span>
             </button>
         </div>
+        <button
+            id="model-selector-btn"
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-controls="model-list"
+        >
+            <span id="current-model-label">GPT-5.1</span>
+        </button>
+        <div id="model-selector-dropdown" style="display: none;">
+            <div id="model-selector-heading">Select Model</div>
+            <div id="model-list" role="listbox" aria-labelledby="model-selector-heading"></div>
+        </div>
         <div id="agent-chat-modal" class="agent-chat-modal" role="dialog" aria-modal="true" aria-labelledby="agent-chat-model-name" aria-hidden="true" style="display: none;">
             <div class="agent-chat-overlay"></div>
             <div class="agent-chat-container">
@@ -62,8 +75,10 @@ function loadAgentUI() {
     windowObject.Agent = {
         getMessages: jest.fn(() => []),
         getModels: jest.fn(() => []),
-        getModel: jest.fn(() => ({ id: 'gpt-5.1', name: 'GPT-5.1' })),
+        getModelsAsync: jest.fn(() => Promise.resolve([])),
+        getModel: jest.fn((id = 'gpt-5.1') => ({ id, name: id === 'gpt-5.2' ? 'GPT-5.2' : 'GPT-5.1' })),
         getSelectedModel: jest.fn(() => 'gpt-5.1'),
+        setSelectedModel: jest.fn(() => true),
         getCurrentModel: jest.fn(() => 'gpt-5.1'),
         getSelectedAgentProfile: jest.fn(() => ({ id: 'builder-buddy', name: 'Builder Buddy' })),
         getAgentProfiles: jest.fn(() => []),
@@ -93,6 +108,7 @@ function loadAgentUI() {
         window: windowObject,
         document: windowObject.document,
         HTMLElement: windowObject.HTMLElement,
+        CustomEvent: windowObject.CustomEvent,
         requestAnimationFrame: (callback) => callback(),
         setTimeout: jest.fn((callback) => {
             timers.push(callback);
@@ -168,5 +184,54 @@ describe('Notes AgentUI dialog accessibility', () => {
         expect(search.getAttribute('aria-activedescendant')).toBe(option.id);
         expect(option.getAttribute('aria-selected')).toBe('false');
         expect(option.getAttribute('aria-label')).toBe('Add Launch checklist reference');
+    });
+
+    test('opens the model selector as a labelled listbox with keyboard-selectable options', async () => {
+        const { dom, AgentUI } = loadAgentUI();
+        const { document, KeyboardEvent } = dom.window;
+        const modelBtn = document.getElementById('model-selector-btn');
+        const dropdown = document.getElementById('model-selector-dropdown');
+        const modelList = document.getElementById('model-list');
+        const models = [
+            {
+                id: 'gpt-5.1',
+                name: 'GPT-5.1',
+                description: 'Balanced reasoning',
+                provider: 'openai',
+            },
+            {
+                id: 'gpt-5.2',
+                name: 'GPT-5.2',
+                description: 'Deeper document work',
+                provider: 'openai',
+            },
+        ];
+
+        dom.window.Agent.getModels.mockReturnValue(models);
+        dom.window.Agent.getModelsAsync.mockResolvedValue(models);
+
+        AgentUI.init();
+        await AgentUI.toggleModelSelector();
+
+        expect(modelBtn.getAttribute('aria-controls')).toBe('model-list');
+        expect(modelBtn.getAttribute('aria-expanded')).toBe('true');
+        expect(dropdown.style.display).toBe('flex');
+        expect(modelList.getAttribute('role')).toBe('listbox');
+        expect(modelList.getAttribute('aria-labelledby')).toBe('model-selector-heading');
+
+        const options = modelList.querySelectorAll('[role="option"]');
+        expect(options).toHaveLength(2);
+        expect(options[0].getAttribute('aria-selected')).toBe('true');
+        expect(options[0].getAttribute('aria-label')).toBe('GPT-5.1. Balanced reasoning');
+        expect(options[0].getAttribute('tabindex')).toBe('0');
+
+        options[1].dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+        }));
+
+        expect(dom.window.Agent.setSelectedModel).toHaveBeenCalledWith('gpt-5.2');
+        expect(modelBtn.getAttribute('aria-expanded')).toBe('false');
+        expect(dropdown.style.display).toBe('none');
     });
 });

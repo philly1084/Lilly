@@ -285,6 +285,17 @@ const AgentUI = (function() {
             });
         }
 
+        if (elements.modelList) {
+            elements.modelList.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                const option = event.target.closest('.model-item[data-model-id]');
+                if (!option) return;
+
+                event.preventDefault();
+                selectModel(option.dataset.modelId);
+            });
+        }
+
         document.addEventListener('keydown', (event) => {
             if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
                 event.preventDefault();
@@ -1936,7 +1947,7 @@ const AgentUI = (function() {
         const description = getModelDescription(model);
 
         return `
-            <div class="model-item ${isActive ? 'active' : ''}" data-model-id="${escapeHtmlAttr(model.id)}" role="option" aria-selected="${isActive}">
+            <div class="model-item ${isActive ? 'active' : ''}" data-model-id="${escapeHtmlAttr(model.id)}" role="option" aria-selected="${isActive}" aria-label="${escapeHtmlAttr(displayName)}. ${escapeHtmlAttr(description)}" tabindex="0">
                 <div class="model-item-icon ${provider}">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <rect x="4" y="4" width="16" height="16" rx="2"></rect>

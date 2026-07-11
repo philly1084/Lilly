@@ -957,8 +957,14 @@ button:focus-visible,
     margin-bottom: 2px;
 }
 
-.model-item:hover {
+.model-item:hover,
+.model-item:focus-visible {
     background: var(--bg-hover);
+}
+
+.model-item:focus-visible {
+    outline: 2px solid var(--accent-color, #6366f1);
+    outline-offset: 2px;
 }
 
 .model-item.active {
