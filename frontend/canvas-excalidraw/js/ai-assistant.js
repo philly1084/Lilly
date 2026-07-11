@@ -17,6 +17,10 @@ class AIAssistant {
         this.panel = document.getElementById('aiPanel');
         this.input = document.getElementById('aiInput');
         this.generateBtn = document.getElementById('aiGenerateBtn');
+        this.voiceBtn = document.getElementById('aiVoiceBtn');
+        this.shareImageBtn = document.getElementById('aiShareImageBtn');
+        this.referenceImageInput = document.getElementById('aiReferenceImageInput');
+        this.contextInline = document.getElementById('aiContextInline');
         this.status = document.getElementById('aiStatus');
         this.conversation = document.getElementById('aiConversation');
         this.conversationEmpty = document.getElementById('aiConversationEmpty');
@@ -94,6 +98,8 @@ class AIAssistant {
         this.chatHistory = [];
         this.lastAppliedActionCount = 0;
         this.lastAgentRunAt = 0;
+        this.voiceRecognition = null;
+        this.isListening = false;
         
         this.init();
     }
@@ -112,6 +118,22 @@ class AIAssistant {
         // Generate button
         this.generateBtn?.addEventListener('click', () => {
             this.generate();
+        });
+
+        this.voiceBtn?.addEventListener('click', () => {
+            this.toggleVoiceInput();
+        });
+
+        this.shareImageBtn?.addEventListener('click', () => {
+            this.referenceImageInput?.click();
+        });
+
+        this.referenceImageInput?.addEventListener('change', async (event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (file) {
+                await this.shareReferenceImage(file);
+            }
         });
         
         // Enter key in textarea (Ctrl+Enter to submit)
@@ -185,6 +207,97 @@ class AIAssistant {
         this.renderChangeSets();
         this.updateSelectionActionBar();
         this.setAgentPlanStep();
+        this.panel?.classList.add('active');
+    }
+
+    getSpeechRecognitionConstructor() {
+        return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    }
+
+    setListeningState(isListening) {
+        this.isListening = Boolean(isListening);
+        this.voiceBtn?.classList.toggle('is-listening', this.isListening);
+        this.voiceBtn?.setAttribute('aria-pressed', this.isListening ? 'true' : 'false');
+        if (this.voiceBtn) {
+            this.voiceBtn.title = this.isListening ? 'Stop listening' : 'Dictate a message';
+        }
+    }
+
+    toggleVoiceInput() {
+        if (this.isListening) {
+            this.voiceRecognition?.stop?.();
+            this.setListeningState(false);
+            return;
+        }
+
+        const SpeechRecognition = this.getSpeechRecognitionConstructor();
+        if (!SpeechRecognition) {
+            this.showStatus('Voice input is not available in this browser.', 'error');
+            window.app?.showToast?.('Voice input is not available in this browser', 'warning');
+            return;
+        }
+
+        if (!this.voiceRecognition) {
+            this.voiceRecognition = new SpeechRecognition();
+            this.voiceRecognition.continuous = false;
+            this.voiceRecognition.interimResults = true;
+            this.voiceRecognition.lang = navigator.language || 'en-US';
+            this.voiceRecognition.onresult = (event) => {
+                const transcript = Array.from(event.results || [])
+                    .slice(event.resultIndex || 0)
+                    .map((result) => result?.[0]?.transcript || '')
+                    .join(' ')
+                    .trim();
+                if (!transcript || !this.input) return;
+                const current = this.input.value.trim();
+                this.input.value = [current, transcript].filter(Boolean).join(' ');
+            };
+            this.voiceRecognition.onend = () => this.setListeningState(false);
+            this.voiceRecognition.onerror = () => {
+                this.setListeningState(false);
+                this.showStatus('I could not hear that. Try again.', 'error');
+            };
+        }
+
+        try {
+            this.voiceRecognition.start();
+            this.setListeningState(true);
+            this.showStatus('Listening…', 'loading');
+        } catch (_error) {
+            this.setListeningState(false);
+        }
+    }
+
+    async shareReferenceImage(file) {
+        if (!file?.type?.startsWith('image/')) {
+            this.showStatus('Choose an image to share.', 'error');
+            return null;
+        }
+
+        try {
+            const element = await window.app?.loadImage?.(file, null, {
+                name: file.name,
+                canvasRole: 'ai-reference',
+                sharedWithAI: true,
+            });
+            if (!element) throw new Error('Image could not be added');
+
+            this.scope = 'selection';
+            if (this.scopeSelect) this.scopeSelect.value = 'selection';
+            this.setMode('chat');
+            this.showPanel();
+            this.updateGroundingPanel();
+            this.addConversationMessage('user', `Shared image: ${file.name}`);
+            if (this.input) {
+                this.input.value = `Help me work with the selected image "${file.name}". `;
+                this.input.focus({ preventScroll: true });
+            }
+            this.showStatus('Image added as selected AI context.', 'success');
+            return element;
+        } catch (error) {
+            this.showStatus(error.message || 'Image could not be shared.', 'error');
+            return null;
+        }
     }
 
     loadToolLaneSelection() {
@@ -3554,6 +3667,11 @@ class AIAssistant {
         }
         if (this.groundingState) {
             this.groundingState.textContent = `${selectedCount} selected`;
+        }
+        if (this.contextInline) {
+            this.contextInline.textContent = selectedCount > 0
+                ? `${selectedCount} selected`
+                : (scope === 'viewport' ? 'Visible area' : 'Whole canvas');
         }
         if (this.boardSummary) {
             this.boardSummary.textContent = `${context.board.elementCount} object${context.board.elementCount === 1 ? '' : 's'}`;

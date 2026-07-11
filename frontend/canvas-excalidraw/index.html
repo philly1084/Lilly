@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
-    <title>Lilly Canvas</title>
+    <title>Canvas</title>
     <style>
         html, body { margin: 0; min-height: 100%; background: #f8fafc; color: #111827; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .kb-fast-shell { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #f8fafc; color: #111827; }
@@ -39,10 +39,12 @@
     <link rel="preload" as="style" href="css/styles.css" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="css/enterprise.css?v=20260614q" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/canvas-simple.css?v=20260711d" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
         <link rel="stylesheet" href="css/styles.css">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
         <link rel="stylesheet" href="css/enterprise.css?v=20260614q">
+        <link rel="stylesheet" href="css/canvas-simple.css?v=20260711d">
     </noscript>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;700&family=Roboto+Mono:wght@400;500&family=Fira+Code:wght@400;500&family=Merriweather:wght@400;700&family=Poppins:wght@400;600&family=Bebas+Neue&family=Lobster&family=Pacifico&family=Dancing+Script:wght@400;700&display=swap" rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'">
@@ -62,7 +64,7 @@
                     <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
                 </svg>
             </button>
-            <span class="logo">Lilly Canvas</span>
+            <span class="logo">Canvas</span>
         </div>
         <div class="top-bar-center">
             <div class="canvas-actions">
@@ -1656,9 +1658,10 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px; vertical-align: middle;">
                     <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                Canvas AI
+                AI
             </h3>
-            <button class="close-btn" id="closeAiPanel">
+            <span class="ai-context-inline" id="aiContextInline">Whole canvas</span>
+            <button class="close-btn" id="closeAiPanel" type="button" aria-label="Minimize Canvas AI">
                 <svg viewBox="0 0 24 24" width="18" height="18">
                     <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                 </svg>
@@ -1670,19 +1673,19 @@
                     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path fill="currentColor" d="M4 4h16v12H7l-3 3V4z"/>
                     </svg>
-                    Talk
+                    Chat
                 </button>
                 <button class="ai-mode-btn" id="diagramModeBtn" data-mode="diagram" type="button" aria-pressed="false">
                     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path fill="currentColor" d="M3 3h18v18H3V3zm16 16V5H5v14h14zM7 7h4v4H7V7zm0 6h4v4H7v-4zm6-6h4v4h-4V7zm0 6h4v4h-4v-4z"/>
                     </svg>
-                    Objects
+                    Build
                 </button>
                 <button class="ai-mode-btn" id="imageModeBtn" data-mode="image" type="button" aria-pressed="false">
                     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
                     </svg>
-                    Image
+                    Create image
                 </button>
             </div>
 
@@ -1729,6 +1732,16 @@
             </div>
 
             <div class="ai-prompt-stack">
+                <button id="aiShareImageBtn" class="ai-composer-action" type="button" aria-label="Share an image with Canvas AI" title="Add image to the canvas and AI context">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                        <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/>
+                    </svg>
+                </button>
+                <button id="aiVoiceBtn" class="ai-composer-action" type="button" aria-label="Talk to Canvas AI" aria-pressed="false" title="Dictate a message">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                        <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21H8v2h8v-2h-3v-3.08A7 7 0 0 0 19 11h-2z"/>
+                    </svg>
+                </button>
                 <textarea id="aiInput" placeholder="Ask for a critique, or build editable boxes, arrows, storyboard frames, audio cues, and labels."></textarea>
                 <button id="aiGenerateBtn" class="ai-generate-btn" type="button">
                     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -2197,6 +2210,7 @@
 
     <!-- Hidden file inputs -->
     <input type="file" id="imageInput" accept="image/*" style="display: none;">
+    <input type="file" id="aiReferenceImageInput" accept="image/*" hidden>
     <input type="file" id="fileImportInput" style="display: none;" multiple>
 
     <script defer src="js/history.js"></script>

@@ -3989,65 +3989,74 @@ class App {
             this.loadImage(file, {
                 x: parseFloat(input.dataset.posX) || 0,
                 y: parseFloat(input.dataset.posY) || 0
-            });
+            }).catch((error) => this.showToast(error.message || 'Image could not be added', 'error'));
             
             // Reset input
             input.value = '';
         });
     }
     
-    loadImage(file, pos) {
+    loadImage(file, pos, metadata = {}) {
         const canvas = window.infiniteCanvas;
         const reader = new FileReader();
-        
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                // Calculate size while maintaining aspect ratio
-                const maxWidth = 400;
-                const maxHeight = 300;
-                let width = img.width;
-                let height = img.height;
-                
-                if (width > maxWidth) {
-                    height *= maxWidth / width;
-                    width = maxWidth;
-                }
-                if (height > maxHeight) {
-                    width *= maxHeight / height;
-                    height = maxHeight;
-                }
-                
-                // If no position specified, use center of view
-                const viewportCenter = canvas.getViewportCenter?.() || {
-                    x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
-                    y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+
+        return new Promise((resolve, reject) => {
+            reader.onerror = () => reject(new Error('Image could not be read'));
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onerror = () => reject(new Error('Image could not be opened'));
+                img.onload = () => {
+                    // Calculate size while maintaining aspect ratio
+                    const maxWidth = 400;
+                    const maxHeight = 300;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                    if (height > maxHeight) {
+                        width *= maxHeight / height;
+                        height = maxHeight;
+                    }
+
+                    // If no position specified, use center of view
+                    const viewportCenter = canvas.getViewportCenter?.() || {
+                        x: (canvas.canvas.clientWidth || canvas.canvas.width) / 2,
+                        y: (canvas.canvas.clientHeight || canvas.canvas.height) / 2,
+                    };
+                    const centerWorld = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
+                    const x = Number.isFinite(pos?.x) ? pos.x : centerWorld.x;
+                    const y = Number.isFinite(pos?.y) ? pos.y : centerWorld.y;
+
+                    const element = {
+                        id: window.toolManager.generateId(),
+                        type: 'image',
+                        x,
+                        y,
+                        width,
+                        height,
+                        imageElement: img,
+                        name: String(metadata.name || file.name || 'Shared image').slice(0, 120),
+                        canvasRole: metadata.canvasRole || 'image',
+                        sharedWithAI: metadata.sharedWithAI === true,
+                        ...window.toolManager.defaultProperties,
+                    };
+
+                    canvas.addElement(element);
+                    window.historyManager?.pushState(canvas.elements);
+
+                    // Reset tool to selection
+                    window.toolManager.setTool('selection');
+                    canvas.selectElement(element);
+                    this.saveCanvasToStorage?.();
+                    resolve(element);
                 };
-                const centerWorld = canvas.screenToWorld(viewportCenter.x, viewportCenter.y);
-                const x = pos?.x || centerWorld.x;
-                const y = pos?.y || centerWorld.y;
-                
-                const element = {
-                    id: window.toolManager.generateId(),
-                    type: 'image',
-                    x: x,
-                    y: y,
-                    width: width,
-                    height: height,
-                    imageElement: img,
-                    ...window.toolManager.defaultProperties
-                };
-                
-                canvas.addElement(element);
-                window.historyManager?.pushState(canvas.elements);
-                
-                // Reset tool to selection
-                window.toolManager.setTool('selection');
-                canvas.selectElement(element);
+                img.src = event.target.result;
             };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
+            reader.readAsDataURL(file);
+        });
     }
     
     async handleFileDrop(e) {
@@ -4121,7 +4130,8 @@ class App {
                     const x = e.clientX - rect.left;
                     const y = e.clientY - rect.top;
                     const worldPos = canvas.screenToWorld(x, y);
-                    this.loadImage(file, worldPos);
+                    this.loadImage(file, worldPos)
+                        .catch((error) => this.showToast(error.message || 'Image could not be added', 'error'));
                 } else if (file.name.endsWith('.json')) {
                     this.importJSONFile(file);
                 }

@@ -46,12 +46,15 @@ function loadAIAssistant(options = {}) {
         },
     };
     const window = {
-        app: { showToast: jest.fn() },
+        app: options.app || { showToast: jest.fn() },
         infiniteCanvas: { elements: [], selectedElements: [] },
         toolManager: {},
         historyManager: {},
         prompt: jest.fn(),
     };
+    if (options.SpeechRecognition) {
+        window.SpeechRecognition = options.SpeechRecognition;
+    }
     const context = {
         module: { exports: {} },
         exports: {},
@@ -146,4 +149,104 @@ describe('canvas AI assistant copy handoffs', () => {
         expect(assistant.recordActionLedger).toHaveBeenCalledWith('Clipboard unavailable for board brief', 'warning', 'brief');
         expect(assistant.showStatus).toHaveBeenCalledWith('Clipboard unavailable. Add the brief as a note instead.', 'error');
     });
+
+    test('marks shared images as selected Canvas AI context', async () => {
+        const input = {
+            value: '',
+            focus: jest.fn(),
+        };
+        const scopeSelect = { value: 'board' };
+        const file = { name: 'reference.png', type: 'image/png' };
+        const element = { id: 'image-1' };
+        const app = {
+            loadImage: jest.fn(async () => element),
+            showToast: jest.fn(),
+        };
+        const { AIAssistant } = loadAIAssistant({ app });
+        const assistant = createAssistant(AIAssistant);
+        assistant.input = input;
+        assistant.scopeSelect = scopeSelect;
+        assistant.setMode = jest.fn();
+        assistant.showPanel = jest.fn();
+        assistant.updateGroundingPanel = jest.fn();
+        assistant.addConversationMessage = jest.fn();
+
+        await expect(assistant.shareReferenceImage(file)).resolves.toBe(element);
+
+        expect(app.loadImage).toHaveBeenCalledWith(file, null, {
+            name: 'reference.png',
+            canvasRole: 'ai-reference',
+            sharedWithAI: true,
+        });
+        expect(assistant.scope).toBe('selection');
+        expect(scopeSelect.value).toBe('selection');
+        expect(assistant.setMode).toHaveBeenCalledWith('chat');
+        expect(assistant.showPanel).toHaveBeenCalled();
+        expect(assistant.updateGroundingPanel).toHaveBeenCalled();
+        expect(assistant.addConversationMessage).toHaveBeenCalledWith('user', 'Shared image: reference.png');
+        expect(input.value).toBe('Help me work with the selected image "reference.png". ');
+        expect(input.focus).toHaveBeenCalledWith({ preventScroll: true });
+        expect(assistant.showStatus).toHaveBeenCalledWith('Image added as selected AI context.', 'success');
+    });
+
+    test('keeps voice button pressed state and title synchronized', () => {
+        const button = {
+            classList: { toggle: jest.fn() },
+            setAttribute: jest.fn(),
+            title: '',
+        };
+        const { AIAssistant } = loadAIAssistant();
+        const assistant = createAssistant(AIAssistant);
+        assistant.voiceBtn = button;
+
+        assistant.setListeningState(true);
+
+        expect(assistant.isListening).toBe(true);
+        expect(button.classList.toggle).toHaveBeenCalledWith('is-listening', true);
+        expect(button.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
+        expect(button.title).toBe('Stop listening');
+
+        assistant.setListeningState(false);
+
+        expect(assistant.isListening).toBe(false);
+        expect(button.classList.toggle).toHaveBeenCalledWith('is-listening', false);
+        expect(button.setAttribute).toHaveBeenCalledWith('aria-pressed', 'false');
+        expect(button.title).toBe('Dictate a message');
+    });
+});
+
+describe('canvas AI composer inputs', () => {
+    test('voice input writes recognized speech into the active prompt', () => {
+        let recognition;
+        class SpeechRecognitionStub {
+            constructor() {
+                recognition = this;
+            }
+
+            start() {}
+        }
+
+        const { AIAssistant, window } = loadAIAssistant();
+        window.SpeechRecognition = SpeechRecognitionStub;
+        const assistant = Object.create(AIAssistant.prototype);
+        assistant.input = { value: 'Build' };
+        assistant.voiceBtn = {
+            classList: { toggle: jest.fn() },
+            setAttribute: jest.fn(),
+            title: '',
+        };
+        assistant.voiceRecognition = null;
+        assistant.isListening = false;
+        assistant.showStatus = jest.fn();
+
+        assistant.toggleVoiceInput();
+        recognition.onresult({
+            resultIndex: 0,
+            results: [{ 0: { transcript: 'a simple login flow' } }],
+        });
+
+        expect(assistant.input.value).toBe('Build a simple login flow');
+        expect(assistant.voiceBtn.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
+    });
+
 });

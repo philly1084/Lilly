@@ -1903,6 +1903,17 @@ html, body {
     gap: 8px;
 }
 
+.ai-context-inline {
+    margin-left: auto;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
 .close-btn {
     background: transparent;
     border: none;
@@ -2674,6 +2685,55 @@ html, body {
 #aiInput:focus {
     outline: none;
     border-color: var(--accent-color);
+}
+
+.ai-prompt-stack {
+    display: grid;
+    grid-template-columns: 36px 36px minmax(0, 1fr);
+    gap: 8px;
+    align-items: end;
+}
+
+.ai-prompt-stack #aiInput {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+}
+
+.ai-prompt-stack .ai-generate-btn {
+    grid-column: 1 / -1;
+}
+
+.ai-composer-action {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.ai-composer-action:hover,
+.ai-composer-action:focus-visible {
+    background: var(--bg-tertiary);
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.ai-composer-action:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
+.ai-composer-action.is-listening {
+    background: #d84f4f;
+    border-color: #d84f4f;
+    color: #fff;
+    box-shadow: 0 0 0 3px rgba(216, 79, 79, 0.18);
 }
 
 .ai-generate-btn {
