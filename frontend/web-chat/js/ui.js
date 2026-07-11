@@ -7493,9 +7493,11 @@ class UIHelpers {
 
         button.classList.toggle('is-active', enabled);
         button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-        button.title = enabled
-            ? 'Robot sound cues: On'
-            : 'Robot sound cues: Off';
+        const stateLabel = enabled
+            ? 'Robot sound cues on. Press to turn off.'
+            : 'Robot sound cues off. Press to turn on.';
+        button.setAttribute('aria-label', stateLabel);
+        button.title = stateLabel;
         if (label) {
             label.textContent = enabled
                 ? 'Cute robot cues: On'
@@ -7514,9 +7516,11 @@ class UIHelpers {
 
         button.classList.toggle('is-active', enabled);
         button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-        button.title = enabled
-            ? 'Menu motion sounds: On'
-            : 'Menu motion sounds: Off';
+        const stateLabel = enabled
+            ? 'Menu motion sounds on. Press to turn off.'
+            : 'Menu motion sounds off. Press to turn on.';
+        button.setAttribute('aria-label', stateLabel);
+        button.title = stateLabel;
         if (label) {
             label.textContent = enabled
                 ? 'Menu sounds: On'
