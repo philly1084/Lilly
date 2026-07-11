@@ -10,6 +10,20 @@
         outputFormat: '',
     };
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        }[char]));
+    }
+
+    function getArtifactLabel(artifact) {
+        return String(artifact?.filename || artifact?.id || 'artifact').trim() || 'artifact';
+    }
+
     function injectStyles() {
         const style = document.createElement('style');
         style.textContent = `
@@ -90,16 +104,22 @@
         }
 
         state.artifacts.forEach((artifact) => {
+            const isSelected = state.selectedArtifactIds.includes(artifact.id);
+            const artifactLabel = getArtifactLabel(artifact);
+            const escapedLabel = escapeHtml(artifactLabel);
+            const actionLabel = isSelected
+                ? `Detach ${artifactLabel} from the next Canvas request`
+                : `Attach ${artifactLabel} to the next Canvas request`;
             const item = document.createElement('div');
-            item.className = `artifact-item${state.selectedArtifactIds.includes(artifact.id) ? ' active' : ''}`;
+            item.className = `artifact-item${isSelected ? ' active' : ''}`;
             item.setAttribute('role', 'listitem');
             item.innerHTML = `
-                <strong>${artifact.filename}</strong>
-                <div class="artifact-meta">${artifact.format} | ${artifact.sizeBytes} bytes</div>
+                <strong>${escapedLabel}</strong>
+                <div class="artifact-meta">${escapeHtml(artifact.format || 'file')} | ${escapeHtml(artifact.sizeBytes ?? 0)} bytes</div>
                 <div class="artifact-actions">
-                    <button type="button" data-action="toggle" aria-pressed="${state.selectedArtifactIds.includes(artifact.id) ? 'true' : 'false'}">${state.selectedArtifactIds.includes(artifact.id) ? 'Detach' : 'Attach'}</button>
-                    ${(artifact.sandboxUrl || artifact.previewUrl) ? `<a href="${artifact.sandboxUrl || artifact.previewUrl}" target="_blank" rel="noopener">Preview</a>` : ''}
-                    <a href="${artifact.downloadUrl}" target="_blank" rel="noopener">Download</a>
+                    <button type="button" data-action="toggle" aria-pressed="${isSelected ? 'true' : 'false'}" aria-label="${escapeHtml(actionLabel)}">${isSelected ? 'Detach' : 'Attach'}</button>
+                    ${(artifact.sandboxUrl || artifact.previewUrl) ? `<a href="${escapeHtml(artifact.sandboxUrl || artifact.previewUrl)}" target="_blank" rel="noopener" aria-label="Preview ${escapedLabel}">Preview</a>` : ''}
+                    <a href="${escapeHtml(artifact.downloadUrl || '#')}" target="_blank" rel="noopener" aria-label="Download ${escapedLabel}">Download</a>
                 </div>
             `;
             item.querySelector('[data-action="toggle"]').addEventListener('click', () => {

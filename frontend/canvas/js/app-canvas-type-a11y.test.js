@@ -36,6 +36,7 @@ function loadCanvasArtifacts(dom) {
     vm.runInNewContext(source, {
         document: dom.window.document,
         window: dom.window,
+        fetch: (...args) => dom.window.fetch(...args),
         FormData: dom.window.FormData,
         setTimeout: (callback) => callback(),
         console,
@@ -260,5 +261,63 @@ describe('Canvas type selector accessibility', () => {
         expect(artifactList.getAttribute('role')).toBe('list');
         expect(artifactList.getAttribute('aria-label')).toBe('Attached artifacts');
         expect(artifactList.querySelector('.artifact-empty').textContent).toBe('No artifacts attached yet.');
+    });
+
+    test('names repeated artifact actions with the artifact filename', () => {
+        const dom = new JSDOM(`
+            <section>
+                <div class="action-buttons"></div>
+            </section>
+        `, { url: 'http://localhost:3000/canvas/' });
+
+        dom.window.CanvasAPI = {};
+        dom.window.canvasApp = {
+            state: {},
+            api: {
+                sendCanvasRequest: jest.fn((params) => params),
+                sendWebSocketMessage: jest.fn((params) => params),
+            },
+            handleAIResponse: jest.fn(),
+            newSession: jest.fn(),
+            loadFromLocalStorage: jest.fn(),
+        };
+
+        loadCanvasArtifacts(dom);
+        dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+        dom.window.canvasApp.handleAIResponse({
+            artifacts: [
+                {
+                    id: 'artifact-1',
+                    filename: 'brief.pdf',
+                    format: 'pdf',
+                    sizeBytes: 2048,
+                    previewUrl: '/preview/brief',
+                    downloadUrl: '/download/brief',
+                },
+                {
+                    id: 'artifact-2',
+                    filename: 'notes.md',
+                    format: 'markdown',
+                    sizeBytes: 512,
+                    downloadUrl: '/download/notes',
+                },
+            ],
+        });
+
+        const list = dom.window.document.getElementById('artifact-list');
+        expect(list.querySelectorAll('[role="listitem"]')).toHaveLength(2);
+
+        const [briefItem, notesItem] = [...list.querySelectorAll('[role="listitem"]')];
+        expect(briefItem.querySelector('[data-action="toggle"]').getAttribute('aria-label')).toBe('Attach brief.pdf to the next Canvas request');
+        expect(briefItem.querySelector('a[aria-label="Preview brief.pdf"]').textContent).toBe('Preview');
+        expect(briefItem.querySelector('a[aria-label="Download brief.pdf"]').textContent).toBe('Download');
+        expect(notesItem.querySelector('[data-action="toggle"]').getAttribute('aria-label')).toBe('Attach notes.md to the next Canvas request');
+        expect(notesItem.querySelector('a[aria-label="Download notes.md"]').textContent).toBe('Download');
+
+        briefItem.querySelector('[data-action="toggle"]').click();
+
+        const selectedBriefButton = list.querySelector('[role="listitem"] [data-action="toggle"]');
+        expect(selectedBriefButton.getAttribute('aria-pressed')).toBe('true');
+        expect(selectedBriefButton.getAttribute('aria-label')).toBe('Detach brief.pdf from the next Canvas request');
     });
 });
