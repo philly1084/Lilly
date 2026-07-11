@@ -933,8 +933,8 @@ function extractRemoteCodeJobState(result = {}, textOverride = '') {
   };
 }
 
-function attachRemoteCodeCallTracker(remoteCli = null) {
-  const state = {
+function attachRemoteCodeCallTracker(remoteCli = null, existingState = null) {
+  const state = existingState || {
     sawRemoteCodeRun: false,
     sawRemoteCodeStatus: false,
     jobId: '',
@@ -1412,6 +1412,19 @@ function summarizeRemoteCliError(error = null) {
     ...(causeMessage && causeMessage !== message ? { causeMessage } : {}),
     ...(responseMessage && responseMessage !== message ? { responseMessage } : {}),
   };
+}
+
+function isStaleMcpSessionError(error) {
+  const summary = summarizeRemoteCliError(error);
+  const parts = [
+    summary.message,
+    summary.responseMessage,
+    summary.causeMessage,
+    error?.message,
+    error?.body?.error?.message,
+    error?.body?.message,
+  ];
+  return parts.some((part) => /\bsession\s+not\s+found\b|\binvalid\s+session\b|\bunknown\s+session\b/i.test(String(part || '')));
 }
 
 function buildRemoteCliDiagnostics({
@@ -2359,7 +2372,7 @@ class RemoteCliAgentsSdkRunner {
       setOpenAIAPI(apiMode);
     }
 
-    const remoteCli = this.createMcpServer(MCPServerStreamableHttp, input);
+    let remoteCli = this.createMcpServer(MCPServerStreamableHttp, input);
     const remoteCodeCallState = attachRemoteCodeCallTracker(remoteCli);
     const emitContractProgress = (detail, extra = {}) => {
       if (typeof input.onProgress !== 'function' || !detail) {
@@ -2393,43 +2406,56 @@ class RemoteCliAgentsSdkRunner {
         continuitySummary,
         extraInstructions: input.instructions || input.extraInstructions || '',
       });
-    const agent = directRun
-      ? null
-      : new Agent({
-        name: normalizeText(input.agentName || input.agent_name) || 'Remote coding agent',
-        model,
-        instructions,
-        mcpServers: [remoteCli],
-      });
-    const runner = directRun
-      ? null
-      : new Runner({
-        model,
-        modelProvider: this.createModelProvider(OpenAIProvider),
-        tracingDisabled: true,
-        workflowName: 'Remote CLI MCP coding task',
-      });
+    let agent = null;
+    let runner = null;
 
     try {
       try {
         await remoteCli.connect();
       } catch (error) {
-        const diagnostics = buildRemoteCliDiagnostics({
-          stage: 'mcp_connect',
-          error,
-          model,
-          apiMode,
-          targetId,
-          cwd,
-          config: this.config,
-          mcpSessionId: input.mcpSessionId,
-        });
-        throw createRemoteCliAgentError(
-          `remote-cli-agent could not connect to the MCP gateway: ${summarizeRemoteCliError(error).message}`,
-          diagnostics,
-          error,
-        );
+        if (input.mcpSessionId && isStaleMcpSessionError(error)) {
+          await remoteCli.close().catch(() => {});
+          remoteCli = this.createMcpServer(MCPServerStreamableHttp, {
+            ...input,
+            mcpSessionId: '',
+          });
+          attachRemoteCodeCallTracker(remoteCli, remoteCodeCallState);
+          await remoteCli.connect();
+        } else {
+          const diagnostics = buildRemoteCliDiagnostics({
+            stage: 'mcp_connect',
+            error,
+            model,
+            apiMode,
+            targetId,
+            cwd,
+            config: this.config,
+            mcpSessionId: input.mcpSessionId,
+          });
+          throw createRemoteCliAgentError(
+            `remote-cli-agent could not connect to the MCP gateway: ${summarizeRemoteCliError(error).message}`,
+            diagnostics,
+            error,
+          );
+        }
       }
+
+      agent = directRun
+        ? null
+        : new Agent({
+          name: normalizeText(input.agentName || input.agent_name) || 'Remote coding agent',
+          model,
+          instructions,
+          mcpServers: [remoteCli],
+        });
+      runner = directRun
+        ? null
+        : new Runner({
+          model,
+          modelProvider: this.createModelProvider(OpenAIProvider),
+          tracingDisabled: true,
+          workflowName: 'Remote CLI MCP coding task',
+        });
 
       let finalOutput = '';
       let usedDirectRemoteCodeRun = directRun || Boolean(jobId);
@@ -2679,6 +2705,7 @@ module.exports = {
   resolveAgentsApiMode,
   buildRemoteCliDiagnostics,
   summarizeRemoteCliError,
+  isStaleMcpSessionError,
   hasRemoteSoftwareDeploymentIntent,
   resolveAdminMode,
   trimTrailingSlash,

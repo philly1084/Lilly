@@ -12,6 +12,7 @@ const {
   hasRemoteSoftwareDeploymentIntent,
   resolveAgentsApiMode,
   buildRemoteCliDiagnostics,
+  isStaleMcpSessionError,
   resolveAdminMode,
   resolveRemoteCliTargetId,
 } = require('./agents-sdk-runner');
@@ -445,6 +446,99 @@ describe('RemoteCliAgentsSdkRunner', () => {
     expect(diagnostics.remoteCliAgent.hint).toContain('/v1/chat/completions');
     expect(JSON.stringify(diagnostics)).not.toContain('gateway-secret-token');
     expect(JSON.stringify(diagnostics)).not.toContain('sk-openai-secret');
+  });
+
+  test('detects stale MCP session errors from gateway responses', () => {
+    expect(isStaleMcpSessionError(new Error('Session not found'))).toBe(true);
+    expect(isStaleMcpSessionError({
+      message: 'Connection error.',
+      body: { error: { message: 'unknown session' } },
+    })).toBe(true);
+    expect(isStaleMcpSessionError(new Error('Gateway unavailable'))).toBe(false);
+  });
+
+  test('reconnects without a stale MCP session id when the gateway reports session not found', async () => {
+    const calls = {
+      mcpOptions: [],
+      agentConfig: null,
+      connectAttempts: 0,
+      closed: 0,
+    };
+
+    class FakeMCPServerStreamableHttp {
+      constructor(options) {
+        calls.mcpOptions.push(options);
+        this.sessionId = options.sessionId ? 'stale-mcp-session' : 'fresh-mcp-session';
+      }
+
+      async connect() {
+        calls.connectAttempts += 1;
+        if (this.sessionId === 'stale-mcp-session') {
+          throw new Error('Session not found');
+        }
+      }
+
+      async close() {
+        calls.closed += 1;
+      }
+    }
+
+    class FakeAgent {
+      constructor(config) {
+        calls.agentConfig = config;
+      }
+    }
+
+    class FakeOpenAIProvider {}
+
+    class FakeRunner {
+      async run() {
+        return {
+          finalOutput: [
+            'remote run recovered',
+            'REMOTE_CLI_SESSION_ID=remote-session-2',
+            'WHAT_CHANGED=Reconnected without stale MCP session.',
+            'VERIFY_COMMANDS=remote-cli-agent connect',
+            'VERIFY_RESULTS=connect passed.',
+            'PUBLIC_URL=not_available',
+            'BLOCKER=none',
+          ].join('\n'),
+        };
+      }
+    }
+
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        url: 'https://gateway.example.com/mcp',
+        apiKey: 'gateway-secret',
+        agentApiKey: 'openai-secret',
+        agentBaseURL: 'http://gateway.example.com/v1',
+        agentApiMode: 'chat',
+        agentModel: 'gpt-4o',
+        directRun: false,
+      },
+      sdkLoader: () => ({
+        Agent: FakeAgent,
+        MCPServerStreamableHttp: FakeMCPServerStreamableHttp,
+        OpenAIProvider: FakeOpenAIProvider,
+        Runner: FakeRunner,
+        setOpenAIAPI: () => {},
+      }),
+    });
+
+    const result = await runner.run({
+      task: 'Continue the remote task',
+      mcpSessionId: 'stale-session-id',
+    });
+
+    expect(calls.connectAttempts).toBe(2);
+    expect(calls.mcpOptions[0].sessionId).toBe('stale-session-id');
+    expect(calls.mcpOptions[1].sessionId).toBeUndefined();
+    expect(calls.agentConfig.mcpServers[0].sessionId).toBe('fresh-mcp-session');
+    expect(calls.closed).toBe(2);
+    expect(result.mcpSessionId).toBe('fresh-mcp-session');
+    expect(result.completionStatus).toBe('complete');
   });
 
   test('connects Streamable HTTP MCP with bearer auth and closes it after the run', async () => {
