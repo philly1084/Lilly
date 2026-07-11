@@ -288,6 +288,49 @@ describe('/api/sessions route', () => {
         ]);
     });
 
+    test('merges assistant metadata artifacts into the session artifact list', async () => {
+        sessionStore.getOwned.mockResolvedValue({
+            id: 'session-1',
+            metadata: { ownerId: 'phill' },
+        });
+        artifactService.listSessionArtifacts.mockResolvedValue([]);
+        sessionStore.listMessages.mockResolvedValue([
+            {
+                id: 'assistant-1',
+                role: 'assistant',
+                assistant_metadata: {
+                    artifacts: [{
+                        artifact_id: 'artifact-assistant-1',
+                        filename: 'mission-brief.pdf',
+                        mime_type: 'application/pdf',
+                        download_url: '/api/artifacts/artifact-assistant-1/download',
+                        preview_url: '/api/artifacts/artifact-assistant-1/preview',
+                    }],
+                },
+            },
+        ]);
+
+        const app = express();
+        app.use((req, _res, next) => {
+            req.user = { username: 'phill' };
+            next();
+        });
+        app.use('/api/sessions', sessionsRouter);
+
+        const response = await request(app).get('/api/sessions/session-1/artifacts');
+
+        expect(response.status).toBe(200);
+        expect(response.body.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'artifact-assistant-1',
+                filename: 'mission-brief.pdf',
+                format: 'pdf',
+                downloadUrl: '/api/artifacts/artifact-assistant-1/download',
+                previewUrl: '/api/artifacts/artifact-assistant-1/preview',
+            }),
+        ]);
+    });
+
     test('includes local stored artifacts in file-backed mode', async () => {
         sessionStore.isPersistent.mockReturnValue(false);
         sessionStore.getOwned.mockResolvedValue({

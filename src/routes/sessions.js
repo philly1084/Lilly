@@ -85,6 +85,12 @@ function extractArtifactsFromMessages(messages = []) {
             if (Array.isArray(message.metadata?.artifacts) && message.metadata.artifacts.length > 0) {
                 sets.push(message.metadata.artifacts);
             }
+            if (Array.isArray(message.assistantMetadata?.artifacts) && message.assistantMetadata.artifacts.length > 0) {
+                sets.push(message.assistantMetadata.artifacts);
+            }
+            if (Array.isArray(message.assistant_metadata?.artifacts) && message.assistant_metadata.artifacts.length > 0) {
+                sets.push(message.assistant_metadata.artifacts);
+            }
             return sets;
         });
 
