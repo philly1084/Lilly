@@ -50,6 +50,8 @@ describe('Canvas type selector accessibility', () => {
         const reasoningSelect = dom.window.document.getElementById('reasoning-effort-select');
         const previewToggle = dom.window.document.getElementById('toggle-preview');
         const splitToggle = dom.window.document.getElementById('toggle-split');
+        const undoButton = dom.window.document.getElementById('undo-btn');
+        const redoButton = dom.window.document.getElementById('redo-btn');
 
         expect(modelSelect.getAttribute('aria-label')).toBe('Select AI model for Canvas generation');
         expect(reasoningSelect.getAttribute('aria-label')).toBe('Select reasoning effort for Canvas generation');
@@ -59,6 +61,8 @@ describe('Canvas type selector accessibility', () => {
         expect(splitToggle.getAttribute('aria-label')).toBe('Show split view');
         expect(splitToggle.getAttribute('aria-controls')).toBe('editor-wrapper preview-wrapper diagram-wrapper');
         expect(splitToggle.getAttribute('aria-pressed')).toBe('false');
+        expect(undoButton.getAttribute('aria-label')).toBe('Undo last canvas edit');
+        expect(redoButton.getAttribute('aria-label')).toBe('Redo last canvas edit');
     });
 
     test('declares the active canvas type with aria-pressed in the initial markup', () => {
