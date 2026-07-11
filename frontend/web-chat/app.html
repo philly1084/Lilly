@@ -132,10 +132,10 @@
 
     
     <!-- Custom styles -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260711g" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260711h" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-        <link rel="stylesheet" href="css/styles.css?v=20260711g">
+        <link rel="stylesheet" href="css/styles.css?v=20260711h">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <!-- Skip to main content link for accessibility -->
@@ -828,57 +828,6 @@
             
             <!-- Messages Container -->
             <div id="messages-container" class="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth" role="log" aria-label="Conversation messages" aria-live="polite">
-                <section id="mission-mode" class="mission-mode hidden" aria-labelledby="mission-objective" data-state="idle" aria-hidden="true">
-                    <div class="mission-mode__headline">
-                        <span class="mission-mode__pulse" aria-hidden="true"></span>
-                        <div class="mission-mode__identity">
-                            <span class="mission-mode__eyebrow">Mission</span>
-                            <h2 id="mission-objective">Give Lilly a clear outcome</h2>
-                        </div>
-                        <span id="mission-state-label" class="mission-mode__state">Ready</span>
-                    </div>
-                    <p id="mission-status-note" class="mission-mode__note" role="status" aria-live="polite" aria-atomic="true">Lilly will make a plan, keep working in this chat, ask before external changes, and return with evidence.</p>
-                    <div class="mission-mode__progress">
-                        <span id="mission-stage-title">Ready to start</span>
-                        <span aria-hidden="true">·</span>
-                        <span id="mission-phase-label">Awaiting outcome</span>
-                        <span aria-hidden="true">·</span>
-                        <span id="mission-elapsed-label">0s</span>
-                    </div>
-                    <span id="mission-stage-detail" class="sr-only">Describe the outcome in the composer below.</span>
-                    <span id="mission-permission-label" class="sr-only">Approval before external changes</span>
-                    <div class="mission-mode__actions" role="group" aria-label="Mission controls">
-                        <button type="button" class="mission-control mission-control--primary" data-mission-action="start">
-                            <span>Start mission</span>
-                            <i data-lucide="arrow-up" class="w-4 h-4" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="mission-control" data-mission-action="pause" hidden><span>Pause</span></button>
-                        <button type="button" class="mission-control" data-mission-action="resume" hidden><span>Resume</span></button>
-                        <button type="button" class="mission-control" data-mission-action="replay" hidden><span>Retry</span></button>
-                        <button type="button" class="mission-control" data-mission-action="fork" hidden><span>New version</span></button>
-                        <button type="button" class="mission-control mission-control--danger" data-mission-action="cancel" hidden><span>Stop</span></button>
-                    </div>
-                    <details class="mission-mode__details">
-                        <summary>
-                            <span>Work details</span>
-                            <span class="mission-mode__details-hint">Plan, evidence, and run log</span>
-                            <i data-lucide="chevron-down" aria-hidden="true"></i>
-                        </summary>
-                        <div class="mission-mode__details-body">
-                            <ol id="mission-timeline" class="mission-timeline" aria-label="Mission timeline"></ol>
-                            <details id="mission-proof-details" class="mission-receipt">
-                                <summary>Evidence</summary>
-                                <div id="mission-proof-pack" class="mission-receipt__body">
-                                    <div class="proof-pack proof-pack--empty" role="status">Evidence will appear as Lilly verifies the work.</div>
-                                </div>
-                            </details>
-                            <details id="mission-raw-details" class="mission-receipt">
-                                <summary>Technical log</summary>
-                                <pre id="mission-raw-events" class="mission-raw-events">Run details appear after the mission starts.</pre>
-                            </details>
-                        </div>
-                    </details>
-                </section>
                 <!-- Welcome Message -->
                 <div id="welcome-message" class="welcome-state flex flex-col items-center justify-center h-full text-center px-4">
                     <div class="welcome-badge">
@@ -1095,19 +1044,6 @@
                                 <kbd class="font-sans bg-bg-tertiary px-1.5 py-0.5 rounded border border-border">Shift</kbd> + <kbd class="font-sans bg-bg-tertiary px-1.5 py-0.5 rounded border border-border">Enter</kbd> for new line
                             </p>
                             <div id="input-meta-actions" class="flex items-center gap-2">
-                                <div class="execution-mode-switch" role="group" aria-label="Response mode" aria-describedby="execution-mode-description">
-                                    <button type="button" class="execution-mode-switch__option is-active" data-execution-mode="chat" aria-pressed="true">
-                                        <span>Chat</span>
-                                    </button>
-                                    <button type="button" class="execution-mode-switch__option" data-execution-mode="mission" aria-pressed="false">
-                                        <span>Mission</span>
-                                    </button>
-                                    <select id="execution-mode-select" hidden tabindex="-1" aria-hidden="true">
-                                        <option value="chat">Chat</option>
-                                        <option value="mission">Mission</option>
-                                    </select>
-                                </div>
-                                <span id="execution-mode-description" class="sr-only">Chat uses the traditional conversation flow. Mission runs longer work with durable progress and proof inside the same conversation.</span>
                                 <span id="voice-input-indicator" class="composer-audio-indicator hidden" aria-live="polite"></span>
                                 <!-- Quick Model Indicator -->
                                 <button id="input-model-indicator" class="text-xs text-text-tertiary hover:text-accent transition-colors flex items-center gap-1" onclick="uiHelpers.toggleModelSelector()" aria-label="Current model">
@@ -1416,7 +1352,7 @@
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260711c"></script>
-    <script defer src="js/app.js?v=20260711d"></script>
+    <script defer src="js/app.js?v=20260711e"></script>
     <script defer src="js/artifacts.js?v=20260710a"></script>
 </body>
 </html>

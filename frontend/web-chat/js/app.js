@@ -831,25 +831,6 @@ class ChatApp {
 
         // Load sessions
         await this.loadSessions();
-        this.setupMissionMode();
-        const missionLaunch = this.readMissionLaunchParams(globalThis.location?.search || '');
-        if (missionLaunch) {
-            const freshSessionCreated = await this.createNewSession({ silent: true });
-            if (!freshSessionCreated) {
-                this.missionState = this.createMissionState({
-                    active: true,
-                    ...missionLaunch,
-                    uiState: 'error',
-                    phase: 'Session setup failed',
-                    statusNote: 'Lilly could not isolate this mission in a fresh conversation. Nothing was submitted.',
-                });
-                this.renderMissionMode();
-            } else {
-                this.applyMissionLaunchParams();
-            }
-        } else {
-            this.applyMissionLaunchParams();
-        }
         
         // Initialize Lucide icons
         uiHelpers.reinitializeIcons();
@@ -1082,6 +1063,10 @@ class ChatApp {
     }
 
     hydrateMissionFromCurrentSession() {
+        if (!this.missionMode) {
+            this.missionState = this.createMissionState();
+            return false;
+        }
         const session = sessionManager.getCurrentSession?.();
         const snapshot = session?.metadata?.activeMission;
         this.clearMissionRefreshTimer();
@@ -1271,6 +1256,9 @@ class ChatApp {
     }
 
     updateMissionFromPayload(payload = null, options = {}) {
+        if (!this.missionMode) {
+            return false;
+        }
         if (!payload || typeof payload !== 'object') {
             return false;
         }
@@ -3703,9 +3691,6 @@ class ChatApp {
         });
 
         this.messagesContainer.appendChild(fragment);
-        if (this.missionState?.active === true && this.missionMode?.parentElement === this.messagesContainer) {
-            this.messagesContainer.appendChild(this.missionMode);
-        }
         uiHelpers.reinitializeIcons(this.messagesContainer);
         uiHelpers.updateMessageSpeechButtons(this.messagesContainer);
         uiHelpers.highlightCodeBlocks(this.messagesContainer);

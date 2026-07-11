@@ -40,32 +40,18 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<span class="tool-menu-choice__hint">Patch source</span>');
     });
 
-    test('keeps mission work as a compact durable state inside chat', () => {
+    test('keeps one card-based chat workflow without a separate mission mode', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
-        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
-        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
 
         expect(html).toContain('id="messages-container"');
         expect(html).toContain('id="message-input"');
-        expect(html).toContain('class="execution-mode-switch"');
-        expect(html).toContain('data-execution-mode="chat"');
-        expect(html).toContain('data-execution-mode="mission"');
-        expect(html).toContain('id="mission-mode"');
-        expect(html).toContain('data-mission-action="start"');
-        expect(html).toContain('id="mission-timeline"');
-        expect(html).toContain('id="mission-proof-pack"');
-        expect(html).toContain('class="mission-mode__progress"');
-        expect(html).toContain('class="mission-mode__details"');
-        expect(html).toContain('Lilly will make a plan, keep working in this chat');
-        expect(html).not.toContain('data-lucide="message-circle"');
-        expect(html).not.toContain('data-lucide="route"');
-        expect(html.indexOf('id="mission-mode"')).toBeGreaterThan(html.indexOf('id="messages-container"'));
-        expect(css).toContain('Mission is a durable chat state, not a second workspace.');
-        expect(css).toContain('position: sticky;\n    bottom: 0;\n    z-index: 2;');
-        expect(css).toContain('color: var(--text-primary);\n    cursor: default;');
-        expect(css).not.toContain('body.mission-mode-active #messages-container > :not(#mission-mode)');
-        expect(uiSource).toContain("const missionMode = document.getElementById('mission-mode');");
-        expect(uiSource).toContain('this.messageContainer.appendChild(missionMode);');
+        expect(html).toContain('id="input-meta-actions"');
+        expect(html).toContain('id="input-model-indicator"');
+        expect(html).not.toContain('execution-mode-switch');
+        expect(html).not.toContain('data-execution-mode');
+        expect(html).not.toContain('id="mission-mode"');
+        expect(html).not.toContain('data-mission-action');
+        expect(html).not.toContain('id="mission-timeline"');
     });
 
     test('uses quiet navigation rows and a lightweight artifact toolbar', () => {
@@ -98,7 +84,7 @@ describe('web-chat index redirect', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
         const lightTheme = css.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] || '';
 
-        expect(html).toContain('css/styles.css?v=20260711g');
+        expect(html).toContain('css/styles.css?v=20260711h');
         expect(lightTheme).toContain('--tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98)');
         expect(lightTheme).toContain('--tool-picker-panel-border: rgba(215, 226, 239, 0.96);');
         expect(lightTheme).not.toContain('--tool-picker-panel-background: var(--theme-dialog-background);');
@@ -109,7 +95,7 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
 
-        expect(html).toContain('js/app.js?v=20260711d');
+        expect(html).toContain('js/app.js?v=20260711e');
         expect(appSource).toContain("const triggerLabel = selectedCount > 0");
         expect(appSource).toContain("this.toolMenuBtn.setAttribute('aria-label', triggerLabel);");
         expect(appSource).toContain('this.toolMenuBtn.title = triggerLabel;');
@@ -128,7 +114,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="btn-icon mobile-chat-menu__close"');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
-        expect(html).toContain('css/styles.css?v=20260711g');
+        expect(html).toContain('css/styles.css?v=20260711h');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
         expect(html).toContain('js/ui.js?v=20260711c');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
@@ -252,7 +238,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('aria-label="Backend connection status: Connecting"');
         expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
-        expect(html).toContain('js/app.js?v=20260711d');
+        expect(html).toContain('js/app.js?v=20260711e');
         expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
         expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
         expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");
@@ -267,7 +253,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('title="Open agent workloads"');
         expect(html).toContain('aria-label="Open agent workloads"');
         expect(html).toContain('aria-controls="workloads-panel"');
-        expect(html).toContain('js/app.js?v=20260711d');
+        expect(html).toContain('js/app.js?v=20260711e');
         expect(appSource).toContain("const label = isOpen ? 'Close agent workloads' : 'Open agent workloads';");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('aria-label', label);");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('title', label);");
