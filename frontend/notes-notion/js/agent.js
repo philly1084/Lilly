@@ -1008,6 +1008,25 @@ const Agent = (function() {
         }).join('\n');
     }
 
+    function buildFullPageDataSnapshot(pageContext = null) {
+        if (!pageContext) return '(page is unavailable)';
+        const documentSnapshot = pageContext.document || {
+            id: pageContext.pageId || null,
+            title: pageContext.title || 'Untitled',
+            icon: pageContext.icon || '',
+            cover: pageContext.cover || null,
+            properties: pageContext.properties || [],
+            defaultModel: pageContext.defaultModel || null,
+            blocks: pageContext.blocks || [],
+        };
+        try {
+            return JSON.stringify(documentSnapshot, null, 2);
+        } catch (error) {
+            console.warn('[Notes Agent] Failed to serialize full page data:', error);
+            return buildPageContentSnapshot(pageContext);
+        }
+    }
+
     function buildTopLevelLayoutSnapshot(pageContext) {
         if (!pageContext?.blocks?.length) {
             return '- Page is empty. Start with a clear top-level structure.';
@@ -3342,7 +3361,8 @@ const Agent = (function() {
         const pageReasoningMapSnapshot = pageContext?.projections?.pageMap
             ? JSON.stringify(pageContext.projections.pageMap, null, 2).slice(0, 9000)
             : '';
-        const pageContent = buildFullPageContentFromContext(pageContext).slice(0, 6000);
+        const pageContent = buildFullPageContentFromContext(pageContext);
+        const fullPageData = buildFullPageDataSnapshot(pageContext);
         const topLevelLayout = buildTopLevelLayoutSnapshot(pageContext);
         const sectionEditMap = buildSectionEditMap(pageContext);
         const visualAnchors = buildVisualAnchorSnapshot(pageContext);
@@ -3418,8 +3438,12 @@ ${sectionEditMap}
 OUTLINE (Headings):
 ${outline}
 
-CURRENT PAGE CONTENT (excerpt):
+CURRENT PAGE CONTENT (all readable text):
 ${pageContent || '(page is empty)'}
+
+FULL CURRENT PAGE DATA (all blocks and presentation fields):
+This JSON is the source of truth for whole-page improvement requests. It includes nested blocks and structured content such as databases, charts, image sources, captions, and presentation settings. Embedded binary image bytes are intentionally omitted.
+${fullPageData}
 
 REFERENCED NOTES PAGES:
 ${referencedPages}
@@ -3492,6 +3516,9 @@ When the user asks you to edit, create, delete, or reorganize content, respond w
     { "op": "replace_text", "blockId": "block_abc123", "findText": "old phrase", "replaceWith": "new phrase", "replaceAll": false },
     { "op": "highlight_text", "blockId": "block_abc123", "text": "important phrase", "color": "yellow" },
     { "op": "highlight_text", "blockId": "block_abc123", "sentenceQuery": "phrase in the sentence", "scope": "sentence", "color": "blue" },
+    { "op": "style_blocks", "blockIds": ["block_abc123", "block_def456"], "styles": { "color": "blue", "textColor": "indigo", "fontWeight": "semibold" } },
+    { "op": "style_section", "headingBlockId": "block_heading123", "styles": { "color": "gray", "textColor": "blue" }, "includeHeading": true },
+    { "op": "style_page", "stylesByType": { "heading_2": { "textColor": "blue", "fontWeight": "bold" }, "callout": { "color": "blue" }, "quote": { "color": "gray" } } },
     { "op": "update_block", "blockId": "block_heading123", "type": "heading_3", "content": "Existing heading text" },
     { "op": "update_block", "blockId": "block_heading456", "type": "heading_2", "content": "Existing heading text", "textColor": "blue", "color": "gray" },
     { "op": "replace_block", "blockId": "block_abc123", "blocks": [{ "type": "heading_2", "content": "New Section" }, { "type": "text", "content": "Fresh opening" }] },
@@ -3518,6 +3545,9 @@ VALID OPERATIONS:
 - set_block_type: Alias for change_block_type
 - replace_text: Replace a specific phrase inside an existing block without rewriting the whole block (requires blockId, findText or oldText, replaceWith or newText; optional replaceAll and caseSensitive)
 - highlight_text: Highlight a specific phrase or sentence inside an existing text-like block (requires blockId and text, or sentenceQuery with scope "sentence"; optional color)
+- style_blocks: Apply one coherent appearance to several named blocks (requires blockIds and styles; supports color, textColor, fontFamily, fontSize, fontWeight, textAlign, and formatting)
+- style_section: Theme a heading section in one operation (requires headingBlockId and styles; optional blockTypes/types and includeHeading)
+- style_page: Apply a page-wide theme by block type (requires stylesByType and/or defaultStyle; use exact block type names as keys)
 - replace_block: Replace block with new block(s) (requires blockId, blocks array)
 - move_block: Reorder an existing block relative to another block (requires blockId, targetBlockId, optional position "before"|"after")
 - replace_section: Replace a heading and all following blocks until the next same-or-higher heading (requires headingBlockId or blockId, blocks array)
@@ -3543,6 +3573,8 @@ STRUCTURAL EDITING RULES:
 - When a block is the right content but the wrong kind, use update_block with type or change_block_type/set_block_type. Do not leave JSON or markdown markers inside a code/text block to imply the new type.
 - Use change_block_type/set_block_type/update_block with type to convert a block in place. Keep the existing block ID whenever possible; do not delete and recreate the block just to change its type.
 - For full-page builds, return one notes-actions payload only. Do not put the JSON payload in the visible assistant_reply, and do not add a code block containing the request at the bottom of the page.
+- For whole-page improvement requests, review FULL CURRENT PAGE DATA before acting. Preserve structured table/chart/image data, then use style_page, style_section, style_blocks, and targeted structural edits instead of guessing from a text excerpt.
+- Use style_page for a coherent type-based theme, style_section for local section treatment, and style_blocks when non-adjacent blocks share one visual role.
 - Keep block type names exact: text, heading_1, heading_2, heading_3, bulleted_list, numbered_list, todo, callout, quote, divider, image, ai_image, bookmark, database, chart, toggle, mermaid, code, math.
 
 BLOCK TYPES:
@@ -3603,6 +3635,8 @@ GUIDELINES:
 - Research pages should usually use at least one richer support block such as callout, bookmark, image, ai_image, toggle, or database when the content supports it.
 - In notes, Mermaid usually belongs as a mermaid block inside the page. Do not switch to a downloadable Mermaid artifact unless the user explicitly asks for a file, export, download, or shareable artifact.
 - Use plain strings for text-like blocks and structured objects for todo, callout, code, math, mermaid, image, ai_image, bookmark, database, chart, and ai blocks.
+- Image and ai_image blocks share one normalized presentation frame regardless of whether they come from uploads, Unsplash, artifacts, or image generation. The default is fit "cover" with aspectRatio "16:9" and position "center".
+- Override image presentation only when it improves the composition: use fit "contain" for diagrams/screenshots that must not crop; use aspectRatio "1:1", "4:3", "16:9", or "4:5" and a CSS-like position such as "top center" for deliberate layouts.
 - For existing database blocks, use update_database with {blockId, columns, rows} to replace the whole table in one logical write, or {blockId, appendRows} to add many rows at once.
 - Use fill_database_column with {blockId, column or columnIndex, start, end} for rating/score fills such as 1-5, or {values:[...]} for custom mass fills.
 - Database columns must be useful labels, not placeholders; keep row cell counts aligned with columns.
@@ -3896,6 +3930,12 @@ GUIDELINES:
             target_heading_block_id: 'targetHeadingBlockId',
             targetsectionblockid: 'targetSectionBlockId',
             target_section_block_id: 'targetSectionBlockId',
+            blockids: 'blockIds',
+            block_ids: 'blockIds',
+            stylesbytype: 'stylesByType',
+            styles_by_type: 'stylesByType',
+            defaultstyle: 'defaultStyle',
+            default_style: 'defaultStyle',
             afterheadingblockid: 'afterHeadingBlockId',
             after_heading_block_id: 'afterHeadingBlockId',
             beforeheadingblockid: 'beforeHeadingBlockId',
@@ -5052,7 +5092,14 @@ GUIDELINES:
                 }
             }
 
-            return { url, caption };
+            const normalized = { url, caption };
+            const fit = value.fit || value.objectFit || value.presentation?.fit;
+            const aspectRatio = value.aspectRatio || value.aspect || value.presentation?.aspectRatio;
+            const position = value.position || value.objectPosition || value.presentation?.position;
+            if (fit) normalized.fit = fit;
+            if (aspectRatio) normalized.aspectRatio = aspectRatio;
+            if (position) normalized.position = position;
+            return normalized;
         }
 
         const text = String(value || '').trim();
@@ -6791,6 +6838,15 @@ Silently verify the lead cluster, section order, and final polish before returni
                         artifactId: value.artifactId || null,
                         downloadUrl: value.downloadUrl || null,
                         sourceHost: value.sourceHost || null,
+                        ...(value.fit || value.objectFit || value.presentation?.fit
+                            ? { fit: value.fit || value.objectFit || value.presentation?.fit }
+                            : {}),
+                        ...(value.aspectRatio || value.aspect || value.presentation?.aspectRatio
+                            ? { aspectRatio: value.aspectRatio || value.aspect || value.presentation?.aspectRatio }
+                            : {}),
+                        ...(value.position || value.objectPosition || value.presentation?.position
+                            ? { position: value.position || value.objectPosition || value.presentation?.position }
+                            : {}),
                     };
                 }
                 return {
@@ -7018,6 +7074,15 @@ Silently verify the lead cluster, section order, and final polish before returni
                         artifactId: definition.artifactId || null,
                         downloadUrl: definition.downloadUrl || null,
                         sourceHost: definition.sourceHost || null,
+                        ...(definition.fit || definition.objectFit || definition.presentation?.fit
+                            ? { fit: definition.fit || definition.objectFit || definition.presentation?.fit }
+                            : {}),
+                        ...(definition.aspectRatio || definition.aspect || definition.presentation?.aspectRatio
+                            ? { aspectRatio: definition.aspectRatio || definition.aspect || definition.presentation?.aspectRatio }
+                            : {}),
+                        ...(definition.position || definition.objectPosition || definition.presentation?.position
+                            ? { position: definition.position || definition.objectPosition || definition.presentation?.position }
+                            : {}),
                     };
                     break;
                 case 'bookmark':
@@ -8405,6 +8470,53 @@ Silently verify the lead cluster, section order, and final polish before returni
         return 260 + (index * base);
     }
 
+    function normalizeAgentStyleUpdates(action = {}) {
+        const source = action.styles && typeof action.styles === 'object'
+            ? { ...action.styles, ...action }
+            : action;
+        const updates = {};
+        const normalizers = {
+            color: normalizeNotesColor,
+            textColor: normalizeNotesColor,
+            fontFamily: normalizeNotesFontFamily,
+            fontSize: normalizeNotesFontSize,
+            fontWeight: normalizeNotesFontWeight,
+            textAlign: normalizeNotesTextAlign,
+        };
+        Object.entries(normalizers).forEach(([key, normalize]) => {
+            if (Object.prototype.hasOwnProperty.call(source, key)) {
+                updates[key] = normalize(source[key]);
+            }
+        });
+        if (source.formatting && typeof source.formatting === 'object') {
+            updates.formatting = { ...source.formatting };
+        }
+        return updates;
+    }
+
+    function collectBlockIds(blocks = []) {
+        return blocks.flatMap((block) => block && typeof block === 'object'
+            ? [block.id, ...collectBlockIds(Array.isArray(block.children) ? block.children : [])].filter(Boolean)
+            : []);
+    }
+
+    function applyStyleToBlockIds(editor, blockIds = [], styleResolver = () => ({})) {
+        const updatesById = {};
+        Array.from(new Set(blockIds.filter(Boolean))).forEach((blockId) => {
+            const block = editor.getBlock?.(blockId);
+            if (!block) return;
+            const updates = styleResolver(block);
+            if (!updates || Object.keys(updates).length === 0) return;
+            updatesById[blockId] = updates;
+        });
+        if (editor.updateBlocksFields) {
+            return editor.updateBlocksFields(updatesById).length;
+        }
+        return Object.entries(updatesById).reduce((updatedCount, [blockId, updates]) => (
+            editor.updateBlockFields?.(blockId, updates) ? updatedCount + 1 : updatedCount
+        ), 0);
+    }
+
     function applyNotesActions(actions = []) {
         const editor = window.Editor;
         if (!editor || !Array.isArray(actions) || actions.length === 0) {
@@ -8448,6 +8560,49 @@ Silently verify the lead cluster, section order, and final polish before returni
                             }
                         });
                         editor.updatePageMetadata?.(pageUpdates);
+                        appliedCount++;
+                        break;
+                    }
+                    case 'style_blocks': {
+                        const blockIds = Array.isArray(rawAction.blockIds)
+                            ? rawAction.blockIds
+                            : [targetBlockId].filter(Boolean);
+                        const updates = normalizeAgentStyleUpdates(rawAction);
+                        const updatedCount = applyStyleToBlockIds(editor, blockIds, () => updates);
+                        if (!updatedCount) return;
+                        focusBlockId = blockIds[0] || focusBlockId;
+                        appliedCount++;
+                        break;
+                    }
+                    case 'style_section': {
+                        const headingBlockId = rawAction.headingBlockId || rawAction.sectionBlockId || targetBlockId;
+                        const section = editor.getSectionRangeFromHeading?.(headingBlockId);
+                        if (!section?.blocks?.length) return;
+                        const requestedTypes = new Set((rawAction.blockTypes || rawAction.types || []).map(canonicalizeBlockType));
+                        const includeHeading = rawAction.includeHeading !== false;
+                        const blockIds = section.blocks
+                            .filter((block, index) => (includeHeading || index > 0) && (!requestedTypes.size || requestedTypes.has(canonicalizeBlockType(block.type))))
+                            .map((block) => block.id);
+                        const updates = normalizeAgentStyleUpdates(rawAction);
+                        const updatedCount = applyStyleToBlockIds(editor, blockIds, () => updates);
+                        if (!updatedCount) return;
+                        focusBlockId = headingBlockId;
+                        appliedCount++;
+                        break;
+                    }
+                    case 'style_page': {
+                        const page = editor.getCurrentPage?.();
+                        if (!page) return;
+                        const defaultUpdates = normalizeAgentStyleUpdates(rawAction.defaultStyle || rawAction.styles || {});
+                        const stylesByType = rawAction.stylesByType && typeof rawAction.stylesByType === 'object'
+                            ? rawAction.stylesByType
+                            : {};
+                        const updatedCount = applyStyleToBlockIds(editor, collectBlockIds(page.blocks || []), (block) => ({
+                            ...defaultUpdates,
+                            ...normalizeAgentStyleUpdates(stylesByType[block.type] || {}),
+                        }));
+                        if (!updatedCount) return;
+                        focusBlockId = page.blocks?.[0]?.id || focusBlockId;
                         appliedCount++;
                         break;
                     }

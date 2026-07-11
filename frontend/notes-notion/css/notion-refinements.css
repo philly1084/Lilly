@@ -4314,6 +4314,11 @@ body.agent-chat-open .main-content {
     height: auto;
   }
 
+  .notes-image-frame > img {
+    width: 100%;
+    height: 100%;
+  }
+
   .image-upload-placeholder,
   .ai-image-loading,
   .ai-image-error,

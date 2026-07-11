@@ -835,7 +835,8 @@ Approved page plan:
             question: 'Create a research brief about penguins with sources and key findings.',
         });
 
-        expect(prompt).toContain('CURRENT PAGE CONTENT (excerpt):');
+        expect(prompt).toContain('CURRENT PAGE CONTENT (all readable text):');
+        expect(prompt).toContain('FULL CURRENT PAGE DATA (all blocks and presentation fields):');
         expect(prompt).toContain('ROUTING PRIORITY:');
         expect(prompt).toContain('SYMPHONY REQUEST UNDERSTANDING:');
         expect(prompt).toContain('Route: Symphony page draft [symphony_page_draft]');
@@ -867,6 +868,9 @@ Approved page plan:
         expect(prompt).toContain('prefer notes-actions that update the page blocks instead of artifact, file, or export output');
         expect(prompt).toContain('VALID OPERATIONS:');
         expect(prompt).toContain('replace_section');
+        expect(prompt).toContain('style_page');
+        expect(prompt).toContain('style_section');
+        expect(prompt).toContain('style_blocks');
         expect(prompt).toContain('move_section');
         expect(prompt).toContain('insert_after_section');
         expect(prompt).toContain('delete_section');
@@ -1221,6 +1225,55 @@ Approved page plan:
             fontFamily: 'serif',
             fontSize: 'xlarge',
         }));
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+    });
+
+    test('applies section and page themes without rewriting block content', () => {
+        jest.useFakeTimers();
+        const blocks = {
+            heading_a: { id: 'heading_a', type: 'heading_2', content: 'Overview', children: [] },
+            body_a: { id: 'body_a', type: 'text', content: 'Keep this content.', children: [] },
+            callout_a: { id: 'callout_a', type: 'callout', content: { text: 'Key point', icon: '!' }, children: [] },
+        };
+        const page = { id: 'page_a', blocks: Object.values(blocks) };
+        const editor = {
+            getCurrentPage: jest.fn(() => page),
+            getBlock: jest.fn((blockId) => blocks[blockId]),
+            getSectionRangeFromHeading: jest.fn(() => ({ blocks: [blocks.heading_a, blocks.body_a] })),
+            updateBlockFields: jest.fn((blockId, updates) => {
+                blocks[blockId] = { ...blocks[blockId], ...updates };
+                return blocks[blockId];
+            }),
+            savePage: jest.fn(),
+            focusBlock: jest.fn(),
+        };
+        const agent = loadAgent({ Editor: editor });
+
+        const result = agent._applyNotesActions([
+            {
+                op: 'style_section',
+                headingBlockId: 'heading_a',
+                styles: { color: 'gray', textColor: 'blue' },
+            },
+            {
+                op: 'style_page',
+                stylesByType: {
+                    heading_2: { fontWeight: 'bold' },
+                    callout: { color: 'yellow' },
+                },
+            },
+        ]);
+
+        expect(result.appliedCount).toBe(2);
+        expect(blocks.heading_a).toEqual(expect.objectContaining({
+            content: 'Overview',
+            color: 'gray',
+            textColor: 'blue',
+            fontWeight: 'bold',
+        }));
+        expect(blocks.body_a).toEqual(expect.objectContaining({ content: 'Keep this content.', color: 'gray', textColor: 'blue' }));
+        expect(blocks.callout_a).toEqual(expect.objectContaining({ color: 'yellow' }));
         jest.runOnlyPendingTimers();
         jest.useRealTimers();
     });

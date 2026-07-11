@@ -1466,6 +1466,28 @@ const Blocks = (function() {
     /**
      * Render an image block
      */
+    function applyImagePresentation(frame, image, content = {}) {
+        const fit = ['cover', 'contain'].includes(String(content.fit || content.objectFit || '').toLowerCase())
+            ? String(content.fit || content.objectFit).toLowerCase()
+            : 'cover';
+        const rawAspect = String(content.aspectRatio || content.aspect || '16:9').trim().toLowerCase();
+        const aspectAliases = {
+            square: '1 / 1',
+            portrait: '4 / 5',
+            landscape: '16 / 9',
+            wide: '16 / 9',
+        };
+        const ratioMatch = rawAspect.match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
+        const aspectRatio = aspectAliases[rawAspect]
+            || (ratioMatch ? `${ratioMatch[1]} / ${ratioMatch[2]}` : '16 / 9');
+        const position = String(content.position || content.objectPosition || 'center').trim() || 'center';
+
+        frame.classList.add('notes-image-frame');
+        frame.dataset.imageFit = fit;
+        frame.style.setProperty('--notes-image-aspect', aspectRatio);
+        image.style.objectPosition = position;
+    }
+
     function renderImageBlock(block, isEditable = true) {
         const wrapper = document.createElement('div');
         wrapper.className = 'block-content';
@@ -1489,6 +1511,7 @@ const Blocks = (function() {
             img.src = imageUrl;
             img.alt = block.content.caption || block.content.alt || '';
             img.draggable = false;
+            applyImagePresentation(imgWrapper, img, block.content);
 
             // Handle image load errors
             img.addEventListener('error', () => {
@@ -1805,6 +1828,7 @@ const Blocks = (function() {
             img.src = displayImageUrl;
             img.alt = content.caption || content.prompt || 'Image';
             img.className = 'ai-image';
+            applyImagePresentation(imgWrapper, img, content);
             
             img.addEventListener('error', () => {
                 imgWrapper.innerHTML = `

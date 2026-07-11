@@ -263,6 +263,50 @@ describe('NotesQuery', () => {
         });
     });
 
+    test('keeps complete structured page data for agent whole-page improvement passes', () => {
+        const page = samplePage();
+        page.cover = { type: 'image', value: 'https://example.com/cover.jpg' };
+        page.blocks.push({
+            id: 'facts',
+            type: 'database',
+            content: { columns: ['Item', 'Owner'], rows: [['Launch', 'Sam']] },
+            children: [],
+        });
+        page.blocks.push({
+            id: 'hero',
+            type: 'image',
+            content: {
+                url: 'data:image/png;base64,very-large-payload',
+                caption: 'Launch illustration',
+                fit: 'contain',
+                aspectRatio: '4:3',
+            },
+            children: [],
+        });
+
+        const context = NotesQuery.buildPageContext(page);
+
+        expect(context.document).toEqual(expect.objectContaining({
+            id: 'page-1',
+            cover: { type: 'image', value: 'https://example.com/cover.jpg' },
+        }));
+        expect(context.document.blocks).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 'facts',
+                content: { columns: ['Item', 'Owner'], rows: [['Launch', 'Sam']] },
+            }),
+            expect.objectContaining({
+                id: 'hero',
+                content: expect.objectContaining({
+                    url: '[embedded image/png data omitted]',
+                    caption: 'Launch illustration',
+                    fit: 'contain',
+                    aspectRatio: '4:3',
+                }),
+            }),
+        ]));
+    });
+
     test('builds page reasoning map with Mermaid step matches and color hints', () => {
         const context = NotesQuery.buildPageContext(sampleProcessPage());
         const pageMap = context.projections.pageMap;

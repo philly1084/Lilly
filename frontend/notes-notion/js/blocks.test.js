@@ -155,6 +155,36 @@ describe('Notes Blocks database normalization', () => {
 });
 
 describe('Notes Blocks image rendering', () => {
+    test('uses one normalized presentation frame for uploaded and generated images', () => {
+        const Blocks = loadBlocks();
+        const uploaded = Blocks.render.image({
+            type: 'image',
+            content: {
+                url: 'https://example.com/uploaded.jpg',
+                caption: 'Uploaded',
+                fit: 'contain',
+                aspectRatio: '4:3',
+                position: 'top center',
+            },
+        }, false);
+        const generated = Blocks.render.ai_image({
+            type: 'ai_image',
+            content: {
+                imageUrl: 'https://example.com/generated.jpg',
+                prompt: 'Generated',
+                status: 'done',
+            },
+        }, false);
+
+        const uploadedFrame = uploaded.querySelector('.notes-image-frame');
+        const generatedFrame = generated.querySelector('.notes-image-frame');
+        expect(uploadedFrame?.dataset.imageFit).toBe('contain');
+        expect(uploadedFrame?.style.getPropertyValue('--notes-image-aspect')).toBe('4 / 3');
+        expect(uploadedFrame?.querySelector('img')?.style.objectPosition).toBe('top center');
+        expect(generatedFrame?.dataset.imageFit).toBe('cover');
+        expect(generatedFrame?.style.getPropertyValue('--notes-image-aspect')).toBe('16 / 9');
+    });
+
     test('auto-searches Unsplash photo pages instead of treating them as renderable image URLs', () => {
         const searchUnsplash = jest.fn(() => new Promise(() => {}));
         const Blocks = loadBlocks({

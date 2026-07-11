@@ -1846,6 +1846,40 @@ const Editor = (function() {
 
         return mergedBlock;
     }
+
+    function updateBlocksFields(updatesById = {}) {
+        if (!currentPage || !updatesById || typeof updatesById !== 'object') return [];
+        const entries = Object.entries(updatesById).filter(([blockId, updates]) => (
+            blockId && updates && typeof updates === 'object'
+        ));
+        if (!entries.length) return [];
+
+        const pending = entries
+            .map(([blockId, updates]) => ({ blockId, updates, location: findBlockLocation(blockId) }))
+            .filter((item) => item.location);
+        if (!pending.length) return [];
+
+        saveToHistory();
+        const updatedBlocks = pending.map(({ blockId, updates, location }) => {
+            const mergedBlock = normalizeBlocks([{
+                ...location.block,
+                ...updates,
+                id: blockId,
+                children: Object.prototype.hasOwnProperty.call(updates, 'children')
+                    ? updates.children
+                    : (location.block.children || []),
+                formatting: Object.prototype.hasOwnProperty.call(updates, 'formatting')
+                    ? updates.formatting
+                    : (location.block.formatting || {}),
+            }])[0];
+            location.siblings.splice(location.index, 1, mergedBlock);
+            return mergedBlock;
+        });
+
+        refreshEditor();
+        autoSave();
+        return updatedBlocks;
+    }
     
     /**
      * Indent a block (make child of previous)
@@ -2821,6 +2855,7 @@ const Editor = (function() {
         hideInlineToolbar,
         updateBlockContent,
         updateBlockFields,
+        updateBlocksFields,
         replaceBlockWithBlocks,
         insertBlocksAfter,
         insertBlocksBefore,

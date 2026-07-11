@@ -107,6 +107,46 @@
         return Array.from(new Set(values.filter(Boolean).map(String)));
     }
 
+    function buildAgentSafeValue(value, seen = new WeakSet()) {
+        if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
+        if (typeof value === 'string') {
+            if (/^data:[^;,]+;base64,/i.test(value)) {
+                const mimeType = value.match(/^data:([^;,]+)/i)?.[1] || 'application/octet-stream';
+                return `[embedded ${mimeType} data omitted]`;
+            }
+            return value;
+        }
+        if (typeof value !== 'object') return String(value);
+        if (seen.has(value)) return '[circular reference omitted]';
+
+        seen.add(value);
+        if (Array.isArray(value)) {
+            const items = value.map((item) => buildAgentSafeValue(item, seen));
+            seen.delete(value);
+            return items;
+        }
+
+        const result = {};
+        Object.entries(value).forEach(([key, item]) => {
+            if (key.startsWith('_')) return;
+            result[key] = buildAgentSafeValue(item, seen);
+        });
+        seen.delete(value);
+        return result;
+    }
+
+    function buildFullDocumentSnapshot(page = null) {
+        return {
+            id: page?.id || null,
+            title: page?.title || 'Untitled',
+            icon: page?.icon || '',
+            cover: buildAgentSafeValue(page?.cover || null),
+            properties: buildAgentSafeValue(Array.isArray(page?.properties) ? page.properties : []),
+            defaultModel: page?.defaultModel || null,
+            blocks: buildAgentSafeValue(Array.isArray(page?.blocks) ? page.blocks : []),
+        };
+    }
+
     function splitSentences(value = '') {
         const source = String(value || '');
         const sentences = [];
@@ -1283,6 +1323,7 @@
             defaultModel: index.defaultModel,
             hasCover: index.hasCover,
             properties: index.properties,
+            document: buildFullDocumentSnapshot(page),
             reasoningMap: pageMap,
             projections: {
                 agentContext: createProjection(index, { mode: 'agent_context' }),
@@ -1416,6 +1457,7 @@
     const api = {
         buildIndex,
         buildPageContext,
+        buildFullDocumentSnapshot,
         createProjection,
         query,
         grep: (pageOrIndex, input = '', options = {}) => query(pageOrIndex, { ...options, grep: input }),
