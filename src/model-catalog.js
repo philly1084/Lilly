@@ -98,10 +98,16 @@ function getCapabilityEntries(model = {}) {
     return [
         ...parseCapabilityEntries(model?.capabilities),
         ...parseCapabilityEntries(model?.supports),
+        ...parseCapabilityEntries(model?.capabilityMap),
+        ...parseCapabilityEntries(model?.capability_map),
         ...parseCapabilityEntries(model?.metadata?.capabilities),
         ...parseCapabilityEntries(model?.metadata?.supports),
+        ...parseCapabilityEntries(model?.metadata?.capabilityMap),
+        ...parseCapabilityEntries(model?.metadata?.capability_map),
         ...parseCapabilityEntries(model?.contract?.capabilities),
         ...parseCapabilityEntries(model?.contract?.supports),
+        ...parseCapabilityEntries(model?.contract?.capabilityMap),
+        ...parseCapabilityEntries(model?.contract?.capability_map),
     ];
 }
 

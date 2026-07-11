@@ -174,6 +174,39 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('normalizes provider capability maps before model routing', () => {
+        const selected = selectAutoModel([
+            { id: 'image-map-router', owned_by: 'gateway', capability_map: { image_generation: true } },
+            { id: 'tools-map-router', owned_by: 'gateway', capabilityMap: { chat: true, tools: { supported: true }, streaming: 'available' } },
+            { id: 'structured-map-router', owned_by: 'gateway', metadata: { capability_map: { chat: true, structured_outputs: 'enabled' } } },
+        ], {
+            needsTools: true,
+            apiMode: 'chat',
+        });
+
+        expect(isPublicChatModel({ id: 'image-map-router', capability_map: { image_generation: true } })).toBe(false);
+        expect(buildModelContract({
+            id: 'tools-map-router',
+            owned_by: 'gateway',
+            capabilityMap: { chat: true, tools: { supported: true }, streaming: 'available' },
+        })).toEqual(expect.objectContaining({
+            capabilities: ['chat', 'tools', 'streaming'],
+            supports: expect.objectContaining({
+                chat: true,
+                tools: true,
+                streaming: true,
+            }),
+        }));
+        expect(buildModelContract({
+            id: 'structured-map-router',
+            owned_by: 'gateway',
+            metadata: { capability_map: { chat: true, structured_outputs: 'enabled' } },
+        }).supports.structured_outputs).toBe(true);
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'tools-map-router',
+        }));
+    });
+
     test('labels common gateway model families in public contracts', () => {
         expect(buildModelContract({ id: 'mistral-large-latest' })).toEqual(expect.objectContaining({
             provider: 'mistral',
