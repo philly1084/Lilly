@@ -182,6 +182,20 @@ describe('web-chat index redirect', () => {
         expect(uiSource).toContain('this.selectModel(item.dataset.modelId);');
     });
 
+    test('assistant settings trigger identifies the dialog it opens', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+        expect(html).toContain('id="model-selector-dropdown" class="model-selector-dropdown hidden" role="dialog"');
+        expect(html).toContain('id="model-selector-btn"');
+        expect(html).toContain('aria-haspopup="dialog"');
+        expect(html).toContain('aria-controls="model-selector-dropdown"');
+        expect(uiSource).toContain("dropdown.setAttribute('aria-hidden', 'false');");
+        expect(uiSource).toContain('this.updateModelSelectorAria(true);');
+        expect(uiSource).toContain("dropdown.setAttribute('aria-hidden', 'true');");
+        expect(uiSource).toContain('this.updateModelSelectorAria(false);');
+    });
+
     test('media source selector exposes roving keyboard radio behavior', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
