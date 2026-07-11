@@ -10423,6 +10423,32 @@ code[class*="language-"] {
     border-color: var(--theme-mobile-action-hover-border);
 }
 
+/* Keep the composer tool picker on the active light surface after chat presets
+   apply their own control tokens. This needs to live after the preset rules. */
+[data-theme="light"] .tool-menu-panel {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+    border-color: rgba(215, 226, 239, 0.96);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+}
+
+[data-theme="light"] .tool-menu-choice,
+[data-theme="light"] .tool-menu-actions button {
+    background: #f8fbff;
+    border-color: rgba(215, 226, 239, 0.98);
+}
+
+[data-theme="light"] .tool-menu-choice:hover,
+[data-theme="light"] .tool-menu-choice.is-selected,
+[data-theme="light"] .tool-menu-actions button:hover,
+[data-theme="light"] .tool-menu-actions button:focus-visible {
+    background: #edf5ff;
+    border-color: color-mix(in srgb, var(--accent) 38%, rgba(191, 208, 228, 0.95));
+}
+
+[data-theme="light"] .tool-menu-choice__icon {
+    background: #eef4fb;
+}
+
 .theme-gallery-modal-content {
     max-width: min(68rem, calc(100vw - 2rem));
     max-height: min(88dvh, 52rem);
