@@ -107,7 +107,7 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
 
-        expect(html).toContain('js/app.js?v=20260711b');
+        expect(html).toContain('js/app.js?v=20260711c');
         expect(appSource).toContain("const triggerLabel = selectedCount > 0");
         expect(appSource).toContain("this.toolMenuBtn.setAttribute('aria-label', triggerLabel);");
         expect(appSource).toContain('this.toolMenuBtn.title = triggerLabel;');
@@ -250,7 +250,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('aria-label="Backend connection status: Connecting"');
         expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
-        expect(html).toContain('js/app.js?v=20260711b');
+        expect(html).toContain('js/app.js?v=20260711c');
         expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
         expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
         expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");
@@ -265,7 +265,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('title="Open agent workloads"');
         expect(html).toContain('aria-label="Open agent workloads"');
         expect(html).toContain('aria-controls="workloads-panel"');
-        expect(html).toContain('js/app.js?v=20260711b');
+        expect(html).toContain('js/app.js?v=20260711c');
         expect(appSource).toContain("const label = isOpen ? 'Close agent workloads' : 'Open agent workloads';");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('aria-label', label);");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('title', label);");

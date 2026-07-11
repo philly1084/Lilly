@@ -345,6 +345,33 @@ describe('web-chat project viewport helpers', () => {
         );
     });
 
+    test('loads the direct preview URL when server authentication is disabled', async () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+        app.projectPreviewTokenCache = null;
+        context.window.location = {
+            hostname: 'chat.example.test',
+            protocol: 'https:',
+            host: 'chat.example.test',
+            href: 'https://chat.example.test/web-chat/app.html',
+            origin: 'https://chat.example.test',
+        };
+        context.window.artifactManager = undefined;
+        context.fetch = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                token: null,
+                expiresAt: null,
+                authRequired: false,
+            }),
+        }));
+
+        await expect(app.resolveProjectViewportUrl({
+            type: 'sandbox',
+            previewUrl: '/api/artifacts/artifact-site-1/preview',
+        })).resolves.toBe('https://chat.example.test/api/artifacts/artifact-site-1/preview');
+    });
+
     test('keeps viewport sizing to the supported persistent choices', () => {
         const app = Object.create(loadChatAppPrototype());
 

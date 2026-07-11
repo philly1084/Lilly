@@ -5239,6 +5239,9 @@ class ChatApp {
         const data = await response.json().catch(() => ({}));
         const token = String(data?.token || '').trim();
         if (!token) {
+            if (data?.authRequired === false) {
+                return '';
+            }
             throw new Error('Project preview authentication did not return a token.');
         }
 
