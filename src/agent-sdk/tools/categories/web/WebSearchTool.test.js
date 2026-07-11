@@ -782,6 +782,10 @@ describe('WebSearchTool', () => {
         title: 'Neon pricing',
         url: 'https://neon.tech/pricing',
       },
+      {
+        title: 'Crunchy Bridge',
+        url: 'https://www.crunchydata.com/products/crunchy-bridge',
+      },
     ]);
     expect(result.provider).toEqual({
       api: 'agent',
@@ -797,5 +801,99 @@ describe('WebSearchTool', () => {
       'POST',
       { results: 2, researchMode: 'deep-research' },
     );
+  });
+
+  test('accepts successful raw Search responses that do not include usage metadata', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'raw-search-without-usage',
+        results: [{
+          title: 'Perplexity Agent API',
+          url: 'https://docs.perplexity.ai/docs/agent-api/quickstart',
+          snippet: 'Agent API quickstart.',
+        }],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const output = await tool.execute({
+      query: 'Perplexity Agent API',
+      researchMode: 'search',
+      timeRange: 'all',
+    });
+
+    expect(output.success).toBe(true);
+    expect(output.data).toEqual(expect.objectContaining({
+      researchMode: 'search',
+      usage: {},
+      totalResults: 1,
+    }));
+  });
+
+  test('passes structured output, model fallbacks, and tool-call limits to Agent research', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'agent-structured-123',
+        model: 'openai/gpt-5.4',
+        output: [{
+          type: 'message',
+          content: [{
+            type: 'output_text',
+            text: '{"findings":[]}',
+          }],
+        }],
+      }),
+    });
+
+    const tool = new WebSearchTool();
+    const result = await tool.handler({
+      query: 'Extract current Agent API capabilities',
+      researchMode: 'pro-search',
+      agentModels: ['openai/gpt-5.4', 'anthropic/claude-sonnet-4-6', 'openai/gpt-5.4'],
+      maxToolCalls: 7,
+      searchContextSize: 'high',
+      agentTools: ['finance_search', 'people_search', 'unsupported_tool'],
+      responseFormat: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'research_findings',
+          schema: {
+            type: 'object',
+            properties: {
+              findings: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['findings'],
+            additionalProperties: false,
+          },
+        },
+      },
+    }, {}, { recordNetworkCall: jest.fn() });
+
+    const [, request] = global.fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+    expect(payload).toEqual(expect.objectContaining({
+      preset: 'pro-search',
+      models: ['openai/gpt-5.4', 'anthropic/claude-sonnet-4-6'],
+      max_tool_calls: 7,
+      response_format: expect.objectContaining({
+        type: 'json_schema',
+        json_schema: expect.objectContaining({ name: 'research_findings' }),
+      }),
+    }));
+    expect(payload.tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'web_search',
+        search_context_size: 'high',
+      }),
+      { type: 'fetch_url' },
+      { type: 'finance_search' },
+      { type: 'people_search' },
+    ]));
+    expect(result.answer).toBe('{"findings":[]}');
+    expect(result.usage).toEqual({});
   });
 });

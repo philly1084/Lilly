@@ -1483,6 +1483,9 @@ class ChatApp {
         this.missionMode.classList.toggle('hidden', state.active !== true);
         this.missionMode.setAttribute('aria-hidden', state.active === true ? 'false' : 'true');
         document.body?.classList?.toggle('mission-mode-active', state.active === true);
+        if (state.active === true && this.messagesContainer && this.missionMode.parentElement === this.messagesContainer) {
+            this.messagesContainer.appendChild(this.missionMode);
+        }
         if (!state.active) {
             return;
         }
@@ -3700,6 +3703,9 @@ class ChatApp {
         });
 
         this.messagesContainer.appendChild(fragment);
+        if (this.missionState?.active === true && this.missionMode?.parentElement === this.messagesContainer) {
+            this.messagesContainer.appendChild(this.missionMode);
+        }
         uiHelpers.reinitializeIcons(this.messagesContainer);
         uiHelpers.updateMessageSpeechButtons(this.messagesContainer);
         uiHelpers.highlightCodeBlocks(this.messagesContainer);

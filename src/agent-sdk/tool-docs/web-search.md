@@ -25,6 +25,10 @@ Key params:
 - `maxOutputTokens`
 - `userLocation`
 - `maxSteps`
+- `maxToolCalls`
+- `agentModel` / `agentModels`
+- `responseFormat`
+- `agentTools`
 - `instructions`
 - `returnImages`
 - `imageDomains`
@@ -42,6 +46,10 @@ Notes:
 - `researchMode: "search"` uses Perplexity's raw `/search` endpoint for ranked results.
 - `researchMode: "sonar" | "sonar-pro" | "sonar-reasoning-pro" | "sonar-deep-research"` uses Perplexity Sonar `/v1/sonar` for grounded answers, citations, search results, and optional media.
 - `researchMode: "fast-search" | "pro-search" | "deep-research" | "advanced-deep-research"` uses Perplexity's `/v1/agent` presets for autonomous searched answers plus source results.
+- Agent presets may change their underlying model over time. Use `agentModel` to pin one model or `agentModels` for an ordered fallback chain of up to five models when reproducibility or a specific quality tier matters.
+- Use `responseFormat` with a named `json_schema` when downstream code needs typed comparison rows, evidence records, extracted facts, or other reliably parseable research data. Keep URLs grounded in the returned `citations` and `results` instead of asking the model to invent them inside structured output.
+- Use `maxToolCalls` to bound Agent research cost separately from `maxSteps`.
+- Use `agentTools: ["finance_search"]` for current public-company quotes, statements, earnings, estimates, or market data, and `agentTools: ["people_search"]` when professional-person lookup is explicitly needed. These are additive Agent API tools and have separate per-call costs.
 - Admin `orchestration.perplexityResearchLevel` can override automatic mode selection: `regular` caps research at raw Search, `pro` uses Agent `pro-search` for explicit research, and `deep` escalates explicit research to Sonar Deep Research while leaving URL hotlists on raw Search.
 - Use `search` for URL hotlisting, scraping prep, Playwright candidate pages, and link discovery when the local agent only needs candidate pages.
 - Use `sonar` or `sonar-pro` for one-shot grounded answers. Use `sonar-pro` for complex comparisons.
@@ -53,3 +61,4 @@ Notes:
 - Use larger extraction budgets for research-heavy work: default `maxTokens` is 50,000 across results and `maxTokensPerPage` is 4,096 unless overridden by environment/config.
 - Use `web-fetch` first on result URLs for direct verification, especially before composing news, reports, slides, or researched HTML.
 - Use `web-scrape` only when deeper rendered or structured extraction is needed, or when `web-fetch` cannot read the page.
+- Perplexity code execution is not currently a built-in Agent API tool. When research needs calculations, deduplication, CSV/JSON transformation, statistical checks, or chart data, use a KimiBuilt-native chain: `web-search` -> `web-fetch`/`web-scrape` verification -> isolated `code-sandbox` execution with network disabled -> cited synthesis or artifact generation. Pass only the required source data into the sandbox and preserve source URLs outside generated structured data.

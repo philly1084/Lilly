@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-07-10T02:11:43.693Z",
+  "updatedAt": "2026-07-11T18:33:36.853Z",
   "targets": {
     "10.0.0.5:22": {
       "key": "10.0.0.5:22",
@@ -8,7 +8,7 @@
       "username": "ubuntu",
       "port": 22,
       "firstSeenAt": "2026-04-19T03:51:57.201Z",
-      "lastSeenAt": "2026-07-10T02:11:43.692Z",
+      "lastSeenAt": "2026-07-11T18:33:36.853Z",
       "paths": [
         "/etc/os-release",
         "/opt/kimibuilt",
@@ -30,7 +30,7 @@
         "deployment.apps"
       ],
       "lastObjective": "Reconnect to the Ubuntu server and continue the remote-build setup.",
-      "lastInspectionAt": "2026-07-10T02:11:43.538Z",
+      "lastInspectionAt": "2026-07-11T18:33:36.457Z",
       "lastStatus": "succeeded",
       "serverContext": {
         "hostname": "",
@@ -54,7 +54,7 @@
       "username": "root",
       "port": 22,
       "firstSeenAt": "2026-04-19T03:51:57.675Z",
-      "lastSeenAt": "2026-07-10T02:11:42.272Z",
+      "lastSeenAt": "2026-07-11T18:33:32.005Z",
       "paths": [
         "/tmp/website-html.yaml",
         "/opt/sophia-color-world/",
@@ -181,7 +181,7 @@
       "username": "root",
       "port": 22,
       "firstSeenAt": "2026-05-30T17:12:04.697Z",
-      "lastSeenAt": "2026-07-10T02:11:42.390Z",
+      "lastSeenAt": "2026-07-11T18:33:32.539Z",
       "paths": [],
       "domains": [
         "awesome.demoserver2.buzz"
@@ -236,11 +236,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-04-19T03:51:57.202Z",
-      "lastSeenAt": "2026-07-10T02:11:43.693Z",
+      "lastSeenAt": "2026-07-11T18:33:36.853Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:43.680Z",
-      "lastSuccessAt": "2026-07-10T02:11:43.680Z",
+      "lastActionAt": "2026-07-11T18:33:36.822Z",
+      "lastSuccessAt": "2026-07-11T18:33:36.822Z",
       "lastFailureAt": "2026-05-21T01:11:39.995Z",
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -298,11 +298,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-04-19T03:51:57.675Z",
-      "lastSeenAt": "2026-07-10T02:11:42.241Z",
+      "lastSeenAt": "2026-07-11T18:33:31.895Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:42.236Z",
-      "lastSuccessAt": "2026-07-10T02:11:42.236Z",
+      "lastActionAt": "2026-07-11T18:33:31.870Z",
+      "lastSuccessAt": "2026-07-11T18:33:31.870Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -357,13 +357,13 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-04-19T03:51:57.786Z",
-      "lastSeenAt": "2026-07-10T02:11:43.543Z",
+      "lastSeenAt": "2026-07-11T18:33:36.472Z",
       "lastAction": "verify-deployment",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:43.538Z",
-      "lastSuccessAt": "2026-07-10T02:11:43.538Z",
-      "lastFailureAt": "2026-07-10T02:11:42.958Z",
-      "lastVerificationAt": "2026-07-10T02:11:43.538Z",
+      "lastActionAt": "2026-07-11T18:33:36.457Z",
+      "lastSuccessAt": "2026-07-11T18:33:36.457Z",
+      "lastFailureAt": "2026-07-11T18:33:34.811Z",
+      "lastVerificationAt": "2026-07-11T18:33:36.457Z",
       "lastStatus": "succeeded",
       "lastError": "",
       "lastCommand": "set -e kubectl get deploy -A -o wide kubectl get pods -A -o wide kubectl get svc,ingress -A -o wide",
@@ -382,8 +382,8 @@
         "ingress": true,
         "tls": true,
         "https": true,
-        "lastRolloutAt": "2026-07-10T02:11:43.538Z",
-        "lastVerifiedAt": "2026-07-10T02:11:43.538Z"
+        "lastRolloutAt": "2026-07-11T18:33:36.457Z",
+        "lastVerifiedAt": "2026-07-11T18:33:36.457Z"
       }
     },
     "10.0.0.5:22|ame|backend": {
@@ -415,11 +415,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-04-19T03:51:57.810Z",
-      "lastSeenAt": "2026-07-10T02:11:43.543Z",
+      "lastSeenAt": "2026-07-11T18:33:36.471Z",
       "lastAction": "build-and-deploy-remote-workspace",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:43.537Z",
-      "lastSuccessAt": "2026-07-10T02:11:43.537Z",
+      "lastActionAt": "2026-07-11T18:33:36.453Z",
+      "lastSuccessAt": "2026-07-11T18:33:36.453Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -482,11 +482,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-04-19T03:51:57.830Z",
-      "lastSeenAt": "2026-07-10T02:11:42.983Z",
+      "lastSeenAt": "2026-07-11T18:33:34.895Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:42.969Z",
-      "lastSuccessAt": "2026-07-10T02:11:42.969Z",
+      "lastActionAt": "2026-07-11T18:33:34.846Z",
+      "lastSuccessAt": "2026-07-11T18:33:34.846Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -537,11 +537,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-04-19T03:51:57.866Z",
-      "lastSeenAt": "2026-07-10T02:11:43.078Z",
+      "lastSeenAt": "2026-07-11T18:33:35.218Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:43.064Z",
-      "lastSuccessAt": "2026-07-10T02:11:43.064Z",
+      "lastActionAt": "2026-07-11T18:33:35.155Z",
+      "lastSuccessAt": "2026-07-11T18:33:35.155Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -593,11 +593,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-04-25T05:04:11.539Z",
-      "lastSeenAt": "2026-07-10T02:11:43.561Z",
+      "lastSeenAt": "2026-07-11T18:33:36.517Z",
       "lastAction": "implement-remote-workspace",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:43.556Z",
-      "lastSuccessAt": "2026-07-10T02:11:43.556Z",
+      "lastActionAt": "2026-07-11T18:33:36.505Z",
+      "lastSuccessAt": "2026-07-11T18:33:36.505Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -711,11 +711,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-05-04T00:17:50.483Z",
-      "lastSeenAt": "2026-07-10T02:11:42.303Z",
+      "lastSeenAt": "2026-07-11T18:33:32.189Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:42.298Z",
-      "lastSuccessAt": "2026-07-10T02:11:42.298Z",
+      "lastActionAt": "2026-07-11T18:33:32.157Z",
+      "lastSuccessAt": "2026-07-11T18:33:32.157Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -875,11 +875,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-05-30T17:12:04.697Z",
-      "lastSeenAt": "2026-07-10T02:11:42.390Z",
+      "lastSeenAt": "2026-07-11T18:33:32.539Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:42.385Z",
-      "lastSuccessAt": "2026-07-10T02:11:42.385Z",
+      "lastActionAt": "2026-07-11T18:33:32.517Z",
+      "lastSuccessAt": "2026-07-11T18:33:32.517Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -932,12 +932,12 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-06-04T00:48:11.240Z",
-      "lastSeenAt": "2026-07-10T02:11:41.721Z",
+      "lastSeenAt": "2026-07-11T18:33:30.219Z",
       "lastAction": "remote-cli-agent",
       "lastTool": "remote-cli-agent",
-      "lastActionAt": "2026-07-10T02:11:41.721Z",
+      "lastActionAt": "2026-07-11T18:33:30.217Z",
       "lastSuccessAt": null,
-      "lastFailureAt": "2026-07-10T02:11:41.721Z",
+      "lastFailureAt": "2026-07-11T18:33:30.217Z",
       "lastVerificationAt": null,
       "lastStatus": "blocked",
       "lastError": "remote_code_run still running after status polling.",
@@ -994,13 +994,13 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-06-04T00:48:12.814Z",
-      "lastSeenAt": "2026-07-10T02:11:42.687Z",
+      "lastSeenAt": "2026-07-11T18:33:33.673Z",
       "lastAction": "remote-cli-agent",
       "lastTool": "remote-cli-agent",
-      "lastActionAt": "2026-07-10T02:11:42.681Z",
-      "lastSuccessAt": "2026-07-10T02:11:42.681Z",
-      "lastFailureAt": "2026-07-10T02:11:42.659Z",
-      "lastVerificationAt": "2026-07-10T02:11:42.681Z",
+      "lastActionAt": "2026-07-11T18:33:33.638Z",
+      "lastSuccessAt": "2026-07-11T18:33:33.638Z",
+      "lastFailureAt": "2026-07-11T18:33:33.556Z",
+      "lastVerificationAt": "2026-07-11T18:33:33.638Z",
       "lastStatus": "succeeded",
       "lastError": "",
       "lastCommand": "remote-cli-agent",
@@ -1016,7 +1016,7 @@
         "tls": false,
         "https": false,
         "lastRolloutAt": null,
-        "lastVerifiedAt": "2026-07-10T02:11:42.681Z"
+        "lastVerifiedAt": "2026-07-11T18:33:33.638Z"
       }
     },
     "unknown-target|remote-projects|kimibuilt": {
@@ -1048,11 +1048,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-06-04T00:48:13.405Z",
-      "lastSeenAt": "2026-07-10T02:11:43.157Z",
+      "lastSeenAt": "2026-07-11T18:33:35.461Z",
       "lastAction": "remote-cli-agent",
       "lastTool": "remote-cli-agent",
-      "lastActionAt": "2026-07-10T02:11:43.143Z",
-      "lastSuccessAt": "2026-07-10T02:11:43.143Z",
+      "lastActionAt": "2026-07-11T18:33:35.404Z",
+      "lastSuccessAt": "2026-07-11T18:33:35.404Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -1102,11 +1102,11 @@
       "uiCheckReport": "",
       "uiScreenshots": [],
       "firstSeenAt": "2026-06-09T00:05:34.644Z",
-      "lastSeenAt": "2026-07-10T02:11:42.272Z",
+      "lastSeenAt": "2026-07-11T18:33:32.006Z",
       "lastAction": "remote-command",
       "lastTool": "remote-command",
-      "lastActionAt": "2026-07-10T02:11:42.267Z",
-      "lastSuccessAt": "2026-07-10T02:11:42.267Z",
+      "lastActionAt": "2026-07-11T18:33:31.984Z",
+      "lastSuccessAt": "2026-07-11T18:33:31.984Z",
       "lastFailureAt": null,
       "lastVerificationAt": null,
       "lastStatus": "succeeded",
@@ -1131,7 +1131,7 @@
   "edgeRoutes": {},
   "recentActivity": [
     {
-      "timestamp": "2026-07-10T02:11:43.693Z",
+      "timestamp": "2026-07-11T18:33:36.853Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1143,7 +1143,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.561Z",
+      "timestamp": "2026-07-11T18:33:36.517Z",
       "toolId": "remote-command",
       "action": "implement-remote-workspace",
       "status": "succeeded",
@@ -1155,7 +1155,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.543Z",
+      "timestamp": "2026-07-11T18:33:36.472Z",
       "toolId": "remote-command",
       "action": "verify-deployment",
       "status": "succeeded",
@@ -1167,7 +1167,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.543Z",
+      "timestamp": "2026-07-11T18:33:36.471Z",
       "toolId": "remote-command",
       "action": "build-and-deploy-remote-workspace",
       "status": "succeeded",
@@ -1179,7 +1179,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.543Z",
+      "timestamp": "2026-07-11T18:33:36.471Z",
       "toolId": "remote-command",
       "action": "implement-remote-workspace",
       "status": "succeeded",
@@ -1191,7 +1191,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.157Z",
+      "timestamp": "2026-07-11T18:33:35.461Z",
       "toolId": "remote-cli-agent",
       "action": "remote-cli-agent",
       "status": "succeeded",
@@ -1203,7 +1203,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.078Z",
+      "timestamp": "2026-07-11T18:33:35.218Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1215,7 +1215,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.078Z",
+      "timestamp": "2026-07-11T18:33:35.218Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1227,7 +1227,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.024Z",
+      "timestamp": "2026-07-11T18:33:35.008Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1239,7 +1239,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:43.024Z",
+      "timestamp": "2026-07-11T18:33:35.008Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -1251,7 +1251,7 @@
       "error": "--- pod title --- --- public title ---"
     },
     {
-      "timestamp": "2026-07-10T02:11:42.983Z",
+      "timestamp": "2026-07-11T18:33:34.895Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1263,7 +1263,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.982Z",
+      "timestamp": "2026-07-11T18:33:34.890Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -1275,7 +1275,7 @@
       "error": "Error from server (NotFound): deployments.apps \"svc\" not found Error from server (NotFound): deployments.apps \"ingress\" not found"
     },
     {
-      "timestamp": "2026-07-10T02:11:42.937Z",
+      "timestamp": "2026-07-11T18:33:34.729Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1287,7 +1287,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.937Z",
+      "timestamp": "2026-07-11T18:33:34.728Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -1299,7 +1299,7 @@
       "error": "curl: (6) Could not resolve host: api"
     },
     {
-      "timestamp": "2026-07-10T02:11:42.894Z",
+      "timestamp": "2026-07-11T18:33:34.577Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1311,7 +1311,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.894Z",
+      "timestamp": "2026-07-11T18:33:34.577Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1323,7 +1323,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.841Z",
+      "timestamp": "2026-07-11T18:33:34.415Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1335,7 +1335,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.841Z",
+      "timestamp": "2026-07-11T18:33:34.415Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1347,7 +1347,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.841Z",
+      "timestamp": "2026-07-11T18:33:34.415Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1359,7 +1359,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.786Z",
+      "timestamp": "2026-07-11T18:33:34.240Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1371,7 +1371,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.785Z",
+      "timestamp": "2026-07-11T18:33:34.240Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "failed",
@@ -1383,7 +1383,7 @@
       "error": "Unit gitea.service could not be found."
     },
     {
-      "timestamp": "2026-07-10T02:11:42.737Z",
+      "timestamp": "2026-07-11T18:33:34.019Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1395,7 +1395,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.736Z",
+      "timestamp": "2026-07-11T18:33:34.019Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",
@@ -1407,7 +1407,7 @@
       "error": ""
     },
     {
-      "timestamp": "2026-07-10T02:11:42.736Z",
+      "timestamp": "2026-07-11T18:33:34.019Z",
       "toolId": "remote-command",
       "action": "remote-command",
       "status": "succeeded",

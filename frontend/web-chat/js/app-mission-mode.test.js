@@ -161,8 +161,36 @@ describe('Lilly Mission Mode', () => {
     expect(app.updateAudioControls).toHaveBeenCalled();
   });
 
+  test('keeps a restored active mission after existing conversation messages', () => {
+    const dom = new JSDOM('<div id="messages-container"><section id="mission-mode"></section></div>');
+    const context = loadMissionContext(dom.window.document);
+    const container = dom.window.document.getElementById('messages-container');
+    const mission = dom.window.document.getElementById('mission-mode');
+    context.uiHelpers.clearMessages = jest.fn(() => {
+      container.innerHTML = '';
+      container.appendChild(mission);
+    });
+    context.uiHelpers.hideWelcomeMessage = jest.fn();
+    context.uiHelpers.renderMessage = jest.fn(() => dom.window.document.createElement('article'));
+    context.uiHelpers.updateMessageSpeechButtons = jest.fn();
+    context.uiHelpers.highlightCodeBlocks = jest.fn();
+    context.uiHelpers.scrollToBottom = jest.fn();
+    const app = Object.create(context.ChatApp.prototype);
+    app.messagesContainer = container;
+    app.missionMode = mission;
+    app.missionState = app.createMissionState({ active: true });
+    app.clearBufferedStreamingRenders = jest.fn();
+    app.updateMissionFromMessages = jest.fn();
+    app.updateAudioControls = jest.fn();
+
+    app.renderMessages([{ role: 'user', content: 'Existing conversation' }]);
+
+    expect(container.lastElementChild).toBe(mission);
+  });
+
   test('renders persistent objective, run state, controls, timeline, proof, and raw detail', () => {
     const dom = new JSDOM(`
+      <div id="messages-container">
       <section id="mission-mode" class="hidden">
         <h2 id="mission-objective"></h2><span id="mission-state-label"></span>
         <span id="mission-phase-label"></span><span id="mission-elapsed-label"></span>
@@ -172,9 +200,12 @@ describe('Lilly Mission Mode', () => {
         <button data-mission-action="fork"></button><button data-mission-action="cancel"></button>
         <ol id="mission-timeline"></ol><div id="mission-proof-pack"></div><pre id="mission-raw-events"></pre>
       </section>
+      <article id="existing-message">Existing conversation</article>
+      </div>
     `);
     const context = loadMissionContext(dom.window.document);
     const app = Object.create(context.ChatApp.prototype);
+    app.messagesContainer = dom.window.document.getElementById('messages-container');
     app.missionMode = dom.window.document.getElementById('mission-mode');
     ['Objective', 'StateLabel', 'PhaseLabel', 'ElapsedLabel', 'PermissionLabel', 'StatusNote', 'Timeline', 'ProofPack', 'RawEvents']
       .forEach((suffix) => {
@@ -197,6 +228,7 @@ describe('Lilly Mission Mode', () => {
     app.renderMissionMode();
 
     expect(app.missionMode.classList.contains('hidden')).toBe(false);
+    expect(app.messagesContainer.lastElementChild).toBe(app.missionMode);
     expect(app.missionObjective.textContent).toBe('Ship the impressive demo');
     expect(app.missionStateLabel.textContent).toBe('Verifying');
     expect(app.missionTimeline.textContent).toContain('Browser check');

@@ -43,6 +43,7 @@ const IMAGE_FORMATS = Object.freeze(['gif', 'jpeg', 'png', 'webp']);
 const SEARCH_CONTEXT_SIZES = Object.freeze(['low', 'medium', 'high']);
 const SEARCH_MODES = Object.freeze(['web', 'academic', 'sec']);
 const REASONING_EFFORTS = Object.freeze(['minimal', 'low', 'medium', 'high']);
+const ADDITIONAL_AGENT_TOOLS = Object.freeze(['finance_search', 'people_search']);
 
 function normalizeDomainFilterEntry(value = '') {
   const raw = String(value || '').trim();
@@ -169,6 +170,41 @@ function compactObject(value = {}) {
       return true;
     }),
   );
+}
+
+function normalizeAgentModels(values = []) {
+  const input = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(
+    input
+      .map((value) => String(value || '').trim())
+      .filter(Boolean),
+  )).slice(0, 5);
+}
+
+function normalizeResponseFormat(value = null) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const type = String(value.type || '').trim();
+  if (!['json_schema', 'json_object', 'text'].includes(type)) {
+    return null;
+  }
+
+  if (type === 'json_schema') {
+    const jsonSchema = value.json_schema;
+    if (!jsonSchema || typeof jsonSchema !== 'object' || Array.isArray(jsonSchema)) {
+      return null;
+    }
+    if (!String(jsonSchema.name || '').trim()
+      || !jsonSchema.schema
+      || typeof jsonSchema.schema !== 'object'
+      || Array.isArray(jsonSchema.schema)) {
+      return null;
+    }
+  }
+
+  return JSON.parse(JSON.stringify(value));
 }
 
 function isSonarResearchMode(researchMode = '') {
@@ -352,6 +388,31 @@ class WebSearchTool extends ToolBase {
             type: 'integer',
             description: 'Optional override for Perplexity preset reasoning/tool steps in research modes.',
           },
+          maxToolCalls: {
+            type: 'integer',
+            description: 'Optional cap on total Agent API tool invocations.',
+          },
+          agentModel: {
+            type: 'string',
+            description: 'Optional explicit Agent API model override while retaining the selected research preset.',
+          },
+          agentModels: {
+            type: 'array',
+            description: 'Optional ordered Agent API model fallback chain. Perplexity supports up to five models.',
+            items: { type: 'string' },
+          },
+          responseFormat: {
+            type: 'object',
+            description: 'Optional Agent API response_format, including named JSON Schema structured output.',
+          },
+          agentTools: {
+            type: 'array',
+            description: 'Optional additional Perplexity Agent tools for specialized research.',
+            items: {
+              type: 'string',
+              enum: ADDITIONAL_AGENT_TOOLS,
+            },
+          },
           instructions: {
             type: 'string',
             description: 'Optional extra instructions appended to Perplexity researched modes.',
@@ -417,8 +478,8 @@ class WebSearchTool extends ToolBase {
                 imageUrl: { type: 'string' },
                 originUrl: { type: 'string' },
                 title: { type: 'string' },
-                width: { type: 'integer' },
-                height: { type: 'integer' },
+                width: { type: 'integer', nullable: true },
+                height: { type: 'integer', nullable: true },
                 source: { type: 'string' },
               },
             },
@@ -460,7 +521,7 @@ class WebSearchTool extends ToolBase {
                 url: { type: 'string' },
                 snippet: { type: 'string' },
                 source: { type: 'string' },
-                publishedAt: { type: 'string' },
+                publishedAt: { type: 'string', nullable: true },
               },
             },
           },
@@ -613,6 +674,11 @@ class WebSearchTool extends ToolBase {
       updatedAfter = null,
       updatedBefore = null,
       maxSteps = null,
+      maxToolCalls = null,
+      agentModel = '',
+      agentModels = [],
+      responseFormat = null,
+      agentTools = [],
       instructions = '',
       userLocation = null,
       imageDomains = [],
@@ -767,6 +833,12 @@ class WebSearchTool extends ToolBase {
         updatedBefore,
         maxOutputTokens,
         maxSteps,
+        maxToolCalls,
+        agentModel,
+        agentModels,
+        responseFormat,
+        agentTools,
+        searchContextSize: resolvedSearchContextSize,
         instructions,
         userLocation: normalizedUserLocation,
         languagePreference: resolvedLanguagePreference,
@@ -877,7 +949,7 @@ class WebSearchTool extends ToolBase {
         model: '',
         responseId: payload.id || '',
       },
-      usage: null,
+      usage: {},
     };
   }
 
@@ -1016,7 +1088,7 @@ class WebSearchTool extends ToolBase {
         model: String(payload.model || researchMode || '').trim(),
         responseId: String(payload.id || '').trim(),
       },
-      usage: payload.usage || null,
+      usage: payload.usage || {},
       reasoningSteps: Array.isArray(payload.reasoning_steps) ? payload.reasoning_steps : [],
     };
   }
@@ -1039,6 +1111,12 @@ class WebSearchTool extends ToolBase {
     updatedBefore,
     maxOutputTokens,
     maxSteps,
+    maxToolCalls,
+    agentModel,
+    agentModels,
+    responseFormat,
+    agentTools,
+    searchContextSize,
     instructions,
     userLocation,
     languagePreference,
@@ -1054,6 +1132,7 @@ class WebSearchTool extends ToolBase {
       max_results_per_query: Math.max(1, Math.min(Number(limit) || DEFAULT_SEARCH_LIMIT, config.search.maxLimit)),
       max_tokens: Math.max(1, Number(maxTokens) || DEFAULT_MAX_TOKENS),
       max_tokens_per_page: Math.max(1, Number(maxTokensPerPage) || DEFAULT_MAX_TOKENS_PER_PAGE),
+      search_context_size: normalizeEnum(searchContextSize, SEARCH_CONTEXT_SIZES, null),
       filters: compactObject({
         search_domain_filter: normalizePerplexityDomainFilters(domains, { max: 20, allowNegated: true }),
         search_language_filter: normalizeLanguageFilter(languageFilter),
@@ -1072,12 +1151,27 @@ class WebSearchTool extends ToolBase {
     if (researchMode !== 'fast-search') {
       tools.push({ type: 'fetch_url' });
     }
+    normalizeAgentModels(agentTools)
+      .filter((toolType) => ADDITIONAL_AGENT_TOOLS.includes(toolType))
+      .forEach((toolType) => tools.push({ type: toolType }));
 
     const requestBody = {
       preset: researchMode,
       input: query,
       tools,
     };
+
+    const normalizedAgentModels = normalizeAgentModels(agentModels);
+    if (normalizedAgentModels.length > 0) {
+      requestBody.models = normalizedAgentModels;
+    } else if (String(agentModel || '').trim()) {
+      requestBody.model = String(agentModel).trim();
+    }
+
+    const normalizedResponseFormat = normalizeResponseFormat(responseFormat);
+    if (normalizedResponseFormat) {
+      requestBody.response_format = normalizedResponseFormat;
+    }
 
     const requestedMaxOutputTokens = Number(maxOutputTokens);
     if (Number.isFinite(requestedMaxOutputTokens) && requestedMaxOutputTokens > 0) {
@@ -1086,6 +1180,10 @@ class WebSearchTool extends ToolBase {
 
     if (Number.isFinite(Number(maxSteps)) && Number(maxSteps) > 0) {
       requestBody.max_steps = Math.trunc(Number(maxSteps));
+    }
+
+    if (Number.isFinite(Number(maxToolCalls)) && Number(maxToolCalls) > 0) {
+      requestBody.max_tool_calls = Math.trunc(Number(maxToolCalls));
     }
 
     if (instructions && String(instructions).trim()) {
@@ -1161,12 +1259,11 @@ class WebSearchTool extends ToolBase {
 
     const dedupedResults = this.dedupeResults(searchResults);
     const dedupedVerifiedPages = this.dedupeResults(verifiedPages);
-    const citations = annotationCitations.length > 0
-      ? this.dedupeCitations(annotationCitations)
-      : this.dedupeCitations([
-        ...dedupedVerifiedPages.map((page) => ({ title: page.title, url: page.url })),
-        ...dedupedResults.map((result) => ({ title: result.title, url: result.url })),
-      ]);
+    const citations = this.dedupeCitations([
+      ...annotationCitations,
+      ...dedupedVerifiedPages.map((page) => ({ title: page.title, url: page.url })),
+      ...dedupedResults.map((result) => ({ title: result.title, url: result.url })),
+    ]);
 
     return {
       answer: answer.trim(),
@@ -1183,7 +1280,7 @@ class WebSearchTool extends ToolBase {
         model: String(payload.model || '').trim(),
         responseId: String(payload.id || '').trim(),
       },
-      usage: payload.usage || null,
+      usage: payload.usage || {},
       reasoningSteps: Array.isArray(payload.reasoning_steps) ? payload.reasoning_steps : [],
     };
   }

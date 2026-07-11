@@ -6008,6 +6008,15 @@ function hasExplicitLocalSandboxIntent(text = '') {
         || /\b(code sandbox|sandbox|locally|local code)\b/.test(normalized);
 }
 
+function hasResearchComputeIntentText(text = '') {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized || !hasExplicitWebResearchIntentText(normalized)) {
+        return false;
+    }
+
+    return /\b(calculate|calculation|compute|dedupe|deduplicate|transform|aggregate|statistics?|statistical|chart|plot|graph|csv|dataset|data set|json|table|rank|score|compare numerically|code sandbox|sandbox analysis)\b/.test(normalized);
+}
+
 function hasRemoteInfraToolUsageIntent(text = '') {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized) {
@@ -12277,7 +12286,7 @@ class ConversationOrchestrator extends EventEmitter {
             if (effectiveRolePipelineSeed?.requiresDesign && allowedToolIds.includes('design-resource-search')) {
                 candidates.add('design-resource-search');
             }
-            if ((effectiveRolePipelineSeed?.requiresSandbox || hasExplicitLocalSandboxIntent(prompt))
+            if ((effectiveRolePipelineSeed?.requiresSandbox || hasExplicitLocalSandboxIntent(prompt) || hasResearchComputeIntentText(prompt))
                 && allowedToolIds.includes('code-sandbox')) {
                 candidates.add('code-sandbox');
             }
@@ -13441,6 +13450,7 @@ class ConversationOrchestrator extends EventEmitter {
             'When the latest user turn starts with `Survey response (`, treat that as the resolved answer to the prior checkpoint and continue the work instead of planning another survey.',
             'For research, web-search, web-fetch, or web-scrape work, avoid long scrape surveys and example-heavy intake. If clarification is truly needed, use one short choice hotlist with 2 to 4 concrete options, then continue after the answer.',
             'For routine public research and research-backed slides or documents, do not stop to ask which websites to scrape. Use Perplexity-backed `web-search` with `pro-search` for researched synthesis when snippets would be too thin; use raw search only for candidate URL discovery. Choose the strongest public sources yourself, verify them with `web-fetch` first, and use `web-scrape` only when a page needs rendered or structured extraction unless the user explicitly wants a constrained source list.',
+            'When research needs calculations, deduplication, CSV/JSON transformation, statistics, ranking, or chart-ready data, plan a KimiBuilt-native research sandbox sequence: `web-search` first, verify selected pages with `web-fetch` or `web-scrape`, run only the required extracted data through `code-sandbox` execute mode with network disabled, then synthesize with the original source URLs. Do not describe Perplexity itself as providing executable sandbox access.',
             'When a research search has no timeframe, keep the query freshness-aware: use "modern" for broad provider/tool/best-practice searches, and use "recent" or "this month" plus `timeRange: "month"` for news or technology topics.',
             'Every `document-workflow` step must include `params.action` set to `recommend`, `plan`, `generate`, `assemble`, or `generate-suite`.',
             'Use `document-workflow generate` for final briefs, reports, documents, HTML pages, and slide decks. For slides, slide decks, presentations, and PowerPoint requests, default the final deliverable to PPTX unless the user explicitly asks for interactive or HTML output.',

@@ -6343,7 +6343,7 @@ describe('ConversationOrchestrator', () => {
             },
             toolManager: {
                 getTool: jest.fn((toolId) => (
-                    ['web-search', 'web-fetch', 'web-scrape'].includes(toolId)
+                    ['web-search', 'web-fetch', 'web-scrape', 'code-sandbox'].includes(toolId)
                         ? { id: toolId, description: toolId }
                         : null
                 )),
@@ -6360,10 +6360,20 @@ describe('ConversationOrchestrator', () => {
             executionProfile: 'default',
             toolManager: orchestrator.toolManager,
         });
+        const computedResearchPolicy = orchestrator.buildToolPolicy({
+            objective: 'Research the current providers, deduplicate the results, calculate a score, and return chart-ready data.',
+            executionProfile: 'default',
+            toolManager: orchestrator.toolManager,
+        });
 
         expect(researchPolicy.candidateToolIds).toContain('web-search');
         expect(scrapePolicy.candidateToolIds).toContain('web-search');
         expect(scrapePolicy.candidateToolIds).toContain('web-scrape');
+        expect(computedResearchPolicy.candidateToolIds).toEqual(expect.arrayContaining([
+            'web-search',
+            'web-fetch',
+            'code-sandbox',
+        ]));
     });
 
     test('routes user and soul card growth requests to bounded self-reflection', () => {
