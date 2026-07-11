@@ -16,6 +16,10 @@ body.canvas-core-mode {
     --grid-color: #e4e1da;
     --enterprise-text: #272622;
     --enterprise-muted: #706e68;
+    --enterprise-surface: #fff;
+    --enterprise-panel: #fff;
+    --enterprise-panel-2: #f7f6f2;
+    --enterprise-line: rgba(39, 38, 34, .14);
     background: var(--canvas-bg);
     color: var(--text-primary);
 }
@@ -126,7 +130,7 @@ body.canvas-core-mode .mini-map-toggle { display: none !important; }
 
 body.canvas-core-mode .mobile-properties-toggle {
     position: fixed;
-    z-index: 120;
+    z-index: 1200;
     top: 17px;
     right: 102px;
     display: grid !important;
@@ -159,6 +163,15 @@ body.canvas-core-mode .properties-panel .panel-content { color: var(--text-prima
 body.canvas-core-mode .properties-panel button,
 body.canvas-core-mode .properties-panel input,
 body.canvas-core-mode .properties-panel select { color: var(--text-primary); }
+body.canvas-core-mode #propertiesPanel :is(div, section, details, label, span, button, input, select):not(.color-btn):not(.color-studio-swatch):not(input[type="color"]) {
+    border-color: var(--border-color);
+    color: var(--text-primary);
+    background-color: #fff !important;
+}
+body.canvas-core-mode #propertiesPanel :is(.canvas-panel-tab.active, .object-filter-chip.active) {
+    color: #fff;
+    background: var(--accent-color) !important;
+}
 
 body.canvas-core-mode .ai-panel {
     position: fixed;
@@ -268,12 +281,15 @@ body.canvas-core-mode .ai-status { order: 4; min-height: 0; margin: 0 4px; paddi
 @media (max-width: 768px) {
     body.canvas-core-mode .top-bar { display: flex; grid-template-columns: none; padding: 0; }
     body.canvas-core-mode .top-bar-right { margin-left: auto; }
-    body.canvas-core-mode .mobile-properties-toggle { right: 98px; }
+    body.canvas-core-mode #importBtn { display: none; }
+    body.canvas-core-mode .mobile-properties-toggle { top: 17px; right: 58px; opacity: 1 !important; visibility: visible !important; transform: none !important; }
     body.canvas-core-mode .toolbar { inset: auto 10px 10px; width: auto; max-width: none; height: 48px; padding: 4px; overflow: visible; }
     body.canvas-core-mode .tool-dock-rail { width: 100%; flex-direction: row; justify-content: center; padding: 0; overflow-x: auto; }
     body.canvas-core-mode .toolbar .tool-category.is-open { top: auto; bottom: 58px; left: 0; max-width: calc(100vw - 20px); }
     body.canvas-core-mode .ai-panel { inset: auto 10px 68px; width: auto; max-height: min(52dvh, 440px); transform: translateY(calc(100% + 80px)); }
     body.canvas-core-mode .ai-panel.active { transform: none; }
+    body.canvas-core-mode .ai-mode-toggle { display: flex; width: 100%; flex-direction: row; }
+    body.canvas-core-mode .ai-mode-btn { flex: 1 1 0; justify-content: center; }
     body.canvas-core-mode .ai-prompt-stack { grid-template-columns: 32px 32px minmax(0, 1fr) 38px; }
     body.canvas-core-mode .ai-generate-btn { width: 38px; padding: 0; font-size: 0; }
     body.canvas-core-mode .ai-generate-btn svg { width: 17px; height: 17px; }
