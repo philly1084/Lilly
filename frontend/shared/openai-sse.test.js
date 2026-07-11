@@ -104,6 +104,37 @@ describe('openai-sse helpers', () => {
     });
   });
 
+  test('preserves top-level metadata tool events on final responses', () => {
+    const events = normalizeGatewayEventPayload({
+      type: 'response.completed',
+      id: 'resp_tool_metadata',
+      metadata: {
+        tool_events: [
+          {
+            type: 'tool_result',
+            tool: 'web-fetch',
+            success: true,
+          },
+        ],
+      },
+      response: {
+        output_text: 'Fetched the source and summarized it.',
+      },
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'final',
+      responseId: 'resp_tool_metadata',
+      toolEvents: [
+        expect.objectContaining({
+          tool: 'web-fetch',
+          success: true,
+        }),
+      ],
+    });
+  });
+
   test('ignores assistant role-only chat completion chunks and indexes tool calls', () => {
     expect(normalizeGatewayEventPayload({
       object: 'chat.completion.chunk',

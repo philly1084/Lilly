@@ -726,6 +726,14 @@
       return payload.tool_events;
     }
 
+    if (Array.isArray(payload.metadata?.toolEvents)) {
+      return payload.metadata.toolEvents;
+    }
+
+    if (Array.isArray(payload.metadata?.tool_events)) {
+      return payload.metadata.tool_events;
+    }
+
     const message = payload.choices?.[0]?.message || {};
     if (Array.isArray(message.toolEvents)) {
       return message.toolEvents;
