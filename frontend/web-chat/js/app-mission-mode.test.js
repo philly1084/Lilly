@@ -68,11 +68,24 @@ describe('Lilly Mission Mode', () => {
   test('defaults to traditional chat and enables long-form work as an explicit choice', async () => {
     const context = loadMissionContext();
     const modeClassList = { toggle: jest.fn() };
+    const chatModeButton = {
+      dataset: { executionMode: 'chat' },
+      classList: { toggle: jest.fn() },
+      setAttribute: jest.fn(),
+      disabled: false,
+    };
+    const missionModeButton = {
+      dataset: { executionMode: 'mission' },
+      classList: { toggle: jest.fn() },
+      setAttribute: jest.fn(),
+      disabled: false,
+    };
     const app = Object.create(context.ChatApp.prototype);
     app.executionModeSelect = {
       value: 'chat',
       closest: jest.fn(() => ({ classList: modeClassList })),
     };
+    app.executionModeButtons = [chatModeButton, missionModeButton];
     app.messageInput = { value: '', focus: jest.fn() };
     app.missionState = app.createMissionState();
     app.clearMissionRefreshTimer = jest.fn();
@@ -84,6 +97,8 @@ describe('Lilly Mission Mode', () => {
     expect(app.missionState.templateId).toBe('custom');
     expect(app.executionModeSelect.value).toBe('mission');
     expect(app.executionModeSelect.disabled).toBe(false);
+    expect(missionModeButton.setAttribute).toHaveBeenLastCalledWith('aria-pressed', 'true');
+    expect(chatModeButton.setAttribute).toHaveBeenLastCalledWith('aria-pressed', 'false');
     expect(context.sessionManager.mergeSessionMetadataLocally).toHaveBeenCalledWith(
       'session-1',
       expect.objectContaining({ executionMode: 'mission' }),
@@ -92,6 +107,7 @@ describe('Lilly Mission Mode', () => {
     app.missionState.run = { id: 'run-active', state: 'executing' };
     app.syncExecutionModeControl();
     expect(app.executionModeSelect.disabled).toBe(true);
+    expect(chatModeButton.disabled).toBe(true);
 
     app.missionState.run.state = 'completed';
 

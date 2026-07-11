@@ -132,10 +132,10 @@
 
     
     <!-- Custom styles -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260710i" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260710j" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-        <link rel="stylesheet" href="css/styles.css?v=20260710i">
+        <link rel="stylesheet" href="css/styles.css?v=20260710j">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <!-- Skip to main content link for accessibility -->
@@ -792,64 +792,6 @@
                 </div>
             </header>
 
-            <section id="mission-mode" class="mission-mode hidden" aria-labelledby="mission-objective" data-state="idle" aria-hidden="true">
-                <div class="mission-mode__rail" aria-hidden="true"></div>
-                <div class="mission-mode__body">
-                    <div class="mission-mode__headline">
-                        <div class="mission-mode__identity">
-                            <span class="mission-mode__eyebrow"><span class="mission-mode__pulse" aria-hidden="true"></span>Mission mode</span>
-                            <h2 id="mission-objective">Agent mission</h2>
-                        </div>
-                        <div class="mission-mode__controls" role="group" aria-label="Mission controls">
-                            <button type="button" class="mission-control mission-control--primary" data-mission-action="start">
-                                <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
-                                <span>Start mission</span>
-                            </button>
-                            <button type="button" class="mission-control" data-mission-action="pause" hidden>
-                                <i data-lucide="pause" class="w-4 h-4" aria-hidden="true"></i>
-                                <span>Pause</span>
-                            </button>
-                            <button type="button" class="mission-control" data-mission-action="resume" hidden>
-                                <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
-                                <span>Resume</span>
-                            </button>
-                            <button type="button" class="mission-control" data-mission-action="replay" hidden>
-                                <i data-lucide="rotate-ccw" class="w-4 h-4" aria-hidden="true"></i>
-                                <span>Retry step</span>
-                            </button>
-                            <button type="button" class="mission-control" data-mission-action="fork" hidden>
-                                <i data-lucide="git-fork" class="w-4 h-4" aria-hidden="true"></i>
-                                <span>Fork</span>
-                            </button>
-                            <button type="button" class="mission-control mission-control--danger" data-mission-action="cancel" hidden>
-                                <i data-lucide="square" class="w-4 h-4" aria-hidden="true"></i>
-                                <span>Cancel</span>
-                            </button>
-                        </div>
-                    </div>
-                    <dl class="mission-mode__facts" aria-label="Mission status">
-                        <div><dt>State</dt><dd id="mission-state-label">Ready</dd></div>
-                        <div><dt>Phase</dt><dd id="mission-phase-label">Awaiting start</dd></div>
-                        <div><dt>Elapsed</dt><dd id="mission-elapsed-label">0s</dd></div>
-                        <div><dt>Permission</dt><dd id="mission-permission-label">Approval before external changes</dd></div>
-                    </dl>
-                    <p id="mission-status-note" class="mission-mode__note" role="status" aria-live="polite" aria-atomic="true">Describe the outcome below, then start the mission.</p>
-                    <ol id="mission-timeline" class="mission-timeline" aria-label="Mission timeline"></ol>
-                    <div class="mission-mode__receipts">
-                        <details id="mission-proof-details" class="mission-receipt">
-                            <summary><i data-lucide="shield-check" class="w-4 h-4" aria-hidden="true"></i>Proof pack</summary>
-                            <div id="mission-proof-pack" class="mission-receipt__body">
-                                <div class="proof-pack proof-pack--empty" role="status">No typed proof has been supplied for this mission yet.</div>
-                            </div>
-                        </details>
-                        <details id="mission-raw-details" class="mission-receipt">
-                            <summary><i data-lucide="braces" class="w-4 h-4" aria-hidden="true"></i>Run details</summary>
-                            <pre id="mission-raw-events" class="mission-raw-events">Run details appear after the mission starts.</pre>
-                        </details>
-                    </div>
-                </div>
-            </section>
-
             <section id="workloads-panel" class="workloads-panel hidden border-b border-border px-6 py-4 bg-bg-secondary/60" tabindex="-1" aria-hidden="true">
                 <div class="workloads-panel__header">
                     <div>
@@ -886,13 +828,61 @@
             
             <!-- Messages Container -->
             <div id="messages-container" class="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth" role="log" aria-label="Conversation messages" aria-live="polite">
+                <section id="mission-mode" class="mission-mode hidden" aria-labelledby="mission-objective" data-state="idle" aria-hidden="true">
+                    <div class="mission-mode__rail" aria-hidden="true"></div>
+                    <div class="mission-mode__body">
+                        <div class="mission-mode__headline">
+                            <span class="mission-mode__avatar" aria-hidden="true"><i data-lucide="route"></i></span>
+                            <div class="mission-mode__identity">
+                                <span class="mission-mode__eyebrow"><span class="mission-mode__pulse" aria-hidden="true"></span>Mission</span>
+                                <h2 id="mission-objective">Agent mission</h2>
+                            </div>
+                            <div class="mission-mode__controls" role="group" aria-label="Mission controls">
+                                <button type="button" class="mission-control mission-control--primary" data-mission-action="start">
+                                    <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
+                                    <span>Start</span>
+                                </button>
+                                <button type="button" class="mission-control" data-mission-action="pause" hidden>
+                                    <i data-lucide="pause" class="w-4 h-4" aria-hidden="true"></i><span>Pause</span>
+                                </button>
+                                <button type="button" class="mission-control" data-mission-action="resume" hidden>
+                                    <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i><span>Resume</span>
+                                </button>
+                                <button type="button" class="mission-control" data-mission-action="replay" hidden>
+                                    <i data-lucide="rotate-ccw" class="w-4 h-4" aria-hidden="true"></i><span>Retry</span>
+                                </button>
+                                <button type="button" class="mission-control" data-mission-action="fork" hidden>
+                                    <i data-lucide="git-fork" class="w-4 h-4" aria-hidden="true"></i><span>Fork</span>
+                                </button>
+                                <button type="button" class="mission-control mission-control--danger" data-mission-action="cancel" hidden>
+                                    <i data-lucide="square" class="w-4 h-4" aria-hidden="true"></i><span>Cancel</span>
+                                </button>
+                            </div>
+                        </div>
+                        <p id="mission-status-note" class="mission-mode__note" role="status" aria-live="polite" aria-atomic="true">Describe the outcome below, then start the mission.</p>
+                        <dl class="mission-mode__facts" aria-label="Mission status">
+                            <div><dt><i data-lucide="circle-dot" aria-hidden="true"></i><span>State</span></dt><dd id="mission-state-label">Ready</dd></div>
+                            <div><dt><i data-lucide="activity" aria-hidden="true"></i><span>Phase</span></dt><dd id="mission-phase-label">Awaiting start</dd></div>
+                            <div><dt><i data-lucide="clock-3" aria-hidden="true"></i><span>Elapsed</span></dt><dd id="mission-elapsed-label">0s</dd></div>
+                            <div><dt><i data-lucide="shield-check" aria-hidden="true"></i><span>Permission</span></dt><dd id="mission-permission-label">Approval before external changes</dd></div>
+                        </dl>
+                        <ol id="mission-timeline" class="mission-timeline" aria-label="Mission timeline"></ol>
+                        <div class="mission-mode__receipts">
+                            <details id="mission-proof-details" class="mission-receipt">
+                                <summary><i data-lucide="badge-check" class="w-4 h-4" aria-hidden="true"></i>Proof</summary>
+                                <div id="mission-proof-pack" class="mission-receipt__body">
+                                    <div class="proof-pack proof-pack--empty" role="status">No typed proof has been supplied for this mission yet.</div>
+                                </div>
+                            </details>
+                            <details id="mission-raw-details" class="mission-receipt">
+                                <summary><i data-lucide="list-tree" class="w-4 h-4" aria-hidden="true"></i>Run details</summary>
+                                <pre id="mission-raw-events" class="mission-raw-events">Run details appear after the mission starts.</pre>
+                            </details>
+                        </div>
+                    </div>
+                </section>
                 <!-- Welcome Message -->
                 <div id="welcome-message" class="welcome-state flex flex-col items-center justify-center h-full text-center px-4">
-                    <div class="mission-welcome-cue" role="note">
-                        <span aria-hidden="true"><i data-lucide="route" class="w-5 h-5"></i></span>
-                        <strong>Mission ready</strong>
-                        <small>Describe the outcome below and press send, or use Start mission above.</small>
-                    </div>
                     <div class="welcome-badge">
                         <span class="welcome-badge-mark" aria-hidden="true">
                             <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
@@ -1107,17 +1097,18 @@
                                 <kbd class="font-sans bg-bg-tertiary px-1.5 py-0.5 rounded border border-border">Shift</kbd> + <kbd class="font-sans bg-bg-tertiary px-1.5 py-0.5 rounded border border-border">Enter</kbd> for new line
                             </p>
                             <div id="input-meta-actions" class="flex items-center gap-2">
-                                <label class="execution-mode-control" title="Choose traditional chat or a long-form mission" data-mode="chat">
-                                    <span class="execution-mode-control__glyph" aria-hidden="true">
-                                        <i data-lucide="message-circle" class="execution-mode-control__icon execution-mode-control__icon--chat"></i>
-                                        <i data-lucide="route" class="execution-mode-control__icon execution-mode-control__icon--mission"></i>
-                                    </span>
-                                    <select id="execution-mode-select" aria-label="Response mode" aria-describedby="execution-mode-description">
+                                <div class="execution-mode-switch" role="group" aria-label="Response mode" aria-describedby="execution-mode-description">
+                                    <button type="button" class="execution-mode-switch__option is-active" data-execution-mode="chat" aria-pressed="true">
+                                        <i data-lucide="message-circle" aria-hidden="true"></i><span>Chat</span>
+                                    </button>
+                                    <button type="button" class="execution-mode-switch__option" data-execution-mode="mission" aria-pressed="false">
+                                        <i data-lucide="route" aria-hidden="true"></i><span>Mission</span>
+                                    </button>
+                                    <select id="execution-mode-select" hidden tabindex="-1" aria-hidden="true">
                                         <option value="chat">Chat</option>
                                         <option value="mission">Mission</option>
                                     </select>
-                                    <i data-lucide="chevron-down" class="execution-mode-control__chevron" aria-hidden="true"></i>
-                                </label>
+                                </div>
                                 <span id="execution-mode-description" class="sr-only">Chat uses the traditional conversation flow. Mission runs longer work with durable progress and proof inside the same conversation.</span>
                                 <span id="voice-input-indicator" class="composer-audio-indicator hidden" aria-live="polite"></span>
                                 <!-- Quick Model Indicator -->
@@ -1426,8 +1417,8 @@
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
-    <script defer src="js/ui.js?v=20260709a"></script>
-    <script defer src="js/app.js?v=20260710e"></script>
+    <script defer src="js/ui.js?v=20260710a"></script>
+    <script defer src="js/app.js?v=20260710f"></script>
     <script defer src="js/artifacts.js?v=20260710a"></script>
 </body>
 </html>

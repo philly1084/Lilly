@@ -627,6 +627,7 @@ class ChatApp {
         this.charCounter = document.getElementById('char-counter');
         this.currentSessionInfo = document.getElementById('current-session-info');
         this.executionModeSelect = document.getElementById('execution-mode-select');
+        this.executionModeButtons = Array.from(document.querySelectorAll?.('[data-execution-mode]') || []);
         this.missionMode = document.getElementById('mission-mode');
         this.missionObjective = document.getElementById('mission-objective');
         this.missionStateLabel = document.getElementById('mission-state-label');
@@ -948,6 +949,11 @@ class ChatApp {
         this.executionModeSelect?.addEventListener('change', () => {
             void this.setExecutionMode(this.executionModeSelect.value);
         });
+        this.executionModeButtons?.forEach((button) => {
+            button.addEventListener('click', () => {
+                void this.setExecutionMode(button.dataset.executionMode);
+            });
+        });
         this.missionMode?.addEventListener('click', (event) => {
             const button = event.target?.closest?.('[data-mission-action]');
             const action = String(button?.dataset?.missionAction || '').trim();
@@ -988,6 +994,12 @@ class ChatApp {
         if (modeControl?.dataset) {
             modeControl.dataset.mode = nextMode;
         }
+        this.executionModeButtons?.forEach((button) => {
+            const isActive = button.dataset.executionMode === nextMode;
+            button.classList.toggle('is-active', isActive);
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            button.disabled = missionIsRunning && !isActive;
+        });
         const isPreparedMission = nextMode === 'mission' && !this.missionState?.run?.id;
         if (this.messageInput) {
             this.messageInput.placeholder = isPreparedMission

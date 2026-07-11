@@ -11043,7 +11043,11 @@ class UIHelpers {
 
     clearMessages() {
         const welcome = document.getElementById('welcome-message');
+        const missionMode = document.getElementById('mission-mode');
         this.messageContainer.innerHTML = '';
+        if (missionMode) {
+            this.messageContainer.appendChild(missionMode);
+        }
         if (welcome) {
             this.messageContainer.appendChild(welcome);
             this.showWelcomeMessage();
