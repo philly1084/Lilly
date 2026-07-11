@@ -169,6 +169,13 @@ jobs:
             # remove those keys before applying the current GitLab config.
             kubectl set env deployment/backend -n "${KUBE_NAMESPACE}" \
               API_BASE_URL- \
+              KIMIBUILT_AUTH_REQUIRED- \
+              LILLYBUILT_AUTH_USERNAME- \
+              LILLYBUILT_AUTH_PASSWORD- \
+              LILLYBUILT_JWT_SECRET- \
+              KIMIBUILT_AUTH_USERNAME- \
+              KIMIBUILT_AUTH_PASSWORD- \
+              KIMIBUILT_JWT_SECRET- \
               KIMIBUILT_ALLOWED_ORIGINS- \
               KUBERNETES_IN_CLUSTER_ENABLED- \
               GITEA_BASE_URL- \
