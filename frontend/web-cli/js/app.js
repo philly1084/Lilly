@@ -10514,6 +10514,12 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         // Remove existing modal
         const existing = document.getElementById('file-manager-modal');
         if (existing) existing.remove();
+
+        const fileCount = this.sessionFiles.length;
+        const hasFiles = fileCount > 0;
+        const downloadAllLabel = hasFiles
+            ? `Download all ${fileCount} session ${fileCount === 1 ? 'file' : 'files'}`
+            : 'No session files to download';
         
         const modal = document.createElement('div');
         modal.id = 'file-manager-modal';
@@ -10522,14 +10528,14 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
             <div class="file-manager-overlay" onclick="app.closeFileManager()" aria-hidden="true"></div>
             <div class="file-manager-content" role="dialog" aria-modal="true" aria-labelledby="file-manager-title" aria-describedby="file-manager-description">
                 <div class="file-manager-header">
-                    <h3 id="file-manager-title">Session Files (${this.sessionFiles.length})</h3>
+                    <h3 id="file-manager-title">Session Files (${fileCount})</h3>
                     <button class="file-manager-close" type="button" onclick="app.closeFileManager()" aria-label="Close file manager">&times;</button>
                 </div>
                 <p id="file-manager-description" class="file-manager-description">
                     Review generated session files and download individual files or the full set.
                 </p>
                 <div class="file-manager-body">
-                    ${this.sessionFiles.length === 0 ? 
+                    ${!hasFiles ?
                         '<div class="file-manager-empty">No files yet. Generate files with /diagram, /image, or ask the AI.</div>' :
                         this.sessionFiles.map(f => `
                             <div class="file-item" onclick="app.downloadFileById('${f.id}')">
@@ -10543,7 +10549,7 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 </div>
                 <div class="file-manager-footer">
                     <button class="btn" type="button" onclick="app.closeFileManager()">Close</button>
-                    <button class="btn" type="button" onclick="app.downloadAllFiles()">Download All</button>
+                    <button class="btn" type="button" onclick="app.downloadAllFiles()" aria-label="${downloadAllLabel}" ${hasFiles ? '' : 'disabled'}>Download All</button>
                 </div>
             </div>
         `;

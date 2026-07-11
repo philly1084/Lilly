@@ -719,6 +719,81 @@ describe('web-cli command drawer keyboard navigation', () => {
     });
 });
 
+describe('web-cli file manager dialog', () => {
+    let dom;
+
+    function createFileManagerHarness(sessionFiles = []) {
+        dom = new JSDOM('<button id="filesButton">Files</button><main></main>', {
+            url: 'http://localhost/web-cli/index.html',
+        });
+        const { CodeCLIApp } = loadWebCliToolFormHelpers({
+            window: dom.window,
+            document: dom.window.document,
+        });
+        const app = Object.create(CodeCLIApp.prototype);
+        app.escapeHtml = (value) => String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        app.escapeHtmlAttr = (value) => String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        global.window = dom.window;
+        global.document = dom.window.document;
+        global.app = app;
+        app.sessionFiles = sessionFiles;
+        app.fileManagerReturnFocus = null;
+        app.downloadFileById = jest.fn();
+        app.downloadAllFiles = jest.fn();
+        app.closeFileManager = function closeFileManager() {
+            const modal = document.getElementById('file-manager-modal');
+            if (modal) modal.remove();
+        };
+        app.getFileIcon = () => 'file';
+        app.formatFileSize = (size) => `${size} B`;
+        return app;
+    }
+
+    afterEach(() => {
+        delete global.window;
+        delete global.document;
+        delete global.app;
+        dom = null;
+    });
+
+    test('disables bulk download when the session has no files', () => {
+        const app = createFileManagerHarness();
+
+        app.renderFileManager();
+
+        const bulkDownload = Array.from(document.querySelectorAll('.file-manager-footer .btn'))
+            .find((button) => button.textContent.trim() === 'Download All');
+        expect(document.getElementById('file-manager-title').textContent).toBe('Session Files (0)');
+        expect(document.querySelector('.file-manager-empty').textContent).toContain('No files yet');
+        expect(bulkDownload.disabled).toBe(true);
+        expect(bulkDownload.getAttribute('aria-label')).toBe('No session files to download');
+    });
+
+    test('labels bulk download with the active file count', () => {
+        const app = createFileManagerHarness([
+            { id: 'file-1', filename: 'diagram.mmd', size: 512, type: 'text/mermaid' },
+            { id: 'file-2', filename: 'brief.md', size: 256, type: 'text/markdown' },
+        ]);
+
+        app.renderFileManager();
+
+        const bulkDownload = Array.from(document.querySelectorAll('.file-manager-footer .btn'))
+            .find((button) => button.textContent.trim() === 'Download All');
+        expect(document.getElementById('file-manager-title').textContent).toBe('Session Files (2)');
+        expect(document.querySelectorAll('.file-item')).toHaveLength(2);
+        expect(bulkDownload.disabled).toBe(false);
+        expect(bulkDownload.getAttribute('aria-label')).toBe('Download all 2 session files');
+    });
+});
+
 describe('web-cli agent quick tool state', () => {
     test('marks quick tools as a toolbar with an exposed active state', () => {
         const indexMarkup = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
