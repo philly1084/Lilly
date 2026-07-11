@@ -915,6 +915,8 @@ describe('canvas side panel tabs accessibility', () => {
             expect(panel.getAttribute('role')).toBe('tabpanel');
             expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
         });
+
+        expect(dom.window.document.getElementById('objectLibrarySearch').getAttribute('aria-label')).toBe('Find board objects');
     });
 
     test('supports arrow and edge-key tab navigation with roving focus', () => {
