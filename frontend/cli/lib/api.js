@@ -62,6 +62,43 @@ function parseProviderSessionFrame(frame = '') {
   };
 }
 
+function normalizeArtifactMetadata(artifact = null) {
+  if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+    return null;
+  }
+
+  const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
+  const sizeBytes = Number(sizeValue);
+  const normalized = {
+    ...artifact,
+    id: String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim(),
+    filename: String(artifact.filename || artifact.name || '').trim(),
+    format: String(artifact.format || artifact.extension || artifact.type || '').trim(),
+    mimeType: String(artifact.mimeType || artifact.mime_type || '').trim(),
+    downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+    previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
+    sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
+    bundleDownloadUrl: String(
+      artifact.bundleDownloadUrl
+      || artifact.bundle_download_url
+      || artifact.bundle_download
+      || ''
+    ).trim(),
+  };
+
+  if (Number.isFinite(sizeBytes)) {
+    normalized.sizeBytes = sizeBytes;
+  }
+
+  return normalized.id || normalized.downloadUrl ? normalized : null;
+}
+
+function normalizeArtifacts(artifacts = []) {
+  return (Array.isArray(artifacts) ? artifacts : [])
+    .map(normalizeArtifactMetadata)
+    .filter(Boolean);
+}
+
 /**
  * Custom API Error class with additional context.
  */
@@ -535,6 +572,15 @@ class OpenAIClient {
    */
   async getSession(sessionId) {
     return this._legacyRequest(`/api/sessions/${sessionId}`, { method: 'GET' });
+  }
+
+  async listArtifacts(sessionId) {
+    this.refreshClient();
+    const response = await this._legacyRequest(`/api/sessions/${sessionId}/artifacts`, { method: 'GET' });
+    return {
+      ...(response && typeof response === 'object' && !Array.isArray(response) ? response : {}),
+      artifacts: normalizeArtifacts(response?.artifacts),
+    };
   }
 
   /**
@@ -1280,7 +1326,7 @@ function uploadArtifact(filePath, sessionId, mode = 'chat') {
 }
 
 function listArtifacts(sessionId) {
-  return client._legacyRequest(`/api/sessions/${sessionId}/artifacts`, { method: 'GET' });
+  return client.listArtifacts(sessionId);
 }
 
 function generateArtifact(options) {

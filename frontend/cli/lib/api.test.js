@@ -16,7 +16,7 @@ jest.mock('./config', () => ({
 
 jest.mock('openai', () => mockOpenAI);
 
-const { OpenAIClient, chat } = require('./api');
+const { OpenAIClient, chat, listArtifacts } = require('./api');
 
 describe('OpenAIClient provider sessions', () => {
   beforeEach(() => {
@@ -291,6 +291,51 @@ describe('OpenAIClient provider sessions', () => {
         reasoningSummary: 'Created a downloadable PDF artifact.',
       }),
     }));
+  });
+
+  test('listArtifacts normalizes persisted artifact metadata for terminal display', async () => {
+    const http = require('http');
+    const requests = [];
+    const server = http.createServer((req, res) => {
+      requests.push(req.url);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        artifacts: [
+          {
+            artifact_id: 'artifact-cli-1',
+            name: 'analysis.pdf',
+            extension: 'pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 1536,
+            download_url: '/api/artifacts/artifact-cli-1/download',
+            preview_url: '/api/artifacts/artifact-cli-1/preview',
+          },
+        ],
+      }));
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address();
+    mockGetApiBaseUrl.mockReturnValue(`http://127.0.0.1:${port}/v1`);
+
+    try {
+      const result = await listArtifacts('session-cli-1');
+
+      expect(requests).toEqual(['/api/sessions/session-cli-1/artifacts']);
+      expect(result.artifacts).toEqual([
+        expect.objectContaining({
+          id: 'artifact-cli-1',
+          filename: 'analysis.pdf',
+          format: 'pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1536,
+          downloadUrl: '/api/artifacts/artifact-cli-1/download',
+          previewUrl: '/api/artifacts/artifact-cli-1/preview',
+        }),
+      ]);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 
   test('exported streaming chat forwards caller metadata to the gateway', async () => {
