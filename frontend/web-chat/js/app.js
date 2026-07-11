@@ -635,6 +635,8 @@ class ChatApp {
         this.missionElapsedLabel = document.getElementById('mission-elapsed-label');
         this.missionPermissionLabel = document.getElementById('mission-permission-label');
         this.missionStatusNote = document.getElementById('mission-status-note');
+        this.missionStageTitle = document.getElementById('mission-stage-title');
+        this.missionStageDetail = document.getElementById('mission-stage-detail');
         this.missionTimeline = document.getElementById('mission-timeline');
         this.missionProofDetails = document.getElementById('mission-proof-details');
         this.missionProofPack = document.getElementById('mission-proof-pack');
@@ -1060,6 +1062,13 @@ class ChatApp {
         }
 
         this.renderMissionMode();
+        if (this.messagesContainer) {
+            if (nextMode === 'mission') {
+                this.messagesContainer.scrollTop = 0;
+            } else {
+                uiHelpers.scrollToBottom?.(false);
+            }
+        }
         if (options.notify !== false) {
             uiHelpers.showToast?.(
                 nextMode === 'mission'
@@ -1479,11 +1488,21 @@ class ChatApp {
         }
         const runState = String(state.run?.state || '').trim().toLowerCase();
         this.missionMode.dataset.state = state.uiState || 'idle';
-        if (this.missionObjective) this.missionObjective.textContent = state.objective || 'Agent mission';
+        if (this.missionObjective) this.missionObjective.textContent = state.objective || 'Ready for a mission';
         if (this.missionStateLabel) this.missionStateLabel.textContent = this.getMissionStateLabel(runState || state.uiState);
         if (this.missionPhaseLabel) this.missionPhaseLabel.textContent = state.phase || this.getMissionPhaseLabel(runState || state.uiState);
         if (this.missionPermissionLabel) this.missionPermissionLabel.textContent = state.permission || 'Approval before external changes';
         if (this.missionStatusNote) this.missionStatusNote.textContent = state.statusNote || 'Mission status is available from the run timeline.';
+        if (this.missionStageTitle) {
+            this.missionStageTitle.textContent = state.run?.id
+                ? this.getMissionStateLabel(runState || state.uiState)
+                : (state.uiState === 'loading' ? 'Creating mission' : 'Ready to launch');
+        }
+        if (this.missionStageDetail) {
+            this.missionStageDetail.textContent = state.run?.id
+                ? (state.phase || 'Lilly is working through the mission.')
+                : 'Write the outcome in the composer below. Lilly will plan, work, and keep proof here.';
+        }
         this.updateMissionElapsed();
 
         const hasRun = Boolean(state.run?.id);
@@ -1613,7 +1632,8 @@ class ChatApp {
         if (this.missionActionInFlight || !this.missionState?.active || this.missionState.run?.id) {
             return false;
         }
-        const starterPrompt = String(this.missionState.starterPrompt || this.messageInput?.value || '').trim();
+        const composerPrompt = String(this.messageInput?.value || '').trim();
+        const starterPrompt = composerPrompt || String(this.missionState.starterPrompt || '').trim();
         if (!starterPrompt) {
             this.missionState.statusNote = 'Add a concrete goal in the composer before starting this mission.';
             this.missionState.uiState = 'error';
@@ -1625,6 +1645,8 @@ class ChatApp {
         this.missionState = this.createMissionState({
             ...this.missionState,
             active: true,
+            objective: composerPrompt || this.missionState.objective || starterPrompt,
+            starterPrompt,
             uiState: 'loading',
             phase: 'Creating run record',
             statusNote: 'Creating a durable mission record before Lilly begins work.',
@@ -1673,6 +1695,13 @@ class ChatApp {
         this.missionState.uiState = 'streaming';
         this.missionState.phase = 'Working in chat';
         this.renderMissionMode();
+        if (this.messageInput) {
+            this.messageInput.value = '';
+            this.messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+            this.autoResize?.reset?.();
+            this.updateSendButton?.();
+            uiHelpers.updateCharCounter?.(this.messageInput, this.charCounter);
+        }
         const sent = await this.sendPreparedMessage(starterPrompt, this.buildMissionSendOptions({
             metadata: {
                 missionLaunch: true,
@@ -1683,12 +1712,16 @@ class ChatApp {
             this.missionState.uiState = 'error';
             this.missionState.phase = 'Chat did not start';
             this.missionState.statusNote = 'The run exists, but the assistant request did not start. Retry the message from the composer.';
+            if (this.messageInput) {
+                this.messageInput.value = starterPrompt;
+                this.messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+                this.autoResize?.resize?.();
+                this.messageInput.focus?.();
+            }
             this.renderMissionMode();
             this.persistMissionState();
             return false;
         }
-        this.messageInput.value = '';
-        this.messageInput.dispatchEvent(new Event('input', { bubbles: true }));
         this.scheduleMissionRefresh(400);
         return true;
     }
@@ -6899,9 +6932,6 @@ class ChatApp {
         }
 
         if (this.missionState?.active === true && !this.missionState.run?.id) {
-            this.missionState.objective = content;
-            this.missionState.starterPrompt = this.missionState.starterPrompt || content;
-            this.persistMissionState({ remote: false });
             await this.startMission();
             return;
         }

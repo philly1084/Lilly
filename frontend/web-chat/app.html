@@ -132,10 +132,10 @@
 
     
     <!-- Custom styles -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260710j" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260711b" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-        <link rel="stylesheet" href="css/styles.css?v=20260710j">
+        <link rel="stylesheet" href="css/styles.css?v=20260711b">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <!-- Skip to main content link for accessibility -->
@@ -835,13 +835,9 @@
                             <span class="mission-mode__avatar" aria-hidden="true"><i data-lucide="route"></i></span>
                             <div class="mission-mode__identity">
                                 <span class="mission-mode__eyebrow"><span class="mission-mode__pulse" aria-hidden="true"></span>Mission</span>
-                                <h2 id="mission-objective">Agent mission</h2>
+                                <h2 id="mission-objective">Ready for a mission</h2>
                             </div>
                             <div class="mission-mode__controls" role="group" aria-label="Mission controls">
-                                <button type="button" class="mission-control mission-control--primary" data-mission-action="start">
-                                    <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
-                                    <span>Start</span>
-                                </button>
                                 <button type="button" class="mission-control" data-mission-action="pause" hidden>
                                     <i data-lucide="pause" class="w-4 h-4" aria-hidden="true"></i><span>Pause</span>
                                 </button>
@@ -860,6 +856,23 @@
                             </div>
                         </div>
                         <p id="mission-status-note" class="mission-mode__note" role="status" aria-live="polite" aria-atomic="true">Describe the outcome below, then start the mission.</p>
+                        <div class="mission-mode__stage">
+                            <div class="mission-mode__route" aria-hidden="true">
+                                <span><i data-lucide="target"></i></span>
+                                <span class="mission-mode__route-line"></span>
+                                <span><i data-lucide="list-checks"></i></span>
+                                <span class="mission-mode__route-line"></span>
+                                <span><i data-lucide="badge-check"></i></span>
+                            </div>
+                            <div class="mission-mode__stage-copy">
+                                <strong id="mission-stage-title">Ready to launch</strong>
+                                <span id="mission-stage-detail">Write the outcome in the composer below. Lilly will plan, work, and keep proof here.</span>
+                            </div>
+                            <button type="button" class="mission-control mission-control--primary mission-mode__start" data-mission-action="start">
+                                <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
+                                <span>Start mission</span>
+                            </button>
+                        </div>
                         <dl class="mission-mode__facts" aria-label="Mission status">
                             <div><dt><i data-lucide="circle-dot" aria-hidden="true"></i><span>State</span></dt><dd id="mission-state-label">Ready</dd></div>
                             <div><dt><i data-lucide="activity" aria-hidden="true"></i><span>Phase</span></dt><dd id="mission-phase-label">Awaiting start</dd></div>
@@ -1418,7 +1431,7 @@
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
     <script defer src="js/ui.js?v=20260710a"></script>
-    <script defer src="js/app.js?v=20260710f"></script>
+    <script defer src="js/app.js?v=20260711a"></script>
     <script defer src="js/artifacts.js?v=20260710a"></script>
 </body>
 </html>

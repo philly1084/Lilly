@@ -12058,19 +12058,23 @@ body.mission-mode-active .welcome-state {
     display: none !important;
 }
 
+body.mission-mode-active #messages-container {
+    padding-block: 0;
+}
+
+body.mission-mode-active #messages-container > :not(#mission-mode) {
+    display: none !important;
+}
+
 .mission-mode {
-    --mission-accent: #7dd3fc;
+    --mission-accent: var(--accent, #7dd3fc);
     position: relative;
     display: grid;
-    width: min(100%, 880px);
-    grid-template-columns: 3px minmax(0, 1fr);
-    margin-inline: auto;
+    width: 100%;
+    min-height: 100%;
+    grid-template-columns: minmax(0, 1fr);
     overflow: hidden;
-    background:
-        linear-gradient(135deg, color-mix(in srgb, var(--mission-accent) 8%, var(--bg-secondary)) 0%, var(--bg-secondary) 56%);
-    border: 1px solid color-mix(in srgb, var(--mission-accent) 24%, var(--border));
-    border-radius: 18px;
-    box-shadow: 0 14px 32px color-mix(in srgb, #020617 12%, transparent);
+    background: var(--bg-primary);
     color: var(--text-primary, #f8fafc);
 }
 
@@ -12092,14 +12096,15 @@ body.mission-mode-active .welcome-state {
 }
 
 .mission-mode__rail {
-    background: var(--mission-accent);
-    box-shadow: 0 0 24px color-mix(in srgb, var(--mission-accent) 55%, transparent);
+    display: none;
 }
 
 .mission-mode__body {
     display: grid;
-    gap: 11px;
-    padding: 16px 18px 15px;
+    min-height: 100%;
+    grid-template-rows: auto auto minmax(190px, 1fr) auto auto auto;
+    gap: 14px;
+    padding: 22px clamp(18px, 4vw, 48px) 18px;
 }
 
 .mission-mode__headline,
@@ -12117,6 +12122,8 @@ body.mission-mode-active .welcome-state {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 11px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border);
 }
 
 .mission-mode__avatar {
@@ -12126,7 +12133,7 @@ body.mission-mode-active .welcome-state {
     flex: 0 0 auto;
     place-items: center;
     border-radius: 11px;
-    background: color-mix(in srgb, var(--mission-accent) 14%, var(--bg-tertiary));
+    background: color-mix(in srgb, var(--mission-accent) 12%, var(--bg-secondary));
     color: var(--mission-accent);
 }
 
@@ -12286,10 +12293,92 @@ body.mission-mode-active .welcome-state {
 }
 
 .mission-mode__note {
-    margin: -2px 0 0 47px;
+    margin: 0;
     color: var(--text-secondary, #cbd5e1);
     font-size: 0.77rem;
     line-height: 1.5;
+}
+
+.mission-mode__stage {
+    display: grid;
+    min-height: 190px;
+    align-content: center;
+    justify-items: center;
+    gap: 17px;
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--bg-secondary);
+    text-align: center;
+}
+
+.mission-mode__route {
+    display: grid;
+    width: min(100%, 420px);
+    grid-template-columns: auto minmax(28px, 1fr) auto minmax(28px, 1fr) auto;
+    align-items: center;
+}
+
+.mission-mode__route > span:not(.mission-mode__route-line) {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--mission-accent) 30%, var(--border));
+    border-radius: 15px;
+    background: color-mix(in srgb, var(--mission-accent) 10%, var(--bg-primary));
+    color: var(--mission-accent);
+}
+
+.mission-mode__route svg {
+    width: 20px;
+    height: 20px;
+}
+
+.mission-mode__route-line {
+    height: 2px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--mission-accent) 26%, var(--border)), var(--mission-accent));
+}
+
+.mission-mode__stage-copy {
+    display: grid;
+    max-width: 510px;
+    gap: 5px;
+}
+
+.mission-mode__stage-copy strong {
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.mission-mode__stage-copy span {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.mission-mode__start {
+    min-height: 38px;
+    padding-inline: 16px;
+}
+
+.mission-mode[data-state="loading"] .mission-mode__route > span,
+.mission-mode[data-state="streaming"] .mission-mode__route > span {
+    animation: mission-stage-pulse 1.8s ease-in-out infinite alternate;
+}
+
+.mission-mode[data-state="loading"] .mission-mode__route > span:nth-child(3),
+.mission-mode[data-state="streaming"] .mission-mode__route > span:nth-child(3) {
+    animation-delay: 180ms;
+}
+
+.mission-mode[data-state="loading"] .mission-mode__route > span:nth-child(5),
+.mission-mode[data-state="streaming"] .mission-mode__route > span:nth-child(5) {
+    animation-delay: 360ms;
+}
+
+@keyframes mission-stage-pulse {
+    to { border-color: var(--mission-accent); transform: translateY(-2px); }
 }
 
 .mission-mode[data-state="error"] .mission-mode__note {
@@ -12318,9 +12407,9 @@ body.mission-mode-active .welcome-state {
     flex: 0 0 auto;
     max-width: 270px;
     padding: 7px 9px;
-    border: 1px solid rgba(148, 163, 184, 0.18);
+    border: 1px solid var(--border);
     border-radius: 9px;
-    background: rgba(2, 6, 23, 0.42);
+    background: var(--bg-secondary);
 }
 
 .mission-timeline__index {
@@ -12330,7 +12419,7 @@ body.mission-mode-active .welcome-state {
     place-items: center;
     border-radius: 999px;
     background: rgba(125, 211, 252, 0.15);
-    color: #bae6fd;
+    color: var(--text-primary);
     font-size: 0.63rem;
     font-weight: 800;
 }
@@ -12354,12 +12443,12 @@ body.mission-mode-active .welcome-state {
 
 .mission-timeline__item[data-status="completed"] .mission-timeline__index {
     background: rgba(52, 211, 153, 0.16);
-    color: #6ee7b7;
+    color: var(--text-primary);
 }
 
 .mission-timeline__item[data-status="failed"] .mission-timeline__index {
     background: rgba(251, 113, 133, 0.16);
-    color: #fda4af;
+    color: var(--text-primary);
 }
 
 .mission-mode__receipts {
@@ -12370,9 +12459,9 @@ body.mission-mode-active .welcome-state {
 .mission-receipt {
     min-width: 0;
     flex: 1 1 0;
-    border: 1px solid rgba(148, 163, 184, 0.2);
+    border: 1px solid var(--border);
     border-radius: 10px;
-    background: rgba(2, 6, 23, 0.42);
+    background: var(--bg-secondary);
     overflow: hidden;
 }
 
@@ -12405,7 +12494,8 @@ body.mission-mode-active .welcome-state {
     margin: 0;
     padding: 11px;
     overflow: auto;
-    color: #bae6fd;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
     font: 0.67rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     white-space: pre-wrap;
 }
@@ -12601,8 +12691,8 @@ body.mission-mode-active .welcome-state {
     gap: 2px;
     padding: 8px 9px;
     border-left: 3px solid #fbbf24;
-    background: rgba(120, 53, 15, 0.14);
-    color: #fde68a;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
     font-size: 0.69rem;
 }
 
@@ -12636,7 +12726,6 @@ body.mission-mode-active .welcome-state {
 @media (max-width: 520px) {
     .mission-mode {
         width: 100%;
-        border-radius: 15px;
     }
 
     body.mission-mode-active .input-area {
@@ -12644,7 +12733,8 @@ body.mission-mode-active .welcome-state {
     }
 
     .mission-mode__body {
-        padding: 13px 12px 14px;
+        grid-template-rows: auto auto minmax(210px, 1fr) auto auto auto;
+        padding: 16px 12px 14px;
     }
 
     .mission-mode__note {
@@ -12653,6 +12743,17 @@ body.mission-mode-active .welcome-state {
 
     .mission-mode__controls {
         padding-left: 0;
+    }
+
+    .mission-mode__stage {
+        min-height: 210px;
+        padding: 18px 12px;
+    }
+
+    .mission-mode__route > span:not(.mission-mode__route-line) {
+        width: 40px;
+        height: 40px;
+        border-radius: 13px;
     }
 
     .mission-mode__facts > div {
@@ -12684,15 +12785,15 @@ body.mission-mode-active .welcome-state {
         animation: none;
     }
 
+    .mission-mode[data-state="loading"] .mission-mode__route > span,
+    .mission-mode[data-state="streaming"] .mission-mode__route > span {
+        animation: none;
+    }
+
     .mission-control,
     .artifact-lineage-action {
         transition: none;
     }
-}
-
-[data-theme="light"] .mission-mode {
-    --mission-accent: #075985;
-    background: linear-gradient(135deg, #f5f9ff, #ffffff 58%);
 }
 
 [data-theme="light"] .mission-mode[data-state="loading"],

@@ -305,9 +305,54 @@ describe('Lilly Mission Mode', () => {
 
     await app.sendMessage();
 
-    expect(app.missionState.objective).toBe('Verify and ship the web chat mission flow');
-    expect(app.missionState.starterPrompt).toBe('Verify and ship the web chat mission flow');
     expect(app.startMission).toHaveBeenCalledTimes(1);
+  });
+
+  test('creates the AgentRun and sends the current composer objective from Start', async () => {
+    const context = loadMissionContext();
+    context.apiClient.createAgentRun = jest.fn(async () => ({
+      run: { id: 'run-started', state: 'created', objective: 'Ship the mission workspace' },
+      events: [],
+    }));
+    const app = Object.create(context.ChatApp.prototype);
+    app.messageInput = {
+      value: 'Ship the mission workspace',
+      focus: jest.fn(),
+      dispatchEvent: jest.fn(),
+    };
+    app.missionState = app.createMissionState({ active: true, templateId: 'custom' });
+    app.missionActionInFlight = false;
+    app.renderMissionMode = jest.fn();
+    app.updateMissionFromPayload = jest.fn((payload) => {
+      app.missionState = app.createMissionState({
+        ...app.missionState,
+        active: true,
+        run: payload.run,
+      });
+    });
+    app.buildMissionSendOptions = jest.fn((options) => options);
+    app.sendPreparedMessage = jest.fn(async () => true);
+    app.scheduleMissionRefresh = jest.fn();
+    app.updateSendButton = jest.fn();
+
+    await app.startMission();
+
+    expect(context.apiClient.createAgentRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objective: 'Ship the mission workspace',
+        sessionId: 'session-1',
+        mode: 'mission',
+      }),
+      expect.objectContaining({ idempotencyKey: expect.stringContaining('mission-start-session-1-') }),
+    );
+    expect(app.sendPreparedMessage).toHaveBeenCalledWith(
+      'Ship the mission workspace',
+      expect.objectContaining({
+        metadata: expect.objectContaining({ missionLaunch: true }),
+      }),
+    );
+    expect(app.messageInput.value).toBe('');
+    expect(app.scheduleMissionRefresh).toHaveBeenCalledWith(400);
   });
 
   test('stages artifact iteration/deploy with mission lineage and no success claim', () => {
