@@ -141,6 +141,36 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('normalizes mixed-case capability names before model routing', () => {
+        const selected = selectAutoModel([
+            { id: 'upper-image-router', owned_by: 'gateway', capabilities: ['IMAGE_GENERATION'] },
+            { id: 'upper-tools-router', owned_by: 'gateway', capabilities: ['CHAT', 'Tools', 'Streaming'] },
+        ], {
+            needsTools: true,
+            apiMode: 'chat',
+        });
+
+        expect(isPublicChatModel({ id: 'upper-image-router', capabilities: ['IMAGE_GENERATION'] })).toBe(false);
+        expect(buildModelContract({
+            id: 'upper-tools-router',
+            owned_by: 'gateway',
+            capabilities: ['CHAT', 'Tools', 'Streaming'],
+        })).toEqual(expect.objectContaining({
+            capabilities: ['chat', 'tools', 'streaming'],
+            supports: expect.objectContaining({
+                chat: true,
+                tools: true,
+                streaming: true,
+            }),
+        }));
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'upper-tools-router',
+            supports: expect.objectContaining({
+                tools: true,
+            }),
+        }));
+    });
+
     test('normalizes provider support maps before model routing', () => {
         const selected = selectAutoModel([
             { id: 'image-output-router', owned_by: 'gateway', supports: { image_generation: true } },

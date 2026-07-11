@@ -57,8 +57,12 @@ const NON_CHAT_CAPABILITIES = new Set([
 
 function normalizeCapabilities(model = {}) {
     return getCapabilityEntries(model)
-        .map((entry) => String(entry || '').trim().toLowerCase())
+        .map((entry) => normalizeCapabilityName(entry))
         .filter(Boolean);
+}
+
+function normalizeCapabilityName(entry = '') {
+    return String(entry || '').trim().toLowerCase();
 }
 
 function parseCapabilityEntries(value = null) {
@@ -134,8 +138,8 @@ function isPublicChatModel(modelOrId = '') {
 function inferModelCapabilities(model = {}) {
     const providedCapabilities = getCapabilityEntries(model);
     if (providedCapabilities.length > 0) {
-        const capabilities = [...new Set(providedCapabilities.map((entry) => String(entry || '').trim()).filter(Boolean))];
-        const normalizedCapabilities = new Set(capabilities.map((entry) => entry.toLowerCase()));
+        const capabilities = [...new Set(providedCapabilities.map((entry) => normalizeCapabilityName(entry)).filter(Boolean))];
+        const normalizedCapabilities = new Set(capabilities);
         const hasNonChatCapability = [...normalizedCapabilities].some((entry) => NON_CHAT_CAPABILITIES.has(entry));
         const shouldAddChat = !normalizedCapabilities.has('chat')
             && !hasNonChatCapability
