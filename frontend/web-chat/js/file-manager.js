@@ -1021,6 +1021,13 @@ class FileManager {
     }
     if (downloadBtn) {
       downloadBtn.disabled = selected.length === 0;
+      const selectedLabel = selected.length === 0
+        ? 'No files selected to download'
+        : selected.length === 1
+          ? `Download selected file ${selected[0]?.filename || 'file'}`
+          : `Download ${selected.length} selected files`;
+      downloadBtn.setAttribute('aria-label', selectedLabel);
+      downloadBtn.setAttribute('title', selectedLabel);
     }
   }
 
