@@ -265,6 +265,26 @@ describe('openai-sse helpers', () => {
     expect(events[0].summary).toBe('Checking the request. Choosing the direct path.');
   });
 
+  test('indexes function calls embedded in response chunk output arrays', () => {
+    const events = normalizeGatewayEventPayload({
+      object: 'response.chunk',
+      id: 'resp_tools',
+      output: [
+        { type: 'function_call', call_id: 'call_search', name: 'web_search', arguments: '{"q":"docs"}' },
+        { type: 'custom_tool_call', index: 5, call_id: 'call_shell', name: 'remote-command', input: 'uptime' },
+      ],
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'tool_calls',
+      stage: 'started',
+      responseId: 'resp_tools',
+    });
+    expect(events[0].toolCalls.map((toolCall) => toolCall.index)).toEqual([0, 5]);
+    expect(events[0].toolCalls[0].name).toBe('web_search');
+  });
+
   test('normalizes custom /api/chat delta payloads', () => {
     const events = normalizeGatewayEventPayload({
       type: 'delta',

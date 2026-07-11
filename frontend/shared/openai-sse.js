@@ -1068,7 +1068,7 @@
       if (functionCalls.length > 0) {
         events.push({
           type: 'tool_calls',
-          toolCalls: functionCalls,
+          toolCalls: normalizeToolCallsWithIndexes(functionCalls),
           stage: 'started',
           raw: payload,
           ...metadata,
