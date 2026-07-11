@@ -51,6 +51,58 @@ describe('notation API health check', () => {
     });
 });
 
+describe('notation API artifact handoff payloads', () => {
+    test('preserves artifact ids and requested output format in HTTP requests', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({ sessionId: 'session-2', result: 'Expanded notation' }),
+        }));
+        const { NotationAPI } = loadNotationApi(fetchMock);
+
+        await NotationAPI.process({
+            notation: 'user -> report',
+            helperMode: 'expand',
+            artifactIds: [' artifact-1 ', '', 'artifact-2'],
+            outputFormat: ' pdf ',
+        });
+
+        const [, options] = fetchMock.mock.calls[0];
+        expect(JSON.parse(options.body)).toEqual(expect.objectContaining({
+            notation: 'user -> report',
+            helperMode: 'expand',
+            artifactIds: ['artifact-1', 'artifact-2'],
+            outputFormat: 'pdf',
+        }));
+    });
+
+    test('preserves artifact ids and requested output format in WebSocket requests', () => {
+        const { NotationAPI } = loadNotationApi();
+        const send = jest.fn();
+        NotationAPI.isConnected = true;
+        NotationAPI.sessionId = 'session-3';
+        NotationAPI.ws = { send };
+
+        expect(NotationAPI.processWS({
+            notation: 'order -> invoice',
+            helperMode: 'validate',
+            artifactIds: ['artifact-a'],
+            outputFormat: 'html',
+        })).toBe(true);
+
+        expect(JSON.parse(send.mock.calls[0][0])).toEqual({
+            type: 'notation',
+            sessionId: 'session-3',
+            payload: {
+                notation: 'order -> invoice',
+                helperMode: 'validate',
+                context: '',
+                artifactIds: ['artifact-a'],
+                outputFormat: 'html',
+            },
+        });
+    });
+});
+
 describe('notation API WebSocket metadata normalization', () => {
     test('promotes top-level reasoning summary aliases into assistant metadata', () => {
         const { NotationAPI } = loadNotationApi();

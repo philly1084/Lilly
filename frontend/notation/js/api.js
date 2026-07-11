@@ -95,6 +95,16 @@ const NotationAPI = {
             context: data.context || '',
             helperMode: data.helperMode || 'expand'
         };
+        const artifactIds = Array.isArray(data.artifactIds)
+            ? data.artifactIds.map((id) => String(id || '').trim()).filter(Boolean)
+            : [];
+        const outputFormat = String(data.outputFormat || '').trim();
+        if (artifactIds.length > 0) {
+            payload.artifactIds = artifactIds;
+        }
+        if (outputFormat) {
+            payload.outputFormat = outputFormat;
+        }
 
         const reasoningEffort = String(data.reasoningEffort || this.config.reasoningEffort || '').trim().toLowerCase();
         if (['low', 'medium', 'high', 'xhigh'].includes(reasoningEffort)) {
@@ -145,6 +155,16 @@ const NotationAPI = {
                 context: data.context || ''
             }
         };
+        const artifactIds = Array.isArray(data.artifactIds)
+            ? data.artifactIds.map((id) => String(id || '').trim()).filter(Boolean)
+            : [];
+        const outputFormat = String(data.outputFormat || '').trim();
+        if (artifactIds.length > 0) {
+            message.payload.artifactIds = artifactIds;
+        }
+        if (outputFormat) {
+            message.payload.outputFormat = outputFormat;
+        }
 
         const reasoningEffort = String(data.reasoningEffort || this.config.reasoningEffort || '').trim().toLowerCase();
         if (['low', 'medium', 'high', 'xhigh'].includes(reasoningEffort)) {
