@@ -55,9 +55,14 @@ function normalizeInternalUrl(value = '', pattern = INTERNAL_DOWNLOAD_PATH_PATTE
     }
 }
 
-function buildFallbackDownloadUrl(id = '') {
+function buildFallbackDownloadUrl(id = '', type = 'artifact') {
     const normalizedId = String(id || '').trim();
-    return normalizedId ? `/api/artifacts/${encodeURIComponent(normalizedId)}/download` : null;
+    if (!normalizedId) {
+        return null;
+    }
+
+    const route = type === 'document' ? 'documents' : 'artifacts';
+    return `/api/${route}/${encodeURIComponent(normalizedId)}/download`;
 }
 
 function normalizeSizeBytes(value = {}) {
@@ -73,21 +78,16 @@ function normalizeArtifactEntry(value = null) {
         return null;
     }
 
-    const id = String(
-        value.id
-        || value.artifactId
-        || value.artifact_id
-        || value.documentId
-        || value.document_id
-        || '',
-    ).trim();
+    const rawArtifactId = value.id || value.artifactId || value.artifact_id || '';
+    const rawDocumentId = value.documentId || value.document_id || '';
+    const id = String(rawArtifactId || rawDocumentId || '').trim();
     const downloadUrl = normalizeDownloadUrl(
         value.downloadUrl
         || value.download_url
         || value.inlinePath
         || value.inline_path
         || '',
-    ) || buildFallbackDownloadUrl(id);
+    ) || buildFallbackDownloadUrl(id, rawArtifactId ? 'artifact' : 'document');
 
     if (!id || !downloadUrl) {
         return null;

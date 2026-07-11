@@ -174,6 +174,35 @@ describe('runtime artifact helpers', () => {
         ]);
     });
 
+    test('backfills document download URLs for document id payloads', () => {
+        const artifacts = extractArtifactsFromToolEvents([{
+            toolCall: {
+                function: {
+                    name: 'document-workflow',
+                },
+            },
+            result: {
+                success: true,
+                data: {
+                    document: {
+                        document_id: 'doc-fallback-1',
+                        filename: 'executive-brief.pdf',
+                        mime_type: 'application/pdf',
+                    },
+                },
+            },
+        }]);
+
+        expect(artifacts).toEqual([
+            expect.objectContaining({
+                id: 'doc-fallback-1',
+                filename: 'executive-brief.pdf',
+                format: 'pdf',
+                downloadUrl: '/api/documents/doc-fallback-1/download',
+            }),
+        ]);
+    });
+
     test('omits superseded artifacts from runtime artifact merges', () => {
         const merged = mergeRuntimeArtifacts([
             {
