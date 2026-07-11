@@ -3801,9 +3801,12 @@ class ChatApp {
 
     syncWorkloadsPanelState() {
         const isOpen = this.workloadsOpen === true;
+        const label = isOpen ? 'Close agent workloads' : 'Open agent workloads';
         this.workloadsPanel?.classList.toggle('hidden', !isOpen);
         this.workloadsPanel?.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
         this.workloadsBtn?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        this.workloadsBtn?.setAttribute('aria-label', label);
+        this.workloadsBtn?.setAttribute('title', label);
     }
 
     renderWorkloadsPanel() {
