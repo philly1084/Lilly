@@ -40,7 +40,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<span class="tool-menu-choice__hint">Patch source</span>');
     });
 
-    test('keeps mission launches inside chat with durable mission controls', () => {
+    test('keeps mission work as a compact durable state inside chat', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
@@ -54,10 +54,14 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('data-mission-action="start"');
         expect(html).toContain('id="mission-timeline"');
         expect(html).toContain('id="mission-proof-pack"');
-        expect(html).toContain('class="mission-mode__stage"');
+        expect(html).toContain('class="mission-mode__progress"');
+        expect(html).toContain('class="mission-mode__details"');
+        expect(html).toContain('Lilly will make a plan, keep working in this chat');
+        expect(html).not.toContain('data-lucide="message-circle"');
+        expect(html).not.toContain('data-lucide="route"');
         expect(html.indexOf('id="mission-mode"')).toBeGreaterThan(html.indexOf('id="messages-container"'));
-        expect(css).toContain('body.mission-mode-active #messages-container > :not(#mission-mode)');
-        expect(css).toContain('background: var(--bg-primary);');
+        expect(css).toContain('Mission is a durable chat state, not a second workspace.');
+        expect(css).not.toContain('body.mission-mode-active #messages-container > :not(#mission-mode)');
         expect(uiSource).toContain("const missionMode = document.getElementById('mission-mode');");
         expect(uiSource).toContain('this.messageContainer.appendChild(missionMode);');
     });
@@ -92,7 +96,7 @@ describe('web-chat index redirect', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
         const lightTheme = css.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] || '';
 
-        expect(html).toContain('css/styles.css?v=20260711b');
+        expect(html).toContain('css/styles.css?v=20260711c');
         expect(lightTheme).toContain('--tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98)');
         expect(lightTheme).toContain('--tool-picker-panel-border: rgba(215, 226, 239, 0.96);');
         expect(lightTheme).not.toContain('--tool-picker-panel-background: var(--theme-dialog-background);');
@@ -122,7 +126,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="btn-icon mobile-chat-menu__close"');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
-        expect(html).toContain('css/styles.css?v=20260711b');
+        expect(html).toContain('css/styles.css?v=20260711c');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
         expect(html).toContain('js/ui.js?v=20260711c');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");

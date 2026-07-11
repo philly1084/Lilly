@@ -132,10 +132,10 @@
 
     
     <!-- Custom styles -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260711b" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260711c" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-        <link rel="stylesheet" href="css/styles.css?v=20260711b">
+        <link rel="stylesheet" href="css/styles.css?v=20260711c">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <!-- Skip to main content link for accessibility -->
@@ -829,70 +829,55 @@
             <!-- Messages Container -->
             <div id="messages-container" class="flex-1 overflow-y-auto px-4 py-6 space-y-6 scroll-smooth" role="log" aria-label="Conversation messages" aria-live="polite">
                 <section id="mission-mode" class="mission-mode hidden" aria-labelledby="mission-objective" data-state="idle" aria-hidden="true">
-                    <div class="mission-mode__rail" aria-hidden="true"></div>
-                    <div class="mission-mode__body">
-                        <div class="mission-mode__headline">
-                            <span class="mission-mode__avatar" aria-hidden="true"><i data-lucide="route"></i></span>
-                            <div class="mission-mode__identity">
-                                <span class="mission-mode__eyebrow"><span class="mission-mode__pulse" aria-hidden="true"></span>Mission</span>
-                                <h2 id="mission-objective">Ready for a mission</h2>
-                            </div>
-                            <div class="mission-mode__controls" role="group" aria-label="Mission controls">
-                                <button type="button" class="mission-control" data-mission-action="pause" hidden>
-                                    <i data-lucide="pause" class="w-4 h-4" aria-hidden="true"></i><span>Pause</span>
-                                </button>
-                                <button type="button" class="mission-control" data-mission-action="resume" hidden>
-                                    <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i><span>Resume</span>
-                                </button>
-                                <button type="button" class="mission-control" data-mission-action="replay" hidden>
-                                    <i data-lucide="rotate-ccw" class="w-4 h-4" aria-hidden="true"></i><span>Retry</span>
-                                </button>
-                                <button type="button" class="mission-control" data-mission-action="fork" hidden>
-                                    <i data-lucide="git-fork" class="w-4 h-4" aria-hidden="true"></i><span>Fork</span>
-                                </button>
-                                <button type="button" class="mission-control mission-control--danger" data-mission-action="cancel" hidden>
-                                    <i data-lucide="square" class="w-4 h-4" aria-hidden="true"></i><span>Cancel</span>
-                                </button>
-                            </div>
+                    <div class="mission-mode__headline">
+                        <span class="mission-mode__pulse" aria-hidden="true"></span>
+                        <div class="mission-mode__identity">
+                            <span class="mission-mode__eyebrow">Mission</span>
+                            <h2 id="mission-objective">Give Lilly a clear outcome</h2>
                         </div>
-                        <p id="mission-status-note" class="mission-mode__note" role="status" aria-live="polite" aria-atomic="true">Describe the outcome below, then start the mission.</p>
-                        <div class="mission-mode__stage">
-                            <div class="mission-mode__route" aria-hidden="true">
-                                <span><i data-lucide="target"></i></span>
-                                <span class="mission-mode__route-line"></span>
-                                <span><i data-lucide="list-checks"></i></span>
-                                <span class="mission-mode__route-line"></span>
-                                <span><i data-lucide="badge-check"></i></span>
-                            </div>
-                            <div class="mission-mode__stage-copy">
-                                <strong id="mission-stage-title">Ready to launch</strong>
-                                <span id="mission-stage-detail">Write the outcome in the composer below. Lilly will plan, work, and keep proof here.</span>
-                            </div>
-                            <button type="button" class="mission-control mission-control--primary mission-mode__start" data-mission-action="start">
-                                <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
-                                <span>Start mission</span>
-                            </button>
-                        </div>
-                        <dl class="mission-mode__facts" aria-label="Mission status">
-                            <div><dt><i data-lucide="circle-dot" aria-hidden="true"></i><span>State</span></dt><dd id="mission-state-label">Ready</dd></div>
-                            <div><dt><i data-lucide="activity" aria-hidden="true"></i><span>Phase</span></dt><dd id="mission-phase-label">Awaiting start</dd></div>
-                            <div><dt><i data-lucide="clock-3" aria-hidden="true"></i><span>Elapsed</span></dt><dd id="mission-elapsed-label">0s</dd></div>
-                            <div><dt><i data-lucide="shield-check" aria-hidden="true"></i><span>Permission</span></dt><dd id="mission-permission-label">Approval before external changes</dd></div>
-                        </dl>
-                        <ol id="mission-timeline" class="mission-timeline" aria-label="Mission timeline"></ol>
-                        <div class="mission-mode__receipts">
+                        <span id="mission-state-label" class="mission-mode__state">Ready</span>
+                    </div>
+                    <p id="mission-status-note" class="mission-mode__note" role="status" aria-live="polite" aria-atomic="true">Lilly will make a plan, keep working in this chat, ask before external changes, and return with evidence.</p>
+                    <div class="mission-mode__progress">
+                        <span id="mission-stage-title">Ready to start</span>
+                        <span aria-hidden="true">·</span>
+                        <span id="mission-phase-label">Awaiting outcome</span>
+                        <span aria-hidden="true">·</span>
+                        <span id="mission-elapsed-label">0s</span>
+                    </div>
+                    <span id="mission-stage-detail" class="sr-only">Describe the outcome in the composer below.</span>
+                    <span id="mission-permission-label" class="sr-only">Approval before external changes</span>
+                    <div class="mission-mode__actions" role="group" aria-label="Mission controls">
+                        <button type="button" class="mission-control mission-control--primary" data-mission-action="start">
+                            <span>Start mission</span>
+                            <i data-lucide="arrow-up" class="w-4 h-4" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="mission-control" data-mission-action="pause" hidden><span>Pause</span></button>
+                        <button type="button" class="mission-control" data-mission-action="resume" hidden><span>Resume</span></button>
+                        <button type="button" class="mission-control" data-mission-action="replay" hidden><span>Retry</span></button>
+                        <button type="button" class="mission-control" data-mission-action="fork" hidden><span>New version</span></button>
+                        <button type="button" class="mission-control mission-control--danger" data-mission-action="cancel" hidden><span>Stop</span></button>
+                    </div>
+                    <details class="mission-mode__details">
+                        <summary>
+                            <span>Work details</span>
+                            <span class="mission-mode__details-hint">Plan, evidence, and run log</span>
+                            <i data-lucide="chevron-down" aria-hidden="true"></i>
+                        </summary>
+                        <div class="mission-mode__details-body">
+                            <ol id="mission-timeline" class="mission-timeline" aria-label="Mission timeline"></ol>
                             <details id="mission-proof-details" class="mission-receipt">
-                                <summary><i data-lucide="badge-check" class="w-4 h-4" aria-hidden="true"></i>Proof</summary>
+                                <summary>Evidence</summary>
                                 <div id="mission-proof-pack" class="mission-receipt__body">
-                                    <div class="proof-pack proof-pack--empty" role="status">No typed proof has been supplied for this mission yet.</div>
+                                    <div class="proof-pack proof-pack--empty" role="status">Evidence will appear as Lilly verifies the work.</div>
                                 </div>
                             </details>
                             <details id="mission-raw-details" class="mission-receipt">
-                                <summary><i data-lucide="list-tree" class="w-4 h-4" aria-hidden="true"></i>Run details</summary>
+                                <summary>Technical log</summary>
                                 <pre id="mission-raw-events" class="mission-raw-events">Run details appear after the mission starts.</pre>
                             </details>
                         </div>
-                    </div>
+                    </details>
                 </section>
                 <!-- Welcome Message -->
                 <div id="welcome-message" class="welcome-state flex flex-col items-center justify-center h-full text-center px-4">
@@ -1112,10 +1097,10 @@
                             <div id="input-meta-actions" class="flex items-center gap-2">
                                 <div class="execution-mode-switch" role="group" aria-label="Response mode" aria-describedby="execution-mode-description">
                                     <button type="button" class="execution-mode-switch__option is-active" data-execution-mode="chat" aria-pressed="true">
-                                        <i data-lucide="message-circle" aria-hidden="true"></i><span>Chat</span>
+                                        <span>Chat</span>
                                     </button>
                                     <button type="button" class="execution-mode-switch__option" data-execution-mode="mission" aria-pressed="false">
-                                        <i data-lucide="route" aria-hidden="true"></i><span>Mission</span>
+                                        <span>Mission</span>
                                     </button>
                                     <select id="execution-mode-select" hidden tabindex="-1" aria-hidden="true">
                                         <option value="chat">Chat</option>

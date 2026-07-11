@@ -1035,7 +1035,7 @@ class ChatApp {
                 uiState: shouldStartFresh ? 'idle' : current.uiState,
                 phase: shouldStartFresh ? 'Ready in chat' : current.phase,
                 statusNote: shouldStartFresh
-                    ? 'Long-form work will run inside this conversation.'
+                    ? 'Lilly will make a plan, keep working in this chat, ask before external changes, and return with evidence.'
                     : current.statusNote,
                 run: shouldStartFresh ? null : current.run,
                 events: shouldStartFresh ? [] : current.events,
@@ -1064,7 +1064,7 @@ class ChatApp {
         this.renderMissionMode();
         if (this.messagesContainer) {
             if (nextMode === 'mission') {
-                this.messagesContainer.scrollTop = 0;
+                uiHelpers.scrollToBottom?.(true);
             } else {
                 uiHelpers.scrollToBottom?.(false);
             }
@@ -1072,7 +1072,7 @@ class ChatApp {
         if (options.notify !== false) {
             uiHelpers.showToast?.(
                 nextMode === 'mission'
-                    ? 'Mission mode is on. Long-form work will stay in this chat.'
+                    ? 'Mission is ready. Describe the outcome and Lilly will work through it here.'
                     : 'Traditional chat mode is on.',
                 'info',
             );
@@ -1488,20 +1488,21 @@ class ChatApp {
         }
         const runState = String(state.run?.state || '').trim().toLowerCase();
         this.missionMode.dataset.state = state.uiState || 'idle';
-        if (this.missionObjective) this.missionObjective.textContent = state.objective || 'Ready for a mission';
+        if (this.missionObjective) this.missionObjective.textContent = state.objective || 'Give Lilly a clear outcome';
         if (this.missionStateLabel) this.missionStateLabel.textContent = this.getMissionStateLabel(runState || state.uiState);
         if (this.missionPhaseLabel) this.missionPhaseLabel.textContent = state.phase || this.getMissionPhaseLabel(runState || state.uiState);
         if (this.missionPermissionLabel) this.missionPermissionLabel.textContent = state.permission || 'Approval before external changes';
-        if (this.missionStatusNote) this.missionStatusNote.textContent = state.statusNote || 'Mission status is available from the run timeline.';
+        if (this.missionStatusNote) this.missionStatusNote.textContent = state.statusNote
+            || 'Lilly will make a plan, keep working in this chat, ask before external changes, and return with evidence.';
         if (this.missionStageTitle) {
             this.missionStageTitle.textContent = state.run?.id
                 ? this.getMissionStateLabel(runState || state.uiState)
-                : (state.uiState === 'loading' ? 'Creating mission' : 'Ready to launch');
+                : (state.uiState === 'loading' ? 'Creating mission' : 'Ready to start');
         }
         if (this.missionStageDetail) {
             this.missionStageDetail.textContent = state.run?.id
                 ? (state.phase || 'Lilly is working through the mission.')
-                : 'Write the outcome in the composer below. Lilly will plan, work, and keep proof here.';
+                : 'Describe the outcome in the composer below.';
         }
         this.updateMissionElapsed();
 
