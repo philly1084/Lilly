@@ -279,6 +279,21 @@ describe('Lilly Mission Mode', () => {
     expect(context.uiHelpers.showToast).not.toHaveBeenCalled();
   });
 
+  test('starts a prepared mission when send is pressed in mission mode', async () => {
+    const context = loadMissionContext();
+    const app = Object.create(context.ChatApp.prototype);
+    app.messageInput = { value: 'Verify and ship the web chat mission flow' };
+    app.missionState = app.createMissionState({ active: true, templateId: 'custom' });
+    app.persistMissionState = jest.fn();
+    app.startMission = jest.fn(async () => true);
+
+    await app.sendMessage();
+
+    expect(app.missionState.objective).toBe('Verify and ship the web chat mission flow');
+    expect(app.missionState.starterPrompt).toBe('Verify and ship the web chat mission flow');
+    expect(app.startMission).toHaveBeenCalledTimes(1);
+  });
+
   test('stages artifact iteration/deploy with mission lineage and no success claim', () => {
     const context = loadMissionContext();
     context.window.artifactManager = { prepareArtifactUpdate: jest.fn() };

@@ -983,10 +983,24 @@ class ChatApp {
         this.executionModeSelect.title = missionIsRunning
             ? 'Mission mode stays selected while this run is active.'
             : 'Choose traditional chat or a long-form mission.';
-        this.executionModeSelect.closest?.('.execution-mode-control')?.classList.toggle(
-            'execution-mode-control--mission',
-            nextMode === 'mission',
-        );
+        const modeControl = this.executionModeSelect.closest?.('.execution-mode-control');
+        modeControl?.classList.toggle('execution-mode-control--mission', nextMode === 'mission');
+        if (modeControl?.dataset) {
+            modeControl.dataset.mode = nextMode;
+        }
+        const isPreparedMission = nextMode === 'mission' && !this.missionState?.run?.id;
+        if (this.messageInput) {
+            this.messageInput.placeholder = isPreparedMission
+                ? 'Describe the mission outcome...'
+                : 'Message Lilly...';
+        }
+        if (this.sendBtn) {
+            this.sendBtn.setAttribute(
+                'aria-label',
+                isPreparedMission ? 'Start mission' : 'Send message',
+            );
+            this.sendBtn.title = isPreparedMission ? 'Start mission' : 'Send message';
+        }
     }
 
     async setExecutionMode(mode = 'chat', options = {}) {
@@ -6876,6 +6890,8 @@ class ChatApp {
             this.missionState.objective = content;
             this.missionState.starterPrompt = this.missionState.starterPrompt || content;
             this.persistMissionState({ remote: false });
+            await this.startMission();
+            return;
         }
 
         const toolIntentOptions = this.buildMissionSendOptions(this.selectedDirectTool

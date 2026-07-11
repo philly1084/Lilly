@@ -12646,6 +12646,11 @@ body.mission-mode-active .mission-welcome-cue {
         align-items: stretch;
         flex-direction: column;
     }
+
+    .mission-mode__receipts .mission-receipt {
+        width: 100%;
+        flex: 0 0 auto;
+    }
 }
 
 @media (max-width: 520px) {
@@ -12759,15 +12764,16 @@ body.mission-mode-active .mission-welcome-cue {
 /* Traditional chat is the default; long-form Mission is an explicit composer choice. */
 .execution-mode-control {
     display: inline-flex;
-    min-height: 28px;
+    min-height: 32px;
     align-items: center;
-    gap: 4px;
-    padding: 0 7px;
+    gap: 6px;
+    padding: 3px 7px 3px 4px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 10px;
     background: color-mix(in srgb, var(--bg-tertiary) 86%, transparent);
     color: var(--text-tertiary);
-    transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+    box-shadow: 0 1px 2px color-mix(in srgb, #020617 18%, transparent);
+    transition: border-color 140ms ease, color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
 .execution-mode-control:hover,
@@ -12785,9 +12791,48 @@ body.mission-mode-active .mission-welcome-cue {
     border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
     background: color-mix(in srgb, var(--accent) 11%, var(--bg-tertiary));
     color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.execution-mode-control__glyph {
+    position: relative;
+    display: grid;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 7px;
+    background: color-mix(in srgb, currentColor 11%, transparent);
+}
+
+.execution-mode-control__icon {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.execution-mode-control__icon--mission,
+.execution-mode-control--mission .execution-mode-control__icon--chat {
+    opacity: 0;
+    transform: scale(0.72) rotate(-8deg);
+}
+
+.execution-mode-control--mission .execution-mode-control__icon--mission {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+}
+
+.execution-mode-control__chevron {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    opacity: 0.7;
 }
 
 #execution-mode-select {
+    appearance: none;
+    min-width: 3.3rem;
     border: 0;
     outline: 0;
     background: transparent;
