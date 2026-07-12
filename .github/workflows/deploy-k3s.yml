@@ -321,6 +321,52 @@ jobs:
               --ignore-not-found=true
           }
 
+          cleanup_stale_webchat_stream_hotfix_mount() {
+            if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # A legacy streaming repair also mounted an old Web Chat API client.
+            # That masks newly deployed frontend methods even when app.html and
+            # the backend image are current, so return both files to image truth.
+            kubectl patch deployment/backend -n "${KUBE_NAMESPACE}" \
+              --type=strategic \
+              -p='{
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [
+                        {
+                          "name": "backend",
+                          "volumeMounts": [
+                            {
+                              "name": "web-chat-stream-hotfix",
+                              "mountPath": "/app/frontend/shared/openai-sse.js",
+                              "$patch": "delete"
+                            },
+                            {
+                              "name": "web-chat-stream-hotfix",
+                              "mountPath": "/app/frontend/web-chat/js/api.js",
+                              "$patch": "delete"
+                            }
+                          ]
+                        }
+                      ],
+                      "volumes": [
+                        {
+                          "name": "web-chat-stream-hotfix",
+                          "$patch": "delete"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }' >/dev/null 2>&1 || true
+            kubectl delete configmap -n "${KUBE_NAMESPACE}" \
+              web-chat-stream-hotfix \
+              --ignore-not-found=true
+          }
+
           cleanup_stale_backend_config_hotfix_mount() {
             if ! kubectl get deployment backend -n "${KUBE_NAMESPACE}" >/dev/null 2>&1; then
               return 0
@@ -467,6 +513,7 @@ jobs:
           cleanup_stale_notes_index_hotfix_mount
           cleanup_stale_webchat_tts_manager_hotfix_mount
           cleanup_stale_webchat_state_refresh_hotfix_mount
+          cleanup_stale_webchat_stream_hotfix_mount
           
           # Apply production ingress for the Rancher/k3s domain
           kubectl apply -f k8s/rancher-ingress.yaml
