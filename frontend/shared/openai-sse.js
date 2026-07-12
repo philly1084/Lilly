@@ -95,10 +95,16 @@
     return [
       ...parseModelCapabilityEntries(model?.capabilities),
       ...parseModelCapabilityEntries(model?.supports),
+      ...parseModelCapabilityEntries(model?.capabilityMap),
+      ...parseModelCapabilityEntries(model?.capability_map),
       ...parseModelCapabilityEntries(model?.metadata?.capabilities),
       ...parseModelCapabilityEntries(model?.metadata?.supports),
+      ...parseModelCapabilityEntries(model?.metadata?.capabilityMap),
+      ...parseModelCapabilityEntries(model?.metadata?.capability_map),
       ...parseModelCapabilityEntries(model?.contract?.capabilities),
       ...parseModelCapabilityEntries(model?.contract?.supports),
+      ...parseModelCapabilityEntries(model?.contract?.capabilityMap),
+      ...parseModelCapabilityEntries(model?.contract?.capability_map),
     ]
       .map((capability) => String(capability || '').trim().toLowerCase())
       .filter(Boolean);
