@@ -62,9 +62,29 @@ jest.mock('../video/podcast-video-service', () => ({
   },
 }));
 
+jest.mock('../content-studio/store', () => ({
+  listBrandKits: jest.fn(),
+  getBrandKit: jest.fn(),
+  saveBrandKit: jest.fn(),
+  deleteBrandKit: jest.fn(),
+  getCampaign: jest.fn(),
+}));
+
+jest.mock('../content-studio/podcast-launch-kit-service', () => ({
+  podcastLaunchKitService: {
+    createPlan: jest.fn(),
+    revisePlan: jest.fn(),
+    approveAndRender: jest.fn(),
+    retryStage: jest.fn(),
+    regenerateAsset: jest.fn(),
+  },
+}));
+
 const { sessionStore } = require('../session-store');
 const { podcastService } = require('../podcast/podcast-service');
 const { podcastVideoService } = require('../video/podcast-video-service');
+const contentStudioStore = require('../content-studio/store');
+const { podcastLaunchKitService } = require('../content-studio/podcast-launch-kit-service');
 const podcastRouter = require('./podcast');
 
 describe('/api/podcast', () => {
@@ -100,6 +120,45 @@ describe('/api/podcast', () => {
         }),
       ],
     });
+  });
+
+  test('scopes content studio brand kits to the authenticated user', async () => {
+    contentStudioStore.listBrandKits.mockResolvedValue([{ id: 'brand-1', name: 'Signal Studio' }]);
+    const app = express();
+    app.use((req, _res, next) => {
+      req.user = { username: 'phill' };
+      next();
+    });
+    app.use('/api/podcast', podcastRouter);
+
+    const response = await request(app).get('/api/podcast/content-studio/brand-kits');
+
+    expect(response.status).toBe(200);
+    expect(contentStudioStore.listBrandKits).toHaveBeenCalledWith('phill');
+    expect(response.body.brandKits).toEqual([{ id: 'brand-1', name: 'Signal Studio' }]);
+  });
+
+  test('creates a plan before any launch-kit rendering', async () => {
+    podcastLaunchKitService.createPlan.mockResolvedValue({ id: 'campaign-1', status: 'planned', plan: { revision: 1 } });
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = { username: 'phill' };
+      next();
+    });
+    app.locals.toolManager = { executeTool: jest.fn() };
+    app.use('/api/podcast', podcastRouter);
+
+    const response = await request(app)
+      .post('/api/podcast/content-studio/launch-kits/plan')
+      .send({ brief: { topic: 'Grid batteries' }, episodeFormat: 'single-host' });
+
+    expect(response.status).toBe(201);
+    expect(podcastLaunchKitService.createPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ brief: { topic: 'Grid batteries' } }),
+      expect.objectContaining({ ownerId: 'phill', sessionId: 'session-1' }),
+    );
+    expect(podcastLaunchKitService.approveAndRender).not.toHaveBeenCalled();
   });
 
   test('generates a podcast with a resolved session', async () => {

@@ -12875,17 +12875,161 @@ curl -fsSIL --max-time 20 "https://$host"`;
             uiHelpers.showToast('Please describe the podcast topic or content request', 'warning');
             return;
         }
+        if (!sessionManager.currentSessionId) {
+            await this.createNewSession();
+        }
+        uiHelpers.setImageGenerateButtonState(true);
+        uiHelpers.showToast('Researching and drafting the production plan…', 'info', 'Content Studio');
+        try {
+            const result = await apiClient.planPodcastLaunchKit({
+                ...options,
+                sessionId: sessionManager.currentSessionId,
+                model: uiHelpers.currentModel,
+                reasoningEffort: uiHelpers.currentReasoningEffort,
+                metadata: { clientSurface: 'web-chat-content-studio' },
+            });
+            if (result.sessionId) {
+                sessionManager.currentSessionId = result.sessionId;
+                apiClient.setSessionId(result.sessionId);
+            }
+            uiHelpers.renderPodcastLaunchKitReview(result.campaign);
+            uiHelpers.showToast('Production plan ready for review', 'success', 'Content Studio');
+        } catch (error) {
+            console.error('[ContentStudio] Planning failed:', error);
+            uiHelpers.showToast(error.message || 'Could not create the launch-kit plan', 'error', 'Content Studio');
+        } finally {
+            uiHelpers.setImageGenerateButtonState(false);
+        }
+    }
 
-        uiHelpers.closeImageModal();
-        const productionType = options.metadata?.podcastOptions?.productionType === 'video-podcast'
-            ? 'video podcast'
-            : 'podcast';
-        const prefix = /^(make|create|generate|produce)\b/i.test(options.prompt)
-            ? ''
-            : `Create a ${productionType} about `;
-        await this.sendPreparedMessage(`${prefix}${options.prompt}`.trim(), {
-            metadata: options.metadata,
-        });
+    async savePodcastLaunchKitPlan() {
+        const campaign = uiHelpers.contentStudioState.currentCampaign;
+        const textarea = document.getElementById('content-studio-plan-json');
+        if (!campaign?.id || !textarea) return false;
+        try {
+            const plan = JSON.parse(textarea.value);
+            document.querySelectorAll('[data-content-studio-clip-approved]').forEach((checkbox) => {
+                const index = Number(checkbox.dataset.contentStudioClipApproved);
+                if (plan.promoClips?.[index]) plan.promoClips[index].approved = checkbox.checked;
+            });
+            const result = await apiClient.revisePodcastLaunchKit(campaign.id, plan);
+            uiHelpers.renderPodcastLaunchKitReview(result.campaign);
+            uiHelpers.showToast('Production plan updated', 'success', 'Content Studio');
+            return true;
+        } catch (error) {
+            const message = error instanceof SyntaxError ? 'The production plan JSON is not valid.' : (error.message || 'Could not update the plan');
+            uiHelpers.showToast(message, 'error', 'Content Studio');
+            return false;
+        }
+    }
+
+    async approvePodcastLaunchKit() {
+        let campaign = uiHelpers.contentStudioState.currentCampaign;
+        if (!campaign?.id) return;
+        const textarea = document.getElementById('content-studio-plan-json');
+        if (textarea) {
+            const saved = await this.savePodcastLaunchKitPlan();
+            if (!saved) return;
+            campaign = uiHelpers.contentStudioState.currentCampaign;
+        }
+        uiHelpers.setContentStudioStep('produce');
+        uiHelpers.setImageGenerateButtonState(true);
+        uiHelpers.showToast('Producing audio, cover art, video, clips, and package…', 'info', 'Content Studio');
+        try {
+            const result = await apiClient.renderPodcastLaunchKit(campaign.id, campaign.plan.revision, {
+                model: uiHelpers.currentModel,
+                reasoningEffort: uiHelpers.currentReasoningEffort,
+            });
+            uiHelpers.contentStudioState.currentCampaign = result.campaign;
+            uiHelpers.closeImageModal();
+            await this.addPodcastLaunchKitMessage(result.campaign);
+            uiHelpers.showToast('Podcast launch kit is ready', 'success', 'Content Studio');
+        } catch (error) {
+            console.error('[ContentStudio] Production failed:', error);
+            uiHelpers.showToast(error.message || 'Production stopped. Retry the failed stage from the campaign workspace.', 'error', 'Content Studio');
+            try {
+                const refreshed = await apiClient.requestContentStudio(`/campaigns/${encodeURIComponent(campaign.id)}`);
+                if (refreshed.campaign) {
+                    uiHelpers.closeImageModal();
+                    await this.addPodcastLaunchKitMessage(refreshed.campaign);
+                }
+            } catch (_refreshError) {
+                uiHelpers.setContentStudioStep('review');
+            }
+        } finally {
+            uiHelpers.setImageGenerateButtonState(false);
+        }
+    }
+
+    async addPodcastLaunchKitMessage(campaign) {
+        const sessionId = sessionManager.currentSessionId || campaign.sessionId;
+        const render = campaign.render || {};
+        const campaignArtifacts = [
+            ...(render.podcast?.artifacts || []),
+            render.coverArt,
+            render.fullVideo?.artifact,
+            ...(render.promoClips || []).map((clip) => clip.artifact),
+            render.package,
+        ].filter((artifact) => artifact?.id);
+        campaignArtifacts.forEach((artifact) => window.fileManager?.addFile?.(artifact, { sessionId }));
+        const message = {
+            id: `content-studio-${campaign.id}`,
+            role: 'assistant',
+            type: 'content-studio-campaign',
+            content: `Podcast launch kit: ${campaign.plan?.title || 'Campaign'}`,
+            campaign,
+            metadata: { contentStudio: true, campaignId: campaign.id, campaign },
+            timestamp: new Date().toISOString(),
+        };
+        const saved = sessionManager.addMessage(sessionId, message);
+        this.renderOrReplaceMessage(saved);
+        void sessionManager.syncMessageToBackend(sessionId, saved);
+        uiHelpers.hideWelcomeMessage();
+        uiHelpers.scrollToBottom();
+    }
+
+    async retryPodcastLaunchKitStage(campaignId, stage) {
+        uiHelpers.showToast(`Retrying ${stage.replace(/([A-Z])/g, ' $1')}…`, 'info', 'Content Studio');
+        try {
+            const result = await apiClient.retryPodcastLaunchKitStage(campaignId, stage);
+            await this.addPodcastLaunchKitMessage(result.campaign);
+            uiHelpers.showToast('Campaign stage completed', 'success', 'Content Studio');
+        } catch (error) {
+            uiHelpers.showToast(error.message || 'Campaign stage retry failed', 'error', 'Content Studio');
+        }
+    }
+
+    async regeneratePodcastLaunchKitAsset(campaignId, assetType, index = '') {
+        uiHelpers.showToast('Regenerating selected asset…', 'info', 'Content Studio');
+        try {
+            const result = await apiClient.regeneratePodcastLaunchKitAsset(campaignId, assetType, index);
+            await this.addPodcastLaunchKitMessage(result.campaign);
+            uiHelpers.showToast('Asset regenerated and package refreshed', 'success', 'Content Studio');
+        } catch (error) {
+            uiHelpers.showToast(error.message || 'Asset regeneration failed', 'error', 'Content Studio');
+        }
+    }
+
+    reusePodcastLaunchKitAsset(campaignId, artifactId, label) {
+        const input = this.messageInput || document.getElementById('message-input');
+        if (!input) return;
+        const file = window.fileManager?.files?.find?.((entry) => entry.id === artifactId);
+        if (file) {
+            file.selected = true;
+            window.fileManager.updateSelectionInfo?.();
+            if (window.fileManager.isOpen) window.fileManager.renderFiles?.();
+        }
+        input.value = `Using ${label} (${artifactId}) from podcast launch kit ${campaignId}, `;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+    }
+
+    reusePodcastLaunchKit(campaignId) {
+        const input = this.messageInput || document.getElementById('message-input');
+        if (!input) return;
+        input.value = `Using podcast launch kit ${campaignId}, `;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
     }
 
     async generateImage(optionsOverride = null) {

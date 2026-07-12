@@ -2042,4 +2042,35 @@ describe('PodcastService', () => {
     expect(ttsService.synthesize).toHaveBeenCalled();
   });
 
+  test('renders an approved launch-kit script without regenerating or researching it', async () => {
+    const service = new PodcastService();
+    const executeTool = jest.fn();
+    const approvedScript = {
+      title: 'Approved Episode',
+      summary: 'The reviewed summary.',
+      turns: [
+        { speaker: 'Maya', text: 'This wording was reviewed and must remain exact.' },
+        { speaker: 'Maya', text: 'This is the approved call to action.' },
+      ],
+    };
+
+    const result = await service.createPodcast({
+      topic: 'Approved topic',
+      hostCount: 1,
+      hostAName: 'Maya',
+      hostAVoiceId: 'af_heart',
+      approvedScript,
+      approvedSources: [{ title: 'Reviewed source', url: 'https://example.com/reviewed', content: 'Verified.' }],
+    }, {
+      sessionId: 'session-1',
+      clientSurface: 'web-chat-content-studio',
+      toolManager: { executeTool },
+    });
+
+    expect(createResponse).not.toHaveBeenCalled();
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(result.script.turns).toEqual(approvedScript.turns);
+    expect(result.sources).toEqual([expect.objectContaining({ url: 'https://example.com/reviewed' })]);
+  });
+
 });

@@ -1945,49 +1945,76 @@ class PodcastService {
         topic: normalizedTopic,
       }),
     ];
-    const sources = await this.runPodcastStage('research', () => this.researchTopic({
-      topic: normalizedTopic,
-      searchDomains: params.searchDomains || params.domains || [],
-      sourceUrls: params.sourceUrls || params.urls || [],
-      sourceDocuments,
-      useOnlineResearch: shouldUseOnlineResearch(params, sourceDocuments),
-      maxSources,
-      concurrency: podcastResearchConcurrency,
-    }, {
-      executeTool,
-      toolContext: context,
-    }), {
-      sessionId,
-      topic: normalizedTopic,
-      researchConcurrency: podcastResearchConcurrency,
-      sourceCount: sourceDocuments.length,
-    });
+    const approvedSources = Array.isArray(params.approvedSources)
+      ? normalizePodcastSourceDocuments(params.approvedSources)
+      : [];
+    const sources = approvedSources.length > 0
+      ? approvedSources
+      : await this.runPodcastStage('research', () => this.researchTopic({
+        topic: normalizedTopic,
+        searchDomains: params.searchDomains || params.domains || [],
+        sourceUrls: params.sourceUrls || params.urls || [],
+        sourceDocuments,
+        useOnlineResearch: shouldUseOnlineResearch(params, sourceDocuments),
+        maxSources,
+        concurrency: podcastResearchConcurrency,
+      }, {
+        executeTool,
+        toolContext: context,
+      }), {
+        sessionId,
+        topic: normalizedTopic,
+        researchConcurrency: podcastResearchConcurrency,
+        sourceCount: sourceDocuments.length,
+      });
 
-    const script = await this.runPodcastStage('script-generation', () => this.generateScript({
-      topic: normalizedTopic,
-      requestBrief,
-      audience,
-      tone,
-      detailLevel,
-      scriptDesign,
-      scriptDesignExample,
-      durationMinutes,
-      hosts,
-      sources,
-      models: resolvePodcastScriptModelCandidates(params, context),
-      reasoningEffort: params.reasoningEffort || context.reasoningEffort || undefined,
-      requestTimeoutMs: podcastScriptRequestTimeoutMs,
-      videoFormat: params.includeVideo === true,
-      systemPrompt: params.systemPrompt || params.additionalSystemPrompt || params.customSystemPrompt || '',
-    }), {
-      sessionId,
-      topic: normalizedTopic,
-      durationMinutes,
-      includeVideo: params.includeVideo === true,
-      sourceCount: sources.length,
-      hostCount: hosts.length,
-      model: resolvePodcastScriptModelCandidates(params, context)[0] || '',
-    });
+    const approvedScript = params.approvedScript && typeof params.approvedScript === 'object'
+      ? params.approvedScript
+      : null;
+    const approvedTurns = (Array.isArray(approvedScript?.turns) ? approvedScript.turns : [])
+      .map((turn) => ({
+        speaker: sanitizePodcastText(turn?.speaker || ''),
+        text: sanitizePodcastText(turn?.text || '', { preserveNewlines: true }),
+      }))
+      .filter((turn) => turn.speaker && turn.text);
+    const knownHostNames = new Set(hosts.map((host) => host.name));
+    if (approvedScript && (approvedTurns.length === 0 || approvedTurns.some((turn) => !knownHostNames.has(turn.speaker)))) {
+      const error = new Error('The approved podcast script must contain valid turns assigned to the selected hosts.');
+      error.statusCode = 400;
+      error.code = 'approved_podcast_script_invalid';
+      throw error;
+    }
+    const script = approvedScript
+      ? {
+        title: sanitizePodcastText(approvedScript.title || params.title || `${normalizedTopic} Podcast`),
+        summary: sanitizePodcastText(approvedScript.summary || ''),
+        turns: approvedTurns,
+      }
+      : await this.runPodcastStage('script-generation', () => this.generateScript({
+        topic: normalizedTopic,
+        requestBrief,
+        audience,
+        tone,
+        detailLevel,
+        scriptDesign,
+        scriptDesignExample,
+        durationMinutes,
+        hosts,
+        sources,
+        models: resolvePodcastScriptModelCandidates(params, context),
+        reasoningEffort: params.reasoningEffort || context.reasoningEffort || undefined,
+        requestTimeoutMs: podcastScriptRequestTimeoutMs,
+        videoFormat: params.includeVideo === true,
+        systemPrompt: params.systemPrompt || params.additionalSystemPrompt || params.customSystemPrompt || '',
+      }), {
+        sessionId,
+        topic: normalizedTopic,
+        durationMinutes,
+        includeVideo: params.includeVideo === true,
+        sourceCount: sources.length,
+        hostCount: hosts.length,
+        model: resolvePodcastScriptModelCandidates(params, context)[0] || '',
+      });
     const turnVoicePlan = resolveTurnVoicePlan(script.turns, hosts, {
       cycleHostVoices: params.cycleHostVoices === true,
     });
