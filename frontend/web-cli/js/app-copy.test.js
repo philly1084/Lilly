@@ -134,6 +134,36 @@ describe('web-cli file manager modal', () => {
         expect(document.getElementById('file-manager-modal')).toBeNull();
         expect(document.activeElement).toBe(filesButton);
     });
+
+    test('renders file rows as keyboard-operable download targets', () => {
+        const { app, document } = createCopyHarness();
+        app.sessionFiles = [{
+            id: 7,
+            filename: 'launch brief <draft>.md',
+            type: 'document',
+            size: 2048,
+            content: '# Launch',
+            mimeType: 'text/markdown',
+            createdAt: new Date().toISOString(),
+        }];
+        app.downloadFileById = jest.fn();
+
+        app.renderFileManager();
+
+        const row = document.querySelector('.file-item');
+        const button = document.querySelector('.file-download-btn');
+        expect(row.getAttribute('role')).toBe('button');
+        expect(row.getAttribute('tabindex')).toBe('0');
+        expect(row.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
+        expect(row.querySelector('.file-name').innerHTML).toBe('launch brief &lt;draft&gt;.md');
+        expect(button.getAttribute('aria-label')).toBe('Download launch brief <draft>.md');
+
+        const preventDefault = jest.fn();
+        app.handleFileManagerFileKey({ key: ' ', preventDefault }, '7');
+
+        expect(preventDefault).toHaveBeenCalled();
+        expect(app.downloadFileById).toHaveBeenCalledWith('7');
+    });
 });
 
 describe('web-cli shortcuts modal', () => {

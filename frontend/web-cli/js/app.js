@@ -10549,14 +10549,21 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
                 <div class="file-manager-body">
                     ${!hasFiles ?
                         '<div class="file-manager-empty">No files yet. Generate files with /diagram, /image, or ask the AI.</div>' :
-                        this.sessionFiles.map(f => `
-                            <div class="file-item" onclick="app.downloadFileById('${f.id}')">
+                        this.sessionFiles.map(f => {
+                            const fileId = this.escapeHtmlAttr(String(f.id));
+                            const filename = this.escapeHtml(f.filename);
+                            const filenameAttr = this.escapeHtmlAttr(f.filename);
+                            const fileType = this.escapeHtml(f.type);
+                            const fileSize = this.escapeHtml(this.formatFileSize(f.size));
+                            return `
+                            <div class="file-item" role="button" tabindex="0" onclick="app.downloadFileById('${fileId}')" onkeydown="app.handleFileManagerFileKey(event, '${fileId}')" aria-label="Download ${filenameAttr}">
                                 <span class="file-icon">${this.getFileIcon(f.filename)}</span>
-                                <span class="file-name">${f.filename}</span>
-                                <span class="file-meta">${this.formatFileSize(f.size)} | ${f.type}</span>
-                                <button class="file-download-btn" onclick="event.stopPropagation(); app.downloadFileById('${f.id}')">Download</button>
+                                <span class="file-name">${filename}</span>
+                                <span class="file-meta">${fileSize} | ${fileType}</span>
+                                <button class="file-download-btn" type="button" onclick="event.stopPropagation(); app.downloadFileById('${fileId}')" aria-label="Download ${filenameAttr}">Download</button>
                             </div>
-                        `).join('')
+                        `;
+                        }).join('')
                     }
                 </div>
                 <div class="file-manager-footer">
@@ -10574,6 +10581,15 @@ ${pdfFile ? `**Downloaded:** ${pdfFilename}\n` : ''}**File IDs:** #${file.id}${p
         
         document.body.appendChild(modal);
         modal.querySelector('.file-manager-close')?.focus();
+    }
+
+    handleFileManagerFileKey(event, id) {
+        if (!event || (event.key !== 'Enter' && event.key !== ' ')) {
+            return;
+        }
+
+        event.preventDefault();
+        this.downloadFileById(id);
     }
     
     /**
