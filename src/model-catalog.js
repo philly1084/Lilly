@@ -55,6 +55,27 @@ const NON_CHAT_CAPABILITIES = new Set([
     'realtime',
 ]);
 
+const DOCUMENTED_REASONING_EFFORTS_BY_MODEL = Object.freeze({
+    'gpt-5.4': ['low', 'medium', 'high', 'xhigh'],
+    'gpt-5.4-pro': ['medium', 'high', 'xhigh'],
+});
+
+function inferModelReasoningEfforts(model = {}) {
+    const raw = model?.reasoningEfforts
+        || model?.reasoning_efforts
+        || model?.metadata?.reasoningEfforts
+        || model?.metadata?.reasoning_efforts
+        || model?.contract?.reasoningEfforts
+        || model?.contract?.reasoning_efforts
+        || DOCUMENTED_REASONING_EFFORTS_BY_MODEL[normalizeModelId(model?.id).toLowerCase()]
+        || [];
+    return [...new Set(
+        parseCapabilityEntries(raw)
+            .map((entry) => String(entry || '').trim().toLowerCase())
+            .filter((entry) => ['low', 'medium', 'high', 'xhigh'].includes(entry)),
+    )];
+}
+
 function normalizeCapabilities(model = {}) {
     return getCapabilityEntries(model)
         .map((entry) => normalizeCapabilityName(entry))
@@ -236,6 +257,7 @@ function buildModelContract(model = {}, options = {}) {
         id,
         provider,
         capabilities,
+        reasoningEfforts: inferModelReasoningEfforts(typeof model === 'string' ? { id } : model),
         supports: {
             chat: capabilitySet.has('chat'),
             responses: officialOpenAI && capabilitySet.has('responses'),
@@ -313,6 +335,7 @@ function toPublicModelRecord(model = {}) {
         created: model.created || Math.floor(Date.now() / 1000),
         owned_by: model.owned_by || 'unknown',
         capabilities: contract.capabilities,
+        ...(contract.reasoningEfforts.length > 0 ? { reasoning_efforts: contract.reasoningEfforts } : {}),
         contract,
     };
 }
@@ -345,6 +368,7 @@ module.exports = {
     NON_CHAT_MODEL_TOKENS,
     buildModelContract,
     inferModelCapabilities,
+    inferModelReasoningEfforts,
     modelSatisfiesCapabilities,
     requiredCapabilitiesForRequest,
     selectAutoModel,

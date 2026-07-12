@@ -61,16 +61,7 @@ function resolveDeclaredReasoningEfforts(payload = {}) {
 
 function modelSupportsXhighReasoning(model = '', payload = {}) {
     const declared = resolveDeclaredReasoningEfforts(payload);
-    if (declared.length > 0) {
-        return declared.includes('xhigh');
-    }
-
-    const normalizedModel = String(model || '').trim().toLowerCase();
-    if (/codex/.test(normalizedModel)) {
-        return true;
-    }
-    const version = normalizedModel.match(/^gpt-5\.(\d+)/);
-    return Boolean(version && Number(version[1]) >= 2);
+    return declared.includes('xhigh');
 }
 
 function buildReasoningPolicyExplanation(reasonCodes = [], band = '') {

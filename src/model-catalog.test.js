@@ -90,6 +90,32 @@ describe('model-catalog', () => {
         ]);
     });
 
+    test('publishes explicit reasoning-effort capability metadata for documented models', () => {
+        const models = toPublicChatModelList([
+            { id: 'gpt-5.4', owned_by: 'openai' },
+            { id: 'gpt-5.4-pro', owned_by: 'openai' },
+            { id: 'custom-reasoner', owned_by: 'gateway', reasoning_efforts: ['low', 'high'] },
+            { id: 'unknown-reasoner', owned_by: 'gateway' },
+        ]);
+
+        expect(models).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: 'gpt-5.4',
+                reasoning_efforts: ['low', 'medium', 'high', 'xhigh'],
+                contract: expect.objectContaining({ reasoningEfforts: ['low', 'medium', 'high', 'xhigh'] }),
+            }),
+            expect.objectContaining({
+                id: 'gpt-5.4-pro',
+                reasoning_efforts: ['medium', 'high', 'xhigh'],
+            }),
+            expect.objectContaining({
+                id: 'custom-reasoner',
+                reasoning_efforts: ['low', 'high'],
+            }),
+        ]));
+        expect(models.find((model) => model.id === 'unknown-reasoner')).not.toHaveProperty('reasoning_efforts');
+    });
+
     test('treats additive gateway capabilities as chat-capable for model contracts', () => {
         const contract = buildModelContract({
             id: 'gpt-5.5-tools',

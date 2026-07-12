@@ -250,6 +250,30 @@ describe('request-decision-frame', () => {
         }));
     });
 
+    test('uses XHigh for extended Auto work only when capability metadata declares support', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Build and deploy this complex multi-step application, then verify the public endpoint.',
+            clientSurface: 'web-chat',
+            model: 'gpt-5.4',
+            metadata: {
+                reasoningPolicy: { mode: 'auto' },
+                modelCapabilities: { reasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+            },
+            payload: {
+                metadata: {
+                    reasoningPolicy: { mode: 'auto' },
+                    modelCapabilities: { reasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+                },
+            },
+        });
+
+        expect(frame.complexity.band).toBe('extended');
+        expect(frame.reasoningPolicy).toEqual(expect.objectContaining({
+            effectiveEffort: 'xhigh',
+            capabilityLimited: false,
+        }));
+    });
+
     test('lets a fixed effort override Auto and leaves non-Web-Chat defaults unchanged', () => {
         const manualFrame = buildRequestDecisionFrame({
             text: 'Research and verify this thoroughly.',

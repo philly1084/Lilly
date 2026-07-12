@@ -180,6 +180,26 @@ describe('web-chat stream stability', () => {
         expect(source).toContain("reasoningDisplaySource: 'stream'");
     });
 
+    test('adds Auto or fixed policy plus selected-model capability metadata to every request', () => {
+        const context = loadChatAppContext();
+        context.uiHelpers.getCurrentModelCapabilities = () => ({
+            reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+        });
+        const app = Object.create(context.ChatApp.prototype);
+
+        const autoMetadata = app.applyReasoningPolicyMetadata({}, '');
+        const fixedMetadata = app.applyReasoningPolicyMetadata({}, 'medium');
+
+        expect(autoMetadata).toEqual({
+            reasoningPolicy: { mode: 'auto' },
+            modelCapabilities: { reasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+        });
+        expect(fixedMetadata).toEqual({
+            reasoningPolicy: { mode: 'manual', requestedEffort: 'medium' },
+            modelCapabilities: { reasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+        });
+    });
+
     test('keeps Mission mode authoritative instead of rendering a duplicate goal card', () => {
         const app = Object.create(loadChatAppPrototype());
         app.currentStreamingMessageId = 'assistant-1';

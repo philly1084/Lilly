@@ -7335,6 +7335,22 @@ class UIHelpers {
         return this.normalizeReasoningEffort(this.currentReasoningEffort);
     }
 
+    getCurrentModelCapabilities() {
+        const selectedModel = (Array.isArray(this.availableModels) ? this.availableModels : [])
+            .find((model) => String(model?.id || '').trim() === String(this.currentModel || '').trim());
+        const rawEfforts = selectedModel?.reasoning_efforts
+            || selectedModel?.reasoningEfforts
+            || selectedModel?.contract?.reasoningEfforts
+            || selectedModel?.contract?.reasoning_efforts
+            || [];
+        const reasoningEfforts = [...new Set(
+            (Array.isArray(rawEfforts) ? rawEfforts : [rawEfforts])
+                .map((effort) => this.normalizeReasoningEffort(effort))
+                .filter(Boolean),
+        )];
+        return reasoningEfforts.length > 0 ? { reasoningEfforts } : null;
+    }
+
     isRemoteBuildAutonomyApproved() {
         return this.remoteBuildAutonomyApproved === true;
     }

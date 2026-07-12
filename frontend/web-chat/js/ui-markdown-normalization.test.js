@@ -162,6 +162,22 @@ describe('web-chat markdown normalization', () => {
         expect(html).toContain('Auto → Model default');
     });
 
+    test('reads reasoning efforts only from the selected model capability contract', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        helper.currentModel = 'gpt-5.4';
+        helper.availableModels = [{
+            id: 'gpt-5.4',
+            contract: { reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'unsupported'] },
+        }];
+
+        expect(helper.getCurrentModelCapabilities()).toEqual({
+            reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+        });
+
+        helper.currentModel = 'unknown-model';
+        expect(helper.getCurrentModelCapabilities()).toBeNull();
+    });
+
     test('renders message speech buttons for delegated click handling', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         helper.getMessageSpeechControlState = () => ({

@@ -6893,6 +6893,26 @@ class ChatApp {
     // Message Handling
     // ============================================
 
+    applyReasoningPolicyMetadata(metadata = {}, reasoningEffort = '') {
+        const target = metadata && typeof metadata === 'object' ? metadata : {};
+        const normalizedEffort = String(reasoningEffort || '').trim().toLowerCase();
+        target.reasoningPolicy = normalizedEffort
+            ? {
+                ...(target.reasoningPolicy || {}),
+                mode: 'manual',
+                requestedEffort: normalizedEffort,
+            }
+            : {
+                ...(target.reasoningPolicy || {}),
+                mode: 'auto',
+            };
+        const modelCapabilities = uiHelpers.getCurrentModelCapabilities?.();
+        if (!target.modelCapabilities && modelCapabilities?.reasoningEfforts?.length > 0) {
+            target.modelCapabilities = modelCapabilities;
+        }
+        return target;
+    }
+
     async sendMessage() {
         const content = this.messageInput.value.trim();
         
@@ -7074,16 +7094,7 @@ class ChatApp {
         // Get current model
         const model = uiHelpers.getCurrentModel();
         const reasoningEffort = uiHelpers.getCurrentReasoningEffort();
-        requestMetadata.reasoningPolicy = reasoningEffort
-            ? {
-                ...(requestMetadata.reasoningPolicy || {}),
-                mode: 'manual',
-                requestedEffort: reasoningEffort,
-            }
-            : {
-                ...(requestMetadata.reasoningPolicy || {}),
-                mode: 'auto',
-            };
+        this.applyReasoningPolicyMetadata(requestMetadata, reasoningEffort);
 
         // Create placeholder for assistant response
         const assistantMessage = {
@@ -12754,13 +12765,13 @@ curl -fsSIL --max-time 20 "https://$host"`;
                 this.currentAbortController.signal,
                 reasoningEffort,
                 {
-                    metadata: {
+                    metadata: this.applyReasoningPolicyMetadata({
                         foregroundRequestId: storedAssistantMessage.id,
                         messageId: userMessage.id,
                         assistantMessageId: storedAssistantMessage.id,
                         userMessageTimestamp: userMessage.timestamp,
                         assistantMessageTimestamp: storedAssistantMessage.timestamp,
-                    },
+                    }, reasoningEffort),
                     shouldResyncAfterDisconnect: (error, context) => this.shouldResyncAfterDisconnect(error, context),
                 },
             )) {
