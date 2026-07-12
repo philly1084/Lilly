@@ -391,6 +391,39 @@ describe('web-cli tool form rendering', () => {
     });
 });
 
+describe('web-cli agent companion dialog focus', () => {
+    test('returns focus to the invoking control when the dialog closes', () => {
+        const dom = new JSDOM(`
+            <button id="opener" type="button">Open companion</button>
+            <aside id="voxelDock" class="hidden"></aside>
+            <input id="voxelPetPrompt">
+        `, { pretendToBeVisual: true });
+        const { document } = dom.window;
+        const { CodeCLIApp } = loadWebCliToolFormHelpers({
+            document,
+            window: dom.window,
+        });
+        const app = Object.create(CodeCLIApp.prototype);
+        app.voxelDock = document.getElementById('voxelDock');
+        app.voxelPetPrompt = document.getElementById('voxelPetPrompt');
+        app.setVoxelPetHidden = jest.fn();
+        app.renderVoxelPet = jest.fn();
+        app.roamVoxelPet = jest.fn();
+        app.printSystem = jest.fn();
+        const opener = document.getElementById('opener');
+        opener.focus();
+
+        app.focusVoxelCreator({ silent: true });
+        expect(app.voxelCreatorReturnFocus).toBe(opener);
+        expect(app.voxelDock.classList.contains('hidden')).toBe(false);
+
+        app.closeVoxelCreator();
+        expect(document.activeElement).toBe(opener);
+        expect(app.voxelCreatorReturnFocus).toBeNull();
+        expect(app.voxelDock.classList.contains('hidden')).toBe(true);
+    });
+});
+
 describe('web-cli sandbox command routing', () => {
     test('routes prompt-only project sandbox requests through document-workflow generation', async () => {
         const api = {

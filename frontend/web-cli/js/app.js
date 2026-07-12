@@ -3629,7 +3629,12 @@ class CodeCLIApp {
     }
 
     closeVoxelCreator() {
+        const wasOpen = this.voxelDock && !this.voxelDock.classList.contains('hidden');
         this.voxelDock?.classList.add('hidden');
+        if (wasOpen && this.voxelCreatorReturnFocus?.isConnected) {
+            this.voxelCreatorReturnFocus.focus({ preventScroll: true });
+        }
+        this.voxelCreatorReturnFocus = null;
     }
 
     getVoxelRoamPlacement(action = 'scout') {
@@ -4859,6 +4864,14 @@ class CodeCLIApp {
     }
 
     focusVoxelCreator(options = {}) {
+        if (this.voxelDock?.classList.contains('hidden')) {
+            const activeElement = document.activeElement;
+            this.voxelCreatorReturnFocus = activeElement
+                && activeElement !== document.body
+                && typeof activeElement.focus === 'function'
+                ? activeElement
+                : null;
+        }
         this.setVoxelPetHidden(false);
         this.voxelDock?.classList.remove('hidden');
         this.renderVoxelPet('scout');
