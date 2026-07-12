@@ -356,8 +356,9 @@ function extractResponseContentText(content, depth = 0) {
 }
 
 function extractResponseText(response) {
-    if (typeof response?.output_text === 'string' && response.output_text.trim()) {
-        return stripNullCharacters(response.output_text).trim();
+    const directOutputText = response?.output_text ?? response?.outputText;
+    if (typeof directOutputText === 'string' && directOutputText.trim()) {
+        return stripNullCharacters(directOutputText).trim();
     }
 
     const choiceMessage = response?.choices?.[0]?.message || null;
@@ -368,6 +369,7 @@ function extractResponseText(response) {
             ?? choiceMessage.items
             ?? choiceMessage.text
             ?? choiceMessage.output_text
+            ?? choiceMessage.outputText
             ?? choiceMessage.reasoning_content
             ?? choiceMessage.reasoning
             ?? ''
@@ -411,7 +413,9 @@ function extractResponseText(response) {
 
     return output
         .filter((item) => item?.type === 'message' || item?.role === 'assistant')
-        .map((item) => extractResponseContentText(item?.content ?? item?.text ?? item?.output_text ?? ''))
+        .map((item) => extractResponseContentText(
+            item?.content ?? item?.text ?? item?.output_text ?? item?.outputText ?? ''
+        ))
         .filter(Boolean)
         .join('\n')
         .replace(/\u0000/g, '')
@@ -447,6 +451,7 @@ function extractRawResponseContentText(content, depth = 0) {
     const directText = [
         content.text,
         content.output_text,
+        content.outputText,
         content.content,
         content.message,
         content.reasoning_content,
@@ -476,8 +481,9 @@ function extractRawResponseContentText(content, depth = 0) {
 }
 
 function extractRawResponseText(response) {
-    if (typeof response?.output_text === 'string' && response.output_text.trim()) {
-        return stripNullCharacters(response.output_text).trim();
+    const directOutputText = response?.output_text ?? response?.outputText;
+    if (typeof directOutputText === 'string' && directOutputText.trim()) {
+        return stripNullCharacters(directOutputText).trim();
     }
 
     const choiceMessage = response?.choices?.[0]?.message || null;
@@ -488,6 +494,7 @@ function extractRawResponseText(response) {
             ?? choiceMessage.items
             ?? choiceMessage.text
             ?? choiceMessage.output_text
+            ?? choiceMessage.outputText
             ?? ''
         ).trim();
         if (choiceText) {
@@ -523,7 +530,9 @@ function extractRawResponseText(response) {
     const output = Array.isArray(response?.output) ? response.output : [];
     return output
         .filter((item) => item?.type === 'message' || item?.role === 'assistant')
-        .map((item) => extractRawResponseContentText(item?.content ?? item?.text ?? item?.output_text ?? ''))
+        .map((item) => extractRawResponseContentText(
+            item?.content ?? item?.text ?? item?.output_text ?? item?.outputText ?? ''
+        ))
         .filter(Boolean)
         .join('\n')
         .replace(/\u0000/g, '')

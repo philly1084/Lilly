@@ -391,6 +391,10 @@ describe('ArtifactService', () => {
         })).toBe('Top-level answer');
 
         expect(extractResponseText({
+            outputText: 'Camel-case top-level answer',
+        })).toBe('Camel-case top-level answer');
+
+        expect(extractResponseText({
             output: [
                 {
                     type: 'message',
@@ -410,6 +414,21 @@ describe('ArtifactService', () => {
                 },
             }],
         })).toBe('Gemini parts answer');
+
+        expect(extractResponseText({
+            choices: [{
+                message: {
+                    outputText: 'Camel-case message answer',
+                },
+            }],
+        })).toBe('Camel-case message answer');
+
+        expect(extractResponseText({
+            output: [{
+                type: 'message',
+                outputText: 'Camel-case output item answer',
+            }],
+        })).toBe('Camel-case output item answer');
 
         expect(extractResponseText({
             candidates: [{
