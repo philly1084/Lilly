@@ -56,6 +56,21 @@ describe('web-cli copy helpers', () => {
         expect(document.querySelector('textarea')).toBeNull();
     });
 
+    test('falls back when the Clipboard API rejects access', async () => {
+        const writeText = jest.fn().mockRejectedValue(new Error('NotAllowedError'));
+        const execCommand = jest.fn().mockReturnValue(true);
+        const { app, document } = createCopyHarness({
+            navigator: { clipboard: { writeText } },
+        });
+        document.execCommand = execCommand;
+
+        await app.writeClipboardText('permission fallback');
+
+        expect(writeText).toHaveBeenCalledWith('permission fallback');
+        expect(execCommand).toHaveBeenCalledWith('copy');
+        expect(document.querySelector('textarea')).toBeNull();
+    });
+
     test('copies the last response through the shared fallback path', async () => {
         const { app } = createCopyHarness();
         app.lastResponse = 'final answer';

@@ -2143,8 +2143,12 @@ class CodeCLIApp {
     async writeClipboardText(text) {
         const value = String(text == null ? '' : text);
         if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(value);
-            return;
+            try {
+                await navigator.clipboard.writeText(value);
+                return;
+            } catch (_error) {
+                // Clipboard access can be denied even when the API is present.
+            }
         }
 
         const textarea = document.createElement('textarea');
