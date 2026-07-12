@@ -213,6 +213,27 @@ function createMobilePanelHarness() {
     return { dom, app };
 }
 
+function createMiniMapHarness() {
+    const dom = new JSDOM(`
+        <button id="miniMapToggle" class="mini-map-toggle" type="button" aria-label="Show mini map" aria-controls="miniMap" aria-expanded="false" aria-pressed="false">Map</button>
+        <div id="miniMap" style="display: none;"></div>
+    `, { url: 'http://localhost:3000/canvas/' });
+    const App = loadAppClass(dom);
+    const app = Object.create(App.prototype);
+
+    global.document = dom.window.document;
+    global.window = dom.window;
+
+    app.updateMiniMap = jest.fn();
+    dom.window.infiniteCanvas = {
+        canvas: {
+            addEventListener: jest.fn(),
+        },
+    };
+
+    return { app };
+}
+
 function createContextMenuHarness() {
     const dom = new JSDOM(`
         <div id="canvasContainer" tabindex="0"></div>
@@ -791,6 +812,56 @@ describe('canvas mobile panel accessibility', () => {
         expect(propertiesPanel.classList.contains('active')).toBe(false);
         expect(propertiesToggle.getAttribute('aria-expanded')).toBe('false');
         expect(document.activeElement).toBe(propertiesToggle);
+    });
+});
+
+describe('canvas mini map toggle accessibility', () => {
+    afterEach(() => {
+        delete global.document;
+        delete global.window;
+    });
+
+    test('ships the mini map toggle as a stateful panel control', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const toggle = dom.window.document.getElementById('miniMapToggle');
+        const miniMap = dom.window.document.getElementById('miniMap');
+
+        expect(toggle.getAttribute('type')).toBe('button');
+        expect(toggle.getAttribute('aria-label')).toBe('Show mini map');
+        expect(toggle.getAttribute('title')).toBe('Show mini map');
+        expect(toggle.getAttribute('aria-controls')).toBe('miniMap');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        expect(miniMap).not.toBeNull();
+        expect(toggle.querySelector('svg').getAttribute('aria-hidden')).toBe('true');
+    });
+
+    test('keeps mini map toggle labels and expanded state synchronized', () => {
+        const { app } = createMiniMapHarness();
+        const toggle = document.getElementById('miniMapToggle');
+        const miniMap = document.getElementById('miniMap');
+
+        app.setupMiniMap();
+
+        expect(toggle.getAttribute('aria-label')).toBe('Show mini map');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+        toggle.click();
+        expect(miniMap.style.display).toBe('block');
+        expect(toggle.classList.contains('active')).toBe(true);
+        expect(toggle.getAttribute('aria-label')).toBe('Hide mini map');
+        expect(toggle.getAttribute('title')).toBe('Hide mini map');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+        expect(app.updateMiniMap).toHaveBeenCalledTimes(1);
+
+        toggle.click();
+        expect(miniMap.style.display).toBe('none');
+        expect(toggle.classList.contains('active')).toBe(false);
+        expect(toggle.getAttribute('aria-label')).toBe('Show mini map');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
     });
 });
 

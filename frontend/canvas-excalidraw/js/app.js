@@ -3372,13 +3372,15 @@ class App {
     setupMiniMap() {
         const miniMapToggle = document.getElementById('miniMapToggle');
         const miniMap = document.getElementById('miniMap');
+
+        this.syncMiniMapToggleState(miniMapToggle, Boolean(miniMap && miniMap.style.display !== 'none'));
         
         miniMapToggle?.addEventListener('click', () => {
             const isVisible = miniMap?.style.display !== 'none';
             if (miniMap) {
                 miniMap.style.display = isVisible ? 'none' : 'block';
             }
-            miniMapToggle?.classList.toggle('active', !isVisible);
+            this.syncMiniMapToggleState(miniMapToggle, !isVisible);
             
             if (!isVisible) {
                 this.updateMiniMap();
@@ -3391,6 +3393,18 @@ class App {
                 this.updateMiniMap();
             }
         });
+    }
+
+    syncMiniMapToggleState(toggle, isVisible) {
+        if (!toggle) return;
+
+        const label = isVisible ? 'Hide mini map' : 'Show mini map';
+        toggle.classList.toggle('active', isVisible);
+        toggle.setAttribute('aria-label', label);
+        toggle.setAttribute('aria-controls', 'miniMap');
+        toggle.setAttribute('aria-expanded', String(isVisible));
+        toggle.setAttribute('aria-pressed', String(isVisible));
+        toggle.setAttribute('title', label);
     }
     
     updateMiniMap() {
