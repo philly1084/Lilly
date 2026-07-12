@@ -57,6 +57,7 @@ const {
     buildRequestDecisionFrame,
     buildRequestDecisionMetadata,
     buildRequestFrameProgress,
+    executeWithAdaptiveReasoningFallback,
     formatRequestDecisionFrameForPrompt,
 } = require('../request-decision-frame');
 const { buildContinuityInstructions } = require('../runtime-prompts');
@@ -1049,6 +1050,20 @@ function writeSseProgressPayload(sse, sessionId, progress = {}) {
     })}\n\n`);
 }
 
+async function executeChatRuntimeWithAdaptiveReasoning(app, params = {}, reasoningPolicy = null, onFallback = null) {
+    return executeWithAdaptiveReasoningFallback(
+        (overrideEffort, fallbackPolicy) => executeConversationRuntime(app, {
+            ...params,
+            reasoningEffort: overrideEffort === undefined ? params.reasoningEffort : overrideEffort,
+            metadata: fallbackPolicy
+                ? { ...(params.metadata || {}), reasoningPolicy: fallbackPolicy }
+                : params.metadata,
+        }),
+        reasoningPolicy,
+        onFallback,
+    );
+}
+
 async function maybeQueueWebChatParallelShadow(req, {
     sessionId = '',
     ownerId = '',
@@ -1338,7 +1353,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             return res.status(400).json({ error: { message: 'message is required' } });
         }
         streamRequested = stream === true;
-        const reasoningEffort = resolveReasoningEffort(req.body);
+        let reasoningEffort = resolveReasoningEffort(req.body);
         const enableConversationExecutor = resolveConversationExecutorFlag(req.body);
         let orchestrationSettings = settingsController.getEffectiveOrchestrationConfig?.()
             || settingsController.settings?.orchestration
@@ -1621,7 +1636,13 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             taskType,
             clientSurface,
             route: '/api/chat',
+            metadata: effectiveRequestMetadata,
+            payload: req.body,
+            model: model || session?.metadata?.model || '',
         });
+        if (requestFrame.reasoningPolicy?.effectiveEffort) {
+            reasoningEffort = requestFrame.reasoningPolicy.effectiveEffort;
+        }
         const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
         const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
         const recentMessagesForContinuity = recentMessagesForWorkloadPreflight.length > 0
@@ -2366,7 +2387,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                 ...(foregroundTurn ? { foregroundTurn } : {}),
             };
 
-            const execution = await executeConversationRuntime(req.app, {
+            const execution = await executeChatRuntimeWithAdaptiveReasoning(req.app, {
                 input: effectiveAgentInput,
                 session: effectiveSession,
                 sessionId,
@@ -2417,6 +2438,19 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
                         persistForegroundProgress(progress);
                     }
                 },
+            }, requestFrame.reasoningPolicy, (fallbackPolicy) => {
+                const fallbackProgress = {
+                    phase: 'reasoning-fallback',
+                    detail: 'Using the selected model\'s default reasoning level.',
+                    reasoningPolicy: fallbackPolicy,
+                    goal: requestFrame.goal,
+                    steps: requestFrame.goal?.steps || [],
+                    showSteps: ['complex', 'extended'].includes(requestFrame.complexity?.band),
+                    displayMode: ['complex', 'extended'].includes(requestFrame.complexity?.band) ? 'steps' : 'line',
+                    estimated: false,
+                };
+                writeSseProgressPayload(activeSse, sessionId, fallbackProgress);
+                if (persistForegroundProgress) persistForegroundProgress(fallbackProgress);
             });
             const response = execution.response;
 
@@ -2623,7 +2657,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
         }
 
         const runtimeToolManager = await ensureRuntimeToolManager(req.app);
-        const execution = await executeConversationRuntime(req.app, {
+        const execution = await executeChatRuntimeWithAdaptiveReasoning(req.app, {
             input: effectiveAgentInput,
             session: effectiveSession,
             sessionId,
@@ -2668,7 +2702,7 @@ router.post('/', validate(chatSchema), async (req, res, next) => {
             memoryScope,
             metadata: effectiveRequestMetadata,
             ownerId,
-        });
+        }, requestFrame.reasoningPolicy);
         const response = execution.response;
         if (!execution.handledPersistence) {
             await sessionStore.recordResponse(

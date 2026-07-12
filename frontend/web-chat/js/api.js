@@ -531,6 +531,10 @@ function normalizeAssistantMetadata(value) {
 
     const nextMetadata = {};
 
+    if (Number.isFinite(Number(value.contractVersion))) {
+        nextMetadata.contractVersion = Number(value.contractVersion);
+    }
+
     if (Array.isArray(value)) {
         const reasoningSummary = extractReasoningSummary(value);
         if (reasoningSummary) {
@@ -559,6 +563,15 @@ function normalizeAssistantMetadata(value) {
 
     if (value.routingDecision && typeof value.routingDecision === 'object' && !Array.isArray(value.routingDecision)) {
         nextMetadata.routingDecision = value.routingDecision;
+    }
+
+    const reasoningPolicy = value.reasoningPolicy || value.reasoning_policy;
+    if (reasoningPolicy && typeof reasoningPolicy === 'object' && !Array.isArray(reasoningPolicy)) {
+        nextMetadata.reasoningPolicy = reasoningPolicy;
+    }
+
+    if (value.goal && typeof value.goal === 'object' && !Array.isArray(value.goal)) {
+        nextMetadata.goal = value.goal;
     }
 
     const agentRun = value.agentRun || value.agent_run;

@@ -8,7 +8,7 @@ const AMBIENT_REASONING_ROTATE_MIN_MS = 20000;
 const AMBIENT_REASONING_ROTATE_MAX_MS = 30000;
 const AMBIENT_REASONING_TYPE_TICK_MS = 120;
 const REAL_REASONING_DISPLAY_HOLD_MS = 40000;
-const SYNTHETIC_REASONING_TITLE = 'Live progress';
+const SYNTHETIC_REASONING_TITLE = 'Activity';
 const WEB_CHAT_QUEUE_MAX_SIZE = 3;
 const STREAM_RENDER_BUFFER_MS = 90;
 const MANAGED_APP_PROGRESS_RENDER_BUFFER_MS = 1200;
@@ -7074,6 +7074,16 @@ class ChatApp {
         // Get current model
         const model = uiHelpers.getCurrentModel();
         const reasoningEffort = uiHelpers.getCurrentReasoningEffort();
+        requestMetadata.reasoningPolicy = reasoningEffort
+            ? {
+                ...(requestMetadata.reasoningPolicy || {}),
+                mode: 'manual',
+                requestedEffort: reasoningEffort,
+            }
+            : {
+                ...(requestMetadata.reasoningPolicy || {}),
+                mode: 'auto',
+            };
 
         // Create placeholder for assistant response
         const assistantMessage = {
@@ -11799,6 +11809,42 @@ curl -fsSIL --max-time 20 "https://$host"`;
             : {};
         const phase = extractChatDisplayText(progress.phase || chunk.phase || '', { maxLength: 80 }) || 'thinking';
         const detail = cleanChatStatusText(progress.detail || chunk.detail || '', { maxLength: 240 });
+        const sessionId = this.getStreamingMessageSessionId();
+        const currentMessage = this.getSessionMessage(sessionId, this.currentStreamingMessageId);
+        const existingProgress = currentMessage?.progressState
+            || currentMessage?.metadata?.progressState
+            || {};
+        const eventCursor = Number(
+            progress.eventCursor
+            || progress.event_cursor
+            || chunk.agentRun?.eventCursor
+            || chunk.agent_run?.event_cursor
+            || 0,
+        );
+        const eventRunId = String(
+            progress.runId
+            || progress.run_id
+            || chunk.agentRun?.id
+            || chunk.agent_run?.id
+            || '',
+        ).trim();
+        const eventIdentity = eventCursor > 0
+            ? `${eventRunId}:${eventCursor}:${phase}`
+            : '';
+        if (eventIdentity && existingProgress.lastEventIdentity === eventIdentity) {
+            return;
+        }
+        const mergedProgress = {
+            ...existingProgress,
+            ...progress,
+            ...(progress.goal || existingProgress.goal ? { goal: progress.goal || existingProgress.goal } : {}),
+            ...(progress.reasoningPolicy || existingProgress.reasoningPolicy
+                ? { reasoningPolicy: progress.reasoningPolicy || existingProgress.reasoningPolicy }
+                : {}),
+            phase,
+            detail,
+            ...(eventIdentity ? { lastEventIdentity: eventIdentity } : {}),
+        };
 
         this.updateMissionFromPayload({
             ...chunk,
@@ -11809,16 +11855,25 @@ curl -fsSIL --max-time 20 "https://$host"`;
             uiState: 'streaming',
             phase,
             statusNote: detail || 'Lilly is working through the mission.',
-            progress,
+            progress: mergedProgress,
             persistRemote: false,
         });
 
         this.updateLiveResponsePhase(phase, detail);
+        if (this.missionState?.active === true) {
+            this.updateStreamingMessageState({
+                progressState: null,
+                isStreaming: true,
+            }, {
+                render: true,
+                buffer: true,
+                scroll: false,
+            });
+            return;
+        }
         this.updateStreamingMessageState({
             progressState: {
-                ...progress,
-                phase,
-                detail,
+                ...mergedProgress,
             },
             isStreaming: true,
         }, {
@@ -11826,6 +11881,94 @@ curl -fsSIL --max-time 20 "https://$host"`;
             buffer: true,
             scroll: false,
         });
+    }
+
+    categorizeToolProgress(chunk = {}) {
+        const toolText = [
+            chunk.toolId,
+            chunk.tool_id,
+            chunk.toolName,
+            chunk.tool_name,
+            chunk.item?.name,
+            chunk.item?.type,
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        if (/search|fetch|scrape|read|list|memory|context|source/.test(toolText)) {
+            return { id: 'gathering', label: 'Gathering', detail: 'Gathering context and sources.' };
+        }
+        if (/test|check|verify|browser|playwright|health|lint|audit|proof/.test(toolText)) {
+            return { id: 'checking', label: 'Checking', detail: 'Checking the result and evidence.' };
+        }
+        if (/deploy|k3s|kubernetes|kubectl|remote|ssh|publish|release|apply|ingress/.test(toolText)) {
+            return { id: 'applying', label: 'Applying', detail: 'Applying the requested changes.' };
+        }
+        if (/write|edit|create|generate|document|artifact|code|sandbox|build/.test(toolText)) {
+            return { id: 'building', label: 'Building', detail: 'Building the requested result.' };
+        }
+        return { id: 'working', label: 'Working', detail: 'Working through the next step.' };
+    }
+
+    advanceGoalProgress(progress = {}, { category = '', stage = 'started' } = {}) {
+        const steps = Array.isArray(progress.steps)
+            ? progress.steps.map((step) => ({ ...step }))
+            : [];
+        if (steps.length === 0) {
+            return progress;
+        }
+
+        const patterns = {
+            gathering: /understand|gather|inspect/,
+            building: /create|update|change|work through/,
+            applying: /change|deploy|update|create/,
+            checking: /check|verify|synthesize/,
+            working: /work through|create|synthesize/,
+            delivering: /deliver|answer/,
+        };
+        const preferredPatterns = {
+            gathering: /^gather$/,
+            building: /^create$|^update$/,
+            applying: /^deploy$|^change$/,
+            checking: /^check$|^verify$/,
+            working: /^work through constraints$|^synthesize$/,
+            delivering: /^deliver$|^answer$/,
+        };
+        const matcher = patterns[category] || patterns.working;
+        const preferredMatcher = preferredPatterns[category];
+        let targetIndex = preferredMatcher
+            ? steps.findIndex((step) => preferredMatcher.test(String(step.title || '').toLowerCase()))
+            : -1;
+        if (targetIndex < 0) {
+            targetIndex = steps.findIndex((step) => matcher.test(String(step.title || '').toLowerCase()));
+        }
+        if (targetIndex < 0) {
+            targetIndex = Math.max(0, steps.findIndex((step) => step.status === 'pending'));
+        }
+
+        const completedStage = ['completed', 'done'].includes(String(stage || '').toLowerCase());
+        const nextSteps = steps.map((step, index) => {
+            if (index < targetIndex && !['failed', 'unobserved'].includes(step.status)) {
+                return { ...step, status: 'completed' };
+            }
+            if (index === targetIndex) {
+                return { ...step, status: completedStage ? 'completed' : 'in_progress' };
+            }
+            if (index > targetIndex && step.status === 'in_progress') {
+                return { ...step, status: 'pending' };
+            }
+            return step;
+        });
+        if (completedStage && targetIndex + 1 < nextSteps.length && nextSteps[targetIndex + 1].status === 'pending') {
+            nextSteps[targetIndex + 1] = { ...nextSteps[targetIndex + 1], status: 'in_progress' };
+        }
+
+        const activeStepIndex = nextSteps.findIndex((step) => step.status === 'in_progress');
+        return {
+            ...progress,
+            steps: nextSteps,
+            completedSteps: nextSteps.filter((step) => step.status === 'completed').length,
+            activeStepIndex,
+            activeStepId: activeStepIndex >= 0 ? nextSteps[activeStepIndex].id : '',
+        };
     }
 
     handleReasoningSummaryDelta(chunk = {}) {
@@ -11859,7 +12002,8 @@ curl -fsSIL --max-time 20 "https://$host"`;
     }
 
     handleToolEvent(chunk = {}) {
-        const detail = cleanChatStatusText(chunk.detail, { maxLength: 220 }) || 'Checking tool results';
+        const category = this.categorizeToolProgress(chunk);
+        const detail = category.detail;
         this.updateLiveResponsePhase('checking-tools', detail);
 
         const sessionId = this.getStreamingMessageSessionId();
@@ -11872,20 +12016,35 @@ curl -fsSIL --max-time 20 "https://$host"`;
             || currentMessage?.metadata?.progressState
             || {};
         const toolEvent = {
-            toolId: extractChatDisplayText(chunk.toolId || chunk.tool_id || chunk.toolName || chunk.tool_name || '', { maxLength: 120 }),
-            toolName: extractChatDisplayText(chunk.toolName || chunk.tool_name || chunk.toolId || chunk.tool_id || '', { maxLength: 120 }),
+            category: category.id,
+            label: category.label,
             stage: extractChatDisplayText(chunk.stage || '', { maxLength: 80 }) || 'in_progress',
             detail,
         };
         const existingToolEvents = Array.isArray(existingProgress.toolEvents)
             ? existingProgress.toolEvents
             : [];
+        const toolEventKey = `${toolEvent.category}:${toolEvent.stage}`;
+        const nextToolEvents = [
+            ...existingToolEvents.filter((event) => `${event.category || ''}:${event.stage || ''}` !== toolEventKey),
+            toolEvent,
+        ].slice(-6);
+        const observedCategories = Array.from(new Set([
+            ...(Array.isArray(existingProgress.observedCategories) ? existingProgress.observedCategories : []),
+            category.id,
+        ]));
+        const nextProgress = this.advanceGoalProgress(existingProgress, {
+            category: category.id,
+            stage: toolEvent.stage,
+        });
         this.updateStreamingMessageState({
             progressState: {
-                ...existingProgress,
+                ...nextProgress,
                 phase: 'checking-tools',
                 detail,
-                toolEvents: [...existingToolEvents, toolEvent].slice(-6),
+                activityCategory: category.label,
+                observedCategories,
+                toolEvents: nextToolEvents,
             },
             isStreaming: true,
         }, {
@@ -11921,10 +12080,24 @@ curl -fsSIL --max-time 20 "https://$host"`;
             }
             : {};
 
+        const existingProgress = currentMessage?.progressState
+            || currentMessage?.metadata?.progressState
+            || {};
+        const writingProgress = this.advanceGoalProgress(existingProgress, {
+            category: 'delivering',
+            stage: 'started',
+        });
         this.updateLiveResponsePhase('writing', 'Streaming the reply');
         this.updateStreamingMessageState({
             content: `${extractChatStreamText(currentMessage.content)}${extractChatStreamText(content)}`,
             ...reasoningPatch,
+            ...(writingProgress.goal ? {
+                progressState: {
+                    ...writingProgress,
+                    phase: 'writing',
+                    detail: 'Preparing the result for you.',
+                },
+            } : {}),
             isStreaming: true,
         }, {
             render: true,
@@ -12138,13 +12311,27 @@ curl -fsSIL --max-time 20 "https://$host"`;
         const shouldPreserveCompletionProgress = existingCompletionProgress
             && typeof existingCompletionProgress === 'object'
             && !Array.isArray(existingCompletionProgress)
-            && uiHelpers.isRemoteCliProgressState?.(existingCompletionProgress) === true;
+            && (
+                uiHelpers.isRemoteCliProgressState?.(existingCompletionProgress) === true
+                || Boolean(existingCompletionProgress.goal)
+            );
         const completedProgressState = shouldPreserveCompletionProgress
             ? {
                 ...existingCompletionProgress,
                 phase: 'completed',
                 terminal: true,
                 live: false,
+                steps: Array.isArray(existingCompletionProgress.steps)
+                    ? existingCompletionProgress.steps.map((step) => {
+                        if (['failed', 'skipped', 'unobserved'].includes(step.status)) return step;
+                        if (step.proofSensitive === true) {
+                            const observedChecks = Array.isArray(existingCompletionProgress.observedCategories)
+                                && existingCompletionProgress.observedCategories.includes('checking');
+                            return { ...step, status: observedChecks ? 'completed' : 'unobserved' };
+                        }
+                        return { ...step, status: 'completed' };
+                    })
+                    : existingCompletionProgress.steps,
                 detail: extractChatDisplayText(
                     existingCompletionProgress.detail
                     || existingCompletionProgress.reasoningSummary

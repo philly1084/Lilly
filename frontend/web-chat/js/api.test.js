@@ -275,6 +275,32 @@ describe('web-chat artifact metadata normalization', () => {
 });
 
 describe('web-chat reasoning metadata normalization', () => {
+    test('preserves adaptive reasoning and goal metadata from stream completion', () => {
+        const { apiClient } = loadApiClient();
+        const events = apiClient.normalizeStreamPayload({
+            type: 'done',
+            assistantMetadata: {
+                contractVersion: 1,
+                reasoningPolicy: {
+                    mode: 'auto',
+                    effectiveEffort: 'high',
+                    complexityBand: 'complex',
+                },
+                goal: {
+                    scope: 'turn',
+                    objective: 'Return a verified comparison.',
+                },
+            },
+        }, {});
+        const done = events.find((event) => event.type === 'done');
+
+        expect(done.assistantMetadata).toEqual(expect.objectContaining({
+            contractVersion: 1,
+            reasoningPolicy: expect.objectContaining({ effectiveEffort: 'high' }),
+            goal: expect.objectContaining({ scope: 'turn' }),
+        }));
+    });
+
     test('normalizes provider thinking aliases from stream done payloads', () => {
         const { apiClient } = loadApiClient();
 

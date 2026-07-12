@@ -107,6 +107,61 @@ function loadUIHelpersPrototype(options = {}) {
 }
 
 describe('web-chat markdown normalization', () => {
+    test('renders a concise goal card with adaptive effort and sanitized work labels', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildGoalProgressTrackerMarkup({
+            phase: 'checking-tools',
+            detail: 'Checking the result and evidence.',
+            line: 'Checking the result and evidence.',
+            terminal: false,
+            activeStepIndex: 2,
+            reasoningPolicy: {
+                mode: 'auto',
+                effectiveEffort: 'high',
+                complexityBand: 'complex',
+                explanation: 'Research and verification requested.',
+            },
+            goal: {
+                objective: 'Research the options and return a verified comparison.',
+                proofExpectations: ['Important pages verified before synthesis'],
+            },
+            steps: [
+                { id: 'understand', title: 'Understand', status: 'completed' },
+                { id: 'gather', title: 'Gather', status: 'completed' },
+                { id: 'synthesize', title: 'Synthesize', status: 'in_progress' },
+                { id: 'deliver', title: 'Deliver', status: 'pending' },
+            ],
+        }, true);
+
+        expect(html).toContain('Goal progress');
+        expect(html).toContain('Auto → High');
+        expect(html).toContain('Research the options and return a verified comparison.');
+        expect(html).toContain('aria-live="polite"');
+        expect(html).toContain('Checks and evidence');
+        expect(html).not.toContain('web-search');
+        expect(html).not.toContain('remote-cli-agent');
+    });
+
+    test('shows a model-default badge after an unsupported Auto effort fallback', () => {
+        const helper = Object.create(loadUIHelpersPrototype());
+        const html = helper.buildGoalProgressTrackerMarkup({
+            phase: 'reasoning-fallback',
+            detail: 'Using the selected model default.',
+            line: 'Using the selected model default.',
+            activeStepIndex: 0,
+            reasoningPolicy: {
+                mode: 'auto',
+                effectiveEffort: null,
+                complexityBand: 'complex',
+                fallback: true,
+            },
+            goal: { objective: 'Complete the requested comparison.' },
+            steps: [{ id: 'understand', title: 'Understand', status: 'in_progress' }],
+        }, true);
+
+        expect(html).toContain('Auto → Model default');
+    });
+
     test('renders message speech buttons for delegated click handling', () => {
         const helper = Object.create(loadUIHelpersPrototype());
         helper.getMessageSpeechControlState = () => ({
@@ -857,7 +912,7 @@ Options I ruled out:
             },
         }, true).html;
 
-        expect(html).toContain('Live progress');
+        expect(html).toContain('Activity');
         expect(html).toContain('Running the task list.');
         expect(html).not.toContain('assistant-progress-card__steps');
         expect(html).not.toContain('assistant-progress-card__step--completed');
@@ -1218,7 +1273,7 @@ Options I ruled out:
         }, true).html;
 
         expect(html).toContain('assistant-reasoning-ribbon__surface');
-        expect(html).toContain('Live progress');
+        expect(html).toContain('Activity');
         expect(html).toContain('Checking the next useful step.');
         expect(html).not.toContain('<details');
         expect(html).not.toContain('<summary');

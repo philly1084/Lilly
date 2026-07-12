@@ -2,6 +2,13 @@ const { getSessionControlState } = require('./runtime-control-state');
 
 const FILENAME_PATTERN = /\b[a-z0-9][a-z0-9._-]{2,}\.(?:pdf|html?|docx?|pptx?|xlsx?|xml|md|markdown|txt|zip)\b/gi;
 const DOMAIN_PATTERN = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi;
+const AUTO_REASONING_BY_COMPLEXITY = Object.freeze({
+    instant: 'low',
+    standard: 'medium',
+    complex: 'high',
+    extended: 'xhigh',
+});
+const ALLOWED_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 
 function compactText(value = '', limit = 220) {
     const normalized = String(value || '').replace(/\s+/g, ' ').trim();
@@ -26,6 +33,236 @@ function extractMatches(text = '', pattern) {
 
 function hasAny(normalized = '', patterns = []) {
     return patterns.some((pattern) => pattern.test(normalized));
+}
+
+function normalizeReasoningEffort(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ALLOWED_REASONING_EFFORTS.has(normalized) ? normalized : null;
+}
+
+function normalizeReasoningMode(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['auto', 'manual'].includes(normalized) ? normalized : '';
+}
+
+function resolveDeclaredReasoningEfforts(payload = {}) {
+    const capabilities = payload?.metadata?.modelCapabilities
+        || payload?.metadata?.model_capabilities
+        || {};
+    const raw = capabilities.reasoningEfforts
+        || capabilities.reasoning_efforts
+        || payload?.metadata?.reasoningEfforts
+        || payload?.metadata?.reasoning_efforts
+        || [];
+    return uniqueStrings(Array.isArray(raw) ? raw : [raw])
+        .map((entry) => normalizeReasoningEffort(entry))
+        .filter(Boolean);
+}
+
+function modelSupportsXhighReasoning(model = '', payload = {}) {
+    const declared = resolveDeclaredReasoningEfforts(payload);
+    if (declared.length > 0) {
+        return declared.includes('xhigh');
+    }
+
+    const normalizedModel = String(model || '').trim().toLowerCase();
+    if (/codex/.test(normalizedModel)) {
+        return true;
+    }
+    const version = normalizedModel.match(/^gpt-5\.(\d+)/);
+    return Boolean(version && Number(version[1]) >= 2);
+}
+
+function buildReasoningPolicyExplanation(reasonCodes = [], band = '') {
+    const codes = new Set(reasonCodes);
+    if (codes.has('research') && codes.has('verification')) return 'Research and verification requested.';
+    if (codes.has('remote_action')) return 'Remote work needs staged checks.';
+    if (codes.has('artifact')) return 'Creation and validation are required.';
+    if (codes.has('explicit_deep')) return 'Deeper analysis was explicitly requested.';
+    if (codes.has('verification')) return 'The answer needs verification.';
+    if (band === 'instant') return 'A direct response should be enough.';
+    if (band === 'standard') return 'A normal explanation should be enough.';
+    return 'Multiple constraints need careful handling.';
+}
+
+function classifyRequestComplexity(text = '', intent = 'chat_answer', signals = {}, metadata = {}) {
+    const normalized = String(text || '').trim().toLowerCase();
+    const reasonCodes = [];
+    const addReason = (reason) => {
+        if (reason && !reasonCodes.includes(reason)) reasonCodes.push(reason);
+    };
+    const missionMode = metadata?.missionMode === true || metadata?.mission_mode === true;
+    const explicitDeep = hasAny(normalized, [
+        /\b(deep|deeper|exhaustive|maximum|thorough|comprehensive|complex|multi[-\s]?step)\b/,
+    ]);
+    const verificationCue = hasAny(normalized, [
+        /\b(verify|verification|validate|test|tests|proof|prove|evidence|citations?|sources?|check the live|browser check|public endpoint)\b/,
+    ]);
+    const actionCue = hasAny(normalized, [
+        /\b(debug|diagnose|fix|repair|implement|build|create|change|update|edit|refactor|deploy|ship|publish|install|configure)\b/,
+    ]);
+    const multipleDeliverables = hasAny(normalized, [
+        /\b(multiple|several|both|all of these)\b[\s\S]{0,80}\b(files?|formats?|deliverables?|outputs?|pages?|apps?|services?)\b/,
+        /\b(pdf|pptx|xlsx|html|markdown)\b[\s\S]{0,80}\b(and|plus)\b[\s\S]{0,80}\b(pdf|pptx|xlsx|html|markdown)\b/,
+    ]);
+    const longPrompt = normalized.length > 160 || (normalized.match(/[;:]/g) || []).length >= 2;
+    const simpleDirect = normalized.length <= 110 && !actionCue && !verificationCue && !signals.researchCue
+        && !signals.artifactGeneration && !signals.artifactReference && !signals.remoteTarget;
+
+    if (simpleDirect) addReason('short_direct');
+    if (signals.researchCue || intent.startsWith('research_')) addReason('research');
+    if (signals.artifactGeneration || signals.artifactReference || ['generate_artifact', 'revise_or_convert_existing_artifact'].includes(intent)) addReason('artifact');
+    if (signals.remoteTarget || intent.startsWith('remote_')) addReason('remote_action');
+    if (verificationCue || (Array.isArray(signals.proofExpectations) && signals.proofExpectations.length > 0)) addReason('verification');
+    if (explicitDeep) addReason('explicit_deep');
+    if (missionMode) addReason('mission');
+    if (multipleDeliverables) addReason('multiple_deliverables');
+    if (longPrompt) addReason('multi_constraint');
+
+    let band = 'instant';
+    if (
+        missionMode
+        || intent === 'complex_frontend_design_build'
+        || intent === 'remote_deploy_existing_artifact'
+        || intent === 'remote_deploy_or_update'
+        || multipleDeliverables
+        || (explicitDeep && (actionCue || signals.researchCue || signals.remoteTarget || signals.artifactGeneration))
+    ) {
+        band = 'extended';
+    } else if (
+        intent !== 'chat_answer'
+        || actionCue
+        || verificationCue
+        || signals.researchCue
+        || signals.remoteTarget
+        || signals.artifactGeneration
+        || signals.artifactReference
+    ) {
+        band = 'complex';
+    } else if (!simpleDirect || longPrompt || hasAny(normalized, [
+        /\b(explain|compare|analy[sz]e|why|how|recommend|design|plan)\b/,
+    ])) {
+        band = 'standard';
+    }
+
+    return {
+        band,
+        reasonCodes,
+        recommendedReasoningEffort: AUTO_REASONING_BY_COMPLEXITY[band],
+    };
+}
+
+function buildGoalSteps(intent = '') {
+    const templates = intent.startsWith('research_')
+        ? ['Understand', 'Gather', 'Synthesize', 'Deliver']
+        : (intent.startsWith('remote_')
+            ? ['Inspect', 'Change', 'Deploy', 'Verify']
+            : (['complex_frontend_design_build', 'frontend_design_build', 'generate_artifact', 'revise_or_convert_existing_artifact'].includes(intent)
+                ? ['Understand', 'Create', 'Check', 'Deliver']
+                : (intent === 'notes_or_page_edit'
+                    ? ['Understand', 'Update', 'Check']
+                    : ['Understand', 'Work through constraints', 'Check', 'Answer'])));
+
+    return templates.map((title, index) => ({
+        id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        title,
+        status: index === 0 ? 'in_progress' : 'pending',
+        proofSensitive: /^(check|verify)$/i.test(title),
+    }));
+}
+
+function resolveRequestReasoningPolicy({
+    payload = {},
+    clientSurface = '',
+    model = '',
+    complexity = null,
+} = {}) {
+    const policyInput = payload?.metadata?.reasoningPolicy
+        || payload?.metadata?.reasoning_policy
+        || payload?.reasoningPolicy
+        || payload?.reasoning_policy
+        || {};
+    const requestedMode = normalizeReasoningMode(policyInput.mode);
+    const requestedEffort = [
+        payload?.reasoningEffort,
+        payload?.reasoning_effort,
+        payload?.reasoning?.effort,
+        policyInput.requestedEffort,
+        policyInput.requested_effort,
+    ].map((value) => normalizeReasoningEffort(value)).find(Boolean) || null;
+    const isWebChat = String(clientSurface || payload?.metadata?.clientSurface || '').trim().toLowerCase() === 'web-chat';
+
+    if (requestedEffort) {
+        return {
+            mode: 'manual',
+            requestedEffort,
+            effectiveEffort: requestedEffort,
+            complexityBand: complexity?.band || 'standard',
+            reasonCodes: complexity?.reasonCodes || [],
+            explanation: 'Pinned by the user.',
+            fallback: false,
+        };
+    }
+    if (!isWebChat || requestedMode !== 'auto') {
+        return null;
+    }
+
+    let effectiveEffort = normalizeReasoningEffort(complexity?.recommendedReasoningEffort) || 'medium';
+    let capabilityLimited = false;
+    if (effectiveEffort === 'xhigh' && !modelSupportsXhighReasoning(model, payload)) {
+        effectiveEffort = 'high';
+        capabilityLimited = true;
+    }
+
+    return {
+        mode: 'auto',
+        requestedEffort: null,
+        effectiveEffort,
+        complexityBand: complexity?.band || 'standard',
+        reasonCodes: complexity?.reasonCodes || [],
+        explanation: buildReasoningPolicyExplanation(complexity?.reasonCodes || [], complexity?.band || ''),
+        capabilityLimited,
+        fallback: false,
+    };
+}
+
+function isUnsupportedReasoningEffortError(error = null) {
+    const status = Number(error?.statusCode || error?.status || error?.response?.status || 0);
+    const message = String(
+        error?.message
+        || error?.response?.data?.error?.message
+        || error?.response?.error?.message
+        || '',
+    ).toLowerCase();
+    return [400, 422].includes(status)
+        && /reasoning(?:_|\s)?effort/.test(message)
+        && /unsupported|not supported|invalid|unknown|not available/.test(message);
+}
+
+async function executeWithAdaptiveReasoningFallback(executor, reasoningPolicy = null, onFallback = null) {
+    try {
+        return await executor(undefined, reasoningPolicy);
+    } catch (error) {
+        if (reasoningPolicy?.mode !== 'auto'
+            || !reasoningPolicy.effectiveEffort
+            || !isUnsupportedReasoningEffortError(error)) {
+            throw error;
+        }
+
+        const fallbackPolicy = {
+            ...reasoningPolicy,
+            effectiveEffort: null,
+            fallback: true,
+            fallbackEffort: 'model-default',
+            fallbackReason: 'unsupported_reasoning_effort',
+            explanation: 'The selected model uses its default reasoning level.',
+        };
+        Object.assign(reasoningPolicy, fallbackPolicy);
+        if (typeof onFallback === 'function') {
+            await onFallback(fallbackPolicy, error);
+        }
+        return executor(null, fallbackPolicy);
+    }
 }
 
 function buildPreviousWorkSummary(session = null) {
@@ -370,6 +607,9 @@ function buildRequestDecisionFrame({
     taskType = 'chat',
     clientSurface = '',
     route = '',
+    metadata = {},
+    payload = {},
+    model = '',
 } = {}) {
     const signals = detectRequestSignals(text, {
         outputFormat,
@@ -390,6 +630,8 @@ function buildRequestDecisionFrame({
     };
     const blockedActions = buildBlockedActions(intent);
     const proofExpectations = buildProofExpectations(intent);
+    signals.proofExpectations = proofExpectations;
+    const complexity = classifyRequestComplexity(text, intent, signals, metadata);
     const cards = buildRequestDecisionCards({
         intent,
         signals,
@@ -417,9 +659,33 @@ function buildRequestDecisionFrame({
                 ? `${compactText(text, 170)} Build as a previewable frontend sandbox with design context and browser QA.`
                 : compactText(text, 180)));
     const userVisibleSummary = cards.map((card) => `${card.title}: ${card.detail}`).join('\n');
+    const isWebChatSurface = String(clientSurface || payload?.metadata?.clientSurface || '')
+        .trim()
+        .toLowerCase() === 'web-chat';
+    const goal = isWebChatSurface
+        ? {
+            scope: 'turn',
+            objective,
+            steps: buildGoalSteps(intent),
+            proofExpectations,
+        }
+        : null;
+    const reasoningPolicy = resolveRequestReasoningPolicy({
+        payload: {
+            ...(payload && typeof payload === 'object' ? payload : {}),
+            metadata: {
+                ...(payload?.metadata && typeof payload.metadata === 'object' ? payload.metadata : {}),
+                ...(metadata && typeof metadata === 'object' ? metadata : {}),
+            },
+        },
+        clientSurface,
+        model,
+        complexity,
+    });
 
     return {
-        version: 1,
+        version: 2,
+        contractVersion: 1,
         source: 'deterministic-request-frame',
         route,
         taskType,
@@ -438,6 +704,9 @@ function buildRequestDecisionFrame({
         executionProfile: executionProfile || null,
         blockedActions,
         proofExpectations,
+        complexity,
+        reasoningPolicy,
+        goal,
         missingContext,
         previousWork,
         cards,
@@ -462,6 +731,7 @@ function buildRequestDecisionMetadata(frame = null) {
     }
 
     return {
+        contractVersion: frame.contractVersion || 1,
         requestFrame: frame,
         decisionTrace: frame.cards || [],
         routingDecision: {
@@ -473,6 +743,8 @@ function buildRequestDecisionMetadata(frame = null) {
             proofExpectations: frame.proofExpectations || [],
         },
         reasoningSummary: frame.reasoningSummary || '',
+        ...(frame.reasoningPolicy ? { reasoningPolicy: frame.reasoningPolicy } : {}),
+        ...(frame.goal ? { goal: frame.goal } : {}),
     };
 }
 
@@ -482,9 +754,26 @@ function buildRequestFrameProgress(frame = null) {
     }
 
     return {
+        contractVersion: frame.contractVersion || 1,
+        source: 'goal-contract',
         phase: 'understanding',
         detail: frame.cards?.[0]?.detail || frame.objective || 'Classified the request.',
         summary: frame.reasoningSummary || '',
+        ...(frame.reasoningPolicy ? { reasoningPolicy: frame.reasoningPolicy } : {}),
+        ...(frame.goal ? {
+            goal: frame.goal,
+            ...( ['complex', 'extended'].includes(frame.complexity?.band)
+                ? {
+                    steps: frame.goal.steps,
+                    totalSteps: frame.goal.steps.length,
+                    completedSteps: 0,
+                    activeStepId: frame.goal.steps[0]?.id || '',
+                    showSteps: true,
+                    displayMode: 'steps',
+                    estimated: false,
+                }
+                : {}),
+        } : {}),
         requestFrame: {
             intent: frame.intent,
             preferredTool: frame.preferredTool,
@@ -503,7 +792,10 @@ function formatRequestDecisionFrameForPrompt(frame = null) {
     const lines = [
         'Request decision frame for this turn:',
         `- Intent: ${frame.intent || 'unknown'}`,
+        frame.complexity?.band ? `- Complexity: ${frame.complexity.band} (${(frame.complexity.reasonCodes || []).join(', ') || 'no extra signals'})` : '',
+        frame.reasoningPolicy?.effectiveEffort ? `- Reasoning policy: ${frame.reasoningPolicy.mode} -> ${frame.reasoningPolicy.effectiveEffort}` : '',
         frame.objective ? `- Objective: ${frame.objective}` : '',
+        frame.goal?.steps?.length ? `- Goal steps: ${frame.goal.steps.map((step) => step.title).join(' -> ')}` : '',
         hints.selectedToolLane ? `- Preferred tool lane: ${hints.selectedToolLane}` : '',
         hints.sourceMaterial?.length ? `- Source material: ${hints.sourceMaterial.join(', ')}` : '',
         hints.target ? `- Target: ${hints.target}` : '',
@@ -523,5 +815,10 @@ module.exports = {
     buildRequestDecisionFrame,
     buildRequestDecisionMetadata,
     buildRequestFrameProgress,
+    classifyRequestComplexity,
+    resolveRequestReasoningPolicy,
+    modelSupportsXhighReasoning,
+    isUnsupportedReasoningEffortError,
+    executeWithAdaptiveReasoningFallback,
     formatRequestDecisionFrameForPrompt,
 };

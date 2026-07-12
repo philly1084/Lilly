@@ -19,7 +19,7 @@ const WEB_CHAT_SHARED_THEMES = window.KimiBuiltThemePresets || {};
 const WEB_CHAT_THEME_PRESET_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.preset || 'kimibuilt_theme_preset';
 const WEB_CHAT_THEME_MODE_STORAGE_KEY = WEB_CHAT_SHARED_THEMES.storageKeys?.mode || 'kimibuilt_theme';
 const WEB_CHAT_LONG_AGENT_DEFAULT_KEY = 'kimibuilt_long_agent_default_enabled';
-const WEB_CHAT_SYNTHETIC_REASONING_TITLE = 'Live progress';
+const WEB_CHAT_SYNTHETIC_REASONING_TITLE = 'Activity';
 const WEB_CHAT_ESTIMATED_REASONING_STEPS = Object.freeze([
     'Getting oriented',
     'Choosing the next move',
@@ -3684,6 +3684,9 @@ class UIHelpers {
                 return 'failed';
             case 'skipped':
                 return 'skipped';
+            case 'unobserved':
+            case 'not_observed':
+                return 'unobserved';
             default:
                 return 'pending';
         }
@@ -4104,6 +4107,12 @@ class UIHelpers {
             activeStepIndex,
             percent,
             steps,
+            goal: rawProgress.goal && typeof rawProgress.goal === 'object' ? rawProgress.goal : null,
+            reasoningPolicy: rawProgress.reasoningPolicy && typeof rawProgress.reasoningPolicy === 'object'
+                ? rawProgress.reasoningPolicy
+                : null,
+            observedCategories: Array.isArray(rawProgress.observedCategories) ? rawProgress.observedCategories : [],
+            terminal: rawProgress.terminal === true,
         };
     }
 
@@ -4246,6 +4255,10 @@ class UIHelpers {
             return '';
         }
 
+        if (progressState.goal && ['complex', 'extended'].includes(String(progressState.reasoningPolicy?.complexityBand || '').toLowerCase())) {
+            return this.buildGoalProgressTrackerMarkup(progressState, isStreaming);
+        }
+
         const reasoningState = this.getMessageReasoningDisplayState(message, isStreaming);
         const phaseMeta = this.getLivePhaseMeta(progressState.phase || message?.liveState?.phase || 'thinking');
         const useGeneratedReasoning = reasoningState?.source === 'generated';
@@ -4271,6 +4284,7 @@ class UIHelpers {
                 in_progress: 'Working',
                 failed: 'Failed',
                 skipped: 'Skipped',
+                unobserved: 'Not observed',
                 pending: 'Pending',
             })[step.status] || 'Pending';
 
@@ -4301,6 +4315,75 @@ class UIHelpers {
                     ${stepsMarkup}
                 </div>
             </div>
+        `;
+    }
+
+    buildGoalProgressTrackerMarkup(progressState = {}, isStreaming = false) {
+        const goal = progressState.goal || {};
+        const policy = progressState.reasoningPolicy || {};
+        const objective = this.extractDisplayText(goal.objective || progressState.summary || 'Working toward the requested result.', {
+            maxLength: 180,
+            preferSentenceBoundary: true,
+        });
+        const effort = this.extractDisplayText(policy.effectiveEffort || '', { maxLength: 20 });
+        const effortLabel = policy.fallback === true
+            ? 'Auto → Model default'
+            : (effort
+                ? `${policy.mode === 'auto' ? 'Auto → ' : ''}${effort.charAt(0).toUpperCase()}${effort.slice(1)}`
+                : '');
+        const explanation = this.extractDisplayText(policy.explanation || '', { maxLength: 160 });
+        const terminal = progressState.terminal === true && !isStreaming;
+        const stepsHtml = progressState.steps.map((step, index) => {
+            const isActive = index === progressState.activeStepIndex;
+            const stateLabel = ({
+                completed: 'Done',
+                in_progress: 'Working',
+                failed: 'Failed',
+                skipped: 'Skipped',
+                unobserved: 'Not observed',
+                pending: 'Pending',
+            })[step.status] || 'Pending';
+            return `
+                <li class="assistant-progress-card__step assistant-progress-card__step--${this.escapeHtmlAttr(step.status)}${isActive ? ' is-active' : ''}">
+                    <span class="assistant-progress-card__step-dot" aria-hidden="true"></span>
+                    <span class="assistant-progress-card__step-title">${this.escapeHtml(step.title)}</span>
+                    <span class="assistant-progress-card__step-state">${this.escapeHtml(stateLabel)}</span>
+                </li>
+            `;
+        }).join('');
+        const proofExpectations = Array.isArray(goal.proofExpectations)
+            ? goal.proofExpectations.filter(Boolean).slice(0, 5)
+            : [];
+        const proofMarkup = proofExpectations.length > 0
+            ? `
+                <details class="assistant-goal-card__evidence">
+                    <summary>Checks and evidence</summary>
+                    <ul>${proofExpectations.map((item) => `<li>${this.escapeHtml(item)}</li>`).join('')}</ul>
+                </details>
+            `
+            : '';
+
+        return `
+            <section class="assistant-progress-card assistant-progress-card--goal${isStreaming ? ' is-live' : ''}${terminal ? ' is-terminal' : ''}" aria-label="Goal progress">
+                <div class="assistant-progress-card__surface">
+                    <div class="assistant-goal-card__header">
+                        <span class="assistant-goal-card__copy">
+                            <span class="assistant-progress-card__eyebrow">${terminal ? 'Goal result' : 'Goal progress'}</span>
+                            <strong class="assistant-goal-card__objective">${this.escapeHtml(objective)}</strong>
+                        </span>
+                        ${effortLabel ? `<span class="assistant-goal-card__effort" title="${this.escapeHtmlAttr(explanation || effortLabel)}">${this.escapeHtml(effortLabel)}</span>` : ''}
+                    </div>
+                    <div class="assistant-goal-card__activity" aria-live="polite" aria-atomic="true">
+                        <span class="assistant-goal-card__activity-dot" aria-hidden="true"></span>
+                        <span>${this.escapeHtml(progressState.line || progressState.detail || (terminal ? 'Reply complete.' : 'Working through the next step.'))}</span>
+                    </div>
+                    <details class="assistant-goal-card__work"${terminal ? '' : ' open'}>
+                        <summary>${terminal ? 'Show work' : 'Work plan'}</summary>
+                        <ol class="assistant-progress-card__steps">${stepsHtml}</ol>
+                        ${proofMarkup}
+                    </details>
+                </div>
+            </section>
         `;
     }
 
@@ -7225,7 +7308,7 @@ class UIHelpers {
     getReasoningDisplayLabel(value = this.currentReasoningEffort) {
         const normalized = this.normalizeReasoningEffort(value);
         const labels = {
-            '': 'Reasoning: Default',
+            '': 'Reasoning: Auto',
             low: 'Reasoning: Low',
             medium: 'Reasoning: Medium',
             high: 'Reasoning: High',

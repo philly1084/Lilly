@@ -197,6 +197,10 @@ function buildFrontendAssistantMetadata(metadata = null) {
 
     const nextMetadata = {};
 
+    if (Number.isFinite(Number(metadata.contractVersion))) {
+        nextMetadata.contractVersion = Number(metadata.contractVersion);
+    }
+
     if (metadata.agentExecutor === true) {
         nextMetadata.agentExecutor = true;
     }
@@ -215,6 +219,14 @@ function buildFrontendAssistantMetadata(metadata = null) {
 
     if (metadata.routingDecision && typeof metadata.routingDecision === 'object' && !Array.isArray(metadata.routingDecision)) {
         nextMetadata.routingDecision = metadata.routingDecision;
+    }
+
+    if (metadata.reasoningPolicy && typeof metadata.reasoningPolicy === 'object' && !Array.isArray(metadata.reasoningPolicy)) {
+        nextMetadata.reasoningPolicy = metadata.reasoningPolicy;
+    }
+
+    if (metadata.goal && typeof metadata.goal === 'object' && !Array.isArray(metadata.goal)) {
+        nextMetadata.goal = metadata.goal;
     }
 
     const reasoningSummary = String(

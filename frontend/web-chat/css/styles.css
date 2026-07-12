@@ -5537,7 +5537,7 @@ body.layout-minimal #input-meta-row {
 
 .assistant-progress-card__step {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.52rem;
     font-size: 0.82rem;
@@ -5600,8 +5600,143 @@ body.layout-minimal #input-meta-row {
     color: #f87171;
 }
 
+.assistant-progress-card__step--unobserved .assistant-progress-card__step-dot {
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(245, 158, 11, 0.7);
+}
+
+.assistant-progress-card__step--unobserved .assistant-progress-card__step-state {
+    color: #d97706;
+}
+
 .assistant-progress-card__step.is-active .assistant-progress-card__step-title {
     font-weight: 600;
+}
+
+.assistant-progress-card--goal .assistant-progress-card__surface {
+    gap: 0.72rem;
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg-secondary));
+}
+
+.assistant-progress-card--goal.is-terminal .assistant-progress-card__surface {
+    border-color: color-mix(in srgb, var(--success) 28%, var(--border));
+    background: color-mix(in srgb, var(--success) 5%, var(--bg-secondary));
+}
+
+.assistant-goal-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.assistant-goal-card__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.16rem;
+    min-width: 0;
+}
+
+.assistant-goal-card__objective {
+    color: var(--text-primary);
+    font-size: 0.92rem;
+    line-height: 1.42;
+    overflow-wrap: anywhere;
+}
+
+.assistant-goal-card__effort {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.65rem;
+    padding: 0.24rem 0.52rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-primary));
+    color: var(--text-primary);
+    font-size: 0.7rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.assistant-goal-card__activity {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.5rem;
+    align-items: start;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.assistant-goal-card__activity-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-top: 0.35rem;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.assistant-progress-card--goal.is-terminal .assistant-goal-card__activity-dot {
+    background: var(--success);
+    box-shadow: none;
+}
+
+.assistant-goal-card__work,
+.assistant-goal-card__evidence {
+    border-top: 1px solid var(--border);
+    padding-top: 0.55rem;
+}
+
+.assistant-goal-card__work > summary,
+.assistant-goal-card__evidence > summary {
+    width: fit-content;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.assistant-goal-card__work > summary:focus-visible,
+.assistant-goal-card__evidence > summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 0.2rem;
+}
+
+.assistant-goal-card__work[open] > summary {
+    margin-bottom: 0.55rem;
+}
+
+.assistant-goal-card__evidence {
+    margin-top: 0.55rem;
+}
+
+.assistant-goal-card__evidence ul {
+    display: grid;
+    gap: 0.3rem;
+    margin: 0.45rem 0 0;
+    padding-left: 1.1rem;
+    color: var(--text-secondary);
+    font-size: 0.76rem;
+    line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+    .assistant-goal-card__header {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .assistant-goal-card__activity-dot,
+    .assistant-progress-card--goal * {
+        animation: none !important;
+        transition: none !important;
+    }
 }
 
 .assistant-progress-card__note {

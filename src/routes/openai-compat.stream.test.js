@@ -393,6 +393,121 @@ describe('/v1/chat/completions stream forwarding', () => {
         expect(response.text).toContain('data: [DONE]');
     });
 
+    test('applies adaptive reasoning and streams the deterministic goal contract for Web Chat', async () => {
+        executeConversationRuntime.mockResolvedValue({
+            handledPersistence: true,
+            response: (async function* streamEvents() {
+                yield { type: 'response.output_text.delta', delta: 'Compared' };
+                yield {
+                    type: 'response.completed',
+                    response: {
+                        id: 'resp-adaptive-reasoning-1',
+                        model: 'gpt-5.4-mini',
+                        output_text: 'Compared',
+                        output: [{
+                            type: 'message',
+                            role: 'assistant',
+                            content: [{ type: 'output_text', text: 'Compared' }],
+                        }],
+                        metadata: { toolEvents: [] },
+                    },
+                };
+            }()),
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                model: 'gpt-5.4-mini',
+                messages: [{ role: 'user', content: 'Research the current options, verify the sources, and return a comparison.' }],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                metadata: {
+                    clientSurface: 'web-chat',
+                    reasoningPolicy: { mode: 'auto' },
+                },
+                stream: true,
+                session_id: 'web-chat-stream-1',
+            });
+
+        expect(response.status).toBe(200);
+        expect(executeConversationRuntime).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            reasoningEffort: 'high',
+            metadata: expect.objectContaining({
+                reasoningPolicy: expect.objectContaining({
+                    mode: 'auto',
+                    effectiveEffort: 'high',
+                    complexityBand: 'complex',
+                }),
+                goal: expect.objectContaining({
+                    scope: 'turn',
+                    steps: expect.arrayContaining([
+                        expect.objectContaining({ title: 'Gather' }),
+                    ]),
+                }),
+            }),
+        }));
+        expect(response.text).toContain('"source":"goal-contract"');
+        expect(response.text).toContain('"effectiveEffort":"high"');
+        expect(response.text).toContain('"showSteps":true');
+    });
+
+    test('falls back once when a model rejects the Auto reasoning effort', async () => {
+        executeConversationRuntime
+            .mockRejectedValueOnce(Object.assign(new Error('reasoning_effort high is not supported'), { status: 400 }))
+            .mockResolvedValueOnce({
+                handledPersistence: true,
+                response: (async function* streamEvents() {
+                    yield { type: 'response.output_text.delta', delta: 'Recovered' };
+                    yield {
+                        type: 'response.completed',
+                        response: {
+                            id: 'resp-reasoning-fallback-1',
+                            model: 'custom-reasoning-model',
+                            output_text: 'Recovered',
+                            output: [{
+                                type: 'message',
+                                role: 'assistant',
+                                content: [{ type: 'output_text', text: 'Recovered' }],
+                            }],
+                            metadata: { toolEvents: [] },
+                        },
+                    };
+                }()),
+            });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/v1', openAiCompatRouter);
+
+        const response = await request(app)
+            .post('/v1/chat/completions')
+            .send({
+                model: 'custom-reasoning-model',
+                messages: [{ role: 'user', content: 'Research and verify the current options.' }],
+                taskType: 'chat',
+                clientSurface: 'web-chat',
+                metadata: {
+                    clientSurface: 'web-chat',
+                    reasoningPolicy: { mode: 'auto' },
+                },
+                stream: true,
+                session_id: 'web-chat-stream-1',
+            });
+
+        expect(response.status).toBe(200);
+        expect(executeConversationRuntime).toHaveBeenCalledTimes(2);
+        expect(executeConversationRuntime.mock.calls[0][1].reasoningEffort).toBe('high');
+        expect(executeConversationRuntime.mock.calls[1][1].reasoningEffort).toBeNull();
+        expect(response.text).toContain('"fallback":true');
+        expect(response.text).toContain('"fallbackEffort":"model-default"');
+        expect(response.text).toContain('Recovered');
+    });
+
     test('includes final reasoning on non-stream chat completion messages', async () => {
         executeConversationRuntime.mockResolvedValue({
             handledPersistence: true,

@@ -62,6 +62,7 @@ const {
     buildRequestDecisionFrame,
     buildRequestDecisionMetadata,
     buildRequestFrameProgress,
+    executeWithAdaptiveReasoningFallback,
     formatRequestDecisionFrameForPrompt,
 } = require('../request-decision-frame');
 const {
@@ -314,8 +315,54 @@ function sanitizeCompatProgressSteps(steps = []) {
             id: String(step?.id || `step-${index + 1}`).trim() || `step-${index + 1}`,
             title: compactPreviewText(step?.title || step?.label || `Step ${index + 1}`, COMPAT_PROGRESS_STEP_TEXT_LIMIT),
             status: String(step?.status || 'pending').trim().toLowerCase() || 'pending',
+            ...(step?.proofSensitive === true ? { proofSensitive: true } : {}),
         }))
         .filter((step) => step.title);
+}
+
+function sanitizeCompatReasoningPolicy(policy = null) {
+    if (!policy || typeof policy !== 'object' || Array.isArray(policy)) return null;
+    const mode = ['auto', 'manual'].includes(String(policy.mode || '').trim().toLowerCase())
+        ? String(policy.mode).trim().toLowerCase()
+        : '';
+    const effectiveEffort = ['low', 'medium', 'high', 'xhigh'].includes(String(policy.effectiveEffort || '').trim().toLowerCase())
+        ? String(policy.effectiveEffort).trim().toLowerCase()
+        : '';
+    const complexityBand = ['instant', 'standard', 'complex', 'extended'].includes(String(policy.complexityBand || '').trim().toLowerCase())
+        ? String(policy.complexityBand).trim().toLowerCase()
+        : '';
+    if (!mode && !effectiveEffort && !complexityBand) return null;
+    return {
+        ...(mode ? { mode } : {}),
+        ...(effectiveEffort ? { effectiveEffort } : {}),
+        ...(complexityBand ? { complexityBand } : {}),
+        reasonCodes: (Array.isArray(policy.reasonCodes) ? policy.reasonCodes : [])
+            .map((code) => compactPreviewText(code, 40).toLowerCase())
+            .filter(Boolean)
+            .slice(0, 8),
+        ...(policy.explanation ? { explanation: compactPreviewText(policy.explanation, 160) } : {}),
+        ...(policy.capabilityLimited === true ? { capabilityLimited: true } : {}),
+        fallback: policy.fallback === true,
+        ...(policy.fallbackEffort ? { fallbackEffort: compactPreviewText(policy.fallbackEffort, 40) } : {}),
+        ...(policy.fallbackReason ? { fallbackReason: compactPreviewText(policy.fallbackReason, 80) } : {}),
+    };
+}
+
+function sanitizeCompatGoal(goal = null, fallbackSteps = []) {
+    if (!goal || typeof goal !== 'object' || Array.isArray(goal)) return null;
+    const objective = compactPreviewText(goal.objective || '', COMPAT_PROGRESS_TEXT_LIMIT);
+    const steps = sanitizeCompatProgressSteps(goal.steps || fallbackSteps);
+    const proofExpectations = (Array.isArray(goal.proofExpectations) ? goal.proofExpectations : [])
+        .map((item) => compactPreviewText(item, 150))
+        .filter(Boolean)
+        .slice(0, 5);
+    if (!objective && steps.length === 0 && proofExpectations.length === 0) return null;
+    return {
+        scope: goal.scope === 'turn' ? 'turn' : 'turn',
+        ...(objective ? { objective } : {}),
+        ...(steps.length > 0 ? { steps } : {}),
+        ...(proofExpectations.length > 0 ? { proofExpectations } : {}),
+    };
 }
 
 function buildCompatPreviewProgress(progress = {}) {
@@ -328,8 +375,16 @@ function buildCompatPreviewProgress(progress = {}) {
     const completedSteps = Number(source.completedSteps ?? source.completed_steps);
     const totalSteps = Number(source.totalSteps ?? source.total_steps);
     const percent = Number(source.percent);
+    const reasoningPolicy = sanitizeCompatReasoningPolicy(source.reasoningPolicy || source.reasoning_policy);
+    const goal = sanitizeCompatGoal(source.goal, steps);
+    const observedCategories = (Array.isArray(source.observedCategories) ? source.observedCategories : [])
+        .map((category) => compactPreviewText(category, 32).toLowerCase())
+        .filter((category) => ['gathering', 'building', 'applying', 'checking', 'working'].includes(category))
+        .slice(0, 5);
 
     return {
+        ...(Number.isFinite(Number(source.contractVersion)) ? { contractVersion: Number(source.contractVersion) } : {}),
+        ...(source.source === 'goal-contract' ? { source: 'goal-contract' } : {}),
         phase,
         ...(detail ? { detail } : {}),
         ...(summary ? { summary } : {}),
@@ -338,12 +393,37 @@ function buildCompatPreviewProgress(progress = {}) {
         ...(Number.isFinite(totalSteps) ? { totalSteps } : {}),
         ...(Number.isFinite(percent) ? { percent: Math.max(0, Math.min(100, Math.round(percent))) } : {}),
         ...(source.terminal === true ? { terminal: true } : {}),
+        ...(reasoningPolicy ? { reasoningPolicy } : {}),
+        ...(goal ? { goal } : {}),
+        ...(source.showSteps === true ? { showSteps: true } : {}),
+        ...(source.displayMode === 'steps' ? { displayMode: 'steps' } : {}),
+        ...(source.estimated === false ? { estimated: false } : {}),
+        ...(source.activeStepId ? { activeStepId: compactPreviewText(source.activeStepId, 80) } : {}),
+        ...(Number.isFinite(Number(source.activeStepIndex)) ? { activeStepIndex: Number(source.activeStepIndex) } : {}),
+        ...(observedCategories.length > 0 ? { observedCategories } : {}),
         ...(toolEvents.length > 0 ? { toolEvents } : {}),
         display: {
             minUpdateMs: COMPAT_PROGRESS_MIN_UPDATE_MS,
             compact: true,
         },
     };
+}
+
+async function executeCompatRuntimeWithAdaptiveReasoning(app, params = {}, reasoningPolicy = null, onFallback = null) {
+    return executeWithAdaptiveReasoningFallback(
+        (overrideEffort, fallbackPolicy) => executeConversationRuntime(app, {
+            ...params,
+            reasoningEffort: overrideEffort === undefined ? params.reasoningEffort : overrideEffort,
+            metadata: fallbackPolicy
+                ? {
+                    ...(params.metadata || {}),
+                    reasoningPolicy: fallbackPolicy,
+                }
+                : params.metadata,
+        }),
+        reasoningPolicy,
+        onFallback,
+    );
 }
 
 function normalizeClientNow(value = '') {
@@ -1405,7 +1485,7 @@ router.post('/chat/completions', async (req, res, next) => {
         if (requestedModel && !model) {
             console.warn(`[OpenAICompat] Ignoring non-chat model for chat/completions: ${requestedModel}`);
         }
-        const reasoningEffort = resolveReasoningEffort(req.body);
+        let reasoningEffort = resolveReasoningEffort(req.body);
         const enableConversationExecutor = resolveConversationExecutorFlag(req.body);
         const ownerId = getRequestOwnerId(req);
         const memoryKeywords = normalizeMemoryKeywords(
@@ -1709,7 +1789,13 @@ router.post('/chat/completions', async (req, res, next) => {
             taskType,
             clientSurface,
             route: '/v1/chat/completions',
+            metadata: effectiveRequestMetadata,
+            payload: req.body,
+            model: model || session?.metadata?.model || '',
         });
+        if (requestFrame.reasoningPolicy?.effectiveEffort) {
+            reasoningEffort = requestFrame.reasoningPolicy.effectiveEffort;
+        }
         const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
         const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
         const stickyRemoteContext = Boolean(
@@ -2200,7 +2286,7 @@ router.post('/chat/completions', async (req, res, next) => {
                 sessionId,
                 foregroundTurn: pendingForegroundTurn,
             });
-            const execution = await executeConversationRuntime(req.app, {
+            const execution = await executeCompatRuntimeWithAdaptiveReasoning(req.app, {
                 input: effectiveMessages,
                 session,
                 sessionId,
@@ -2247,6 +2333,19 @@ router.post('/chat/completions', async (req, res, next) => {
                         persistForegroundProgress(progress);
                     }
                 },
+            }, requestFrame.reasoningPolicy, (fallbackPolicy) => {
+                const fallbackProgress = {
+                    phase: 'reasoning-fallback',
+                    detail: 'Using the selected model\'s default reasoning level.',
+                    reasoningPolicy: fallbackPolicy,
+                    goal: requestFrame.goal,
+                    steps: requestFrame.goal?.steps || [],
+                    showSteps: ['complex', 'extended'].includes(requestFrame.complexity?.band),
+                    displayMode: ['complex', 'extended'].includes(requestFrame.complexity?.band) ? 'steps' : 'line',
+                    estimated: false,
+                };
+                writeCompatSseProgressPayload(activeSse, sessionId, fallbackProgress);
+                if (persistForegroundProgress) persistForegroundProgress(fallbackProgress);
             });
             const response = execution.response;
             console.log(`[OpenAICompat] chat/completions stream mode=${response?.kimibuiltStreamMode || 'unknown'} runtime=${execution.runtimeMode || 'unknown'} sessionId=${sessionId}`);
@@ -2475,7 +2574,7 @@ router.post('/chat/completions', async (req, res, next) => {
 
         setSessionHeaders(res, sessionId);
         const runtimeToolManager = await ensureRuntimeToolManager(req.app);
-        const execution = await executeConversationRuntime(req.app, {
+        const execution = await executeCompatRuntimeWithAdaptiveReasoning(req.app, {
             input: effectiveMessages,
             session,
             sessionId,
@@ -2516,7 +2615,7 @@ router.post('/chat/completions', async (req, res, next) => {
             memoryScope,
             metadata: effectiveRequestMetadata,
             ownerId,
-        });
+        }, requestFrame.reasoningPolicy);
         let response = execution.response;
         if (!execution.handledPersistence) {
             await sessionStore.recordResponse(

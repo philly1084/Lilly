@@ -139,6 +139,78 @@ describe('web-chat stream stability', () => {
         expect(source).not.toContain('Waiting for real reasoning data');
     });
 
+    test('categorizes tool events without exposing internal tool names', () => {
+        const app = Object.create(loadChatAppPrototype());
+
+        expect(app.categorizeToolProgress({ toolName: 'web-search' })).toEqual({
+            id: 'gathering',
+            label: 'Gathering',
+            detail: 'Gathering context and sources.',
+        });
+        expect(app.categorizeToolProgress({ toolName: 'remote-cli-agent' })).toEqual({
+            id: 'applying',
+            label: 'Applying',
+            detail: 'Applying the requested changes.',
+        });
+    });
+
+    test('advances deterministic goal steps from observed activity', () => {
+        const app = Object.create(loadChatAppPrototype());
+        const initial = {
+            goal: { objective: 'Research and verify the answer.' },
+            steps: [
+                { id: 'understand', title: 'Understand', status: 'in_progress' },
+                { id: 'gather', title: 'Gather', status: 'pending' },
+                { id: 'synthesize', title: 'Synthesize', status: 'pending' },
+                { id: 'deliver', title: 'Deliver', status: 'pending' },
+            ],
+        };
+
+        const gathering = app.advanceGoalProgress(initial, { category: 'gathering', stage: 'started' });
+        const gathered = app.advanceGoalProgress(gathering, { category: 'gathering', stage: 'completed' });
+
+        expect(gathering.steps.map((step) => step.status)).toEqual(['completed', 'in_progress', 'pending', 'pending']);
+        expect(gathered.steps.map((step) => step.status)).toEqual(['completed', 'completed', 'in_progress', 'pending']);
+    });
+
+    test('labels synthetic activity separately from provider reasoning', () => {
+        const source = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+
+        expect(source).toContain("const SYNTHETIC_REASONING_TITLE = 'Activity';");
+        expect(source).toContain("reasoningDisplaySource: 'stream'");
+    });
+
+    test('keeps Mission mode authoritative instead of rendering a duplicate goal card', () => {
+        const app = Object.create(loadChatAppPrototype());
+        app.currentStreamingMessageId = 'assistant-1';
+        app.missionState = { active: true };
+        app.getStreamingMessageSessionId = () => 'session-1';
+        app.getSessionMessage = () => ({
+            id: 'assistant-1',
+            role: 'assistant',
+            progressState: {},
+        });
+        app.updateMissionFromPayload = jest.fn();
+        app.updateLiveResponsePhase = jest.fn();
+        app.updateStreamingMessageState = jest.fn();
+
+        app.handleProgress({
+            progress: {
+                phase: 'understanding',
+                detail: 'Classified the request.',
+                goal: { objective: 'Deploy the app.' },
+                reasoningPolicy: { complexityBand: 'extended' },
+                steps: [{ id: 'inspect', title: 'Inspect', status: 'in_progress' }],
+            },
+        });
+
+        expect(app.updateMissionFromPayload).toHaveBeenCalled();
+        expect(app.updateStreamingMessageState).toHaveBeenCalledWith(
+            expect.objectContaining({ progressState: null, isStreaming: true }),
+            expect.any(Object),
+        );
+    });
+
     test('reconstructs streamed user-checkpoint tool-call arguments into a survey', () => {
         const app = Object.create(loadChatAppPrototype());
         app.pendingCheckpointToolCallBuffers = new Map();

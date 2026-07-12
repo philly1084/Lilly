@@ -1,6 +1,8 @@
 const {
     buildRequestDecisionFrame,
     buildRequestDecisionMetadata,
+    buildRequestFrameProgress,
+    executeWithAdaptiveReasoningFallback,
     formatRequestDecisionFrameForPrompt,
 } = require('./request-decision-frame');
 
@@ -187,5 +189,117 @@ describe('request-decision-frame', () => {
         ]));
         expect(frame.missingContext).toContain('real_game_object_files_optional_varied_placeholders_allowed');
         expect(frame.orchestrationHints.objective).toContain('varied in-place placeholders');
+    });
+
+    test('selects low reasoning for an instant Web Chat question in Auto mode', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'What is the capital of Nova Scotia?',
+            clientSurface: 'web-chat',
+            model: 'gpt-5.4-mini',
+            metadata: { reasoningPolicy: { mode: 'auto' } },
+            payload: { metadata: { reasoningPolicy: { mode: 'auto' } } },
+        });
+
+        expect(frame.complexity).toEqual(expect.objectContaining({
+            band: 'instant',
+            reasonCodes: expect.arrayContaining(['short_direct']),
+        }));
+        expect(frame.reasoningPolicy).toEqual(expect.objectContaining({
+            mode: 'auto',
+            effectiveEffort: 'low',
+            fallback: false,
+        }));
+    });
+
+    test('selects high reasoning and a research goal for complex Web Chat work', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Research the current options, verify the sources, and give me a cited comparison.',
+            clientSurface: 'web-chat',
+            model: 'gpt-5.4-mini',
+            metadata: { reasoningPolicy: { mode: 'auto' } },
+            payload: { metadata: { reasoningPolicy: { mode: 'auto' } } },
+        });
+        const progress = buildRequestFrameProgress(frame);
+
+        expect(frame.complexity.band).toBe('complex');
+        expect(frame.complexity.reasonCodes).toEqual(expect.arrayContaining(['research', 'verification']));
+        expect(frame.reasoningPolicy.effectiveEffort).toBe('high');
+        expect(frame.goal.steps.map((step) => step.title)).toEqual(['Understand', 'Gather', 'Synthesize', 'Deliver']);
+        expect(progress).toEqual(expect.objectContaining({
+            contractVersion: 1,
+            source: 'goal-contract',
+            showSteps: true,
+            reasoningPolicy: expect.objectContaining({ effectiveEffort: 'high' }),
+            goal: expect.objectContaining({ scope: 'turn' }),
+        }));
+    });
+
+    test('caps extended Auto reasoning when the model does not declare XHigh support', () => {
+        const frame = buildRequestDecisionFrame({
+            text: 'Build and deploy this complex multi-step application, then verify the public endpoint.',
+            clientSurface: 'web-chat',
+            model: 'custom-reasoning-model',
+            metadata: { reasoningPolicy: { mode: 'auto' } },
+            payload: { metadata: { reasoningPolicy: { mode: 'auto' } } },
+        });
+
+        expect(frame.complexity.band).toBe('extended');
+        expect(frame.reasoningPolicy).toEqual(expect.objectContaining({
+            effectiveEffort: 'high',
+            capabilityLimited: true,
+        }));
+    });
+
+    test('lets a fixed effort override Auto and leaves non-Web-Chat defaults unchanged', () => {
+        const manualFrame = buildRequestDecisionFrame({
+            text: 'Research and verify this thoroughly.',
+            clientSurface: 'web-chat',
+            model: 'gpt-5.6-sol',
+            metadata: { reasoningPolicy: { mode: 'auto' } },
+            payload: {
+                reasoning_effort: 'medium',
+                metadata: { reasoningPolicy: { mode: 'auto' } },
+            },
+        });
+        const apiFrame = buildRequestDecisionFrame({
+            text: 'Research and verify this thoroughly.',
+            clientSurface: 'api',
+            model: 'gpt-5.6-sol',
+            payload: {},
+        });
+
+        expect(manualFrame.reasoningPolicy).toEqual(expect.objectContaining({
+            mode: 'manual',
+            requestedEffort: 'medium',
+            effectiveEffort: 'medium',
+        }));
+        expect(apiFrame.reasoningPolicy).toBeNull();
+    });
+
+    test('retries Auto once with model-default reasoning when the provider rejects the effort', async () => {
+        const policy = {
+            mode: 'auto',
+            effectiveEffort: 'xhigh',
+            complexityBand: 'extended',
+            fallback: false,
+        };
+        const executor = jest.fn()
+            .mockRejectedValueOnce(Object.assign(new Error('reasoning_effort xhigh is not supported'), { status: 400 }))
+            .mockResolvedValueOnce({ response: 'ok' });
+        const onFallback = jest.fn();
+
+        const result = await executeWithAdaptiveReasoningFallback(executor, policy, onFallback);
+
+        expect(result).toEqual({ response: 'ok' });
+        expect(executor).toHaveBeenNthCalledWith(1, undefined, policy);
+        expect(executor).toHaveBeenNthCalledWith(2, null, expect.objectContaining({
+            fallback: true,
+            fallbackEffort: 'model-default',
+        }));
+        expect(policy).toEqual(expect.objectContaining({
+            effectiveEffort: null,
+            fallback: true,
+        }));
+        expect(onFallback).toHaveBeenCalledTimes(1);
     });
 });

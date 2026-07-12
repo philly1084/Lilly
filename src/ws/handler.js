@@ -50,6 +50,7 @@ const {
     buildRequestDecisionFrame,
     buildRequestDecisionMetadata,
     buildRequestFrameProgress,
+    executeWithAdaptiveReasoningFallback,
     formatRequestDecisionFrameForPrompt,
 } = require('../request-decision-frame');
 const { normalizeMemoryKeywords } = require('../memory/memory-keywords');
@@ -348,6 +349,20 @@ function sendWsProgressPayload(ws, sessionId, progress = {}) {
     });
 }
 
+async function executeWsRuntimeWithAdaptiveReasoning(app, params = {}, reasoningPolicy = null, onFallback = null) {
+    return executeWithAdaptiveReasoningFallback(
+        (overrideEffort, fallbackPolicy) => executeConversationRuntime(app, {
+            ...params,
+            reasoningEffort: overrideEffort === undefined ? params.reasoningEffort : overrideEffort,
+            metadata: fallbackPolicy
+                ? { ...(params.metadata || {}), reasoningPolicy: fallbackPolicy }
+                : params.metadata,
+        }),
+        reasoningPolicy,
+        onFallback,
+    );
+}
+
 function setupWebSocket(wss, app = null) {
     wss.on('connection', (ws, req) => {
         ws.app = app;
@@ -513,7 +528,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
     const memoryKeywords = normalizeMemoryKeywords(
         payload.memoryKeywords || payload?.metadata?.memoryKeywords || [],
     );
-    const reasoningEffort = resolveReasoningEffort(payload);
+    let reasoningEffort = resolveReasoningEffort(payload);
     const enableConversationExecutor = resolveConversationExecutorFlag(payload);
     const requestTimezone = String(
         payload?.metadata?.timezone
@@ -701,7 +716,13 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
         taskType,
         clientSurface,
         route: '/ws',
+        metadata: effectiveRequestMetadata,
+        payload,
+        model: model || session?.metadata?.model || '',
     });
+    if (requestFrame.reasoningPolicy?.effectiveEffort) {
+        reasoningEffort = requestFrame.reasoningPolicy.effectiveEffort;
+    }
     const requestFrameMetadata = buildRequestDecisionMetadata(requestFrame);
     const requestFrameInstructions = formatRequestDecisionFrameForPrompt(requestFrame);
     effectiveRequestMetadata = {
@@ -1013,7 +1034,7 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
             ].filter(Boolean).join('\n\n'),
             effectiveArtifactIds,
         );
-        const execution = await executeConversationRuntime(ws.app, {
+        const execution = await executeWsRuntimeWithAdaptiveReasoning(ws.app, {
             input: effectiveMessage,
             session,
             sessionId: session.id,
@@ -1053,6 +1074,17 @@ async function handleChat(ws, session, payload = {}, toolManager = null, ownerId
             onProgress: (progress) => {
                 sendWsProgressPayload(ws, session.id, progress);
             },
+        }, requestFrame.reasoningPolicy, (fallbackPolicy) => {
+            sendWsProgressPayload(ws, session.id, {
+                phase: 'reasoning-fallback',
+                detail: 'Using the selected model\'s default reasoning level.',
+                reasoningPolicy: fallbackPolicy,
+                goal: requestFrame.goal,
+                steps: requestFrame.goal?.steps || [],
+                showSteps: ['complex', 'extended'].includes(requestFrame.complexity?.band),
+                displayMode: ['complex', 'extended'].includes(requestFrame.complexity?.band) ? 'steps' : 'line',
+                estimated: false,
+            });
         });
         const response = execution.response;
 

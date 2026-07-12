@@ -40,6 +40,17 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<span class="tool-menu-choice__hint">Patch source</span>');
     });
 
+    test('uses adaptive reasoning by default while preserving fixed overrides', () => {
+        const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
+        const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
+
+        expect(html).toContain('<option value="">Reasoning: Auto</option>');
+        expect(html).toContain('<option value="low">Reasoning: Low</option>');
+        expect(html).toContain('<option value="xhigh">Reasoning: XHigh</option>');
+        expect(appSource).toContain("mode: 'auto'");
+        expect(appSource).toContain("mode: 'manual'");
+    });
+
     test('keeps one card-based chat workflow without a separate mission mode', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
 
@@ -84,7 +95,7 @@ describe('web-chat index redirect', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
         const lightTheme = css.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] || '';
 
-        expect(html).toContain('css/styles.css?v=20260711j');
+        expect(html).toContain('css/styles.css?v=20260712b');
         expect(lightTheme).toContain('--tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98)');
         expect(lightTheme).toContain('--tool-picker-panel-border: rgba(215, 226, 239, 0.96);');
         expect(lightTheme).not.toContain('--tool-picker-panel-background: var(--theme-dialog-background);');
@@ -97,7 +108,7 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const appSource = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
 
-        expect(html).toContain('js/app.js?v=20260711e');
+        expect(html).toContain('js/app.js?v=20260712a');
         expect(appSource).toContain("const triggerLabel = selectedCount > 0");
         expect(appSource).toContain("this.toolMenuBtn.setAttribute('aria-label', triggerLabel);");
         expect(appSource).toContain('this.toolMenuBtn.title = triggerLabel;');
@@ -116,9 +127,9 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="btn-icon mobile-chat-menu__close"');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
-        expect(html).toContain('css/styles.css?v=20260711j');
+        expect(html).toContain('css/styles.css?v=20260712b');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
-        expect(html).toContain('js/ui.js?v=20260711c');
+        expect(html).toContain('js/ui.js?v=20260712a');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Open chat controls')");
         expect(uiSource).toContain("if (event.key === 'Escape')");
@@ -138,7 +149,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="progressbar"');
         expect(html).toContain('aria-labelledby="export-progress-text"');
         expect(html).toContain('aria-describedby="export-progress-percent"');
-        expect(html).toContain('js/ui.js?v=20260711c');
+        expect(html).toContain('js/ui.js?v=20260712a');
         expect(uiSource).toContain('this.lastFocusedElement = document.activeElement;');
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuenow', String(normalizedPercent));");
         expect(uiSource).toContain("progressBar.setAttribute('aria-valuetext', `${normalizedMessage}, ${normalizedPercent} percent`);");
@@ -156,7 +167,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="import-progress" class="import-progress hidden mt-4" role="status"');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-busy="false"');
-        expect(html).toContain('js/ui.js?v=20260711c');
+        expect(html).toContain('js/ui.js?v=20260712a');
         expect(uiSource).toContain('this.closeImportModal({ restoreFocus: false });');
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'true');");
         expect(uiSource).toContain("progress?.setAttribute('aria-busy', 'false');");
@@ -211,7 +222,7 @@ describe('web-chat index redirect', () => {
         const html = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
         const uiSource = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
 
-        expect(html).toContain('js/ui.js?v=20260711c');
+        expect(html).toContain('js/ui.js?v=20260712a');
         expect(uiSource).toContain("modal.setAttribute('aria-describedby', 'shortcuts-description');");
         expect(uiSource).toContain('<div class="modal-overlay" aria-hidden="true" onclick="uiHelpers.closeShortcutsModal()"></div>');
         expect(uiSource).toContain('<button type="button" class="btn-icon" onclick="uiHelpers.closeShortcutsModal()" aria-label="Close keyboard shortcuts help">');
@@ -240,7 +251,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('role="status" aria-live="polite" aria-atomic="true"');
         expect(html).toContain('aria-label="Backend connection status: Connecting"');
         expect(html).toContain('id="connection-indicator" class="connection-indicator checking" aria-hidden="true"');
-        expect(html).toContain('js/app.js?v=20260711e');
+        expect(html).toContain('js/app.js?v=20260712a');
         expect(appSource).toContain("statusEl.classList.remove('connected', 'connecting', 'disconnected');");
         expect(appSource).toContain("indicator.setAttribute('aria-hidden', 'true');");
         expect(appSource).toContain("statusEl.setAttribute('aria-label', `Backend connection status: ${statusLabel}`);");
@@ -255,7 +266,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('title="Open agent workloads"');
         expect(html).toContain('aria-label="Open agent workloads"');
         expect(html).toContain('aria-controls="workloads-panel"');
-        expect(html).toContain('js/app.js?v=20260711e');
+        expect(html).toContain('js/app.js?v=20260712a');
         expect(appSource).toContain("const label = isOpen ? 'Close agent workloads' : 'Open agent workloads';");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('aria-label', label);");
         expect(appSource).toContain("this.workloadsBtn?.setAttribute('title', label);");
@@ -268,7 +279,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('id="command-input"');
         expect(html).toContain('aria-controls="command-results"');
         expect(html).toContain('aria-autocomplete="list"');
-        expect(html).toContain('js/ui.js?v=20260711c');
+        expect(html).toContain('js/ui.js?v=20260712a');
         expect(uiSource).toContain('syncCommandResultAccessibility()');
         expect(uiSource).toContain("commandInput.setAttribute('aria-activedescendant', selectedItem.id);");
         expect(uiSource).toContain("item.setAttribute('aria-selected', item === selectedItem ? 'true' : 'false');");
@@ -284,8 +295,8 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-expanded="true"');
         expect(html).toContain('aria-label="Hide input area"');
         expect(html).toContain('<span class="input-toggle-tooltip">Hide Input</span>');
-        expect(html).toContain('css/styles.css?v=20260711j');
-        expect(html).toContain('js/ui.js?v=20260711c');
+        expect(html).toContain('css/styles.css?v=20260712b');
+        expect(html).toContain('js/ui.js?v=20260712a');
         expect(uiSource).toContain('syncInputAreaToggleState(isHidden)');
         expect(uiSource).toContain("toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');");
         expect(uiSource).toContain("toggleBtn.setAttribute('aria-label', label);");
