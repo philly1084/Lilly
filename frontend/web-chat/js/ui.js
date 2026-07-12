@@ -9960,6 +9960,7 @@ class UIHelpers {
     syncSidebarState() {
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('sidebar-overlay');
+        const trigger = document.getElementById('sidebar-toggle');
         if (!sidebar || !overlay) {
             return;
         }
@@ -9970,6 +9971,14 @@ class UIHelpers {
 
         overlay.classList.toggle('hidden', !isMobile || !isOpen || this.isMinimalistMode());
         sidebar.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+
+        if (trigger) {
+            const isExpanded = isMobile && isOpen && !this.isMinimalistMode();
+            const label = isExpanded ? 'Close conversation sidebar' : 'Open conversation sidebar';
+            trigger.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+            trigger.setAttribute('aria-label', label);
+            trigger.setAttribute('title', label);
+        }
     }
 
     isCompactActionSheetMode() {
