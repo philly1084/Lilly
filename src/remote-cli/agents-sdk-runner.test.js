@@ -14,10 +14,25 @@ const {
   buildRemoteCliDiagnostics,
   isStaleMcpSessionError,
   resolveAdminMode,
+  resolveProviderAgentSelection,
   resolveRemoteCliTargetId,
 } = require('./agents-sdk-runner');
 
 describe('RemoteCliAgentsSdkRunner', () => {
+  test('maps selected Kimi and Grok models to their matching gateway CLI providers', () => {
+    expect(resolveProviderAgentSelection('grok-build')).toMatchObject({
+      providerId: 'grok-build-cli',
+      providerLabel: 'Grok Build',
+      providerModel: 'grok-build',
+    });
+    expect(resolveProviderAgentSelection('kimi-k2.7-code')).toMatchObject({
+      providerId: 'kimi-code-cli',
+      providerLabel: 'Kimi CLI',
+      providerModel: '',
+    });
+    expect(resolveProviderAgentSelection('gpt-5.6-sol')).toBeNull();
+  });
+
   test('keeps the MCP SDK as a production dependency for Docker optional-omit installs', () => {
     const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
     const packageLock = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package-lock.json'), 'utf8'));
@@ -676,6 +691,136 @@ describe('RemoteCliAgentsSdkRunner', () => {
     });
   });
 
+  test.each([
+    ['grok-build', 'grok-build-cli', 'grok-build', 'Grok Build'],
+    ['kimi-k2.7-code', 'kimi-code-cli', undefined, 'Kimi CLI'],
+  ])('routes selected model %s through provider %s', async (selectedModel, providerId, providerModel, providerLabel) => {
+    const progress = [];
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
+        const body = JSON.parse(options.body);
+        expect(body).toMatchObject({
+          providerId,
+          targetId: 'k3s-prod',
+          cwd: '/opt/kimibuilt',
+        });
+        if (providerModel) {
+          expect(body.model).toBe(providerModel);
+        } else {
+          expect(body.model).toBeUndefined();
+        }
+        expect(body.task).toContain(`Use ${providerLabel}`);
+        expect(body.task).toContain(`selected in the KimiBuilt header is ${selectedModel}`);
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: {
+                id: `task-${providerId}`,
+                sessionId: `session-${providerId}`,
+              },
+              streamUrl: `/admin/remote-agent-tasks/task-${providerId}/stream?token=safe-token`,
+            });
+          },
+        };
+      }
+      if (url === `https://gateway.example.com/admin/remote-agent-tasks/task-${providerId}/stream?token=safe-token`) {
+        return {
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(
+                'event: output\n'
+                + `data: {"type":"output","data":"WORKSPACE=/opt/kimibuilt\\nWHAT_CHANGED=Finished with ${providerLabel}.\\nVERIFY_COMMANDS=npm test\\nVERIFY_RESULTS=passed\\nPUBLIC_URL=not_available\\nBLOCKER=none\\nREMOTE_AGENT_RESULT: success done"}\n\n`
+                + 'event: exit\n'
+                + 'data: {"type":"exit","exitCode":0}\n\n',
+              ));
+              controller.close();
+            },
+          }),
+        };
+      }
+      if (url === `https://gateway.example.com/admin/remote-agent-tasks/task-${providerId}/cancel`) {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ ok: true });
+          },
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+        codexAgentWorkspacePath: '/opt/kimibuilt',
+        defaultTargetId: 'k3s-prod',
+        defaultCwd: '/opt/kimibuilt',
+      },
+      sdkLoader: () => {
+        throw new Error('provider-agent transport should not load the MCP SDK');
+      },
+      fetchImpl,
+    });
+
+    const result = await runner.run({
+      task: 'Fix the selected remote app and verify it.',
+      model: selectedModel,
+      onProgress: (event) => progress.push(event),
+    });
+
+    expect(result).toMatchObject({
+      transport: 'provider-agent',
+      providerId,
+      model: selectedModel,
+      apiMode: 'provider-agent',
+      whatChanged: `Finished with ${providerLabel}.`,
+      verifyResults: ['passed'],
+      completionStatus: 'complete',
+    });
+    expect(progress.some((event) => event.toolEvents?.[0]?.providerId === providerId)).toBe(true);
+  });
+
+  test('rejects cross-origin provider-agent streams before sending gateway credentials', async () => {
+    const fetchImpl = jest.fn(async (url, options = {}) => {
+      if (url === 'https://gateway.example.com/admin/remote-agent-tasks' && options.method === 'POST') {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: { id: 'task-kimi', sessionId: 'session-kimi' },
+              streamUrl: 'https://untrusted.example.net/events',
+            });
+          },
+        };
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    const runner = new RemoteCliAgentsSdkRunner({
+      config: {
+        enabled: true,
+        transport: 'codex-agent',
+        codexAgentBaseUrl: 'https://gateway.example.com',
+        codexAgentApiKey: 'frontend-secret',
+      },
+      fetchImpl,
+    });
+
+    await expect(runner.run({
+      task: 'Run the selected remote task.',
+      model: 'kimi-k2.7-code',
+    })).rejects.toThrow('stream URL must use the configured gateway origin');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   test('uses the /api/codex-agent/run plus /events SSE transport when configured', async () => {
     const progress = [];
     const fetchImpl = jest.fn(async (url, options = {}) => {
@@ -700,7 +845,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
         expect(body.config).toMatchObject({
           approvalPolicy: 'never',
           threadSandbox: 'workspace-write',
-          model: 'codex-latest',
+          model: 'gpt-5.6-sol',
         });
         return {
           ok: true,
@@ -767,6 +912,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
 
     const result = await runner.run({
       task: 'Fix the remote app and verify it.',
+      model: 'gpt-5.6-sol',
       adminMode: true,
       onProgress: (event) => progress.push(event),
     });
@@ -790,6 +936,7 @@ describe('RemoteCliAgentsSdkRunner', () => {
       verifyCommands: ['npm test'],
       verifyResults: ['passed'],
       completionStatus: 'complete',
+      model: 'gpt-5.6-sol',
       apiMode: 'codex-agent',
     });
   });

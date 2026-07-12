@@ -323,6 +323,24 @@ function normalizeRemoteCliAgentParams(params = {}, context = {}) {
   applyAlias(params, 'mcpSessionId', params.mcp_session_id, argumentObject?.mcpSessionId, argumentObject?.mcp_session_id);
   applyAlias(params, 'remoteCodeModel', params.remote_code_model, argumentObject?.remoteCodeModel, argumentObject?.remote_code_model, remoteCodeRun?.model);
   applyAlias(params, 'transport', params.remoteCliTransport, params.remote_cli_transport, argumentObject?.transport, argumentObject?.remoteCliTransport, argumentObject?.remote_cli_transport);
+  const selectedHeaderModel = firstNonEmptyText(
+    context?.model,
+    context?.requestedModel,
+    context?.metadata?.requestedModel,
+    context?.metadata?.model,
+  );
+  const supportedHeaderModel = /(?:^|[\/_-])(?:gpt|codex|openai|kimi|grok|xai)(?:[\/_-]|$)|^o[134](?:[\/_-]|$)|moonshot/i.test(selectedHeaderModel)
+    ? selectedHeaderModel
+    : '';
+  applyAlias(
+    params,
+    'model',
+    params.requestedModel,
+    params.requested_model,
+    argumentObject?.model,
+    argumentObject?.requestedModel,
+    supportedHeaderModel,
+  );
   applyAlias(params, 'supportAgentResponse', params.support_agent_response, params.supportAgentNotes, params.support_agent_notes, argumentObject?.supportAgentResponse, argumentObject?.support_agent_response, argumentObject?.supportAgentNotes, argumentObject?.support_agent_notes);
 
   const priorRemoteCliAgent = applyPriorRemoteCliAgentDefaults(params, context);
@@ -378,7 +396,7 @@ class RemoteCliAgentTool extends ToolBase {
       id: options.id || 'remote-cli-agent',
       name: options.name || 'Remote CLI Agent',
       description: options.description || [
-        'Run a server-side Codex coding agent through the gateway /api/codex-agent/run plus /events SSE contract, with the legacy remote-cli MCP lane available for compatibility.',
+        'Run the server-side coding CLI that matches the selected chat model: Kimi CLI for Kimi models, Grok Build for Grok models, and Codex for OpenAI models, with the legacy remote-cli MCP lane available for compatibility.',
         'Use for remote/server coding/build/deploy tasks that should stream progress through the trusted backend runner, with adminMode for scoped live software changes.',
         'Remote deployments must preserve Git visibility: inspect status/remotes, create or reuse a git-backed workspace, commit before deploy, return GIT_BRANCH, GIT_BASE_COMMIT, GIT_COMMIT, CHANGED_FILES, verification markers, and use git revert plus redeploy for rollback.',
       ].join(' '),
@@ -462,12 +480,12 @@ class RemoteCliAgentTool extends ToolBase {
           },
           transport: {
             type: 'string',
-            enum: ['codex-agent', 'mcp', 'auto'],
-            description: 'Transport contract override. Use codex-agent for POST /api/codex-agent/run plus /events SSE; mcp uses legacy remote_code_run/status.',
+            enum: ['provider-agent', 'codex-agent', 'mcp', 'auto'],
+            description: 'Transport contract override. provider-agent uses the gateway CLI provider selected from the model family; codex-agent uses POST /api/codex-agent/run plus /events SSE; mcp uses legacy remote_code_run/status.',
           },
           model: {
             type: 'string',
-            description: 'Optional model override for the inner OpenAI Agents SDK agent.',
+            description: 'Selected chat model. Kimi and Grok families choose their matching gateway CLI provider; OpenAI models use the Codex agent lane.',
           },
           instructions: {
             type: 'string',
@@ -517,6 +535,7 @@ class RemoteCliAgentTool extends ToolBase {
           agentQuality: { type: 'object' },
           model: { type: 'string' },
           apiMode: { type: 'string' },
+          providerId: { type: 'string' },
         },
       },
       hooks: {

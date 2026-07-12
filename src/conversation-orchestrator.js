@@ -9646,6 +9646,7 @@ class ConversationOrchestrator extends EventEmitter {
         }, session || null);
         toolContext = {
             ...toolContext,
+            ...(model ? { model } : {}),
             ...(session ? { session } : {}),
             ...(signal ? { signal } : {}),
             ...(clientSurface ? { clientSurface } : {}),

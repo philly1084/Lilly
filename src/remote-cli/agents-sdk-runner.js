@@ -24,6 +24,8 @@ const CODEX_AGENT_TERMINAL_EVENTS = new Set([
   'turn_input_required',
 ]);
 
+const PROVIDER_AGENT_RESULT_PATTERN = /(?:^|\n)\s*REMOTE_AGENT_RESULT\s*[:=]\s*(success|failed)\b/i;
+
 function normalizeBooleanFlag(value, fallback = false) {
   if (value === undefined || value === null || String(value).trim() === '') {
     return fallback;
@@ -1190,6 +1192,9 @@ function normalizeRemoteCliTransport(value = '') {
   if (['mcp', 'remote-code', 'remote-code-run', 'remote-code-mcp'].includes(normalized)) {
     return 'mcp';
   }
+  if (['provider-agent', 'provideragent', 'provider-cli', 'model-cli'].includes(normalized)) {
+    return 'provider-agent';
+  }
   if (normalized === 'auto') {
     return 'auto';
   }
@@ -1197,21 +1202,99 @@ function normalizeRemoteCliTransport(value = '') {
 }
 
 function resolveRemoteCliTransport(input = {}, runnerConfig = {}) {
-  const requested = normalizeRemoteCliTransport(
+  const inputTransport = normalizeText(
     input.transport
     || input.runnerTransport
     || input.remoteCliTransport
-    || input.remote_cli_transport
+    || input.remote_cli_transport,
+  );
+  const requested = normalizeRemoteCliTransport(
+    inputTransport
     || runnerConfig.transport
     || 'auto',
   );
+  const selectedProvider = resolveProviderAgentSelection(
+    input.requestedModel
+    || input.requested_model
+    || input.model,
+  );
+  if (!inputTransport && selectedProvider) {
+    return 'provider-agent';
+  }
   if (requested === 'auto') {
     return normalizeText(input.codexAgentBaseUrl || runnerConfig.codexAgentBaseUrl)
       && normalizeText(input.codexAgentApiKey || runnerConfig.codexAgentApiKey)
       ? 'codex-agent'
       : 'mcp';
   }
+  if (requested === 'provider-agent') {
+    return 'provider-agent';
+  }
   return requested === 'codex-agent' ? 'codex-agent' : 'mcp';
+}
+
+function resolveProviderAgentSelection(model = '') {
+  const requestedModel = normalizeText(model);
+  const normalized = requestedModel.toLowerCase();
+  if (!normalized || normalized === 'auto') {
+    return null;
+  }
+  if (/(?:^|[\/_-])grok(?:[\/_-]|$)|\bxai\b/.test(normalized)) {
+    return {
+      providerId: 'grok-build-cli',
+      providerLabel: 'Grok Build',
+      requestedModel,
+      providerModel: 'grok-build',
+    };
+  }
+  if (/(?:^|[\/_-])kimi(?:[\/_-]|$)|moonshot/.test(normalized)) {
+    return {
+      providerId: 'kimi-code-cli',
+      providerLabel: 'Kimi CLI',
+      requestedModel,
+      // The current Kimi session command does not expose a safe model flag.
+      // Omitting model lets the authenticated Kimi CLI use its configured coding model.
+      providerModel: '',
+    };
+  }
+  return null;
+}
+
+function buildProviderAgentTask({
+  task = '',
+  providerLabel = 'CLI provider',
+  requestedModel = '',
+  continuitySummary = '',
+} = {}) {
+  return [
+    `Use ${providerLabel} for this remote coding task.`,
+    requestedModel ? `The model selected in the KimiBuilt header is ${requestedModel}.` : '',
+    '',
+    'User task:',
+    task,
+    '',
+    'Completion contract:',
+    '- Baseline the active target and workspace before any mutation.',
+    '- Keep changes scoped, preserve unrelated git work, and verify the actual deployed surface when deployment is requested.',
+    '- For UI work, run browser/Playwright or kimibuilt-ui-check proof before claiming success.',
+    '- Finish with marker lines: WHAT_CHANGED=<summary>, VERIFY_COMMANDS=<commands>, VERIFY_RESULTS=<results>, PUBLIC_URL=<url or not_available>, BLOCKER=<none or exact blocker>.',
+    '- Include Git and deployment continuity markers when known.',
+    '- The final marker must be REMOTE_AGENT_RESULT: success <summary> or REMOTE_AGENT_RESULT: failed <reason>.',
+    continuitySummary ? 'Prior verified continuity context:' : '',
+    continuitySummary,
+  ].filter(Boolean).join('\n');
+}
+
+function normalizeProviderAgentOutput(value = '') {
+  return String(value || '')
+    .replace(/(^|\n)(\s*REMOTE_AGENT_RESULT)\s*:/gi, '$1$2=');
+}
+
+function readProviderAgentResultStatus(value = '') {
+  const terminalText = String(value || '')
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\r/g, '\n');
+  return terminalText.match(PROVIDER_AGENT_RESULT_PATTERN)?.[1]?.toLowerCase() || '';
 }
 
 function resolveCodexAgentBaseUrl(input = {}, runnerConfig = {}) {
@@ -1718,15 +1801,15 @@ class RemoteCliAgentsSdkRunner {
     if (this.config.enabled === false) {
       throw new Error('Remote CLI MCP integration is disabled.');
     }
-    if (transport === 'codex-agent') {
+    if (transport === 'codex-agent' || transport === 'provider-agent') {
       if (typeof this.fetch !== 'function') {
-        throw new Error('Fetch is required for remote-cli-agent codex-agent transport.');
+        throw new Error(`Fetch is required for remote-cli-agent ${transport} transport.`);
       }
       if (!resolveCodexAgentBaseUrl(input, this.config)) {
-        throw new Error('REMOTE_CLI_CODEX_AGENT_BASE_URL, CODEX_AGENT_BASE_URL, or GATEWAY_URL is required for remote-cli-agent codex-agent transport.');
+        throw new Error(`REMOTE_CLI_CODEX_AGENT_BASE_URL, CODEX_AGENT_BASE_URL, or GATEWAY_URL is required for remote-cli-agent ${transport} transport.`);
       }
       if (!resolveCodexAgentApiKey(input, this.config)) {
-        throw new Error('REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, CODEX_AGENT_API_KEY, FRONTEND_API_KEY, or REMOTE_CLI_MCP_BEARER_TOKEN is required for remote-cli-agent codex-agent transport.');
+        throw new Error(`REMOTE_CLI_CODEX_AGENT_BEARER_TOKEN, CODEX_AGENT_API_KEY, FRONTEND_API_KEY, or REMOTE_CLI_MCP_BEARER_TOKEN is required for remote-cli-agent ${transport} transport.`);
       }
       return;
     }
@@ -2133,6 +2216,209 @@ class RemoteCliAgentsSdkRunner {
     }
   }
 
+  async executeProviderAgentRun({
+    input = {},
+    targetId = 'prod',
+    cwd = '',
+    task = '',
+    selection = null,
+    agentRunTimeoutMs = DEFAULT_AGENT_RUN_TIMEOUT_MS,
+    continuitySummary = '',
+    onProgress = null,
+  } = {}) {
+    if (!selection) {
+      throw new Error('provider-agent transport requires a Kimi or Grok model selection.');
+    }
+    const baseUrl = resolveCodexAgentBaseUrl(input, this.config);
+    const apiKey = resolveCodexAgentApiKey(input, this.config);
+    const timeoutMs = normalizePositiveInteger(agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    timer?.unref?.();
+    const outputParts = [];
+    let taskId = '';
+    let sessionId = '';
+    let markerComplete = false;
+    let markerStatus = '';
+    let terminalEvent = null;
+
+    const emitProgress = (detail, extra = {}) => {
+      if (typeof onProgress !== 'function' || !detail) {
+        return;
+      }
+      onProgress({
+        phase: 'executing',
+        reasoningSummary: detail,
+        detail,
+        percent: extra.percent || 45,
+        toolEvents: [{
+          toolId: 'remote-cli-agent',
+          stage: extra.stage || 'in_progress',
+          detail,
+          transport: 'provider-agent',
+          providerId: selection.providerId,
+          providerLabel: selection.providerLabel,
+        }],
+      });
+    };
+
+    try {
+      emitProgress(`Starting ${selection.providerLabel} for ${selection.requestedModel}.`, { percent: 20, stage: 'starting' });
+      const startResponse = await this.fetch(buildCodexAgentUrl(baseUrl, '/admin/remote-agent-tasks'), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          providerId: selection.providerId,
+          targetId,
+          cwd,
+          task: buildProviderAgentTask({
+            task,
+            providerLabel: selection.providerLabel,
+            requestedModel: selection.requestedModel,
+            continuitySummary,
+          }),
+          ...(selection.providerModel ? { model: selection.providerModel } : {}),
+        }),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      const startBody = await this.readJsonResponse(startResponse);
+      if (!startResponse?.ok) {
+        throw new Error(normalizeText(startBody?.error || startBody?.message) || `${selection.providerLabel} remote-agent start failed with status ${startResponse?.status || 'unknown'}.`);
+      }
+      taskId = normalizeText(startBody?.task?.id);
+      sessionId = normalizeText(startBody?.task?.sessionId);
+      const streamUrl = normalizeText(startBody?.streamUrl);
+      if (!taskId || !streamUrl) {
+        throw new Error(`${selection.providerLabel} remote-agent response did not include task id and stream URL.`);
+      }
+
+      emitProgress(`${selection.providerLabel} remote task ${taskId} started.`, { percent: 35, stage: 'streaming' });
+      const absoluteStreamUrl = new URL(streamUrl, `${trimTrailingSlash(baseUrl)}/`).toString();
+      if (new URL(absoluteStreamUrl).origin !== new URL(baseUrl).origin) {
+        throw new Error(`${selection.providerLabel} remote-agent stream URL must use the configured gateway origin.`);
+      }
+      const eventsResponse = await this.fetch(absoluteStreamUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'text/event-stream',
+        },
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (!eventsResponse?.ok) {
+        throw new Error(`${selection.providerLabel} remote-agent stream failed with status ${eventsResponse?.status || 'unknown'}.`);
+      }
+
+      try {
+        await this.consumeCodexAgentEvents(eventsResponse, {
+          signal: controller?.signal || null,
+          onEvent: (event) => {
+            const eventType = normalizeText(event?.type || event?.event);
+            if (eventType === 'output') {
+              const text = String(event?.data || event?.text || '');
+              if (text) {
+                outputParts.push(text);
+                emitProgress(`${selection.providerLabel} is working.`, { percent: 60, stage: 'output' });
+                markerStatus = readProviderAgentResultStatus(outputParts.join(''));
+                if (markerStatus) {
+                  markerComplete = true;
+                  controller?.abort();
+                }
+              }
+            } else if (eventType === 'reasoning') {
+              emitProgress(normalizeText(event?.summary) || `${selection.providerLabel} planned the remote task.`, { percent: 45, stage: 'reasoning' });
+            } else if (eventType === 'exit') {
+              terminalEvent = event;
+            }
+          },
+        });
+      } catch (error) {
+        if (!markerComplete) {
+          throw error;
+        }
+      }
+
+      if (markerComplete) {
+        await this.fetch(buildCodexAgentUrl(baseUrl, `/admin/remote-agent-tasks/${encodeURIComponent(taskId)}/cancel`), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            Accept: 'application/json',
+          },
+        }).catch(() => null);
+      }
+
+      const output = normalizeProviderAgentOutput(outputParts.join('').trim());
+      const failed = markerStatus === 'failed'
+        || (!markerComplete && Number(terminalEvent?.exitCode) !== 0);
+      const finalOutput = buildRemoteCodeFinalText({
+        fragments: [output],
+        targetId,
+        cwd,
+        sessionId,
+        status: failed ? 'failed' : 'completed',
+        fallbackWhatChanged: failed
+          ? `${selection.providerLabel} exited before reporting successful completion.`
+          : `${selection.providerLabel} completed the remote task selected by ${selection.requestedModel}.`,
+        fallbackVerifyCommand: `POST /admin/remote-agent-tasks (${selection.providerId})`,
+        fallbackVerifyResult: markerComplete
+          ? `${selection.providerLabel} emitted REMOTE_AGENT_RESULT.`
+          : `${selection.providerLabel} session exited with code ${terminalEvent?.exitCode ?? 'unknown'}.`,
+        blocker: failed ? `${selection.providerLabel} remote-agent task failed.` : '',
+        transportLabel: 'provider-agent',
+        transportDescription: `${selection.providerLabel} via /admin/remote-agent-tasks`,
+      });
+      const runMetadata = applyUiProofRequirement(extractRemoteCliRunMetadata(finalOutput), task);
+      const agentQuality = assessRemoteCliQuality(task, runMetadata);
+      const structuredResult = buildRemoteCliStructuredResult({ task, metadata: runMetadata, agentQuality });
+      return {
+        finalOutput,
+        humanSummary: structuredResult.humanSummary,
+        structuredResult,
+        transport: 'provider-agent',
+        providerId: selection.providerId,
+        targetId,
+        cwd: runMetadata.workspace || cwd,
+        sessionId: runMetadata.sessionId || sessionId || null,
+        remoteCodeSessionId: runMetadata.sessionId || sessionId || null,
+        remoteCodeJobId: taskId || null,
+        gitRepo: runMetadata.gitRepo || null,
+        gitBranch: runMetadata.gitBranch || null,
+        gitBaseCommit: runMetadata.gitBaseCommit || null,
+        gitCommit: runMetadata.gitCommit || null,
+        changedFiles: runMetadata.changedFiles || [],
+        deployment: runMetadata.deployment || null,
+        publicHost: runMetadata.publicHost || null,
+        publicUrl: runMetadata.publicUrl || null,
+        uiCheckReport: runMetadata.uiCheckReport || null,
+        uiScreenshots: runMetadata.uiScreenshots || [],
+        whatChanged: runMetadata.whatChanged || null,
+        verifyCommands: runMetadata.verifyCommands || [],
+        verifyResults: runMetadata.verifyResults || [],
+        blocker: runMetadata.blocker || null,
+        completionStatus: runMetadata.completionStatus || 'unknown',
+        agentQuality,
+        model: selection.requestedModel,
+        apiMode: 'provider-agent',
+      };
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeoutError = new RemoteCliAgentRunTimeoutError(timeoutMs);
+        timeoutError.cause = error;
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
   async executeRemoteCodeRun(remoteCli, {
     targetId = 'prod',
     cwd = '',
@@ -2291,6 +2577,11 @@ class RemoteCliAgentsSdkRunner {
     }
     const transport = resolveRemoteCliTransport(input, this.config);
     this.assertConfigured({ transport, input });
+    const providerSelection = resolveProviderAgentSelection(
+      input.requestedModel
+      || input.requested_model
+      || input.model,
+    );
 
     const targetId = resolveRemoteCliTargetId(
       input.targetId || input.target_id,
@@ -2302,7 +2593,9 @@ class RemoteCliAgentsSdkRunner {
     const waitMs = normalizePositiveInteger(input.waitMs ?? input.wait_ms, 30000, { min: 1000, max: 300000 });
     const maxTurns = normalizePositiveInteger(input.maxTurns ?? input.max_turns ?? this.config.maxTurns, 20, { min: 1, max: 80 });
     const agentRunTimeoutMs = normalizePositiveInteger(input.agentRunTimeoutMs ?? input.agent_run_timeout_ms ?? this.config.agentRunTimeoutMs, DEFAULT_AGENT_RUN_TIMEOUT_MS, { min: 1, max: 900000 });
-    const model = transport === 'codex-agent'
+    const model = transport === 'provider-agent'
+      ? normalizeText(providerSelection?.requestedModel)
+      : transport === 'codex-agent'
       ? normalizeText(input.codexAgentModel || input.codex_agent_model || input.model || this.config.codexAgentModel)
       : (normalizeText(input.model || this.config.agentModel) || 'gpt-4o');
     const remoteCodeModel = normalizeText(input.remoteCodeModel || input.remote_code_model || this.config.remoteCodeModel) || DEFAULT_REMOTE_CODE_MODEL;
@@ -2310,6 +2603,19 @@ class RemoteCliAgentsSdkRunner {
     const statusPollIntervalMs = normalizePositiveInteger(input.statusPollIntervalMs ?? input.status_poll_interval_ms ?? this.config.statusPollIntervalMs, DEFAULT_STATUS_POLL_INTERVAL_MS, { min: 0, max: 30000 });
     const adminMode = resolveAdminMode(input, task);
     const continuitySummary = normalizeText(input.continuitySummary || input.remoteProjectContext || input.remote_project_context);
+
+    if (transport === 'provider-agent') {
+      return this.executeProviderAgentRun({
+        input,
+        targetId,
+        cwd,
+        task,
+        selection: providerSelection,
+        agentRunTimeoutMs,
+        continuitySummary,
+        onProgress: input.onProgress,
+      });
+    }
 
     if (transport === 'codex-agent') {
       try {
@@ -2708,5 +3014,6 @@ module.exports = {
   isStaleMcpSessionError,
   hasRemoteSoftwareDeploymentIntent,
   resolveAdminMode,
+  resolveProviderAgentSelection,
   trimTrailingSlash,
 };

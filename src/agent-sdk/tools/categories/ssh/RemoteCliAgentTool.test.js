@@ -55,6 +55,37 @@ describe('RemoteCliAgentTool', () => {
     }));
   });
 
+  test('inherits the selected chat model for model-aware remote CLI routing', async () => {
+    const { tool, runner } = buildTool();
+
+    const result = await tool.execute({
+      task: 'Build and verify the remote app.',
+    }, {
+      model: 'grok-build',
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.objectContaining({
+      task: 'Build and verify the remote app.',
+      model: 'grok-build',
+    }));
+  });
+
+  test('does not send an unsupported header model into the Codex agent lane', async () => {
+    const { tool, runner } = buildTool();
+
+    const result = await tool.execute({
+      task: 'Inspect the remote app.',
+    }, {
+      model: 'deepseek-v4-flash',
+    });
+
+    expect(result.success).toBe(true);
+    expect(runner.run).toHaveBeenCalledWith(expect.not.objectContaining({
+      model: 'deepseek-v4-flash',
+    }));
+  });
+
   test('recovers task and target fields from a leaked remote_code_run wrapper', async () => {
     const { tool, runner } = buildTool();
 
