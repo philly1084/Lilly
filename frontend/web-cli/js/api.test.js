@@ -174,6 +174,53 @@ describe('web-cli API artifact metadata normalization', () => {
     });
 });
 
+describe('web-cli API tool event metadata normalization', () => {
+    test('promotes assistant metadata tool events from fallback stream payloads', async () => {
+        const fetchMock = jest.fn(async (url) => {
+            if (String(url).endsWith('/api/sessions')) {
+                return createJsonResponse({ id: 'session-tool-1' });
+            }
+
+            return createSseResponse([
+                {
+                    type: 'response.completed',
+                    response: {
+                        assistant_metadata: {
+                            reasoning_summary: 'Checked the live command result.',
+                            tool_events: [
+                                {
+                                    toolName: 'remote-command',
+                                    stage: 'completed',
+                                    detail: 'Finished remote command',
+                                },
+                            ],
+                        },
+                    },
+                },
+            ], { sessionId: 'session-tool-1' });
+        });
+        const { api } = loadWebCliApi(fetchMock);
+
+        const response = await api.sendMessage('check status');
+
+        expect(response.toolEvents).toEqual([
+            expect.objectContaining({
+                toolName: 'remote-command',
+                stage: 'completed',
+            }),
+        ]);
+        expect(response.assistantMetadata).toEqual(expect.objectContaining({
+            reasoningSummary: 'Checked the live command result.',
+            toolEvents: [
+                expect.objectContaining({
+                    toolName: 'remote-command',
+                    stage: 'completed',
+                }),
+            ],
+        }));
+    });
+});
+
 describe('web-cli API reasoning metadata normalization', () => {
     test('preserves response refusal deltas when streaming without the shared gateway helper', async () => {
         const fetchMock = jest.fn(async (url) => {

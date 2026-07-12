@@ -119,6 +119,13 @@ function normalizeAssistantMetadata(metadata) {
         normalizedMetadata.artifacts = normalizeArtifacts(metadata.artifacts);
     }
 
+    const toolEvents = Array.isArray(metadata.toolEvents)
+        ? metadata.toolEvents
+        : (Array.isArray(metadata.tool_events) ? metadata.tool_events : []);
+    if (toolEvents.length > 0) {
+        normalizedMetadata.toolEvents = toolEvents;
+    }
+
     const reasoningSummary = normalizeReasoningSummary(metadata);
     if (reasoningSummary) {
         normalizedMetadata.reasoningSummary = reasoningSummary;
@@ -871,6 +878,10 @@ class WebCLIAPI {
                                     pendingDone.assistantMetadata,
                                     assistantMetadata,
                                 );
+                                if (Array.isArray(assistantMetadata.toolEvents)
+                                    && assistantMetadata.toolEvents.length > 0) {
+                                    pendingDone.toolEvents = assistantMetadata.toolEvents;
+                                }
                             }
                             const reasoningSummary = normalizeReasoningSummary(
                                 parsed.type === 'response.reasoning_summary_text.delta'
