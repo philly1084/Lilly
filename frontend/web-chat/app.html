@@ -132,10 +132,10 @@
 
     
     <!-- Custom styles -->
-    <link rel="preload" as="style" href="css/styles.css?v=20260712b" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/styles.css?v=20260712e" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preload" as="style" href="../shared/ui-polish.css?v=20260531a" onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
-        <link rel="stylesheet" href="css/styles.css?v=20260712b">
+        <link rel="stylesheet" href="css/styles.css?v=20260712e">
         <link rel="stylesheet" href="../shared/ui-polish.css?v=20260531a">
     </noscript>
     <!-- Skip to main content link for accessibility -->
@@ -288,23 +288,26 @@
         </div>
     </div>
 
-    <!-- Image Generation Modal -->
+    <!-- Content Studio Modal -->
     <div id="image-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="image-modal-title">
         <div class="modal-overlay" onclick="uiHelpers.closeImageModal()"></div>
         <div class="modal-content image-modal-content">
             <div class="modal-header">
                 <div class="flex items-center gap-2">
                     <i data-lucide="image" class="w-5 h-5 text-purple-500" aria-hidden="true"></i>
-                    <h3 id="image-modal-title">Create Media</h3>
+                    <div>
+                        <h3 id="image-modal-title">Content Studio</h3>
+                        <p class="content-studio-subtitle">Create polished, reusable media with a review step before production.</p>
+                    </div>
                 </div>
-                <button class="btn-icon" onclick="uiHelpers.closeImageModal()" aria-label="Close image generation modal">
+                <button class="btn-icon" onclick="uiHelpers.closeImageModal()" aria-label="Close Content Studio">
                     <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="modal-body">
                 <div class="space-y-4">
                     <!-- Source Selector -->
-                    <div class="image-source-selector" role="radiogroup" aria-label="Image source">
+                    <div class="image-source-selector" role="radiogroup" aria-label="Content type">
                         <button type="button" 
                                 class="image-source-btn active" 
                                 data-source="generate"
@@ -314,7 +317,7 @@
                                 aria-checked="true"
                                 tabindex="0">
                             <i data-lucide="wand-2" class="w-4 h-4" aria-hidden="true"></i>
-                            <span>AI Generate</span>
+                            <span>Image</span>
                         </button>
                         <button type="button" 
                                 class="image-source-btn" 
@@ -325,7 +328,7 @@
                                 aria-checked="false"
                                 tabindex="-1">
                             <i data-lucide="camera" class="w-4 h-4" aria-hidden="true"></i>
-                            <span>Unsplash</span>
+                            <span>Stock media</span>
                         </button>
                         <button type="button"
                                 class="image-source-btn"
@@ -336,7 +339,7 @@
                                 aria-checked="false"
                                 tabindex="-1">
                             <i data-lucide="audio-lines" class="w-4 h-4" aria-hidden="true"></i>
-                            <span>Podcast</span>
+                            <span>Podcast launch kit</span>
                         </button>
                     </div>
                     
@@ -407,51 +410,83 @@
                         </div>
                     </div>
 
-                    <!-- Podcast / Video Podcast Options -->
+                    <!-- Podcast launch kit options -->
                     <div id="podcast-options" class="hidden space-y-4">
+                        <div class="content-studio-steps" aria-label="Podcast launch kit progress">
+                            <span class="active" data-studio-step="brief">1. Brief</span>
+                            <span data-studio-step="review">2. Review</span>
+                            <span data-studio-step="produce">3. Produce</span>
+                        </div>
+                        <div id="podcast-brief-panel" class="space-y-4">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <label class="block text-sm font-medium text-text-secondary">
-                                Output
-                                <select id="podcast-output-select" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary focus:outline-none focus:border-accent">
-                                    <option value="podcast">Audio podcast</option>
-                                    <option value="video-podcast">Video podcast</option>
+                                Episode format
+                                <select id="podcast-format-select" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary focus:outline-none focus:border-accent">
+                                    <option value="single-host">Single-host briefing</option>
+                                    <option value="two-host">Two-host conversation</option>
                                 </select>
                             </label>
                             <label class="block text-sm font-medium text-text-secondary">
-                                Video shape
-                                <select id="podcast-aspect-select" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary focus:outline-none focus:border-accent">
-                                    <option value="16:9">16:9 landscape</option>
-                                    <option value="9:16">9:16 vertical</option>
-                                    <option value="1:1">1:1 square</option>
+                                Target duration
+                                <select id="podcast-duration-select" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary focus:outline-none focus:border-accent">
+                                    <option value="3">3 minutes</option>
+                                    <option value="5" selected>5 minutes</option>
+                                    <option value="8">8 minutes</option>
+                                    <option value="10">10 minutes</option>
                                 </select>
                             </label>
                         </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <label class="check-field">
-                                <input id="podcast-music-toggle" type="checkbox">
-                                <span>Background music / soundtrack</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <label class="block text-sm font-medium text-text-secondary">
+                                Audience
+                                <input id="podcast-audience-input" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary" placeholder="Who should this reach?">
                             </label>
-                            <label class="check-field">
-                                <input id="podcast-intro-toggle" type="checkbox">
-                                <span>Intro bumper</span>
-                            </label>
-                            <label class="check-field">
-                                <input id="podcast-outro-toggle" type="checkbox">
-                                <span>Outro bumper</span>
-                            </label>
-                            <label class="check-field">
-                                <input id="podcast-unsplash-toggle" type="checkbox">
-                                <span>Use Unsplash visuals</span>
+                            <label class="block text-sm font-medium text-text-secondary">
+                                Call to action
+                                <input id="podcast-cta-input" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary" placeholder="What should listeners do next?">
                             </label>
                         </div>
-                        <div>
-                            <label for="podcast-direct-request-input" class="block text-sm font-medium text-text-secondary mb-2">Direct content request</label>
-                            <textarea id="podcast-direct-request-input" class="w-full bg-bg-tertiary border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none" rows="3" placeholder="Required beats, sources, tone, host style, or exclusions..."></textarea>
+                        <div class="content-studio-brand-row">
+                            <label class="block text-sm font-medium text-text-secondary">
+                                Brand kit
+                                <select id="podcast-brand-kit-select" class="mt-2 w-full bg-bg-tertiary border border-border rounded-lg p-2.5 text-text-primary">
+                                    <option value="">No saved brand kit</option>
+                                </select>
+                            </label>
+                            <button type="button" id="podcast-brand-kit-new-btn" class="btn-secondary">New brand kit</button>
                         </div>
-                        <div>
-                            <label for="podcast-system-prompt-input" class="block text-sm font-medium text-text-secondary mb-2">Additional system prompt</label>
-                            <textarea id="podcast-system-prompt-input" class="w-full bg-bg-tertiary border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none" rows="3" placeholder="Production rules layered above the base podcast writer..."></textarea>
+                        <div id="podcast-brand-kit-editor" class="content-studio-brand-editor hidden">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <label>Brand name<input id="podcast-brand-name-input" placeholder="Studio name"></label>
+                                <label>Palette<input id="podcast-brand-palette-input" placeholder="#091426, #37c6ff, #8b5cf6"></label>
+                                <label>Voice and tone<input id="podcast-brand-tone-input" placeholder="Clear, bold, optimistic"></label>
+                                <label>Visual style<input id="podcast-brand-style-input" placeholder="Editorial, cinematic, modern"></label>
+                                <label>Typography guidance<input id="podcast-brand-typography-input" placeholder="Manrope headings, generous line spacing"></label>
+                                <label>Host voice IDs<input id="podcast-brand-voices-input" placeholder="af_heart, af_sky"></label>
+                                <label>Accessibility rules<input id="podcast-brand-accessibility-input" placeholder="AA contrast, captions always on"></label>
+                                <label>Logo artifact ID<input id="podcast-brand-logo-input" placeholder="Attach a logo in chat and paste its artifact ID"></label>
+                                <label class="sm:col-span-2">Reference artifact IDs<input id="podcast-brand-references-input" placeholder="Comma-separated uploaded image or document artifact IDs"></label>
+                            </div>
+                            <div class="content-studio-inline-actions">
+                                <button type="button" id="podcast-brand-save-btn" class="btn-secondary">Save brand kit</button>
+                                <button type="button" id="podcast-brand-delete-btn" class="btn-danger-text hidden">Delete</button>
+                            </div>
                         </div>
+                        <label class="check-field">
+                            <input id="podcast-full-video-toggle" type="checkbox">
+                            <span>Also render a full 16:9 episode video</span>
+                        </label>
+                        <details class="content-studio-advanced">
+                            <summary>Campaign direction and sources</summary>
+                            <label for="podcast-direct-request-input">Required beats, tone, or exclusions</label>
+                            <textarea id="podcast-direct-request-input" rows="3" placeholder="Required beats, sources, host style, or exclusions..."></textarea>
+                            <label for="podcast-source-urls-input">Source URLs (one per line)</label>
+                            <textarea id="podcast-source-urls-input" rows="2" placeholder="https://example.com/source"></textarea>
+                            <label for="podcast-system-prompt-input">Additional production direction</label>
+                            <textarea id="podcast-system-prompt-input" rows="2" placeholder="Production rules layered above the base podcast writer..."></textarea>
+                        </details>
+                        </div>
+                        <div id="podcast-review-panel" class="content-studio-review hidden" aria-live="polite"></div>
                     </div>
                     
                     <!-- Action Button -->
@@ -1344,15 +1379,15 @@
     <script defer src="/shared/theme-presets.js?v=20260426a"></script>
     <script defer src="js/workspace-context.js?v=20260424e"></script>
     <script defer src="js/workspace-embed.js?v=20260423a"></script>
-    <script defer src="js/api.js?v=20260712a"></script>
+    <script defer src="js/api.js?v=20260712d"></script>
     <script defer src="js/session.js?v=20260510b"></script>
     <script defer src="js/sound-manager.js?v=20260411c"></script>
     <script defer src="js/tts-manager.js?v=20260628b"></script>
     <script defer src="js/import-export.js?v=20260406a"></script>
     <script defer src="js/file-manager.js?v=20260503a"></script>
     <script defer src="js/sidebar-resize.js?v=20260629a"></script>
-    <script defer src="js/ui.js?v=20260712e"></script>
-    <script defer src="js/app.js?v=20260712d"></script>
+    <script defer src="js/ui.js?v=20260712h"></script>
+    <script defer src="js/app.js?v=20260712g"></script>
     <script defer src="js/artifacts.js?v=20260710a"></script>
 </body>
 </html>

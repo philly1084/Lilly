@@ -20,6 +20,8 @@ const {
 const { podcastVideoService } = require('../video/podcast-video-service');
 const { parseMultipartRequest } = require('../utils/multipart');
 const { config } = require('../config');
+const contentStudioStore = require('../content-studio/store');
+const { podcastLaunchKitService } = require('../content-studio/podcast-launch-kit-service');
 
 const router = Router();
 
@@ -334,6 +336,155 @@ router.get('/runtime', (_req, res) => {
     video: podcastVideoService.getPublicConfig(),
     scriptDesigns: getPodcastScriptDesignOptions(),
   });
+});
+
+function buildContentStudioContext(req, toolManager, sessionId = null) {
+  const metadata = req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : {};
+  return {
+    ownerId: getRequestOwnerId(req),
+    userId: req.user?.id || req.user?.username || null,
+    sessionId,
+    model: String(req.body?.model || metadata.model || metadata.selectedModel || '').trim() || null,
+    reasoningEffort: req.body?.reasoningEffort || metadata.reasoningEffort || null,
+    toolManager,
+    toolContext: {
+      ownerId: getRequestOwnerId(req),
+      userId: req.user?.id || req.user?.username || null,
+      sessionId,
+      clientSurface: 'web-chat-content-studio',
+      taskType: 'podcast-launch-kit',
+      model: String(req.body?.model || metadata.model || metadata.selectedModel || '').trim() || null,
+    },
+  };
+}
+
+router.get('/content-studio/brand-kits', async (req, res, next) => {
+  try {
+    res.json({ brandKits: await contentStudioStore.listBrandKits(getRequestOwnerId(req)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/content-studio/brand-kits/:id', async (req, res, next) => {
+  try {
+    res.json({ brandKit: await contentStudioStore.getBrandKit(getRequestOwnerId(req), req.params.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/content-studio/brand-kits', async (req, res, next) => {
+  try {
+    const brandKit = await contentStudioStore.saveBrandKit(getRequestOwnerId(req), req.body || {});
+    res.status(201).json({ brandKit });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/content-studio/brand-kits/:id', async (req, res, next) => {
+  try {
+    const brandKit = await contentStudioStore.saveBrandKit(getRequestOwnerId(req), req.body || {}, req.params.id);
+    res.json({ brandKit });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/content-studio/brand-kits/:id', async (req, res, next) => {
+  try {
+    res.json(await contentStudioStore.deleteBrandKit(getRequestOwnerId(req), req.params.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/content-studio/campaigns/:id', async (req, res, next) => {
+  try {
+    res.json({ campaign: await contentStudioStore.getCampaign(getRequestOwnerId(req), req.params.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/content-studio/launch-kits/plan', async (req, res, next) => {
+  try {
+    const toolManager = await ensureRuntimeToolManager(req.app);
+    const sessionId = await resolvePodcastSessionId(req, req.body?.sessionId);
+    const campaign = await (req.app.locals?.podcastLaunchKitService || podcastLaunchKitService).createPlan(
+      req.body || {},
+      buildContentStudioContext(req, toolManager, sessionId),
+    );
+    res.status(201).json({ sessionId, campaign });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/content-studio/launch-kits/:id/plan', async (req, res, next) => {
+  try {
+    const campaign = await (req.app.locals?.podcastLaunchKitService || podcastLaunchKitService).revisePlan(
+      getRequestOwnerId(req),
+      req.params.id,
+      req.body?.plan || req.body || {},
+    );
+    res.json({ campaign });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/content-studio/launch-kits/:id/render', async (req, res, next) => {
+  try {
+    const toolManager = await ensureRuntimeToolManager(req.app);
+    const campaign = await contentStudioStore.getCampaign(getRequestOwnerId(req), req.params.id);
+    const context = buildContentStudioContext(req, toolManager, campaign.sessionId);
+    const rendered = await (req.app.locals?.podcastLaunchKitService || podcastLaunchKitService).approveAndRender(
+      getRequestOwnerId(req),
+      req.params.id,
+      req.body || {},
+      context,
+    );
+    res.json({ campaign: rendered });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/content-studio/launch-kits/:id/retry/:stage', async (req, res, next) => {
+  try {
+    const toolManager = await ensureRuntimeToolManager(req.app);
+    const campaign = await contentStudioStore.getCampaign(getRequestOwnerId(req), req.params.id);
+    const context = buildContentStudioContext(req, toolManager, campaign.sessionId);
+    const rendered = await (req.app.locals?.podcastLaunchKitService || podcastLaunchKitService).retryStage(
+      getRequestOwnerId(req),
+      req.params.id,
+      req.params.stage,
+      context,
+    );
+    res.json({ campaign: rendered });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/content-studio/launch-kits/:id/regenerate/:assetType/:index?', async (req, res, next) => {
+  try {
+    const toolManager = await ensureRuntimeToolManager(req.app);
+    const campaign = await contentStudioStore.getCampaign(getRequestOwnerId(req), req.params.id);
+    const context = buildContentStudioContext(req, toolManager, campaign.sessionId);
+    const rendered = await (req.app.locals?.podcastLaunchKitService || podcastLaunchKitService).regenerateAsset(
+      getRequestOwnerId(req),
+      req.params.id,
+      req.params.assetType,
+      req.params.index,
+      context,
+    );
+    res.json({ campaign: rendered });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.post('/generate', normalizePodcastGenerateRequest, validate(generateSchema), async (req, res, next) => {

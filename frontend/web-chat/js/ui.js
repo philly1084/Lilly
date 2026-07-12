@@ -669,7 +669,13 @@ class UIHelpers {
             style: null,
             source: 'generate' // 'generate' or 'unsplash'
         };
+        this.contentStudioState = {
+            brandKits: [],
+            currentCampaign: null,
+            step: 'brief',
+        };
         this.imageGenerationControlsBound = false;
+        this.contentStudioControlsBound = false;
         
         // Model selector state
         this.availableModels = [];
@@ -740,6 +746,7 @@ class UIHelpers {
         
         // Setup draft saving
         this.setupDraftSaving();
+        this.setupContentStudioControls();
         
         // Restore draft on load
         this.restoreDraft();
@@ -5128,6 +5135,9 @@ class UIHelpers {
     }
 
     renderMessage(message, isStreaming = false) {
+        if (message.type === 'content-studio-campaign') {
+            return this.renderContentStudioCampaignMessage(message);
+        }
         if (message.type === 'unsplash-search') {
             return this.renderUnsplashSearchMessage(message);
         }
@@ -6411,6 +6421,216 @@ class UIHelpers {
     // Image Generation Modal
     // ============================================
 
+    setupContentStudioControls() {
+        if (this.contentStudioControlsBound) return;
+        const newBrandButton = document.getElementById('podcast-brand-kit-new-btn');
+        const saveBrandButton = document.getElementById('podcast-brand-save-btn');
+        const deleteBrandButton = document.getElementById('podcast-brand-delete-btn');
+        const brandSelect = document.getElementById('podcast-brand-kit-select');
+        newBrandButton?.addEventListener('click', () => this.openContentStudioBrandEditor());
+        saveBrandButton?.addEventListener('click', () => this.saveContentStudioBrandKit());
+        deleteBrandButton?.addEventListener('click', () => this.deleteContentStudioBrandKit());
+        brandSelect?.addEventListener('change', () => {
+            const selected = this.contentStudioState.brandKits.find((kit) => kit.id === brandSelect.value);
+            if (selected) this.openContentStudioBrandEditor(selected);
+            else document.getElementById('podcast-brand-kit-editor')?.classList.add('hidden');
+        });
+        this.contentStudioControlsBound = true;
+    }
+
+    async loadContentStudioBrandKits() {
+        try {
+            const result = await apiClient.getContentStudioBrandKits();
+            this.contentStudioState.brandKits = Array.isArray(result.brandKits) ? result.brandKits : [];
+            const select = document.getElementById('podcast-brand-kit-select');
+            if (!select) return;
+            const current = select.value;
+            select.innerHTML = '<option value="">No saved brand kit</option>' + this.contentStudioState.brandKits
+                .map((kit) => `<option value="${this.escapeHtmlAttr(kit.id)}">${this.escapeHtml(kit.name)}</option>`)
+                .join('');
+            if (this.contentStudioState.brandKits.some((kit) => kit.id === current)) select.value = current;
+        } catch (error) {
+            console.warn('[ContentStudio] Failed to load brand kits:', error);
+            this.showToast(error.message || 'Could not load brand kits', 'error');
+        }
+    }
+
+    openContentStudioBrandEditor(brandKit = null) {
+        const editor = document.getElementById('podcast-brand-kit-editor');
+        editor?.classList.remove('hidden');
+        const values = {
+            'podcast-brand-name-input': brandKit?.name || '',
+            'podcast-brand-palette-input': (brandKit?.palette || []).join(', '),
+            'podcast-brand-tone-input': brandKit?.tone || '',
+            'podcast-brand-style-input': brandKit?.visualStyle || '',
+            'podcast-brand-typography-input': brandKit?.typography || '',
+            'podcast-brand-voices-input': (brandKit?.hostVoices || []).join(', '),
+            'podcast-brand-accessibility-input': brandKit?.accessibility || '',
+            'podcast-brand-logo-input': brandKit?.logoArtifactId || '',
+            'podcast-brand-references-input': (brandKit?.referenceArtifactIds || []).join(', '),
+        };
+        Object.entries(values).forEach(([id, value]) => {
+            const input = document.getElementById(id);
+            if (input) input.value = value;
+        });
+        editor.dataset.brandKitId = brandKit?.id || '';
+        document.getElementById('podcast-brand-delete-btn')?.classList.toggle('hidden', !brandKit?.id);
+        document.getElementById('podcast-brand-name-input')?.focus();
+    }
+
+    getContentStudioBrandEditorValue() {
+        const value = (id) => document.getElementById(id)?.value?.trim() || '';
+        return {
+            name: value('podcast-brand-name-input'),
+            palette: value('podcast-brand-palette-input').split(',').map((entry) => entry.trim()).filter(Boolean),
+            tone: value('podcast-brand-tone-input'),
+            visualStyle: value('podcast-brand-style-input'),
+            typography: value('podcast-brand-typography-input'),
+            hostVoices: value('podcast-brand-voices-input').split(',').map((entry) => entry.trim()).filter(Boolean),
+            accessibility: value('podcast-brand-accessibility-input'),
+            logoArtifactId: value('podcast-brand-logo-input'),
+            referenceArtifactIds: value('podcast-brand-references-input').split(',').map((entry) => entry.trim()).filter(Boolean),
+            attributionPreference: 'always',
+        };
+    }
+
+    async saveContentStudioBrandKit() {
+        const editor = document.getElementById('podcast-brand-kit-editor');
+        const brandKit = this.getContentStudioBrandEditorValue();
+        if (!brandKit.name) {
+            this.showToast('Give the brand kit a name', 'warning');
+            return;
+        }
+        try {
+            const result = await apiClient.saveContentStudioBrandKit(brandKit, editor?.dataset.brandKitId || '');
+            await this.loadContentStudioBrandKits();
+            const select = document.getElementById('podcast-brand-kit-select');
+            if (select) select.value = result.brandKit.id;
+            this.openContentStudioBrandEditor(result.brandKit);
+            this.showToast('Brand kit saved', 'success');
+        } catch (error) {
+            this.showToast(error.message || 'Brand kit could not be saved', 'error');
+        }
+    }
+
+    async deleteContentStudioBrandKit() {
+        const editor = document.getElementById('podcast-brand-kit-editor');
+        const id = editor?.dataset.brandKitId || '';
+        if (!id) return;
+        try {
+            await apiClient.deleteContentStudioBrandKit(id);
+            editor.classList.add('hidden');
+            editor.dataset.brandKitId = '';
+            await this.loadContentStudioBrandKits();
+            this.showToast('Brand kit deleted', 'success');
+        } catch (error) {
+            this.showToast(error.message || 'Brand kit could not be deleted', 'error');
+        }
+    }
+
+    setContentStudioStep(step) {
+        this.contentStudioState.step = step;
+        document.querySelectorAll('[data-studio-step]').forEach((item) => {
+            item.classList.toggle('active', item.dataset.studioStep === step);
+            item.classList.toggle('complete', ['review', 'produce'].includes(step) && item.dataset.studioStep === 'brief');
+        });
+        document.getElementById('podcast-brief-panel')?.classList.toggle('hidden', step !== 'brief');
+        document.getElementById('podcast-review-panel')?.classList.toggle('hidden', step === 'brief');
+    }
+
+    renderPodcastLaunchKitReview(campaign) {
+        this.contentStudioState.currentCampaign = campaign;
+        this.setContentStudioStep(campaign?.status === 'rendering' ? 'produce' : 'review');
+        const panel = document.getElementById('podcast-review-panel');
+        if (!panel) return;
+        const plan = campaign.plan || {};
+        const sources = Array.isArray(plan.sources) ? plan.sources : [];
+        const clips = Array.isArray(plan.promoClips) ? plan.promoClips : [];
+        const stockSources = Array.isArray(plan.storyboard?.stockSources) ? plan.storyboard.stockSources : [];
+        panel.innerHTML = `
+            <div class="content-studio-review-header">
+                <div><span class="content-studio-eyebrow">Plan revision ${Number(plan.revision) || 1}</span><h4>${this.escapeHtml(plan.title || 'Podcast launch kit')}</h4></div>
+                <span class="content-studio-status">Review required</span>
+            </div>
+            <p>${this.escapeHtml(plan.summary || '')}</p>
+            <div class="content-studio-plan-grid">
+                <div><strong>${plan.episodeFormat === 'two-host' ? 'Two hosts' : 'Single host'}</strong><span>${this.escapeHtml((plan.hosts || []).map((host) => host.name).join(' + '))}</span></div>
+                <div><strong>${Number(plan.brief?.durationMinutes) || 5} minutes</strong><span>Target runtime</span></div>
+                <div><strong>${clips.length} promo clips</strong><span>Vertical, captioned, branded</span></div>
+                <div><strong>${sources.length} sources</strong><span>Included in credits</span></div>
+            </div>
+            <div class="content-studio-clip-list">
+                ${clips.map((clip, index) => `<label class="content-studio-clip-row">
+                    <input type="checkbox" data-content-studio-clip-approved="${index}" ${clip.approved !== false ? 'checked' : ''}>
+                    <span><strong>${this.escapeHtml(clip.title || `Clip ${index + 1}`)}</strong><small>${this.escapeHtml(clip.caption || clip.transcript || '')}</small></span>
+                    <span>${Number(clip.startSeconds || 0).toFixed(0)}–${Number(clip.endSeconds || 0).toFixed(0)}s</span>
+                </label>`).join('')}
+            </div>
+            ${stockSources.length ? `<div class="content-studio-source-picks" aria-label="Reviewed stock media picks">${stockSources.map((source) => `
+                <a href="${this.escapeHtmlAttr(source.attribution?.sourceUrl || source.attribution?.link || source.imageUrl)}" target="_blank" rel="noopener">
+                    <img src="${this.escapeHtmlAttr(source.thumbnailUrl || source.imageUrl)}" alt="${this.escapeHtmlAttr(source.alt || source.query || 'Selected Unsplash visual')}">
+                    <span>${this.escapeHtml(source.attribution?.name || 'Unsplash visual')}</span>
+                </a>`).join('')}</div>` : ''}
+            <details class="content-studio-plan-json">
+                <summary>Edit complete production plan</summary>
+                <p>Every planned field is editable. Keep valid JSON and preserve three approved promo clips.</p>
+                <textarea id="content-studio-plan-json" rows="16">${this.escapeHtml(JSON.stringify(plan, null, 2))}</textarea>
+            </details>
+            <div class="content-studio-inline-actions content-studio-review-actions">
+                <button type="button" class="btn-secondary" onclick="app.savePodcastLaunchKitPlan()">Save plan changes</button>
+                <button type="button" class="btn-secondary" onclick="uiHelpers.setContentStudioStep('brief')">Back to brief</button>
+                <button type="button" class="btn-primary" onclick="app.approvePodcastLaunchKit()">Approve and produce kit</button>
+            </div>`;
+        this.reinitializeIcons(panel);
+    }
+
+    renderContentStudioCampaignMessage(message) {
+        const campaign = message.campaign || message.metadata?.campaign || {};
+        const plan = campaign.plan || {};
+        const render = campaign.render || {};
+        const stages = render.stages || {};
+        const artifactLink = (artifact, label, assetType = '', index = '') => artifact?.downloadUrl
+            ? `<div class="content-studio-asset"><a href="${this.escapeHtmlAttr(artifact.downloadUrl)}" target="_blank" rel="noopener"><strong>${this.escapeHtml(label)}</strong><span>${this.escapeHtml(artifact.filename || 'Open asset')}</span></a><div><button type="button" onclick="app.reusePodcastLaunchKitAsset('${this.escapeHtmlAttr(campaign.id)}','${this.escapeHtmlAttr(artifact.id || artifact.artifactId || '')}','${this.escapeHtmlAttr(label)}')">Use</button>${assetType ? `<button type="button" onclick="app.regeneratePodcastLaunchKitAsset('${this.escapeHtmlAttr(campaign.id)}','${this.escapeHtmlAttr(assetType)}','${this.escapeHtmlAttr(index)}')">Regenerate</button>` : ''}</div></div>`
+            : '';
+        const stageMarkup = Object.entries(stages).map(([id, stage]) => `
+            <div class="content-studio-stage ${this.escapeHtmlAttr(stage.status || 'pending')}">
+                <span>${this.escapeHtml(id.replace(/([A-Z])/g, ' $1'))}</span>
+                <strong>${this.escapeHtml(stage.status || 'pending')}</strong>
+                ${stage.status === 'failed' ? `<button type="button" onclick="app.retryPodcastLaunchKitStage('${this.escapeHtmlAttr(campaign.id)}','${this.escapeHtmlAttr(id)}')">Retry</button>` : ''}
+            </div>`).join('');
+        const audioUrl = render.podcast?.audio?.inlinePath || render.podcast?.audio?.downloadUrl || render.podcast?.artifact?.downloadUrl || '';
+        const coverUrl = render.coverArt?.inlinePath || render.coverArt?.url || render.coverArt?.downloadUrl || '';
+        const fullVideoUrl = render.fullVideo?.video?.inlinePath || render.fullVideo?.artifact?.downloadUrl || '';
+        const promoVideos = (render.promoClips || []).map((clip) => clip.video?.inlinePath || clip.artifact?.downloadUrl || '').filter(Boolean);
+        const messageEl = document.createElement('div');
+        messageEl.className = 'message assistant content-studio-campaign-message';
+        messageEl.id = message.id || this.generateMessageId();
+        messageEl.dataset.messageId = messageEl.id;
+        messageEl.setAttribute('role', 'article');
+        messageEl.setAttribute('aria-label', 'Podcast launch kit campaign workspace');
+        messageEl.innerHTML = `<div class="message-content"><div class="content-studio-campaign">
+            <div class="content-studio-review-header"><div><span class="content-studio-eyebrow">Podcast launch kit</span><h3>${this.escapeHtml(plan.title || 'Campaign')}</h3></div><span class="content-studio-status ${this.escapeHtmlAttr(campaign.status || '')}">${this.escapeHtml(campaign.status || 'ready')}</span></div>
+            <p>${this.escapeHtml(plan.summary || '')}</p>
+            <div class="content-studio-stage-list">${stageMarkup}</div>
+            <div class="content-studio-media-preview">
+                ${coverUrl ? `<img src="${this.escapeHtmlAttr(coverUrl)}" alt="${this.escapeHtmlAttr(plan.coverConcept?.alt || `Cover art for ${plan.title || 'podcast'}`)}">` : ''}
+                ${audioUrl ? `<audio controls preload="metadata" src="${this.escapeHtmlAttr(audioUrl)}">Download the episode audio from the asset list.</audio>` : ''}
+                ${fullVideoUrl ? `<video controls preload="metadata" src="${this.escapeHtmlAttr(fullVideoUrl)}" aria-label="Full episode video"></video>` : ''}
+                ${promoVideos.map((url, index) => `<video controls preload="metadata" src="${this.escapeHtmlAttr(url)}" aria-label="Promo clip ${index + 1}"></video>`).join('')}
+            </div>
+            <div class="content-studio-assets">
+                ${artifactLink(render.podcast?.artifact, 'Episode audio')}
+                ${artifactLink(render.coverArt, 'Cover art', 'cover')}
+                ${artifactLink(render.fullVideo?.artifact, 'Full episode video', 'fullVideo')}
+                ${(render.promoClips || []).map((clip, index) => artifactLink(clip.artifact, `Promo clip ${index + 1}`, 'promo', index)).join('')}
+                ${artifactLink(render.package, 'Launch kit bundle')}
+            </div>
+            <details><summary>Credits and provenance (${(render.credits || []).length})</summary><ul>${(render.credits || []).map((credit) => `<li>${this.escapeHtml(credit.label || credit.type)}${credit.url ? ` — <a href="${this.escapeHtmlAttr(credit.url)}" target="_blank" rel="noopener">source</a>` : ''}</li>`).join('')}</ul></details>
+            <button type="button" class="btn-secondary" onclick="app.reusePodcastLaunchKit('${this.escapeHtmlAttr(campaign.id)}')">Use this kit in a follow-up</button>
+        </div></div>`;
+        return messageEl;
+    }
+
     openImageModal() {
         const modal = document.getElementById('image-modal');
         this.closeThemeGallery({ silent: true });
@@ -6637,6 +6857,7 @@ class UIHelpers {
         const unsplashOptions = document.getElementById('unsplash-options');
         const podcastOptions = document.getElementById('podcast-options');
         const promptLabel = document.getElementById('image-prompt-label');
+        const promptInput = document.getElementById('image-prompt-input');
         const actionText = document.getElementById('image-action-text');
         const actionIcon = document.querySelector('#image-generate-btn i');
         
@@ -6645,6 +6866,7 @@ class UIHelpers {
             unsplashOptions?.classList.add('hidden');
             podcastOptions?.classList.add('hidden');
             if (promptLabel) promptLabel.textContent = 'Describe the image you want to generate...';
+            if (promptInput) promptInput.placeholder = 'A futuristic cityscape at night with neon lights...';
             if (actionText) actionText.textContent = 'Generate Image';
             if (actionIcon) actionIcon.setAttribute('data-lucide', 'wand-2');
         } else if (source === 'unsplash') {
@@ -6652,6 +6874,7 @@ class UIHelpers {
             unsplashOptions?.classList.remove('hidden');
             podcastOptions?.classList.add('hidden');
             if (promptLabel) promptLabel.textContent = 'What are you looking for?';
+            if (promptInput) promptInput.placeholder = 'Editorial workspace, sustainable energy, mountain landscape...';
             if (actionText) actionText.textContent = 'Search Unsplash';
             if (actionIcon) actionIcon.setAttribute('data-lucide', 'search');
         } else {
@@ -6659,8 +6882,14 @@ class UIHelpers {
             unsplashOptions?.classList.add('hidden');
             podcastOptions?.classList.remove('hidden');
             if (promptLabel) promptLabel.textContent = 'What should the podcast be about?';
+            if (promptInput) promptInput.placeholder = 'How community batteries can make the grid more resilient';
             if (actionText) actionText.textContent = 'Create Podcast';
             if (actionIcon) actionIcon.setAttribute('data-lucide', 'audio-lines');
+        }
+        if (source === 'podcast') {
+            this.setContentStudioStep('brief');
+            void this.loadContentStudioBrandKits();
+            if (actionText) actionText.textContent = 'Plan launch kit';
         }
         
         // Re-initialize icons
@@ -6842,40 +7071,32 @@ class UIHelpers {
 
     getPodcastProductionOptions() {
         const promptInput = document.getElementById('image-prompt-input');
-        const outputSelect = document.getElementById('podcast-output-select');
-        const aspectSelect = document.getElementById('podcast-aspect-select');
-        const musicToggle = document.getElementById('podcast-music-toggle');
-        const introToggle = document.getElementById('podcast-intro-toggle');
-        const outroToggle = document.getElementById('podcast-outro-toggle');
-        const unsplashToggle = document.getElementById('podcast-unsplash-toggle');
+        const formatSelect = document.getElementById('podcast-format-select');
+        const durationSelect = document.getElementById('podcast-duration-select');
+        const audienceInput = document.getElementById('podcast-audience-input');
+        const callToActionInput = document.getElementById('podcast-cta-input');
+        const brandKitSelect = document.getElementById('podcast-brand-kit-select');
+        const fullVideoToggle = document.getElementById('podcast-full-video-toggle');
         const directRequestInput = document.getElementById('podcast-direct-request-input');
         const systemPromptInput = document.getElementById('podcast-system-prompt-input');
-        const productionType = String(outputSelect?.value || 'podcast').trim();
-        const includeVideo = productionType === 'video-podcast';
-        const includeMusicBed = musicToggle?.checked === true;
-        const includeIntro = introToggle?.checked === true;
-        const includeOutro = outroToggle?.checked === true;
+        const sourceUrlsInput = document.getElementById('podcast-source-urls-input');
 
         return {
             prompt: promptInput?.value?.trim() || '',
-            metadata: {
-                podcastOptions: {
-                    enabled: true,
-                    productionType,
-                    includeVideo,
-                    voiceOnlyAudio: !(includeMusicBed || includeIntro || includeOutro),
-                    includeMusicBed,
-                    includeIntro,
-                    includeOutro,
-                    cycleHostVoices: false,
-                    allowVoiceFallback: false,
-                    videoAspectRatio: aspectSelect?.value || '16:9',
-                    videoRenderMode: includeVideo ? 'storyboard' : undefined,
-                    videoImageMode: unsplashToggle?.checked === true ? 'unsplash' : 'generated',
-                    videoGenerateImages: includeVideo && unsplashToggle?.checked !== true,
-                    directContentRequest: directRequestInput?.value?.trim() || '',
-                    systemPrompt: systemPromptInput?.value?.trim() || '',
-                },
+            brief: {
+                topic: promptInput?.value?.trim() || '',
+                audience: audienceInput?.value?.trim() || '',
+                callToAction: callToActionInput?.value?.trim() || '',
+                durationMinutes: Number(durationSelect?.value) || 5,
+                sourceUrls: (sourceUrlsInput?.value || '').split(/\r?\n/).map((url) => url.trim()).filter(Boolean),
+                useOnlineResearch: true,
+            },
+            brandKitId: brandKitSelect?.value || null,
+            episodeFormat: formatSelect?.value || 'single-host',
+            includeFullVideo: fullVideoToggle?.checked === true,
+            campaignOverrides: {
+                contentRequest: directRequestInput?.value?.trim() || '',
+                systemPrompt: systemPromptInput?.value?.trim() || '',
             },
         };
     }
@@ -6904,9 +7125,12 @@ class UIHelpers {
             btn.disabled = false;
             btn.classList.remove('generating');
             btn.setAttribute('aria-busy', 'false');
+            const source = this.getImageSource();
+            const label = source === 'podcast' ? 'Plan launch kit' : (source === 'unsplash' ? 'Search Unsplash' : 'Generate Image');
+            const icon = source === 'podcast' ? 'audio-lines' : (source === 'unsplash' ? 'search' : 'wand-2');
             btn.innerHTML = `
-                <i data-lucide="wand-2" class="w-5 h-5" aria-hidden="true"></i>
-                <span>Generate Image</span>
+                <i data-lucide="${icon}" class="w-5 h-5" aria-hidden="true"></i>
+                <span>${label}</span>
             `;
             this.reinitializeIcons(btn);
         }

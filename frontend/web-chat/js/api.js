@@ -2525,6 +2525,79 @@ class OpenAIAPIClient extends EventTarget {
         throw new Error(this.parseErrorMessage(lastError, lastError?.response));
     }
 
+    async requestContentStudio(path, options = {}) {
+        const response = await fetch(`${BASE_URL_WITHOUT_API}/api/podcast/content-studio${path}`, {
+            method: options.method || 'GET',
+            headers: {
+                'Accept': 'application/json',
+                ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+            },
+            credentials: 'same-origin',
+            cache: 'no-store',
+            ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const error = new Error(payload?.error?.message || payload?.message || `HTTP ${response.status}`);
+            error.status = response.status;
+            error.response = payload;
+            throw error;
+        }
+        return payload;
+    }
+
+    async getContentStudioBrandKits() {
+        return this.requestContentStudio('/brand-kits');
+    }
+
+    async getContentStudioBrandKit(id) {
+        return this.requestContentStudio(`/brand-kits/${encodeURIComponent(id)}`);
+    }
+
+    async saveContentStudioBrandKit(brandKit, id = '') {
+        return this.requestContentStudio(`/brand-kits${id ? `/${encodeURIComponent(id)}` : ''}`, {
+            method: id ? 'PUT' : 'POST',
+            body: brandKit,
+        });
+    }
+
+    async deleteContentStudioBrandKit(id) {
+        return this.requestContentStudio(`/brand-kits/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    }
+
+    async planPodcastLaunchKit(input) {
+        return this.requestContentStudio('/launch-kits/plan', { method: 'POST', body: input });
+    }
+
+    async revisePodcastLaunchKit(id, plan) {
+        return this.requestContentStudio(`/launch-kits/${encodeURIComponent(id)}/plan`, {
+            method: 'PATCH',
+            body: { plan },
+        });
+    }
+
+    async renderPodcastLaunchKit(id, planRevision, options = {}) {
+        return this.requestContentStudio(`/launch-kits/${encodeURIComponent(id)}/render`, {
+            method: 'POST',
+            body: { planRevision, ...options },
+        });
+    }
+
+    async retryPodcastLaunchKitStage(id, stage) {
+        return this.requestContentStudio(`/launch-kits/${encodeURIComponent(id)}/retry/${encodeURIComponent(stage)}`, {
+            method: 'POST',
+            body: {},
+        });
+    }
+
+    async regeneratePodcastLaunchKitAsset(id, assetType, index = '') {
+        const suffix = index === '' || index == null ? '' : `/${encodeURIComponent(index)}`;
+        return this.requestContentStudio(`/launch-kits/${encodeURIComponent(id)}/regenerate/${encodeURIComponent(assetType)}${suffix}`, {
+            method: 'POST',
+            body: {},
+        });
+    }
+
     /**
      * Get available image generation models
      * GET /v1/models, filtered to image_generation capabilities

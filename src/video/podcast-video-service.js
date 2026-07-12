@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const sharp = require('sharp');
 const { config } = require('../config');
 const { createResponse, generateImageBatch } = require('../openai-client');
 const { parseLenientJson } = require('../utils/lenient-json');
@@ -62,6 +63,63 @@ function createServiceError(statusCode, message, code = 'podcast_video_error') {
   error.statusCode = statusCode;
   error.code = code;
   return error;
+}
+
+function escapeSvgText(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function wrapPromoText(value = '', maxChars = 30, maxLines = 6) {
+  const words = sanitizeText(value).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  words.forEach((word) => {
+    const candidate = line ? `${line} ${word}` : word;
+    if (candidate.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  });
+  if (line) lines.push(line);
+  return lines.slice(0, maxLines);
+}
+
+async function buildPromoCardBuffer({ title = '', caption = '', callToAction = '', brand = {}, endCard = false } = {}) {
+  const width = 1080;
+  const height = 1920;
+  const palette = Array.isArray(brand?.palette) ? brand.palette.filter((color) => /^#[0-9a-f]{6}$/i.test(color)) : [];
+  const background = palette[0] || '#091426';
+  const accent = palette[1] || '#37c6ff';
+  const secondary = palette[2] || '#8b5cf6';
+  const lines = wrapPromoText(endCard ? callToAction : caption, endCard ? 24 : 31, endCard ? 4 : 7);
+  const startY = endCard ? 760 : Math.max(560, 960 - (lines.length * 62));
+  const text = lines.map((line, index) => (
+    `<text x="90" y="${startY + (index * 82)}" fill="#ffffff" font-size="${endCard ? 66 : 54}" font-weight="700">${escapeSvgText(line)}</text>`
+  )).join('');
+  const svg = `
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${background}"/><stop offset="1" stop-color="#050817"/></linearGradient></defs>
+      <rect width="1080" height="1920" fill="url(#bg)"/>
+      <circle cx="930" cy="240" r="320" fill="${accent}" opacity="0.14"/>
+      <circle cx="160" cy="1710" r="380" fill="${secondary}" opacity="0.12"/>
+      <rect x="70" y="92" width="940" height="10" rx="5" fill="${accent}"/>
+      <text x="90" y="190" fill="${accent}" font-size="30" font-weight="700" letter-spacing="4">PODCAST CLIP</text>
+      <text x="90" y="280" fill="#dbeafe" font-size="38" font-weight="600">${escapeSvgText(cleanTitle(title))}</text>
+      ${text}
+      <rect x="90" y="1600" width="900" height="1" fill="#ffffff" opacity="0.25"/>
+      <text x="90" y="1675" fill="#a8b8ce" font-size="28">${endCard ? 'Continue the conversation' : 'AI-generated audio • Branded launch asset'}</text>
+    </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+function cleanTitle(value = '') {
+  return sanitizeText(value).slice(0, 46);
 }
 
 function sanitizeText(value = '') {
@@ -1424,6 +1482,38 @@ class PodcastVideoService {
     };
   }
 
+  async suggestStockSources(scenes = [], { orientation = 'landscape' } = {}) {
+    if (!this.isUnsplashConfigured()) return [];
+    const suggestions = [];
+    for (const scene of (Array.isArray(scenes) ? scenes : []).slice(0, 12)) {
+      const query = sanitizeText(scene.visualQuery || scene.summary || scene.caption || '').slice(0, 180);
+      if (!query) continue;
+      try {
+        const results = await this.searchImages(query, { page: 1, perPage: 1, orientation });
+        const image = results?.results?.[0];
+        const imageUrl = image?.urls?.regular || image?.urls?.full || image?.urls?.small || '';
+        if (!imageUrl) continue;
+        suggestions.push({
+          sceneId: scene.id,
+          query,
+          source: 'unsplash',
+          imageUrl,
+          thumbnailUrl: image?.urls?.small || imageUrl,
+          alt: image?.altDescription || image?.description || scene.summary || '',
+          attribution: image?.author ? {
+            name: image.author.name,
+            username: image.author.username,
+            link: image.author.link,
+            sourceUrl: image.links?.html || null,
+          } : null,
+        });
+      } catch (error) {
+        console.warn(`[PodcastVideo] Unsplash source suggestion failed for ${scene.id || 'scene'}: ${error.message}`);
+      }
+    }
+    return suggestions;
+  }
+
   async downloadImage(url = '') {
     const decoded = decodeDataUrl(url);
     if (decoded) {
@@ -1538,6 +1628,17 @@ class PodcastVideoService {
   async resolveSceneImage(scene = {}, options = {}) {
     const imageMode = normalizeImageMode(options.imageMode);
     const orientation = options.orientation || 'landscape';
+
+    if (Buffer.isBuffer(scene.imageBuffer) && scene.imageBuffer.length > 0) {
+      return {
+        buffer: scene.imageBuffer,
+        mimeType: scene.imageMimeType || 'image/png',
+        extension: scene.imageExtension || 'png',
+        source: scene.imageSource || 'provided',
+        url: null,
+        attribution: scene.attribution || null,
+      };
+    }
 
     if (scene.imageUrl) {
       const downloaded = await this.downloadImage(scene.imageUrl).catch(() => null);
@@ -2396,6 +2497,119 @@ class PodcastVideoService {
         ...options,
       },
     });
+  }
+
+  async createPromoClipFromPodcast(podcast = {}, {
+    sessionId,
+    clip = {},
+    brand = null,
+    options = {},
+  } = {}) {
+    const audioArtifactId = String(podcast?.audio?.artifactId || podcast?.artifact?.id || '').trim();
+    if (!audioArtifactId) {
+      throw createServiceError(400, 'The podcast result does not include a saved audio artifact.', 'podcast_audio_artifact_required');
+    }
+    const audioArtifact = await this.readAudioArtifact(audioArtifactId);
+    if (sessionId && audioArtifact.sessionId && String(audioArtifact.sessionId) !== String(sessionId)) {
+      throw createServiceError(404, 'Audio artifact not found for this session.', 'audio_artifact_not_found');
+    }
+    const startSeconds = Math.max(0, Number(clip.startSeconds) || 0);
+    const requestedDuration = Math.max(10, Math.min(30, (Number(clip.endSeconds) || (startSeconds + 24)) - startSeconds));
+    const resolvedBrand = brand && typeof brand.then === 'function' ? await brand : (brand || {});
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kimibuilt-promo-clip-'));
+    const inputExtension = String(audioArtifact.mimeType || '').includes('mpeg') ? 'mp3' : 'wav';
+    const inputPath = path.join(tempDir, `episode.${inputExtension}`);
+    const clipPath = path.join(tempDir, 'clip.wav');
+    try {
+      await fs.writeFile(inputPath, audioArtifact.contentBuffer);
+      await this.runFfmpeg([
+        '-y',
+        '-ss', startSeconds.toFixed(3),
+        '-t', requestedDuration.toFixed(3),
+        '-i', inputPath,
+        '-ar', '48000',
+        '-ac', '2',
+        clipPath,
+      ], {
+        timeoutMs: 120000,
+        stage: `promo clip audio ${clip.id || ''}`.trim(),
+      });
+      const clipAudioBuffer = await fs.readFile(clipPath);
+      const endCardSeconds = Math.min(3, Math.max(2, requestedDuration * 0.15));
+      const captionCard = await buildPromoCardBuffer({
+        title: podcast.title || podcast.script?.title || 'Podcast',
+        caption: clip.caption || clip.transcript || '',
+        callToAction: clip.callToAction || 'Listen to the full episode',
+        brand: resolvedBrand,
+      });
+      const endCard = await buildPromoCardBuffer({
+        title: podcast.title || podcast.script?.title || 'Podcast',
+        caption: clip.caption || '',
+        callToAction: clip.callToAction || 'Listen to the full episode',
+        brand: resolvedBrand,
+        endCard: true,
+      });
+      const scenes = [
+        {
+          id: `${clip.id || 'promo'}-caption`,
+          start: 0,
+          end: requestedDuration - endCardSeconds,
+          duration: requestedDuration - endCardSeconds,
+          summary: clip.title || 'Podcast highlight',
+          caption: clip.caption || clip.transcript || '',
+          imageBuffer: captionCard,
+          imageSource: 'branded-caption-card',
+        },
+        {
+          id: `${clip.id || 'promo'}-cta`,
+          start: requestedDuration - endCardSeconds,
+          end: requestedDuration,
+          duration: endCardSeconds,
+          summary: clip.callToAction || 'Listen to the full episode',
+          caption: clip.callToAction || 'Listen to the full episode',
+          imageBuffer: endCard,
+          imageSource: 'branded-end-card',
+        },
+      ];
+      const rendered = await this.renderMp4({
+        audioBuffer: clipAudioBuffer,
+        audioMimeType: 'audio/wav',
+        scenes,
+        title: `${podcast.title || 'Podcast'} ${clip.title || clip.id || 'promo clip'}`,
+        aspectRatio: '9:16',
+        imageMode: options.imageMode || 'mixed',
+        generateImages: options.generateImages === true,
+        renderMode: 'storyboard',
+        enhanceAudio: options.enhanceAudio === true,
+        visualEffects: options.visualEffects !== false,
+        toolManager: options.toolManager,
+        toolContext: options.toolContext || {},
+      });
+      const persisted = await this.persistVideo({
+        sessionId,
+        title: `${podcast.title || 'Podcast'} ${clip.title || clip.id || 'promo clip'}`,
+        videoBuffer: rendered.buffer,
+        transcript: clip.transcript || clip.caption || '',
+        storyboard: { title: clip.title || 'Promo clip', durationSeconds: requestedDuration, scenes: rendered.scenes },
+        metadata: {
+          generatedBy: 'podcast-launch-kit-promo',
+          clipId: clip.id || null,
+          startSeconds,
+          endSeconds: startSeconds + requestedDuration,
+          burnedInCaptions: true,
+          brandedEndCard: true,
+          callToAction: clip.callToAction || '',
+        },
+      });
+      return {
+        clip: { ...clip, startSeconds, endSeconds: startSeconds + requestedDuration },
+        storyboard: { title: clip.title || 'Promo clip', durationSeconds: requestedDuration, scenes: rendered.scenes },
+        artifact: persisted.artifact,
+        video: persisted.video,
+      };
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   }
 }
 
