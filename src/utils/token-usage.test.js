@@ -165,6 +165,33 @@ describe('token usage utilities', () => {
         });
     });
 
+    test('prefers measured response metadata over zeroed direct usage placeholders', () => {
+        expect(extractResponseUsageMetadata({
+            id: 'response-zero-direct-usage',
+            usage: {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            },
+            response_metadata: {
+                usage: {
+                    prompt_tokens: 64,
+                    completion_tokens: 18,
+                    total_tokens: 82,
+                    source: 'provider-response-metadata',
+                },
+            },
+        })).toEqual({
+            promptTokens: 64,
+            inputTokens: 64,
+            completionTokens: 18,
+            outputTokens: 18,
+            totalTokens: 82,
+            modelCalls: 1,
+            source: 'provider-response-metadata',
+        });
+    });
+
     test('normalizes nested response metadata usage wrappers', () => {
         expect(normalizeUsageMetadata({
             response: {

@@ -656,6 +656,12 @@ function extractResponseUsageMetadata(response = {}) {
     const metadataUsage = withDefaultModelCallCount(
         response?.metadata?.usage
         || response?.metadata?.tokenUsage
+        || response?.metadata?.token_usage
+        || response?.response_metadata?.usage
+        || response?.response_metadata?.tokenUsage
+        || response?.response_metadata?.token_usage
+        || response?.responseMetadata?.usage
+        || response?.responseMetadata?.tokenUsage
         || response?._kimibuilt?.usage
         || response?._kimibuilt?.tokenUsage,
         1,
