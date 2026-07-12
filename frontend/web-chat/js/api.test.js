@@ -301,6 +301,38 @@ describe('web-chat reasoning metadata normalization', () => {
         }));
     });
 
+    test('preserves top-level metadata tool events from stream completion', () => {
+        const { apiClient } = loadApiClient();
+
+        const events = apiClient.normalizeStreamPayload({
+            type: 'done',
+            metadata: {
+                tool_events: [{
+                    toolCall: {
+                        function: {
+                            name: 'remote-command',
+                            arguments: '{"command":"kubectl get pods"}',
+                        },
+                    },
+                    result: {
+                        success: true,
+                        summary: 'Pods listed',
+                    },
+                }],
+            },
+        }, {});
+
+        const done = events.find((event) => event.type === 'done');
+        expect(done.toolEvents).toEqual([
+            expect.objectContaining({
+                toolCall: expect.objectContaining({
+                    function: expect.objectContaining({ name: 'remote-command' }),
+                }),
+                result: expect.objectContaining({ success: true }),
+            }),
+        ]);
+    });
+
     test('normalizes provider thinking aliases from stream done payloads', () => {
         const { apiClient } = loadApiClient();
 
