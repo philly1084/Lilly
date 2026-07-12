@@ -11815,6 +11815,15 @@ code[class*="language-"] {
     border-color: var(--border-focus);
 }
 
+.input-toggle-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-focus);
+    box-shadow: var(--shadow-md), 0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 .input-toggle-btn:active {
     transform: translateY(50%) scale(0.95);
 }
@@ -11964,7 +11973,8 @@ code[class*="language-"] {
     border-top-color: var(--border);
 }
 
-.input-toggle-btn:hover .input-toggle-tooltip {
+.input-toggle-btn:hover .input-toggle-tooltip,
+.input-toggle-btn:focus-visible .input-toggle-tooltip {
     opacity: 1;
     visibility: visible;
 }

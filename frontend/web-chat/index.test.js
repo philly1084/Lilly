@@ -84,7 +84,7 @@ describe('web-chat index redirect', () => {
         const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
         const lightTheme = css.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] || '';
 
-        expect(html).toContain('css/styles.css?v=20260711i');
+        expect(html).toContain('css/styles.css?v=20260711j');
         expect(lightTheme).toContain('--tool-picker-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98)');
         expect(lightTheme).toContain('--tool-picker-panel-border: rgba(215, 226, 239, 0.96);');
         expect(lightTheme).not.toContain('--tool-picker-panel-background: var(--theme-dialog-background);');
@@ -116,7 +116,7 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('<button type="button" class="btn-icon mobile-chat-menu__close"');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action" data-mobile-menu-action="search">');
         expect(html).toContain('<button type="button" class="mobile-chat-menu__action mobile-chat-menu__action--danger" data-mobile-menu-action="clear">');
-        expect(html).toContain('css/styles.css?v=20260711i');
+        expect(html).toContain('css/styles.css?v=20260711j');
         expect(html).toContain('js/tts-manager.js?v=20260628b');
         expect(html).toContain('js/ui.js?v=20260711c');
         expect(uiSource).toContain("trigger?.setAttribute('aria-label', 'Close chat controls')");
@@ -284,11 +284,21 @@ describe('web-chat index redirect', () => {
         expect(html).toContain('aria-expanded="true"');
         expect(html).toContain('aria-label="Hide input area"');
         expect(html).toContain('<span class="input-toggle-tooltip">Hide Input</span>');
+        expect(html).toContain('css/styles.css?v=20260711j');
         expect(html).toContain('js/ui.js?v=20260711c');
         expect(uiSource).toContain('syncInputAreaToggleState(isHidden)');
         expect(uiSource).toContain("toggleBtn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');");
         expect(uiSource).toContain("toggleBtn.setAttribute('aria-label', label);");
         expect(uiSource).toContain('toggleTooltip.textContent = tooltip;');
+    });
+
+    test('composer input toggle tooltip is visible for keyboard focus', () => {
+        const css = fs.readFileSync(path.join(__dirname, 'css', 'styles.css'), 'utf8');
+
+        expect(css).toContain('.input-toggle-btn:focus-visible');
+        expect(css).toContain('outline: 2px solid var(--accent);');
+        expect(css).toContain('.input-toggle-btn:hover .input-toggle-tooltip,\n.input-toggle-btn:focus-visible .input-toggle-tooltip');
+        expect(css).toContain('visibility: visible;');
     });
 
     test('sound volume slider exposes readable range text', () => {
