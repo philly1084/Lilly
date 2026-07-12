@@ -10,6 +10,7 @@ const Sidebar = (function() {
     let sidebarToggleEl = null;
     let sidebarHandleEl = null;
     let mobileToggleEl = null;
+    let themeToggleEl = null;
     let expandedPages = new Set();
     let pageIconDelegationBound = false;
     let coverDelegationBound = false;
@@ -65,6 +66,7 @@ const Sidebar = (function() {
 
         const isOutlineCollapsed = localStorage.getItem('notes_notion_sidebar_outline_collapsed') === 'true';
         setOutlineCollapsed(isOutlineCollapsed);
+        syncThemeToggleState(Storage.getTheme());
         
         // Setup mobile toggle
         setupMobileToggle();
@@ -130,9 +132,9 @@ const Sidebar = (function() {
         }
         
         // Theme toggle
-        const themeBtn = document.getElementById('theme-toggle');
-        if (themeBtn) {
-            themeBtn.addEventListener('click', toggleTheme);
+        themeToggleEl = document.getElementById('theme-toggle');
+        if (themeToggleEl) {
+            themeToggleEl.addEventListener('click', toggleTheme);
         }
         
         // Settings button
@@ -1079,11 +1081,23 @@ const Sidebar = (function() {
         const currentTheme = Storage.getTheme();
         const newTheme = currentTheme === 'light' ? 'dark' : 'light';
         Storage.setTheme(newTheme);
-        
-        // Update button text
-        const themeText = document.querySelector('.theme-text');
+
+        syncThemeToggleState(newTheme);
+    }
+
+    function syncThemeToggleState(theme) {
+        const isDark = theme === 'dark';
+        const actionLabel = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+        const themeText = themeToggleEl?.querySelector?.('.theme-text') || document.querySelector('.theme-text');
+
         if (themeText) {
-            themeText.textContent = newTheme === 'light' ? 'Dark mode' : 'Light mode';
+            themeText.textContent = isDark ? 'Light mode' : 'Dark mode';
+        }
+
+        if (themeToggleEl) {
+            themeToggleEl.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+            themeToggleEl.setAttribute('aria-label', actionLabel);
+            themeToggleEl.setAttribute('title', actionLabel);
         }
     }
 

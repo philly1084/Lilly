@@ -115,6 +115,23 @@ describe('Notes export menu accessibility', () => {
     });
 });
 
+describe('Notes theme toggle accessibility', () => {
+    test('announces the target theme action while exposing pressed state', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = readSidebarSource();
+
+        expect(html).toContain('id="theme-toggle"');
+        expect(html).toContain('type="button" title="Switch to dark mode" aria-label="Switch to dark mode" aria-pressed="false"');
+        expect(source).toContain('let themeToggleEl = null;');
+        expect(source).toContain("themeToggleEl = document.getElementById('theme-toggle')");
+        expect(source).toContain('syncThemeToggleState(Storage.getTheme())');
+        expect(source).toContain('function syncThemeToggleState(theme)');
+        expect(source).toContain("themeToggleEl.setAttribute('aria-pressed', isDark ? 'true' : 'false')");
+        expect(source).toContain("themeToggleEl.setAttribute('aria-label', actionLabel)");
+        expect(source).toContain("themeToggleEl.setAttribute('title', actionLabel)");
+    });
+});
+
 describe('Notes import modal accessibility', () => {
     test('opens import as a described keyboard-friendly dialog', () => {
         const source = readSidebarSource();
