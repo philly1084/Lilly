@@ -68,13 +68,15 @@ function addToHistory(sessionId, metadata = {}) {
   try {
     const history = getHistory();
     const existingIndex = history.findIndex(s => s.id === sessionId);
+    const existingEntry = existingIndex >= 0 ? history[existingIndex] : {};
     
     const sessionEntry = {
       id: sessionId,
-      createdAt: metadata.createdAt || new Date().toISOString(),
+      ...existingEntry,
+      createdAt: metadata.createdAt || existingEntry.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      mode: metadata.mode || 'chat',
-      name: metadata.name || `Session ${sessionId.slice(0, 8)}`,
+      mode: metadata.mode || existingEntry.mode || 'chat',
+      name: metadata.name || existingEntry.name || `Session ${sessionId.slice(0, 8)}`,
       ...metadata,
     };
     
