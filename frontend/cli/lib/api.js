@@ -1062,6 +1062,10 @@ class OpenAIClient {
 
     const streamBase = `${this.getGatewayBaseUrl().replace(/\/$/, '')}/`;
     const targetUrl = new URL(String(streamUrl || ''), streamBase);
+    const gatewayOrigin = new URL(streamBase).origin;
+    if (targetUrl.origin !== gatewayOrigin) {
+      throw new APIError('Provider stream URL must use the configured gateway origin');
+    }
     if (options.after !== undefined && options.after !== null) {
       targetUrl.searchParams.set('after', String(options.after));
     }

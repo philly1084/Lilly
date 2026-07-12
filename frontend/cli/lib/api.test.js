@@ -612,6 +612,16 @@ describe('OpenAIClient provider sessions', () => {
     expect(reader.releaseLock).toHaveBeenCalled();
   });
 
+  test('streamProviderSession rejects cross-origin URLs before sending frontend auth', async () => {
+    const client = new OpenAIClient();
+    const events = client.streamProviderSession('https://untrusted.example/provider-stream');
+
+    await expect(events.next()).rejects.toThrow(
+      'Provider stream URL must use the configured gateway origin',
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   test('provider session commands fail fast when no frontend auth token is configured', async () => {
     mockConfigGet.mockImplementation((key, defaultValue) => defaultValue);
 
