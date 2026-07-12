@@ -10152,10 +10152,10 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return null;
         }
 
-        const data = event?.result?.data || {};
-        const checkpoint = data.checkpoint && typeof data.checkpoint === 'object'
-            ? data.checkpoint
-            : (data && typeof data === 'object' ? data : null);
+        const data = this.parseToolArguments(event?.result?.data);
+        const checkpoint = data.checkpoint != null
+            ? this.parseToolArguments(data.checkpoint)
+            : data;
 
         return this.normalizeCheckpointDefinition(checkpoint);
     }
@@ -10569,11 +10569,11 @@ curl -fsSIL --max-time 20 "https://$host"`;
             return '';
         }
 
-        const data = checkpointEvent?.result?.data || {};
-        const checkpoint = data.checkpoint && typeof data.checkpoint === 'object'
-            ? data.checkpoint
+        const data = this.parseToolArguments(checkpointEvent?.result?.data);
+        const checkpoint = data.checkpoint != null
+            ? this.parseToolArguments(data.checkpoint)
             : (
-                data && typeof data === 'object' && Object.keys(data).length > 0
+                Object.keys(data).length > 0
                     ? data
                     : this.extractCheckpointFromToolEventChunk(checkpointEvent)
             );

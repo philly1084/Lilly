@@ -43,6 +43,23 @@ function buildSurveyFenceContent(checkpoint = null) {
     }
 }
 
+function parseCheckpointPayload(value = null) {
+    let parsed = value;
+    for (let attempt = 0; attempt < 2 && typeof parsed === 'string'; attempt += 1) {
+        parsed = parseLenientJson(parsed);
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+    }
+
+    if (parsed.checkpoint != null) {
+        return parseCheckpointPayload(parsed.checkpoint);
+    }
+
+    return parsed;
+}
+
 function buildSurveyDisplayContentFromToolEvents(toolEvents = []) {
     const checkpointEvent = [...(Array.isArray(toolEvents) ? toolEvents : [])]
         .reverse()
@@ -55,13 +72,11 @@ function buildSurveyDisplayContentFromToolEvents(toolEvents = []) {
         return '';
     }
 
-    const data = checkpointEvent?.result?.data || {};
-    const checkpoint = data.checkpoint && typeof data.checkpoint === 'object'
-        ? data.checkpoint
-        : (data && typeof data === 'object' ? data : null);
+    const data = checkpointEvent?.result?.data;
+    const checkpoint = parseCheckpointPayload(data);
     const surveyFence = buildSurveyFenceContent(checkpoint);
     if (!surveyFence) {
-        const message = String(data.message || '').trim();
+        const message = String(parseCheckpointPayload(data)?.message || '').trim();
         return /```(?:survey|kb-survey)\s*[\s\S]*?```/i.test(message) ? message : '';
     }
 

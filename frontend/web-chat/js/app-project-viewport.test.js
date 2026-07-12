@@ -67,6 +67,27 @@ function loadChatAppPrototype() {
 }
 
 describe('web-chat project viewport helpers', () => {
+    test('normalizes serialized checkpoint tool results during live streaming', () => {
+        const app = Object.create(loadChatAppPrototype());
+        const checkpoint = app.extractCheckpointFromToolEventResult({
+            result: {
+                success: true,
+                data: JSON.stringify({
+                    checkpoint: {
+                        id: 'checkpoint-live-string',
+                        question: 'Which direction should we take?',
+                        options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+                    },
+                }),
+            },
+        });
+
+        expect(checkpoint).toEqual(expect.objectContaining({
+            id: 'checkpoint-live-string',
+            question: 'Which direction should we take?',
+        }));
+    });
+
     test('persists research helper cards as transcript-excluded session UI state', () => {
         const context = loadChatAppContext();
         const app = Object.create(context.ChatApp.prototype);

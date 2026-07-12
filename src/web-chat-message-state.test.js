@@ -243,6 +243,28 @@ describe('buildWebChatSessionMessages', () => {
         expect(metadata.displayContent).toContain('"id": "checkpoint-derive"');
     });
 
+    test('derives survey display content when a checkpoint tool result serializes its data', () => {
+        const metadata = buildFrontendAssistantMetadata({
+            toolEvents: [{
+                toolCall: { function: { name: 'user-checkpoint' } },
+                result: {
+                    success: true,
+                    toolId: 'user-checkpoint',
+                    data: JSON.stringify({
+                        checkpoint: {
+                            id: 'checkpoint-string-result',
+                            question: 'Which direction should we take?',
+                            options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+                        },
+                    }),
+                },
+            }],
+        });
+
+        expect(metadata.displayContent).toContain('```survey');
+        expect(metadata.displayContent).toContain('"checkpoint-string-result"');
+    });
+
     test('normalizes raw checkpoint JSON display content into a survey fence', () => {
         const metadata = buildFrontendAssistantMetadata({
             displayContent: JSON.stringify({
