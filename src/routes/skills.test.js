@@ -9,16 +9,46 @@ jest.mock('../skills/skill-store', () => ({
   },
 }));
 
+jest.mock('../openai-client', () => ({
+  createResponse: jest.fn(),
+}));
+
+jest.mock('../artifacts/artifact-service', () => ({
+  extractResponseText: jest.fn(),
+}));
+
+jest.mock('../agent-sdk/tools', () => ({
+  getToolManager: jest.fn(),
+}));
+
 const { skillStore } = require('../skills/skill-store');
+const { createResponse } = require('../openai-client');
+const { extractResponseText } = require('../artifacts/artifact-service');
+const { getToolManager } = require('../agent-sdk/tools');
 const skillsRouter = require('./skills');
 
 describe('/api/skills routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getToolManager.mockReturnValue({
+      initialize: jest.fn(async () => undefined),
+      registry: {
+        getFrontendTools: jest.fn(() => [
+          {
+            id: 'remote-command',
+            name: 'Remote command',
+            category: 'remote',
+            description: 'Run a remote inspection command.',
+            parameters: [{ name: 'command', required: true, description: 'Command to run' }],
+          },
+        ]),
+      },
+    });
   });
 
   function buildApp() {
     const app = express();
+    app.use(express.json());
     app.use('/api/skills', skillsRouter);
     return app;
   }
@@ -127,6 +157,57 @@ describe('/api/skills routes', () => {
       id: 'document-proof',
       matchedTools: ['document-workflow'],
       reasons: ['tool affinity', 'task artifact-review'],
+    }));
+  });
+
+  test('draft accepts snake_case model fields for skill handoff metadata', async () => {
+    createResponse.mockResolvedValue({ id: 'response-1' });
+    extractResponseText.mockReturnValue(JSON.stringify({
+      summary: 'Draft ready.',
+      ready_for_approval: true,
+      questions: [{
+        id: 'scope',
+        question: 'Which host should this inspect?',
+        input_type: 'choice',
+        options: ['production', 'staging'],
+      }],
+      draft: {
+        id: 'remote-health-check',
+        name: 'Remote Health Check',
+        description: 'Check a remote service before changes.',
+        body: 'Run a baseline, inspect logs, and report evidence.',
+        tool_ids: ['remote-command', 'missing-tool'],
+        trigger_patterns: ['remote health', 'service status'],
+        context_policy: {
+          max_chars: 2400,
+          expose_body: false,
+        },
+      },
+      rationale: 'Matches a remote command workflow.',
+    }));
+
+    const response = await request(buildApp())
+      .post('/api/skills/draft')
+      .send({ ask: 'Create a remote health check skill.' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual(expect.objectContaining({
+      summary: 'Draft ready.',
+      readyForApproval: true,
+      rationale: 'Matches a remote command workflow.',
+    }));
+    expect(response.body.data.questions[0]).toEqual(expect.objectContaining({
+      inputType: 'choice',
+      question: 'Which host should this inspect?',
+    }));
+    expect(response.body.data.draft).toEqual(expect.objectContaining({
+      id: 'remote-health-check',
+      tools: ['remote-command'],
+      triggerPatterns: ['remote health', 'service status'],
+      contextPolicy: {
+        maxChars: 2400,
+        exposeBody: false,
+      },
     }));
   });
 });

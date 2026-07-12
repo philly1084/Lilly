@@ -28,14 +28,25 @@ function normalizeDraftSkill(value = {}) {
     name: normalizeString(draft.name || draft.title),
     description: normalizeString(draft.description),
     body: String(draft.body || draft.instructions || '').trim(),
-    tools: normalizeStringList(draft.tools || draft.toolIds),
-    triggerPatterns: normalizeStringList(draft.triggerPatterns || draft.triggers || draft.keywords),
+    tools: normalizeStringList(draft.tools || draft.toolIds || draft.tool_ids),
+    triggerPatterns: normalizeStringList(draft.triggerPatterns || draft.trigger_patterns || draft.triggers || draft.keywords),
     chain: Array.isArray(draft.chain || draft.steps)
       ? (draft.chain || draft.steps).slice(0, 16)
       : [],
     contextPolicy: {
-      maxChars: Math.max(600, Math.min(Number(draft.contextPolicy?.maxChars || 1800), 6000)),
-      exposeBody: draft.contextPolicy?.exposeBody !== false,
+      maxChars: Math.max(600, Math.min(Number(
+        draft.contextPolicy?.maxChars
+        || draft.contextPolicy?.max_chars
+        || draft.context_policy?.maxChars
+        || draft.context_policy?.max_chars
+        || 1800,
+      ), 6000)),
+      exposeBody: (
+        draft.contextPolicy?.exposeBody
+        ?? draft.contextPolicy?.expose_body
+        ?? draft.context_policy?.exposeBody
+        ?? draft.context_policy?.expose_body
+      ) !== false,
     },
   };
 }
@@ -55,7 +66,7 @@ function normalizeQuestions(value = []) {
       return {
         id: normalizeString(entry?.id),
         question: normalizeString(entry?.question || entry?.prompt || entry?.ask),
-        inputType: normalizeString(entry?.inputType || entry?.type || 'text') || 'text',
+        inputType: normalizeString(entry?.inputType || entry?.input_type || entry?.type || 'text') || 'text',
         options: Array.isArray(entry?.options)
           ? entry.options
             .map((option) => (typeof option === 'string'
@@ -158,7 +169,7 @@ async function draftSkillWithModel(input = {}) {
 
   return {
     summary: normalizeString(parsed.summary || parsed.rationale || 'Skill draft updated.'),
-    readyForApproval: parsed.readyForApproval === true,
+    readyForApproval: parsed.readyForApproval === true || parsed.ready_for_approval === true,
     questions: normalizeQuestions(parsed.questions),
     draft,
     rationale: normalizeString(parsed.rationale),
