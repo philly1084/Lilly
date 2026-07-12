@@ -604,18 +604,34 @@
             .join('');
     }
 
+    function buildFallbackDownloadUrl(id = '', type = 'artifact') {
+        const normalizedId = String(id || '').trim();
+        if (!normalizedId) {
+            return '';
+        }
+
+        const route = type === 'document' ? 'documents' : 'artifacts';
+        return `/api/${route}/${encodeURIComponent(normalizedId)}/download`;
+    }
+
     function normalizeArtifactMetadata(artifact) {
         if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
             return null;
         }
 
+        const rawArtifactId = artifact.id || artifact.artifactId || artifact.artifact_id;
+        const rawDocumentId = artifact.documentId || artifact.document_id;
+        const id = rawArtifactId || rawDocumentId;
+        const downloadUrl = artifact.downloadUrl
+            || artifact.download_url
+            || buildFallbackDownloadUrl(id, rawArtifactId ? 'artifact' : 'document');
         const normalized = { ...artifact };
         const fields = {
-            id: artifact.id || artifact.artifactId || artifact.artifact_id,
+            id,
             filename: artifact.filename || artifact.name,
             format: artifact.format || artifact.extension || artifact.type,
             mimeType: artifact.mimeType || artifact.mime_type,
-            downloadUrl: artifact.downloadUrl || artifact.download_url,
+            downloadUrl,
             previewUrl: artifact.previewUrl || artifact.preview_url,
             sandboxUrl: artifact.sandboxUrl || artifact.sandbox_url,
             bundleDownloadUrl: artifact.bundleDownloadUrl

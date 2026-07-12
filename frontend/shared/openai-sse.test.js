@@ -61,7 +61,12 @@ describe('openai-sse helpers', () => {
     expect(events[2].toolCalls[0].function.name).toBe('search');
     expect(events[3].finishReason).toBe('stop');
     expect(events[0].sessionId).toBe('sess_123');
-    expect(events[0].artifacts).toEqual([{ id: 'artifact-1' }]);
+    expect(events[0].artifacts).toEqual([
+      {
+        id: 'artifact-1',
+        downloadUrl: '/api/artifacts/artifact-1/download',
+      },
+    ]);
   });
 
   test('preserves artifact arrays from nested response metadata', () => {
@@ -99,6 +104,39 @@ describe('openai-sse helpers', () => {
           previewUrl: '/api/artifacts/artifact-metadata-1/preview',
           bundleDownloadUrl: '/api/artifacts/artifact-metadata-1/bundle',
           sizeBytes: 2048,
+        },
+      ],
+    });
+  });
+
+  test('backfills document download links from streamed document ids', () => {
+    const events = normalizeGatewayEventPayload({
+      type: 'response.completed',
+      response: {
+        id: 'resp_document_artifact',
+        metadata: {
+          artifacts: [
+            {
+              document_id: 'doc-stream-1',
+              filename: 'summary.html',
+              mime_type: 'text/html',
+            },
+          ],
+        },
+        output_text: 'Created the summary document.',
+      },
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'final',
+      responseId: 'resp_document_artifact',
+      artifacts: [
+        {
+          id: 'doc-stream-1',
+          filename: 'summary.html',
+          mimeType: 'text/html',
+          downloadUrl: '/api/documents/doc-stream-1/download',
         },
       ],
     });

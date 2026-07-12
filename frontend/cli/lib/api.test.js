@@ -338,6 +338,44 @@ describe('OpenAIClient provider sessions', () => {
     }
   });
 
+  test('listArtifacts backfills document download links from document ids', async () => {
+    const http = require('http');
+    const requests = [];
+    const server = http.createServer((req, res) => {
+      requests.push(req.url);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        artifacts: [
+          {
+            document_id: 'doc-cli-1',
+            filename: 'brief.html',
+            mime_type: 'text/html',
+          },
+        ],
+      }));
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address();
+    mockGetApiBaseUrl.mockReturnValue(`http://127.0.0.1:${port}/v1`);
+
+    try {
+      const result = await listArtifacts('session-cli-documents');
+
+      expect(requests).toEqual(['/api/sessions/session-cli-documents/artifacts']);
+      expect(result.artifacts).toEqual([
+        expect.objectContaining({
+          id: 'doc-cli-1',
+          filename: 'brief.html',
+          mimeType: 'text/html',
+          downloadUrl: '/api/documents/doc-cli-1/download',
+        }),
+      ]);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   test('exported streaming chat forwards caller metadata to the gateway', async () => {
     global.fetch.mockResolvedValue(new Response([
       'data: {"type":"response.completed","session_id":"session-1","response":{"id":"resp-1","output_text":"done"}}',

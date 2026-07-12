@@ -146,6 +146,34 @@ describe('model-output-parser', () => {
         ]);
     });
 
+    test('backfills document download links from document metadata ids', () => {
+        const normalized = parser.normalizeModelOutput({
+            response: {
+                metadata: {
+                    artifacts: [
+                        {
+                            document_id: 'doc-report-1',
+                            filename: 'report.html',
+                            mime_type: 'text/html',
+                        },
+                    ],
+                },
+            },
+            content: [
+                { type: 'output_text', text: 'Created the report document.' },
+            ],
+        });
+
+        expect(normalized.metadata.artifacts).toEqual([
+            expect.objectContaining({
+                id: 'doc-report-1',
+                filename: 'report.html',
+                mimeType: 'text/html',
+                downloadUrl: '/api/documents/doc-report-1/download',
+            }),
+        ]);
+    });
+
     test('keeps fenced code blocks intact while repairing surrounding prose', () => {
         const normalized = parser.normalizeModelOutputMarkdown('Summary: useful\n\n```js\nconst table = \"| not markdown |\";\n```\n\nIngredients | Item | Quantity | |---|---| | A | B |');
 

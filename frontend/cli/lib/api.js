@@ -67,15 +67,23 @@ function normalizeArtifactMetadata(artifact = null) {
     return null;
   }
 
+  const rawArtifactId = artifact.id || artifact.artifactId || artifact.artifact_id;
+  const rawDocumentId = artifact.documentId || artifact.document_id;
+  const id = String(rawArtifactId || rawDocumentId || '').trim();
+  const downloadUrl = String(
+    artifact.downloadUrl
+    || artifact.download_url
+    || (id ? `/api/${rawArtifactId ? 'artifacts' : 'documents'}/${encodeURIComponent(id)}/download` : '')
+  ).trim();
   const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
   const sizeBytes = Number(sizeValue);
   const normalized = {
     ...artifact,
-    id: String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim(),
+    id,
     filename: String(artifact.filename || artifact.name || '').trim(),
     format: String(artifact.format || artifact.extension || artifact.type || '').trim(),
     mimeType: String(artifact.mimeType || artifact.mime_type || '').trim(),
-    downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+    downloadUrl,
     previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
     sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
     bundleDownloadUrl: String(
