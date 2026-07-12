@@ -4405,6 +4405,19 @@ describe('openai-client automatic tool orchestration helpers', () => {
         })).toBe('Hello world');
     });
 
+    test('preserves responses refusal explanations instead of returning an empty message', () => {
+        expect(__testUtils.getResponseApiText({
+            output: [{
+                type: 'message',
+                role: 'assistant',
+                content: [{
+                    type: 'refusal',
+                    refusal: 'I cannot help with that request.',
+                }],
+            }],
+        })).toBe('I cannot help with that request.');
+    });
+
     test('normalizes streamed chat completions into a populated final response', async () => {
         async function* streamChunks() {
             yield {

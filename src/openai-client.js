@@ -5931,7 +5931,11 @@ function getResponseApiText(response) {
                 return content.text || '';
             }
 
-            return content?.text || content?.output_text || '';
+            if (content?.type === 'refusal') {
+                return content.refusal || content.text || '';
+            }
+
+            return content?.text || content?.output_text || content?.refusal || '';
         })
         .filter(Boolean)
         .join('');
