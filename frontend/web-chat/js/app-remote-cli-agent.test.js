@@ -204,6 +204,19 @@ function buildAppHarness() {
     return { app, context, renderedMessages, eventSources };
 }
 
+describe('direct tool result formatting', () => {
+    test('falls back to a sibling message when tool data is empty', () => {
+        const context = loadChatAppContext();
+        const app = Object.create(context.ChatApp.prototype);
+
+        expect(app.formatToolInvocationResult('example-tool', {
+            success: true,
+            data: {},
+            message: 'The requested report is ready.',
+        })).toBe('The requested report is ready.');
+    });
+});
+
 function loadApiClientClass() {
     const source = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8')
         .replace(/\/\/ Create global API client instance[\s\S]*$/, 'globalThis.OpenAIAPIClient = OpenAIAPIClient;');

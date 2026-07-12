@@ -8065,7 +8065,8 @@ class ChatApp {
             }
         }
 
-        const readableText = this.extractToolInvocationText(unwrapped);
+        const readableText = this.extractToolInvocationText(unwrapped)
+            || (unwrapped !== result ? this.extractToolInvocationText(result) : '');
         if (readableText) {
             return readableText;
         }
