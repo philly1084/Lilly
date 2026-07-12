@@ -2431,6 +2431,12 @@ body {
     background: var(--bg-hover);
 }
 
+.context-menu-item:focus-visible {
+    background: var(--bg-hover);
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+}
+
 .context-divider {
     height: 1px;
     background: var(--border-color);

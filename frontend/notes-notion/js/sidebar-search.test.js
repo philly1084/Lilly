@@ -115,6 +115,24 @@ describe('Notes export menu accessibility', () => {
     });
 });
 
+describe('Notes block action menu accessibility', () => {
+    test('exposes focusable menu items with standard keyboard navigation', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const source = fs.readFileSync(path.join(__dirname, 'selection.js'), 'utf8');
+
+        expect(html).toContain('id="block-context-menu"');
+        expect(html).toContain('role="menu" aria-label="Block actions"');
+        expect(html).toContain('data-action="ask-ai" role="menuitem" tabindex="-1"');
+        expect(html).toContain('data-action="color" role="menuitem" tabindex="-1"');
+        expect(source).toContain("menu.querySelectorAll('[role=\"menuitem\"]')");
+        expect(source).toContain("if (e.key === 'Escape')");
+        expect(source).toContain('menu.returnFocusTarget?.focus?.()');
+        expect(source).toContain("if (e.key === 'Enter' || e.key === ' ')");
+        expect(source).toContain("['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)");
+        expect(source).toContain('items[nextIndex]?.focus()');
+    });
+});
+
 describe('Notes theme toggle accessibility', () => {
     test('announces the target theme action while exposing pressed state', () => {
         const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');

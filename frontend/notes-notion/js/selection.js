@@ -64,7 +64,7 @@ const Selection = (function() {
             selectBlock(blockId);
             showTurnIntoMenu(blockId, e);
         }, true);
-        
+
         // Keyboard navigation
         document.addEventListener('keydown', handleKeyDown);
     }
@@ -638,6 +638,7 @@ const Selection = (function() {
         menu.style.top = `${posY}px`;
         menu.style.display = 'block';
         menu.dataset.blockId = blockId;
+        menu.returnFocusTarget = e.currentTarget instanceof HTMLElement ? e.currentTarget : null;
 
         const block = window.Editor?.getBlock?.(blockId);
         const blockElement = document.querySelector(`.block[data-block-id="${blockId}"]`);
@@ -646,6 +647,10 @@ const Selection = (function() {
         menu.querySelectorAll('[data-heading-only="true"]').forEach((item) => {
             item.style.display = isHeading ? '' : 'none';
         });
+
+        const firstItem = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+            .find((item) => item.style.display !== 'none');
+        firstItem?.focus();
 
         // Select the block
         selectBlock(blockId, false);
@@ -669,7 +674,35 @@ const Selection = (function() {
     function setupContextMenu() {
         const menu = document.getElementById('block-context-menu');
         if (!menu) return;
-        
+
+        menu.addEventListener('keydown', (e) => {
+            const items = Array.from(menu.querySelectorAll('[role="menuitem"]'))
+                .filter((item) => item.style.display !== 'none');
+            const currentIndex = items.indexOf(document.activeElement);
+
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                menu.style.display = 'none';
+                menu.returnFocusTarget?.focus?.();
+                return;
+            }
+
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                document.activeElement?.click?.();
+                return;
+            }
+
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault();
+
+            let nextIndex = 0;
+            if (e.key === 'End') nextIndex = items.length - 1;
+            if (e.key === 'ArrowDown') nextIndex = (currentIndex + 1 + items.length) % items.length;
+            if (e.key === 'ArrowUp') nextIndex = (currentIndex - 1 + items.length) % items.length;
+            items[nextIndex]?.focus();
+        });
+
         menu.addEventListener('click', (e) => {
             const item = e.target.closest('.context-menu-item');
             if (!item) return;
