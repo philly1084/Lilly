@@ -925,6 +925,12 @@ class FileManager {
   renderFileItem(file) {
     const icon = this.getFileIcon(file.category, file.filename);
     const openUrl = file.sandboxUrl || file.previewUrl || file.downloadUrl || '';
+    const fileName = String(file.filename || 'file').trim() || 'file';
+    const escapedFilename = this.escapeHtml(fileName);
+    const downloadLabel = this.escapeAttribute(`Download ${fileName}`);
+    const openAction = file.previewUrl ? 'Preview' : 'Open';
+    const openLabel = this.escapeAttribute(`${openAction} ${fileName}`);
+    const deleteLabel = this.escapeAttribute(`Delete ${fileName}`);
     const statusIcon = {
       ready: '',
       downloading: 'loader',
@@ -948,7 +954,7 @@ class FileManager {
           <i data-lucide="${icon}" class="w-5 h-5"></i>
         </div>
         <div class="file-item-info">
-          <div class="file-item-name" title="${this.escapeHtml(file.filename)}">${this.escapeHtml(file.filename)}</div>
+          <div class="file-item-name" title="${this.escapeAttribute(fileName)}">${escapedFilename}</div>
           <div class="file-item-meta">
             <span>${this.formatSize(file.sizeBytes || file.size)}</span>
             <span>•</span>
@@ -968,15 +974,15 @@ class FileManager {
           ` : ''}
         </div>
         <div class="file-item-actions">
-          <button class="file-item-btn" onclick="fileManager.downloadFile('${file.id}')" title="Download" ${file.status === 'downloading' ? 'disabled' : ''}>
+          <button class="file-item-btn" onclick="fileManager.downloadFile('${file.id}')" title="${downloadLabel}" aria-label="${downloadLabel}" ${file.status === 'downloading' ? 'disabled' : ''}>
             <i data-lucide="download" class="w-4 h-4"></i>
           </button>
           ${openUrl ? `
-            <a class="file-item-btn" href="${openUrl}" target="_blank" title="${file.previewUrl ? 'Preview' : 'Open'}" onclick="event.stopPropagation()">
+            <a class="file-item-btn" href="${openUrl}" target="_blank" title="${openLabel}" aria-label="${openLabel}" onclick="event.stopPropagation()">
               <i data-lucide="external-link" class="w-4 h-4"></i>
             </a>
           ` : ''}
-          <button class="file-item-btn" onclick="fileManager.deleteFile('${file.id}')" title="Delete">
+          <button class="file-item-btn" onclick="fileManager.deleteFile('${file.id}')" title="${deleteLabel}" aria-label="${deleteLabel}">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
@@ -992,6 +998,10 @@ class FileManager {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  escapeAttribute(text) {
+    return this.escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   /**

@@ -75,4 +75,31 @@ describe('web-chat file manager selection controls', () => {
         expect(button.getAttribute('aria-label')).toBe('Download 2 selected files');
         expect(button.getAttribute('title')).toBe('Download 2 selected files');
     });
+
+    test('names row action controls with the target filename', () => {
+        const { dom, fileManager } = loadFileManager();
+
+        fileManager.files = [
+            {
+                id: 'artifact-1',
+                filename: 'demo "report".pdf',
+                category: 'document',
+                previewUrl: '/api/artifacts/artifact-1/preview',
+                sizeBytes: 2048,
+                createdAt: '2026-07-12T08:00:00.000Z',
+                status: 'ready',
+            },
+        ];
+
+        fileManager.renderFiles();
+
+        const rowActions = dom.window.document.querySelectorAll('.file-item-actions .file-item-btn');
+        expect(rowActions).toHaveLength(3);
+        expect(rowActions[0].getAttribute('aria-label')).toBe('Download demo "report".pdf');
+        expect(rowActions[0].getAttribute('title')).toBe('Download demo "report".pdf');
+        expect(rowActions[1].getAttribute('aria-label')).toBe('Preview demo "report".pdf');
+        expect(rowActions[1].getAttribute('title')).toBe('Preview demo "report".pdf');
+        expect(rowActions[2].getAttribute('aria-label')).toBe('Delete demo "report".pdf');
+        expect(rowActions[2].getAttribute('title')).toBe('Delete demo "report".pdf');
+    });
 });
