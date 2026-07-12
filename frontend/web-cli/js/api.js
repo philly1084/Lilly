@@ -888,15 +888,19 @@ class WebCLIAPI {
                                     ? (parsed.delta || parsed.reasoning_delta || parsed.summary || '')
                                     : (
                                         parsed?.choices?.[0]?.delta?.reasoning
+                                        || parsed?.choices?.[0]?.delta?.reasoningSummary
                                         || parsed?.choices?.[0]?.delta?.reasoning_text
                                         || parsed?.choices?.[0]?.delta?.reasoning_content
                                         || parsed?.choices?.[0]?.delta?.reasoning_details
+                                        || parsed?.choices?.[0]?.delta?.thinkingSummary
                                         || parsed?.choices?.[0]?.delta?.thinking_summary
                                         || parsed?.choices?.[0]?.delta?.thinking_text
                                         || parsed?.choices?.[0]?.delta?.thinking_content
                                         || parsed?.choices?.[0]?.delta?.thought_summary
                                         || parsed?.choices?.[0]?.delta?.thought_text
                                         || parsed?.choices?.[0]?.delta?.thought_content
+                                        || parsed?.choices?.[0]?.message?.reasoningSummary
+                                        || parsed?.choices?.[0]?.message?.thinkingSummary
                                         || parsed?.choices?.[0]?.message?.thinking_summary
                                         || parsed?.choices?.[0]?.message?.thinking_text
                                         || parsed?.choices?.[0]?.message?.thinking_content

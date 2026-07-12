@@ -291,6 +291,47 @@ describe('web-cli API reasoning metadata normalization', () => {
             }),
         }));
     });
+
+    test('preserves camel-case reasoning summaries in choice deltas without the shared helper', async () => {
+        const fetchMock = jest.fn(async (url) => {
+            if (String(url).endsWith('/api/sessions')) {
+                return createJsonResponse({ id: 'session-1' });
+            }
+
+            return createSseResponse([
+                {
+                    choices: [{
+                        delta: {
+                            content: 'Ready.',
+                            reasoningSummary: 'Verified the deployment state first.',
+                        },
+                    }],
+                },
+                '[DONE]',
+            ], { sessionId: 'session-1' });
+        });
+        const { api } = loadWebCliApi(fetchMock);
+
+        const chunks = [];
+        for await (const chunk of api.streamChat('is it ready?')) {
+            chunks.push(chunk);
+        }
+
+        expect(chunks).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'reasoning_summary_delta',
+                content: 'Verified the deployment state first.',
+            }),
+            expect.objectContaining({ type: 'delta', content: 'Ready.' }),
+        ]));
+        expect(chunks[chunks.length - 1]).toEqual(expect.objectContaining({
+            type: 'done',
+            assistantMetadata: expect.objectContaining({
+                reasoningSummary: 'Verified the deployment state first.',
+                reasoningAvailable: true,
+            }),
+        }));
+    });
 });
 
 describe('web-cli API image model lookup', () => {
