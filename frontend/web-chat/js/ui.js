@@ -6997,6 +6997,7 @@ class UIHelpers {
             await this.loadModels();
         }
         
+        this.updateReasoningUI();
         this.updateAssistantModelSelect();
         this.renderModelList();
         
@@ -7875,9 +7876,15 @@ class UIHelpers {
         const selectedVoiceId = this.ttsManager?.getSelectedVoiceId?.() || voices[0]?.id || '';
 
         if (button) {
+            const stateLabel = available
+                ? (autoPlayEnabled
+                    ? 'Read replies aloud on. Press to turn off.'
+                    : 'Read replies aloud off. Press to turn on.')
+                : `${this.getTtsFeatureLabel()} ${statusLabel.toLowerCase()}.`;
             button.disabled = !available;
             button.classList.toggle('is-active', available && autoPlayEnabled);
             button.setAttribute('aria-pressed', available && autoPlayEnabled ? 'true' : 'false');
+            button.setAttribute('aria-label', stateLabel);
             button.title = available
                 ? (autoPlayEnabled ? 'Read replies aloud: On' : 'Read replies aloud: Off')
                 : `${this.getTtsFeatureLabel()} ${statusLabel.toLowerCase()}`;
