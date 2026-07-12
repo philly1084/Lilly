@@ -3775,10 +3775,22 @@ class CodeCLIApp {
             return;
         }
 
+        const labels = {
+            chat: 'Ask Lilly with agent companion',
+            tools: 'List available agent tools',
+            files: 'Open generated session files',
+            sandbox: 'Run an agent sandbox example',
+            build: 'Draft a repository build task prompt',
+        };
+
         this.voxelToolbelt.querySelectorAll('.voxel-tool-chip').forEach((button) => {
             const isActive = button.dataset.tool === tool;
+            const label = labels[button.dataset.tool] || button.textContent.trim() || 'Use agent quick tool';
+            const state = isActive ? 'Currently selected.' : 'Press to select.';
             button.classList.toggle('active', isActive);
             button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            button.setAttribute('aria-label', `${label}. ${state}`);
+            button.setAttribute('title', `${label}. ${state}`);
         });
     }
 

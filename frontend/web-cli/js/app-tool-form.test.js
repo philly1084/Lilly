@@ -806,17 +806,21 @@ describe('web-cli agent quick tool state', () => {
         expect(toolbelt.getAttribute('aria-label')).toBe('Agent quick tools');
         expect(byTool.chat.classList.contains('active')).toBe(true);
         expect(byTool.chat.getAttribute('aria-pressed')).toBe('true');
+        expect(byTool.chat.getAttribute('aria-label')).toBe('Ask Lilly with agent companion. Currently selected.');
+        expect(byTool.chat.getAttribute('title')).toBe('Ask Lilly with agent companion. Currently selected.');
         expect(byTool.tools.getAttribute('aria-pressed')).toBe('false');
+        expect(byTool.tools.getAttribute('aria-label')).toBe('List available agent tools. Press to select.');
         expect(byTool.files.getAttribute('aria-pressed')).toBe('false');
+        expect(byTool.files.getAttribute('aria-label')).toBe('Open generated session files. Press to select.');
     });
 
     test('keeps quick tool pressed state synchronized with the visual active chip', () => {
         const app = createToolFormHarness();
         const dom = new JSDOM(`
             <div id="voxelToolbelt" role="toolbar" aria-label="Agent quick tools">
-                <button type="button" class="voxel-tool-chip active" data-tool="chat" aria-pressed="true">Chat</button>
-                <button type="button" class="voxel-tool-chip" data-tool="tools" aria-pressed="false">Tools</button>
-                <button type="button" class="voxel-tool-chip" data-tool="files" aria-pressed="false">Files</button>
+                <button type="button" class="voxel-tool-chip active" data-tool="chat" aria-pressed="true" aria-label="Ask Lilly with agent companion. Currently selected." title="Ask Lilly with agent companion. Currently selected.">Chat</button>
+                <button type="button" class="voxel-tool-chip" data-tool="tools" aria-pressed="false" aria-label="List available agent tools. Press to select." title="List available agent tools. Press to select.">Tools</button>
+                <button type="button" class="voxel-tool-chip" data-tool="files" aria-pressed="false" aria-label="Open generated session files. Press to select." title="Open generated session files. Press to select.">Files</button>
             </div>
         `);
         app.voxelToolbelt = dom.window.document.getElementById('voxelToolbelt');
@@ -827,9 +831,13 @@ describe('web-cli agent quick tool state', () => {
         const byTool = Object.fromEntries(buttons.map((button) => [button.dataset.tool, button]));
         expect(byTool.chat.classList.contains('active')).toBe(false);
         expect(byTool.chat.getAttribute('aria-pressed')).toBe('false');
+        expect(byTool.chat.getAttribute('aria-label')).toBe('Ask Lilly with agent companion. Press to select.');
+        expect(byTool.chat.getAttribute('title')).toBe('Ask Lilly with agent companion. Press to select.');
         expect(byTool.tools.getAttribute('aria-pressed')).toBe('false');
         expect(byTool.files.classList.contains('active')).toBe(true);
         expect(byTool.files.getAttribute('aria-pressed')).toBe('true');
+        expect(byTool.files.getAttribute('aria-label')).toBe('Open generated session files. Currently selected.');
+        expect(byTool.files.getAttribute('title')).toBe('Open generated session files. Currently selected.');
     });
 });
 
