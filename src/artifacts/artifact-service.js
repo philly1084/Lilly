@@ -395,6 +395,18 @@ function extractResponseText(response) {
         }
     }
 
+    const topLevelContentText = extractResponseContentText(
+        response?.content
+        ?? response?.parts
+        ?? response?.items
+        ?? response?.text
+        ?? response?.message
+        ?? ''
+    ).trim();
+    if (topLevelContentText) {
+        return stripNullCharacters(topLevelContentText).trim();
+    }
+
     const output = Array.isArray(response?.output) ? response.output : [];
 
     return output
@@ -494,6 +506,18 @@ function extractRawResponseText(response) {
         if (candidateText) {
             return stripNullCharacters(candidateText).trim();
         }
+    }
+
+    const topLevelContentText = extractRawResponseContentText(
+        response?.content
+        ?? response?.parts
+        ?? response?.items
+        ?? response?.text
+        ?? response?.message
+        ?? ''
+    ).trim();
+    if (topLevelContentText) {
+        return stripNullCharacters(topLevelContentText).trim();
     }
 
     const output = Array.isArray(response?.output) ? response.output : [];

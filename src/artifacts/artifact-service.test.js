@@ -418,6 +418,13 @@ describe('ArtifactService', () => {
                 },
             }],
         })).toBe('Gemini candidate answer');
+
+        expect(extractResponseText({
+            content: [
+                { type: 'reasoning', text: 'Hidden planning should stay out.' },
+                { type: 'output_text', text: 'Top-level content artifact' },
+            ],
+        })).toBe('Top-level content artifact');
     });
 
     test('extractResponseText strips null bytes from wrapped model outputs', () => {
