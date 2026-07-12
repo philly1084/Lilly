@@ -449,6 +449,32 @@ describe('agent dashboard navigation accessibility', () => {
         expect(recentActivityButton.getAttribute('aria-label')).toBe('View all recent activity logs');
     });
 
+    test('labels prompt editor fields and insertion controls', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+
+        expect(dom.window.document.getElementById('newPromptBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('promptSearch').getAttribute('aria-label')).toBe('Search prompt library');
+        expect(dom.window.document.getElementById('promptName').getAttribute('aria-label')).toBe('Prompt name');
+        expect(dom.window.document.getElementById('promptEditor').getAttribute('aria-label')).toBe('Prompt editor content');
+        expect(dom.window.document.getElementById('testPromptBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('savePromptBtn').getAttribute('type')).toBe('button');
+        expect(dom.window.document.getElementById('promptHistoryBtn').getAttribute('type')).toBe('button');
+
+        const toolbarButtons = Array.from(dom.window.document.querySelectorAll('#editorTab .toolbar-btn'));
+        expect(toolbarButtons.map((button) => button.getAttribute('type'))).toEqual(['button', 'button', 'button']);
+        expect(toolbarButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
+            'Insert variable placeholder',
+            'Insert context placeholder',
+            'Insert user input placeholder',
+        ]);
+        expect(toolbarButtons.map((button) => button.getAttribute('title'))).toEqual([
+            'Insert variable placeholder',
+            'Insert context placeholder',
+            'Insert user input placeholder',
+        ]);
+    });
+
     test('exposes tool category filter state to assistive tech', () => {
         const dom = new JSDOM('<div id="skillCategories"></div><div id="skillsGrid"></div>');
         const Dashboard = loadDashboardClass(dom);

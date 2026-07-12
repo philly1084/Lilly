@@ -398,7 +398,7 @@
                 <!-- Prompts View -->
                 <section class="view" id="promptsView">
                     <div class="page-actions">
-                        <button class="btn btn-primary" id="newPromptBtn">
+                        <button class="btn btn-primary" id="newPromptBtn" type="button">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <line x1="12" y1="5" x2="12" y2="19"/>
                                 <line x1="5" y1="12" x2="19" y2="12"/>
@@ -416,7 +416,7 @@
                                         <circle cx="11" cy="11" r="8"/>
                                         <path d="M21 21l-4.35-4.35"/>
                                     </svg>
-                                    <input type="text" placeholder="Search prompts..." id="promptSearch">
+                                    <input type="text" placeholder="Search prompts..." id="promptSearch" aria-label="Search prompt library">
                                 </div>
                             </div>
                             <div class="panel-content">
@@ -429,13 +429,13 @@
                         <div class="main-panel">
                             <div class="editor-header">
                                 <div class="editor-info">
-                                    <input type="text" class="prompt-name-input" id="promptName" placeholder="Prompt Name">
+                                    <input type="text" class="prompt-name-input" id="promptName" placeholder="Prompt Name" aria-label="Prompt name">
                                     <span class="prompt-version">live slot</span>
                                 </div>
                                 <div class="editor-actions">
-                                    <button class="btn btn-ghost" id="testPromptBtn">Test</button>
-                                    <button class="btn btn-secondary" id="savePromptBtn">Save</button>
-                                    <button class="btn btn-ghost" id="promptHistoryBtn">History</button>
+                                    <button class="btn btn-ghost" id="testPromptBtn" type="button">Test</button>
+                                    <button class="btn btn-secondary" id="savePromptBtn" type="button">Save</button>
+                                    <button class="btn btn-ghost" id="promptHistoryBtn" type="button">History</button>
                                 </div>
                             </div>
                             <div class="editor-body">
@@ -445,11 +445,11 @@
                                     <button class="tab-btn" id="prompt-variables-tab" data-tab="variables" type="button" role="tab" aria-controls="variablesTab" aria-selected="false" tabindex="-1">Variables</button>
                                 </div>
                                 <div class="tab-content active" id="editorTab" role="tabpanel" aria-labelledby="prompt-editor-tab">
-                                    <textarea class="prompt-editor" id="promptEditor" placeholder="Enter your system prompt here..."></textarea>
+                                    <textarea class="prompt-editor" id="promptEditor" placeholder="Enter your system prompt here..." aria-label="Prompt editor content"></textarea>
                                     <div class="editor-toolbar">
-                                        <button class="toolbar-btn" title="Insert Variable" data-insert="{{variable}}">{'{ }'}</button>
-                                        <button class="toolbar-btn" title="Insert Context" data-insert="{{context}}">@ctx</button>
-                                        <button class="toolbar-btn" title="Insert User Input" data-insert="{{input}}">@user</button>
+                                        <button class="toolbar-btn" type="button" title="Insert variable placeholder" aria-label="Insert variable placeholder" data-insert="{{variable}}">{'{ }'}</button>
+                                        <button class="toolbar-btn" type="button" title="Insert context placeholder" aria-label="Insert context placeholder" data-insert="{{context}}">@ctx</button>
+                                        <button class="toolbar-btn" type="button" title="Insert user input placeholder" aria-label="Insert user input placeholder" data-insert="{{input}}">@user</button>
                                         <span class="toolbar-divider"></span>
                                         <span class="char-count" id="charCount">0 chars</span>
                                     </div>
