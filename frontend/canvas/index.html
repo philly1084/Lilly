@@ -414,12 +414,12 @@
         <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
         <!-- Help Modal -->
-        <div id="help-modal" class="help-modal hidden">
+        <div id="help-modal" class="help-modal hidden" role="dialog" aria-modal="true" aria-labelledby="help-modal-title" aria-hidden="true">
             <div class="help-modal-overlay"></div>
             <div class="help-modal-content">
                 <div class="help-modal-header">
-                    <h2>Keyboard Shortcuts</h2>
-                    <button id="help-modal-close" class="icon-btn">
+                    <h2 id="help-modal-title">Keyboard Shortcuts</h2>
+                    <button id="help-modal-close" class="icon-btn" aria-label="Close keyboard shortcuts">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>

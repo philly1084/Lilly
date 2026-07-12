@@ -53,6 +53,8 @@ describe('Canvas type selector accessibility', () => {
         const splitToggle = dom.window.document.getElementById('toggle-split');
         const undoButton = dom.window.document.getElementById('undo-btn');
         const redoButton = dom.window.document.getElementById('redo-btn');
+        const helpModal = dom.window.document.getElementById('help-modal');
+        const helpCloseButton = dom.window.document.getElementById('help-modal-close');
 
         expect(modelSelect.getAttribute('aria-label')).toBe('Select AI model for Canvas generation');
         expect(reasoningSelect.getAttribute('aria-label')).toBe('Select reasoning effort for Canvas generation');
@@ -64,6 +66,11 @@ describe('Canvas type selector accessibility', () => {
         expect(splitToggle.getAttribute('aria-pressed')).toBe('false');
         expect(undoButton.getAttribute('aria-label')).toBe('Undo last canvas edit');
         expect(redoButton.getAttribute('aria-label')).toBe('Redo last canvas edit');
+        expect(helpModal.getAttribute('role')).toBe('dialog');
+        expect(helpModal.getAttribute('aria-modal')).toBe('true');
+        expect(helpModal.getAttribute('aria-labelledby')).toBe('help-modal-title');
+        expect(helpModal.getAttribute('aria-hidden')).toBe('true');
+        expect(helpCloseButton.getAttribute('aria-label')).toBe('Close keyboard shortcuts');
     });
 
     test('declares the active canvas type with aria-pressed in the initial markup', () => {
@@ -235,6 +242,34 @@ describe('Canvas type selector accessibility', () => {
         expect(previewToggle.getAttribute('aria-label')).toBe('Show preview');
         expect(splitToggle.getAttribute('aria-pressed')).toBe('true');
         expect(splitToggle.getAttribute('aria-label')).toBe('Hide split view');
+    });
+
+    test('keeps the keyboard shortcuts modal state and focus synchronized', () => {
+        const dom = new JSDOM(`
+            <button id="trigger">Open help</button>
+            <div id="help-modal" class="help-modal hidden" role="dialog" aria-modal="true" aria-labelledby="help-modal-title" aria-hidden="true">
+                <h2 id="help-modal-title">Keyboard Shortcuts</h2>
+                <button id="help-modal-close" aria-label="Close keyboard shortcuts">Close</button>
+            </div>
+        `);
+        const CanvasApp = loadCanvasAppClass(dom.window.document);
+        const app = Object.create(CanvasApp.prototype);
+        const trigger = dom.window.document.getElementById('trigger');
+        const modal = dom.window.document.getElementById('help-modal');
+        const closeButton = dom.window.document.getElementById('help-modal-close');
+
+        trigger.focus();
+        app.showHelpModal();
+
+        expect(modal.classList.contains('hidden')).toBe(false);
+        expect(modal.getAttribute('aria-hidden')).toBe('false');
+        expect(dom.window.document.activeElement).toBe(closeButton);
+
+        app.closeHelpModal();
+
+        expect(modal.classList.contains('hidden')).toBe(true);
+        expect(modal.getAttribute('aria-hidden')).toBe('true');
+        expect(dom.window.document.activeElement).toBe(trigger);
     });
 
     test('labels the dynamic artifact panel and renders an empty state', () => {

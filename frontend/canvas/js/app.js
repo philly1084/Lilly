@@ -33,6 +33,7 @@ class CanvasApp {
         // Auto-save timer
         this.autoSaveTimer = null;
         this.previewRenderTimer = null;
+        this.helpModalReturnFocus = null;
 
         this.init();
     }
@@ -224,7 +225,12 @@ class CanvasApp {
     showHelpModal() {
         const modal = document.getElementById('help-modal');
         if (modal) {
+            this.helpModalReturnFocus = document.activeElement && typeof document.activeElement.focus === 'function'
+                ? document.activeElement
+                : null;
             modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            document.getElementById('help-modal-close')?.focus();
         }
     }
 
@@ -235,6 +241,11 @@ class CanvasApp {
         const modal = document.getElementById('help-modal');
         if (modal) {
             modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+            if (this.helpModalReturnFocus && typeof this.helpModalReturnFocus.focus === 'function') {
+                this.helpModalReturnFocus.focus();
+            }
+            this.helpModalReturnFocus = null;
         }
     }
 
