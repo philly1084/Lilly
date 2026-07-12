@@ -15,7 +15,9 @@
             return null;
         }
 
-        const id = String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim();
+        const artifactId = String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim();
+        const documentId = String(artifact.documentId || artifact.document_id || '').trim();
+        const id = artifactId || documentId;
         if (!id) {
             return null;
         }
@@ -41,7 +43,11 @@
             mimeType,
             size: sizeBytes,
             sizeBytes,
-            downloadUrl: String(artifact.downloadUrl || artifact.download_url || '').trim(),
+            downloadUrl: String(
+                artifact.downloadUrl
+                || artifact.download_url
+                || `/api/${artifactId ? 'artifacts' : 'documents'}/${encodeURIComponent(id)}/download`
+            ).trim(),
             previewUrl: String(artifact.previewUrl || artifact.preview_url || '').trim(),
             sandboxUrl: String(artifact.sandboxUrl || artifact.sandbox_url || '').trim(),
             bundleDownloadUrl: String(artifact.bundleDownloadUrl || artifact.bundle_download_url || '').trim(),
@@ -52,6 +58,21 @@
         return (Array.isArray(artifacts) ? artifacts : [])
             .map(normalizeArtifactRecord)
             .filter(Boolean);
+    }
+
+    function extractResponseArtifacts(data = {}) {
+        const content = data.content && typeof data.content === 'object' ? data.content : {};
+        const assistantMetadata = data.assistantMetadata
+            || data.assistant_metadata
+            || content.assistantMetadata
+            || content.assistant_metadata
+            || {};
+        return normalizeArtifacts(
+            content.artifacts
+            || data.artifacts
+            || assistantMetadata.artifacts
+            || [],
+        );
     }
 
     function injectStyles() {
@@ -244,7 +265,7 @@
         const originalHandleResponse = app._handleResponse.bind(app);
         app._handleResponse = function(data) {
             originalHandleResponse(data);
-            const artifacts = normalizeArtifacts(data.content?.artifacts || data.artifacts || []);
+            const artifacts = extractResponseArtifacts(data);
             if (Array.isArray(artifacts) && artifacts.length > 0) {
                 state.artifacts = [...artifacts, ...state.artifacts.filter((artifact) => !artifacts.find((next) => next.id === artifact.id))];
                 renderArtifacts();
@@ -267,6 +288,7 @@
     window.notationArtifactPanel = {
         normalizeArtifactRecord,
         normalizeArtifacts,
+        extractResponseArtifacts,
         getState: () => state,
     };
 })();

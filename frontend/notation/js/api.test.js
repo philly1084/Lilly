@@ -152,4 +152,58 @@ describe('notation API WebSocket metadata normalization', () => {
             },
         }));
     });
+
+    test('normalizes assistant metadata artifacts and tool events from WebSocket payloads', () => {
+        const { NotationAPI } = loadNotationApi();
+        const onMessage = jest.fn();
+        NotationAPI.callbacks = { ...NotationAPI.callbacks, onMessage };
+
+        NotationAPI._handleWebSocketMessage({
+            type: 'done',
+            content: {
+                result: 'Created export',
+                assistant_metadata: {
+                    artifacts: [{
+                        document_id: 'doc-notation-1',
+                        filename: 'notation-export.pdf',
+                        mime_type: 'application/pdf',
+                    }],
+                    tool_events: [{
+                        toolId: 'document-generator',
+                        stage: 'completed',
+                    }],
+                },
+            },
+        });
+
+        expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+            artifacts: [
+                expect.objectContaining({
+                    id: 'doc-notation-1',
+                    filename: 'notation-export.pdf',
+                    mimeType: 'application/pdf',
+                    downloadUrl: '/api/documents/doc-notation-1/download',
+                }),
+            ],
+            toolEvents: [
+                expect.objectContaining({
+                    toolId: 'document-generator',
+                    stage: 'completed',
+                }),
+            ],
+            assistantMetadata: expect.objectContaining({
+                artifacts: [
+                    expect.objectContaining({
+                        id: 'doc-notation-1',
+                        downloadUrl: '/api/documents/doc-notation-1/download',
+                    }),
+                ],
+                toolEvents: [
+                    expect.objectContaining({
+                        toolId: 'document-generator',
+                    }),
+                ],
+            }),
+        }));
+    });
 });

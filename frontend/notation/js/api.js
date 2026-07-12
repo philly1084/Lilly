@@ -348,6 +348,8 @@ const NotationAPI = {
                 }
 
                 const assistantMetadata = this._normalizeAssistantMetadata(data, content);
+                const artifacts = this._extractArtifacts(data, content, assistantMetadata);
+                const toolEvents = this._extractToolEvents(data, content, assistantMetadata);
 
                 if (this.callbacks.onMessage) {
                     this.callbacks.onMessage({
@@ -358,6 +360,8 @@ const NotationAPI = {
                         content: content,
                         annotations: data.annotations || [],
                         suggestions: data.suggestions || [],
+                        artifacts,
+                        toolEvents,
                         assistantMetadata
                     });
                 }
@@ -411,23 +415,153 @@ const NotationAPI = {
     },
 
     _normalizeAssistantMetadata(data = {}, content = null) {
+        const contentObject = content && typeof content === 'object' ? content : null;
         const source = data.assistantMetadata
             || data.assistant_metadata
-            || (content && typeof content === 'object' ? content.assistantMetadata : null)
-            || (content && typeof content === 'object' ? content.assistant_metadata : null)
+            || data.metadata?.assistantMetadata
+            || data.metadata?.assistant_metadata
+            || contentObject?.assistantMetadata
+            || contentObject?.assistant_metadata
+            || contentObject?.metadata?.assistantMetadata
+            || contentObject?.metadata?.assistant_metadata
             || {};
         const metadata = source && typeof source === 'object' ? { ...source } : {};
         const reasoningSummary = this._pickReasoningSummary(
             metadata,
             data,
-            content && typeof content === 'object' ? content : null,
+            contentObject,
         );
+        const artifacts = this._extractArtifacts(data, contentObject, metadata);
+        const toolEvents = this._extractToolEvents(data, contentObject, metadata);
 
         if (reasoningSummary && !metadata.reasoningSummary) {
             metadata.reasoningSummary = reasoningSummary;
         }
+        if (artifacts.length > 0) {
+            metadata.artifacts = artifacts;
+        }
+        if (toolEvents.length > 0) {
+            metadata.toolEvents = toolEvents;
+        }
 
         return Object.keys(metadata).length > 0 ? metadata : null;
+    },
+
+    _extractArtifacts(...sources) {
+        const artifactSources = [];
+        sources.forEach((source) => {
+            if (!source || typeof source !== 'object') {
+                return;
+            }
+            artifactSources.push(
+                source.artifacts,
+                source.metadata?.artifacts,
+                source.assistantMetadata?.artifacts,
+                source.assistant_metadata?.artifacts,
+                source.response?.artifacts,
+                source.response?.metadata?.artifacts,
+                source.response?.assistantMetadata?.artifacts,
+                source.response?.assistant_metadata?.artifacts,
+            );
+        });
+
+        for (const artifacts of artifactSources) {
+            const normalized = this._normalizeArtifacts(artifacts);
+            if (normalized.length > 0) {
+                return normalized;
+            }
+        }
+        return [];
+    },
+
+    _normalizeArtifacts(artifacts = []) {
+        return (Array.isArray(artifacts) ? artifacts : [])
+            .map((artifact) => this._normalizeArtifactMetadata(artifact))
+            .filter(Boolean);
+    },
+
+    _normalizeArtifactMetadata(artifact) {
+        if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+            return null;
+        }
+
+        const artifactId = String(artifact.id || artifact.artifactId || artifact.artifact_id || '').trim();
+        const documentId = String(artifact.documentId || artifact.document_id || '').trim();
+        const id = artifactId || documentId;
+        const downloadUrl = String(
+            artifact.downloadUrl
+            || artifact.download_url
+            || this._buildFallbackDownloadUrl(id, artifactId ? 'artifact' : 'document')
+            || ''
+        ).trim();
+        if (!id && !downloadUrl) {
+            return null;
+        }
+
+        const normalized = {
+            ...artifact,
+            id,
+            downloadUrl,
+        };
+        const fields = {
+            filename: artifact.filename || artifact.name,
+            format: artifact.format || artifact.extension || artifact.type,
+            mimeType: artifact.mimeType || artifact.mime_type,
+            previewUrl: artifact.previewUrl || artifact.preview_url,
+            sandboxUrl: artifact.sandboxUrl || artifact.sandbox_url,
+            bundleDownloadUrl: artifact.bundleDownloadUrl || artifact.bundle_download_url || artifact.bundle_download,
+        };
+
+        Object.entries(fields).forEach(([key, value]) => {
+            const text = String(value || '').trim();
+            if (text) {
+                normalized[key] = text;
+            }
+        });
+
+        const sizeValue = artifact.sizeBytes ?? artifact.size_bytes ?? artifact.size;
+        if (Number.isFinite(Number(sizeValue))) {
+            normalized.sizeBytes = Number(sizeValue);
+        }
+
+        return normalized;
+    },
+
+    _buildFallbackDownloadUrl(id = '', type = 'artifact') {
+        const normalizedId = String(id || '').trim();
+        if (!normalizedId) {
+            return '';
+        }
+        const route = type === 'document' ? 'documents' : 'artifacts';
+        return `/api/${route}/${encodeURIComponent(normalizedId)}/download`;
+    },
+
+    _extractToolEvents(...sources) {
+        const eventSources = [];
+        sources.forEach((source) => {
+            if (!source || typeof source !== 'object') {
+                return;
+            }
+            eventSources.push(
+                source.toolEvents,
+                source.tool_events,
+                source.metadata?.toolEvents,
+                source.metadata?.tool_events,
+                source.assistantMetadata?.toolEvents,
+                source.assistantMetadata?.tool_events,
+                source.assistant_metadata?.toolEvents,
+                source.assistant_metadata?.tool_events,
+                source.response?.metadata?.toolEvents,
+                source.response?.metadata?.tool_events,
+            );
+        });
+
+        for (const events of eventSources) {
+            if (Array.isArray(events) && events.length > 0) {
+                return events;
+            }
+        }
+        return [];
     },
 
     _pickReasoningSummary(...sources) {

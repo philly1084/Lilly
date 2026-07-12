@@ -77,4 +77,30 @@ describe('notation artifact metadata normalization', () => {
             }),
         ]);
     });
+
+    test('extracts document artifacts from assistant metadata responses', () => {
+        const panel = loadNotationArtifactPanel();
+
+        const artifacts = panel.extractResponseArtifacts({
+            assistantMetadata: {
+                artifacts: [{
+                    document_id: 'doc-notation-2',
+                    filename: 'notation-export.pdf',
+                    mime_type: 'application/pdf',
+                    size_bytes: 2048,
+                }],
+            },
+        });
+
+        expect(artifacts).toEqual([
+            expect.objectContaining({
+                id: 'doc-notation-2',
+                artifactId: 'doc-notation-2',
+                filename: 'notation-export.pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: 2048,
+                downloadUrl: '/api/documents/doc-notation-2/download',
+            }),
+        ]);
+    });
 });
