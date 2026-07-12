@@ -49,15 +49,24 @@ describe('Canvas type selector accessibility', () => {
         const dom = new JSDOM(html);
         const modelSelect = dom.window.document.getElementById('model-select');
         const reasoningSelect = dom.window.document.getElementById('reasoning-effort-select');
+        const sidebarToggle = dom.window.document.getElementById('sidebar-toggle');
+        const themeToggle = dom.window.document.getElementById('theme-toggle');
+        const newSessionButton = dom.window.document.getElementById('new-session-btn');
         const previewToggle = dom.window.document.getElementById('toggle-preview');
         const splitToggle = dom.window.document.getElementById('toggle-split');
         const undoButton = dom.window.document.getElementById('undo-btn');
         const redoButton = dom.window.document.getElementById('redo-btn');
+        const copyButton = dom.window.document.getElementById('copy-btn');
+        const downloadButton = dom.window.document.getElementById('download-btn');
+        const reconnectButton = dom.window.document.getElementById('ws-reconnect-btn');
         const helpModal = dom.window.document.getElementById('help-modal');
         const helpCloseButton = dom.window.document.getElementById('help-modal-close');
 
         expect(modelSelect.getAttribute('aria-label')).toBe('Select AI model for Canvas generation');
         expect(reasoningSelect.getAttribute('aria-label')).toBe('Select reasoning effort for Canvas generation');
+        expect(sidebarToggle.getAttribute('aria-label')).toBe('Toggle Canvas prompt panel');
+        expect(themeToggle.getAttribute('aria-label')).toBe('Toggle Canvas theme');
+        expect(newSessionButton.getAttribute('aria-label')).toBe('Start new Canvas session');
         expect(previewToggle.getAttribute('aria-label')).toBe('Show preview');
         expect(previewToggle.getAttribute('aria-controls')).toBe('preview-wrapper diagram-wrapper');
         expect(previewToggle.getAttribute('aria-pressed')).toBe('false');
@@ -66,6 +75,9 @@ describe('Canvas type selector accessibility', () => {
         expect(splitToggle.getAttribute('aria-pressed')).toBe('false');
         expect(undoButton.getAttribute('aria-label')).toBe('Undo last canvas edit');
         expect(redoButton.getAttribute('aria-label')).toBe('Redo last canvas edit');
+        expect(copyButton.getAttribute('aria-label')).toBe('Copy canvas content to clipboard');
+        expect(downloadButton.getAttribute('aria-label')).toBe('Download canvas content');
+        expect(reconnectButton.getAttribute('aria-label')).toBe('Reconnect Canvas realtime updates');
         expect(helpModal.getAttribute('role')).toBe('dialog');
         expect(helpModal.getAttribute('aria-modal')).toBe('true');
         expect(helpModal.getAttribute('aria-labelledby')).toBe('help-modal-title');
