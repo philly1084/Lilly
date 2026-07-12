@@ -9849,12 +9849,25 @@ class UIHelpers {
         if (themeButton) {
             themeButton.setAttribute('title', `${preset.name} theme`);
             themeButton.setAttribute('aria-label', `Open theme gallery. Current theme: ${preset.name}`);
+            themeButton.setAttribute('aria-expanded', this.isThemeGalleryOpen() ? 'true' : 'false');
         }
         if (themeText) {
             themeText.textContent = `${preset.name} Theme`;
         }
 
         this.renderThemeGallery();
+    }
+
+    isThemeGalleryOpen() {
+        const modal = document.getElementById('theme-gallery-modal');
+        return Boolean(modal && !modal.classList.contains('hidden'));
+    }
+
+    setThemeGalleryTriggerExpanded(expanded) {
+        const themeButton = document.getElementById('theme-toggle');
+        if (themeButton) {
+            themeButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        }
     }
 
     openThemeGallery() {
@@ -9871,6 +9884,7 @@ class UIHelpers {
         this.lastFocusedElement = document.activeElement;
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
+        this.setThemeGalleryTriggerExpanded(true);
         this.playMenuCue('menu-open');
         this.trapFocus(modal);
     }
@@ -9878,11 +9892,13 @@ class UIHelpers {
     closeThemeGallery(options = {}) {
         const modal = document.getElementById('theme-gallery-modal');
         if (!modal || modal.classList.contains('hidden')) {
+            this.setThemeGalleryTriggerExpanded(false);
             return;
         }
 
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
+        this.setThemeGalleryTriggerExpanded(false);
 
         if (options?.silent !== true) {
             this.playMenuCue('menu-close');
