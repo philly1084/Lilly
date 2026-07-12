@@ -372,4 +372,76 @@ describe('AIDocumentGenerator', () => {
     expect(prompt).toContain('Board Update Deck');
     expect(prompt).toContain('If the request would benefit from a hybrid structure, combine patterns from multiple templates');
   });
+
+  test('scrubs placeholder and internal thought residue from presentation slides', async () => {
+    const createResponse = jest.fn(async () => buildResponse(JSON.stringify({
+      title: '<analysis>Private title draft.</analysis>Launch Readiness Deck',
+      subtitle: 'TODO add subtitle',
+      theme: 'executive',
+      slides: [
+        {
+          layout: 'title',
+          kicker: '[reasoning]Rank framing.[/reasoning]Decision ready',
+          title: 'BEGIN REASONING\nTry a louder headline.\nEND REASONING\nLaunch Readiness',
+          subtitle: 'This slide should explain the launch context.',
+          bullets: [
+            'Insert specific examples here',
+            'Owners confirmed launch readiness by Friday.',
+          ],
+          stats: [
+            { label: 'TBD', value: '98%', detail: 'Smoke pass rate' },
+            { label: 'Pilot', value: '3', detail: '<thinking>hide</thinking>Teams staffed' },
+          ],
+          columns: [{
+            heading: 'Placeholder',
+            content: 'Support and rollout owners are assigned.',
+            bullets: ['[Insert chart here]', 'Rollback owner confirmed.'],
+          }],
+          chart: {
+            title: 'Readiness Trend',
+            summary: '<reasoning>Private chart note.</reasoning>Checks improved across the week.',
+            series: [
+              { label: 'TODO', value: 1 },
+              { label: 'Smoke checks', value: 98 },
+            ],
+          },
+          imagePrompt: 'Add image here',
+          imageAlt: '<think>image draft</think>Launch room dashboard',
+          imageSource: '<!-- reasoning: source draft -->Internal readiness review',
+        },
+      ],
+    })));
+    const generator = new AIDocumentGenerator({ createResponse });
+
+    const result = await generator.generatePresentationContent('Build a launch readiness deck', {
+      qualityPass: false,
+      includeImages: true,
+    });
+
+    expect(result.title).toBe('Launch Readiness Deck');
+    expect(result.subtitle).toBe('');
+    expect(result.slides[0]).toEqual(expect.objectContaining({
+      kicker: 'Decision ready',
+      title: 'Launch Readiness',
+      subtitle: '',
+      bullets: ['Owners confirmed launch readiness by Friday.'],
+      imagePrompt: '',
+      imageAlt: 'Launch room dashboard',
+      imageSource: 'Internal readiness review',
+      generateImage: false,
+    }));
+    expect(result.slides[0].stats).toEqual([
+      { label: 'Pilot', value: '3', detail: 'Teams staffed' },
+    ]);
+    expect(result.slides[0].columns).toEqual([{
+      heading: '',
+      content: 'Support and rollout owners are assigned.',
+      bullets: ['Rollback owner confirmed.'],
+    }]);
+    expect(result.slides[0].chart).toEqual(expect.objectContaining({
+      title: 'Readiness Trend',
+      summary: 'Checks improved across the week.',
+      series: [{ label: 'Smoke checks', value: 98 }],
+    }));
+  });
 });

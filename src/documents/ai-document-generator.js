@@ -1528,30 +1528,34 @@ Return JSON:
   normalizePresentationStructure(content = {}, options = {}) {
     const includeImages = options.includeImages !== false;
     const slides = Array.isArray(content.slides) ? content.slides : [];
+    const title = sanitizeVisibleDocumentText(content.title || options.defaultTitle || 'Presentation') || 'Presentation';
 
     return {
-      title: content.title || options.defaultTitle || 'Presentation',
-      subtitle: content.subtitle || '',
-      theme: content.theme || options.theme || options.style || 'editorial',
+      title,
+      subtitle: sanitizeVisibleDocumentText(content.subtitle || ''),
+      theme: sanitizeVisibleDocumentText(content.theme || options.theme || options.style || 'editorial') || 'editorial',
       metadata: {
         ...(content.metadata || {}),
       },
-      slides: slides.map((slide, index) => ({
-        layout: slide.layout || (index === 0 ? 'title' : 'content'),
-        kicker: slide.kicker || '',
-        title: slide.title || `Slide ${index + 1}`,
-        subtitle: slide.subtitle || '',
-        content: typeof slide.content === 'string' ? slide.content : '',
-        bullets: this.normalizeStringList(slide.bullets || slide.points),
-        stats: this.normalizeStats(slide.stats || slide.metrics),
-        columns: this.normalizeColumns(slide.columns),
-        chart: this.normalizeChart(slide.chart),
-        imagePrompt: slide.imagePrompt || '',
-        imageUrl: slide.imageUrl || '',
-        imageAlt: slide.imageAlt || '',
-        imageSource: slide.imageSource || '',
-        generateImage: !!slide.imagePrompt && includeImages,
-      })),
+      slides: slides.map((slide, index) => {
+        const imagePrompt = sanitizeVisibleDocumentText(slide.imagePrompt || '');
+        return {
+          layout: slide.layout || (index === 0 ? 'title' : 'content'),
+          kicker: sanitizeVisibleDocumentText(slide.kicker || ''),
+          title: sanitizeVisibleDocumentText(slide.title || `Slide ${index + 1}`) || `Slide ${index + 1}`,
+          subtitle: sanitizeVisibleDocumentText(slide.subtitle || ''),
+          content: typeof slide.content === 'string' ? sanitizeVisibleDocumentText(slide.content) : '',
+          bullets: this.normalizeStringList(slide.bullets || slide.points),
+          stats: this.normalizeStats(slide.stats || slide.metrics),
+          columns: this.normalizeColumns(slide.columns),
+          chart: this.normalizeChart(slide.chart),
+          imagePrompt,
+          imageUrl: slide.imageUrl || '',
+          imageAlt: sanitizeVisibleDocumentText(slide.imageAlt || ''),
+          imageSource: sanitizeVisibleDocumentText(slide.imageSource || ''),
+          generateImage: !!imagePrompt && includeImages,
+        };
+      }),
     };
   }
 
@@ -1563,8 +1567,8 @@ Return JSON:
     return columns
       .filter((column) => column && typeof column === 'object')
       .map((column) => ({
-        heading: column.heading || '',
-        content: typeof column.content === 'string' ? column.content : '',
+        heading: sanitizeVisibleDocumentText(column.heading || ''),
+        content: typeof column.content === 'string' ? sanitizeVisibleDocumentText(column.content) : '',
         bullets: this.normalizeStringList(column.bullets || column.points),
       }))
       .filter((column) => column.heading || column.content || column.bullets.length > 0);
@@ -1573,14 +1577,14 @@ Return JSON:
   normalizeStringList(value) {
     if (Array.isArray(value)) {
       return value
-        .map((entry) => String(entry || '').trim())
+        .map((entry) => sanitizeVisibleDocumentText(entry))
         .filter(Boolean);
     }
 
     if (typeof value === 'string') {
       return value
         .split('\n')
-        .map((entry) => entry.replace(/^[-*]\s*/, '').trim())
+        .map((entry) => sanitizeVisibleDocumentText(entry.replace(/^[-*]\s*/, '')))
         .filter(Boolean);
     }
 
@@ -1599,13 +1603,19 @@ Return JSON:
         }
 
         if (typeof stat === 'string') {
-          return { label: stat, value: '', detail: '' };
+          return { label: sanitizeVisibleDocumentText(stat), value: '', detail: '' };
+        }
+
+        const rawLabel = stat.label || stat.name || '';
+        const label = sanitizeVisibleDocumentText(rawLabel);
+        if (rawLabel && !label) {
+          return null;
         }
 
         return {
-          label: stat.label || stat.name || 'Metric',
-          value: stat.value != null ? String(stat.value) : '',
-          detail: stat.detail || stat.context || '',
+          label: label || 'Metric',
+          value: stat.value != null ? sanitizeVisibleDocumentText(String(stat.value)) : '',
+          detail: sanitizeVisibleDocumentText(stat.detail || stat.context || ''),
         };
       })
       .filter((stat) => stat && (stat.label || stat.value || stat.detail));
