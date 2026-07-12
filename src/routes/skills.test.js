@@ -210,4 +210,22 @@ describe('/api/skills routes', () => {
       },
     }));
   });
+
+  test('draft keeps context size numeric when model metadata is invalid', async () => {
+    createResponse.mockResolvedValue({ id: 'response-2' });
+    extractResponseText.mockReturnValue(JSON.stringify({
+      readyForApproval: true,
+      draft: {
+        name: 'Report Helper',
+        contextPolicy: { maxChars: 'use the default' },
+      },
+    }));
+
+    const response = await request(buildApp())
+      .post('/api/skills/draft')
+      .send({ ask: 'Create a report helper skill.' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.draft.contextPolicy.maxChars).toBe(1800);
+  });
 });

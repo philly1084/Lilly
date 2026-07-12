@@ -21,6 +21,13 @@ function normalizeStringList(value = []) {
   )).slice(0, 40);
 }
 
+function normalizeContextMaxChars(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? Math.max(600, Math.min(parsed, 6000))
+    : 1800;
+}
+
 function normalizeDraftSkill(value = {}) {
   const draft = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return {
@@ -34,13 +41,13 @@ function normalizeDraftSkill(value = {}) {
       ? (draft.chain || draft.steps).slice(0, 16)
       : [],
     contextPolicy: {
-      maxChars: Math.max(600, Math.min(Number(
+      maxChars: normalizeContextMaxChars(
         draft.contextPolicy?.maxChars
         || draft.contextPolicy?.max_chars
         || draft.context_policy?.maxChars
         || draft.context_policy?.max_chars
         || 1800,
-      ), 6000)),
+      ),
       exposeBody: (
         draft.contextPolicy?.exposeBody
         ?? draft.contextPolicy?.expose_body
