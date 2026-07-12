@@ -12314,6 +12314,42 @@ describe('ConversationOrchestrator', () => {
         expect(toolPolicy.candidateToolIds).not.toContain('code-sandbox');
     });
 
+    test('routes remote-build sandbox game authoring through remote-cli-agent unless local is explicit', () => {
+        settingsController.getEffectiveSshConfig.mockReturnValue({
+            enabled: true,
+            host: '10.0.0.5',
+            port: 22,
+            username: 'root',
+        });
+        const orchestrator = new ConversationOrchestrator({
+            llmClient: {
+                createResponse: jest.fn(),
+                complete: jest.fn(),
+            },
+            toolManager: {
+                getTool: jest.fn((toolId) => (
+                    ['remote-cli-agent', 'remote-command', 'managed-app', 'code-sandbox'].includes(toolId)
+                        ? { id: toolId, description: toolId }
+                        : null
+                )),
+            },
+        });
+
+        const remotePolicy = orchestrator.buildToolPolicy({
+            objective: 'Lets make the sample game in the sandbox.',
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+        const localPolicy = orchestrator.buildToolPolicy({
+            objective: 'Make it in this harness local sandbox.',
+            executionProfile: 'remote-build',
+            toolManager: orchestrator.toolManager,
+        });
+
+        expect(remotePolicy.candidateToolIds).toContain('remote-cli-agent');
+        expect(localPolicy.candidateToolIds).not.toContain('remote-cli-agent');
+    });
+
     test('offers code-sandbox for remote-build tasks only when local code execution is explicit', () => {
         settingsController.getEffectiveSshConfig.mockReturnValue({
             enabled: true,

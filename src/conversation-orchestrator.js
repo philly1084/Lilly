@@ -6068,7 +6068,7 @@ function hasRepositoryImplementationIntent(text = '') {
     return repoContext && codeWorkIntent && !infraOnlyIntent && remoteWorkspaceCue;
 }
 
-function hasRemoteCliAgentAuthoringIntent(text = '') {
+function hasRemoteCliAgentAuthoringIntent(text = '', { executionProfile = '' } = {}) {
     const normalized = String(text || '').trim().toLowerCase();
     if (!normalized || hasDiscoveryPlanningIntentText(normalized)) {
         return false;
@@ -6085,12 +6085,19 @@ function hasRemoteCliAgentAuthoringIntent(text = '') {
 
     const explicitAssistedCli = hasExplicitRemoteCliAgentIntentText(normalized);
     const authoringIntent = /\b(create|creating|make|making|build|building|generate|generating|implement|implementing|develop|developing|write|writing|update|updating|fix|fixing|finish|finishing|continue|resume|complete|deploy|publish|launch|ship)\b/.test(normalized);
-    const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|visualization|visualisation|viewer|map|globe|world|service)\b/.test(normalized);
+    const softwareTarget = /\b(app|application|site|website|web app|web page|webpage|frontend|dashboard|visualization|visualisation|viewer|map|globe|world|service|game|playground|demo)\b/.test(normalized);
     const documentTarget = /\b(document|doc|docs|report|brief|proposal|guide|manual|workbook|whitepaper|one-pager|summary|synthesis|research|deck|slides|presentation|pptx|pdf|docx|html document|html page)\b/.test(normalized);
     const continuationTarget = /\b(it|that|same|work|project|task)\b/.test(normalized);
+    const explicitlyLocalSandbox = /\b(?:local|locally|this harness(?:'s|es)?|harness local)\b[\s\S]{0,40}\bsandbox\b/.test(normalized)
+        || /\bsandbox\b[\s\S]{0,40}\b(?:local|locally|this harness(?:'s|es)?|harness local)\b/.test(normalized);
+    const remoteSandboxTarget = executionProfile === REMOTE_BUILD_EXECUTION_PROFILE
+        && /\bsandbox\b/.test(normalized)
+        && !explicitlyLocalSandbox;
     const remoteTarget = /\b(remote|server|host|k3s|k8s|kubernetes|cluster|dns|domain|ingress|traefik|tls|deploy|deployment|live)\b/.test(normalized)
+        || remoteSandboxTarget
         || /\b[a-z0-9-]+(?:\.[a-z0-9-]+){1,}\b/.test(normalized);
-    const deploymentIntent = /\b(deploy|redeploy|publish|launch|ship|go live|get (?:it|the app|the site|the website) (?:live|online|deployed)|bring (?:it|the app|the site|the website) (?:live|online)|route|ingress|tls|dns|domain|rollout)\b/.test(normalized);
+    const deploymentIntent = remoteSandboxTarget
+        || /\b(deploy|redeploy|publish|launch|ship|go live|get (?:it|the app|the site|the website) (?:live|online|deployed)|bring (?:it|the app|the site|the website) (?:live|online)|route|ingress|tls|dns|domain|rollout)\b/.test(normalized);
     const infraOnly = /\b(kubectl get|kubectl describe|logs?|status|health|uptime|journalctl|systemctl status|inspect|diagnose|debug)\b/.test(normalized)
         && !/\b(create|make|build|implement|develop|write|update|fix|deploy|redeploy|publish|launch|ship)\b/.test(normalized);
 
@@ -11761,7 +11768,7 @@ class ConversationOrchestrator extends EventEmitter {
         const hasSkillUpdateIntent = hasSkillUpdateIntentText(prompt);
         const hasManagedAppIntent = hasManagedAppIntentText(prompt);
         const hasManagedAppAuthoringRequest = hasManagedAppAuthoringIntent(prompt, { executionProfile });
-        const hasRemoteCliAgentAuthoringRequest = hasRemoteCliAgentAuthoringIntent(objectiveText);
+        const hasRemoteCliAgentAuthoringRequest = hasRemoteCliAgentAuthoringIntent(objectiveText, { executionProfile });
         const toolMetadata = toolContext?.metadata && typeof toolContext.metadata === 'object'
             ? toolContext.metadata
             : {};
