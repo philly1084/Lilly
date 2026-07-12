@@ -350,6 +350,23 @@ describe('web-chat reasoning metadata normalization', () => {
         }));
     });
 
+    test('preserves camel-case output text from provider responses', async () => {
+        const fetchMock = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                outputText: 'Recovered provider response.',
+            }),
+        }));
+        const { apiClient } = loadApiClient(fetchMock);
+
+        const response = await apiClient.chat([{
+            role: 'user',
+            content: 'Return the provider response.',
+        }]);
+
+        expect(response.content).toBe('Recovered provider response.');
+    });
+
     test('renders response refusal deltas through the local stream fallback', () => {
         const { apiClient } = loadApiClient();
 

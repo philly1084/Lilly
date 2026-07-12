@@ -498,7 +498,7 @@ function extractAssistantText(value) {
         }
     }
 
-    const directKeys = ['output_text', 'text', 'content', 'message', 'response', 'output'];
+    const directKeys = ['output_text', 'outputText', 'text', 'content', 'message', 'response', 'output'];
     for (const key of directKeys) {
         const extracted = extractAssistantText(value[key]);
         if (extracted) {
