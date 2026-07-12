@@ -1679,6 +1679,14 @@ class Dashboard {
             return;
         }
 
+        const refreshButton = document.getElementById('refreshSelfReflectionBtn');
+        if (refreshButton) {
+            refreshButton.disabled = true;
+            refreshButton.setAttribute('aria-busy', 'true');
+            refreshButton.setAttribute('aria-label', 'Refreshing self-reflection updates');
+            refreshButton.textContent = 'Refreshing...';
+        }
+
         try {
             const [updatesResult, suggestionsResult] = await Promise.allSettled([
                 typeof apiClient.getSelfReflectionUpdates === 'function'
@@ -1735,6 +1743,13 @@ class Dashboard {
                 this.state.selfReflectionSuggestions,
                 this.state.selfReflectionSuggestionMeta
             );
+        } finally {
+            if (refreshButton) {
+                refreshButton.disabled = false;
+                refreshButton.removeAttribute('aria-busy');
+                refreshButton.setAttribute('aria-label', 'Refresh self-reflection updates');
+                refreshButton.textContent = 'Refresh';
+            }
         }
     }
 

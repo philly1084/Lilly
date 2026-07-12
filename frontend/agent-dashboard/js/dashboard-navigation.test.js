@@ -3,7 +3,7 @@ const path = require('path');
 const vm = require('vm');
 const { JSDOM } = require('jsdom');
 
-function loadDashboardClass(dom) {
+function loadDashboardClass(dom, dependencies = {}) {
     const sourcePath = path.join(__dirname, 'dashboard.js');
     const source = fs.readFileSync(sourcePath, 'utf8')
         .replace(
@@ -20,6 +20,7 @@ function loadDashboardClass(dom) {
         clearInterval,
         document: dom.window.document,
         window: dom.window,
+        ...dependencies,
     };
 
     vm.runInNewContext(source, sandbox, { filename: sourcePath });
@@ -676,6 +677,56 @@ describe('agent dashboard navigation accessibility', () => {
 
         expect(dom.window.document.getElementById('notificationsStatus').textContent).toBe('No new notifications.');
         expect(dashboard.showToast).toHaveBeenCalledWith('No new notifications', 'info');
+    });
+
+    test('exposes self-reflection refresh progress and prevents duplicate requests', async () => {
+        const dom = new JSDOM(`
+            <body>
+                <button id="refreshSelfReflectionBtn" type="button" aria-controls="selfReflectionUpdates" aria-label="Refresh self-reflection updates">Refresh</button>
+                <div id="selfReflectionUpdates"></div>
+                <span id="selfReflectionStatus"></span>
+            </body>
+        `);
+        let resolveUpdates;
+        const apiClient = {
+            getSelfReflectionUpdates: jest.fn(() => new Promise(resolve => {
+                resolveUpdates = resolve;
+            })),
+            getSelfReflectionSuggestions: jest.fn(async () => ({ suggestions: [] })),
+        };
+        const Dashboard = loadDashboardClass(dom, { apiClient });
+        const dashboard = Object.create(Dashboard.prototype);
+
+        global.document = dom.window.document;
+        global.window = dom.window;
+
+        dashboard.state = {
+            selfReflectionSupported: null,
+            selfReflectionUpdates: [],
+            selfReflectionSuggestions: [],
+            selfReflectionMeta: {},
+            selfReflectionSuggestionMeta: {},
+        };
+        dashboard.unwrapApiPayload = Dashboard.prototype.unwrapApiPayload.bind(dashboard);
+        dashboard.normalizeSelfReflectionUpdate = Dashboard.prototype.normalizeSelfReflectionUpdate.bind(dashboard);
+        dashboard.normalizeSelfReflectionSuggestion = Dashboard.prototype.normalizeSelfReflectionSuggestion.bind(dashboard);
+        dashboard.renderSelfReflectionUpdates = jest.fn();
+
+        const loading = dashboard.loadSelfReflectionUpdates({ force: true });
+        const refreshButton = dom.window.document.getElementById('refreshSelfReflectionBtn');
+
+        expect(refreshButton.disabled).toBe(true);
+        expect(refreshButton.getAttribute('aria-busy')).toBe('true');
+        expect(refreshButton.getAttribute('aria-label')).toBe('Refreshing self-reflection updates');
+        expect(refreshButton.textContent).toBe('Refreshing...');
+
+        resolveUpdates({ updates: [] });
+        await loading;
+
+        expect(refreshButton.disabled).toBe(false);
+        expect(refreshButton.hasAttribute('aria-busy')).toBe(false);
+        expect(refreshButton.getAttribute('aria-label')).toBe('Refresh self-reflection updates');
+        expect(refreshButton.textContent).toBe('Refresh');
     });
 
     test('keeps password reveal labels synchronized after toggles', () => {
