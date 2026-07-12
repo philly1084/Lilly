@@ -145,6 +145,38 @@ describe('model-catalog', () => {
         }));
     });
 
+    test('uses provider snake-case routing tiers when selecting an auto model', () => {
+        const selected = selectAutoModel([
+            {
+                id: 'custom-standard-router',
+                owned_by: 'gateway',
+                capabilities: ['chat', 'tools'],
+                cost_tier: 'medium',
+                latency_tier: 'medium',
+            },
+            {
+                id: 'custom-fast-router',
+                owned_by: 'gateway',
+                capabilities: ['chat', 'tools'],
+                metadata: {
+                    cost_tier: 'low',
+                    latency_tier: 'low',
+                    reliability_tier: 'high',
+                },
+            },
+        ], {
+            needsTools: true,
+            apiMode: 'chat',
+        });
+
+        expect(selected).toEqual(expect.objectContaining({
+            id: 'custom-fast-router',
+            costTier: 'low',
+            latencyTier: 'low',
+            reliabilityTier: 'high',
+        }));
+    });
+
     test('normalizes string and object capability metadata before chat selection', () => {
         const selected = selectAutoModel([
             { id: 'gpt-image-2', owned_by: 'openai', capabilities: 'image_generation' },

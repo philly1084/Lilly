@@ -269,9 +269,21 @@ function buildModelContract(model = {}, options = {}) {
             streaming: capabilitySet.has('streaming'),
         },
         contextWindow: Number(model?.context_window || model?.contextWindow || 0) || inferContextWindow(model),
-        costTier: model?.costTier || (/mini|small|flash|haiku|8b|7b/i.test(id) ? 'low' : (/gpt-5|opus|large|pro/i.test(id) ? 'high' : 'medium')),
-        latencyTier: model?.latencyTier || (/mini|flash|groq|8b|7b/i.test(id) ? 'low' : 'medium'),
-        reliabilityTier: model?.reliabilityTier || (officialOpenAI ? 'high' : 'unknown'),
+        costTier: model?.costTier
+            || model?.cost_tier
+            || model?.metadata?.costTier
+            || model?.metadata?.cost_tier
+            || (/mini|small|flash|haiku|8b|7b/i.test(id) ? 'low' : (/gpt-5|opus|large|pro/i.test(id) ? 'high' : 'medium')),
+        latencyTier: model?.latencyTier
+            || model?.latency_tier
+            || model?.metadata?.latencyTier
+            || model?.metadata?.latency_tier
+            || (/mini|flash|groq|8b|7b/i.test(id) ? 'low' : 'medium'),
+        reliabilityTier: model?.reliabilityTier
+            || model?.reliability_tier
+            || model?.metadata?.reliabilityTier
+            || model?.metadata?.reliability_tier
+            || (officialOpenAI ? 'high' : 'unknown'),
         openaiFirst: officialOpenAI,
     };
 }
