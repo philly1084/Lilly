@@ -353,6 +353,16 @@ describe('canvas help modal accessibility', () => {
         expect(document.getElementById('enterpriseModeBtn').getAttribute('aria-pressed')).toBe('false');
     });
 
+    test('labels the visible Canvas AI composer input', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const dom = new JSDOM(html);
+        const aiInput = dom.window.document.getElementById('aiInput');
+
+        expect(aiInput.tagName).toBe('TEXTAREA');
+        expect(aiInput.getAttribute('aria-label')).toBe('Ask Canvas AI to critique or edit the board');
+        expect(aiInput.getAttribute('placeholder')).toContain('Ask for a critique');
+    });
+
     test('keeps the focus workspace toggle pressed state synchronized', () => {
         const dom = new JSDOM('<button id="enterpriseModeBtn" type="button" aria-label="Toggle focus workspace" aria-pressed="false"></button>', {
             url: 'http://localhost:3000/canvas/',
