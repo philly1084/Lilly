@@ -3799,6 +3799,11 @@ body.drag-over::after {
     background: var(--bg-secondary);
 }
 
+.layer-item:focus-visible {
+    outline: 2px solid var(--selection-color);
+    outline-offset: 2px;
+}
+
 .layer-item.active {
     background: var(--selection-bg);
     border: 1px solid var(--selection-color);

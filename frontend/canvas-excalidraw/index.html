@@ -573,18 +573,18 @@
     </button>
 
     <!-- Layers Panel (Right Side, before Properties) -->
-    <aside class="layers-panel" id="layersPanel">
+    <aside class="layers-panel" id="layersPanel" aria-labelledby="layersPanelTitle">
         <div class="panel-header">
-            <h3>Layers</h3>
-            <button id="addLayerBtn" title="New Layer">+</button>
+            <h3 id="layersPanelTitle">Layers</h3>
+            <button id="addLayerBtn" type="button" title="Add layer" aria-label="Add layer">+</button>
         </div>
-        <div class="layers-list" id="layersList">
+        <div class="layers-list" id="layersList" aria-label="Canvas layers">
             <!-- Layer items populated by JS -->
         </div>
         <div class="layer-controls">
-            <button id="duplicateLayerBtn" title="Duplicate Layer">Copy</button>
-            <button id="deleteLayerBtn" title="Delete Layer">Del</button>
-            <button id="mergeLayerBtn" title="Merge Down">Merge</button>
+            <button id="duplicateLayerBtn" type="button" title="Duplicate active layer">Copy</button>
+            <button id="deleteLayerBtn" type="button" title="Delete active layer">Del</button>
+            <button id="mergeLayerBtn" type="button" title="Merge active layer down">Merge</button>
         </div>
     </aside>
 
@@ -2221,7 +2221,7 @@
     <script defer src="js/selection.js"></script>
     <script defer src="js/properties.js"></script>
     <script defer src="js/canvas.js"></script>
-    <script defer src="js/layers.js"></script>
+    <script defer src="js/layers.js?v=20260712a"></script>
     <script defer src="js/templates.js"></script>
     <script defer src="js/stickers.js"></script>
     <script defer src="js/ai-assistant.js?v=20260614q"></script>

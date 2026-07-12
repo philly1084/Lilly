@@ -329,13 +329,17 @@ class LayersManager {
             const layerEl = document.createElement('div');
             layerEl.className = `layer-item ${layer.id === this.activeLayerId ? 'active' : ''} ${!layer.visible ? 'hidden' : ''} ${layer.locked ? 'locked' : ''}`;
             layerEl.dataset.layerId = layer.id;
+            layerEl.tabIndex = 0;
+            layerEl.setAttribute('role', 'button');
+            layerEl.setAttribute('aria-pressed', String(layer.id === this.activeLayerId));
+            layerEl.setAttribute('aria-label', `${layer.name}, ${layer.id === this.activeLayerId ? 'active layer' : 'activate layer'}`);
             
             layerEl.innerHTML = `
-                <button class="layer-visibility" title="${layer.visible ? 'Hide' : 'Show'} layer">
+                <button class="layer-visibility" type="button" title="${layer.visible ? 'Hide' : 'Show'} ${layer.name}" aria-label="${layer.visible ? 'Hide' : 'Show'} ${layer.name}">
                     ${layer.visible ? '👁️' : '👁️‍🗨️'}
                 </button>
-                <input type="text" class="layer-name" value="${layer.name}" title="Double-click to rename">
-                <button class="layer-lock" title="${layer.locked ? 'Unlock' : 'Lock'} layer">
+                <input type="text" class="layer-name" value="${layer.name}" title="Rename ${layer.name}" aria-label="Layer name: ${layer.name}">
+                <button class="layer-lock" type="button" title="${layer.locked ? 'Unlock' : 'Lock'} ${layer.name}" aria-label="${layer.locked ? 'Unlock' : 'Lock'} ${layer.name}">
                     ${layer.locked ? '🔒' : '🔓'}
                 </button>
             `;
@@ -345,6 +349,12 @@ class LayersManager {
                 if (!e.target.classList.contains('layer-visibility') && 
                     !e.target.classList.contains('layer-lock') &&
                     !e.target.classList.contains('layer-name')) {
+                    this.setActiveLayer(layer.id);
+                }
+            });
+            layerEl.addEventListener('keydown', (e) => {
+                if (e.target === layerEl && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
                     this.setActiveLayer(layer.id);
                 }
             });
